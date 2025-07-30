@@ -1,0 +1,15 @@
+Django==5.2.4
+djangorestframework==3.16.0
+django-extensions==4.1
+django-phonenumber-field==8.1.0
+django-bootstrap5==25.1
+dj-database-url==3.0.1
+djoser==2.3.3
+dotenv==0.9.9
+phonenumbers==9.0.10
+pillow==11.3.0
+psycopg2-binary==2.9.10
+python-telegram-bot==22.3
+aiogram==3.21.0
+APScheduler==3.11.0
+celery==5.5.3

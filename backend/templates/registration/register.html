@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+
+{% block title %}Регистрация сотрудника{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">Регистрация нового сотрудника</h3>
+            </div>
+            
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" novalidate>
+                    {% csrf_token %}
+                    
+                    <!-- Контакты -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            {% bootstrap_field form.email show_label=False placeholder="E-mail" %}
+                            <small class="text-muted">Пример: ivanov@company.com</small>
+                        </div>
+                        <div class="col-md-6">
+                            {% bootstrap_field form.phone_number show_label=False placeholder="Телефон" %}
+                        </div>
+                    </div>
+                    
+                    <!-- Мессенджеры -->
+                    <div class="row g-3 mb-4 align-items-end">
+                        <div class="col-md-6 position-relative">
+                            {% bootstrap_field form.whatsapp show_label=False placeholder="WhatsApp" %}
+                            <span class="position-absolute top-50 end-0 translate-middle-y me-3">
+                                <i class="bi bi-whatsapp text-success"></i>
+                            </span>
+                        </div>
+                        <div class="col-md-6 position-relative">
+                            {% bootstrap_field form.telegram show_label=False placeholder="Telegram" %}
+                            <span class="position-absolute top-50 end-0 translate-middle-y me-3">
+                                <i class="bi bi-telegram text-primary"></i>
+                            </span>
+                        </div>
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger alert-dismissible fade show mb-4">
+                                {% for error in form.non_field_errors %}
+                                    <i class="bi bi-exclamation-circle me-2"></i>{{ error }}
+                                {% endfor %}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- ФИО + дата рождения -->
+                    <div class="row g-3 mb-4">
+                        {% for field in form %}
+                            {% if field.name == 'last_name' or field.name == 'first_name' or field.name == 'patronymic' %}
+                                <div class="col-md-4">
+                                    {% bootstrap_field field show_label=False %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% if form.birth_date %}
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            {% bootstrap_field form.birth_date show_label=False placeholder="Дата рождения" %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Пароли -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6 position-relative">
+                            {% bootstrap_field form.password1 show_label=False placeholder="Пароль" %}
+                            <span class="position-absolute top-50 end-0 translate-middle-y me-3" style="cursor:pointer">
+                                <i class="bi bi-eye-slash password-toggle" data-target="#{{ form.password1.auto_id }}"></i>
+                            </span>
+                        </div>
+                        <div class="col-md-6 position-relative">
+                            {% bootstrap_field form.password2 show_label=False placeholder="Повторите пароль" %}
+                            <span class="position-absolute top-50 end-0 translate-middle-y me-3" style="cursor:pointer">
+                                <i class="bi bi-eye-slash password-toggle" data-target="#{{ form.password2.auto_id }}"></i>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Аватар -->
+                    <div class="mb-4">
+                        {% bootstrap_field form.avatar %}
+                        <small class="text-muted">Рекомендуемый размер: 200x200 px</small>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-person-plus me-2"></i>Зарегистрироваться
+                        </button>
+                        <a href="{% url 'login' %}" class="btn btn-link">Уже есть аккаунт? Войти</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.password-toggle').forEach(icon => {
+        icon.addEventListener('click', function() {
+            const input = document.querySelector(this.getAttribute('data-target'));
+            if (input) {
+                input.type = input.type === 'password' ? 'text' : 'password';
+                this.classList.toggle('bi-eye');
+                this.classList.toggle('bi-eye-slash');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

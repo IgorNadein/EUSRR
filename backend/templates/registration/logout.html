@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load bootstrap5 %}
+
+{% block title %}Выход из системы{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card shadow">
+            <div class="card-header bg-danger text-white">
+                <h3 class="mb-0">Выход из системы</h3>
+            </div>
+            
+            <div class="card-body">
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    
+                    <div class="text-center mb-4">
+                        <p class="lead">Вы уверены, что хотите выйти из системы?</p>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger btn-lg">
+                            <i class="bi bi-power me-2"></i>Выйти
+                        </button>
+                        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-lg">Остаться</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

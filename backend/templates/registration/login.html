@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+
+{% block title %}Авторизация{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">Вход в систему</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'login' %}">
+                    {% csrf_token %}
+                    
+                    <!-- Общие ошибки формы -->
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger alert-dismissible fade show mb-4">
+                        {% for error in form.non_field_errors %}
+                        <i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
+                        {% endfor %}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endif %}
+
+                    <!-- Поле номера телефона -->
+                    <div class="mb-4 form-floating">
+                        <input type="tel" 
+                               name="username" 
+                               class="form-control {% if form.username.errors %}is-invalid{% endif %}" 
+                               id="id_username" 
+                               placeholder="+7 (999) 123-45-67"
+                               value="{{ form.username.value|default:'' }}"
+                               required
+                               autofocus>
+                        <label for="id_username">Номер телефона</label>
+                        {% if form.username.errors %}
+                        <div class="invalid-feedback">
+                            {{ form.username.errors|striptags }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Поле пароля -->
+                    <div class="mb-4 form-floating position-relative">
+                        <input type="password" 
+                               name="password" 
+                               class="form-control {% if form.password.errors %}is-invalid{% endif %}" 
+                               id="id_password" 
+                               placeholder="Пароль"
+                               required>
+                        <label for="id_password">Пароль</label>
+                        <i class="bi bi-eye-slash password-toggle position-absolute top-50 end-0 translate-middle-y me-3" 
+                           style="cursor: pointer; z-index: 5"></i>
+                        {% if form.password.errors %}
+                        <div class="invalid-feedback">
+                            {{ form.password.errors|striptags }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Войти
+                        </button>
+                        <a href="{% url 'password_reset' %}" class="btn btn-link mt-2">Забыли пароль?</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Переключение видимости пароля
+    document.querySelectorAll('.password-toggle').forEach(icon => {
+        icon.addEventListener('click', function() {
+            const input = this.closest('.form-floating').querySelector('input');
+            input.type = input.type === 'password' ? 'text' : 'password';
+            this.classList.toggle('bi-eye-slash');
+            this.classList.toggle('bi-eye');
+        });
+    });
+
+    // Автофокус на поле логина
+    document.getElementById('id_username')?.focus();
+});
+</script>
+{% endblock %}

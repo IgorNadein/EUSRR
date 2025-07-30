@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Документы{% endblock %}
+{% block content %}
+  <h1>Документы</h1>
+
+  {% if documents %}
+    <ul class="list-group">
+      {% for doc in documents %}
+        <li class="list-group-item d-flex justify-content-between align-items-start">
+          <div class="ms-2 me-auto">
+            <div class="fw-bold">
+              <a href="{{ doc.file.url }}" target="_blank">{{ doc.title }}</a>
+            </div>
+            {{ doc.description|default:"– без описания –" }}<br>
+            <small class="text-muted">Загружен: {{ doc.uploaded_at|date:"d.m.Y H:i" }}</small>
+          </div>
+          <div>
+            {% if doc.id in acked_ids %}
+              <span class="badge bg-success">Ознакомлен</span>
+            {% else %}
+              <a href="{% url 'documents:acknowledge' doc.pk %}" class="btn btn-sm btn-primary">
+                Ознакомиться
+              </a>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+    {# пагинация, как было ранее #}
+  {% else %}
+    <p>Нет доступных документов.</p>
+  {% endif %}
+{% endblock %}
