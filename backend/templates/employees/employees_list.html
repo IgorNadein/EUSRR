@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Сотрудники{% endblock %}
+{% block content %}
+<h2 class="mb-4">Список сотрудников</h2>
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+  {% for emp in employees %}
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body d-flex align-items-center">
+          {% if emp.avatar %}
+            <img src="{{ emp.avatar.url }}" class="rounded-circle me-3" style="width:64px;height:64px;object-fit:cover;">
+          {% else %}
+            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center me-3" style="width:64px;height:64px;">
+              <i class="bi-person fs-2 text-white"></i>
+            </div>
+          {% endif %}
+          <div>
+            <h5 class="card-title mb-0">
+              <a href="{% url 'employees:employee_detail' emp.pk %}" class="text-decoration-none">
+                {{ emp.last_name }} {{ emp.first_name }}
+              </a>
+            </h5>
+            <div class="text-muted small">{{ emp.email }}</div>
+            {% if emp.positions.first %}
+              <div class="text-secondary">{{ emp.positions.first.title }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col">
+      <div class="alert alert-warning">Нет сотрудников.</div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

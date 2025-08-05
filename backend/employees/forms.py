@@ -76,9 +76,9 @@ class ProfileUpdateForm(AvatarValidationMixin, UserChangeForm):
             'birth_date',
             'gender',
             'email',
-            'position',
             'phone_number',
             'telegram',
             'whatsapp',
+            'wechat',
             'avatar'
         )

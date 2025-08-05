@@ -22,11 +22,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'users.apps.UsersConfig',
+    'employees.apps.EmployeesConfig',
     'api.apps.ApiConfig',
     'hikcentral.apps.HikcentralConfig',
     'calendar_app.apps.CalendarAppConfig',
     'documents.apps.DocumentsConfig',
+    'requests_app.apps.RequestsAppConfig',
+    'feed.apps.FeedConfig',
     'bots',
 
 ]
@@ -94,7 +96,7 @@ else:
         'USER': os.getenv('POSTGRES_USER', 'django'),
         'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
         'HOST': os.getenv('DB_HOST', ''),
-        'PORT': os.getenv('DB_PORT', 5432)
+        'PORT': os.getenv('DB_PORT', '5432')
     }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -127,10 +129,10 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AUTH_USER_MODEL = 'users.Employee'
+AUTH_USER_MODEL = 'employees.Employee'
 
 LOGIN_URL = 'register'
-LOGIN_REDIRECT_URL = 'profile'
+LOGIN_REDIRECT_URL = 'login'
 LOGOUT_REDIRECT_URL = 'login'
 
 
@@ -182,3 +184,4 @@ LOGGING = {
     },
 }
 
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', default='https://*.sytes.net').split(',')

@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+
+{% block title %}Публикации: {{ employee.get_full_name }}{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Публикации: {{ employee.get_full_name }}</h2>
+
+{% if posts %}
+  <div class="row g-4">
+    {% for post in posts %}
+      <div class="col-12">
+        <div class="card shadow-sm">
+          {% if post.image %}
+            <img src="{{ post.image.url }}" class="card-img-top"
+                 alt="{{ post.title }}"
+                 style="max-height: 240px; object-fit: cover; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
+          {% endif %}
+          <div class="card-body">
+            <h5 class="card-title mb-2">
+              {{ post.title }}
+              {% if post.pinned %}
+                <span class="badge bg-warning text-dark ms-1">Закреплено</span>
+              {% endif %}
+            </h5>
+            <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
+            <div class="small text-muted mb-1">
+              Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
+            </div>
+            <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary">
+              Подробнее
+            </a>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="alert alert-info">У сотрудника пока нет публикаций.</div>
+{% endif %}
+{% endblock %}

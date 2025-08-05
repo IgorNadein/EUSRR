@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Заявление на отсутствие{% endblock %}
+{% block content %}
+<h2>Заявление на отсутствие</h2>
+<form method="post" enctype="multipart/form-data" class="card p-4 shadow-sm">
+  {% csrf_token %}
+  {% bootstrap_form form layout='horizontal' %}
+  <button type="submit" class="btn btn-primary">Отправить заявление</button>
+</form>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+
+{% block title %}{{ form.instance.pk|yesno:"Редактировать,Создать" }} публикацию{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">
+  {{ form.instance.pk|yesno:"Редактировать,Создать" }} публикацию
+</h2>
+
+<form method="post" enctype="multipart/form-data" class="mb-4">
+  {% csrf_token %}
+  {% bootstrap_form form %}
+  <button type="submit" class="btn btn-success">Сохранить</button>
+  <a href="javascript:history.back()" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Отделы{% endblock %}
+{% block content %}
+<h2 class="mb-4">Отделы</h2>
+<ul class="list-group">
+  {% for dept in departments %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <a href="{% url 'employees:department_detail' dept.pk %}">{{ dept.name }}</a>
+      {% if dept.head %}<span class="badge bg-secondary">{{ dept.head }}</span>{% endif %}
+    </li>
+  {% empty %}
+    <li class="list-group-item">Нет отделов.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

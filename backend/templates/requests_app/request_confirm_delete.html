@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Отозвать заявление{% endblock %}
+{% block content %}
+<h2 class="mb-4 text-danger">Отозвать заявление</h2>
+
+<div class="alert alert-warning">
+  <strong>Внимание!</strong> После отзыва заявление будет удалено без возможности восстановления.
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <dl>
+    <dt>Тип:</dt><dd>{{ request_obj.get_type_display }}</dd>
+    <dt>Период:</dt><dd>
+      {% if request_obj.date_from or request_obj.date_to %}
+        {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+      {% else %}—{% endif %}
+    </dd>
+    <dt>Комментарий:</dt><dd>{{ request_obj.comment|default:"—" }}</dd>
+  </dl>
+  <button type="submit" class="btn btn-danger">
+    <i class="bi-trash"></i> Отозвать и удалить
+  </button>
+  <a href="{% url 'requests_app:my_requests' %}" class="btn btn-outline-secondary ms-2">Отмена</a>
+</form>
+{% endblock %}

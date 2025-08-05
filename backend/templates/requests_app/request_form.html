@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Подать заявление{% endblock %}
+{% block content %}
+
+<h2 class="mb-4">Подать новое заявление</h2>
+
+<form method="post">
+  {% csrf_token %}
+  {% bootstrap_form form %}
+  <button type="submit" class="btn btn-success mt-3">
+    <i class="bi-check-circle"></i> Отправить заявление
+  </button>
+  <a href="{% url 'requests_app:my_requests' %}" class="btn btn-outline-secondary mt-3 ms-2">
+    Отмена
+  </a>
+</form>
+
+{% endblock %}

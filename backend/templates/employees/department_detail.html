@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}{{ department.name }}{% endblock %}
+{% block content %}
+<h2>{{ department.name }}</h2>
+<p class="text-muted">{{ department.description }}</p>
+<p><strong>Руководитель:</strong> {{ department.head }}</p>
+
+<h5 class="mt-4">Сотрудники отдела:</h5>
+<ul class="list-group">
+  {% for position in employees %}
+    <li class="list-group-item">
+      <a href="{% url 'employees:employee_detail' position.employee.pk %}">
+        {{ position.employee.last_name }} {{ position.employee.first_name }}
+      </a>
+      <span class="ms-2 text-secondary">{{ position.title }}</span>
+    </li>
+  {% empty %}
+    <li class="list-group-item">Нет сотрудников в этом отделе.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

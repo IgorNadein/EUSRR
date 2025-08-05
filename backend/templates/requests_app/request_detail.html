@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Заявление{% endblock %}
+{% block content %}
+<h2 class="mb-4">Детали заявления</h2>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <dl class="row">
+      <dt class="col-sm-3">Тип:</dt>
+      <dd class="col-sm-9">{{ request_obj.get_type_display }}</dd>
+
+      <dt class="col-sm-3">Период:</dt>
+      <dd class="col-sm-9">
+        {% if request_obj.date_from or request_obj.date_to %}
+          {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+        {% else %}
+          —
+        {% endif %}
+      </dd>
+
+      <dt class="col-sm-3">Статус:</dt>
+      <dd class="col-sm-9">
+        {% if request_obj.status == 'pending' %}
+          <span class="badge bg-secondary">На рассмотрении</span>
+        {% elif request_obj.status == 'approved' %}
+          <span class="badge bg-success">Одобрено</span>
+        {% elif request_obj.status == 'rejected' %}
+          <span class="badge bg-danger">Отклонено</span>
+        {% endif %}
+      </dd>
+
+      <dt class="col-sm-3">Комментарий:</dt>
+      <dd class="col-sm-9">{{ request_obj.comment|default:"—" }}</dd>
+
+      <dt class="col-sm-3">Дата подачи:</dt>
+      <dd class="col-sm-9">{{ request_obj.created_at|date:'d.m.Y H:i' }}</dd>
+    </dl>
+    <a href="{% url 'requests_app:my_requests' %}" class="btn btn-outline-secondary">К списку заявлений</a>
+  </div>
+</div>
+{% endblock %}

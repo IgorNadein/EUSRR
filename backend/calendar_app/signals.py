@@ -3,7 +3,7 @@
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 from .models import CompanyEvent
-from users.models import Employee
+from employees.models import Employee
 
 @receiver(pre_save, sender=Employee)
 def cache_old_birth_date(sender, instance: Employee, **kwargs):

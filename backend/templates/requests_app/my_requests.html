@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Мои заявления{% endblock %}
+{% block content %}
+<h2 class="mb-4">Мои заявления</h2>
+
+<a href="{% url 'requests_app:request_create' %}" class="btn btn-primary mb-4">
+    <i class="bi-plus-circle"></i> Подать новое заявление
+</a>
+
+{% if requests %}
+  <div class="table-responsive">
+    <table class="table table-bordered align-middle">
+      <thead>
+        <tr>
+          <th>Тип</th>
+          <th>Период</th>
+          <th>Статус</th>
+          <th>Комментарий</th>
+          <th>Дата подачи</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for req in requests %}
+        <tr>
+          <td>{{ req.get_type_display }}</td>
+          <td>
+            {% if req.date_from or req.date_to %}
+              {{ req.date_from|date:'d.m.Y' }}{% if req.date_to %} — {{ req.date_to|date:'d.m.Y' }}{% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if req.status == 'pending' %}
+              <span class="badge bg-secondary">На рассмотрении</span>
+            {% elif req.status == 'approved' %}
+              <span class="badge bg-success">Одобрено</span>
+            {% elif req.status == 'rejected' %}
+              <span class="badge bg-danger">Отклонено</span>
+            {% endif %}
+          </td>
+          <td>
+            {{ req.comment|default:'—' }}
+          </td>
+          <td>{{ req.created_at|date:'d.m.Y H:i' }}</td>
+          <td>
+              <a href="{% url 'requests_app:request_detail' req.pk %}" class="btn btn-sm btn-outline-primary">
+                Подробнее
+              </a>
+              {% if req.status == 'pending' %}
+                <a href="{% url 'requests_app:request_delete' req.pk %}" class="btn btn-sm btn-outline-danger ms-1">
+                  Отозвать
+                </a>
+              {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="alert alert-info">У вас пока нет заявлений.</div>
+{% endif %}
+
+{% endblock %}

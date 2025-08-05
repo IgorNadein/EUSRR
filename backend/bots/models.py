@@ -23,10 +23,16 @@ class BotSubscriber(models.Model):
         null=True, blank=True,
         unique=True
     )
+    wechat_id = models.CharField(
+        'WeChat ID',
+        max_length=64,
+        null=True, blank=True,
+        unique=True
+    )
 
     class Meta:
         verbose_name = 'Подписчик бота'
         verbose_name_plural = 'Подписчики ботов'
 
     def __str__(self):
-        return f'{self.user} (TG={self.telegram_id or "-"} / WA={self.whatsapp_id or "-"})'
+        return f'{self.user} (TG={self.telegram_id or "-"} / WA={self.whatsapp_id or "-"} / WC={self.wechat_id or "-"})'

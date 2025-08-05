@@ -5,7 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from django.utils import timezone
 
-User = settings.AUTH_USER_MODEL  # 'users.Employee'
+User = settings.AUTH_USER_MODEL  # 'employees.Employee'
 
 
 class Document(models.Model):

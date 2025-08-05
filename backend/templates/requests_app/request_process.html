@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Рассмотрение заявления{% endblock %}
+{% block content %}
+<h2 class="mb-4">Рассмотрение заявления</h2>
+
+<div class="mb-4">
+  <strong>Сотрудник:</strong> {{ request_obj.employee.get_full_name }}<br>
+  <strong>Тип:</strong> {{ request_obj.get_type_display }}<br>
+  <strong>Период:</strong>
+  {% if request_obj.date_from or request_obj.date_to %}
+    {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+  {% else %}
+    —
+  {% endif %}
+  <br>
+  <strong>Комментарий сотрудника:</strong> {{ request_obj.comment|default:"—" }}<br>
+  <strong>Дата подачи:</strong> {{ request_obj.created_at|date:'d.m.Y H:i' }}
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  {% bootstrap_form form %}
+  <button type="submit" class="btn btn-success">
+    <i class="bi-check-circle"></i> Сохранить решение
+  </button>
+  <a href="{% url 'requests_app:all_requests' %}" class="btn btn-outline-secondary ms-2">
+    Отмена
+  </a>
+</form>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+{% block title %}Все заявления сотрудников{% endblock %}
+{% block content %}
+<h2 class="mb-4">Заявления сотрудников</h2>
+
+{% if requests %}
+  <div class="table-responsive">
+    <table class="table table-bordered align-middle">
+      <thead>
+        <tr>
+          <th>Сотрудник</th>
+          <th>Тип</th>
+          <th>Период</th>
+          <th>Статус</th>
+          <th>Дата подачи</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for req in requests %}
+        <tr>
+          <td>{{ req.employee.get_full_name }}</td>
+          <td>{{ req.get_type_display }}</td>
+          <td>
+            {% if req.date_from or req.date_to %}
+              {{ req.date_from|date:'d.m.Y' }}{% if req.date_to %} — {{ req.date_to|date:'d.m.Y' }}{% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if req.status == 'pending' %}
+              <span class="badge bg-secondary">На рассмотрении</span>
+            {% elif req.status == 'approved' %}
+              <span class="badge bg-success">Одобрено</span>
+            {% elif req.status == 'rejected' %}
+              <span class="badge bg-danger">Отклонено</span>
+            {% endif %}
+          </td>
+          <td>{{ req.created_at|date:'d.m.Y H:i' }}</td>
+          <td>
+            <a href="{% url 'requests_app:request_process' req.pk %}" class="btn btn-sm btn-outline-primary">
+              Рассмотреть
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="alert alert-info">Заявлений нет.</div>
+{% endif %}
+{% endblock %}
