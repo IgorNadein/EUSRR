@@ -239,28 +239,49 @@
       <a href="/" class="navbar-brand text-dark fs-4 py-2 d-block mb-2" style="letter-spacing:1px;">EUSRR</a>
     </div>
     <ul class="nav flex-column">
-      <li><a href="{% url 'feed:feed_list' %}" class="nav-link {% if request.resolver_match.url_name == 'feed_list' %}active{% endif %}">
-        <i class="bi-megaphone"></i> Новости
-      </a></li>
-      <li><a href="{% url 'employees:employees_list' %}" class="nav-link {% if request.resolver_match.url_name == 'employees_list' %}active{% endif %}">
-        <i class="bi-people"></i> Сотрудники
-      </a></li>
-      <li><a href="{% url 'employees:department_list' %}" class="nav-link {% if request.resolver_match.url_name == 'department_list' %}active{% endif %}">
-        <i class="bi-diagram-3"></i> Отделы
-      </a></li>
-      <li><a href="{% url 'requests_app:my_requests' %}" class="nav-link {% if request.resolver_match.url_name == 'my_requests' %}active{% endif %}">
-        <i class="bi-journal-text"></i> Мои заявления
-      </a></li>
-      <li><a href="#" class="nav-link disabled">
-        <i class="bi-chat-dots"></i> Чат
-      </a></li>
-      <li><a href="#" class="nav-link disabled">
-        <i class="bi-calendar-event"></i> Календарь
-      </a></li>
-      <li><a href="{% url 'documents:document_list' %}" class="nav-link {% if request.resolver_match.url_name == 'document_list' %}active{% endif %}">
-        <i class="bi-file-earmark-text"></i> Документы
-      </a></li>
+      <li>
+        <a href="{% url 'feed:feed_list' %}" 
+          class="nav-link {% if request.resolver_match.url_name == 'feed_list' %}active{% endif %}">
+          <i class="bi-megaphone"></i> Новости
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'employees:employees_list' %}" 
+          class="nav-link {% if request.resolver_match.url_name == 'employees_list' %}active{% endif %}">
+          <i class="bi-people"></i> Сотрудники
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'employees:department_list' %}" 
+          class="nav-link {% if request.resolver_match.url_name == 'department_list' %}active{% endif %}">
+          <i class="bi-diagram-3"></i> Отделы
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'requests_app:my_requests' %}" 
+          class="nav-link {% if request.resolver_match.url_name == 'my_requests' %}active{% endif %}">
+          <i class="bi-journal-text"></i> Мои заявления
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'communications:chat_list' %}" 
+          class="nav-link {% if request.resolver_match.app_name == 'communications' %}active{% endif %}">
+          <i class="bi-chat-dots"></i> Чаты
+        </a>
+      </li>
+      <li>
+        <a href="#" class="nav-link disabled">
+          <i class="bi-calendar-event"></i> Календарь
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'documents:document_list' %}" 
+          class="nav-link {% if request.resolver_match.url_name == 'document_list' %}active{% endif %}">
+          <i class="bi-file-earmark-text"></i> Документы
+        </a>
+      </li>
     </ul>
+
   </div>
 {% else %}
   <nav class="navbar app-navbar navbar-dark position-fixed w-100 shadow-sm">

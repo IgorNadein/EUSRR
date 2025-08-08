@@ -1,22 +1,103 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
-{% block title %}{{ department.name }}{% endblock %}
-{% block content %}
-<h2>{{ department.name }}</h2>
-<p class="text-muted">{{ department.description }}</p>
-<p><strong>Руководитель:</strong> {{ department.head }}</p>
 
-<h5 class="mt-4">Сотрудники отдела:</h5>
-<ul class="list-group">
-  {% for position in employees %}
-    <li class="list-group-item">
-      <a href="{% url 'employees:employee_detail' position.employee.pk %}">
-        {{ position.employee.last_name }} {{ position.employee.first_name }}
+{% block title %}{{ department.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <!-- Шапка отдела -->
+  <div class="card border-0 shadow-sm rounded-4 mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="d-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10"
+               style="width:56px;height:56px;">
+            <i class="bi-diagram-3 text-primary" style="font-size:28px;"></i>
+          </div>
+          <div>
+            <h2 class="mb-1 fw-bold">{{ department.name }}</h2>
+            {% if department.description %}
+              <div class="text-muted">{{ department.description }}</div>
+            {% endif %}
+            {% if department.head %}
+              <div class="mt-2 small">
+                <span class="text-secondary">Руководитель:</span>
+                <a class="text-decoration-none"
+                   href="{% url 'employees:employee_detail' department.head.pk %}">
+                  {{ department.head.last_name }} {{ department.head.first_name }}
+                </a>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+          {% if user.is_staff or department.head_id == user.id %}
+            <a href="{% url 'employees:invite_to_department' department.pk %}"
+               class="btn btn-success">
+              <i class="bi-person-plus me-1"></i> Пригласить сотрудника
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Сотрудники отдела -->
+  <div class="card border-0 shadow-sm rounded-4 mb-4">
+    <div class="card-header bg-white border-0 py-3 d-flex align-items-center justify-content-between">
+      <h5 class="mb-0">Сотрудники отдела</h5>
+      <a class="btn btn-sm btn-outline-primary"
+         href="{% url 'employees:employees_list' %}?department={{ department.pk }}">
+        Все сотрудники отдела →
       </a>
-      <span class="ms-2 text-secondary">{{ position.title }}</span>
-    </li>
-  {% empty %}
-    <li class="list-group-item">Нет сотрудников в этом отделе.</li>
-  {% endfor %}
-</ul>
+    </div>
+
+    <ul class="list-group list-group-flush">
+      {% for link in emp_links %}
+        <li class="list-group-item py-3">
+          <div class="d-flex align-items-center gap-3">
+            {% with emp=link.employee %}
+              {% if emp.avatar %}
+                <img src="{{ emp.avatar.url }}" alt=""
+                     class="rounded-circle border"
+                     style="width:44px;height:44px;object-fit:cover;">
+              {% else %}
+                <div class="rounded-circle bg-secondary bg-opacity-25 d-flex align-items-center justify-content-center"
+                     style="width:44px;height:44px;">
+                  <i class="bi-person text-secondary" style="font-size:22px;"></i>
+                </div>
+              {% endif %}
+
+              <div class="flex-grow-1">
+                <div class="fw-semibold">
+                  <a class="text-decoration-none"
+                     href="{% url 'employees:employee_detail' emp.pk %}">
+                    {{ emp.last_name }} {{ emp.first_name }}
+                  </a>
+                </div>
+                {% if link.role %}
+                  <div class="small text-secondary">{{ link.role }}</div>
+                {% endif %}
+              </div>
+            {% endwith %}
+          </div>
+        </li>
+      {% empty %}
+        <li class="list-group-item py-4 text-center text-secondary">
+          В этом отделе пока нет сотрудников.
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Новости отдела (инклюдит готовый блок) -->
+  <div class="card border-0 shadow-sm rounded-4">
+    <div class="card-body p-0">
+      {% include "feed/department_feed.html" with department=department posts=posts new_employees=new_employees %}
+    </div>
+  </div>
+
+</div>
 {% endblock %}

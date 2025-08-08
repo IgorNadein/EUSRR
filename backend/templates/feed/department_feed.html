@@ -1,69 +1,75 @@
-{% extends 'base.html' %}
 {% load static django_bootstrap5 %}
 
-{% block title %}{{ department.name }} — Новости отдела{% endblock %}
-
 {% block content %}
-<h2 class="mb-4">Новости отдела: {{ department.name }}</h2>
-
-<a href="{% url 'feed:post_create' %}" class="btn btn-primary mb-4">
-    <i class="bi-plus-circle"></i> Новая публикация
-</a>
-
-{% if new_employees %}
-  <div class="alert alert-light p-2 mb-3">
-    <div class="fw-bold mb-1">Новые сотрудники отдела:</div>
-    <div class="d-flex gap-2">
-      {% for emp in new_employees %}
-        <a href="{% url 'employees:employee_detail' emp.pk %}" title="{{ emp.get_full_name }}">
-          {% if emp.avatar %}
-            <img src="{{ emp.avatar.url }}" class="rounded-circle border" style="width: 40px; height: 40px; object-fit: cover;">
-          {% else %}
-            <span class="bi-person-circle fs-2 text-secondary"></span>
-          {% endif %}
-        </a>
-      {% endfor %}
-    </div>
+<div class="container">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <i class="bi-diagram-3 display-6 text-primary"></i>
+    <h2 class="mb-0 fw-bold" style="letter-spacing:0.5px;">
+      Новости отдела:
+    </h2>
   </div>
-{% endif %}
 
+  <div class="mb-3">
+    <a href="{% url 'feed:post_create' %}?department={{ department.pk }}" class="btn btn-primary">
+      <i class="bi-plus-circle"></i> Новая публикация
+    </a>
+  </div>
 
-{% if posts %}
-  <div class="row g-4">
-    {% for post in posts %}
-      <div class="col-12">
-        <div class="card shadow-sm">
-          {% if post.image %}
-            <img src="{{ post.image.url }}" class="card-img-top"
-                 alt="{{ post.title }}"
-                 style="max-height: 240px; object-fit: cover; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
-          {% endif %}
-          <div class="card-body">
-            <h5 class="card-title mb-2 d-flex align-items-center">
-              {{ post.title }}
-              {% if post.pinned %}
-                <span class="badge bg-warning text-dark ms-1">Закреплено</span>
-              {% endif %}
-              {# Кнопка закрепить — только для начальника отдела #}
-              {% if department.head == user %}
+  {% if new_employees %}
+    <div class="alert alert-light p-3 mb-4 border rounded-3">
+      <div class="fw-semibold mb-2">Новые сотрудники отдела:</div>
+      <div class="d-flex gap-2 flex-wrap">
+        {% for emp in new_employees %}
+          <a href="{% url 'employees:employee_detail' emp.pk %}" title="{{ emp.get_full_name }}">
+            {% if emp.avatar %}
+              <img src="{{ emp.avatar.url }}" class="rounded-circle border" style="width: 40px; height: 40px; object-fit: cover;">
+            {% else %}
+              <span class="bi-person-circle fs-2 text-secondary"></span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if posts %}
+    <div class="row g-4">
+      {% for post in posts %}
+        <div class="col-12">
+          <div class="card shadow-sm h-100 border-0">
+            {% if post.image %}
+              <img src="{{ post.image.url }}" class="card-img-top"
+                   alt="{{ post.title }}"
+                   style="max-height: 240px; object-fit: cover; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
+            {% endif %}
+            <div class="card-body">
+              <h5 class="card-title mb-2 d-flex align-items-center gap-2">
+                {{ post.title }}
+                {% if post.pinned %}
+                  <span class="badge bg-warning text-dark">Закреплено</span>
+                {% endif %}
+                {% if department.head == user %}
                   <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-sm btn-outline-warning ms-2">
                     {% if post.pinned %} Открепить {% else %} Закрепить {% endif %}
                   </a>
-              {% endif %}
-            </h5>
-            <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
-            <div class="small text-muted mb-1">
-              Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
+                {% endif %}
+              </h5>
+              <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
+              <div class="small text-muted mb-2">
+                Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
+              </div>
+              <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                Подробнее
+              </a>
             </div>
-            <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary">
-              Подробнее
-            </a>
           </div>
         </div>
-      </div>
-    {% endfor %}
-  </div>
-{% else %}
-  <div class="alert alert-info">В отделе пока нет новостей.</div>
-{% endif %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info shadow-sm mt-4 rounded-3">
+      В отделе пока нет новостей.
+    </div>
+  {% endif %}
+</div>
 {% endblock %}

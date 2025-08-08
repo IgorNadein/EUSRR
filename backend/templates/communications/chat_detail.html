@@ -1,0 +1,52 @@
+{# backend/templates/communications/chat_detail.html #}
+{% extends "base.html" %}
+{% load widget_tweaks %}
+
+{% block title %}Чат{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0" style="max-width: 800px;">
+  <h2 class="mb-3">
+    {% if chat.type == 'global' %}
+      <i class="bi-globe"></i> Глобальный чат
+    {% elif chat.type == 'department' %}
+      <i class="bi-diagram-3"></i> Чат отдела: {{ chat.department.name }}
+    {% else %}
+      <i class="bi-person-gear"></i>
+      {% for u in chat.participants.all %}
+        {% if u != user %}{{ u.get_full_name|default:u }}{% endif %}
+      {% endfor %}
+    {% endif %}
+  </h2>
+  <div class="card shadow-sm mb-4" style="min-height:350px;max-height:500px;overflow-y:auto;">
+    <div class="card-body p-3">
+      {% for message in messages %}
+        <div class="mb-2 {% if message.author == user %}text-end{% endif %}">
+          <span class="fw-bold">
+            {% if message.author == user %}
+              Вы
+            {% else %}
+              {{ message.author.get_full_name|default:message.author }}
+            {% endif %}
+          </span>
+          <span class="small text-muted">· {{ message.created_at|date:"H:i" }}</span><br>
+          <span class="d-inline-block py-1 px-2 rounded bg-light text-dark mt-1"
+                style="max-width:70%;word-break:break-word;">
+            {{ message.content|linebreaksbr }}
+          </span>
+        </div>
+      {% empty %}
+        <div class="text-center text-muted">Нет сообщений.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <form method="post" class="d-flex gap-2 align-items-end">
+    {% csrf_token %}
+    {{ form.content|add_class:"form-control" }}
+    <button type="submit" class="btn btn-primary">
+      <i class="bi-send"></i> Отправить
+    </button>
+  </form>
+</div>
+{% endblock %}

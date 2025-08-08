@@ -4,6 +4,8 @@ django-extensions==4.1
 django-phonenumber-field==8.1.0
 django-bootstrap5==25.1
 dj-database-url==3.0.1
+django-registration==5.2.1
+django-allauth==65.10.0
 djoser==2.3.3
 dotenv==0.9.9
 phonenumbers==9.0.10
@@ -13,3 +15,4 @@ python-telegram-bot==22.3
 aiogram==3.21.0
 APScheduler==3.11.0
 celery==5.5.3
+django-widget-tweaks==1.5.0

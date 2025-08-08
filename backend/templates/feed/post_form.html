@@ -1,17 +1,110 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
 
-{% block title %}{{ form.instance.pk|yesno:"Редактировать,Создать" }} публикацию{% endblock %}
+{% block title %}
+  {% if form.instance.pk %}Редактировать{% else %}Создать{% endif %} публикацию
+{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">
-  {{ form.instance.pk|yesno:"Редактировать,Создать" }} публикацию
-</h2>
+<div class="container">
+  <!-- Header (без кнопки Отмена) -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi-megaphone fs-3 text-primary"></i>
+      <h2 class="mb-0">
+        {% if form.instance.pk %}Редактировать{% else %}Создать{% endif %} публикацию
+      </h2>
+      {% if context_type == 'department' and department %}
+        <span class="badge bg-secondary">Отдел: {{ department.name }}</span>
+      {% elif context_type == 'company' %}
+        <span class="badge bg-secondary">Компания</span>
+      {% elif context_type == 'employee' %}
+        <span class="badge bg-secondary">Личная публикация</span>
+      {% endif %}
+    </div>
+  </div>
 
-<form method="post" enctype="multipart/form-data" class="mb-4">
-  {% csrf_token %}
-  {% bootstrap_form form %}
-  <button type="submit" class="btn btn-success">Сохранить</button>
-  <a href="javascript:history.back()" class="btn btn-secondary">Отмена</a>
-</form>
+  <!-- Form -->
+  <form method="post" enctype="multipart/form-data" class="card shadow-sm border-0">
+    <div class="card-body">
+      {% csrf_token %}
+
+      <div class="row g-4">
+        <div class="col-lg-8">
+          {% if form.title %}{% bootstrap_field form.title %}{% endif %}
+          {% if form.body %}{% bootstrap_field form.body %}{% endif %}
+          {% if form.type %}{{ form.type }}{% endif %}
+          {% if form.department %}{% bootstrap_field form.department %}{% endif %}
+        </div>
+
+        <div class="col-lg-4">
+          <div class="border rounded-3 p-3">
+            <div class="mb-3">
+              <div class="fw-semibold mb-2">Изображение</div>
+              {% if form.instance.pk and form.instance.image %}
+                <div class="mb-2">
+                  <img src="{{ form.instance.image.url }}" alt="Превью" class="img-fluid rounded" id="currentImagePreview">
+                </div>
+              {% endif %}
+              {% if form.image %}{% bootstrap_field form.image %}{% endif %}
+              <img id="newImagePreview" class="img-fluid rounded d-none" alt="Превью выбранного изображения">
+            </div>
+
+            <div>
+              <div class="fw-semibold mb-2">Вложение</div>
+              {% if form.instance.pk and form.instance.attachment %}
+                <p class="mb-2">
+                  Текущее вложение:
+                  <a href="{{ form.instance.attachment.url }}" target="_blank">
+                    {{ form.instance.attachment.name|cut:"feed/attachments/" }}
+                  </a>
+                </p>
+              {% endif %}
+              {% if form.attachment %}{% bootstrap_field form.attachment %}{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions: одна Отмена -->
+      <div class="mt-4 d-flex align-items-center gap-2">
+        <button type="submit" class="btn btn-success">
+          <i class="bi-check2"></i> Сохранить
+        </button>
+
+        {% if cancel_url %}
+          <a href="{{ cancel_url }}" class="btn btn-outline-secondary">Отмена</a>
+        {% else %}
+          <a href="javascript:history.back()" class="btn btn-outline-secondary">Отмена</a>
+        {% endif %}
+
+        {% if form.instance.pk %}
+          <a href="{% url 'feed:post_delete' form.instance.pk %}?next={{ cancel_url|urlencode }}"
+             class="btn btn-outline-danger ms-auto">
+            <i class="bi-trash"></i> Удалить
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function () {
+    const input = document.getElementById("id_image");
+    const preview = document.getElementById("newImagePreview");
+    if (!input || !preview) return;
+    input.addEventListener("change", function (e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) {
+        preview.classList.add("d-none");
+        preview.src = "";
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      preview.classList.remove("d-none");
+    });
+  })();
+</script>
 {% endblock %}

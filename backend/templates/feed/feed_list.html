@@ -4,76 +4,92 @@
 {% block title %}Новости компании{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Новости компании</h2>
-
-{% if user.is_staff %}
-  <a href="{% url 'feed:post_create' %}" class="btn btn-primary mb-4">
-      <i class="bi-plus-circle"></i> Новая публикация
-  </a>
-{% endif %}
-
-{% if new_employees %}
-  <div class="mb-4 bg-white p-3 rounded shadow-sm">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h6 class="mb-0 text-secondary">Присоединились недавно</h6>
-      <a href="{% url 'employees:employees_list' %}" class="small text-primary">Все сотрудники</a>
-    </div>
-    <div class="d-flex flex-wrap gap-3">
-      {% for emp in new_employees %}
-        <div class="text-center" style="width: 90px;">
-          <a href="{% url 'employees:employee_detail' emp.pk %}" class="text-decoration-none text-dark">
-            {% if emp.avatar %}
-              <img src="{{ emp.avatar.url }}" class="rounded-circle border mb-1" style="width: 56px; height: 56px; object-fit: cover;">
-            {% else %}
-              <span class="bi-person-circle fs-1 text-secondary"></span>
-            {% endif %}
-            <div class="small">{{ emp.get_short_name }}</div>
+<div class="container">
+  <div class="row justify-content-center mb-4">
+    <div class="col-lg-10">
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <i class="bi-megaphone display-6 text-primary"></i>
+        <h2 class="mb-0 fw-bold" style="letter-spacing:0.5px;">
+          Новости компании
+        </h2>
+        {% if user.is_staff %}
+          <a href="{% url 'feed:post_create' %}" class="btn btn-primary ms-auto">
+            <i class="bi-plus-circle"></i> Новая публикация
           </a>
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-{% endif %}
+        {% endif %}
+      </div>
 
-
-
-{% if posts %}
-  <div class="row g-4">
-    {% for post in posts %}
-      <div class="col-12">
-        <div class="card shadow-sm">
-          {% if post.image %}
-            <img src="{{ post.image.url }}"
-                 alt="{{ post.title }}"
-                 class="card-img-top"
-                 style="max-height: 260px; object-fit: cover; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
-          {% endif %}
-          <div class="card-body">
-            <h5 class="card-title mb-2 d-flex align-items-center">
-              {% if post.type == 'company' and user.is_staff %}
-                  <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-sm btn-outline-warning ms-2">
-                    {% if post.pinned %} Открепить {% else %} Закрепить {% endif %}
-                  </a>
-              {% elif post.type == 'department' and department and department.head == user %}
-                  <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-sm btn-outline-warning ms-2">
-                    {% if post.pinned %} Открепить {% else %} Закрепить {% endif %}
-                  </a>
-              {% endif %}
-
-            </h5>
-            <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
-            <div class="small text-muted mb-1">
-              Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
-            </div>
-            <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary">
-              Подробнее
-            </a>
+      {% if new_employees %}
+        <div class="mb-4 bg-white p-3 rounded shadow-sm">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0 text-secondary">Присоединились недавно</h6>
+            <a href="{% url 'employees:employees_list' %}" class="small text-primary">Все сотрудники</a>
+          </div>
+          <div class="d-flex flex-wrap gap-3">
+            {% for emp in new_employees %}
+              <div class="text-center" style="width: 90px;">
+                <a href="{% url 'employees:employee_detail' emp.pk %}" class="text-decoration-none text-dark">
+                  {% if emp.avatar %}
+                    <img src="{{ emp.avatar.url }}" class="rounded-circle border mb-1" style="width: 56px; height: 56px; object-fit: cover;">
+                  {% else %}
+                    <span class="bi-person-circle fs-1 text-secondary"></span>
+                  {% endif %}
+                  <div class="small">{{ emp.get_short_name }}</div>
+                </a>
+              </div>
+            {% endfor %}
           </div>
         </div>
-      </div>
-    {% endfor %}
+      {% endif %}
+
+      {% if posts %}
+        <div class="row g-4">
+          {% for post in posts %}
+            <div class="col-12">
+              <div class="card shadow-sm border-0">
+                <div class="row g-0">
+                  {% if post.image %}
+                    <div class="col-md-4 d-none d-md-block">
+                      <img src="{{ post.image.url }}" class="img-fluid rounded-start" alt="{{ post.title }}" style="height: 100%; object-fit: cover;">
+                    </div>
+                  {% endif %}
+                  <div class="{% if post.image %}col-md-8{% else %}col-12{% endif %}">
+                    <div class="card-body">
+                      <div class="d-flex align-items-center justify-content-between mb-2">
+                        <h5 class="card-title fw-semibold mb-0">
+                          {{ post.title }}
+                        </h5>
+                        {% if post.type == 'company' and user.is_staff %}
+                          <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-sm btn-outline-warning ms-2">
+                            {% if post.pinned %} Открепить {% else %} Закрепить {% endif %}
+                          </a>
+                        {% elif post.type == 'department' and department and department.head == user %}
+                          <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-sm btn-outline-warning ms-2">
+                            {% if post.pinned %} Открепить {% else %} Закрепить {% endif %}
+                          </a>
+                        {% endif %}
+                      </div>
+                      {% if post.pinned %}
+                        <span class="badge bg-warning text-dark mb-2">Закреплено</span>
+                      {% endif %}
+                      <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
+                      <div class="small text-muted mb-1">
+                        Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
+                      </div>
+                      <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                        Подробнее
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-info shadow-sm mt-4">Пока нет новостей.</div>
+      {% endif %}
+    </div>
   </div>
-{% else %}
-  <div class="alert alert-info">Пока нет новостей.</div>
-{% endif %}
+</div>
 {% endblock %}

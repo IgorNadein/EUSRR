@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'widget_tweaks',
     'employees.apps.EmployeesConfig',
     'api.apps.ApiConfig',
     'hikcentral.apps.HikcentralConfig',
@@ -29,6 +30,7 @@ INSTALLED_APPS = [
     'documents.apps.DocumentsConfig',
     'requests_app.apps.RequestsAppConfig',
     'feed.apps.FeedConfig',
+    'communications.apps.CommunicationsConfig',
     'bots',
 
 ]
@@ -41,6 +43,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'eusrr_backend.middleware.AuthRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'eusrr_backend.urls'
@@ -71,11 +74,11 @@ DATABASES = {
     'default': {},
     'hikcentral': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'cms',  # имя базы HikCentral, смотри по факту
-        'USER': 'postgres',  # имя пользователя
-        'PASSWORD': None,  # пароль, если не менял (или актуальный)
+        'NAME': 'cms',
+        'USER': 'postgres',
+        'PASSWORD': None,
         'HOST': '127.0.0.1',
-        'PORT': '5432',  # или нужный порт
+        'PORT': '5432',
         'OPTIONS': {
             'options': '-c search_path=platform'
         }
@@ -132,8 +135,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'employees.Employee'
 
 LOGIN_URL = 'register'
-LOGIN_REDIRECT_URL = 'login'
-LOGOUT_REDIRECT_URL = 'login'
+LOGIN_REDIRECT_URL = '/'
+# LOGOUT_REDIRECT_URL = 'login'
+REGISTRATION_AUTO_LOGIN = True
 
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
@@ -184,4 +188,9 @@ LOGGING = {
     },
 }
 
+PHONENUMBER_DEFAULT_REGION = "RU"
+
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', default='https://*.sytes.net').split(',')
+
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'  # для allauth, если вдруг используешь
+DEFAULT_FROM_EMAIL = 'noreply@yourdomain.com'

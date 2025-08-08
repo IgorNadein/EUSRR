@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load django_bootstrap5 %}
+
+{% block title %}Редактировать комментарий{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h4 class="mb-3">Редактировать комментарий к: “{{ post.title }}”</h4>
+  <form method="post" class="card p-3 shadow-sm">
+    {% csrf_token %}
+    {% bootstrap_form form %}
+    <div class="mt-3 d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Сохранить</button>
+      <a class="btn btn-secondary" href="{% url 'feed:post_detail' post.pk %}#c{{ comment.pk }}">Отмена</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,6 +1,16 @@
+# backend\communications\apps.py
 from django.apps import AppConfig
 
 
 class CommunicationsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'communications'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "communications"
+
+    def ready(self):
+        import communications.signals
+        def create_main_global_chat(sender, **kwargs):
+            from communications.models import Chat
+
+            if not Chat.objects.filter(type="global", is_main=True).exists():
+                Chat.objects.create(type="global", is_main=True)
+

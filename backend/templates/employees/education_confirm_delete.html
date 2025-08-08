@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Удаление записи об образовании{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:720px;">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h4 class="mb-3">Удалить запись об образовании?</h4>
+      <p class="text-muted mb-3">
+        {{ object.institution }}{% if object.degree %}, {{ object.degree }}{% endif %}
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-danger">Удалить</button>
+          <a href="{% url 'employees:education_list' %}" class="btn btn-outline-secondary">Отмена</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

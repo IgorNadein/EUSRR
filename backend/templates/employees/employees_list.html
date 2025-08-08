@@ -1,38 +1,121 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
+
 {% block title %}Сотрудники{% endblock %}
+
 {% block content %}
-<h2 class="mb-4">Список сотрудников</h2>
-<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-  {% for emp in employees %}
-    <div class="col">
-      <div class="card h-100 shadow-sm">
-        <div class="card-body d-flex align-items-center">
-          {% if emp.avatar %}
-            <img src="{{ emp.avatar.url }}" class="rounded-circle me-3" style="width:64px;height:64px;object-fit:cover;">
-          {% else %}
-            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center me-3" style="width:64px;height:64px;">
-              <i class="bi-person fs-2 text-white"></i>
-            </div>
-          {% endif %}
-          <div>
-            <h5 class="card-title mb-0">
-              <a href="{% url 'employees:employee_detail' emp.pk %}" class="text-decoration-none">
-                {{ emp.last_name }} {{ emp.first_name }}
-              </a>
-            </h5>
-            <div class="text-muted small">{{ emp.email }}</div>
-            {% if emp.positions.first %}
-              <div class="text-secondary">{{ emp.positions.first.title }}</div>
-            {% endif %}
-          </div>
-        </div>
+<div class="container">
+
+  <!-- Заголовок + поиск -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="d-flex align-items-center gap-3">
+      <i class="bi-people display-6 text-primary"></i>
+      <div>
+        <h2 class="mb-0 fw-bold">Сотрудники</h2>
+        <div class="text-muted small">Всего: {{ employees|length }}</div>
       </div>
     </div>
-  {% empty %}
-    <div class="col">
-      <div class="alert alert-warning">Нет сотрудников.</div>
+    <div class="w-auto" style="min-width: 280px;">
+      <input type="search" class="form-control" id="empFilter" placeholder="Быстрый поиск…">
     </div>
-  {% endfor %}
+  </div>
+
+  <!-- Вертикальный список -->
+  <ul class="list-group shadow-sm" id="empList">
+    {% for emp in employees %}
+      <li class="list-group-item py-3 emp-row"
+          data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.email }}{% for d in emp.departments %} {{ d.name }}{% endfor %}">
+        <div class="d-flex align-items-center gap-3">
+
+          <!-- Аватар -->
+          {% if emp.avatar %}
+            <img src="{{ emp.avatar.url }}" alt="{{ emp.get_full_name }}"
+                 class="rounded-circle shadow-sm"
+                 style="width:56px;height:56px;object-fit:cover;">
+          {% else %}
+            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center shadow-sm"
+                 style="width:56px;height:56px;">
+              {{ emp.get_short_name|default:emp.first_name|slice:":1"|upper }}
+            </div>
+          {% endif %}
+
+          <!-- Основной блок -->
+          <div class="flex-grow-1">
+            <div class="d-flex align-items-center justify-content-between flex-wrap">
+              <div class="me-2">
+                <a href="{% url 'employees:employee_detail' emp.pk %}" class="fw-semibold text-decoration-none">
+                  {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                </a>
+                {% if emp.is_actually_active %}
+                  <span class="badge bg-success ms-2">Активен</span>
+                {% else %}
+                  <span class="badge bg-secondary ms-2">Не активен</span>
+                {% endif %}
+              </div>
+
+              <!-- Кнопки действий (справа) -->
+              <div class="mt-2 mt-sm-0 d-flex gap-2">
+                <a href="{% url 'employees:employee_detail' emp.pk %}" class="btn btn-sm btn-outline-primary">
+                  Профиль
+                </a>
+                {% if user != emp %}
+                  <a href="{% url 'communications:start_private_chat' emp.pk %}" class="btn btn-sm btn-success">
+                    <i class="bi-chat-dots me-1"></i> Чат
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Контакты -->
+            <div class="small text-muted mt-1">
+              <i class="bi-envelope me-1"></i>{{ emp.email }}
+              {% if emp.phone_number %} • <i class="bi-telephone me-1"></i>{{ emp.phone_number }}{% endif %}
+            </div>
+
+            <!-- Должность (если активная есть) -->
+            {% with pos=emp.positions.first %}
+              {% if pos and pos.is_active %}
+                <div class="mt-1">
+                  <span class="badge bg-primary">{{ pos.title }}</span>
+                </div>
+              {% endif %}
+            {% endwith %}
+
+            <!-- Отделы (до 3 шт.) -->
+            {% with deps=emp.departments %}
+              {% if deps %}
+                <div class="mt-2">
+                  {% for d in deps|slice:":3" %}
+                    <span class="badge bg-light text-dark border">{{ d.name }}</span>
+                  {% endfor %}
+                  {% if deps|length > 3 %}
+                    <span class="badge bg-light text-dark border">+{{ deps|length|add:"-3" }}</span>
+                  {% endif %}
+                </div>
+              {% endif %}
+            {% endwith %}
+          </div>
+        </div>
+      </li>
+    {% empty %}
+      <li class="list-group-item">
+        <div class="alert alert-info mb-0">Нет сотрудников.</div>
+      </li>
+    {% endfor %}
+  </ul>
 </div>
+
+<script>
+  (function () {
+    const input = document.getElementById('empFilter');
+    if (!input) return;
+    input.addEventListener('input', function () {
+      const q = this.value.trim().toLowerCase();
+      document.querySelectorAll('#empList .emp-row').forEach(function (row) {
+        const hay = (row.getAttribute('data-name') || '').toLowerCase();
+        row.style.display = hay.includes(q) ? '' : 'none';
+      });
+    });
+  })();
+</script>
 {% endblock %}

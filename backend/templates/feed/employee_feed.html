@@ -1,41 +1,47 @@
-{% extends 'base.html' %}
+{# feed/employee_feed.html #}
 {% load static django_bootstrap5 %}
 
-{% block title %}Публикации: {{ employee.get_full_name }}{% endblock %}
-
-{% block content %}
-<h2 class="mb-4">Публикации: {{ employee.get_full_name }}</h2>
-
+<div class="d-flex align-items-center gap-3 mb-3">
+  <i class="bi-megaphone display-6 text-primary"></i>
+  <h2 class="mb-0 fw-bold" style="letter-spacing:0.5px;">
+    Публикации: {{ employee.get_full_name }}
+  </h2>
+</div>
 {% if posts %}
   <div class="row g-4">
     {% for post in posts %}
       <div class="col-12">
-        <div class="card shadow-sm">
-          {% if post.image %}
-            <img src="{{ post.image.url }}" class="card-img-top"
-                 alt="{{ post.title }}"
-                 style="max-height: 240px; object-fit: cover; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
-          {% endif %}
-          <div class="card-body">
-            <h5 class="card-title mb-2">
-              {{ post.title }}
-              {% if post.pinned %}
-                <span class="badge bg-warning text-dark ms-1">Закреплено</span>
-              {% endif %}
-            </h5>
-            <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
-            <div class="small text-muted mb-1">
-              Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
+        <div class="card shadow-sm border-0">
+          <div class="row g-0">
+            {% if post.image %}
+              <div class="col-md-4 d-none d-md-block">
+                <img src="{{ post.image.url }}" class="img-fluid rounded-start" alt="{{ post.title }}" style="height: 100%; object-fit: cover;">
+              </div>
+            {% endif %}
+            <div class="{% if post.image %}col-md-8{% else %}col-12{% endif %}">
+              <div class="card-body">
+                <h5 class="card-title fw-semibold">
+                  {{ post.title }}
+                  {% if post.pinned %}
+                    <span class="badge bg-warning text-dark ms-2">Закреплено</span>
+                  {% endif %}
+                </h5>
+                <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
+                <div class="small text-muted mb-2">
+                  Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
+                </div>
+                <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                  Подробнее
+                </a>
+              </div>
             </div>
-            <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary">
-              Подробнее
-            </a>
           </div>
         </div>
       </div>
     {% endfor %}
   </div>
 {% else %}
-  <div class="alert alert-info">У сотрудника пока нет публикаций.</div>
+  <div class="alert alert-info shadow-sm mt-4">
+    У сотрудника пока нет публикаций.
+  </div>
 {% endif %}
-{% endblock %}

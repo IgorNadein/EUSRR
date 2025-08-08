@@ -1,86 +1,415 @@
-# backend\employees\views_front.py
-from feed.models import Post
+# backend/employees/views_front.py
 import os
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required, user_passes_test
+import random
+
+import requests
+from communications.models import Chat
 from django.contrib import messages
-from django.urls import reverse
-from django.conf import settings
-
-from .forms import ProfileUpdateForm
-from .models import Employee, Department
-from bots.models import BotSubscriber
-
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.http import HttpResponseNotAllowed
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse_lazy
+from django.views import View
+from django.views.generic import (CreateView, DeleteView, DetailView, ListView,
+                                  UpdateView)
 from dotenv import load_dotenv
+from feed.models import Post
+from phonenumber_field.phonenumber import to_python
+
+from .forms import (AbsenceForm, DepartmentForm, EducationForm,
+                    InviteToDepartmentForm, ProfileUpdateForm,
+                    RegistrationForm, SkillForm, SMSCodeVerifyForm)
+from .models import (Absence, Department, Education, Employee,
+                     EmployeeDepartment, Skill)
+
 load_dotenv()
 
-USERNAME_TELEGRAM_BOT = os.getenv('USERNAME_TELEGRAM_BOT')
+
+# =========================
+#   Утилиты
+# =========================
+def send_sms_alpha(phone: str, text: str, sender: str = "EUSRR"):
+    api_key = os.getenv("SMS_API_TOKEN", "")
+    api_url = os.getenv("SMS_API_URL", "https://new.smsgorod.ru/apiSms/create")
+    payload = {
+        "apiKey": api_key,
+        "sms": [{"channel": "char", "sender": sender, "text": text, "phone": phone}],
+    }
+    try:
+        resp = requests.post(
+            api_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=5,
+        )
+        return resp.json()
+    except Exception as e:
+        return {"error": str(e)}
 
 
+# =========================
+#   Регистрация
+# =========================
+class RegisterView(CreateView):
+    model = Employee
+    form_class = RegistrationForm
+    template_name = "registration/register.html"
+    success_url = reverse_lazy("sms_verify")
+
+    def form_valid(self, form):
+        user = form.save(commit=False)
+        user.is_active = False
+        code = f"{random.randint(0, 999999):06}"
+        user.sms_activation_code = code
+        user.save()
+
+        send_sms_alpha(
+            str(user.phone_number),
+            f"Ваш код подтверждения: {code}",
+            sender=os.getenv("SMS_API_SENDER", "EUSRR"),
+        )
+
+        self.request.session["phone_number"] = str(user.phone_number)
+        messages.info(self.request, "Код подтверждения отправлен по SMS")
+        return redirect("sms_verify")
+
+
+class SMSVerifyView(View):
+    template_name = "registration/sms_verify.html"
+
+    def get(self, request):
+        return render(
+            request, self.template_name, {"phone": request.session.get("phone_number")}
+        )
+
+    def post(self, request):
+        phone = request.session.get("phone_number")
+        if not phone:
+            messages.error(request, "Сессия истекла. Пройдите регистрацию заново.")
+            return redirect("employees:register")
+
+        user = Employee.objects.filter(phone_number=to_python(phone)).first()
+        if not user:
+            messages.error(request, "Пользователь не найден.")
+            return redirect("employees:register")
+
+        form = SMSCodeVerifyForm(request.POST)
+        if form.is_valid():
+            if str(user.sms_activation_code) == str(form.cleaned_data["code"]):
+                user.is_active = True
+                user.sms_activation_code = None
+                user.save()
+                messages.success(request, "Телефон подтверждён! Можете войти.")
+                return redirect("login")
+            messages.error(request, "Код неверный.")
+        return render(request, self.template_name, {"form": form, "phone": phone})
+
+
+def resend_sms(request):
+    return HttpResponseNotAllowed(["GET", "POST"], "Not Implemented")
+
+
+# =========================
+#   Профиль
+# =========================
 @login_required
 def profile(request):
-    """Страница своего профиля с лентой публикаций и личной инфой"""
     employee = request.user
-    posts = Post.objects.filter(author=employee).order_by('-created_at')[:10]
-    form = ProfileUpdateForm(instance=employee)
-    return render(request, 'employees/profile.html', {
-        'form': form,
-        'employee': employee,
-        'own': True,
-        'posts': posts,
-    })
+    posts = Post.objects.filter(author=employee).order_by("-created_at")[:10]
+    show_edit = False
+
+    if request.method == "POST":
+        form = ProfileUpdateForm(request.POST, request.FILES, instance=employee)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Профиль успешно обновлён.")
+            return redirect("employees:profile")
+        show_edit = True
+    else:
+        form = ProfileUpdateForm(instance=employee)
+
+    return render(
+        request,
+        "employees/profile.html",
+        {
+            "form": form,
+            "employee": employee,
+            "own": True,
+            "posts": posts,
+            "show_edit": show_edit,
+        },
+    )
 
 
 @login_required
 def employee_detail(request, pk):
-    """Страница чужого профиля с инфо и лентой публикаций"""
     employee = get_object_or_404(Employee, pk=pk)
     if employee == request.user:
-        return redirect('employees:profile')
-    posts = Post.objects.filter(author=employee).order_by('-created_at')[:10]
-    return render(request, 'employees/profile.html', {
-        'employee': employee,
-        'own': False,
-        'posts': posts,
-    })
+        return redirect("employees:profile")
+    posts = Post.objects.filter(author=employee).order_by("-created_at")[:10]
+    return render(
+        request,
+        "employees/profile.html",
+        {"employee": employee, "own": False, "posts": posts},
+    )
 
 
 @login_required
 def avatar_remove(request):
-    """Удаление аватарки пользователя"""
-    if request.method == 'POST':
-        user = request.user
-        if user.avatar:
-            user.avatar.delete(save=True)
-            messages.success(request, 'Аватар успешно удалён.')
-        return redirect('employees:profile')
-    return redirect('employees:profile')
+    if request.method == "POST" and request.user.avatar:
+        request.user.avatar.delete(save=True)
+        messages.success(request, "Аватар успешно удалён.")
+    return redirect("employees:profile")
 
 
+# =========================
+#   Сотрудники
+# =========================
+class EmployeeListView(ListView):
+    model = Employee
+    template_name = "employees/employees_list.html"
+    context_object_name = "employees"
+    ordering = ["last_name", "first_name"]
+
+    def get_queryset(self):
+        qs = super().get_queryset().order_by("last_name", "first_name")
+        dept_id = self.request.GET.get("department")
+        if dept_id:
+            # Активные связи сотрудник-отдел
+            from .models import EmployeeDepartment
+            employee_ids = (
+                EmployeeDepartment.objects
+                .filter(department_id=dept_id, is_active=True)
+                .values_list("employee_id", flat=True)
+            )
+            qs = qs.filter(id__in=employee_ids)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["filter_department_id"] = self.request.GET.get("department")
+        return ctx
+
+
+# =========================
+#   Отделы
+# =========================
+class DepartmentListView(LoginRequiredMixin, ListView):
+    model = Department
+    template_name = "employees/department_list.html"
+    context_object_name = "departments"
+    ordering = ["name"]
+
+
+class DepartmentDetailView(LoginRequiredMixin, DetailView):
+    model = Department
+    template_name = "employees/department_detail.html"
+    context_object_name = "department"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        department = self.object
+        # Список позиций (EmployeePosition) связан через related_name="employees"
+        ctx["emp_links"] = (
+            EmployeeDepartment.objects
+            .filter(department=department, is_active=True)
+            .select_related("employee")
+            .order_by("employee__last_name", "employee__first_name")
+        )
+        ctx["employees"] = department.active_employees
+        ctx["posts"] = Post.objects.filter(
+            type="department", department=department
+        ).order_by("-pinned", "-created_at")
+        ctx["new_employees"] = department.new_employees
+        # Флаг для кнопки "Пригласить"
+        ctx["can_invite"] = self.request.user.is_staff or (
+            department.head_id == self.request.user.id
+        )
+        return ctx
+
+
+class StaffOnlyMixin(UserPassesTestMixin):
+    def test_func(self):
+        return self.request.user.is_staff
+
+    def handle_no_permission(self):
+        messages.error(self.request, "Недостаточно прав.")
+        return redirect("employees:department_list")
+
+
+class DepartmentCreateView(LoginRequiredMixin, StaffOnlyMixin, CreateView):
+    model = Department
+    form_class = DepartmentForm
+    template_name = "employees/department_form.html"
+    success_url = reverse_lazy("employees:department_list")
+
+
+class DepartmentUpdateView(LoginRequiredMixin, StaffOnlyMixin, UpdateView):
+    model = Department
+    form_class = DepartmentForm
+    template_name = "employees/department_form.html"
+    success_url = reverse_lazy("employees:department_list")
+
+
+class DepartmentDeleteView(LoginRequiredMixin, StaffOnlyMixin, DeleteView):
+    model = Department
+    template_name = "employees/department_confirm_delete.html"
+    success_url = reverse_lazy("employees:department_list")
+
+
+# =========================
+#   Приглашение в отдел
+# =========================
 @login_required
-def employees_list(request):
-    """Список всех сотрудников (виден только авторизованным)"""
-    employees = Employee.objects.select_related().order_by('last_name', 'first_name')
-    return render(request, 'employees/employees_list.html', {
-        'employees': employees,
-    })
-
-
-@login_required
-def department_list(request):
-    """Список отделов"""
-    departments = Department.objects.all().order_by('name')
-    return render(request, 'employees/department_list.html', {
-        'departments': departments,
-    })
-
-
-@login_required
-def department_detail(request, pk):
-    """Детальная страница отдела"""
+def invite_to_department(request, pk):
     department = get_object_or_404(Department, pk=pk)
-    employees = department.employees.all().select_related('employee')
-    return render(request, 'employees/department_detail.html', {
-        'department': department,
-        'employees': employees,
-    })
+
+    if not (request.user.is_staff or request.user == department.head):
+        messages.error(request, "Нет прав приглашать сотрудников.")
+        return redirect("employees:department_detail", pk=pk)
+
+    if request.method == "POST":
+        form = InviteToDepartmentForm(department, request.POST)
+        if form.is_valid():
+            employee = form.cleaned_data["employee"]
+
+            emp_dep, created = EmployeeDepartment.objects.get_or_create(
+                employee=employee, department=department, defaults={"is_active": True}
+            )
+            if not created and not emp_dep.is_active:
+                emp_dep.is_active = True
+                emp_dep.save()
+
+            # На всякий случай поддержим участников у чата (хотя у нас есть динамическая выборка)
+            chat, _ = Chat.objects.get_or_create(
+                type="department", department=department, is_main=True
+            )
+            chat.participants.add(employee)
+            if department.head:
+                chat.participants.add(department.head)
+
+            messages.success(
+                request, f"{employee.get_full_name()} приглашён в отдел и чат!"
+            )
+            return redirect("employees:department_detail", pk=pk)
+    else:
+        form = InviteToDepartmentForm(department)
+
+    return render(
+        request,
+        "employees/invite_to_department.html",
+        {"form": form, "department": department},
+    )
+
+
+# =========================
+#   Универсальный CRUD для Absence, Skill, Education
+# =========================
+class BaseCRUDListView(LoginRequiredMixin, ListView):
+    """Базовый ListView: если у модели есть FK employee — показываем только свои записи."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Надёжная проверка наличия поля 'employee'
+        has_employee_fk = any(f.name == "employee" for f in self.model._meta.fields)
+        if has_employee_fk:
+            return qs.filter(employee=self.request.user)
+        return qs
+
+
+class BaseCRUDCreateView(LoginRequiredMixin, CreateView):
+    def form_valid(self, form):
+        has_employee_fk = any(f.name == "employee" for f in self.model._meta.fields)
+        if has_employee_fk:
+            form.instance.employee = self.request.user
+        return super().form_valid(form)
+
+
+class BaseCRUDUpdateView(LoginRequiredMixin, UpdateView):
+    pass
+
+
+class BaseCRUDDeleteView(LoginRequiredMixin, DeleteView):
+    pass
+
+
+# Absence CRUD
+class AbsenceListView(BaseCRUDListView):
+    model = Absence
+    template_name = "employees/absence_list.html"
+    context_object_name = "absences"
+
+
+class AbsenceCreateView(BaseCRUDCreateView):
+    model = Absence
+    form_class = AbsenceForm
+    template_name = "employees/absence_form.html"
+    success_url = reverse_lazy("employees:absence_list")
+
+
+class AbsenceUpdateView(BaseCRUDUpdateView):
+    model = Absence
+    form_class = AbsenceForm
+    template_name = "employees/absence_form.html"
+    success_url = reverse_lazy("employees:absence_list")
+
+
+class AbsenceDeleteView(BaseCRUDDeleteView):
+    model = Absence
+    template_name = "employees/absence_confirm_delete.html"
+    success_url = reverse_lazy("employees:absence_list")
+
+
+# Skill CRUD
+class SkillListView(LoginRequiredMixin, ListView):
+    model = Skill
+    template_name = "employees/skill_list.html"
+    context_object_name = "skills"
+
+
+class SkillCreateView(LoginRequiredMixin, CreateView):
+    model = Skill
+    form_class = SkillForm
+    template_name = "employees/skill_form.html"
+    success_url = reverse_lazy("employees:skill_list")
+
+
+class SkillUpdateView(LoginRequiredMixin, UpdateView):
+    model = Skill
+    form_class = SkillForm
+    template_name = "employees/skill_form.html"
+    success_url = reverse_lazy("employees:skill_list")
+
+
+class SkillDeleteView(LoginRequiredMixin, DeleteView):
+    model = Skill
+    template_name = "employees/skill_confirm_delete.html"
+    success_url = reverse_lazy("employees:skill_list")
+
+
+# Education CRUD
+class EducationListView(BaseCRUDListView):
+    model = Education
+    template_name = "employees/education_list.html"
+    context_object_name = "educations"
+
+
+class EducationCreateView(BaseCRUDCreateView):
+    model = Education
+    form_class = EducationForm
+    template_name = "employees/education_form.html"
+    success_url = reverse_lazy("employees:education_list")
+
+
+class EducationUpdateView(BaseCRUDUpdateView):
+    model = Education
+    form_class = EducationForm
+    template_name = "employees/education_form.html"
+    success_url = reverse_lazy("employees:education_list")
+
+
+class EducationDeleteView(BaseCRUDDeleteView):
+    model = Education
+    template_name = "employees/education_confirm_delete.html"
+    success_url = reverse_lazy("employees:education_list")

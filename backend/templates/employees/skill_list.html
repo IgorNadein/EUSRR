@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Навыки{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Навыки</h3>
+    <a href="{% url 'employees:skill_add' %}" class="btn btn-primary">
+      <i class="bi-plus-circle"></i> Добавить
+    </a>
+  </div>
+
+  {% if skills %}
+    <div class="card shadow-sm">
+      <div class="table-responsive">
+        <table class="table mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Сотрудник</th>
+              <th>Навык</th>
+              <th>Уровень</th>
+              <th>Описание</th>
+              <th class="text-end">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in skills %}
+              <tr>
+                <td>{{ s.employee.get_full_name|default:s.employee }}</td>
+                <td>{{ s.name }}</td>
+                <td>{{ s.level|default:"—" }}</td>
+                <td class="text-muted">{{ s.description|default:"" }}</td>
+                <td class="text-end">
+                  <a href="{% url 'employees:skill_edit' s.pk %}" class="btn btn-sm btn-outline-secondary">Править</a>
+                  <a href="{% url 'employees:skill_delete' s.pk %}" class="btn btn-sm btn-outline-danger">Удалить</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="alert alert-info">Навыков пока нет.</div>
+  {% endif %}
+</div>
+{% endblock %}
