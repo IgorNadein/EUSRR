@@ -116,7 +116,11 @@ def resend_sms(request):
 @login_required
 def profile(request):
     employee = request.user
-    posts = Post.objects.filter(author=employee).order_by("-created_at")[:10]
+    posts = (
+        Post.objects.filter(author=employee)
+        .select_related("author")
+        .order_by("-created_at")[:10]
+    )
     show_edit = False
 
     if request.method == "POST":
@@ -147,7 +151,11 @@ def employee_detail(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
     if employee == request.user:
         return redirect("employees:profile")
-    posts = Post.objects.filter(author=employee).order_by("-created_at")[:10]
+    posts = (
+        Post.objects.filter(author=employee)
+        .select_related("author")
+        .order_by("-created_at")[:10]
+    )
     return render(
         request,
         "employees/profile.html",
@@ -166,29 +174,30 @@ def avatar_remove(request):
 # =========================
 #   Сотрудники
 # =========================
-class EmployeeListView(ListView):
+class EmployeeListView(LoginRequiredMixin, ListView):
     model = Employee
     template_name = "employees/employees_list.html"
     context_object_name = "employees"
     ordering = ["last_name", "first_name"]
 
     def get_queryset(self):
-        qs = super().get_queryset().order_by("last_name", "first_name")
+        qs = super().get_queryset().order_by("last_name", "first_name").select_related()
         dept_id = self.request.GET.get("department")
         if dept_id:
-            # Активные связи сотрудник-отдел
-            from .models import EmployeeDepartment
-            employee_ids = (
-                EmployeeDepartment.objects
-                .filter(department_id=dept_id, is_active=True)
-                .values_list("employee_id", flat=True)
-            )
-            qs = qs.filter(id__in=employee_ids)
+            # фильтруем по активным связям в отделе, без отдельного запроса на ids:
+            qs = qs.filter(
+                departments_links__department_id=dept_id,
+                departments_links__is_active=True,
+            ).distinct()
         return qs
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["filter_department_id"] = self.request.GET.get("department")
+        dept_id = self.request.GET.get("department")
+        ctx["filter_department_id"] = dept_id
+        ctx["current_department"] = (
+            Department.objects.filter(pk=dept_id).first() if dept_id else None
+        )
         return ctx
 
 
@@ -212,8 +221,7 @@ class DepartmentDetailView(LoginRequiredMixin, DetailView):
         department = self.object
         # Список позиций (EmployeePosition) связан через related_name="employees"
         ctx["emp_links"] = (
-            EmployeeDepartment.objects
-            .filter(department=department, is_active=True)
+            EmployeeDepartment.objects.filter(department=department, is_active=True)
             .select_related("employee")
             .order_by("employee__last_name", "employee__first_name")
         )
@@ -281,20 +289,16 @@ def invite_to_department(request, pk):
                 emp_dep.is_active = True
                 emp_dep.save()
 
-            # На всякий случай поддержим участников у чата (хотя у нас есть динамическая выборка)
-            chat, _ = Chat.objects.get_or_create(
-                type="department", department=department, is_main=True
-            )
-            chat.participants.add(employee)
-            if department.head:
-                chat.participants.add(department.head)
-
-            messages.success(
-                request, f"{employee.get_full_name()} приглашён в отдел и чат!"
-            )
+            # участников в чат можно не добавлять — get_participants собирает динамически
+            messages.success(request, f"{employee.get_full_name()} приглашён в отдел!")
             return redirect("employees:department_detail", pk=pk)
     else:
         form = InviteToDepartmentForm(department)
+        if not form.fields["employee"].queryset.exists():
+            messages.info(
+                request,
+                "Нет сотрудников, которых можно пригласить — похоже, все уже в отделе.",
+            )
 
     return render(
         request,

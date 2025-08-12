@@ -121,18 +121,27 @@ class DepartmentForm(forms.ModelForm):
 
 
 class InviteToDepartmentForm(forms.Form):
-    """Форма приглашения в отдел — динамически наполняется списком сотрудников"""
-
     employee = forms.ModelChoiceField(
-        queryset=Employee.objects.none(), label="Сотрудник"
+        queryset=Employee.objects.none(),
+        label="Сотрудник",
+        widget=forms.Select(attrs={"class": "form-select"})
     )
 
     def __init__(self, department, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["employee"].queryset = Employee.objects.exclude(
-            employeedepartment__department=department,
-            employeedepartment__is_active=True,
-        )
+
+        qs = (Employee.objects
+              .all()
+              # НЕ показываем тех, кто уже активен в отделе
+              .exclude(
+                  departments_links__department=department,
+                  departments_links__is_active=True,
+              )
+              # по желанию: не показывать руководителя, если он уже назначен
+              .exclude(id=department.head_id if department.head_id else None)
+              .order_by("last_name", "first_name"))
+
+        self.fields["employee"].queryset = qs
 
 
 # =========================
