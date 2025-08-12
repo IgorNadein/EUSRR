@@ -1,26 +1,119 @@
+{# backend/templates/employees/invite_to_department.html #}
 {% extends "base.html" %}
 {% load django_bootstrap5 %}
 
-{% block title %}Пригласить в отдел{% endblock %}
+{% block title %}Пригласить в отдел — {{ department.name }}{% endblock %}
 
 {% block content %}
-<div class="container" style="max-width:720px;">
-  <h3 class="mb-4">Пригласить сотрудника в отдел «{{ department.name }}»</h3>
-  <form method="post">
-    {% csrf_token %}
-    <div class="mb-3">
-      <label class="form-label">Сотрудник</label>
-      <select name="employee_id" class="form-select" required>
-        <option value="" selected disabled>Выберите сотрудника</option>
-        {% for e in employees %}
-          <option value="{{ e.pk }}">{{ e.get_full_name|default:e }}</option>
-        {% endfor %}
-      </select>
+<div class="container">
+
+  <!-- Шапка страницы -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <a href="{% url 'employees:department_detail' department.pk %}" class="btn btn-outline-primary btn-sm">
+        <i class="bi-arrow-left"></i>
+      </a>
+      <h2 class="mb-0 fw-bold">Пригласить в отдел</h2>
     </div>
-    <div class="d-flex gap-2">
-      <button type="submit" class="btn btn-primary">Пригласить</button>
-      <a href="{% url 'employees:department_detail' department.pk %}" class="btn btn-outline-secondary">Отмена</a>
+    <span class="badge bg-secondary">{{ department.name }}</span>
+  </div>
+
+  <!-- Информация об отделе -->
+  <div class="card shadow-sm border-0 mb-3">
+    <div class="card-body d-flex align-items-center gap-3">
+      <i class="bi-diagram-3 fs-2 text-primary"></i>
+      <div>
+        <div class="fw-semibold">{{ department.name }}</div>
+        {% if department.head %}
+          <div class="text-muted small">
+            Руководитель:
+            <a href="{% url 'employees:employee_detail' department.head.pk %}">
+              {{ department.head.last_name }} {{ department.head.first_name }}
+            </a>
+          </div>
+        {% endif %}
+      </div>
     </div>
-  </form>
+  </div>
+
+  {% with qs=form.employee.field.queryset %}
+    {% if qs|length == 0 %}
+      <!-- Пустое состояние -->
+      <div class="alert alert-light border rounded-3">
+        Кажется, всех уже пригласили — в этом отделе больше некому отправить приглашение.
+        <div class="mt-2">
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'employees:department_detail' department.pk %}">
+            Вернуться к отделу
+          </a>
+          <a class="btn btn-sm btn-outline-secondary ms-2" href="{% url 'employees:employees_list' %}">
+            Список всех сотрудников
+          </a>
+        </div>
+      </div>
+    {% else %}
+      <!-- Форма приглашения -->
+      <form method="post" class="card shadow-sm border-0">
+        {% csrf_token %}
+        <div class="card-body">
+          <div class="row g-3 align-items-start">
+            <div class="col-12 col-md-6">
+              <label for="employeeSearch" class="form-label">Быстрый поиск</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi-search"></i></span>
+                <input type="text" id="employeeSearch" class="form-control" placeholder="Начните вводить фамилию или имя…">
+              </div>
+              <div class="form-text">Список справа фильтруется по мере ввода.</div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              {% bootstrap_field form.employee show_label=True %}
+            </div>
+          </div>
+
+          <div class="mt-4 d-flex gap-2">
+            <button type="submit" class="btn btn-success" id="inviteBtn" disabled>
+              <i class="bi-person-plus"></i> Пригласить
+            </button>
+            <a href="{% url 'employees:department_detail' department.pk %}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </div>
+      </form>
+    {% endif %}
+  {% endwith %}
 </div>
+
+<!-- Мини-скрипт: фильтрация select и блокировка кнопки без выбора -->
+<script>
+  (function () {
+    const search = document.getElementById('employeeSearch');
+    const select = document.querySelector('select[name="{{ form.employee.html_name }}"]');
+    const btn = document.getElementById('inviteBtn');
+
+    if (!select) return;
+
+    // Кнопка активна только при выбранном значении
+    function toggleBtn() { btn && (btn.disabled = !select.value); }
+    select.addEventListener('change', toggleBtn);
+    toggleBtn();
+
+    // Кешируем исходные опции
+    const options = Array.from(select.options);
+
+    function norm(s) { return s.toLowerCase().replace(/\s+/g, ''); }
+
+    if (search) {
+      search.addEventListener('input', function () {
+        const q = norm(this.value);
+        const filtered = q
+          ? options.filter(o => norm(o.text).includes(q))
+          : options;
+
+        // Перерисовываем список
+        select.innerHTML = '';
+        filtered.forEach(o => select.appendChild(o));
+        toggleBtn();
+      });
+    }
+  })();
+</script>
 {% endblock %}
