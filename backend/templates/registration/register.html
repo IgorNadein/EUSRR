@@ -26,22 +26,28 @@
                         </div>
                     </div>
                     
-                    <!-- Мессенджеры -->
-                    <div class="row g-3 mb-4 align-items-end">
-                        <div class="col-md-6 position-relative">
+                    <!-- Мессенджеры (добавлен WeChat) -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4 position-relative">
                             {% bootstrap_field form.whatsapp show_label=False placeholder="WhatsApp" %}
                             <span class="position-absolute top-50 end-0 translate-middle-y me-3">
                                 <i class="bi bi-whatsapp text-success"></i>
                             </span>
                         </div>
-                        <div class="col-md-6 position-relative">
+                        <div class="col-md-4 position-relative">
                             {% bootstrap_field form.telegram show_label=False placeholder="Telegram" %}
                             <span class="position-absolute top-50 end-0 translate-middle-y me-3">
                                 <i class="bi bi-telegram text-primary"></i>
                             </span>
                         </div>
+                        <div class="col-md-4 position-relative">
+                            {% bootstrap_field form.wechat show_label=False placeholder="WeChat" %}
+                            <span class="position-absolute top-50 end-0 translate-middle-y me-3">
+                                <i class="bi bi-wechat" style="color: #07C160;"></i>
+                            </span>
+                        </div>
                         {% if form.non_field_errors %}
-                            <div class="alert alert-danger alert-dismissible fade show mb-4">
+                            <div class="alert alert-danger alert-dismissible fade show mb-4" style="border-radius: 8px;">
                                 {% for error in form.non_field_errors %}
                                     <i class="bi bi-exclamation-circle me-2"></i>{{ error }}
                                 {% endfor %}

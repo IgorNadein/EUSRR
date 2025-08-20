@@ -2,28 +2,20 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .calendar.viewsets import CompanyEventsViewSet, DepartmentEventsViewSet
-from .employees.views import (
-    AbsenceViewSet,
-    DepartmentViewSet,
-    EducationViewSet,
-    EmployeeActionViewSet,
-    EmployeePositionViewSet,
-    EmployeeViewSet,
-    SkillViewSet,
-)
+from .employees.views import (RegisterAPIView, ResendEmailAPIView,
+                              VerifyEmailAPIView)
 
 router = DefaultRouter()
-router.register(r"employees", EmployeeViewSet, basename="employee")
-router.register(r"departments", DepartmentViewSet, basename="department")
-router.register(r"actions", EmployeeActionViewSet, basename="action")
-router.register(r"positions", EmployeePositionViewSet, basename="position")
-router.register(r"absences", AbsenceViewSet, basename="absence")
-router.register(r"skills", SkillViewSet, basename="skill")
-router.register(r"educations", EducationViewSet, basename="education")
 router.register(
     r"calendar/company-events", CompanyEventsViewSet, basename="company-events"
 )
+
+app_name = "api_v1"
+
 urlpatterns = [
+    path("auth/register/", RegisterAPIView.as_view(), name="register"),
+    path("auth/resend-email/", ResendEmailAPIView.as_view(), name="resend-email"),
+    path("auth/verify-email/", VerifyEmailAPIView.as_view(), name="verify-email"),
     path(
         "calendar/departments/<int:pk>/events/",
         DepartmentEventsViewSet.as_view({"get": "list"}),

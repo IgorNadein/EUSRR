@@ -1,128 +1,173 @@
-from employees.models import (Absence, Department, Education, Employee,
-                              EmployeeAction, EmployeePosition, Skill)
-from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from common.emails import send_templated_mail
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+from django.utils.crypto import get_random_string
+from employees.models import Employee
+from rest_framework import status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from ..permissions import IsDepartmentHeadOrAdmin, IsHR, IsSelfOrAdmin
-from .serializers import (AbsenceSerializer, DepartmentSerializer,
-                          EducationSerializer, EmployeeActionSerializer,
-                          EmployeePositionSerializer, EmployeeSerializer,
-                          SkillSerializer)
+from .serializers import EmailSerializer, EmailVerifySerializer, RegisterSerializer
+
+# опциональная нормализация телефона
+try:
+    import phonenumbers
+    from phonenumbers import PhoneNumberFormat
+except Exception:
+    phonenumbers = None
+    PhoneNumberFormat = None
 
 
-class EmployeeViewSet(viewsets.ModelViewSet):
-    queryset = Employee.objects.all().prefetch_related("skills", "positions", "actions")
-    serializer_class = EmployeeSerializer
+class ResendEmailAPIView(APIView):
+    """
+    POST /api/v1/auth/resend-email/
+    body: {"email": "user@ex.com"}
+    """
 
-    def get_permissions(self):
-        if self.action in [
-            "update",
-            "partial_update",
-            "destroy",
-            "set_avatar",
-            "add_skill",
-        ]:
-            return [IsSelfOrAdmin()]
-        return [permissions.IsAuthenticated()]
+    throttle_scope = "anon"
 
-    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
-    def set_avatar(self, request, pk=None):
-        employee = self.get_object()
-        avatar = request.FILES.get("avatar")
-        if avatar:
-            employee.avatar = avatar
-            employee.save()
-            return Response({"status": "avatar set"})
-        return Response({"error": "No file"}, status=status.HTTP_400_BAD_REQUEST)
+    def post(self, request):
+        ser = EmailSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        email = ser.validated_data["email"]
 
-    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
-    def add_skill(self, request, pk=None):
-        employee = self.get_object()
-        skill_name = request.data.get("skill")
-        if skill_name:
-            skill, _ = Skill.objects.get_or_create(name=skill_name)
-            employee.skills.add(skill)
-            return Response({"status": "skill added"})
-        return Response({"error": "No skill"}, status=status.HTTP_400_BAD_REQUEST)
+        user = Employee.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response({"ok": False, "error": "user_not_found"}, status=404)
 
-    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
-    def request_absence(self, request, pk=None):
-        return Response(
-            {"status": "Not implemented"}, status=status.HTTP_501_NOT_IMPLEMENTED
+        if user.email_verified:
+            return Response({"ok": False, "error": "already_verified"}, status=400)
+
+        # простая частотная защита по времени отправки в сессии оставим во вьюхе фронта,
+        # на API уровне можно дополнить throttle/ratelimit на IP
+        user.email_activation_code = get_random_string(6, "0123456789")
+        user.save(update_fields=["email_activation_code"])
+
+        send_templated_mail(
+            subject="Подтверждение регистрации",
+            to=[user.email],
+            template_base="emails/registration_verify_code",
+            context={"code": user.email_activation_code, "user": user},
         )
+        return Response({"ok": True}, status=200)
 
-    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
-    def request_transfer(self, request, pk=None):
-        return Response(
-            {"status": "Not implemented"}, status=status.HTTP_501_NOT_IMPLEMENTED
+
+class VerifyEmailAPIView(APIView):
+    throttle_scope = "anon"
+
+    def post(self, request):
+        ser = EmailVerifySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        email = ser.validated_data["email"]
+        code = ser.validated_data["code"].strip()
+
+        user = Employee.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response({"ok": False, "error": "user_not_found"}, status=404)
+        if not code:
+            return Response({"ok": False, "error": "empty_code"}, status=400)
+
+        if user.verify_email(code):  # внутри должна ставиться is_active=True
+            return Response({"ok": True, "user_id": user.id}, status=200)
+
+        return Response({"ok": False, "error": "invalid_code"}, status=400)
+
+
+def _normalize_phone(raw: str) -> str | None:
+    if not raw:
+        return None
+    if phonenumbers is None:
+        return raw.strip()
+    region = getattr(settings, "PHONE_DEFAULT_REGION", "RU")
+    try:
+        pn = phonenumbers.parse(str(raw), region)
+        if not phonenumbers.is_valid_number(pn):
+            return None
+        return phonenumbers.format_number(pn, PhoneNumberFormat.E164)
+    except Exception:
+        return None
+
+
+def _detect_phone_field() -> str | None:
+    for n in ("phone", "phone_number", "mobile", "msisdn", "tel"):
+        if any(f.name == n for f in Employee._meta.fields):
+            return n
+    return None
+
+
+PHONE_FIELD = _detect_phone_field()
+
+
+class RegisterAPIView(APIView):
+    """
+    POST /api/v1/auth/register/
+    body: {email, password, first_name?, last_name?, phone?}
+
+    Поведение:
+      - если email уже подтверждён → 400 email_taken
+      - если пользователь есть, но не подтверждён → перегенерируем код и шлём письмо (ok + resent=True)
+      - если нет пользователя → создаём, is_active=False, отправляем код (ok)
+    """
+
+    throttle_scope = "anon"
+
+    @transaction.atomic
+    def post(self, request):
+        ser = RegisterSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
+
+        email = v["email"].strip().lower()
+        password = v["password"]
+
+        user = Employee.objects.filter(email__iexact=email).first()
+        if user and user.email_verified:
+            return Response({"ok": False, "error": "email_taken"}, status=400)
+
+        if user and not user.email_verified:
+            user.email_activation_code = get_random_string(6, "0123456789")
+            user.is_active = False
+            user.set_password(
+                password
+            )  # обновим пароль, если вдруг был пустой/тестовый
+            if PHONE_FIELD and v.get("phone"):
+                norm = _normalize_phone(v["phone"])
+                if norm:
+                    setattr(user, PHONE_FIELD, norm)
+            if v.get("first_name"):
+                user.first_name = v["first_name"]
+            if v.get("last_name"):
+                user.last_name = v["last_name"]
+            user.save()
+            send_templated_mail(
+                subject="Подтверждение регистрации",
+                to=[user.email],
+                template_base="emails/registration_verify_code",
+                context={"code": user.email_activation_code, "user": user},
+            )
+            return Response({"ok": True, "resent": True}, status=200)
+
+        # создаём нового
+        user = Employee(
+            email=email,
+            first_name=v.get("first_name", ""),
+            last_name=v.get("last_name", ""),
+            email_verified=False,
+            is_active=False,
+            email_activation_code=get_random_string(6, "0123456789"),
         )
+        if PHONE_FIELD and v.get("phone"):
+            norm = _normalize_phone(v["phone"])
+            if norm:
+                setattr(user, PHONE_FIELD, norm)
+        user.set_password(password)
+        user.save()
 
-
-class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.all()
-    serializer_class = DepartmentSerializer
-    permission_classes = [IsDepartmentHeadOrAdmin]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_staff or user.is_superuser:
-            return Department.objects.all()
-        return Department.objects.filter(head=user)
-
-
-class EmployeeActionViewSet(viewsets.ModelViewSet):
-    queryset = EmployeeAction.objects.all()
-    serializer_class = EmployeeActionSerializer
-    permission_classes = [IsHR | IsDepartmentHeadOrAdmin]
-
-
-class EmployeePositionViewSet(viewsets.ModelViewSet):
-    queryset = EmployeePosition.objects.all()
-    serializer_class = EmployeePositionSerializer
-    permission_classes = [IsHR | IsDepartmentHeadOrAdmin]
-
-
-class AbsenceViewSet(viewsets.ModelViewSet):
-    serializer_class = AbsenceSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_staff or user.is_superuser:
-            return Absence.objects.all()
-        return Absence.objects.filter(employee=user)
-
-    def perform_create(self, serializer):
-        serializer.save(employee=self.request.user)
-
-    def perform_update(self, serializer):
-        if (
-            serializer.instance.employee != self.request.user
-            and not self.request.user.is_staff
-        ):
-            raise PermissionDenied("Вы не можете редактировать чужие заявления.")
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if instance.employee != self.request.user and not self.request.user.is_staff:
-            raise PermissionDenied("Вы не можете удалить чужое заявление.")
-        instance.delete()
-
-
-class SkillViewSet(viewsets.ModelViewSet):
-    queryset = Skill.objects.all()
-    serializer_class = SkillSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-
-class EducationViewSet(viewsets.ModelViewSet):
-    serializer_class = EducationSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_staff:
-            return Education.objects.all()
-        return Education.objects.filter(employee=user)
+        send_templated_mail(
+            subject="Подтверждение регистрации",
+            to=[user.email],
+            template_base="emails/registration_verify_code",
+            context={"code": user.email_activation_code, "user": user},
+        )
+        return Response({"ok": True}, status=201)

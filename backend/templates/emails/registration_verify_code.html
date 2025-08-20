@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ru">
+  <body style="font-family:Arial,Helvetica,sans-serif; line-height:1.5; color:#111;">
+    <h2>Подтверждение регистрации</h2>
+    <p>Здравствуйте{{ user.get_full_name|default_if_none:"" }}!</p>
+    <p>Ваш код подтверждения:</p>
+    <div style="font-size:24px; font-weight:700; letter-spacing:4px; padding:12px 0;">
+      {{ code }}
+    </div>
+    <p>Скопируйте код и введите на сайте, чтобы завершить регистрацию.</p>
+    <hr style="border:none; border-top:1px solid #ddd; margin:16px 0;">
+    <p style="font-size:12px; color:#666;">Если вы не запрашивали этот код, просто игнорируйте письмо.</p>
+  </body>
+</html>

@@ -4,8 +4,7 @@ from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.core.exceptions import ValidationError
 from phonenumber_field.formfields import PhoneNumberField
 
-from .models import (Absence, Department, Education, Employee,
-                     EmployeeDepartment, Skill)
+from .models import Absence, Department, Education, Employee, EmployeeDepartment, Skill
 
 
 # =========================
@@ -30,6 +29,16 @@ class RegistrationForm(AvatarValidationMixin, UserCreationForm):
     last_name = forms.CharField(label="Фамилия", required=True)
     email = forms.EmailField(label="Email", required=True)
     avatar = forms.ImageField(label="Аватар", required=False)
+    birth_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            attrs={
+                "type": "date",
+                "placeholder": "Дата рождения",
+                "class": "form-control",
+            }
+        ),
+    )
 
     class Meta:
         model = Employee
@@ -106,10 +115,57 @@ class ProfileUpdateForm(AvatarValidationMixin, UserChangeForm):
 
 
 # =========================
-#   SMS верификация
+#   Регистрация
 # =========================
-class SMSCodeVerifyForm(forms.Form):
-    code = forms.CharField(label="Код из SMS", max_length=6)
+class RegistrationForm(AvatarValidationMixin, UserCreationForm):
+    first_name = forms.CharField(label="Имя", required=True)
+    last_name = forms.CharField(label="Фамилия", required=True)
+    email = forms.EmailField(label="Email", required=True)
+    avatar = forms.ImageField(label="Аватар", required=False)
+    birth_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            attrs={
+                "type": "date",
+                "placeholder": "Дата рождения",
+                "class": "form-control",
+            }
+        ),
+    )
+
+    class Meta:
+        model = Employee
+        fields = [
+            "phone_number",
+            "last_name",
+            "first_name",
+            "patronymic",
+            "birth_date",
+            "whatsapp",
+            "telegram",
+            "wechat",
+            "email",
+            "avatar",
+            "password1",
+            "password2",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["whatsapp"].required = False
+        self.fields["telegram"].required = False
+        self.fields["wechat"].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        # Более дружественная ошибка, чем из model.clean
+        if not (
+            cleaned.get("whatsapp") or cleaned.get("telegram") or cleaned.get("wechat")
+        ):
+            raise ValidationError(
+                "Укажите хотя бы один контакт: WhatsApp, Telegram или WeChat."
+            )
+        return cleaned
 
 
 # =========================

@@ -11,9 +11,14 @@ class AuthRequiredMiddleware:
     def __call__(self, request):
         allowed_paths = [
             reverse('login'),
-            reverse('register'),
-            reverse('sms_verify'),
-            reverse('resend_sms')
+            reverse('employees:register'),
+            reverse('employees:email_verify'),
+            reverse('employees:resend_email'),
+            reverse('api_v1:register'),
+            reverse('api_v1:resend-email'),
+            reverse('api_v1:verify-email')
+            
+            
         ]
         if not request.user.is_authenticated and request.path not in allowed_paths:
             return redirect('login')

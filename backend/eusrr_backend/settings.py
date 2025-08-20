@@ -8,11 +8,10 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-SECRET_KEY = "django-insecure--kftc-d47!6m2ib6jof3^d%n1&4k%mdf33brejsyg*@il#$-52"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-insecure-key")
+DEBUG = os.getenv("DEBUG", "true").lower() == "true"
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
-DEBUG = True
-
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
 
 INSTALLED_APPS = [
@@ -28,6 +27,7 @@ INSTALLED_APPS = [
     "django.contrib.postgres",
     "widget_tweaks",
     "simple_history",
+    "rest_framework",
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
     "hikcentral.apps.HikcentralConfig",
@@ -139,13 +139,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "employees.Employee"
 
-LOGIN_URL = "register"
+LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "/"
 # LOGOUT_REDIRECT_URL = 'login'
 REGISTRATION_AUTO_LOGIN = True
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
 
-
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+PHONE_DEFAULT_REGION = os.getenv("PHONE_DEFAULT_REGION", "RU")
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
@@ -199,9 +199,20 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
     "CSRF_TRUSTED_ORIGINS", default="https://*.sytes.net"
 ).split(",")
 
-ACCOUNT_EMAIL_VERIFICATION = "mandatory"  # для allauth, если вдруг используешь
-DEFAULT_FROM_EMAIL = "noreply@yourdomain.com"
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "465"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "false").lower() == "true"
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "true").lower() == "true"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "webmaster@localhost")
 ASGI_APPLICATION = "eusrr_backend.asgi.application"
+
+AUTHENTICATION_BACKENDS = [
+    "eusrr_backend.auth_backends.EmailOrPhoneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
 
 CHANNEL_LAYERS = {
     "default": {
@@ -210,4 +221,21 @@ CHANNEL_LAYERS = {
             "hosts": [("127.0.0.1", 6379)],
         },
     }
+}
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",  # куки/сессия
+        # "rest_framework.authentication.BasicAuthentication",  # опц., только в DEV
+        # "rest_framework_simplejwt.authentication.JWTAuthentication",  # если решишь добавить JWT
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny"  # оставим как у тебя для плавной миграции
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+    },
 }

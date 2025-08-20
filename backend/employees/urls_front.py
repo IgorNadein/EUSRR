@@ -7,8 +7,10 @@ app_name = "employees"
 urlpatterns = [
     # --- Регистрация и активация ---
     path("register/", views.RegisterView.as_view(), name="register"),
-    path("sms-verify/", views.SMSVerifyView.as_view(), name="sms_verify"),
-    path("resend-sms/", views.resend_sms, name="resend_sms"),
+    # path("sms-verify/", views.SMSVerifyView.as_view(), name="sms_verify"),
+    path("email-verify/", views.EmailVerifyView.as_view(), name="email_verify"),
+    # path("resend-sms/", views.resend_sms, name="resend_sms"),
+    path("resend-email/", views.resend_email, name="resend_email"),
 
     # --- Профиль и сотрудники ---
     path("profile/", views.profile, name="profile"),

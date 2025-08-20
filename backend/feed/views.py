@@ -89,7 +89,7 @@ def feed_list(request):
         reverse=True,
     )
     new_count = max(1, int(len(active_employees) * 0.1))
-    new_employees = Employee.get_active()[:new_count]
+    new_employees = Employee.objects.get_active()[:new_count]
 
     return render(
         request,
