@@ -1,0 +1,139 @@
+{% load static %}
+<style>
+  /* Компактный бейдж уведомлений вплотную к колоколу */
+  .bell-wrapper{ position: relative; line-height: 1; display: inline-block; }
+  .bell-dot{
+    position: absolute; top: -2px; right: -2px;
+    width: 9px; height: 9px; border-radius: 999px;
+    background: var(--bs-danger); color: #fff;
+    font-size: 7px; line-height: 9px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.65);
+  }
+
+  /* Кнопка «гамбургера» — без круга/рамки */
+  .menu-toggle{
+    padding: 0; border: 0; background: transparent; line-height: 1; color: #fff;
+  }
+  .menu-toggle:focus{ outline: none; box-shadow: none; }
+
+  /* Спрятать стрелочку у dropdown-аватара */
+  .dropdown-toggle.no-caret::after{ display: none !important; }
+</style>
+
+<nav class="navbar navbar-expand bg-primary app-navbar" data-bs-theme="dark">
+  <div class="container-fluid align-items-center">
+
+    {% if user.is_authenticated %}
+      <!-- Моб. меню (иконка без подложки) -->
+      <button class="menu-toggle d-lg-none me-2" type="button"
+              data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar"
+              aria-label="Открыть меню">
+        <i class="bi-list fs-4"></i>
+      </button>
+    {% endif %}
+
+    <a class="navbar-brand fw-semibold me-3" href="/">EUSRR</a>
+
+    {% if user.is_authenticated %}
+      <!-- Группа: поиск + колокол -->
+      <div class="d-flex align-items-center ms-4">
+        <!-- Поиск компактный рядом с логотипом -->
+        <form class="d-flex align-items-center me-3" role="search"
+              action="{% url 'search:search' %}" method="get" autocomplete="off">
+          <div class="position-relative">
+            <i class="bi-search position-absolute top-50 start-0 translate-middle-y ms-2 opacity-75"></i>
+            <input
+              class="form-control form-control-sm rounded-pill ps-5 pe-4 bg-white bg-opacity-10 border-0 text-white shadow-sm"
+              type="search" name="q" placeholder="Поиск…" aria-label="Поиск"
+              style="width: clamp(160px, 28vw, 300px);">
+          </div>
+        </form>
+
+        <!-- Уведомления: только иконка + плотный бейдж -->
+        <div class="dropdown">
+          <button class="btn btn-link text-white p-0" data-bs-toggle="dropdown"
+                  aria-expanded="false" title="Уведомления" aria-label="Уведомления">
+            <span class="bell-wrapper">
+              <i class="bi-bell fs-5"></i>
+              {% if not user.telegram or not user.whatsapp or not user.wechat %}
+                <span class="bell-dot">!</span>
+              {% endif %}
+            </span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end rounded-3 shadow-sm" style="min-width:260px;">
+            <li class="small text-muted px-3 py-2">Мессенджеры</li>
+            <li class="px-3 py-1">
+              {% if user.telegram %}
+                <span class="text-success"><i class="bi-telegram"></i> Telegram привязан</span>
+              {% else %}
+                <a href="{{ tg_link|default:'#' }}" class="text-danger d-block" rel="noopener">
+                  <i class="bi-telegram"></i> Привязать Telegram
+                </a>
+              {% endif %}
+            </li>
+            <li class="px-3 py-1">
+              {% if user.whatsapp %}
+                <span class="text-success"><i class="bi-whatsapp"></i> WhatsApp привязан</span>
+              {% else %}
+                <a href="https://wa.me/?text=Привязка+WhatsApp" class="text-danger d-block" rel="noopener">
+                  <i class="bi-whatsapp"></i> Привязать WhatsApp
+                </a>
+              {% endif %}
+            </li>
+            <li class="px-3 py-1">
+              {% if user.wechat %}
+                <span class="text-success"><i class="bi-wechat"></i> WeChat привязан</span>
+              {% else %}
+                <span class="text-danger d-block"><i class="bi-wechat"></i> Привязать WeChat (вручную)</span>
+              {% endif %}
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li class="small text-muted px-3 py-2">Уведомления (скоро)</li>
+          </ul>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Справа — только профиль, БЕЗ стрелочки -->
+    <div class="ms-auto d-flex align-items-center">
+      {% if user.is_authenticated %}
+        <div class="dropdown">
+          <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle no-caret"
+             id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="min-width:40px;">
+            {% if user.avatar %}
+              <img src="{{ user.avatar.url }}" alt="Аватар {{ user.get_short_name }}" width="36" height="36"
+                   class="rounded-circle shadow-sm object-fit-cover">
+            {% else %}
+              <span class="bg-secondary text-white rounded-circle d-inline-flex align-items-center justify-content-center"
+                    style="width:36px;height:36px;font-size:1.2rem;">
+                {{ user.get_short_name|slice:":1"|upper }}
+              </span>
+            {% endif %}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end rounded-3 shadow-sm" aria-labelledby="userDropdown">
+            <li class="px-3 py-2 text-muted small">
+              {{ user.get_short_name }}<br>
+              <span class="text-secondary">{{ user.email }}</span>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{% url 'employees:profile' %}">
+              <i class="bi-person me-2"></i>Профиль</a></li>
+            <li>
+              <form action="{% url 'logout' %}" method="post" class="m-0 p-0">
+                {% csrf_token %}
+                <button type="submit" class="dropdown-item">
+                  <i class="bi-box-arrow-right me-2"></i>Выйти
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
+      {% else %}
+        <a class="btn btn-outline-light rounded-pill me-2" href="{% url 'login' %}">Войти</a>
+        <a class="btn btn-light rounded-pill" href="{% url 'register' %}">Регистрация</a>
+      {% endif %}
+    </div>
+
+  </div>
+</nav>

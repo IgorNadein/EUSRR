@@ -1,0 +1,183 @@
+{% load static req_tags %}
+
+<style>
+  /* offcanvas без рамок/теней */
+  #sidebar{
+    --bs-offcanvas-border-color: transparent;
+    --bs-offcanvas-border-width: 0;
+    --bs-offcanvas-border-radius: 0;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: var(--bs-body-bg);
+  }
+  @media (min-width: 992px){
+    #sidebar.offcanvas-lg{
+      position: sticky;
+      top: var(--navbar-h, 60px);
+      height: calc(100dvh - var(--navbar-h, 60px));
+      align-self: start;
+      overflow: auto;
+      border-right: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      transform: none !important;
+      visibility: visible !important;
+    }
+  }
+
+  /* ——— плоское «соцсетевое» меню без подложек ——— */
+  .side-nav .nav-link{
+    display:flex; align-items:center; gap:.6rem;
+    padding:.45rem .25rem;
+    color: var(--bs-body-color);
+    text-decoration: none;
+    border: 0; border-radius: 0;
+    background: transparent !important;
+    box-shadow: inset 0 0 0 0 transparent; /* база для активной «полоски» */
+    transition: color .15s ease, transform .05s ease, box-shadow .15s ease;
+    line-height: 1.15;
+  }
+  .side-nav .nav-link:hover{ color: var(--bs-primary); transform: translateX(1px); }
+  .side-nav .nav-link.active{
+    color: var(--bs-primary);
+    font-weight: 700;
+    /* тонкая внутренняя левая полоска, как у соцсетей */
+    box-shadow: inset 2px 0 0 var(--bs-primary);
+  }
+
+  .side-icon{
+    width:1.35rem; height:1.35rem; display:inline-grid; place-items:center;
+  }
+  .side-icon > i { font-size: 1.15rem; line-height:1; }
+
+  /* бейдж непрочитанных у «Чатов» (без подложек) */
+  .nav-unread{
+    position:absolute; top:-4px; right:-8px;
+    min-width: 16px; height:16px; padding:0 4px;
+    border-radius:9999px; font-size:10px; line-height:16px; font-weight:700;
+    background: var(--bs-danger); color:#fff;
+    border: 1px solid rgba(255,255,255,.6);
+  }
+  [data-bs-theme="dark"] .nav-unread{ border-color: rgba(0,0,0,.25); }
+
+  .icon-wrap{ position:relative; display:inline-grid; place-items:center; }
+</style>
+
+<div id="sidebar"
+     class="offcanvas offcanvas-start offcanvas-lg"
+     tabindex="-1" aria-labelledby="sidebarLabel"
+     data-bs-backdrop="false" data-bs-scroll="true">
+
+  <div class="offcanvas-header border-bottom d-lg-none">
+    <h5 class="offcanvas-title" id="sidebarLabel">Меню</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Закрыть"></button>
+  </div>
+
+  <div class="offcanvas-body d-flex flex-column h-100 px-3 px-lg-2">
+    <nav class="side-nav nav flex-column gap-1">
+      <a href="{% url 'feed:feed_list' %}"
+         class="nav-link {% if request.resolver_match.url_name == 'feed_list' %}active{% endif %}"
+         {% if request.resolver_match.url_name == 'feed_list' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-megaphone"></i></span>
+        <span>Новости</span>
+      </a>
+
+      <a href="{% url 'employees:employees_list' %}"
+         class="nav-link {% if request.resolver_match.url_name == 'employees_list' %}active{% endif %}"
+         {% if request.resolver_match.url_name == 'employees_list' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-people"></i></span>
+        <span>Сотрудники</span>
+      </a>
+
+      <a href="{% url 'employees:department_list' %}"
+         class="nav-link {% if request.resolver_match.url_name == 'department_list' %}active{% endif %}"
+         {% if request.resolver_match.url_name == 'department_list' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-diagram-3"></i></span>
+        <span>Отделы</span>
+      </a>
+
+      <a href="{% url 'requests_app:my_requests' %}"
+         class="nav-link {% if request.resolver_match.url_name == 'my_requests' %}active{% endif %}"
+         {% if request.resolver_match.url_name == 'my_requests' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-journal-text"></i></span>
+        <span>Мои заявления</span>
+      </a>
+
+      {% if perms.requests_app.can_view_all_requests or user.headed_departments.exists %}
+        {% with url_name=request.resolver_match.url_name %}
+          <a href="{% url 'requests_app:all_requests' %}"
+             class="nav-link {% if url_name|in_list:'all_requests,request_process' %}active{% endif %}"
+             {% if url_name|in_list:'all_requests,request_process' %}aria-current="page"{% endif %}>
+            <span class="side-icon"><i class="bi-clipboard-check"></i></span>
+            <span>Заявления сотрудников</span>
+          </a>
+        {% endwith %}
+      {% endif %}
+
+      {% with total=unread_total|default:0 %}
+      <a href="{% url 'communications:chat_list' %}"
+         class="nav-link {% if request.resolver_match.app_name == 'communications' %}active{% endif %}"
+         {% if request.resolver_match.app_name == 'communications' %}aria-current="page"{% endif %}
+         aria-label="Чаты{% if total|add:0 > 0 %}, непрочитанных {{ total }}{% endif %}">
+        <span class="side-icon icon-wrap">
+          <i class="bi-chat-dots"></i>
+          {% if total|add:0 > 0 %}
+            <span class="nav-unread" id="sidebarChatBadge" data-count="{{ total }}">{{ total }}</span>
+          {% else %}
+            <span class="nav-unread d-none" id="sidebarChatBadge" data-count="0">0</span>
+          {% endif %}
+        </span>
+        <span>Чаты</span>
+      </a>
+      {% endwith %}
+
+      <a href="#" class="nav-link disabled" tabindex="-1" aria-disabled="true">
+        <span class="side-icon"><i class="bi-calendar-event"></i></span>
+        <span>Календарь</span>
+      </a>
+
+      <a href="{% url 'documents:document_list' %}"
+         class="nav-link {% if request.resolver_match.url_name == 'document_list' %}active{% endif %}"
+         {% if request.resolver_match.url_name == 'document_list' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-file-earmark-text"></i></span>
+        <span>Документы</span>
+      </a>
+    </nav>
+
+    {# низ без разделительной линии #}
+    <div class="mt-auto pt-3 small">
+      <div class="d-flex gap-3 align-items-center" aria-label="Тема">
+        <button class="btn btn-link p-0 text-decoration-none" data-theme-value="light">Светлая</button>
+        <button class="btn btn-link p-0 text-decoration-none" data-theme-value="auto">Авто</button>
+        <button class="btn btn-link p-0 text-decoration-none" data-theme-value="dark">Тёмная</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // компактный апдейтер бейджа "Чаты" (форматирует 99+)
+  (function(){
+    const badge = document.getElementById('sidebarChatBadge');
+    if (!badge) return;
+    function render(n){
+      const v = Number(n)||0;
+      badge.dataset.count = String(v);
+      badge.textContent = v > 99 ? '99+' : String(v);
+      badge.classList.toggle('d-none', v <= 0);
+    }
+    render(badge.dataset.count);
+
+    // глобальное событие для real-time апдейта
+    window.addEventListener('chats:unread-total', (e)=> render(e?.detail?.total));
+
+    // fallback: суммируем [data-unread-count] на страницах списка чатов
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const rows = document.querySelectorAll('[data-unread-count]');
+      if (!rows.length) return;
+      const total = Array.from(rows).reduce((acc, el)=> acc + (Number(el.textContent)||0), 0);
+      render(total);
+    });
+  })();
+</script>

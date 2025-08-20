@@ -1,42 +1,146 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
+
 {% block title %}Заявление{% endblock %}
+
 {% block content %}
-<h2 class="mb-4">Детали заявления</h2>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
 
-<div class="card shadow-sm">
-  <div class="card-body">
-    <dl class="row">
-      <dt class="col-sm-3">Тип:</dt>
-      <dd class="col-sm-9">{{ request_obj.get_type_display }}</dd>
+      {# — Шапка — #}
+      <div class="feed-header">
+        <i class="bi-file-earmark-text fs-2 text-primary"></i>
+        <h2 class="title mb-0">Детали заявления</h2>
+        <div class="ms-auto d-flex gap-2">
+          <a href="{% url 'requests_app:my_requests' %}" class="btn btn-ghost">
+            <i class="bi-arrow-left"></i> К списку
+          </a>
+        </div>
+      </div>
 
-      <dt class="col-sm-3">Период:</dt>
-      <dd class="col-sm-9">
-        {% if request_obj.date_from or request_obj.date_to %}
-          {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
-        {% else %}
-          —
-        {% endif %}
-      </dd>
+      {# — Карточка заявки — #}
+      <article class="feed-card mb-3">
+        <header class="feed-hd">
+          <div class="feed-ava" style="width:48px;height:48px;">
+            {% if request_obj.employee.avatar %}
+              <img src="{{ request_obj.employee.avatar.url }}" alt="">
+            {% else %}<i class="bi-person"></i>{% endif %}
+          </div>
 
-      <dt class="col-sm-3">Статус:</dt>
-      <dd class="col-sm-9">
-        {% if request_obj.status == 'pending' %}
-          <span class="badge bg-secondary">На рассмотрении</span>
-        {% elif request_obj.status == 'approved' %}
-          <span class="badge bg-success">Одобрено</span>
-        {% elif request_obj.status == 'rejected' %}
-          <span class="badge bg-danger">Отклонено</span>
-        {% endif %}
-      </dd>
+          <div class="feed-meta flex-grow-1">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="feed-author">
+                {{ request_obj.employee.get_full_name|default:request_obj.employee.username }}
+              </span>
 
-      <dt class="col-sm-3">Комментарий:</dt>
-      <dd class="col-sm-9">{{ request_obj.comment|default:"—" }}</dd>
+              {# статус — бейдж #}
+              {% if request_obj.status == 'pending' %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">На рассмотрении</span>
+              {% elif request_obj.status == 'approved' %}
+                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Одобрено</span>
+              {% elif request_obj.status == 'rejected' %}
+                <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Отклонено</span>
+              {% elif request_obj.status == 'cancelled' %}
+                <span class="badge bg-dark-subtle text-dark-emphasis border border-dark-subtle">Отменено</span>
+              {% elif request_obj.status == 'draft' %}
+                <span class="badge bg-light text-body border">Черновик</span>
+              {% else %}
+                <span class="badge bg-light text-body border">Неизвестно</span>
+              {% endif %}
 
-      <dt class="col-sm-3">Дата подачи:</dt>
-      <dd class="col-sm-9">{{ request_obj.created_at|date:'d.m.Y H:i' }}</dd>
-    </dl>
-    <a href="{% url 'requests_app:my_requests' %}" class="btn btn-outline-secondary">К списку заявлений</a>
+              {# тип заявки #}
+              <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                {{ request_obj.get_type_display }}
+              </span>
+            </div>
+
+            <div class="feed-sub mt-1">
+              <time datetime="{{ request_obj.created_at|date:'c' }}">{{ request_obj.created_at|date:"d.m.Y H:i" }}</time>
+              {% if request_obj.date_from or request_obj.date_to %}
+                · Период: {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+              {% endif %}
+            </div>
+          </div>
+
+          {# Отозвать — только если можно (ожидание и не финальное) #}
+          {% if request_obj.status == 'pending' and not request_obj.is_final %}
+            <a href="{% url 'requests_app:request_cancel' request_obj.pk %}"
+               class="btn btn-ghost ms-auto">
+              <i class="bi-x-circle"></i> Отозвать
+            </a>
+          {% endif %}
+        </header>
+
+        <div class="feed-body pt-0">
+          <div class="mb-2">
+            <span class="text-secondary small">Комментарий:</span>
+            <div>{{ request_obj.comment|default:"—" }}</div>
+          </div>
+
+          {% if request_obj.attachment %}
+            <a class="btn btn-ghost d-inline-flex align-items-center gap-1"
+               href="{{ request_obj.attachment.url }}" target="_blank" rel="noopener">
+              <i class="bi-paperclip"></i><span>Вложение</span>
+            </a>
+          {% endif %}
+        </div>
+      </article>
+<!-- 
+      {# — Комментарии — #}
+      <article class="feed-card" id="comments">
+        <header class="feed-hd">
+          <div class="feed-ava" style="width:44px;height:44px;">
+            <i class="bi-chat-dots"></i>
+          </div>
+          <div class="feed-meta">
+            <div class="feed-author">Комментарии</div>
+            <div class="feed-sub">Всего: {{ request_obj.comments.count }}</div>
+          </div>
+        </header>
+
+        <div class="feed-body pt-0">
+          {% if request_obj.comments.all %}
+            <div class="d-flex flex-column gap-2 mb-3">
+              {% for c in request_obj.comments.all %}
+                <div class="bg-body-tertiary border rounded p-2">
+                  <div class="small d-flex justify-content-between align-items-start">
+                    <div>
+                      <span class="fw-semibold">{{ c.author.get_full_name|default:c.author.username }}</span>
+                      <span class="text-secondary">·</span>
+                      <time class="text-muted">{{ c.created_at|date:"d.m.Y H:i" }}</time>
+                    </div>
+
+                    {# удалить — только автору комментария (права дополнительно проверяются во вьюхе) #}
+                    {% if c.author_id == request.user.id %}
+                      <form method="post" action="{% url 'requests_app:request_comment_delete' request_obj.pk c.pk %}">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-ghost text-danger" type="submit" title="Удалить">
+                          <i class="bi-trash"></i>
+                        </button>
+                      </form>
+                    {% endif %}
+                  </div>
+                  <div class="small mt-1">{{ c.text|linebreaksbr }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-secondary small mb-3">Комментариев пока нет.</div>
+          {% endif %}
+
+          {# Добавить комментарий — #}
+          <form class="mt-2" method="post" action="{% url 'requests_app:request_comment_add' request_obj.pk %}">
+            {% csrf_token %}
+            <div class="input-group">
+              <textarea name="text" class="form-control" rows="1" placeholder="Оставить комментарий…" maxlength="1000"></textarea>
+              <button class="btn btn-primary" type="submit"><i class="bi-send"></i></button>
+            </div>
+          </form>
+        </div>
+      </article> -->
+
+    </div>
   </div>
 </div>
 {% endblock %}

@@ -1,7 +1,7 @@
+# backend/feed/models.py
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q
-from employees.models import Department
 
 from .constants import (TYPE_CHOICES, TYPE_COMPANY, TYPE_DEPARTMENT,
                         TYPE_EMPLOYEE)
@@ -17,10 +17,10 @@ class Post(models.Model):
         verbose_name="Автор",
     )
     department = models.ForeignKey(
-        Department,
+        "employees.Department",  # строковая ссылка → без прямого импорта
         null=True,
         blank=True,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,  # защищаем посты от удаления отдела
         related_name="posts",
         verbose_name="Отдел",
         help_text="Для новостей отдела укажите отдел. Для других типов оставьте пустым.",
@@ -42,6 +42,7 @@ class Post(models.Model):
         blank=True,
         null=True,
     )
+    likes_count = models.PositiveIntegerField("Лайки", default=0, db_index=True)
 
     class Meta:
         verbose_name = "Публикация"
@@ -51,40 +52,38 @@ class Post(models.Model):
             models.Index(fields=["type", "created_at"]),
             models.Index(fields=["pinned", "created_at"]),
             models.Index(fields=["created_at"]),
+            models.Index(
+                fields=["department", "-created_at"]
+            ),  # быстрый список по отделу
+            models.Index(fields=["author", "-created_at"]),  # быстрый список по автору
         ]
         constraints = [
-            # Если тип = 'department', то department IS NOT NULL
+            # Если тип = 'department' → department IS NOT NULL
             models.CheckConstraint(
                 name="post_department_required_when_type_is_department",
-                check=Q(type=TYPE_DEPARTMENT, department__isnull=False)
+                condition=Q(type=TYPE_DEPARTMENT, department__isnull=False)
                 | ~Q(type=TYPE_DEPARTMENT),
             ),
-            # Если тип != 'department', то department IS NULL
+            # Если тип != 'department' → department IS NULL (future-proof)
             models.CheckConstraint(
                 name="post_department_null_when_type_not_department",
-                check=Q(type=TYPE_DEPARTMENT)
-                | Q(type__in=[TYPE_COMPANY, TYPE_EMPLOYEE], department__isnull=True),
+                condition=Q(type=TYPE_DEPARTMENT) | Q(department__isnull=True),
+            ),
+            models.CheckConstraint(
+                name="post_likes_count_non_negative",
+                condition=Q(likes_count__gte=0),
             ),
         ]
 
     def __str__(self):
-        prefix = (
-            {
-                TYPE_COMPANY: "Компания",
-                TYPE_DEPARTMENT: (
-                    f"Отдел: {self.department}" if self.department else "Отдел: —"
-                ),
-                TYPE_EMPLOYEE: f"Сотрудник: {self.author}",
-            }.expel(self.type, "Публикация")
-            if hasattr(dict, "expel")
-            else {
-                TYPE_COMPANY: "Компания",
-                TYPE_DEPARTMENT: (
-                    f"Отдел: {self.department}" if self.department else "Отдел: —"
-                ),
-                TYPE_EMPLOYEE: f"Сотрудник: {self.author}",
-            }.get(self.type, "Публикация")
-        )
+        if self.type == TYPE_COMPANY:
+            prefix = "Компания"
+        elif self.type == TYPE_DEPARTMENT:
+            prefix = f"Отдел: {self.department or '—'}"
+        elif self.type == TYPE_EMPLOYEE:
+            prefix = f"Сотрудник: {self.author}"
+        else:
+            prefix = "Публикация"
         return f"[{prefix}] {self.title}"
 
 
@@ -114,3 +113,32 @@ class Comment(models.Model):
 
     def __str__(self):
         return f'Комментарий от {self.author} к "{self.post.title}"'
+
+
+class PostLike(models.Model):
+    post = models.ForeignKey(
+        Post, on_delete=models.CASCADE, related_name="likes", verbose_name="Пост"
+    )
+    user = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="post_likes",
+        verbose_name="Пользователь",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Лайк"
+        verbose_name_plural = "Лайки"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "user"], name="uq_postlike_post_user"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+            models.Index(fields=["post", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"❤ {self.user} → {self.post_id}"

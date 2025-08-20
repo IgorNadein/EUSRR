@@ -1,67 +1,102 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
+
 {% block title %}Мои заявления{% endblock %}
+
 {% block content %}
-<h2 class="mb-4">Мои заявления</h2>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
 
-<a href="{% url 'requests_app:request_create' %}" class="btn btn-primary mb-4">
-    <i class="bi-plus-circle"></i> Подать новое заявление
-</a>
+      {# — Шапка страницы — #}
+      <div class="feed-header">
+        <i class="bi-file-earmark-text fs-2 text-primary"></i>
+        <h2 class="title mb-0">Мои заявления</h2>
+        <div class="ms-auto">
+          <a href="{% url 'requests_app:request_create' %}" class="btn btn-primary">
+            <i class="bi-plus-circle me-1"></i> Подать новое заявление
+          </a>
+        </div>
+      </div>
 
-{% if requests %}
-  <div class="table-responsive">
-    <table class="table table-bordered align-middle">
-      <thead>
-        <tr>
-          <th>Тип</th>
-          <th>Период</th>
-          <th>Статус</th>
-          <th>Комментарий</th>
-          <th>Дата подачи</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for req in requests %}
-        <tr>
-          <td>{{ req.get_type_display }}</td>
-          <td>
-            {% if req.date_from or req.date_to %}
-              {{ req.date_from|date:'d.m.Y' }}{% if req.date_to %} — {{ req.date_to|date:'d.m.Y' }}{% endif %}
-            {% else %}
-              —
-            {% endif %}
-          </td>
-          <td>
-            {% if req.status == 'pending' %}
-              <span class="badge bg-secondary">На рассмотрении</span>
-            {% elif req.status == 'approved' %}
-              <span class="badge bg-success">Одобрено</span>
-            {% elif req.status == 'rejected' %}
-              <span class="badge bg-danger">Отклонено</span>
-            {% endif %}
-          </td>
-          <td>
-            {{ req.comment|default:'—' }}
-          </td>
-          <td>{{ req.created_at|date:'d.m.Y H:i' }}</td>
-          <td>
-              <a href="{% url 'requests_app:request_detail' req.pk %}" class="btn btn-sm btn-outline-primary">
-                Подробнее
-              </a>
-              {% if req.status == 'pending' %}
-                <a href="{% url 'requests_app:request_delete' req.pk %}" class="btn btn-sm btn-outline-danger ms-1">
-                  Отозвать
+      {% if page.object_list %}
+        <div class="feed-stream">
+          {% for req in page.object_list %}
+            <article class="feed-card">
+              <header class="feed-hd">
+                <div class="feed-ava" style="width:48px;height:48px;">
+                  <i class="bi-file-earmark-text"></i>
+                </div>
+
+                <div class="feed-meta flex-grow-1">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="feed-author">{{ req.get_type_display }}</div>
+                    {# — Статус — #}
+                    {% if req.status == 'pending' %}
+                      <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">На рассмотрении</span>
+                    {% elif req.status == 'approved' %}
+                      <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Одобрено</span>
+                    {% elif req.status == 'rejected' %}
+                      <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Отклонено</span>
+                    {% elif req.status == 'cancelled' %}
+                      <span class="badge bg-dark-subtle text-dark-emphasis border border-dark-subtle">Отменено</span>
+                    {% elif req.status == 'draft' %}
+                      <span class="badge bg-light text-body border">Черновик</span>
+                    {% else %}
+                      <span class="badge bg-light text-body border">Неизвестно</span>
+                    {% endif %}
+                  </div>
+                  <div class="feed-sub mt-1">
+                    <time datetime="{{ req.created_at|date:'c' }}">{{ req.created_at|date:"d.m.Y H:i" }}</time>
+                    {% if req.date_from or req.date_to %}
+                      · Период:
+                      {{ req.date_from|date:'d.m.Y' }}
+                      {% if req.date_to %} — {{ req.date_to|date:'d.m.Y' }}{% endif %}
+                    {% endif %}
+                  </div>
+                </div>
+              </header>
+
+              <div class="feed-body pt-0">
+                {% if req.comment %}
+                  <div class="small text-muted mb-2">{{ req.comment|truncatechars:220 }}</div>
+                {% endif %}
+
+                {% if req.attachment %}
+                  <a class="btn btn-ghost d-inline-flex align-items-center gap-1" href="{{ req.attachment.url }}" target="_blank">
+                    <i class="bi-paperclip"></i><span>Вложение</span>
+                  </a>
+                {% endif %}
+              </div>
+
+              <footer class="feed-actions">
+                <a href="{% url 'requests_app:request_detail' req.pk %}"
+                   class="btn btn-ghost d-inline-flex align-items-center gap-1">
+                  <i class="bi-eye"></i><span>Подробнее</span>
                 </a>
-              {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-{% else %}
-  <div class="alert alert-info">У вас пока нет заявлений.</div>
-{% endif %}
 
+                <span class="ms-auto"></span>
+
+                {% if req.status == 'pending' and not req.is_final %}
+                  <a href="{% url 'requests_app:request_cancel' req.pk %}"
+                     class="btn btn-ghost d-inline-flex align-items-center gap-1">
+                    <i class="bi-x-circle"></i><span>Отозвать</span>
+                  </a>
+                {% endif %}
+              </footer>
+            </article>
+          {% endfor %}
+        </div>
+
+        {# Пагинация #}
+        <div class="mt-4">
+          {% bootstrap_pagination page %}
+        </div>
+      {% else %}
+        <div class="alert alert-info shadow-sm">У вас пока нет заявлений.</div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
 {% endblock %}

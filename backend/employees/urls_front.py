@@ -23,6 +23,7 @@ urlpatterns = [
     path("departments/<int:pk>/edit/", views.DepartmentUpdateView.as_view(), name="department_edit"),
     path("departments/<int:pk>/delete/", views.DepartmentDeleteView.as_view(), name="department_delete"),
     path("departments/<int:pk>/invite/", views.invite_to_department, name="invite_to_department"),
+    path("departments/<int:dept_id>/members/<int:employee_id>/role/", views.edit_department_role, name="edit_department_role",),
 
     # --- Отсутствия ---
     path("absences/", views.AbsenceListView.as_view(), name="absence_list"),

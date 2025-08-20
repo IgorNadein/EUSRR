@@ -1,57 +1,63 @@
-from rest_framework import viewsets, permissions
+from employees.models import (Absence, Department, Education, Employee,
+                              EmployeeAction, EmployeePosition, Skill)
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
 
-from employees.models import (
-    Employee, Department, EmployeeAction, EmployeePosition,
-    Absence, Skill, Education
-)
-from .serializers import (
-    EmployeeSerializer, DepartmentSerializer, EmployeeActionSerializer,
-    EmployeePositionSerializer, AbsenceSerializer, SkillSerializer, EducationSerializer
-)
-from .permissions import IsDepartmentHeadOrAdmin, IsSelfOrAdmin, IsHR
+from ..permissions import IsDepartmentHeadOrAdmin, IsHR, IsSelfOrAdmin
+from .serializers import (AbsenceSerializer, DepartmentSerializer,
+                          EducationSerializer, EmployeeActionSerializer,
+                          EmployeePositionSerializer, EmployeeSerializer,
+                          SkillSerializer)
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
-    queryset = Employee.objects.all().prefetch_related(
-        'skills', 'positions', 'actions')
+    queryset = Employee.objects.all().prefetch_related("skills", "positions", "actions")
     serializer_class = EmployeeSerializer
 
     def get_permissions(self):
-        if self.action in ['update', 'partial_update', 'destroy', 'set_avatar', 'add_skill']:
+        if self.action in [
+            "update",
+            "partial_update",
+            "destroy",
+            "set_avatar",
+            "add_skill",
+        ]:
             return [IsSelfOrAdmin()]
         return [permissions.IsAuthenticated()]
 
-    @action(detail=True, methods=['post'], permission_classes=[IsSelfOrAdmin])
+    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
     def set_avatar(self, request, pk=None):
         employee = self.get_object()
-        avatar = request.FILES.get('avatar')
+        avatar = request.FILES.get("avatar")
         if avatar:
             employee.avatar = avatar
             employee.save()
-            return Response({'status': 'avatar set'})
-        return Response({'error': 'No file'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"status": "avatar set"})
+        return Response({"error": "No file"}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsSelfOrAdmin])
+    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
     def add_skill(self, request, pk=None):
         employee = self.get_object()
-        skill_name = request.data.get('skill')
+        skill_name = request.data.get("skill")
         if skill_name:
             skill, _ = Skill.objects.get_or_create(name=skill_name)
             employee.skills.add(skill)
-            return Response({'status': 'skill added'})
-        return Response({'error': 'No skill'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"status": "skill added"})
+        return Response({"error": "No skill"}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsSelfOrAdmin])
+    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
     def request_absence(self, request, pk=None):
-        return Response({'status': 'Not implemented'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        return Response(
+            {"status": "Not implemented"}, status=status.HTTP_501_NOT_IMPLEMENTED
+        )
 
-    @action(detail=True, methods=['post'], permission_classes=[IsSelfOrAdmin])
+    @action(detail=True, methods=["post"], permission_classes=[IsSelfOrAdmin])
     def request_transfer(self, request, pk=None):
-        return Response({'status': 'Not implemented'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        return Response(
+            {"status": "Not implemented"}, status=status.HTTP_501_NOT_IMPLEMENTED
+        )
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -92,9 +98,11 @@ class AbsenceViewSet(viewsets.ModelViewSet):
         serializer.save(employee=self.request.user)
 
     def perform_update(self, serializer):
-        if serializer.instance.employee != self.request.user and not self.request.user.is_staff:
-            raise PermissionDenied(
-                "Вы не можете редактировать чужие заявления.")
+        if (
+            serializer.instance.employee != self.request.user
+            and not self.request.user.is_staff
+        ):
+            raise PermissionDenied("Вы не можете редактировать чужие заявления.")
         serializer.save()
 
     def perform_destroy(self, instance):

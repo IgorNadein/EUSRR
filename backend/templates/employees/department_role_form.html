@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}Роль в отделе · {{ department.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-7 col-xl-6">
+
+      <div class="feed-header">
+        <i class="bi-person-gear fs-2 text-primary"></i>
+        <h2 class="title mb-0">Роль в отделе</h2>
+        <span class="ms-2 small text-secondary text-truncate">— {{ department.name }}</span>
+        <a href="{{ next_url }}" class="btn btn-ghost ms-auto">
+          <i class="bi-arrow-left"></i> Назад
+        </a>
+      </div>
+
+      <article class="feed-card">
+        <header class="feed-hd">
+          <div class="feed-ava" style="width:56px;height:56px;">
+            {% if employee.avatar %}
+              <img src="{{ employee.avatar.url }}" alt="">
+            {% else %}<i class="bi-person"></i>{% endif %}
+          </div>
+          <div class="feed-meta">
+            <div class="feed-author">
+              {{ employee.last_name }} {{ employee.first_name }}{% if employee.patronymic %} {{ employee.patronymic }}{% endif %}
+            </div>
+            <div class="feed-sub">{{ employee.email }}</div>
+          </div>
+        </header>
+
+        <div class="feed-body pt-0">
+          <form method="post" class="mt-2">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url }}">
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Роль в отделе</label>
+              {{ form.role }}
+              {% if form.role.errors %}
+                <div class="invalid-feedback d-block">{{ form.role.errors|join:", " }}</div>
+              {% endif %}
+              <div class="form-text">Например: «Тимлид», «Аналитик», «Наставник».</div>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+              {{ form.is_active }}
+              <label class="form-check-label">Активен в отделе</label>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary px-4">
+                <i class="bi-check2"></i> Сохранить
+              </button>
+              <a href="{{ next_url }}" class="btn btn-ghost">Отмена</a>
+            </div>
+          </form>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

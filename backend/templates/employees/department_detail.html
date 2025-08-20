@@ -1,3 +1,4 @@
+{# templates/employees/department_detail.html #}
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
 
@@ -5,99 +6,114 @@
 
 {% block content %}
 <div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
 
-  <!-- Шапка отдела -->
-  <div class="card border-0 shadow-sm rounded-4 mb-4">
-    <div class="card-body p-4">
-      <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
-        <div class="d-flex align-items-center gap-3">
-          <div class="d-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10"
-               style="width:56px;height:56px;">
-            <i class="bi-diagram-3 text-primary" style="font-size:28px;"></i>
-          </div>
-          <div>
-            <h2 class="mb-1 fw-bold">{{ department.name }}</h2>
-            {% if department.description %}
-              <div class="text-muted">{{ department.description }}</div>
-            {% endif %}
-            {% if department.head %}
-              <div class="mt-2 small">
-                <span class="text-secondary">Руководитель:</span>
-                <a class="text-decoration-none"
-                   href="{% url 'employees:employee_detail' department.head.pk %}">
-                  {{ department.head.last_name }} {{ department.head.first_name }}
-                </a>
-              </div>
-            {% endif %}
-          </div>
-        </div>
+      {# — Заголовок страницы — #}
+      <div class="feed-header">
+        <i class="bi-diagram-3 fs-2 text-primary"></i>
+        <h2 class="title mb-0">{{ department.name }}</h2>
 
-        <div class="d-flex align-items-center gap-2">
-          {% if user.is_staff or department.head_id == user.id %}
+        {% if user.is_staff or department.head_id == user.id %}
+          <div class="ms-auto d-flex gap-2">
+            <a href="{% url 'feed:post_create' %}?department={{ department.pk }}&next={{ request.get_full_path|urlencode }}"
+               class="btn btn-primary">
+              <i class="bi-plus-circle me-1"></i> Создать публикацию
+            </a>
             <a href="{% url 'employees:invite_to_department' department.pk %}"
                class="btn btn-success">
-              <i class="bi-person-plus me-1"></i> Пригласить сотрудника
+              <i class="bi-person-plus me-1"></i> Пригласить
             </a>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Инфоблок: описание/руководитель #}
+      {% if department.description or department.head %}
+        <div class="feed-new mb-3">
+          {% if department.description %}
+            <div class="mb-1">{{ department.description }}</div>
+          {% endif %}
+          {% if department.head %}
+            <div class="small">
+              <span class="text-secondary">Руководитель:</span>
+              <a class="text-decoration-none"
+                 href="{% url 'employees:employee_detail' department.head.pk %}">
+                {{ department.head.last_name }} {{ department.head.first_name }}
+              </a>
+            </div>
           {% endif %}
         </div>
-      </div>
-    </div>
-  </div>
+      {% endif %}
 
-  <!-- Сотрудники отдела -->
-  <div class="card border-0 shadow-sm rounded-4 mb-4">
-    <div class="card-header bg-white border-0 py-3 d-flex align-items-center justify-content-between">
-      <h5 class="mb-0">Сотрудники отдела</h5>
-      <a class="btn btn-sm btn-outline-primary"
-         href="{% url 'employees:employees_list' %}?department={{ department.pk }}">
-        Все сотрудники отдела →
-      </a>
-    </div>
+      {# — Команда отдела + Присоединились недавно (в одном блоке) — #}
+      <div class="feed-new mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="mb-0 text-secondary">Команда отдела</h6>
+          <a class="small text-primary text-decoration-none"
+             href="{% url 'employees:employees_list' %}?department={{ department.pk }}">
+            Все сотрудники →
+          </a>
+        </div>
 
-    <ul class="list-group list-group-flush">
-      {% for link in emp_links %}
-        <li class="list-group-item py-3">
-          <div class="d-flex align-items-center gap-3">
-            {% with emp=link.employee %}
-              {% if emp.avatar %}
-                <img src="{{ emp.avatar.url }}" alt=""
-                     class="rounded-circle border"
-                     style="width:44px;height:44px;object-fit:cover;">
-              {% else %}
-                <div class="rounded-circle bg-secondary bg-opacity-25 d-flex align-items-center justify-content-center"
-                     style="width:44px;height:44px;">
-                  <i class="bi-person text-secondary" style="font-size:22px;"></i>
-                </div>
-              {% endif %}
-
-              <div class="flex-grow-1">
-                <div class="fw-semibold">
-                  <a class="text-decoration-none"
-                     href="{% url 'employees:employee_detail' emp.pk %}">
-                    {{ emp.last_name }} {{ emp.first_name }}
-                  </a>
-                </div>
-                {% if link.role %}
-                  <div class="small text-secondary">{{ link.role }}</div>
-                {% endif %}
-              </div>
-            {% endwith %}
+        {% if team_links %}
+          <div class="d-flex gap-3 flex-nowrap overflow-auto pb-1">
+            {% for link in team_links %}
+              {% with emp=link.employee %}
+                <a href="{% url 'employees:employee_detail' emp.pk %}"
+                   class="text-decoration-none d-inline-flex align-items-center gap-2">
+                  <div class="feed-ava" style="width:44px;height:44px;">
+                    {% if emp.avatar %}<img src="{{ emp.avatar.url }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
+                  </div>
+                  <div class="small text-truncate" style="max-width:140px;">
+                    <div class="fw-semibold text-reset">{{ emp.last_name }} {{ emp.first_name }}</div>
+                    {% if link.role %}<div class="text-secondary">{{ link.role }}</div>{% endif %}
+                  </div>
+                </a>
+              {% endwith %}
+            {% endfor %}
           </div>
-        </li>
-      {% empty %}
-        <li class="list-group-item py-4 text-center text-secondary">
-          В этом отделе пока нет сотрудников.
-        </li>
-      {% endfor %}
-    </ul>
-  </div>
+        {% else %}
+          <div class="text-secondary small">Пока нет сотрудников с указанными ролями.</div>
+        {% endif %}
 
-  <!-- Новости отдела (инклюдит готовый блок) -->
-  <div class="card border-0 shadow-sm rounded-4">
-    <div class="card-body p-0">
-      {% include "feed/department_feed.html" with department=department posts=posts new_employees=new_employees %}
+        {% if recent_links %}
+          <div class="d-flex align-items-center justify-content-between mt-3 mb-2">
+            <h6 class="mb-0 text-secondary">Присоединились недавно</h6>
+            <span class="small text-muted">за 14 дней</span>
+          </div>
+          <div class="d-flex gap-3 flex-nowrap overflow-auto pb-1">
+            {% for link in recent_links %}
+              {% with emp=link.employee %}
+                <a href="{% url 'employees:employee_detail' emp.pk %}"
+                   class="text-decoration-none d-inline-flex align-items-center gap-2">
+                  <div class="feed-ava" style="width:36px;height:36px;">
+                    {% if emp.avatar %}<img src="{{ emp.avatar.url }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
+                  </div>
+                  <div class="small text-truncate" style="max-width:140px;">
+                    <div class="text-reset">{{ emp.last_name }} {{ emp.first_name }}</div>
+                    <div class="text-secondary">
+                      {% if link.created_at %}с {{ link.created_at|date:"d.m.Y" }}{% else %}недавно{% endif %}
+                      {% if link.role %} · {{ link.role }}{% endif %}
+                    </div>
+                  </div>
+                </a>
+              {% endwith %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+
+      {# — Лента отдела — #}
+      <div class="feed-stream">
+        {% include "feed/_feed_cards.html" with items=posts %}
+      </div>
+
+      {% if page %}
+        <div class="mt-4">{% bootstrap_pagination page %}</div>
+      {% endif %}
+
     </div>
   </div>
-
 </div>
 {% endblock %}

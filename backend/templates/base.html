@@ -1,353 +1,889 @@
-{% load static django_bootstrap5 %}
-
-<!DOCTYPE html>
-<html lang="ru">
+{% load static %}
+<!doctype html>
+<html lang="ru" data-bs-theme="auto">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}EUSRR{% endblock %}</title>
 
-  {% bootstrap_css %}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <!-- Bootstrap / Icons / FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
 
-  {% block extra_css %}{% endblock %}
+  <!-- Базовые стили приложения (+ feed) -->
   <style>
-    :root {
-      --main-bg: #f8fafc;
-      --main-text: #222;
-      --sidebar-bg: #f8fafc;
-      --sidebar-text: #34405a;
-      --sidebar-border: #e5eaf3;
-      --sidebar-active-bg: #e8ecf2;
-      --sidebar-active-text: #12306a;
-      --sidebar-icon: #8090b1;
-      --sidebar-active-icon: #12306a;
-      --navbar-bg: #296299;
-      --navbar-text: #fff;
-      --navbar-border: #204c77;
+    :root{
+      --sidebar-w: 260px;
+      --rightbar-w: 370px;
+      --navbar-h: 60px;
+      --bs-primary:#007AFF;
+      --bs-link-color: var(--bs-primary);
+      --bs-link-hover-color:#0062CC;
+
+      /* feed tokens */
+      --feed-radius: 18px;
+      --feed-shadow: 0 1px 2px rgba(0,0,0,.04), 0 10px 30px rgba(0,0,0,.08);
+      --feed-shadow-hover: 0 4px 10px rgba(0,0,0,.06), 0 16px 40px rgba(0,0,0,.12);
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --main-bg: #161b22;
-        --main-text: #e6e6e6;
-        --sidebar-bg: #161b22;
-        --sidebar-text: #e6e6e6;
-        --sidebar-border: #222c3c;
-        --sidebar-active-bg: #232c3c;
-        --sidebar-active-text: #7ac7ff;
-        --sidebar-icon: #8fa5c1;
-        --sidebar-active-icon: #7ac7ff;
-        --navbar-bg: #22335a;
-        --navbar-text: #fff;
-        --navbar-border: #1b263b;
+    [data-bs-theme="dark"] {
+      --bs-body-bg:#1C1C1E;
+      --bs-body-color:#F2F2F7;
+      --bs-border-color:#3A3A3C;
+      --bs-tertiary-bg:#2C2C2E;
+      --bs-primary:#0A84FF;
+      --bs-link-color:var(--bs-primary);
+      --bs-link-hover-color:#59AFFF;
+    }
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      font-size:17px;
+      padding-top:var(--navbar-h);
+      overflow-x:hidden;
+      background-color:var(--bs-body-bg);
+    }
+    @supports(padding-top: env(safe-area-inset-top)){
+      body{ padding-top: calc(var(--navbar-h) + env(safe-area-inset-top)); }
+    }
+    .btn{ border-radius:10px; min-height:44px; transition:background-color .3s, transform .1s; }
+    .btn:hover{ transform:scale(1.02); }
+    .form-control{ border-radius:10px; height:44px; font-size:17px; }
+    .form-control:focus{ box-shadow:0 0 0 2px rgba(var(--bs-primary-rgb), .25); border-color: var(--bs-primary); }
+    .dropdown-menu{ border-radius:13px; box-shadow:0 6px 24px rgba(0,0,0,.12); }
+
+    /* navbar */
+    .app-navbar{ position:fixed; inset:0 0 auto 0; z-index:1030; border-bottom:.5px solid var(--bs-border-color); }
+
+    /* layout */
+    .app-layout{ display:block; }
+    @media (min-width: 992px){
+      .app-layout.with-sidebar.with-rightbar{
+        display:grid; grid-template-columns: var(--sidebar-w) 1fr var(--rightbar-w); align-items:start;
+      }
+      .app-layout.with-sidebar:not(.with-rightbar)){
+        display:grid; grid-template-columns: var(--sidebar-w) 1fr; align-items:start;
       }
     }
-    body {
-      min-height: 100vh;
-      background: var(--main-bg);
-      color: var(--main-text);
-    }
-    .app-navbar {
-      height: 60px;
-      background: var(--navbar-bg);
-      color: var(--navbar-text);
-      border-bottom: 1px solid var(--navbar-border);
-      z-index: 1020;
-    }
-    .sidebar {
-      width: 220px;
-      min-height: 100vh;
-      background: var(--sidebar-bg);
-      color: var(--sidebar-text);
-      position: fixed;
-      top: 0; left: 0;
-      border-right: 1px solid var(--sidebar-border);
-      z-index: 1010;
-      padding-top: 60px;
-    }
-    .sidebar .nav-link {
-      color: var(--sidebar-text);
-      font-weight: 500;
-      padding: 10px 20px;
-      border-radius: 6px;
-      margin-bottom: 2px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      transition: background 0.12s, color 0.12s;
-    }
-    .sidebar .nav-link.active,
-    .sidebar .nav-link:hover {
-      background: var(--sidebar-active-bg);
-      color: var(--sidebar-active-text);
-      font-weight: 600;
-    }
-    .sidebar .nav-link.disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      pointer-events: none;
-    }
-    .sidebar .nav-link i {
-      font-size: 1.2rem;
-      color: var(--sidebar-icon);
-    }
-    .sidebar .nav-link.active i,
-    .sidebar .nav-link:hover i {
-      color: var(--sidebar-active-icon);
-    }
-    .main-content {
-      margin-left: 220px;
-      padding: 30px 24px 24px 24px;
-      min-height: 100vh;
-      padding-top: 90px;
-      background: var(--main-bg);
-      color: var(--main-text);
-      transition: margin-left .2s;
-    }
-    @media (max-width: 991.98px) {
-      .sidebar {
-        left: -230px;
-        transition: left .2s;
-        padding-top: 60px;
-      }
-      .sidebar.show {
-        left: 0;
-      }
-      .main-content {
-        margin-left: 0;
-        padding-top: 90px;
-      }
-      .app-navbar {
-        left: 0;
-        width: 100vw;
+
+    /* левый sidebar (sticky ≥lg) */
+    #sidebar{ --bs-offcanvas-width: var(--sidebar-w); border-radius:0 13px 13px 0; }
+    @media (min-width: 992px){
+      #sidebar.offcanvas-lg{
+        position:sticky; top:var(--navbar-h);
+        height:calc(100dvh - var(--navbar-h));
+        align-self:start; overflow:auto;
+        border-right:.5px solid var(--bs-border-color);
+        background:var(--bs-body-bg);
+        transform:none !important; visibility:visible !important;
       }
     }
-    /* Calendar styles */
-    #calendarContainer {
-      position: absolute;
-      top: -9999px;
-      right: 1rem;
-      z-index: 1050;
-      width: 350px; max-width: 100%; height: 400px; max-height: 90vh;
-      overflow: hidden;
-      transition: top 0.2s;
+
+    /* бейдж возле колокола */
+    .bell-wrapper{ position:relative; line-height:1; display:inline-block; }
+    .bell-dot{
+      position:absolute; top:-2px; right:-2px;
+      width:9px; height:9px; border-radius:999px;
+      background:var(--bs-danger); color:#fff;
+      font-size:7px; line-height:9px; font-weight:700;
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:0 0 0 1px rgba(255,255,255,.65);
     }
-    #calendarContainer.visible { top: 100%; }
-    #mini-calendar { width: 100%; height: 100%; }
-    .fc .fc-toolbar-title { font-size: 1.1rem; font-weight: 500; }
-    .fc .fc-daygrid-day-number { font-size: 1rem; }
-    .fc .fc-daygrid-day-frame { padding: 0.4rem; }
+
+    /* mobile FAB */
+    .calendar-fab{
+      position:fixed; right:1rem; bottom:1rem; z-index:1060;
+      width:52px; height:52px; border-radius:9999px;
+      box-shadow:0 8px 24px rgba(0,0,0,.18);
+    }
+
+    /* ====== переключатель темы ====== */
+    .theme-switch{
+      position:relative; display:flex; gap:.25rem;
+      background:var(--bs-tertiary-bg); border-radius:12px; padding:.25rem;
+      border:1px solid var(--bs-border-color); justify-content:center;
+    }
+    .theme-thumb{
+      position:absolute; inset:.25rem auto .25rem .25rem;
+      width:calc(33.333% - .25rem); border-radius:10px;
+      background: color-mix(in srgb, var(--bs-body-bg), #fff 12%);
+      transition: transform .25s ease, width .25s ease; z-index:0;
+    }
+    [data-bs-theme="dark"] .theme-thumb{
+      background: color-mix(in srgb, var(--bs-body-bg), #000 12%);
+    }
+    .theme-tab{
+      position:relative; z-index:1; border:0; background:transparent;
+      width:3.8rem; height:2rem; border-radius:10px;
+      display:inline-flex; align-items:center; justify-content:center;
+      color:var(--bs-body-color); opacity:.7; font-size:1.4rem; line-height:1;
+    }
+    .theme-tab.active{ opacity:1; color:var(--bs-primary); }
+
+    /* ===== feed styles (карточки ленты) ===== */
+    .feed-header{ display:flex; align-items:center; gap:.75rem; margin-bottom:1rem; }
+    .feed-header .title{ font-weight:800; letter-spacing:.2px; margin:0; }
+
+    .feed-stream{ display:flex; flex-direction:column; gap:1rem; }
+
+    .feed-card{
+      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+      border-radius: var(--feed-radius);
+      background: var(--bs-body-bg);
+      box-shadow: var(--feed-shadow);
+      transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+      overflow:hidden;
+    }
+    .feed-card:hover{ box-shadow: var(--feed-shadow-hover); transform: translateY(-1px); }
+
+    .feed-hd{ display:flex; align-items:center; gap:.75rem; padding:.9rem 1rem .5rem 1rem; }
+    .feed-ava{
+      width:42px; height:42px; border-radius:9999px; overflow:hidden;
+      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+      background: var(--bs-tertiary-bg);
+      display:grid; place-items:center; flex:0 0 auto;
+    }
+    .feed-ava img{ width:100%; height:100%; object-fit:cover; display:block; }
+    .feed-meta{ line-height:1.2; }
+    .feed-author{ font-weight:700; color: var(--bs-body-color); }
+    .feed-sub{ font-size:.82rem; color: var(--bs-secondary-color); }
+
+    .feed-pin{
+      margin-left:auto; font-size:.75rem;
+      padding:.2rem .5rem; border-radius:999px;
+      background:#fff3cd; color:#664d03; border:1px solid #ffe69c;
+    }
+    [data-bs-theme="dark"] .feed-pin{ background:#3b2e04; color:#ffda6a; border-color:#4f3f0a; }
+
+    .feed-body{ padding:.25rem 1rem 1rem 1rem; position:relative; }
+    .feed-title{ font-weight:700; margin:.25rem 0 .35rem 0; font-size:1.05rem; }
+    .feed-text{
+      margin:0 0 .6rem 0; color: var(--bs-body-color);
+      display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5;
+      overflow:hidden;
+    }
+
+    .feed-img{ position:relative; border-top:1px solid var(--bs-border-color); background: var(--bs-tertiary-bg); }
+    .feed-img img{ display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; }
+
+    .feed-actions{
+      display:flex; align-items:center; gap:.5rem; padding:.6rem 1rem .9rem 1rem;
+      border-top:1px solid var(--bs-border-color); position:relative; z-index:2;
+    }
+    .btn-ghost{
+      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+      background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
+      color: var(--bs-body-color);
+      padding:.35rem .6rem; border-radius:999px; font-size:.9rem;
+    }
+    .btn-ghost:hover{ background: color-mix(in srgb, var(--bs-body-bg) 88%, transparent); }
+    .btn-ghost .bi{ font-size:1rem; margin-right:.35rem; vertical-align:-2px; }
+
+    /* «Новые сотрудники» */
+    .feed-new{
+      border-radius: var(--feed-radius);
+      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+      background: var(--bs-body-bg);
+      box-shadow: var(--feed-shadow);
+      padding:.9rem 1rem;
+    }
+
+    /* stretched-link не перекрывает футер/формы */
+    .feed-body .stretched-link::after,
+    .feed-img .stretched-link::after { z-index: 1; }
+    .collapse{ position:relative; z-index:2; }
+
+    /* подпись «Скрыть/число» у кнопки комментариев по aria-expanded */
+    .btn-ghost .txt-close{ display:none; }
+    .btn-ghost[aria-expanded="true"] .txt-open{ display:none; }
+    .btn-ghost[aria-expanded="true"] .txt-close{ display:inline; }
+
+    /* Буквенные разделители (липкие) */
+    .alpha-header{
+      position: sticky; top: calc(var(--navbar-h) + 8px);
+      z-index: 1;
+      background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+      color: var(--bs-secondary-color);
+      display: inline-flex; align-items: center; gap:.5rem;
+      padding: .2rem .6rem; border-radius: 999px; font-weight: 700; font-size: .85rem;
+      margin: .25rem 0 .5rem .25rem;
+    }
+    .alpha-dot{ width:6px; height:6px; border-radius:999px; background: var(--bs-primary); opacity:.6; }
+    /* Иконки-действия справа в карточке */
+    .action-btn{ min-height: unset; padding:.35rem .6rem; }
+    .action-btn .bi{ font-size: 1rem; }
   </style>
+
+  {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="min-vh-100">
 
-{% if user.is_authenticated %}
-  <nav class="navbar app-navbar navbar-dark position-fixed w-100 shadow-sm">
-    <div class="container-fluid d-flex justify-content-between align-items-center px-3">
-      <div class="d-flex align-items-center">
-        <button class="btn btn-outline-light d-lg-none me-2" type="button" id="sidebarToggle">
-          <i class="bi-list"></i>
-        </button>
-        <a href="/" class="navbar-brand mb-0 text-white fs-5 d-none d-lg-inline" style="letter-spacing:1px;">EUSRR</a>
-      </div>
-      <div class="d-flex align-items-center gap-3">
-        <!-- Кнопка календаря -->
-        <button id="toggleCalendarBtn" class="btn btn-outline-light" type="button" title="Календарь">
-          <i class="bi-calendar3"></i>
-        </button>
+  {% include "includes/navbar.html" %}
 
-        <!-- Виджет уведомлений -->
-        <div class="dropdown">
-          <button class="btn btn-outline-light position-relative" data-bs-toggle="dropdown" aria-expanded="false" id="notificationDropdown" title="Уведомления">
-            <i class="bi-bell"></i>
-            {% if not user.telegram or not user.whatsapp or not user.wechat %}
-              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">!</span>
-            {% endif %}
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 260px;">
-            <li class="small text-muted px-3 py-2">Мессенджеры</li>
-            <li class="px-3">
-              {% if user.telegram %}
-                <span class="text-success"><i class="bi-telegram"></i> Telegram привязан</span>
-              {% else %}
-                <a href="{{ tg_link|default:'#' }}" class="text-danger d-block"><i class="bi-telegram"></i> Привязать Telegram</a>
-              {% endif %}
-            </li>
-            <li class="px-3">
-              {% if user.whatsapp %}
-                <span class="text-success"><i class="bi-whatsapp"></i> WhatsApp привязан</span>
-              {% else %}
-                <a href="https://wa.me/?text=Привязка+WhatsApp" class="text-danger d-block"><i class="bi-whatsapp"></i> Привязать WhatsApp</a>
-              {% endif %}
-            </li>
-            <li class="px-3">
-              {% if user.wechat %}
-                <span class="text-success"><i class="bi-wechat"></i> WeChat привязан</span>
-              {% else %}
-                <span class="text-danger d-block"><i class="bi-wechat"></i> Привязать WeChat (вручную)</span>
-              {% endif %}
-            </li>
-            <li><hr class="dropdown-divider"></li>
-            <li class="small text-muted px-3 py-2">Уведомления (скоро)</li>
-          </ul>
-        </div>
-        <!-- /Виджет уведомлений -->
+  <div class="app-layout container-fluid px-0 {% if user.is_authenticated %}with-sidebar with-rightbar{% endif %}">
+    {% if user.is_authenticated %}
+      {% include "includes/sidebar.html" %}
+    {% endif %}
 
-        <!-- Дропдаун пользователя -->
-        <div class="dropdown">
-          <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
-            id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="min-width:40px;">
-            {% if user.avatar %}
-              <img src="{{ user.avatar.url }}"
-                  alt="Аватар" width="36" height="36"
-                  class="rounded-circle shadow-sm" style="object-fit: cover;">
-            {% else %}
-              <span class="avatar-placeholder bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center"
-                    style="width:36px;height:36px;font-size:1.2rem;">
-                {{ user.get_short_name|slice:":1"|upper }}
-              </span>
-            {% endif %}
-          </a>
-          <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userDropdown">
-            <li class="px-3 py-2 text-muted small">
-              {{ user.get_short_name }}<br>
-              <span class="text-secondary">{{ user.email }}</span>
-            </li>
-            <li><hr class="dropdown-divider"></li>
-            <li>
-              <a class="dropdown-item" href="{% url 'employees:profile' %}">
-                <i class="bi-person me-2"></i>Профиль
-              </a>
-            </li>
-            <li>
-              <form action="{% url 'logout' %}" method="post" class="m-0 p-0">
-                {% csrf_token %}
-                <button type="submit" class="dropdown-item">
-                  <i class="bi-box-arrow-right me-2"></i>Выйти
-                </button>
-              </form>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </nav>
+    <main class="main py-3 px-3 px-lg-4">
+      {% block content %}{% endblock %}
+    </main>
 
-  <div class="sidebar d-flex flex-column">
-    <div class="mb-4 text-center d-lg-none pt-3">
-      <a href="/" class="navbar-brand text-dark fs-4 py-2 d-block mb-2" style="letter-spacing:1px;">EUSRR</a>
-    </div>
-    <ul class="nav flex-column">
-      <li>
-        <a href="{% url 'feed:feed_list' %}" 
-          class="nav-link {% if request.resolver_match.url_name == 'feed_list' %}active{% endif %}">
-          <i class="bi-megaphone"></i> Новости
-        </a>
-      </li>
-      <li>
-        <a href="{% url 'employees:employees_list' %}" 
-          class="nav-link {% if request.resolver_match.url_name == 'employees_list' %}active{% endif %}">
-          <i class="bi-people"></i> Сотрудники
-        </a>
-      </li>
-      <li>
-        <a href="{% url 'employees:department_list' %}" 
-          class="nav-link {% if request.resolver_match.url_name == 'department_list' %}active{% endif %}">
-          <i class="bi-diagram-3"></i> Отделы
-        </a>
-      </li>
-      <li>
-        <a href="{% url 'requests_app:my_requests' %}" 
-          class="nav-link {% if request.resolver_match.url_name == 'my_requests' %}active{% endif %}">
-          <i class="bi-journal-text"></i> Мои заявления
-        </a>
-      </li>
-      <li>
-        <a href="{% url 'communications:chat_list' %}" 
-          class="nav-link {% if request.resolver_match.app_name == 'communications' %}active{% endif %}">
-          <i class="bi-chat-dots"></i> Чаты
-        </a>
-      </li>
-      <li>
-        <a href="#" class="nav-link disabled">
-          <i class="bi-calendar-event"></i> Календарь
-        </a>
-      </li>
-      <li>
-        <a href="{% url 'documents:document_list' %}" 
-          class="nav-link {% if request.resolver_match.url_name == 'document_list' %}active{% endif %}">
-          <i class="bi-file-earmark-text"></i> Документы
-        </a>
-      </li>
-    </ul>
-
+    {% if user.is_authenticated %}
+      {% include "includes/rightbar_calendar.html" %}
+    {% endif %}
   </div>
-{% else %}
-  <nav class="navbar app-navbar navbar-dark position-fixed w-100 shadow-sm">
-    <div class="container-fluid d-flex justify-content-between align-items-center px-3">
-      <span class="navbar-brand">EUSRR</span>
-      <div>
-        <a class="btn btn-outline-light me-2" href="{% url 'login' %}">Войти</a>
-        <a class="btn btn-light" href="{% url 'register' %}">Регистрация</a>
-      </div>
-    </div>
-  </nav>
-{% endif %}
 
-<div class="main-content">
-  {% block content %}{% endblock %}
-</div>
+  <!-- JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+          crossorigin="anonymous" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.8/locales-all.global.min.js" defer></script>
 
-{% bootstrap_javascript %}
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+  <script>
+    // реальная высота navbar -> CSS var
+    document.addEventListener('DOMContentLoaded', () => {
+      const nav = document.querySelector('.app-navbar');
+      const setH = () => nav && document.documentElement.style.setProperty('--navbar-h', nav.offsetHeight + 'px');
+      setH(); addEventListener('resize', setH);
+    });
+  </script>
 
-{% if user.is_authenticated %}
-<script>
-  // Sidebar toggle (for mobile)
-  document.addEventListener('DOMContentLoaded', function() {
-    const sidebar = document.querySelector('.sidebar');
-    const sidebarToggle = document.getElementById('sidebarToggle');
-    if (sidebarToggle) {
-      sidebarToggle.addEventListener('click', function() {
-        sidebar.classList.toggle('show');
-      });
-    }
-    // Calendar logic
-    const container = document.getElementById('calendarContainer');
-    const toggleBtn = document.getElementById('toggleCalendarBtn');
-    const calendar = new FullCalendar.Calendar(
-      document.getElementById('mini-calendar'),
-      {
-        initialView: 'dayGridMonth',
-        headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
-        height: 400,
-        events: '/calendar/api/events/',
-        eventDidMount: info => {
-          if (info.event.extendedProps.recurrence === 'annual') {
-            info.el.style.borderColor = '#28a745';
+  <script>
+    // ===== Переключатель темы =====
+    (function(){
+      const media = window.matchMedia('(prefers-color-scheme: dark)');
+      const root  = document.documentElement;
+
+      function effective(mode){ return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode; }
+      function setTheme(mode, persist=true){
+        root.setAttribute('data-bs-theme', effective(mode));
+        if (persist) localStorage.setItem('theme', mode);
+        syncUI(mode);
+      }
+      function syncUI(mode){
+        document.querySelectorAll('[data-theme-value]').forEach(el=>{
+          const val = el.getAttribute('data-theme-value');
+          const is  = val === mode;
+          if (el.classList.contains('theme-tab')) el.classList.toggle('active', is);
+          const input = document.getElementById(el.getAttribute('for'));
+          if (input && input.classList.contains('btn-check')) input.checked = is;
+        });
+        const wrap = document.getElementById('themeSwitch');
+        const thumb = wrap ? wrap.querySelector('.theme-thumb') : null;
+        if (wrap && thumb){
+          const active = wrap.querySelector('.theme-tab.active') || wrap.querySelector('[data-theme-value="'+mode+'"]');
+          const wrapRect = wrap.getBoundingClientRect();
+          const btnRect  = active ? active.getBoundingClientRect() : null;
+          if (btnRect){
+            const offsetX = btnRect.left - wrapRect.left;
+            thumb.style.width = btnRect.width + 'px';
+            thumb.style.transform = 'translateX(' + offsetX + 'px)';
           }
         }
       }
-    );
-    calendar.render();
-    toggleBtn.addEventListener('click', () => {
-      container.classList.toggle('visible');
-      if (container.classList.contains('visible')) {
-        calendar.updateSize();
-      }
-    });
-    document.addEventListener('click', (e) => {
-      if (container.classList.contains('visible')
-          && !container.contains(e.target)
-          && e.target !== toggleBtn) {
-        container.classList.remove('visible');
-      }
-    });
-  });
-</script>
-{% endif %}
 
-{% block extra_js %}{% endblock %}
+      document.addEventListener('DOMContentLoaded', ()=>{
+        setTheme(localStorage.getItem('theme') || 'auto', false);
+        document.body.addEventListener('click', (e)=>{
+          const trg = e.target.closest('[data-theme-value]'); if (!trg) return;
+          e.preventDefault(); setTheme(trg.getAttribute('data-theme-value'));
+        });
+        media.addEventListener('change', ()=>{
+          if ((localStorage.getItem('theme') || 'auto') === 'auto') setTheme('auto', false);
+        });
+        addEventListener('resize', ()=> syncUI(localStorage.getItem('theme') || 'auto'));
+      });
+    })();
+  </script>
+
+  <!-- Глобальный обработчик лайков -->
+  <script>
+    (function(){
+      function getCookie(name){
+        const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return m ? m.pop() : '';
+      }
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-like-post]');
+        if (!btn) return;
+        e.preventDefault();
+
+        const postId = btn.getAttribute('data-like-post');
+        const url    = btn.getAttribute('data-like-url');
+        if (!url || !postId || btn.disabled) return;
+
+        btn.disabled = true;
+        try{
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Accept': 'application/json' },
+            body: new URLSearchParams({ next: location.href })
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+
+          const card = btn.closest('[data-post-card]');
+          const cnt  = card && card.querySelector('[data-like-count]');
+          if (cnt) cnt.textContent = data.likes ?? 0;
+
+          btn.classList.toggle('is-liked', !!data.is_liked);
+          btn.setAttribute('aria-pressed', data.is_liked ? 'true' : 'false');
+
+          const icon = btn.querySelector('.bi');
+          if (icon){
+            icon.classList.toggle('bi-heart', !data.is_liked);
+            icon.classList.toggle('bi-heart-fill', !!data.is_liked);
+          }
+        }catch(err){ console.error(err); }
+        finally{ btn.disabled = false; }
+      }, { passive:false });
+    })();
+  </script>
+
+  {% if user.is_authenticated %}
+  <script>
+    // Базовая карта аватаров (только текущий пользователь; остальные подтянутся из ws)
+    window.__CHAT_AVATARS__ = {
+      "{{ user.id }}": {% if user.avatar %}"{{ user.avatar.url }}"{% else %}""{% endif %}
+    };
+  </script>
+  {% endif %}
+
+  <script>
+    // автоскролл / авто-рост textarea / кнопка «вниз» / разделитель «Новые сообщения» / отметка прочитанного
+    (function(){
+      const box  = document.getElementById('chatScroll');
+      if (!box) return;
+      const ta   = document.getElementById('id_content');
+      const form = document.getElementById('chatForm');
+      const btn  = document.getElementById('scrollBtn');
+
+      const chatId = Number(box?.dataset.chatId || 0);
+      const meId   = Number(box?.dataset.meId || 0);
+
+      function getCookie(name){
+        const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return m ? m.pop() : '';
+      }
+      const csrf = getCookie('csrftoken');
+
+      const LS_KEY = `chat:lastRead:${chatId}`;
+      function getLocalLastReadTs(){
+        const v = localStorage.getItem(LS_KEY);
+        return v ? Number(v) : NaN;
+      }
+      function setLocalLastReadTs(ts){
+        localStorage.setItem(LS_KEY, String(ts));
+      }
+
+      (function initLastRead(){
+        let lastRead = Number(box.dataset.lastReadTs || NaN);
+        if (!Number.isFinite(lastRead)){
+          const ls = getLocalLastReadTs();
+          if (Number.isFinite(ls)) lastRead = ls;
+        }
+        if (Number.isFinite(lastRead)) box.dataset.lastReadTs = String(lastRead);
+      })();
+
+      let lastMarkedTs = Number(box.dataset.lastReadTs || 0);
+
+      function atBottom(){ return (box.scrollHeight - box.scrollTop - box.clientHeight) < 60; }
+
+      function autoscroll(){
+        const prev = box.style.scrollBehavior;
+        box.style.scrollBehavior = 'auto';
+        box.scrollTop = box.scrollHeight;
+        if (prev) { box.style.scrollBehavior = prev; } else { box.style.removeProperty('scroll-behavior'); }
+      }
+
+      function toggleBtn(){ btn?.classList.toggle('show', !atBottom()); }
+
+      function makeDivider(cls, text){
+        const div = document.createElement('div');
+        div.className = cls;
+        div.setAttribute('role','separator');
+        div.setAttribute('aria-label', text);
+        div.innerHTML = `<span>${text}</span>`;
+        return div;
+      }
+
+      function findUnreadTarget(){
+        const id = window.__FIRST_UNREAD_ID__;
+        const ts = window.__UNREAD_FROM_TS__;
+        const lastReadTs = Number(box.dataset.lastReadTs || NaN);
+
+        if (id != null){
+          const el = box.querySelector(`.msg[data-id="${id}"]`);
+          if (el) return el;
+        }
+        if (Number.isFinite(ts)){
+          const items = Array.from(box.querySelectorAll('.msg[data-ts]'));
+          const el = items.find(e => Number(e.dataset.ts) >= Number(ts));
+          if (el) return el;
+        }
+        if (Number.isFinite(lastReadTs)){
+          const items = Array.from(box.querySelectorAll(`.msg[data-ts][data-author-id]`));
+          return items.find(e => Number(e.dataset.ts) > lastReadTs && Number(e.dataset.authorId) !== meId) || null;
+        }
+        return null;
+      }
+
+      function insertUnreadDivider(){
+        if (!box || box.querySelector('.unread-divider')) return null;
+        const target = findUnreadTarget();
+        if (target){
+          const div = makeDivider('unread-divider', 'Новые сообщения');
+          target.parentNode.insertBefore(div, target);
+          return div;
+        }
+        return null;
+      }
+
+      function removeUnreadDivider(){
+        const d = box.querySelector('.unread-divider');
+        if (d) d.remove();
+      }
+
+      async function markRead(ts){
+        ts = Number(ts);
+        if (!Number.isFinite(ts) || ts <= lastMarkedTs) return;
+        lastMarkedTs = ts;
+        setLocalLastReadTs(ts);
+        box.dataset.lastReadTs = String(ts);
+        removeUnreadDivider();
+
+        // URL: только если есть chat в контексте — иначе fallback на suffix
+        {% if chat %}
+          let markUrl = "{% url 'communications:chat_mark_read' chat.pk %}";
+        {% else %}
+          let markUrl = "";
+        {% endif %}
+        if (!markUrl){
+          const base = location.pathname.endsWith("/") ? location.pathname : (location.pathname + "/");
+          markUrl = base + "mark-read/";
+        }
+        try{
+          await fetch(markUrl, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf, 'Accept':'application/json' },
+            body: new URLSearchParams({ upto_ts: String(ts) }),
+            credentials: 'same-origin'
+          });
+          // 👉 сообщаем глобальному апдейтеру бейджа
+          const chatId = Number(document.getElementById('chatScroll')?.dataset.chatId || 0);
+          if (chatId){
+            window.dispatchEvent(new CustomEvent('chat:read', { detail: { chatId: String(chatId) } }));
+          }
+        }catch(_){}
+      }
+
+      function autosize(){
+        if (!ta) return;
+        ta.style.height='auto';
+        ta.style.height=Math.min(ta.scrollHeight, 6*24)+'px';
+        if (atBottom()) autoscroll();
+      }
+
+      const mark = insertUnreadDivider();
+      requestAnimationFrame(()=>{
+        if (mark) { mark.scrollIntoView({ block:'center' }); } else { autoscroll(); }
+        autosize();
+        toggleBtn();
+        window.__SCROLLED_ON_INIT__ = true;
+      });
+
+      ta?.addEventListener('input', autosize);
+      ta?.addEventListener('keydown', e=>{
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); form?.requestSubmit(); }
+      });
+      box?.addEventListener('scroll', toggleBtn);
+      btn?.addEventListener('click', autoscroll);
+
+      const io = new IntersectionObserver((entries)=>{
+        entries.forEach(en=>{
+          if (en.isIntersecting){
+            const el = en.target.closest('.msg');
+            if (!el) return;
+            const ts = Number(el.dataset.ts || 0);
+            markRead(ts);
+          }
+        });
+      }, { root: box, threshold: 1.0 });
+
+      function observeLastForeign(){
+        io.disconnect();
+        const msgs = Array.from(box.querySelectorAll(`.msg[data-ts][data-author-id]`));
+        const lastForeign = [...msgs].reverse().find(e => Number(e.dataset.authorId) !== meId);
+        if (lastForeign){
+          const bubble = lastForeign.querySelector('.bubble') || lastForeign;
+          io.observe(bubble);
+        }
+      }
+      observeLastForeign();
+
+      let bottomTimer=null;
+      box.addEventListener('scroll', ()=>{
+        clearTimeout(bottomTimer);
+        if (atBottom()){
+          bottomTimer = setTimeout(()=>{
+            const lastMsg = box.querySelector('.msg:last-of-type');
+            const ts = lastMsg ? Number(lastMsg.dataset.ts || 0) : 0;
+            markRead(ts);
+          }, 300);
+        }
+      });
+
+      window.__CHAT_MARK_READ__ = { markRead, observeLastForeign, autoscroll, atBottom };
+    })();
+  </script>
+
+  <script>
+    (function(){
+      const chatId = {{ chat.id|default_if_none:"null"|default:"null" }};
+      const meId   = {{ user.id|default_if_none:"null"|default:"null" }};
+      if (chatId === null) return;
+
+      const scrollEl = document.getElementById('chatScroll');
+      const form     = document.getElementById('chatForm');
+      const ta       = document.getElementById('id_content');
+      const AVA      = window.__CHAT_AVATARS__ || {};
+      const typingEl = document.getElementById('typing');
+
+      const { markRead, observeLastForeign, autoscroll, atBottom } = window.__CHAT_MARK_READ__ || {};
+
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws    = new WebSocket(`${proto}://${location.host}/ws/chat/${chatId}/`);
+
+      const z2 = n => (n < 10 ? '0' : '') + n;
+      function toTS(msg){
+        if (msg && msg.created_ts != null && !isNaN(Number(msg.created_ts))) return Number(msg.created_ts);
+        if (msg && msg.created){
+          const t = Date.parse(msg.created); if (!isNaN(t)) return t;
+        }
+        return Date.now();
+      }
+      function fmtHHMM(ts){
+        const d = new Date(ts);
+        return `${z2(d.getHours())}:${z2(d.getMinutes())}`;
+      }
+      function fmtDay(ts){
+        const d = new Date(ts);
+        return `${z2(d.getDate())}.${z2(d.getMonth()+1)}.${d.getFullYear()}`;
+      }
+
+      function esc(s){
+        return String(s || '')
+          .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+          .replace(/'/g,'&#39;');
+      }
+      function avatarHTML(url){
+        return url
+          ? `<span class="mini-ava border"><img src="${url}" alt="" loading="lazy"></span>`
+          : `<span class="mini-ava border d-inline-grid"><i class="bi-person"></i></span>`;
+      }
+      function nameHTML(id, name, url){
+        if (Number(id) === Number(meId)){
+          return `<a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>`;
+        }
+        if (url){
+          return `<a href="${url}" class="text-decoration-none fw-semibold">${esc(name || 'Сотрудник')}</a>`;
+        }
+        return `<a href="{% url 'employees:employee_detail' 0 %}`.replace('/0/', `/${id}/`) +
+              `" class="text-decoration-none fw-semibold">${esc(name || 'Сотрудник')}</a>`;
+      }
+
+      function renderDayDivider(dateStr){
+        const div = document.createElement('div');
+        div.className = 'day-divider';
+        div.innerHTML = `<span>${esc(dateStr)}</span>`;
+        scrollEl.appendChild(div);
+      }
+
+      (function ensureLastDayFromDom(){
+        const dl = scrollEl.querySelector('.day-divider:last-of-type span');
+        if (dl) {
+          scrollEl.dataset.lastDay = dl.textContent.trim();
+        } else {
+          const lastMsg = scrollEl.querySelector('.msg:last-of-type');
+          if (lastMsg){
+            const ts = Number(lastMsg.dataset.ts || Date.now());
+            scrollEl.dataset.lastDay = fmtDay(ts);
+          }
+        }
+      })();
+
+      function renderMessage(msg){
+        const mine = Number(msg.author_id) === Number(meId);
+        if (msg.author_id && msg.avatar && !AVA[msg.author_id]) AVA[msg.author_id] = msg.avatar;
+
+        const ts = toTS(msg);
+        const dayStr = msg.day || fmtDay(ts);
+        if (dayStr && scrollEl.dataset.lastDay !== dayStr){
+          renderDayDivider(dayStr);
+          scrollEl.dataset.lastDay = dayStr;
+        }
+
+        const wrap = document.createElement('div');
+        wrap.className = `d-flex mb-3 msg ${mine ? 'justify-content-end' : 'justify-content-start'}`;
+        if (msg.id != null) wrap.setAttribute('data-id', String(msg.id));
+        wrap.setAttribute('data-ts', String(ts));
+        wrap.setAttribute('data-author-id', String(msg.author_id || ''));
+
+        const who   = nameHTML(msg.author_id, msg.author_name || msg.author, msg.author_url);
+        const time  = fmtHHMM(ts);
+        const text  = esc(msg.content || '').replace(/\n/g,'<br>');
+        const bubble = `
+          <div class="d-flex flex-column" style="max-width:80%;">
+            <div class="small text-secondary ${mine ? 'text-end' : ''}">
+              ${who} · ${time}
+            </div>
+            <div class="mt-1 bubble ${mine ? 'bubble-me' : 'bubble-other'}">
+              ${text}
+            </div>
+          </div>`;
+
+        const avaUrl = msg.avatar || AVA[msg.author_id] || "";
+        const ava = avatarHTML(avaUrl);
+
+        if (!mine){
+          const link = msg.author_url || `{% url 'employees:employee_detail' 0 %}`.replace('/0/', `/${msg.author_id}/`);
+          wrap.innerHTML = `<a class="me-2 text-decoration-none" href="${link}">${ava}</a>${bubble}`;
+        }else{
+          wrap.innerHTML = `${bubble}<a class="ms-2 text-decoration-none" href="{% url 'employees:profile' %}">${ava}</a>`;
+        }
+
+        const keep = atBottom && atBottom();
+        scrollEl.appendChild(wrap);
+        if (keep && autoscroll) autoscroll();
+
+        if (observeLastForeign) observeLastForeign();
+        if (keep && window.__CHAT_MARK_READ__?.markRead){
+          window.__CHAT_MARK_READ__.markRead(ts);
+        }
+      }
+
+      let typingTimer = null;
+      function showTyping(){
+        if (!typingEl) return;
+        typingEl.classList.remove('d-none');
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(()=> typingEl.classList.add('d-none'), 2000);
+      }
+
+      ws.addEventListener('message', (e)=>{
+        try{
+          const data = JSON.parse(e.data);
+          if (data.type === 'typing' && Number(data.user_id) !== Number(meId)){ showTyping(); return; }
+          const msg = data.payload || data.message || data;
+          renderMessage(msg);
+        }catch(_){}
+      });
+
+      ws.addEventListener('close', ()=>{ setTimeout(()=>location.reload(), 2000); });
+
+      form?.addEventListener('submit', (e)=>{
+        e.preventDefault();
+        const text = (ta?.value || '').trim();
+        if (!text || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ content: text }));
+        ta.value=''; ta.dispatchEvent(new Event('input'));
+      });
+
+      let lastTyping = 0;
+      ta?.addEventListener('input', ()=>{
+        const now = Date.now();
+        if (ws.readyState === WebSocket.OPEN && now - lastTyping > 1500){
+          ws.send(JSON.stringify({ type:'typing' }));
+          lastTyping = now;
+        }
+      });
+
+      if (!window.__SCROLLED_ON_INIT__ && window.__CHAT_MARK_READ__?.autoscroll) window.__CHAT_MARK_READ__.autoscroll();
+    })();
+  </script>
+
+  {# Поиск/фильтр + скрытие пустых секций #}
+  <script>
+    (function(){
+      const search = document.getElementById('chatSearch');
+      const labels = document.querySelectorAll('[data-filter]');
+      const sections = {
+        global: document.querySelector('.chat-section[data-sec="global"]'),
+        department: document.querySelector('.chat-section[data-sec="department"]'),
+        private: document.querySelector('.chat-section[data-sec="private"]')
+      };
+      let active = 'all';
+      const norm = s => (s || '').toLowerCase().replace(/\s+/g,' ').trim();
+
+      function apply(){
+        const q = norm(search?.value || '');
+        document.querySelectorAll('.chat-row').forEach(el=>{
+          const type = el.getAttribute('data-type');
+          const hay  = norm(el.getAttribute('data-haystack'));
+          const okType = (active === 'all') || (type === active);
+          const okText = !q || hay.includes(q);
+          el.style.display = (okType && okText) ? '' : 'none';
+        });
+
+        Object.entries(sections).forEach(([key, wrap])=>{
+          if (!wrap) return;
+          const list = wrap.querySelector('.list-chats');
+          const visible = list && list.querySelector('.chat-row:not([style*="display: none"])');
+          const note = wrap.querySelector('[data-empty-note]');
+          wrap.style.display = visible ? '' : 'none';
+          if (note) note.style.display = visible ? 'none' : '';
+        });
+      }
+
+      labels.forEach(l=>{
+        l.addEventListener('click', ()=>{
+          labels.forEach(x=>x.classList.toggle('active', x===l));
+          active = l.getAttribute('data-filter');
+          apply();
+        });
+      });
+      search && search.addEventListener('input', apply);
+      apply();
+    })();
+  </script>
+
+  {# Realtime-обновления списка через /ws/chats/ — только если есть список #}
+  <script>
+    (function(){
+      const listAny = document.querySelector('.chat-row');
+      if (!listAny) return;
+      const meId = {{ user.id|default_if_none:"null"|default:"null" }};
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws/chats/`);
+
+      function resortSection(sectionListEl){
+        const rows = Array.from(sectionListEl.querySelectorAll('.chat-row'));
+        rows.sort((a,b)=>{
+          const ta = Number(a.getAttribute('data-last-ts') || 0);
+          const tb = Number(b.getAttribute('data-last-ts') || 0);
+          return tb - ta;
+        });
+        rows.forEach(r => sectionListEl.appendChild(r));
+      }
+
+      function containerForType(t){
+        if (t === 'global') return document.getElementById('sec-global');
+        if (t === 'department') return document.getElementById('sec-department');
+        return document.getElementById('sec-private');
+      }
+
+      ws.addEventListener('message', (e)=>{
+        try{
+          const data = JSON.parse(e.data);
+          if (data.type !== 'list_update') return;
+
+          const chatId = String(data.chat_id);
+          const msg = data.message || {};
+          const row = document.querySelector(`.chat-row[data-chat-id="${chatId}"]`);
+          if (!row) return;
+
+          const ts = Number(msg.created_ts || Date.now());
+          row.setAttribute('data-last-ts', String(ts));
+          const timeEl = row.querySelector('[data-last-time]');
+          const authEl = row.querySelector('[data-last-author]');
+          const prevEl = row.querySelector('[data-last-preview]');
+          if (timeEl) timeEl.textContent = msg.created || '';
+          if (authEl) authEl.textContent = msg.author_name || 'Сотрудник';
+          if (prevEl) prevEl.textContent = (msg.content || '').slice(0, 120);
+
+          const badge = row.querySelector('[data-unread]');
+          const cntEl = row.querySelector('[data-unread-count]');
+          if (Number(msg.author_id) === Number(meId)){
+            if (cntEl) cntEl.textContent = '0';
+            if (badge) badge.classList.add('d-none');
+          }else{
+            const cur = Number((cntEl && cntEl.textContent) || 0) + 1;
+            if (cntEl) cntEl.textContent = String(cur);
+            if (badge && cur > 0) badge.classList.remove('d-none');
+          }
+
+          const type = row.getAttribute('data-type');
+          const list = containerForType(type);
+          if (list){ resortSection(list); }
+        }catch(_){}
+      });
+
+      ws.addEventListener('close', ()=>{ setTimeout(()=>location.reload(), 2000); });
+    })();
+  </script>
+  <script>
+    (function(){
+      const meId  = {{ user.id|default:"0" }};
+      const badge = document.getElementById('sidebarChatBadge');
+
+      function setBadge(n){
+        if (!badge) return;
+        const v = Math.max(0, Number(n)||0);
+        badge.dataset.count = String(v);
+        badge.textContent = v > 99 ? '99+' : String(v);
+        badge.classList.toggle('d-none', v <= 0);
+      }
+
+      // стартовое значение (из шаблона сайдбара)
+      setBadge(badge?.dataset.count || 0);
+
+      // карта непрочитанных по чатам (если мы на списке чатов — проинициализируем из DOM)
+      const chatUnread = Object.create(null);
+      document.querySelectorAll('.chat-row[data-chat-id]').forEach(row=>{
+        const id  = String(row.getAttribute('data-chat-id'));
+        const cnt = Number(row.querySelector('[data-unread-count]')?.textContent || 0);
+        chatUnread[id] = cnt;
+      });
+      function recompute(){
+        let total = 0;
+        for (const k in chatUnread){ total += Number(chatUnread[k]||0); }
+        setBadge(total);
+      }
+      if (Object.keys(chatUnread).length) recompute();
+
+      // глобальный канал обновлений списка чатов
+      try{
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${proto}://${location.host}/ws/chats/`);
+
+        ws.addEventListener('message', (e)=>{
+          try{
+            const data = JSON.parse(e.data);
+            if (data.type !== 'list_update') return;
+
+            const chatId = String(data.chat_id);
+            const msg    = data.message || {};
+            const isMine = Number(msg.author_id) === Number(meId);
+
+            // если сообщение моё — обнуляем счётчик для этого чата, иначе +1
+            chatUnread[chatId] = isMine ? 0 : (Number(chatUnread[chatId]||0) + 1);
+            recompute();
+          }catch(_){}
+        });
+        ws.addEventListener('close', ()=>{ /* молча, без перезапуска */ });
+      }catch(_){}
+
+      // Обнуляем конкретный чат, когда где-то на сайте он помечен прочитанным
+      window.addEventListener('chat:read', (e)=>{
+        const chatId = String(e?.detail?.chatId || '');
+        if (!chatId) return;
+        chatUnread[chatId] = 0;
+        recompute();
+      });
+    })();
+  </script>
+
+
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

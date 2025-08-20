@@ -1,0 +1,14 @@
+{# usage: {% include "requests_app/_status_badge.html" with status=req.status %} #}
+{% if status == 'pending' %}
+  <span class="badge bg-secondary">На рассмотрении</span>
+{% elif status == 'approved' %}
+  <span class="badge bg-success">Одобрено</span>
+{% elif status == 'rejected' %}
+  <span class="badge bg-danger">Отклонено</span>
+{% elif status == 'cancelled' %}
+  <span class="badge bg-dark">Отменено</span>
+{% elif status == 'draft' %}
+  <span class="badge bg-light text-body">Черновик</span>
+{% else %}
+  <span class="badge bg-light text-body">Неизвестно</span>
+{% endif %}

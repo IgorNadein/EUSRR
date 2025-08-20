@@ -1,10 +1,11 @@
 # backend/employees/forms.py
 from django import forms
-from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.core.exceptions import ValidationError
 from phonenumber_field.formfields import PhoneNumberField
 
-from .models import Absence, Department, Education, Employee, Skill
+from .models import (Absence, Department, Education, Employee,
+                     EmployeeDepartment, Skill)
 
 
 # =========================
@@ -124,24 +125,46 @@ class InviteToDepartmentForm(forms.Form):
     employee = forms.ModelChoiceField(
         queryset=Employee.objects.none(),
         label="Сотрудник",
-        widget=forms.Select(attrs={"class": "form-select"})
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
 
     def __init__(self, department, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        qs = (Employee.objects
-              .all()
-              # НЕ показываем тех, кто уже активен в отделе
-              .exclude(
-                  departments_links__department=department,
-                  departments_links__is_active=True,
-              )
-              # по желанию: не показывать руководителя, если он уже назначен
-              .exclude(id=department.head_id if department.head_id else None)
-              .order_by("last_name", "first_name"))
+        qs = (
+            Employee.objects.all()
+            # НЕ показываем тех, кто уже активен в отделе
+            .exclude(
+                departments_links__department=department,
+                departments_links__is_active=True,
+            )
+            # по желанию: не показывать руководителя, если он уже назначен
+            .exclude(id=department.head_id if department.head_id else None).order_by(
+                "last_name", "first_name"
+            )
+        )
 
         self.fields["employee"].queryset = qs
+
+
+class DepartmentMemberRoleForm(forms.ModelForm):
+    class Meta:
+        model = EmployeeDepartment
+        fields = ["role", "is_active"]
+        labels = {
+            "role": "Роль в отделе",
+            "is_active": "Активен в отделе",
+        }
+        widgets = {
+            "role": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Например: Аналитик, Тимлид, Наставник",
+                    "autocomplete": "off",
+                }
+            ),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
 
 
 # =========================

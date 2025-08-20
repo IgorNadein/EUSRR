@@ -1,90 +1,53 @@
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
+from django.db.models import BooleanField, Count, Exists, F, OuterRef, Prefetch, Value
+from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from employees.models import Department, Employee, EmployeeDepartment
 from .constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
 from .forms import CommentForm, PostForm
-from .models import Post, Comment
+from .models import Comment, Post, PostLike
 
 
-def feed_list(request):
-    posts = Post.objects.filter(type=TYPE_COMPANY).order_by("-pinned", "-created_at")
-    active_employees = sorted(
-        [emp for emp in Employee.objects.all() if emp.is_actually_active],
-        key=lambda e: e.created_at,
-        reverse=True,
-    )
-    new_count = max(1, int(len(active_employees) * 0.1))
-    new_employees = Employee.get_active()[:new_count]
-    return render(
-        request, "feed/feed_list.html", {"posts": posts, "new_employees": new_employees}
-    )
+# ---------- Общие утилиты ----------
 
-
-@login_required
-def department_feed(request, pk):
-    """Осталось для совместимости; основная — employees:department_detail."""
-    department = get_object_or_404(Department, pk=pk)
-    posts = Post.objects.filter(type=TYPE_DEPARTMENT, department=department).order_by(
-        "-pinned", "-created_at"
-    )
-    new_employees = department.new_employees
-    emp_links = (
-        EmployeeDepartment.objects.filter(department=department, is_active=True)
-        .select_related("employee")
-        .order_by("employee__last_name", "employee__first_name")
-    )
-    return render(
-        request,
-        "feed/department_feed.html",
-        {
-            "department": department,
-            "posts": posts,
-            "new_employees": new_employees,
-            "emp_links": emp_links,
-        },
-    )
-
-
-@login_required
-def employee_feed(request, pk):
-    employee = get_object_or_404(Employee, pk=pk)
-    posts = Post.objects.filter(author=employee).order_by("-created_at")
-    return render(
-        request, "feed/employee_feed.html", {"employee": employee, "posts": posts}
-    )
-
-
-@login_required
-def post_detail(request, pk):
-    post = get_object_or_404(Post, pk=pk)
-    comments = post.comments.select_related("author")
-    if request.method == "POST":
-        comment_form = CommentForm(request.POST)
-        if comment_form.is_valid():
-            comment = comment_form.save(commit=False)
-            comment.author = request.user
-            comment.post = post
-            comment.save()
-            messages.success(request, "Комментарий добавлен!")
-            return redirect("feed:post_detail", pk=pk)
+def _feed_queryset(base_qs, user):
+    """
+    Базовый queryset для ленты:
+      - is_liked: отмечено ли текущим пользователем
+      - comments_count: количество комментариев
+      - last_comment_list: последний комментарий (to_attr)
+    """
+    if user.is_authenticated:
+        is_liked_expr = Exists(PostLike.objects.filter(post=OuterRef("pk"), user=user))
     else:
-        comment_form = CommentForm()
-    return render(
-        request,
-        "feed/post_detail.html",
-        {"post": post, "comments": comments, "comment_form": comment_form},
+        is_liked_expr = Value(False, output_field=BooleanField())
+
+    last_comment_qs = (
+        Comment.objects.select_related("author")
+        .order_by("-created_at")[:1]
+    )
+
+    return (
+        base_qs
+        .select_related("author", "department")
+        .annotate(
+            is_liked=is_liked_expr,
+            comments_count=Count("comments"),
+        )
+        .prefetch_related(
+            Prefetch("comments", queryset=last_comment_qs, to_attr="last_comment_list")
+        )
+        .order_by("-pinned", "-created_at")
     )
 
 
-# ---------- Хелперы прав/редиректов ----------
 def is_department_head(user, department: Department) -> bool:
-    return bool(
-        user and (user.is_staff or (department and department.head_id == user.id))
-    )
+    return bool(user and (user.is_staff or (department and department.head_id == user.id)))
 
 
 def can_edit_post(user, post: Post) -> bool:
@@ -96,7 +59,7 @@ def can_edit_post(user, post: Post) -> bool:
         return False  # только staff
     if post.type == TYPE_DEPARTMENT:
         return post.author_id == user.id or is_department_head(user, post.department)
-    return post.author_id == user.id  # employee
+    return post.author_id == user.id  # личная публикация
 
 
 def back_url_for_post(post: Post, user) -> str:
@@ -110,7 +73,159 @@ def back_url_for_post(post: Post, user) -> str:
     )
 
 
-# ---------- Создание ----------
+# ---------- Ленты ----------
+
+def feed_list(request):
+    """
+    Лента компании (доступна анонимам).
+    Возвращаем posts с аннотациями (is_liked, comments_count, last_comment_list).
+    """
+    posts = _feed_queryset(Post.objects.filter(type=TYPE_COMPANY), request.user)
+
+    # «Новые сотрудники»: верхние 10% активных, но минимум 1 (как было)
+    active_employees = sorted(
+        (emp for emp in Employee.objects.all() if emp.is_actually_active),
+        key=lambda e: e.created_at,
+        reverse=True,
+    )
+    new_count = max(1, int(len(active_employees) * 0.1))
+    new_employees = Employee.get_active()[:new_count]
+
+    return render(
+        request,
+        "feed/feed_list.html",
+        {"posts": posts, "new_employees": new_employees},
+    )
+
+
+@login_required
+def department_feed(request, pk):
+    """Историческая страница ленты отдела (основная — employees:department_detail)."""
+    department = get_object_or_404(Department, pk=pk)
+    posts = _feed_queryset(
+        Post.objects.filter(type=TYPE_DEPARTMENT, department=department),
+        request.user,
+    )
+    emp_links = (
+        EmployeeDepartment.objects.filter(department=department, is_active=True)
+        .select_related("employee")
+        .order_by("employee__last_name", "employee__first_name")
+    )
+    return render(
+        request,
+        "feed/feed_list.html",
+        {
+            "department": department,
+            "posts": posts,
+            "new_employees": getattr(department, "new_employees", []),
+            "emp_links": emp_links,
+        },
+    )
+
+
+@login_required
+def employee_feed(request, pk):
+    """Лента конкретного сотрудника."""
+    employee = get_object_or_404(Employee, pk=pk)
+    posts = _feed_queryset(
+        Post.objects.filter(type=TYPE_EMPLOYEE, author=employee),
+        request.user,
+    )
+    return render(
+        request,
+        "feed/feed_list.html",
+        {"employee": employee, "posts": posts},
+    )
+
+
+# ---------- Детальная + комментарии ----------
+
+@login_required
+def post_detail(request, pk):
+    post = get_object_or_404(Post, pk=pk)
+    comments = post.comments.select_related("author")
+
+    if request.method == "POST":
+        # инлайн-форма из ленты также постится сюда
+        text = request.POST.get("text")
+        if text:
+            comment_form = CommentForm(request.POST)
+            if comment_form.is_valid():
+                comment = comment_form.save(commit=False)
+                comment.author = request.user
+                comment.post = post
+                comment.save()
+                messages.success(request, "Комментарий добавлен!")
+                next_url = request.POST.get("next")
+                if next_url:
+                    return redirect(next_url)
+                return redirect("feed:post_detail", pk=pk)
+        else:
+            comment_form = CommentForm(request.POST)
+            if comment_form.is_valid():
+                comment = comment_form.save(commit=False)
+                comment.author = request.user
+                comment.post = post
+                comment.save()
+                messages.success(request, "Комментарий добавлен!")
+                return redirect("feed:post_detail", pk=pk)
+    else:
+        comment_form = CommentForm()
+
+    return render(
+        request,
+        "feed/post_detail.html",
+        {"post": post, "comments": comments, "comment_form": comment_form},
+    )
+
+
+@login_required
+def comment_update(request, pk):
+    """Редактирование комментария (автор или staff)."""
+    comment = get_object_or_404(Comment, pk=pk)
+    if not (request.user.is_staff or comment.author_id == request.user.id):
+        messages.error(request, "У вас нет прав для редактирования этого комментария.")
+        return redirect("feed:post_detail", pk=comment.post_id)
+
+    if request.method == "POST":
+        form = CommentForm(request.POST, instance=comment)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Комментарий обновлён.")
+            return redirect(f"{reverse('feed:post_detail', args=[comment.post_id])}#c{comment.pk}")
+    else:
+        form = CommentForm(instance=comment)
+
+    return render(
+        request,
+        "feed/comment_form.html",
+        {"form": form, "comment": comment, "post": comment.post},
+    )
+
+
+@login_required
+def comment_delete(request, pk):
+    """Удаление комментария (автор или staff; подтверждение через GET-страницу)."""
+    comment = get_object_or_404(Comment, pk=pk)
+    if not (request.user.is_staff or comment.author_id == request.user.id):
+        messages.error(request, "У вас нет прав для удаления этого комментария.")
+        return redirect("feed:post_detail", pk=comment.post_id)
+
+    if request.method == "POST":
+        post_id = comment.post_id
+        comment.delete()
+        messages.success(request, "Комментарий удалён.")
+        return redirect("feed:post_detail", pk=post_id)
+
+    return render(
+        request,
+        "feed/comment_confirm_delete.html",
+        {"comment": comment, "post": comment.post},
+    )
+
+
+# ---------- Создание/редактирование/удаление поста ----------
+
 @login_required
 def post_create(request):
     """
@@ -133,16 +248,8 @@ def post_create(request):
 
     cancel_url = (
         request.GET.get("next")
-        or (
-            reverse("employees:department_detail", args=[department.pk])
-            if department
-            else None
-        )
-        or (
-            reverse("feed:feed_list")
-            if context_type == TYPE_COMPANY
-            else reverse("feed:employee_feed", args=[request.user.pk])
-        )
+        or (reverse("employees:department_detail", args=[department.pk]) if department else None)
+        or (reverse("feed:feed_list") if context_type == TYPE_COMPANY else reverse("feed:employee_feed", args=[request.user.pk]))
     )
 
     if request.method == "POST":
@@ -151,7 +258,6 @@ def post_create(request):
             post = form.save(commit=False)
             post.author = request.user
 
-            # фиксируем контекст
             if context_type == TYPE_DEPARTMENT:
                 post.type = TYPE_DEPARTMENT
                 post.department = department
@@ -167,12 +273,7 @@ def post_create(request):
                 return render(
                     request,
                     "feed/post_form.html",
-                    {
-                        "form": form,
-                        "context_type": context_type,
-                        "department": department,
-                        "cancel_url": cancel_url,
-                    },
+                    {"form": form, "context_type": context_type, "department": department, "cancel_url": cancel_url},
                 )
 
             post.save()
@@ -202,16 +303,10 @@ def post_create(request):
     return render(
         request,
         "feed/post_form.html",
-        {
-            "form": form,
-            "context_type": context_type,
-            "department": department,
-            "cancel_url": cancel_url,
-        },
+        {"form": form, "context_type": context_type, "department": department, "cancel_url": cancel_url},
     )
 
 
-# ---------- Редактирование ----------
 @login_required
 def post_update(request, pk):
     post = get_object_or_404(Post, pk=pk)
@@ -224,7 +319,6 @@ def post_update(request, pk):
     if request.method == "POST":
         form = PostForm(request.POST, request.FILES, instance=post)
         if form.is_valid():
-            # Не позволяем менять контекст (тип/отдел) из формы
             edited = form.save(commit=False)
             edited.type = post.type
             edited.department = post.department
@@ -234,7 +328,6 @@ def post_update(request, pk):
             return redirect(back_url_for_post(post, request.user))
     else:
         form = PostForm(instance=post)
-        # Прячем поля, чтобы не меняли тип/отдел
         if "type" in form.fields:
             form.fields["type"].widget = forms.HiddenInput()
         if "department" in form.fields:
@@ -245,16 +338,10 @@ def post_update(request, pk):
     return render(
         request,
         "feed/post_form.html",
-        {
-            "form": form,
-            "context_type": context_type,
-            "department": department,
-            "cancel_url": cancel_url,
-        },
+        {"form": form, "context_type": context_type, "department": department, "cancel_url": cancel_url},
     )
 
 
-# ---------- Удаление ----------
 @login_required
 def post_delete(request, pk):
     post = get_object_or_404(Post, pk=pk)
@@ -282,77 +369,60 @@ def pin_post(request, pk):
     post = get_object_or_404(Post, pk=pk)
 
     if post.type == TYPE_COMPANY and not request.user.is_staff:
-        messages.error(
-            request, "Только администратор может закреплять новости компании."
-        )
+        messages.error(request, "Только администратор может закреплять новости компании.")
         return redirect("feed:post_detail", pk=pk)
 
-    if post.type == TYPE_DEPARTMENT and not is_department_head(
-        request.user, post.department
-    ):
-        messages.error(
-            request, "Только руководитель отдела может закреплять новости отдела."
-        )
+    if post.type == TYPE_DEPARTMENT and not is_department_head(request.user, post.department):
+        messages.error(request, "Только руководитель отдела может закреплять новости отдела.")
         return redirect("feed:post_detail", pk=pk)
 
     post.pinned = not post.pinned
     post.save()
-    messages.success(
-        request, "Новость закреплена!" if post.pinned else "Новость откреплена!"
-    )
-
+    messages.success(request, "Новость закреплена!" if post.pinned else "Новость откреплена!")
     return redirect(back_url_for_post(post, request.user))
 
 
-def _can_manage_comment(user, comment: Comment) -> bool:
-    return user.is_staff or (comment.author_id == user.id)
+# ---------- Лайки ----------
 
 @login_required
-def comment_update(request, pk):
+def toggle_like(request, pk):
     """
-    Редактирование комментария.
-    Доступно автору комментария и staff.
+    Переключение лайка. При AJAX/Fetch отдаёт JSON, иначе редиректит «назад».
+    Счётчик поддерживаем атомарно через F().
     """
-    comment = get_object_or_404(Comment, pk=pk)
-    if not _can_manage_comment(request.user, comment):
-        messages.error(request, "У вас нет прав для редактирования этого комментария.")
-        return redirect("feed:post_detail", pk=comment.post_id)
+    if request.method != "POST":
+        return redirect("feed:post_detail", pk=pk)
 
-    if request.method == "POST":
-        form = CommentForm(request.POST, instance=comment)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Комментарий обновлён.")
-            # Якорь на комментарий (если в шаблоне есть id="c{{ comment.id }}")
-            return redirect(f"{reverse('feed:post_detail', args=[comment.post_id])}#c{comment.pk}")
-    else:
-        form = CommentForm(instance=comment)
+    post = get_object_or_404(Post, pk=pk)
 
-    return render(
-        request,
-        "feed/comment_form.html",
-        {"form": form, "comment": comment, "post": comment.post},
+    with transaction.atomic():
+        like, created = PostLike.objects.select_for_update().get_or_create(
+            post=post, user=request.user
+        )
+        if created:
+            Post.objects.filter(pk=post.pk).update(likes_count=F("likes_count") + 1)
+            is_liked = True
+        else:
+            like.delete()
+            Post.objects.filter(pk=post.pk, likes_count__gt=0).update(
+                likes_count=F("likes_count") - 1
+            )
+            is_liked = False
+
+    post.refresh_from_db(fields=["likes_count"])
+
+    wants_json = (
+        "application/json" in request.headers.get("Accept", "")
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
     )
+    if wants_json:
+        return JsonResponse(
+            {"ok": True, "post_id": post.pk, "is_liked": is_liked, "likes": post.likes_count}
+        )
 
-@login_required
-def comment_delete(request, pk):
-    """
-    Удаление комментария.
-    Доступно автору и staff. Подтверждение через GET-страницу.
-    """
-    comment = get_object_or_404(Comment, pk=pk)
-    if not _can_manage_comment(request.user, comment):
-        messages.error(request, "У вас нет прав для удаления этого комментария.")
-        return redirect("feed:post_detail", pk=comment.post_id)
-
-    if request.method == "POST":
-        post_id = comment.post_id
-        comment.delete()
-        messages.success(request, "Комментарий удалён.")
-        return redirect("feed:post_detail", pk=post_id)
-
-    return render(
-        request,
-        "feed/comment_confirm_delete.html",
-        {"comment": comment, "post": comment.post},
+    next_url = (
+        request.POST.get("next")
+        or request.META.get("HTTP_REFERER")
+        or reverse("feed:post_detail", args=[post.pk])
     )
+    return HttpResponseRedirect(next_url)

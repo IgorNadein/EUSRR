@@ -3,9 +3,8 @@ from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
-
-# from django.utils.translation import gettext_lazy as _
 from phonenumber_field.modelfields import PhoneNumberField
+from simple_history.models import HistoricalRecords
 
 from .constants import ACTION_CHOICES, ACTION_DISMISSED, GENDER_CHOICES
 
@@ -36,7 +35,6 @@ class EmployeeManager(BaseUserManager):
 
 
 class Employee(AbstractUser):
-    # Отключаем username
     username = None
 
     gender = models.PositiveSmallIntegerField(
@@ -125,6 +123,7 @@ class EmployeeAction(models.Model):
     date = models.DateTimeField("Дата действия")
     comment = models.TextField("Комментарий/причина", blank=True)
     extra = models.JSONField("Дополнительно", blank=True, null=True)
+    history = HistoricalRecords()
 
     class Meta:
         verbose_name = "Кадровое событие"
@@ -226,6 +225,7 @@ class EmployeePosition(models.Model):
     title = models.CharField("Название должности", max_length=255)
     date_from = models.DateField("Дата начала должности")
     date_to = models.DateField("Дата окончания должности", null=True, blank=True)
+    history = HistoricalRecords()
 
     class Meta:
         verbose_name = "Должность сотрудника"

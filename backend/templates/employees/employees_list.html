@@ -5,117 +5,175 @@
 
 {% block content %}
 <div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
 
-  <!-- Заголовок + поиск -->
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <div class="d-flex align-items-center gap-3">
-      <i class="bi-people display-6 text-primary"></i>
-      <div>
-        <h2 class="mb-0 fw-bold">Сотрудники</h2>
-        <div class="text-muted small">Всего: {{ employees|length }}</div>
+      {# Заголовок + фильтры #}
+      <div class="feed-header">
+        <i class="bi-people fs-2 text-primary"></i>
+        <h2 class="title mb-0">Сотрудники</h2>
+
+        {% if is_filtered_by_department and current_department %}
+          <span class="ms-2 small text-secondary">
+            Отдел: {{ current_department.name }} • {{ employees|length }}
+          </span>
+        {% else %}
+          <span class="ms-2 small text-secondary">Всего: {{ employees|length }}</span>
+        {% endif %}
       </div>
-    </div>
-    <div class="w-auto" style="min-width: 280px;">
-      <input type="search" class="form-control" id="empFilter" placeholder="Быстрый поиск…">
-    </div>
-  </div>
 
-  <!-- Вертикальный список -->
-  <ul class="list-group shadow-sm" id="empList">
-    {% for emp in employees %}
-      <li class="list-group-item py-3 emp-row"
-          data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.email }}{% for d in emp.departments %} {{ d.name }}{% endfor %}">
-        <div class="d-flex align-items-center gap-3">
+      <div class="feed-new mb-3">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          {# Сегментированный фильтр (визуальный) #}
+          <div class="btn-group" role="group" aria-label="Фильтр">
+            <input type="radio" class="btn-check" name="empScope" id="scopeAll" autocomplete="off" checked>
+            <label class="btn btn-ghost" for="scopeAll"><i class="bi-people me-1"></i>Все</label>
 
-          <!-- Аватар -->
-          {% if emp.avatar %}
-            <img src="{{ emp.avatar.url }}" alt="{{ emp.get_full_name }}"
-                 class="rounded-circle shadow-sm"
-                 style="width:56px;height:56px;object-fit:cover;">
-          {% else %}
-            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center shadow-sm"
-                 style="width:56px;height:56px;">
-              {{ emp.get_short_name|default:emp.first_name|slice:":1"|upper }}
+            <input type="radio" class="btn-check" name="empScope" id="scopeActive" autocomplete="off">
+            <label class="btn btn-ghost" for="scopeActive"><i class="bi-person-check me-1"></i>Активные</label>
+          </div>
+
+          {# Быстрый поиск #}
+          <div class="ms-auto flex-grow-1" style="min-width: 260px; max-width: 420px;">
+            <div class="input-group">
+              <span class="input-group-text bg-transparent border-0 ps-0">
+                <i class="bi-search text-secondary"></i>
+              </span>
+              <input type="search" id="empFilter" class="form-control"
+                     placeholder="Поиск по ФИО, email, отделу…">
             </div>
-          {% endif %}
-
-          <!-- Основной блок -->
-          <div class="flex-grow-1">
-            <div class="d-flex align-items-center justify-content-between flex-wrap">
-              <div class="me-2">
-                <a href="{% url 'employees:employee_detail' emp.pk %}" class="fw-semibold text-decoration-none">
-                  {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
-                </a>
-                {% if emp.is_actually_active %}
-                  <span class="badge bg-success ms-2">Активен</span>
-                {% else %}
-                  <span class="badge bg-secondary ms-2">Не активен</span>
-                {% endif %}
-              </div>
-
-              <!-- Кнопки действий (справа) -->
-              <div class="mt-2 mt-sm-0 d-flex gap-2">
-                <a href="{% url 'employees:employee_detail' emp.pk %}" class="btn btn-sm btn-outline-primary">
-                  Профиль
-                </a>
-                {% if user != emp %}
-                  <a href="{% url 'communications:start_private_chat' emp.pk %}" class="btn btn-sm btn-success">
-                    <i class="bi-chat-dots me-1"></i> Чат
-                  </a>
-                {% endif %}
-              </div>
-            </div>
-
-            <!-- Контакты -->
-            <div class="small text-muted mt-1">
-              <i class="bi-envelope me-1"></i>{{ emp.email }}
-              {% if emp.phone_number %} • <i class="bi-telephone me-1"></i>{{ emp.phone_number }}{% endif %}
-            </div>
-
-            <!-- Должность (если активная есть) -->
-            {% with pos=emp.positions.first %}
-              {% if pos and pos.is_active %}
-                <div class="mt-1">
-                  <span class="badge bg-primary">{{ pos.title }}</span>
-                </div>
-              {% endif %}
-            {% endwith %}
-
-            <!-- Отделы (до 3 шт.) -->
-            {% with deps=emp.departments %}
-              {% if deps %}
-                <div class="mt-2">
-                  {% for d in deps|slice:":3" %}
-                    <span class="badge bg-light text-dark border">{{ d.name }}</span>
-                  {% endfor %}
-                  {% if deps|length > 3 %}
-                    <span class="badge bg-light text-dark border">+{{ deps|length|add:"-3" }}</span>
-                  {% endif %}
-                </div>
-              {% endif %}
-            {% endwith %}
           </div>
         </div>
-      </li>
-    {% empty %}
-      <li class="list-group-item">
-        <div class="alert alert-info mb-0">Нет сотрудников.</div>
-      </li>
-    {% endfor %}
-  </ul>
+      </div>
+
+      {# Лента сотрудников с буквенными разделителями #}
+      <div id="empList" class="feed-stream">
+        {% regroup employees by last_name|first|upper as grouped %}
+        {% for group in grouped %}
+          <div class="alpha-header"><span class="alpha-dot"></span>{{ group.grouper }}</div>
+
+          {% for emp in group.list %}
+            <article class="feed-card emp-row"
+                     data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {{ emp.email }}{% with deps=emp.departments %}{% if deps %}{% for d in deps %} {{ d.name }}{% endfor %}{% endif %}{% endwith %}"
+                     data-active="{% if emp.is_actually_active %}1{% else %}0{% endif %}">
+              <header class="feed-hd">
+                <div class="feed-ava" style="width:56px;height:56px;">
+                  {% if emp.avatar %}
+                    <img src="{{ emp.avatar.url }}" alt="{{ emp.get_full_name|default:emp.username }}">
+                  {% else %}
+                    <i class="bi-person"></i>
+                  {% endif %}
+                </div>
+
+                <div class="feed-meta flex-grow-1">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <a href="{% url 'employees:employee_detail' emp.pk %}"
+                       class="feed-author text-decoration-none">
+                      {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                    </a>
+
+                    {# Активность #}
+                    {% if emp.is_actually_active %}
+                      <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Активен</span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">Не активен</span>
+                    {% endif %}
+
+                    {# Бейджи роли/статуса в отделе — только при фильтре по отделу #}
+                    {% if is_filtered_by_department %}
+                      {% if emp.is_dept_head %}
+                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Руководитель</span>
+                      {% endif %}
+                      {% if emp.dep_role %}
+                        <span class="badge bg-light text-dark border">{{ emp.dep_role }}</span>
+                      {% endif %}
+                    {% endif %}
+                  </div>
+
+                  <div class="feed-sub mt-1">
+                    <i class="bi-envelope me-1"></i>{{ emp.email }}
+                    {% if emp.phone_number %} &nbsp;•&nbsp; <i class="bi-telephone me-1"></i>{{ emp.phone_number }}{% endif %}
+                  </div>
+                </div>
+
+                <div class="ms-auto d-flex align-items-center gap-2">
+                  
+                  {% if user != emp %}
+                    {% if can_manage_roles and is_filtered_by_department and current_department and emp.pk != current_department.head_id %}
+                      <a href="{% url 'employees:edit_department_role' current_department.pk emp.pk %}?next={{ request.get_full_path|urlencode }}"
+                        class="btn btn-ghost action-btn" title="Изменить роль">
+                        <i class="bi-pencil"></i><span class="d-none d-sm-inline ms-1">Роль</span>
+                      </a>
+                    {% endif %}
+                    <a href="{% url 'communications:start_private_chat' emp.pk %}"
+                       class="btn btn-ghost action-btn" title="Чат">
+                      <i class="bi-chat-dots"></i><span class="d-none d-sm-inline ms-1">Чат</span>
+                    </a>
+                  {% endif %}
+                </div>
+              </header>
+
+              <div class="feed-body pt-0">
+                {# Должность (если есть активная) #}
+                {% with pos=emp.positions.first %}
+                  {% if pos and pos.is_active %}
+                    <div class="mb-2">
+                      <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">{{ pos.title }}</span>
+                    </div>
+                  {% endif %}
+                {% endwith %}
+
+                {# Отделы чипами (до 3), остальное «+N». Если уже в режиме отдела — не дублируем. #}
+                {% if not is_filtered_by_department %}
+                  {% with deps=emp.departments %}
+                    {% if deps %}
+                      <div class="d-flex flex-wrap gap-2">
+                        {% for d in deps|slice:":3" %}
+                          <span class="badge bg-light text-dark border">{{ d.name }}</span>
+                        {% endfor %}
+                        {% if deps|length > 3 %}
+                          <span class="badge bg-light text-dark border">+{{ deps|length|add:"-3" }}</span>
+                        {% endif %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        {% empty %}
+          <div class="alert alert-info shadow-sm">Нет сотрудников.</div>
+        {% endfor %}
+      </div>
+
+    </div>
+  </div>
 </div>
 
+{# Небольшой JS-фильтр по поиску/активности — можно оставить как было #}
 <script>
   (function () {
     const input = document.getElementById('empFilter');
-    if (!input) return;
-    input.addEventListener('input', function () {
-      const q = this.value.trim().toLowerCase();
-      document.querySelectorAll('#empList .emp-row').forEach(function (row) {
+    const all = document.getElementById('scopeAll');
+    const act = document.getElementById('scopeActive');
+    const rows = () => document.querySelectorAll('#empList .emp-row');
+
+    function applyFilter(){
+      const q = (input?.value || '').trim().toLowerCase();
+      const activeOnly = act?.checked;
+
+      rows().forEach(row => {
         const hay = (row.getAttribute('data-name') || '').toLowerCase();
-        row.style.display = hay.includes(q) ? '' : 'none';
+        const isActive = row.getAttribute('data-active') === '1';
+        const okText = !q || hay.includes(q);
+        const okActive = !activeOnly || isActive;
+        row.style.display = (okText && okActive) ? '' : 'none';
       });
-    });
+    }
+
+    input?.addEventListener('input', applyFilter);
+    all?.addEventListener('change', applyFilter);
+    act?.addEventListener('change', applyFilter);
   })();
 </script>
 {% endblock %}

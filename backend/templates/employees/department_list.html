@@ -1,16 +1,100 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
 {% block title %}Отделы{% endblock %}
+
 {% block content %}
-<h2 class="mb-4">Отделы</h2>
-<ul class="list-group">
-  {% for dept in departments %}
-    <li class="list-group-item d-flex justify-content-between align-items-center">
-      <a href="{% url 'employees:department_detail' dept.pk %}">{{ dept.name }}</a>
-      {% if dept.head %}<span class="badge bg-secondary">{{ dept.head }}</span>{% endif %}
-    </li>
-  {% empty %}
-    <li class="list-group-item">Нет отделов.</li>
-  {% endfor %}
-</ul>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
+
+      <!-- Заголовок -->
+      <div class="feed-header">
+        <i class="bi-diagram-3 fs-2 text-primary"></i>
+        <h2 class="title mb-0">Отделы</h2>
+        {% if user.is_staff %}
+          <a href="{% url 'employees:department_add' %}" class="btn btn-primary ms-auto">
+            <i class="bi-plus-circle me-1"></i> Добавить отдел
+          </a>
+        {% endif %}
+      </div>
+
+      <!-- Поиск -->
+      <div class="mb-3">
+        <input id="deptSearch" type="search" class="form-control"
+               placeholder="Поиск по отделу или руководителю…">
+      </div>
+
+      {% if departments %}
+        <div id="deptList" class="feed-stream">
+          {% for dept in departments %}
+            <article class="feed-card dept-row"
+                     data-q="{{ dept.name|lower }} {% if dept.head %}{{ dept.head.last_name|lower }} {{ dept.head.first_name|lower }}{% endif %} {{ dept.description|default_if_none:''|lower }}">
+              <div class="feed-body position-relative">
+                <h3 class="feed-title mb-1">
+                  <a href="{% url 'employees:department_detail' dept.pk %}"
+                     class="text-decoration-none stretched-link">
+                    {{ dept.name }}
+                  </a>
+                </h3>
+
+                {% if dept.description %}
+                  <p class="feed-text mb-2">{{ dept.description }}</p>
+                {% endif %}
+
+                <div class="small text-muted d-flex flex-wrap gap-3">
+                  <span>
+                    <i class="bi-people me-1"></i>{{ dept.active_employees|length }} сотрудн.
+                  </span>
+                  {% if dept.head %}
+                    <span>
+                      <i class="bi-person-badge me-1"></i>
+                      Руководитель:
+                      <a class="text-decoration-none"
+                         href="{% url 'employees:employee_detail' dept.head.pk %}">
+                        {{ dept.head.last_name }} {{ dept.head.first_name }}
+                      </a>
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <footer class="feed-actions">
+                <a href="{% url 'employees:department_detail' dept.pk %}" class="btn btn-ghost">
+                  Перейти
+                </a>
+                <span class="ms-auto"></span>
+                {% if user.is_staff or dept.head_id == user.id %}
+                  <a href="{% url 'employees:invite_to_department' dept.pk %}" class="btn btn-ghost">
+                    <i class="bi-person-plus me-1"></i> Пригласить
+                  </a>
+                {% endif %}
+              </footer>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-info shadow-sm rounded-3">Отделов пока нет.</div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const input = document.getElementById('deptSearch');
+    const list = document.getElementById('deptList');
+    if (!input || !list) return;
+
+    input.addEventListener('input', function () {
+      const q = this.value.trim().toLowerCase();
+      list.querySelectorAll('.dept-row').forEach(item => {
+        const hay = item.getAttribute('data-q') || '';
+        item.classList.toggle('d-none', q && !hay.includes(q));
+      });
+    });
+  })();
+</script>
 {% endblock %}

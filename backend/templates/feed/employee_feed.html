@@ -28,7 +28,7 @@
                 </h5>
                 <p class="card-text mb-2">{{ post.body|truncatewords:32 }}</p>
                 <div class="small text-muted mb-2">
-                  Автор: {{ post.author.get_full_name|default:post.author.username }} • {{ post.created_at|date:"d.m.Y H:i" }}
+                  {{ post.created_at|date:"d.m.Y H:i" }}
                 </div>
                 <a href="{% url 'feed:post_detail' post.pk %}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
                   Подробнее

@@ -1,31 +1,215 @@
 {% extends 'base.html' %}
-{% load static django_bootstrap5 %}
+{% load static django_bootstrap5 i18n %}
+
+{# ====== Страница обработки заявления HR/Руководителем ====== #}
 {% block title %}Рассмотрение заявления{% endblock %}
+
 {% block content %}
-<h2 class="mb-4">Рассмотрение заявления</h2>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
 
-<div class="mb-4">
-  <strong>Сотрудник:</strong> {{ request_obj.employee.get_full_name }}<br>
-  <strong>Тип:</strong> {{ request_obj.get_type_display }}<br>
-  <strong>Период:</strong>
-  {% if request_obj.date_from or request_obj.date_to %}
-    {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
-  {% else %}
-    —
-  {% endif %}
-  <br>
-  <strong>Комментарий сотрудника:</strong> {{ request_obj.comment|default:"—" }}<br>
-  <strong>Дата подачи:</strong> {{ request_obj.created_at|date:'d.m.Y H:i' }}
+      {# — Шапка: заголовок + кнопка назад — #}
+      <div class="feed-header">
+        <i class="bi-clipboard-check fs-2 text-primary"></i>
+        <h2 class="title mb-0">Рассмотрение заявления</h2>
+        <div class="ms-auto">
+          <a href="{% url 'requests_app:all_requests' %}" class="btn btn-ghost">
+            <i class="bi-arrow-left"></i> К списку
+          </a>
+        </div>
+      </div>
+
+      {# — Карточка заявки: кто подал, статус, тип, даты, комментарий, вложение — #}
+      <article class="feed-card mb-3">
+        <header class="feed-hd">
+          <div class="feed-ava" style="width:48px;height:48px;">
+            {% if request_obj.employee.avatar %}
+              <img src="{{ request_obj.employee.avatar.url }}" alt="Аватар сотрудника"
+                   loading="lazy">
+            {% else %}
+              <i class="bi-person"></i>
+            {% endif %}
+          </div>
+
+          <div class="feed-meta flex-grow-1">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              {# Ссылка на карточку сотрудника #}
+              <a href="{% url 'employees:employee_detail' request_obj.employee.pk %}"
+                 class="feed-author text-decoration-none">
+                {{ request_obj.employee.get_full_name|default:request_obj.employee.username }}
+              </a>
+
+              {# Бейдж статуса заявки #}
+              {% if request_obj.status == 'pending' %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">На рассмотрении</span>
+              {% elif request_obj.status == 'approved' %}
+                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Одобрено</span>
+              {% elif request_obj.status == 'rejected' %}
+                <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Отклонено</span>
+              {% elif request_obj.status == 'cancelled' %}
+                <span class="badge bg-dark-subtle text-dark-emphasis border border-dark-subtle">Отменено</span>
+              {% elif request_obj.status == 'draft' %}
+                <span class="badge bg-light text-body border">Черновик</span>
+              {% else %}
+                <span class="badge bg-light text-body border">Неизвестно</span>
+              {% endif %}
+
+              {# Бейдж типа заявки #}
+              <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                {{ request_obj.get_type_display }}
+              </span>
+            </div>
+
+            <div class="feed-sub mt-1">
+              {# Дата создания — ISO в datetime для машин, формат для людей #}
+              <time datetime="{{ request_obj.created_at|date:'c' }}">
+                {{ request_obj.created_at|date:"d.m.Y H:i" }}
+              </time>
+              {# Период, если указан #}
+              {% if request_obj.date_from or request_obj.date_to %}
+                · Период:
+                {{ request_obj.date_from|date:'d.m.Y' }}
+                {% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </header>
+
+        <div class="feed-body pt-0">
+          {# Комментарий сотрудника (если есть) #}
+          <div class="small text-muted mb-2">
+            <span class="text-secondary">Комментарий сотрудника:</span>
+            {{ request_obj.comment|default:"—" }}
+          </div>
+
+          {# Вложение сотрудника (если есть) #}
+          {% if request_obj.attachment %}
+            <a class="btn btn-ghost d-inline-flex align-items-center gap-1"
+               href="{{ request_obj.attachment.url }}" target="_blank"
+               rel="noopener noreferrer" download>
+              <i class="bi-paperclip"></i><span>Вложение сотрудника</span>
+            </a>
+          {% endif %}
+        </div>
+      </article>
+
+      {# — Инфоблок при финальном статусе — #}
+      {% if request_obj.is_final %}
+        <div class="alert alert-warning d-flex align-items-start gap-2">
+          <i class="bi-exclamation-triangle-fill"></i>
+          <div>
+            По заявлению установлен финальный статус (изменить статус нельзя).
+            Вы можете добавить служебный комментарий и/или вложение.
+          </div>
+        </div>
+      {% endif %}
+
+      {# — Форма решения: статус + служебный комментарий/вложение — #}
+      <article class="feed-card mb-3">
+        <header class="feed-hd">
+          <div class="feed-ava" style="width:44px;height:44px;">
+            <i class="bi-check2-circle"></i>
+          </div>
+          <div class="feed-meta">
+            <div class="feed-author">Принять решение</div>
+            <div class="feed-sub">Статус + служебный комментарий/вложение</div>
+          </div>
+        </header>
+
+        <div class="feed-body pt-0">
+          <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            {# Неформатные ошибки формы (например, запрет смены финального статуса) #}
+            {% if form.non_field_errors %}
+              <div class="alert alert-danger mb-2">
+                {{ form.non_field_errors }}
+              </div>
+            {% endif %}
+
+            {# Поля формы через django-bootstrap5 #}
+            {% bootstrap_form form %}
+
+            <div class="d-flex gap-2 mt-2">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi-check-circle"></i> Сохранить решение
+              </button>
+              <a href="{% url 'requests_app:all_requests' %}" class="btn btn-ghost">
+                Отмена
+              </a>
+            </div>
+          </form>
+        </div>
+      </article>
+
+      {# — Комментарии по заявлению — #}
+      <article class="feed-card" id="comments">
+        <header class="feed-hd">
+          <div class="feed-ava" style="width:44px;height:44px;">
+            <i class="bi-chat-dots"></i>
+          </div>
+          <div class="feed-meta">
+            <div class="feed-author">Комментарии</div>
+            <div class="feed-sub">
+              {# Избегаем неправильных русских окончаний — просто покажем число #}
+              {% with cnt=request_obj.comments.count %}
+                Комментариев: {{ cnt }}
+              {% endwith %}
+            </div>
+          </div>
+        </header>
+
+        <div class="feed-body pt-0">
+          {# Список комментариев. Используем {% empty %}, чтобы корректно показать «нет комментариев» #}
+          <div class="d-flex flex-column gap-2 mb-3">
+            {% for c in request_obj.comments.all %}
+              <div class="bg-body-tertiary border rounded p-2">
+                <div class="small d-flex justify-content-between align-items-start">
+                  <div>
+                    <span class="fw-semibold">
+                      {{ c.author.get_full_name|default:c.author.username }}
+                    </span>
+                    <span class="text-secondary">·</span>
+                    <time class="text-muted">{{ c.created_at|date:"d.m.Y H:i" }}</time>
+                  </div>
+
+                  <form method="post"
+                        action="{% url 'requests_app:request_comment_delete' request_obj.pk c.pk %}?next={{ request.get_full_path|urlencode }}#comments"
+                        onsubmit="return confirm('Удалить комментарий №{{ c.pk }}?');">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-ghost text-danger" type="submit" title="Удалить">
+                      <i class="bi-trash"></i>
+                    </button>
+                  </form>
+                </div>
+
+                <div class="small mt-1">{{ c.text|linebreaksbr }}</div>
+              </div>
+            {% empty %}
+              <div class="text-secondary small mb-3">Комментариев пока нет.</div>
+            {% endfor %}
+          </div>
+
+          
+          <form class="mt-2"
+                method="post"
+                action="{% url 'requests_app:request_comment_add' request_obj.pk %}?next={{ request.get_full_path|urlencode }}#comments">
+            {% csrf_token %}
+            <div class="input-group">
+           
+              <textarea name="text" class="form-control" rows="1"
+                        placeholder="Оставить комментарий…"
+                        maxlength="{{ max_comment_len|default:1000 }}"></textarea>
+              <button class="btn btn-primary" type="submit">
+                <i class="bi-send"></i>
+              </button>
+            </div>
+          </form>
+        </div>
+      </article>
+
+    </div>
+  </div>
 </div>
-
-<form method="post">
-  {% csrf_token %}
-  {% bootstrap_form form %}
-  <button type="submit" class="btn btn-success">
-    <i class="bi-check-circle"></i> Сохранить решение
-  </button>
-  <a href="{% url 'requests_app:all_requests' %}" class="btn btn-outline-secondary ms-2">
-    Отмена
-  </a>
-</form>
 {% endblock %}

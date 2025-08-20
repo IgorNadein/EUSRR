@@ -1,0 +1,141 @@
+{% for post in items %}
+  <article class="feed-card" data-post-card id="post-{{ post.pk }}">
+    <header class="feed-hd">
+      <div class="feed-ava">
+        {% if post.author and post.author.avatar %}
+          <img src="{{ post.author.avatar.url }}" alt="">
+        {% else %}<i class="bi-person"></i>{% endif %}
+      </div>
+
+      <div class="feed-meta">
+        <div class="feed-author">
+          {% if post.author %}
+            <a href="{% url 'employees:employee_detail' post.author.pk %}" class="text-decoration-none">
+              {{ post.author.get_full_name|default:post.author.username }}
+            </a>
+          {% else %}Автор не указан{% endif %}
+        </div>
+        <div class="feed-sub">
+          {% if post.created_at %}
+            <time datetime="{{ post.created_at|date:'c' }}">{{ post.created_at|date:"d.m.Y H:i" }}</time>
+          {% endif %}
+          {% if post.type == 'department' and post.department %} · {{ post.department.name }}{% endif %}
+        </div>
+      </div>
+
+      {% if post.pinned %}<span class="feed-pin"><i class="bi-pin-angle"></i> закреплено</span>{% endif %}
+    </header>
+
+    <div class="feed-body position-relative">
+      <h3 class="feed-title mb-1">
+        {% if post.pk %}
+          <a href="{% url 'feed:post_detail' post.pk %}" class="text-decoration-none stretched-link">
+            {{ post.title|default:"Без названия" }}
+          </a>
+        {% else %}
+          {{ post.title|default:"Без названия" }}
+        {% endif %}
+      </h3>
+      <p class="feed-text">{{ post.body|default_if_none:""|truncatewords:42 }}</p>
+    </div>
+
+    {% if post.image %}
+      <div class="feed-img position-relative">
+        {% if post.pk %}<a href="{% url 'feed:post_detail' post.pk %}" class="stretched-link"></a>{% endif %}
+        <img src="{{ post.image.url }}" alt="{{ post.title|default:'Публикация' }}">
+      </div>
+    {% endif %}
+
+    <footer class="feed-actions">
+      {# Комментарии: свернуть/развернуть ТОЛЬКО блок ниже (по умолчанию скрыт) #}
+      {% if post.pk %}
+        {% if user.is_authenticated %}
+          <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#ccoll-{{ post.pk }}"
+                  aria-controls="ccoll-{{ post.pk }}"
+                  aria-expanded="false">
+            <i class="bi-chat-dots"></i>
+            <span class="txt-open">{{ post.comments_count|default:0 }}</span>
+            <span class="txt-close">Скрыть</span>
+          </button>
+        {% else %}
+          <a href="{% url 'feed:post_detail' post.pk %}#comments"
+             class="btn btn-ghost d-inline-flex align-items-center gap-1">
+            <i class="bi-chat-dots"></i><span>{{ post.comments_count|default:0 }}</span>
+          </a>
+        {% endif %}
+      {% endif %}
+
+      {% if post.attachment %}
+        <a href="{{ post.attachment.url }}" class="btn btn-ghost d-inline-flex align-items-center gap-1">
+          <i class="bi-paperclip"></i><span>Вложение</span>
+        </a>
+      {% endif %}
+
+      <span class="ms-auto"></span>
+      {% if user.is_authenticated and post.pk %}
+        <form method="post" action="{% url 'feed:toggle_like' post.pk %}" class="ms-2">
+          {% csrf_token %}
+          <button type="submit"
+                  class="btn btn-ghost d-inline-flex align-items-center gap-1 {% if post.is_liked %}is-liked{% endif %}"
+                  data-like-post="{{ post.pk }}"
+                  data-like-url="{% url 'feed:toggle_like' post.pk %}"
+                  aria-pressed="{% if post.is_liked %}true{% else %}false{% endif %}">
+            <i class="bi {% if post.is_liked %}bi-heart-fill{% else %}bi-heart{% endif %}"></i>
+            <span data-like-count>{{ post.likes_count|default:0 }}</span>
+          </button>
+        </form>
+      {% else %}
+        <span class="small text-secondary d-inline-flex align-items-center gap-1">
+          <i class="bi-heart{% if post.is_liked %}-fill{% endif %}"></i>
+          <span data-like-count>{{ post.likes_count|default:0 }}</span>
+        </span>
+      {% endif %}
+    </footer>
+
+    {# ===== СВАРАЧИВАЕМЫЙ БЛОК: всегда скрыт по умолчанию ===== #}
+    <div id="ccoll-{{ post.pk }}" class="collapse">
+      {% if post.comments_count %}
+        <div class="px-3 pt-2">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <a class="small text-primary text-decoration-none"
+               href="{% url 'feed:post_detail' post.pk %}#comments">
+              Показать все комментарии записи ({{ post.comments_count }})
+            </a>
+          </div>
+
+          {% with last=post.last_comment_list|first %}
+            {% if last %}
+              <div class="bg-body-tertiary border rounded p-2">
+                <div class="small mb-1">
+                  <a href="{% url 'employees:employee_detail' last.author.pk %}"
+                     class="text-decoration-none fw-semibold">
+                    {{ last.author.get_full_name|default:last.author.username }}
+                  </a>
+                  <span class="text-secondary">·</span>
+                  <time class="text-muted">{{ last.created_at|date:"d.m.Y H:i" }}</time>
+                </div>
+                <div class="small">{{ last.text|truncatechars:220 }}</div>
+              </div>
+            {% endif %}
+          {% endwith %}
+        </div>
+      {% endif %}
+
+      {% if user.is_authenticated and post.pk %}
+        <form class="px-3 pb-3 pt-2" method="post" action="{% url 'feed:post_detail' post.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <div class="input-group">
+            <textarea name="text" class="form-control" rows="1" placeholder="Оставить комментарий…"></textarea>
+            <button class="btn btn-primary" type="submit"><i class="bi-send"></i></button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  </article>
+{% empty %}
+  <div class="alert alert-info shadow-sm">Пока нет новостей.</div>
+{% endfor %}

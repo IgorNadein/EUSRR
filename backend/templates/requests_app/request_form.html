@@ -1,19 +1,50 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
+
 {% block title %}Подать заявление{% endblock %}
+
 {% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-8 col-xl-7">
 
-<h2 class="mb-4">Подать новое заявление</h2>
+      {# Заголовок страницы #}
+      <div class="feed-header">
+        <i class="bi-clipboard-plus fs-2 text-primary"></i>
+        <h2 class="title mb-0">Новое заявление</h2>
+        <a href="{% url 'requests_app:my_requests' %}" class="ms-auto btn btn-ghost">
+          <i class="bi-arrow-left"></i> Мои заявления
+        </a>
+      </div>
 
-<form method="post">
-  {% csrf_token %}
-  {% bootstrap_form form %}
-  <button type="submit" class="btn btn-success mt-3">
-    <i class="bi-check-circle"></i> Отправить заявление
-  </button>
-  <a href="{% url 'requests_app:my_requests' %}" class="btn btn-outline-secondary mt-3 ms-2">
-    Отмена
-  </a>
-</form>
+      {# Небольшая памятка #}
+      <div class="feed-new mb-3">
+        <div class="small text-secondary">
+          Укажите тип заявления, период (если нужен) и короткий комментарий.
+          Файл можно приложить в формате PDF/JPG/PNG.
+        </div>
+      </div>
 
+      {# Форма #}
+      <form method="post" enctype="multipart/form-data" class="feed-card p-3">
+        {% csrf_token %}
+
+        {{ form.non_field_errors }}
+
+        {# Рендерим поля вертикально в едином стиле #}
+        {% bootstrap_form form layout="vertical" %}
+
+        <div class="d-flex gap-2 mt-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi-check-circle"></i> Отправить заявление
+          </button>
+          <a href="{% url 'requests_app:my_requests' %}" class="btn btn-ghost">
+            Отмена
+          </a>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
 {% endblock %}
