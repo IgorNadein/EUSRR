@@ -4,43 +4,86 @@
 
 {% block title %}Мои чаты{% endblock %}
 
+{% block extra_css %}
+
+<style>
+  .ios-search{ position:relative; width:100%; max-width:420px; }
+  .ios-search-input{
+    width:100%; height:40px; padding:8px 38px;
+    border-radius:14px; border:1px solid var(--bs-border-color);
+    background: color-mix(in srgb, var(--bs-body-bg), #000 4%);
+    font-size:15px; outline:none;
+    transition: box-shadow .2s, border-color .2s, background .2s;
+  }
+  [data-bs-theme="dark"] .ios-search-input{
+    background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+  }
+  .ios-search-input:focus{
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .15);
+  }
+  .ios-search > .bi-search{
+    position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    opacity:.55; pointer-events:none; font-size:.95rem;
+  }
+  .ios-search-clear{
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
+    border:0; background:transparent; padding:6px; display:none;
+  }
+  .ios-search-clear .bi-x-lg{ opacity:.6; font-size:.9rem; }
+  .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
+
+  /* чуть плотнее заголовок-строку */
+  .feed-header { gap:.6rem; flex-wrap:wrap; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-lg-9 col-xl-8">
 
-      {# Заголовок + поиск/кнопки #}
-      <div class="feed-header">
+      {# Заголовок + ПОИСК (iOS-стиль) #}
+      <div class="feed-header d-flex align-items-center">
         <i class="bi-chat-dots fs-2 text-primary"></i>
         <h2 class="title mb-0">Мои чаты</h2>
 
-        <div class="ms-auto d-flex align-items-center gap-2">
-          <div class="input-group" style="min-width:260px;max-width:380px;">
-            <span class="input-group-text bg-transparent border-0 ps-0">
-              <i class="bi-search text-secondary"></i>
-            </span>
-            <input type="text" id="chatSearch" class="form-control" placeholder="Поиск по названию/участникам…">
+        <div class="ms-auto ios-search">
+          <div class="ios-search">
+            <i class="bi-search"></i>
+            <input
+              type="search"
+              id="chatSearch"
+              class="ios-search-input"
+              placeholder="Поиск по названию или участникам"
+              autocomplete="off">
+            <button type="button" class="ios-search-clear" aria-label="Очистить">
+              <i class="bi-x-lg"></i>
+            </button>
           </div>
-          <a href="{% url 'employees:employees_list' %}" class="btn btn-ghost">
-            <i class="bi-person-plus"></i> Новый чат
-          </a>
         </div>
       </div>
 
-      {# Сегментированный фильтр типов #}
+      {# Сегментированный фильтр + КНОПКА справа #}
       <div class="feed-new mb-3">
-        <div class="btn-group" role="group" aria-label="Фильтр чатов">
-          <input type="radio" class="btn-check" name="chatFilter" id="fltAll" autocomplete="off" checked>
-          <label class="btn btn-ghost" for="fltAll" data-filter="all">Все</label>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <div class="btn-group" role="group" aria-label="Фильтр чатов">
+            <input type="radio" class="btn-check" name="chatFilter" id="fltAll" autocomplete="off" checked>
+            <label class="btn btn-ghost" for="fltAll" data-filter="all">Все</label>
 
-          <input type="radio" class="btn-check" name="chatFilter" id="fltGlobal" autocomplete="off">
-          <label class="btn btn-ghost" for="fltGlobal" data-filter="global">Глобальный</label>
+            <input type="radio" class="btn-check" name="chatFilter" id="fltGlobal" autocomplete="off">
+            <label class="btn btn-ghost" for="fltGlobal" data-filter="global">Глобальный</label>
 
-          <input type="radio" class="btn-check" name="chatFilter" id="fltDepartment" autocomplete="off">
-          <label class="btn btn-ghost" for="fltDepartment" data-filter="department">Отделы</label>
+            <input type="radio" class="btn-check" name="chatFilter" id="fltDepartment" autocomplete="off">
+            <label class="btn btn-ghost" for="fltDepartment" data-filter="department">Отделы</label>
 
-          <input type="radio" class="btn-check" name="chatFilter" id="fltPrivate" autocomplete="off">
-          <label class="btn btn-ghost" for="fltPrivate" data-filter="private">Личные</label>
+            <input type="radio" class="btn-check" name="chatFilter" id="fltPrivate" autocomplete="off">
+            <label class="btn btn-ghost" for="fltPrivate" data-filter="private">Личные</label>
+          </div>
+
+          <a href="{% url 'employees:employees_list' %}" class="btn btn-ghost ms-auto">
+            <i class="bi-person-plus"></i> Новый чат
+          </a>
         </div>
       </div>
 
@@ -150,7 +193,7 @@
       <div class="feed-card chat-section mb-3" data-sec="private">
         <div class="feed-hd">
           <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-people"></i></div>
-          <div class="feed-meta flex-grow-1">
+          <div class="flex-grow-1 feed-meta">
             <h6 class="mb-0 text-secondary">Личные</h6>
             <span class="small text-secondary" data-empty-note style="display:none;">Нет личных чатов</span>
           </div>
@@ -214,17 +257,28 @@
         </div>
       </div>
 
-      {# Если вообще нет чатов #}
       {% if not chats %}
         <div class="alert alert-info shadow-sm mt-3">
           Чатов пока нет. Начните с <a href="{% url 'employees:employees_list' %}" class="text-decoration-none">поиска сотрудника</a>.
         </div>
       {% endif %}
 
-
     </div>
   </div>
 </div>
 
-
+<script>
+  // Очистка поиска
+  (function(){
+    const input = document.getElementById('chatSearch');
+    const clearBtn = document.querySelector('.ios-search-clear');
+    if (clearBtn && input){
+      clearBtn.addEventListener('click', () => {
+        input.value = '';
+        input.focus();
+        input.dispatchEvent(new Event('input'));
+      });
+    }
+  })();
+</script>
 {% endblock %}

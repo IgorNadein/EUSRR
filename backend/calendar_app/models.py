@@ -104,7 +104,7 @@ class DepartmentEvent(models.Model):
         constraints = [
             models.CheckConstraint(
                 name="dept_event_date_range_valid",
-                check=(
+                condition=(
                     models.Q(end_date__isnull=True)
                     | models.Q(start_date__isnull=True)
                     | models.Q(start_date__lte=models.F("end_date"))

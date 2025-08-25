@@ -1,363 +1,281 @@
 # backend/employees/admin.py
+
+from django import forms
 from django.contrib import admin
-from django.db.models import Count, OuterRef, Subquery
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.forms import ReadOnlyPasswordHashField, AdminPasswordChangeForm
+from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+
+from simple_history.admin import SimpleHistoryAdmin
+
 from .models import (
     Employee,
     EmployeeAction,
     Department,
+    DepartmentRole,
     EmployeeDepartment,
-    EmployeePosition,
-    Absence,
+    Position,
     Skill,
-    Education,
 )
-from .constants import ACTION_DISMISSED
+
+# =========================
+#   Формы для кастомного User (Employee)
+# =========================
+
+class EmployeeCreationForm(forms.ModelForm):
+    """
+    Создание сотрудника в админке: логин — email, без username.
+    """
+    password1 = forms.CharField(label="Пароль", widget=forms.PasswordInput)
+    password2 = forms.CharField(label="Подтверждение пароля", widget=forms.PasswordInput)
+
+    class Meta:
+        model = Employee
+        fields = ("email", "first_name", "last_name", "phone_number")
+
+    def clean_password2(self):
+        p1 = self.cleaned_data.get("password1") or ""
+        p2 = self.cleaned_data.get("password2") or ""
+        if not p1:
+            raise forms.ValidationError("Пароль обязателен")
+        if p1 != p2:
+            raise forms.ValidationError("Пароли не совпадают")
+        return p2
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.set_password(self.cleaned_data["password1"])
+        # При создании через админку обычно активируем и помечаем e-mail подтверждённым
+        if not user.is_active:
+            user.is_active = True
+        if not user.email_verified:
+            user.email_verified = True
+        if commit:
+            user.save()
+        return user
+
+
+class EmployeeChangeForm(forms.ModelForm):
+    """
+    Редактирование сотрудника: пароль только для чтения (смена пароля — отдельной кнопкой).
+    """
+    password = ReadOnlyPasswordHashField(
+        label="Хэш пароля",
+        help_text=(
+            "Пароль хранится в виде хэша — посмотреть его невозможно. "
+            "Используйте кнопку «Изменить пароль» выше."
+        ),
+        required=False,
+    )
+
+    class Meta:
+        model = Employee
+        fields = (
+            "email",
+            "password",
+            "first_name",
+            "last_name",
+            "patronymic",
+            "gender",
+            "birth_date",
+            "avatar",
+            "phone_number",
+            "telegram",
+            "whatsapp",
+            "wechat",
+            "position",
+            "skills",
+            "is_active",
+            "email_verified",
+            "is_staff",
+            "is_superuser",
+            "groups",
+            "user_permissions",
+            "last_login",
+        )
+
+    def clean_password(self):
+        # Возвращаем исходное значение (хэш), даже если пользователь ничего не ввёл
+        return self.initial.get("password")
 
 
 # =========================
-#  Инлайны
+#   Инлайны
 # =========================
+
 class EmployeeDepartmentInline(admin.TabularInline):
-    """Принадлежности сотрудника к отделам (в карточке сотрудника)"""
-
+    """
+    Принадлежности сотрудника к отделам (видно из карточки сотрудника).
+    """
     model = EmployeeDepartment
     fk_name = "employee"
     extra = 0
-    autocomplete_fields = ("department",)
+    autocomplete_fields = ("department", "role")
     fields = ("department", "role", "is_active", "date_from", "date_to")
     show_change_link = True
 
 
-class EmployeeActionInline(admin.TabularInline):
-    model = EmployeeAction
-    extra = 0
-    fields = ("action", "date", "comment")
-    readonly_fields = ()
-    ordering = ("-date",)
-
-
-class EmployeePositionInline(admin.TabularInline):
-    model = EmployeePosition
-    fk_name = "employee"
-    extra = 0
-    autocomplete_fields = ("department",)
-    fields = ("department", "title", "date_from", "date_to")
-
-
-class AbsenceInline(admin.TabularInline):
-    model = Absence
-    fk_name = "employee"
-    extra = 0
-    fields = ("type", "date_from", "date_to", "status", "comment")
-    readonly_fields = ()
-    ordering = ("-date_from",)
-
-
-class EducationInline(admin.TabularInline):
-    model = Education
-    fk_name = "employee"
-    extra = 0
-    fields = ("institution", "degree", "graduation_year")
-    ordering = ("-graduation_year",)
-
 
 class DepartmentMembershipInline(admin.TabularInline):
-    """Состав отдела (в карточке отдела)"""
-
+    """
+    Состав отдела — список участников прямо в карточке отдела.
+    """
     model = EmployeeDepartment
     fk_name = "department"
     extra = 0
-    autocomplete_fields = ("employee",)
+    autocomplete_fields = ("employee", "role")
     fields = ("employee", "role", "is_active", "date_from", "date_to")
     show_change_link = True
 
 
-class DepartmentPositionInline(admin.TabularInline):
-    """Должности в отделе (в карточке отдела)"""
-
-    model = EmployeePosition
-    fk_name = "department"
-    extra = 0
-    autocomplete_fields = ("employee",)
-    fields = ("employee", "title", "date_from", "date_to")
-
-
 # =========================
-#  Фильтры
+#   Админки моделей
 # =========================
-class ActuallyActiveFilter(admin.SimpleListFilter):
-    title = "Фактически активен"
-    parameter_name = "actually_active"
 
-    def lookups(self, request, model_admin):
-        return (
-            ("yes", "Да"),
-            ("no", "Нет"),
-        )
-
-    def queryset(self, request, queryset):
-        # Берём последнюю кадровую операцию и фильтруем по её типу
-        latest_action_subq = (
-            EmployeeAction.objects.filter(employee=OuterRef("pk"))
-            .order_by("-date")
-            .values("action")[:1]
-        )
-        queryset = queryset.annotate(latest_action=Subquery(latest_action_subq))
-        val = self.value()
-        if val == "yes":
-            return queryset.filter(latest_action__isnull=False).exclude(
-                latest_action=ACTION_DISMISSED
-            )
-        if val == "no":
-            return queryset.filter(latest_action__in=[ACTION_DISMISSED, None])
-        return queryset
-
-
-# =========================
-#  Employee
-# =========================
 @admin.register(Employee)
-class EmployeeAdmin(admin.ModelAdmin):
-    save_on_top = True
+class EmployeeAdmin(DjangoUserAdmin):
+    """
+    Кастомный UserAdmin для модели Employee.
+    Включает стандартную кнопку «Изменить пароль».
+    """
+    add_form = EmployeeCreationForm
+    form = EmployeeChangeForm
+    model = Employee
+
+    # Включаем стандартную форму смены пароля и шаблон,
+    # который показывает ссылку «Изменить пароль» на форме изменения пользователя.
+    change_password_form = AdminPasswordChangeForm
+    change_form_template = "admin/employees/employee/change_form.html"
+
     list_display = (
+        "email",
         "last_name",
         "first_name",
         "phone_number",
-        "email",
+        "position",
         "is_active",
-        "actually_active",
-        "departments_list",
-        "created_at",
+        "email_verified",
+        "is_staff",
     )
-    list_filter = ("is_active", ActuallyActiveFilter)
-    search_fields = (
-        "last_name",
-        "first_name",
-        "patronymic",
-        "email",
-        "phone_number",
-        "telegram",
-        "wechat",
-    )
-    readonly_fields = ("created_at", "updated_at")
+    list_filter = ("is_active", "email_verified", "is_staff", "is_superuser", "position", "groups")
+    search_fields = ("email", "first_name", "last_name", "phone_number")
     ordering = ("last_name", "first_name")
-    filter_horizontal = ("skills",)
-    inlines = [
-        EmployeeDepartmentInline,
-        EmployeePositionInline,
-        EmployeeActionInline,
-        AbsenceInline,
-        EducationInline,
-    ]
-    list_select_related = ()
+    list_select_related = ("position",)
+
+    filter_horizontal = ("groups", "user_permissions", "skills")
+
+    readonly_fields = ("last_login", "created_at", "updated_at")
 
     fieldsets = (
-        (
-            "Общая информация",
-            {
-                "fields": (
-                    ("last_name", "first_name", "patronymic"),
-                    ("gender", "birth_date"),
-                    ("avatar",),
-                )
-            },
-        ),
-        (
-            "Контакты",
-            {
-                "fields": (
-                    ("phone_number", "email"),
-                    ("telegram", "whatsapp", "wechat"),
-                )
-            },
-        ),
-        (
-            "Служебное",
-            {
-                "fields": (("is_active",), ("created_at", "updated_at")),
-            },
-        ),
-        (
-            "Навыки",
-            {
-                "fields": ("skills",),
-                "classes": ("collapse",),
-            },
-        ),
+        (None, {"fields": ("email", "password")}),
+        ("Личная информация", {
+            "fields": (
+                "first_name",
+                "last_name",
+                "patronymic",
+                "gender",
+                "birth_date",
+                "avatar",
+            )
+        }),
+        ("Контакты", {
+            "fields": ("phone_number", "telegram", "whatsapp", "wechat")
+        }),
+        ("Работа", {
+            "fields": ("position", "skills")
+        }),
+        ("Права и статусы", {
+            "fields": (
+                "is_active",
+                "email_verified",
+                "is_staff",
+                "is_superuser",
+                "groups",
+                "user_permissions",
+            )
+        }),
+        ("Служебное", {"fields": ("last_login", "created_at", "updated_at")}),
     )
 
-    def departments_list(self, obj):
-        # Корректно отобразим отделы (учитывая property obj.departments)
-        deps = (
-            obj.departments.all()
-            if hasattr(obj.departments, "all")
-            else obj.departments
-        )
-        names = [d.name for d in deps] if deps else []
-        return ", ".join(names) or "—"
+    add_fieldsets = (
+        (None, {
+            "classes": ("wide",),
+            "fields": (
+                "email",
+                "first_name",
+                "last_name",
+                "phone_number",
+                "whatsapp",
+                "position",
+                "password1",
+                "password2",
+                "is_active",
+                "email_verified",
+                "is_staff",
+                "is_superuser",
+                "groups",
+                "user_permissions",
+            ),
+        }),
+    )
 
-    departments_list.short_description = "Отделы"
-
-    def actually_active(self, obj):
-        return obj.is_actually_active
-
-    actually_active.boolean = True
-    actually_active.short_description = "Фактически активен"
+    inlines = [EmployeeDepartmentInline,]
 
 
-# =========================
-#  EmployeeAction
-# =========================
+@admin.register(Position)
+class PositionAdmin(SimpleHistoryAdmin):
+    list_display = ("name", "description")
+    search_fields = ("name", "description")
+    filter_horizontal = ("groups",)
+
+
 @admin.register(EmployeeAction)
-class EmployeeActionAdmin(admin.ModelAdmin):
-    list_display = ("employee", "action", "date", "comment_short")
+class EmployeeActionAdmin(SimpleHistoryAdmin):
+    list_display = ("employee", "action", "date")
     list_filter = ("action",)
-    search_fields = ("employee__last_name", "employee__first_name", "comment")
-    ordering = ("-date",)
+    search_fields = ("employee__first_name", "employee__last_name", "comment")
+    autocomplete_fields = ("employee",)
     date_hierarchy = "date"
 
-    def comment_short(self, obj):
-        return (
-            (obj.comment[:80] + "…")
-            if obj.comment and len(obj.comment) > 80
-            else obj.comment
-        )
 
-    comment_short.short_description = "Комментарий"
-
-
-# =========================
-#  Department
-# =========================
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    save_on_top = True
-    list_display = ("name", "head", "employees_count", "created_at")
-    search_fields = ("name", "head__last_name", "head__first_name")
-    ordering = ("name",)
+    list_display = ("name", "head", "created_at")
+    list_filter = ("head",)
+    search_fields = ("name",)
     autocomplete_fields = ("head",)
-    inlines = [DepartmentMembershipInline, DepartmentPositionInline]
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.annotate(emp_cnt=Count("employeedepartment", filter=None))
-
-    def employees_count(self, obj):
-        return getattr(obj, "emp_cnt", 0)
-
-    employees_count.short_description = "Сотрудников"
+    readonly_fields = ("created_at", "head_appointed_at")
+    inlines = [DepartmentMembershipInline]
 
 
-# =========================
-#  EmployeeDepartment
-# =========================
+@admin.register(DepartmentRole)
+class DepartmentRoleAdmin(admin.ModelAdmin):
+    list_display = ("name", "department")
+    list_filter = ("department",)
+    search_fields = ("name", "department__name")
+    autocomplete_fields = ("department",)
+    filter_horizontal = ("permissions",)
+
+
 @admin.register(EmployeeDepartment)
 class EmployeeDepartmentAdmin(admin.ModelAdmin):
-    list_display = (
-        "employee",
-        "department",
-        "role",
-        "is_active",
-        "date_from",
-        "date_to",
-    )
-    list_filter = ("is_active", "department")
-    search_fields = (
-        "employee__last_name",
-        "employee__first_name",
-        "department__name",
-        "role",
-    )
-    autocomplete_fields = ("employee", "department")
-    ordering = ("department", "employee")
-    actions = ("mark_active", "mark_inactive", "make_head")
-
-    @admin.action(description="Отметить активными")
-    def mark_active(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f"Обновлено записей: {updated}")
-
-    @admin.action(description="Отметить неактивными")
-    def mark_inactive(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, f"Обновлено записей: {updated}")
-
-    @admin.action(description="Сделать выбранного сотрудника руководителем отдела")
-    def make_head(self, request, queryset):
-        # Разрешим только если выбрана ровно 1 запись
-        if queryset.count() != 1:
-            self.message_user(
-                request,
-                "Выберите ровно одну запись для назначения руководителя.",
-                level="warning",
-            )
-            return
-        link = queryset.first()
-        dept = link.department
-        dept.head = link.employee
-        dept.save(update_fields=["head"])
-        self.message_user(
-            request, f"{link.employee} назначен руководителем отдела «{dept.name}»."
-        )
-
-
-# =========================
-#  EmployeePosition
-# =========================
-@admin.register(EmployeePosition)
-class EmployeePositionAdmin(admin.ModelAdmin):
-    list_display = ("employee", "department", "title", "date_from", "date_to")
-    list_filter = ("department",)
-    search_fields = (
-        "employee__last_name",
-        "employee__first_name",
-        "title",
-        "department__name",
-    )
-    autocomplete_fields = ("employee", "department")
-    ordering = ("-date_from",)
-
-
-# =========================
-#  Absence
-# =========================
-@admin.register(Absence)
-class AbsenceAdmin(admin.ModelAdmin):
-    list_display = ("employee", "type", "date_from", "date_to", "status")
-    list_filter = ("type", "status", "date_from")
-    search_fields = ("employee__last_name", "employee__first_name", "comment")
-    autocomplete_fields = ("employee",)
-    ordering = ("-date_from",)
+    list_display = ("employee", "department", "role", "is_active", "date_from", "date_to")
+    list_filter = ("is_active", "department", "role")
+    search_fields = ("employee__first_name", "employee__last_name", "department__name")
+    autocomplete_fields = ("employee", "department", "role")
     date_hierarchy = "date_from"
 
 
-# =========================
-#  Skill
-# =========================
 @admin.register(Skill)
 class SkillAdmin(admin.ModelAdmin):
-    list_display = ("name", "employees_count")
+    list_display = ("name",)
     search_fields = ("name",)
-    ordering = ("name",)
-
-    def employees_count(self, obj):
-        return obj.employees.count()
-
-    employees_count.short_description = "Кол-во сотрудников"
 
 
-# =========================
-#  Education
-# =========================
-@admin.register(Education)
-class EducationAdmin(admin.ModelAdmin):
-    list_display = ("employee", "institution", "degree", "graduation_year")
-    list_filter = ("graduation_year",)
-    search_fields = (
-        "employee__last_name",
-        "employee__first_name",
-        "institution",
-        "degree",
-    )
-    autocomplete_fields = ("employee",)
-    ordering = ("-graduation_year",)
+# Полезно иметь Permission в админке
+@admin.register(Permission)
+class PermissionAdmin(admin.ModelAdmin):
+    list_display = ("name", "codename", "content_type")
+    list_filter = ("content_type",)
+    search_fields = ("name", "codename")

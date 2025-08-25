@@ -1,15 +1,56 @@
+{# templates/employees/employee_list.html #}
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
 
 {% block title %}Сотрудники{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ios-search{ position:relative; width:100%; max-width:420px; }
+  .ios-search-input{
+    width:100%; height:40px; padding:8px 38px;
+    border-radius:14px; border:1px solid var(--bs-border-color);
+    background: color-mix(in srgb, var(--bs-body-bg), #000 4%);
+    font-size:15px; outline:none;
+    transition: box-shadow .2s, border-color .2s, background .2s;
+  }
+  [data-bs-theme="dark"] .ios-search-input{
+    background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+  }
+  .ios-search-input:focus{
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .15);
+  }
+  .ios-search > .bi-search{
+    position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    opacity:.55; pointer-events:none; font-size:.95rem;
+  }
+  .ios-search-clear{
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
+    border:0; background:transparent; padding:6px; display:none;
+  }
+  .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
+  .feed-header { gap:.6rem; flex-wrap:wrap; }
+
+  .alpha-header{
+    position:sticky; top:calc(var(--navbar-h,0px) + 6px);
+    z-index:1; background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
+    padding:.25rem .5rem; margin:.75rem 0 .25rem;
+    font-weight:800; letter-spacing:.02em; border-radius:10px; width:max-content;
+  }
+  .alpha-dot{ display:inline-block; width:.4rem; height:.4rem; border-radius:50%; background:var(--bs-primary); margin-right:.4rem; }
+
+  .feed-card.emp-row .feed-ava{ width:56px; height:56px; }
+  .badge-dept{ background:var(--bs-secondary-bg); color:var(--bs-body-color); border:1px solid var(--bs-border-color); }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-lg-9 col-xl-8">
 
-      {# Заголовок + фильтры #}
-      <div class="feed-header">
+      <div class="feed-header d-flex align-items-center">
         <i class="bi-people fs-2 text-primary"></i>
         <h2 class="title mb-0">Сотрудники</h2>
 
@@ -20,46 +61,37 @@
         {% else %}
           <span class="ms-2 small text-secondary">Всего: {{ employees|length }}</span>
         {% endif %}
-      </div>
 
-      <div class="feed-new mb-3">
-        <div class="d-flex flex-wrap gap-2 align-items-center">
-          {# Сегментированный фильтр (визуальный) #}
-          <div class="btn-group" role="group" aria-label="Фильтр">
-            <input type="radio" class="btn-check" name="empScope" id="scopeAll" autocomplete="off" checked>
-            <label class="btn btn-ghost" for="scopeAll"><i class="bi-people me-1"></i>Все</label>
-
-            <input type="radio" class="btn-check" name="empScope" id="scopeActive" autocomplete="off">
-            <label class="btn btn-ghost" for="scopeActive"><i class="bi-person-check me-1"></i>Активные</label>
-          </div>
-
-          {# Быстрый поиск #}
-          <div class="ms-auto flex-grow-1" style="min-width: 260px; max-width: 420px;">
-            <div class="input-group">
-              <span class="input-group-text bg-transparent border-0 ps-0">
-                <i class="bi-search text-secondary"></i>
-              </span>
-              <input type="search" id="empFilter" class="form-control"
-                     placeholder="Поиск по ФИО, email, отделу…">
-            </div>
-          </div>
+        <div class="ms-auto ios-search">
+          <i class="bi-search"></i>
+          <input id="empFilter" type="search" class="ios-search-input"
+                 placeholder="Поиск по ФИО" autocomplete="off">
+          <button type="button" class="ios-search-clear" aria-label="Очистить">
+            <i class="bi-x-lg"></i>
+          </button>
         </div>
       </div>
 
-      {# Лента сотрудников с буквенными разделителями #}
-      <div id="empList" class="feed-stream">
-        {% regroup employees by last_name|first|upper as grouped %}
-        {% for group in grouped %}
-          <div class="alpha-header"><span class="alpha-dot"></span>{{ group.grouper }}</div>
+      <div id="empList" class="feed-stream mt-3">
+        {% if employees %}
+          {% for emp in employees %}
+            {# буква-секция по первой букве фамилии (или имени, если нет фамилии) #}
+            {% with lname=emp.last_name|default_if_none:"" fname=emp.first_name|default_if_none:"" %}
+              {% with base=lname|default:fname %}
+                {% with letter=base|default:"?"|slice:":1"|upper %}
+                  {% ifchanged letter %}
+                    <div class="alpha-header"><span class="alpha-dot"></span>{{ letter }}</div>
+                  {% endifchanged %}
+                {% endwith %}
+              {% endwith %}
+            {% endwith %}
 
-          {% for emp in group.list %}
             <article class="feed-card emp-row"
-                     data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {{ emp.email }}{% with deps=emp.departments %}{% if deps %}{% for d in deps %} {{ d.name }}{% endfor %}{% endif %}{% endwith %}"
-                     data-active="{% if emp.is_actually_active %}1{% else %}0{% endif %}">
+                     data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }}">
               <header class="feed-hd">
-                <div class="feed-ava" style="width:56px;height:56px;">
+                <div class="feed-ava">
                   {% if emp.avatar %}
-                    <img src="{{ emp.avatar.url }}" alt="{{ emp.get_full_name|default:emp.username }}">
+                    <img src="{{ emp.avatar }}" alt="{{ emp.last_name }} {{ emp.first_name }}">
                   {% else %}
                     <i class="bi-person"></i>
                   {% endif %}
@@ -67,45 +99,45 @@
 
                 <div class="feed-meta flex-grow-1">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'employees:employee_detail' emp.pk %}"
-                       class="feed-author text-decoration-none">
-                      {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
-                    </a>
-
-                    {# Активность #}
-                    {% if emp.is_actually_active %}
-                      <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Активен</span>
+                    {% if emp.id %}
+                      <a href="{% url 'employees:employee_detail' emp.id %}"
+                         class="feed-author text-decoration-none">
+                        {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                      </a>
                     {% else %}
-                      <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">Не активен</span>
-                    {% endif %}
-
-                    {# Бейджи роли/статуса в отделе — только при фильтре по отделу #}
-                    {% if is_filtered_by_department %}
-                      {% if emp.is_dept_head %}
-                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Руководитель</span>
-                      {% endif %}
-                      {% if emp.dep_role %}
-                        <span class="badge bg-light text-dark border">{{ emp.dep_role }}</span>
-                      {% endif %}
+                      <span class="feed-author">
+                        {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                      </span>
                     {% endif %}
                   </div>
 
-                  <div class="feed-sub mt-1">
-                    <i class="bi-envelope me-1"></i>{{ emp.email }}
-                    {% if emp.phone_number %} &nbsp;•&nbsp; <i class="bi-telephone me-1"></i>{{ emp.phone_number }}{% endif %}
-                  </div>
+                  {# бейджи отделов (если бэкенд вернул emp.departments как список словарей) #}
+                  {% if emp.departments %}
+                    <div class="feed-sub mt-2 d-flex flex-wrap gap-2">
+                      {% for d in emp.departments|slice:":3" %}
+                        <span class="badge badge-dept">{{ d.name }}</span>
+                      {% endfor %}
+                      {% if emp.departments|length > 3 %}
+                        <span class="badge badge-dept">+{{ emp.departments|length|add:"-3" }}</span>
+                      {% endif %}
+                    </div>
+                  {% elif is_filtered_by_department and current_department %}
+                    {# если списка отделов нет, но мы уже отфильтрованы по отделу — покажем его #}
+                    <div class="feed-sub mt-2">
+                      <span class="badge badge-dept">{{ current_department.name }}</span>
+                    </div>
+                  {% endif %}
                 </div>
 
                 <div class="ms-auto d-flex align-items-center gap-2">
-                  
-                  {% if user != emp %}
-                    {% if can_manage_roles and is_filtered_by_department and current_department and emp.pk != current_department.head_id %}
-                      <a href="{% url 'employees:edit_department_role' current_department.pk emp.pk %}?next={{ request.get_full_path|urlencode }}"
-                        class="btn btn-ghost action-btn" title="Изменить роль">
+                  {% if emp.id and user.id != emp.id %}
+                    {% if can_manage_roles and is_filtered_by_department and current_department and emp.id != current_department.head_id %}
+                      <a href="{% url 'employees:edit_department_role' current_department.id emp.id %}?next={{ request.get_full_path|urlencode }}"
+                         class="btn btn-ghost action-btn" title="Изменить роль">
                         <i class="bi-pencil"></i><span class="d-none d-sm-inline ms-1">Роль</span>
                       </a>
                     {% endif %}
-                    <a href="{% url 'communications:start_private_chat' emp.pk %}"
+                    <a href="{% url 'communications:start_private_chat' emp.id %}"
                        class="btn btn-ghost action-btn" title="Чат">
                       <i class="bi-chat-dots"></i><span class="d-none d-sm-inline ms-1">Чат</span>
                     </a>
@@ -113,67 +145,52 @@
                 </div>
               </header>
 
-              <div class="feed-body pt-0">
-                {# Должность (если есть активная) #}
-                {% with pos=emp.positions.first %}
-                  {% if pos and pos.is_active %}
-                    <div class="mb-2">
-                      <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">{{ pos.title }}</span>
-                    </div>
-                  {% endif %}
-                {% endwith %}
-
-                {# Отделы чипами (до 3), остальное «+N». Если уже в режиме отдела — не дублируем. #}
-                {% if not is_filtered_by_department %}
-                  {% with deps=emp.departments %}
-                    {% if deps %}
-                      <div class="d-flex flex-wrap gap-2">
-                        {% for d in deps|slice:":3" %}
-                          <span class="badge bg-light text-dark border">{{ d.name }}</span>
-                        {% endfor %}
-                        {% if deps|length > 3 %}
-                          <span class="badge bg-light text-dark border">+{{ deps|length|add:"-3" }}</span>
-                        {% endif %}
-                      </div>
-                    {% endif %}
-                  {% endwith %}
-                {% endif %}
-              </div>
+              <div class="feed-body pt-0"></div>
             </article>
           {% endfor %}
-        {% empty %}
+        {% else %}
           <div class="alert alert-info shadow-sm">Нет сотрудников.</div>
-        {% endfor %}
+        {% endif %}
       </div>
+
+      {# Пагинация, если фронт-вьюха передала номера страниц #}
+      {% if next_page or prev_page %}
+        <nav class="mt-3">
+          <ul class="pagination">
+            <li class="page-item {% if not prev_page %}disabled{% endif %}">
+              <a class="page-link" href="?page={{ prev_page }}{% if q %}&q={{ q|urlencode }}{% endif %}">Назад</a>
+            </li>
+            <li class="page-item {% if not next_page %}disabled{% endif %}">
+              <a class="page-link" href="?page={{ next_page }}{% if q %}&q={{ q|urlencode }}{% endif %}">Вперёд</a>
+            </li>
+          </ul>
+        </nav>
+      {% endif %}
 
     </div>
   </div>
 </div>
 
-{# Небольшой JS-фильтр по поиску/активности — можно оставить как было #}
 <script>
   (function () {
     const input = document.getElementById('empFilter');
-    const all = document.getElementById('scopeAll');
-    const act = document.getElementById('scopeActive');
+    const clearBtn = document.querySelector('.ios-search-clear');
     const rows = () => document.querySelectorAll('#empList .emp-row');
 
     function applyFilter(){
       const q = (input?.value || '').trim().toLowerCase();
-      const activeOnly = act?.checked;
-
       rows().forEach(row => {
         const hay = (row.getAttribute('data-name') || '').toLowerCase();
-        const isActive = row.getAttribute('data-active') === '1';
-        const okText = !q || hay.includes(q);
-        const okActive = !activeOnly || isActive;
-        row.style.display = (okText && okActive) ? '' : 'none';
+        row.style.display = (!q || hay.includes(q)) ? '' : 'none';
       });
     }
 
     input?.addEventListener('input', applyFilter);
-    all?.addEventListener('change', applyFilter);
-    act?.addEventListener('change', applyFilter);
+    clearBtn?.addEventListener('click', () => {
+      input.value = '';
+      input.focus();
+      input.dispatchEvent(new Event('input'));
+    });
   })();
 </script>
 {% endblock %}

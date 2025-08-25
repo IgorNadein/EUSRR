@@ -1,493 +1,548 @@
 # backend/employees/views_front.py
 
-from datetime import timedelta
+from __future__ import annotations
 
-from common.emails import send_templated_mail
-from django.contrib.auth import login
+import base64
+import mimetypes
+from typing import Any
+
+from api.client import get_api_client
+from api.decorators import require_api_auth
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.db.models import (
-    BooleanField,
-    Case,
-    CharField,
-    Count,
-    Exists,
-    OuterRef,
-    Prefetch,
-    Q,
-    Subquery,
-    Value,
-    When,
-)
-from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.utils.crypto import get_random_string
-from django.views import View
-from django.views.generic import (
-    CreateView,
-    DeleteView,
-    DetailView,
-    ListView,
-    UpdateView,
-)
-from feed.constants import TYPE_DEPARTMENT
-from feed.models import Comment, Post, PostLike
+from django.utils.http import urlencode
+from django.views.decorators.http import require_http_methods
+from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
-from .forms import (
-    AbsenceForm,
-    DepartmentForm,
-    DepartmentMemberRoleForm,
-    EducationForm,
-    InviteToDepartmentForm,
-    ProfileUpdateForm,
-    RegistrationForm,
-    SkillForm,
-)
-from .models import (
-    Absence,
-    Department,
-    Education,
-    Employee,
-    EmployeeAction,
-    EmployeeDepartment,
-    Skill,
-)
-from django.http import HttpResponseNotAllowed
-from employees.api_client import api_post, APIError
-
-
-# =========================
-#   Регистрация
-# =========================
-
-
-class RegisterView(CreateView):
-    model = Employee
-    form_class = RegistrationForm
-    template_name = "registration/register.html"
-
-    def form_valid(self, form):
-        cd = form.cleaned_data
-
-        email = cd.get("email")
-        password = cd.get("password1") or cd.get("password") or ""
-        first_name = cd.get("first_name", "")
-        last_name = cd.get("last_name", "")
-        phone = cd.get("phone") or cd.get("phone_number") or ""
-
-        # >>> добавь это приведение типов <<<
-        try:
-            # если установлен django-phonenumber-field
-            from phonenumber_field.phonenumber import PhoneNumber
-        except Exception:
-            PhoneNumber = None
-
-        if PhoneNumber and isinstance(phone, PhoneNumber):
-            # canonical формат для API
-            phone = phone.as_e164 or phone.raw_input or str(phone)
-        elif phone is None:
-            phone = ""
-        else:
-            phone = str(phone).strip()
-
-        payload = {
-            "email": email,
-            "password": password,
-            "first_name": first_name,
-            "last_name": last_name,
-        }
-        if phone:
-            payload["phone"] = phone
-
-        try:
-            status_code, data = api_post(self.request, "api_v1:register", payload)
-        except APIError as e:
-            form.add_error(None, f"Ошибка регистрации: {e}")
-            return self.form_invalid(form)
-
-        if status_code in (200, 201) and data.get("ok"):
-            self.request.session["email"] = email
-            if data.get("resent"):
-                messages.info(self.request, "Пользователь уже был создан. Мы отправили код повторно.")
-            else:
-                messages.success(self.request, "Код подтверждения отправлен на вашу почту.")
-            return redirect("employees:email_verify")
-
-        err = (data or {}).get("error")
-        if err == "email_taken":
-            form.add_error("email", "Этот email уже используется.")
-        else:
-            form.add_error(None, "Не удалось зарегистрировать. Попробуйте позже.")
-        return self.form_invalid(form)
-
-
-class EmailVerifyView(View):
-    template_name = "registration/email_verify.html"
-
-    def get(self, request):
-        return render(
-            request, self.template_name, {"email": request.session.get("email")}
-        )
-
-    def post(self, request):
-        email = request.session.get("email")
-        if not email:
-            messages.error(request, "Сессия истекла. Пройдите регистрацию заново.")
-            return redirect("employees:register")
-
-        code = (request.POST.get("code") or "").strip()
-        if not code:
-            messages.error(request, "Введите код подтверждения.")
-            return render(request, self.template_name, {"email": email})
-
-        # ✨ зовём API
-        try:
-            status_code, data = api_post(
-                request, "api_v1:verify-email", {"email": email, "code": code}
-            )
-        except APIError as e:
-            messages.error(request, f"Ошибка проверки кода: {e}")
-            return render(request, self.template_name, {"email": email})
-
-        if status_code == 200 and data.get("ok"):
-            # Автовход
-            user = None
-            user_id = data.get("user_id")
-            if user_id:
-                user = Employee.objects.filter(id=user_id).first()
-            if not user:
-                user = Employee.objects.filter(email__iexact=email).first()
-
-            if user:
-                request.session.pop("email", None)
-                login(
-                    request, user, backend="django.contrib.auth.backends.ModelBackend"
-                )
-                messages.success(request, "Email подтверждён! Добро пожаловать.")
-                return redirect("feed:feed_list")
-
-            messages.warning(
-                request,
-                "Email подтверждён, но не удалось выполнить вход. Войдите вручную.",
-            )
-            return redirect("login")
-
-        # Обработка ошибок API
-        err = (data or {}).get("error")
-        if err == "user_not_found":
-            messages.error(request, "Пользователь не найден.")
-            return redirect("employees:register")
-        if err == "invalid_code":
-            messages.error(request, "Код неверный.")
-            return render(request, self.template_name, {"email": email})
-        if err == "empty_code":
-            messages.error(request, "Введите код подтверждения.")
-            return render(request, self.template_name, {"email": email})
-
-        messages.error(request, "Не удалось подтвердить email. Попробуйте позже.")
-        return render(request, self.template_name, {"email": email})
-
-
-def resend_email(request):
-    if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
-
-    email = request.session.get("email")
-    if not email:
-        messages.error(request, "Сессия истекла.")
-        return redirect("employees:register")
-
-    # Простая защита от частых повторов: не чаще 1 раза в минуту
-    # Локальная защита от частых повторов оставляем (по сессии)
-    now_ts = int(timezone.now().timestamp())
-    last_ts = request.session.get("email_code_last_sent_ts")
-    if last_ts and (now_ts - int(last_ts) < 60):
-        messages.error(request, "Слишком часто. Попробуйте через минуту.")
-        return redirect("employees:email_verify")
-    # Вызываем API
-    try:
-        status_code, data = api_post(
-            request,
-            "api_v1:resend-email",
-            {"email": email},
-        )
-    except APIError as e:
-        messages.error(request, f"Ошибка отправки кода: {e}")
-        return redirect("employees:email_verify")
-
-    if status_code == 200 and data.get("ok"):
-        request.session["email_code_last_sent_ts"] = now_ts
-        messages.success(request, "Код отправлен повторно.")
-        return redirect("employees:email_verify")
-
-    # Обработка ошибок API
-    err = (data or {}).get("error")
-    if err == "user_not_found":
-        messages.error(request, "Пользователь не найден.")
-        return redirect("employees:register")
-    if err == "already_verified":
-        messages.error(request, "Email уже подтверждён.")
-        return redirect("login")
-    messages.error(request, "Не удалось отправить код. Попробуйте позже.")
-    return redirect("employees:email_verify")
+from .forms import (DepartmentEditForm, DepartmentForm,
+                    DepartmentMemberRoleForm,
+                    InviteToDepartmentForm, SkillForm)
+from .forms_front import DepartmentEditForm, SetHeadForm, SetMemberRoleForm
+from .models import Department, EmployeeDepartment, Skill
 
 
 # =========================
 #   Утилиты
 # =========================
-def _annotated_feed(base_qs, user):
-    """
-    Добавляет к queryset постов:
-      - is_liked: bool — лайкал ли текущий пользователь
-      - comments_count: int — количество комментариев
-      - comments_sorted: [Comment] — все комментарии поста, отсортированные по -created_at
-    Плюс select_related(author, department) и сортировка как в ленте.
 
-    В шаблоне используйте первый элемент:
-        {{ post.comments_sorted|first }}
+
+def _file_to_data_uri(uploaded) -> str:
     """
-    is_liked = (
-        Exists(PostLike.objects.filter(post=OuterRef("pk"), user=user))
-        if getattr(user, "is_authenticated", False)
-        else Value(False, output_field=BooleanField())
+    Превращаем загруженный файл (InMemoryUploadedFile/TemporaryUploadedFile)
+    в data URI (data:image/...;base64,xxxx).
+    """
+    if not uploaded:
+        return ""
+    content = uploaded.read()
+    if hasattr(uploaded, "seek"):
+        uploaded.seek(0)
+    mime = (
+        getattr(uploaded, "content_type", None)
+        or mimetypes.guess_type(getattr(uploaded, "name", ""))[0]
+        or "application/octet-stream"
     )
-    last_comment_qs = Comment.objects.select_related("author").order_by("-created_at")
-    return (
-        base_qs.select_related("author", "department")
-        .annotate(is_liked=is_liked, comments_count=Count("comments"))
-        .prefetch_related(
-            Prefetch(
-                "comments",
-                queryset=last_comment_qs,
-                to_attr="comments_sorted",
-            )
+    b64 = base64.b64encode(content).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+
+def _extract_items(payload: Any):
+    """
+    Универсальный парсер: пагинированный ответ DRF или «сырой» список.
+    """
+    if isinstance(payload, dict) and "results" in payload:
+        return (
+            payload["results"],
+            payload.get("count", 0),
+            payload.get("next"),
+            payload.get("previous"),
         )
-        .order_by("-pinned", "-created_at")
-    )
+    if isinstance(payload, list):
+        return payload, len(payload), None, None
+    return [], 0, None, None
 
 
-# =========================
-#   Профиль
-# =========================
-@login_required
-def profile(request):
-    employee = request.user
-    posts = _annotated_feed(Post.objects.filter(author=employee), request.user)[:10]
-    show_edit = False
-
-    # кадровые события — видит только тот, у кого есть право
-    hr_actions = []
-    if request.user.has_perm("employees.view_employeeaction"):
-        hr_actions = EmployeeAction.objects.filter(employee=employee).order_by("-date")[
-            :50
-        ]
-    emp_departments = employee.departments.order_by("name")
-
-    if request.method == "POST":
-        form = ProfileUpdateForm(request.POST, request.FILES, instance=employee)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Профиль успешно обновлён.")
-            return redirect("employees:profile")
-        show_edit = True
-    else:
-        form = ProfileUpdateForm(instance=employee)
-
-    return render(
-        request,
-        "employees/profile.html",
-        {
-            "form": form,
-            "employee": employee,
-            "own": True,
-            "posts": posts,
-            "show_edit": show_edit,
-            "hr_actions": hr_actions,
-            "emp_departments": emp_departments,
-        },
-    )
-
-
-@login_required
-def employee_detail(request, pk):
-    employee = get_object_or_404(Employee, pk=pk)
-    if employee == request.user:
-        return redirect("employees:profile")
-
-    posts = _annotated_feed(Post.objects.filter(author=employee), request.user)[:10]
-
-    # кадровые события целевого сотрудника — только при наличии права
-    hr_actions = []
-    if request.user.has_perm("employees.view_employeeaction"):
-        hr_actions = EmployeeAction.objects.filter(employee=employee).order_by("-date")[
-            :50
-        ]
-    emp_departments = employee.departments.order_by("name")
-    return render(
-        request,
-        "employees/profile.html",
-        {
-            "employee": employee,
-            "own": False,
-            "posts": posts,
-            "show_edit": False,
-            "hr_actions": hr_actions,
-            "emp_departments": emp_departments,
-        },
-    )
-
-
-@login_required
-def avatar_remove(request):
-    if request.method == "POST" and request.user.avatar:
-        request.user.avatar.delete(save=True)
-        messages.success(request, "Аватар успешно удалён.")
-    return redirect("employees:profile")
+def _cleanup_payload(data: dict, keep_empty: set[str] = frozenset()) -> dict:
+    """
+    Убираем None и пустые строки, КРОМЕ ключей из keep_empty.
+    """
+    cleaned = {}
+    for k, v in data.items():
+        if v is None:
+            continue
+        if v == "" and k not in keep_empty:
+            continue
+        cleaned[k] = v
+    return cleaned
 
 
 # =========================
 #   Сотрудники
 # =========================
-class EmployeeListView(LoginRequiredMixin, ListView):
-    model = Employee
-    template_name = "employees/employees_list.html"
-    context_object_name = "employees"
-    ordering = ["last_name", "first_name"]
 
-    def get_queryset(self):
-        qs = super().get_queryset().order_by("last_name", "first_name")
 
-        dept_id = self.request.GET.get("department")
-        if not dept_id:
-            return qs
+# ---------- LIST ----------
+@require_api_auth
+def employee_list(request):
+    """
+    Список сотрудников.
+    Ходит в /api/v1/employees/ c поддержкой поиска/сортировки/пагинации.
+    """
+    api = get_api_client(request)
 
-        # Текущий отдел (для head_id)
-        department = Department.objects.filter(pk=dept_id).only("id", "head_id").first()
+    page = request.GET.get("page") or 1
+    ordering = request.GET.get("o") or "last_name"
+    q = (request.GET.get("q") or "").strip()
+    department = request.GET.get(
+        "department"
+    )  # опциональный фильтр по отделу (из detail отдела)
 
-        # Если отдел не найден, логично вернуть пустой список
-        if not department:
-            return qs.none()
+    params = {"page": page, "ordering": ordering}
+    if q:
+        params["search"] = q
+    if department:
+        params["department"] = department
 
-        # Активная связь сотрудника с отделом (для аннотаций)
-        link_qs = EmployeeDepartment.objects.filter(
-            department_id=dept_id,
-            employee_id=OuterRef("pk"),
-            is_active=True,
+    resp = api.get("v1/employees/", params=params)
+    if not resp.ok:
+        messages.error(request, f"Ошибка API ({resp.status})")
+        return render(
+            request,
+            "employees/employees_list.html",
+            {"employees": [], "q": q, "o": ordering, "page": page},
         )
 
-        # Фильтруем: сотрудники с активной связью ИЛИ руководитель отдела
-        head_id = getattr(department, "head_id", None)
-        qs = qs.filter(
-            Q(
-                departments_links__department_id=dept_id,
-                departments_links__is_active=True,
-            )
-            | Q(pk=head_id)
-        ).distinct()
+    payload = resp.json or {}
+    items, count, next_url, prev_url = _extract_items(payload)
+    context = {
+        "employees": items,
+        "count": count,
+        "q": q,
+        "o": ordering,
+        "page": page,
+        "next_url": next_url,
+        "prev_url": prev_url,
+    }
+    return render(request, "employees/employees_list.html", context)
 
-        # Аннотации: роль в отделе, признак члена отдела и признак руководителя
-        qs = qs.annotate(
-            dep_role=Subquery(link_qs.values("role")[:1], output_field=CharField()),
-            is_dept_member=Exists(link_qs),
-            is_dept_head=Case(
-                When(pk=head_id, then=Value(True)),
-                default=Value(False),
-                output_field=BooleanField(),
-            ),
+
+# ---------- DETAIL ----------
+@require_api_auth
+def employee_detail(request, pk: int):
+    api = get_api_client(request)
+    resp = api.get(f"v1/employees/{pk}/")
+    if not resp.ok:
+        messages.error(request, f"Сотрудник не найден ({resp.status})")
+        return redirect("employees:employees_list")
+
+    emp = resp.json or {}
+    can_edit = bool(
+        request.user and (request.user.is_staff or request.user.id == emp.get("id"))
+    )
+    return render(
+        request, "employees/employee_detail.html", {"emp": emp, "can_edit": can_edit}
+    )
+
+
+# ---------- ME ----------
+@require_api_auth
+def employee_me(request):
+    api = get_api_client(request)
+    resp = api.get("v1/employees/me/")
+    if not resp.ok:
+        messages.error(request, f"Ошибка API ({resp.status})")
+        return redirect("employees:employees_list")
+    emp = resp.json or {}
+    return render(
+        request, "employees/employee_detail.html", {"emp": emp, "can_edit": True}
+    )
+
+
+# ---------- EDIT (self or staff) ----------
+@require_api_auth
+@require_http_methods(["GET", "POST"])
+def employee_edit(request, pk: int):
+    """
+    Редактирование пользователя по id.
+    Разрешено staff/superuser или самому себе (проверку делает API).
+    """
+    api = get_api_client(request)
+
+    if request.method == "GET":
+        resp = api.get(f"v1/employees/{pk}/")
+        if not resp.ok:
+            messages.error(request, f"Сотрудник не найден ({resp.status})")
+            return redirect("employees:employees_list")
+        emp = resp.json or {}
+        return render(request, "employees/employee_edit.html", {"emp": emp})
+
+    # POST → PATCH
+    data = {
+        "last_name": request.POST.get("last_name", "").strip(),
+        "first_name": request.POST.get("first_name", "").strip(),
+        "patronymic": request.POST.get("patronymic", "").strip(),
+        "gender": request.POST.get("gender") or None,
+        "birth_date": request.POST.get("birth_date") or None,
+        "position": request.POST.get("position") or None,
+        "telegram": request.POST.get("telegram", "").strip(),
+        "whatsapp": request.POST.get("whatsapp", "").strip(),
+        "wechat": request.POST.get("wechat", "").strip(),
+    }
+
+    # skills (множественный select): skills=1&skills=2 …
+    skills = request.POST.getlist("skills")
+    if skills:
+        data["skills"] = skills
+
+    # avatar: либо новый файл, либо снять (clear_avatar=on)
+    if request.FILES.get("avatar"):
+        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
+    elif request.POST.get("clear_avatar") == "on":
+        data["avatar"] = ""  # Base64ImageField очистит
+
+    # удаляем пустые строки, чтобы не перетирать nullables
+    data = _cleanup_payload(data, keep_empty={"avatar"})
+
+    resp = api.patch(f"v1/employees/{pk}/", json=data)
+    if not resp.ok:
+        messages.error(request, f"Не удалось сохранить: {resp.status} — {resp.text}")
+        # Подставим обратно форму с введёнными данными
+        current = api.get(f"v1/employees/{pk}/").json or {}
+        current.update(
+            {k: request.POST.get(k) for k in ["last_name", "first_name", "patronymic"]}
+        )
+        return render(request, "employees/employee_edit.html", {"emp": current})
+
+    messages.success(request, "Профиль обновлён.")
+    return redirect("employees:employee_detail", pk=pk)
+
+
+# ---------- EDIT ME ----------
+@require_api_auth
+@require_http_methods(["GET", "POST"])
+def employee_edit_me(request):
+    """
+    Редактирование собственного профиля через /api/v1/employees/me/
+    """
+    api = get_api_client(request)
+
+    if request.method == "GET":
+        resp = api.get("v1/employees/me/")
+        if not resp.ok:
+            messages.error(request, f"Ошибка API ({resp.status})")
+            return redirect("employees:employees_list")
+        emp = resp.json or {}
+        return render(
+            request, "employees/employee_edit.html", {"emp": emp, "is_me": True}
         )
 
-        return qs
+    data = {
+        "last_name": request.POST.get("last_name", "").strip(),
+        "first_name": request.POST.get("first_name", "").strip(),
+        "patronymic": request.POST.get("patronymic", "").strip(),
+        "gender": request.POST.get("gender") or None,
+        "birth_date": request.POST.get("birth_date") or None,
+        "position": request.POST.get("position") or None,
+        "telegram": request.POST.get("telegram", "").strip(),
+        "whatsapp": request.POST.get("whatsapp", "").strip(),
+        "wechat": request.POST.get("wechat", "").strip(),
+    }
+    skills = request.POST.getlist("skills")
+    if skills:
+        data["skills"] = skills
 
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        dept_id = self.request.GET.get("department")
-        current_department = (
-            Department.objects.filter(pk=dept_id).first() if dept_id else None
+    if request.FILES.get("avatar"):
+        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
+    elif request.POST.get("clear_avatar") == "on":
+        data["avatar"] = ""
+
+    data = _cleanup_payload(data, keep_empty={"avatar"})
+
+    resp = api.patch("v1/employees/me/", json=data)
+    if not resp.ok:
+        messages.error(request, f"Не удалось сохранить: {resp.status} — {resp.text}")
+        current = api.get("v1/employees/me/").json or {}
+        current.update(
+            {k: request.POST.get(k) for k in ["last_name", "first_name", "patronymic"]}
+        )
+        return render(
+            request, "employees/employee_edit.html", {"emp": current, "is_me": True}
         )
 
-        ctx["filter_department_id"] = dept_id
-        ctx["current_department"] = current_department
-        ctx["is_filtered_by_department"] = bool(current_department)
-        ctx["can_manage_roles"] = bool(
-            current_department
-            and (
-                self.request.user.is_staff
-                or current_department.head_id == self.request.user.id
-            )
-        )
-        return ctx
+    messages.success(request, "Профиль обновлён.")
+    return redirect("employees:employee_me")
+
+
+# ---------- CREATE (staff) ----------
+@require_api_auth
+@require_http_methods(["GET", "POST"])
+def employee_create(request):
+    api = get_api_client(request)
+
+    if request.method == "GET":
+        return render(request, "employees/employee_create.html")
+
+    data = {
+        "email": request.POST.get("email", "").strip(),
+        "phone_number": request.POST.get("phone_number", "").strip(),
+        "last_name": request.POST.get("last_name", "").strip(),
+        "first_name": request.POST.get("first_name", "").strip(),
+        "patronymic": request.POST.get("patronymic", "").strip(),
+        "gender": request.POST.get("gender") or None,
+        "birth_date": request.POST.get("birth_date") or None,
+        "position": request.POST.get("position") or None,
+        "telegram": request.POST.get("telegram", "").strip(),
+        "whatsapp": request.POST.get("whatsapp", "").strip(),
+        "wechat": request.POST.get("wechat", "").strip(),
+    }
+    if request.FILES.get("avatar"):
+        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
+    skills = request.POST.getlist("skills")
+    if skills:
+        data["skills"] = skills
+    password = request.POST.get("password", "").strip()
+    if password:
+        data["password"] = password  # API сгенерирует сам, если не передали
+
+    resp = api.post("v1/employees/", json=data)
+    if not resp.ok:
+        messages.error(request, f"Не удалось создать: {resp.status} — {resp.text}")
+        return render(request, "employees/employee_create.html", {"form": request.POST})
+
+    new_emp = resp.json or {}
+    messages.success(request, "Сотрудник создан.")
+    return redirect("employees:employee_detail", pk=new_emp.get("id"))
 
 
 # =========================
 #   Отделы
 # =========================
-class DepartmentListView(LoginRequiredMixin, ListView):
-    model = Department
-    template_name = "employees/department_list.html"
-    context_object_name = "departments"
-    ordering = ["name"]
 
 
-class DepartmentDetailView(LoginRequiredMixin, DetailView):
-    model = Department
-    template_name = "employees/department_detail.html"
-    context_object_name = "department"
+# ---------- LIST ----------
+@require_api_auth
+def department_list(request):
+    """
+    Список отделов.
+    Ходит в /api/v1/departments/ c поддержкой поиска/сортировки/пагинации DRF.
+    """
+    api = get_api_client(request)
 
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        department = self.object
+    page = request.GET.get("page") or 1
+    ordering = request.GET.get("o") or "name"
+    q = (request.GET.get("q") or "").strip()
 
-        # --- Команда отдела: только с ролью, максимум 10
-        base_links = EmployeeDepartment.objects.filter(
-            department=department, is_active=True
-        ).select_related("employee")
-        team_links = (
-            base_links.exclude(role__isnull=True)
-            .exclude(role="")
-            .order_by("employee__last_name", "employee__first_name")[:10]
-        )
+    params = {"page": page, "ordering": ordering}
+    if q:
+        params["search"] = q  # DRF SearchFilter
 
-        # --- Присоединились за 30 дней: максимум 10 (сравниваем DateField с датой)
-        month_ago_date = (timezone.now() - timedelta(days=30)).date()
-        recent_links = base_links.filter(date_from__gte=month_ago_date).order_by(
-            "-date_from"
-        )[:10]
-
-        # --- Лента отдела с аннотациями (для сердца/счётчика/последнего коммента)
-        is_liked_annot = (
-            Exists(PostLike.objects.filter(post=OuterRef("pk"), user=self.request.user))
-            if self.request.user.is_authenticated
-            else Value(False, output_field=BooleanField())
-        )
-        last_comment_qs = Comment.objects.select_related("author").order_by(
-            "-created_at"
-        )
-        posts = (
-            Post.objects.filter(type=TYPE_DEPARTMENT, department=department)
-            .select_related("author", "department")
-            .annotate(is_liked=is_liked_annot, comments_count=Count("comments"))
-            .prefetch_related(
-                Prefetch(
-                    "comments", queryset=last_comment_qs, to_attr="comments_sorted"
-                )
-            )
-            .order_by("-pinned", "-created_at")
-        )
-
-        ctx.update(
+    resp = api.get("v1/departments/", params=params)
+    if not resp.ok:
+        messages.error(request, f"Ошибка API ({resp.status})")
+        return render(
+            request,
+            "employees/department_list.html",
             {
-                "team_links": team_links,
-                "recent_links": recent_links,
-                "posts": posts,
-                "new_employees": getattr(department, "new_employees", []),
-                "can_invite": self.request.user.is_staff
-                or (department.head_id == self.request.user.id),
-            }
+                "departments": [],
+                "count": 0,
+                "q": q,
+                "o": ordering,
+                "page": page,
+                "next_url": None,
+                "prev_url": None,
+            },
         )
-        return ctx
+
+    payload = resp.json  # важно: без "or {}" — иначе потеряем список
+
+    # ✅ поддерживаем оба формата DRF: dict с results или list без пагинации
+    if isinstance(payload, dict) and "results" in payload:
+        items = payload["results"]
+        count = payload.get("count", len(items))
+        next_url = payload.get("next")
+        prev_url = payload.get("previous")
+    elif isinstance(payload, list):
+        items = payload
+        count = len(items)
+        next_url = prev_url = None
+    else:
+        items = []
+        count = 0
+        next_url = prev_url = None
+
+    context = {
+        "departments": items,
+        "count": count,
+        "q": q,
+        "o": ordering,
+        "page": page,
+        "next_url": next_url,
+        "prev_url": prev_url,
+    }
+    return render(request, "employees/department_list.html", context)
+
+
+# ---------- DETAIL ----------
+@require_api_auth
+def department_detail(request, pk: int):
+    """
+    Детальная страница отдела.
+    Тянет:
+      - /api/v1/departments/{id}/
+      - /api/v1/department-roles/?department={id}
+      - /api/v1/employee-departments/?department={id}&is_active=true
+    """
+    api = get_api_client(request)
+
+    dep = api.get(f"v1/departments/{pk}/")
+    if not dep.ok:
+        messages.error(
+            request,
+            "Отдел не найден" if dep.status == 404 else f"Ошибка API ({dep.status})",
+        )
+        return redirect("employees:dept_list")
+    dept = dep.json
+
+    roles_resp = api.get(
+        "v1/department-roles/", params={"department": pk, "page_size": 1000}
+    )
+    roles = (
+        roles_resp.json.get("results", [])
+        if roles_resp.ok and isinstance(roles_resp.json, dict)
+        else roles_resp.json or []
+    )
+
+    links_resp = api.get(
+        "v1/employee-departments/",
+        params={"department": pk, "is_active": True, "page_size": 1000},
+    )
+    links = (
+        links_resp.json.get("results", [])
+        if links_resp.ok and isinstance(links_resp.json, dict)
+        else links_resp.json or []
+    )
+
+    context = {
+        "dept": dept,
+        "roles": roles,
+        "links": links,  # элементы вида {"employee": <id>, "role": <id>|null, ...}
+        "edit_form": DepartmentEditForm(
+            initial={
+                "name": dept.get("name", ""),
+                "description": dept.get("description", ""),
+            }
+        ),
+        "set_head_form": SetHeadForm(),
+        "set_member_role_form": SetMemberRoleForm(),
+    }
+    page = request.GET.get("page") or 1
+    r = api.get(
+        "v1/feed/posts/",
+        params={"department": pk, "page": page, "ordering": "-created_at"},
+    )
+    posts = []
+    if r.ok:
+        data = r.json
+        posts = data.get("results", data) if isinstance(data, dict) else data
+
+    context.update(
+        {
+            "posts": posts,
+            "page": page,  # если пагинация нужна в шаблоне
+        }
+    )
+    return render(request, "employees/department_detail.html", context)
+
+
+# ---------- EDIT BASIC FIELDS ----------
+@require_api_auth
+@require_http_methods(["POST"])
+def department_edit(request, pk: int):
+    """
+    Редактирование name/description через PATCH /api/v1/departments/{id}/.
+    Права проверяет API (manage_department).
+    """
+    api = get_api_client(request)
+    form = DepartmentEditForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Проверьте форму")
+        return redirect("employees:dept_detail", pk=pk)
+
+    payload = {
+        "name": form.cleaned_data["name"],
+        "description": form.cleaned_data.get("description") or "",
+    }
+    resp = api.patch(f"v1/departments/{pk}/", json=payload)
+    if not resp.ok:
+        messages.error(
+            request,
+            f"Не удалось обновить отдел ({resp.status}) — {resp.json or resp.text}",
+        )
+    else:
+        messages.success(request, "Отдел обновлён")
+    return redirect("employees:dept_detail", pk=pk)
+
+
+# ---------- SET HEAD ----------
+@require_api_auth
+@require_http_methods(["POST"])
+def department_set_head(request, pk: int):
+    """
+    Назначение/снятие руководителя через POST /api/v1/departments/{id}/set_head/.
+    Права проверяет API (change_department_head).
+    """
+    api = get_api_client(request)
+    form = SetHeadForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Проверьте форму")
+        return redirect("employees:dept_detail", pk=pk)
+
+    head_id = form.cleaned_data.get("head_id", None)
+    payload = {"head_id": head_id if head_id is not None else None}  # None → снять
+    resp = api.post(f"v1/departments/{pk}/set_head/", json=payload)
+    if not resp.ok:
+        messages.error(
+            request,
+            f"Не удалось изменить руководителя ({resp.status}) — {resp.json or resp.text}",
+        )
+    else:
+        messages.success(
+            request, "Руководитель обновлён" if head_id else "Руководитель снят"
+        )
+    return redirect("employees:dept_detail", pk=pk)
+
+
+# ---------- SET MEMBER ROLE ----------
+@require_api_auth
+@require_http_methods(["POST"])
+def department_set_member_role(request, pk: int):
+    """
+    Назначение/снятие роли участнику отдела через POST /api/v1/departments/{id}/set_member_role/.
+    Права проверяет API (assign_department_role).
+    """
+    api = get_api_client(request)
+    form = SetMemberRoleForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Проверьте форму")
+        return redirect("employees:dept_detail", pk=pk)
+
+    payload = {
+        "employee_id": form.cleaned_data["employee_id"],
+        "role_id": form.cleaned_data.get("role_id", None),
+        "is_active": form.cleaned_data.get("is_active", None),
+    }
+    resp = api.post(f"v1/departments/{pk}/set_member_role/", json=payload)
+    if not resp.ok:
+        messages.error(
+            request,
+            f"Не удалось обновить роль ({resp.status}) — {resp.json or resp.text}",
+        )
+    else:
+        messages.success(request, "Роль участника обновлена")
+    return redirect("employees:dept_detail", pk=pk)
 
 
 class StaffOnlyMixin(UserPassesTestMixin):
@@ -607,7 +662,7 @@ def invite_to_department(request, pk):
 
 
 # =========================
-#   Универсальный CRUD для Absence, Skill, Education
+#   Универсальный CRUD для Absence, Skill
 # =========================
 class BaseCRUDListView(LoginRequiredMixin, ListView):
     """Базовый ListView: если у модели есть FK employee — показываем только свои записи."""
@@ -636,33 +691,6 @@ class BaseCRUDDeleteView(LoginRequiredMixin, DeleteView):
     pass
 
 
-# Absence CRUD
-class AbsenceListView(BaseCRUDListView):
-    model = Absence
-    template_name = "employees/absence_list.html"
-    context_object_name = "absences"
-
-
-class AbsenceCreateView(BaseCRUDCreateView):
-    model = Absence
-    form_class = AbsenceForm
-    template_name = "employees/absence_form.html"
-    success_url = reverse_lazy("employees:absence_list")
-
-
-class AbsenceUpdateView(BaseCRUDUpdateView):
-    model = Absence
-    form_class = AbsenceForm
-    template_name = "employees/absence_form.html"
-    success_url = reverse_lazy("employees:absence_list")
-
-
-class AbsenceDeleteView(BaseCRUDDeleteView):
-    model = Absence
-    template_name = "employees/absence_confirm_delete.html"
-    success_url = reverse_lazy("employees:absence_list")
-
-
 # Skill CRUD (через базовые вьюхи, чтобы ограничить видимость своими записями)
 class SkillListView(BaseCRUDListView):
     model = Skill
@@ -688,30 +716,3 @@ class SkillDeleteView(BaseCRUDDeleteView):
     model = Skill
     template_name = "employees/skill_confirm_delete.html"
     success_url = reverse_lazy("employees:skill_list")
-
-
-# Education CRUD
-class EducationListView(BaseCRUDListView):
-    model = Education
-    template_name = "employees/education_list.html"
-    context_object_name = "educations"
-
-
-class EducationCreateView(BaseCRUDCreateView):
-    model = Education
-    form_class = EducationForm
-    template_name = "employees/education_form.html"
-    success_url = reverse_lazy("employees:education_list")
-
-
-class EducationUpdateView(BaseCRUDUpdateView):
-    model = Education
-    form_class = EducationForm
-    template_name = "employees/education_form.html"
-    success_url = reverse_lazy("employees:education_list")
-
-
-class EducationDeleteView(BaseCRUDDeleteView):
-    model = Education
-    template_name = "employees/education_confirm_delete.html"
-    success_url = reverse_lazy("employees:education_list")

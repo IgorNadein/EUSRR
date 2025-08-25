@@ -24,7 +24,7 @@
         <header class="feed-hd">
           <div class="feed-ava" style="width:48px;height:48px;">
             {% if request_obj.employee.avatar %}
-              <img src="{{ request_obj.employee.avatar.url }}" alt="">
+              <img src="{{ request_obj.employee.avatar_url }}" alt="">
             {% else %}<i class="bi-person"></i>{% endif %}
           </div>
 

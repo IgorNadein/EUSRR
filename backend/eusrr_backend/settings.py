@@ -139,7 +139,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "employees.Employee"
 
-LOGIN_URL = "login"
+API_LOGIN_URL_NAME = "auth_front:login"
+LOGIN_URL = "auth_front:login"
 LOGIN_REDIRECT_URL = "/"
 # LOGOUT_REDIRECT_URL = 'login'
 REGISTRATION_AUTO_LOGIN = True
@@ -224,18 +225,16 @@ CHANNEL_LAYERS = {
 }
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",  # куки/сессия
-        # "rest_framework.authentication.BasicAuthentication",  # опц., только в DEV
-        # "rest_framework_simplejwt.authentication.JWTAuthentication",  # если решишь добавить JWT
-    ],
-    "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny"  # оставим как у тебя для плавной миграции
-    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": "60/min",
     },
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
 }
+
+API_BASE_URL = "http://127.0.0.1:9000/api"

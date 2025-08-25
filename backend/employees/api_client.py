@@ -1,7 +1,8 @@
 # employees/api_client.py
-from django.urls import reverse
-from django.http import HttpRequest
 import requests
+from django.conf import settings
+from django.http import HttpRequest
+from django.urls import reverse
 
 
 class APIError(Exception):
@@ -22,8 +23,10 @@ def _json_safe(x):
     return x
 
 
-def _abs_url(request: HttpRequest, url_name: str, **kwargs) -> str:
-    rel = reverse(url_name, kwargs=kwargs or None)
+def _abs_url(
+    request: HttpRequest, url_name: str, url_kwargs: dict | None = None
+) -> str:
+    rel = reverse(url_name, kwargs=url_kwargs or None)
     return request.build_absolute_uri(rel)
 
 
@@ -44,12 +47,30 @@ def api_post(request: HttpRequest, url_name: str, payload: dict, **kwargs):
     return resp.status_code, data
 
 
-def api_get(request: HttpRequest, url_name: str, params: dict | None = None, **kwargs):
-    url = _abs_url(request, url_name)
+def _session_cookies(request: HttpRequest) -> dict:
+    sid_name = getattr(settings, "SESSION_COOKIE_NAME", "sessionid")
+    sid_value = request.COOKIES.get(sid_name)
+    return {sid_name: sid_value} if sid_value else {}
+
+
+def api_get(
+    request: HttpRequest,
+    url_name: str,
+    params: dict | None = None,
+    url_kwargs: dict | None = None,
+    **req_kwargs,
+):
+    url = _abs_url(request, url_name, url_kwargs)
     headers = {"Accept": "application/json"}
+    cookies = _session_cookies(request)
     try:
         resp = requests.get(
-            url, params=params or {}, headers=headers, timeout=10, **kwargs
+            url,
+            params=params or {},
+            headers=headers,
+            cookies=cookies,
+            timeout=10,
+            **req_kwargs,
         )
     except requests.RequestException as e:
         raise APIError(f"api_network_error: {e}")

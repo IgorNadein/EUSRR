@@ -11,7 +11,7 @@
                 <h3 class="mb-0">Вход в систему</h3>
             </div>
             <div class="card-body">
-                <form method="post" action="{% url 'login' %}">
+                <form method="post" action="{% url 'auth_front:login' %}">
                     {% csrf_token %}
                     
                     <!-- Общие ошибки формы -->
@@ -64,7 +64,7 @@
                         <button type="submit" class="btn btn-primary btn-lg">
                             <i class="bi bi-box-arrow-in-right me-2"></i>Войти
                         </button>
-                        <a href="{% url 'password_reset' %}" class="btn btn-link mt-2">Забыли пароль?</a>
+                        <a href="{% url 'auth_front:password_reset' %}" class="btn btn-link mt-2">Забыли пароль?</a>
                     </div>
                 </form>
             </div>

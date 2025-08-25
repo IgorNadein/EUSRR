@@ -192,7 +192,7 @@
         </div>
       {% else %}
         <div class="text-center mt-3">
-          <a class="btn btn-primary" href="{% url 'login' %}?next={{ request.path|urlencode }}">
+          <a class="btn btn-primary" href="{% url 'auth_front:login' %}?next={{ request.path|urlencode }}">
             Войдите, чтобы комментировать
           </a>
         </div>

@@ -1,100 +1,118 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% load static django_bootstrap5 %}
+
 {% block title %}Отделы{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ios-search{ position:relative; width:100%; max-width:420px; }
+  .ios-search-input{ width:100%; height:40px; padding:8px 38px; border-radius:14px; border:1px solid var(--bs-border-color);
+    background: color-mix(in srgb, var(--bs-body-bg), #000 4%); font-size:15px; outline:none; transition: box-shadow .2s, border-color .2s, background .2s; }
+  [data-bs-theme="dark"] .ios-search-input{ background: color-mix(in srgb, var(--bs-body-bg), #fff 6%); }
+  .ios-search-input:focus{ border-color: var(--bs-primary); box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .15); }
+  .ios-search > .bi-search{ position:absolute; left:10px; top:50%; transform:translateY(-50%); opacity:.55; pointer-events:none; font-size:.95rem; }
+  .ios-search-clear{ position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:transparent; padding:6px; display:none; }
+  .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
+  .feed-header { gap:.6rem; flex-wrap:wrap; }
+  #deptList .dept-row{ padding:.6rem .75rem; }
+  #deptList .dept-row + .dept-row{ border-top:1px solid var(--bs-border-color); }
+  .feed-author{ font-weight:700; }
+  .feed-sub{ color:var(--bs-secondary-color); }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-lg-9 col-xl-8">
 
-      <!-- Заголовок -->
-      <div class="feed-header">
+      <div class="feed-header d-flex align-items-center">
         <i class="bi-diagram-3 fs-2 text-primary"></i>
         <h2 class="title mb-0">Отделы</h2>
-        {% if user.is_staff %}
-          <a href="{% url 'employees:department_add' %}" class="btn btn-primary ms-auto">
-            <i class="bi-plus-circle me-1"></i> Добавить отдел
-          </a>
-        {% endif %}
+
+        <div class="ms-auto ios-search">
+          <div class="ios-search">
+            <i class="bi-search"></i>
+            <input id="deptFilter" type="search" class="ios-search-input"
+                   placeholder="Поиск по названию или руководителю" autocomplete="off">
+            <button type="button" class="ios-search-clear" aria-label="Очистить">
+              <i class="bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Поиск -->
-      <div class="mb-3">
-        <input id="deptSearch" type="search" class="form-control"
-               placeholder="Поиск по отделу или руководителю…">
-      </div>
-
-      {% if departments %}
-        <div id="deptList" class="feed-stream">
-          {% for dept in departments %}
-            <article class="feed-card dept-row"
-                     data-q="{{ dept.name|lower }} {% if dept.head %}{{ dept.head.last_name|lower }} {{ dept.head.first_name|lower }}{% endif %} {{ dept.description|default_if_none:''|lower }}">
-              <div class="feed-body position-relative">
-                <h3 class="feed-title mb-1">
-                  <a href="{% url 'employees:department_detail' dept.pk %}"
-                     class="text-decoration-none stretched-link">
-                    {{ dept.name }}
-                  </a>
-                </h3>
-
-                {% if dept.description %}
-                  <p class="feed-text mb-2">{{ dept.description }}</p>
-                {% endif %}
-
-                <div class="small text-muted d-flex flex-wrap gap-3">
-                  <span>
-                    <i class="bi-people me-1"></i>{{ dept.active_employees|length }} сотрудн.
-                  </span>
-                  {% if dept.head %}
-                    <span>
-                      <i class="bi-person-badge me-1"></i>
-                      Руководитель:
-                      <a class="text-decoration-none"
-                         href="{% url 'employees:employee_detail' dept.head.pk %}">
-                        {{ dept.head.last_name }} {{ dept.head.first_name }}
-                      </a>
-                    </span>
+      <div class="feed-card">
+        <div id="deptList" class="py-1">
+          {# поддержка обоих форматов: dict(results) или list #}
+          {% with rows=departments.results|default:departments %}
+            {% for dept in rows %}
+              {% with h=dept.head emp=dept.employees_count|default:0 %}
+                {% url 'employees:department_detail' dept.id as dept_url %}
+                <div class="dept-row d-flex align-items-start gap-2"
+                     data-haystack="{{ dept.name }}{% if h %} {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}{% endif %}"
+                     data-emp="{{ emp }}">
+                  <div class="flex-grow-1 position-relative">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      {% if dept_url %}
+                        <a href="{{ dept_url }}" class="feed-author text-decoration-none stretched-link">
+                          {{ dept.name }}
+                        </a>
+                      {% else %}
+                        <span class="feed-author">{{ dept.name }}</span>
+                      {% endif %}
+                    </div>
+                    <div class="feed-sub mt-1">
+                      {% if h %}
+                        Руководитель: {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}
+                      {% endif %}
+                      {% if h and emp %} · {% endif %}
+                      {% if emp %}{{ emp }} сотрудников{% endif %}
+                    </div>
+                  </div>
+                  {% if dept_url %}
+                    <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
                   {% endif %}
                 </div>
-              </div>
-
-              <footer class="feed-actions">
-                <a href="{% url 'employees:department_detail' dept.pk %}" class="btn btn-ghost">
-                  Перейти
-                </a>
-                <span class="ms-auto"></span>
-                {% if user.is_staff or dept.head_id == user.id %}
-                  <a href="{% url 'employees:invite_to_department' dept.pk %}" class="btn btn-ghost">
-                    <i class="bi-person-plus me-1"></i> Пригласить
-                  </a>
-                {% endif %}
-              </footer>
-            </article>
-          {% endfor %}
+              {% endwith %}
+            {% empty %}
+              <div class="p-3 text-secondary">Отделов пока нет.</div>
+            {% endfor %}
+          {% endwith %}
         </div>
-      {% else %}
-        <div class="alert alert-info shadow-sm rounded-3">Отделов пока нет.</div>
-      {% endif %}
+      </div>
+
+      <div class="mt-3 text-secondary small">
+        Всего сотрудников: <span id="empTotal">0</span>
+      </div>
 
     </div>
   </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
 <script>
-  (function () {
-    const input = document.getElementById('deptSearch');
-    const list = document.getElementById('deptList');
-    if (!input || !list) return;
+  (function(){
+    const input    = document.getElementById('deptFilter');
+    const clearBtn = document.querySelector('.ios-search-clear');
+    const list     = document.getElementById('deptList');
+    const rows     = () => list.querySelectorAll('.dept-row');
+    const totalEl  = document.getElementById('empTotal');
 
-    input.addEventListener('input', function () {
-      const q = this.value.trim().toLowerCase();
-      list.querySelectorAll('.dept-row').forEach(item => {
-        const hay = item.getAttribute('data-q') || '';
-        item.classList.toggle('d-none', q && !hay.includes(q));
+    function apply(){
+      const q = (input?.value || '').trim().toLowerCase();
+      let total = 0;
+      rows().forEach(r => {
+        const hay = (r.getAttribute('data-haystack') || '').toLowerCase();
+        const show = !q || hay.includes(q);
+        r.style.display = show ? '' : 'none';
+        if (show) total += (parseInt(r.getAttribute('data-emp')) || 0);
       });
-    });
+      if (totalEl) totalEl.textContent = String(total);
+    }
+
+    apply();
+    input?.addEventListener('input', apply);
+    clearBtn?.addEventListener('click', () => { input.value=''; input.focus(); apply(); });
   })();
 </script>
 {% endblock %}

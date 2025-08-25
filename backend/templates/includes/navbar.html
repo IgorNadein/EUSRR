@@ -120,15 +120,15 @@
             <li><a class="dropdown-item" href="{% url 'employees:profile' %}">
               <i class="bi-person me-2"></i>Профиль</a></li>
             <li>
-              <a class="dropdown-item" href="{% url 'logout' %}">
+              <a class="dropdown-item" href="{% url 'auth_front:logout' %}">
                 <i class="bi-box-arrow-right me-2"></i>Выйти
               </a>
             </li>
           </ul>
         </div>
       {% else %}
-        <a class="btn btn-outline-light rounded-pill me-2" href="{% url 'login' %}">Войти</a>
-        <a class="btn btn-light rounded-pill" href="{% url 'employees:register' %}">Регистрация</a>
+        <a class="btn btn-outline-light rounded-pill me-2" href="{% url 'auth_front:login' %}">Войти</a>
+        <a class="btn btn-light rounded-pill" href="{% url 'auth_front:register' %}">Регистрация</a>
       {% endif %}
     </div>
 

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Подтверждение email — EUSRR{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 520px;">
+  {% if messages %}
+    <div class="mb-3">
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }} mb-2" role="alert">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+      <h1 class="h4 fw-bold mb-2">Верификация email</h1>
+      <p class="text-secondary mb-4">
+        Мы отправили код на адрес
+        <strong>{{ form.email.value|default:request.GET.email }}</strong>.
+        Введите его ниже для подтверждения.
+      </p>
+
+      {# Основная форма подтверждения #}
+      <form method="post" class="mb-3">
+        {% csrf_token %}
+        <input type="hidden" name="email" value="{{ form.email.value|default:request.GET.email }}">
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-warning" role="alert">
+            {% for e in form.non_field_errors %}{{ e }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+          </div>
+        {% endif %}
+
+        <div class="mb-3">
+          <label for="id_code" class="form-label">Код из письма</label>
+          <input type="text"
+                 name="code"
+                 id="id_code"
+                 class="form-control {% if form.code.errors %}is-invalid{% endif %}"
+                 maxlength="6"
+                 inputmode="numeric"
+                 pattern="[0-9]{6}"
+                 placeholder="Введите 6-значный код"
+                 required>
+          {% if form.code.errors %}
+            <div class="invalid-feedback">
+              {% for e in form.code.errors %}{{ e }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Подтвердить</button>
+      </form>
+
+      {# Повторная отправка — строго POST #}
+      <form method="post" action="{% url 'auth_front:resend_email' %}">
+        {% csrf_token %}
+        <input type="hidden" name="email" value="{{ form.email.value|default:request.GET.email }}">
+        <button type="submit" class="btn btn-link p-0">Отправить код заново</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const el = document.getElementById('id_code');
+    if (el) el.focus();
+  });
+</script>
+{% endblock %}

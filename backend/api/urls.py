@@ -1,9 +1,18 @@
 # backend\api\urls.py
 
-from django.urls import path, include
+from django.urls import include, path
+from rest_framework_simplejwt.views import TokenRefreshView
+
+from .auth.views import PhoneOrEmailTokenObtainPairView
+
+app_name = "api"
 
 urlpatterns = [
+    path("v1/", include(("api.v1.urls", "api_v1"), namespace="api_v1")),
     path(
-        'v1/', include(('api.v1.urls', "api_v1"), namespace="api_v1")
-        ),
+        "auth/token/",
+        PhoneOrEmailTokenObtainPairView.as_view(),
+        name="token_obtain_pair",
+    ),
+    path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 ]

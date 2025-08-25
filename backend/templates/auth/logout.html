@@ -147,7 +147,7 @@
       const next = (params.get('next') || '').trim();
       if (next) { location.href = next; return; }
       if (document.referrer) { history.back(); return; }
-      location.href = "{% url 'login' %}";
+      location.href = "{% url 'auth_front:login' %}";
     }
 
     cancel?.addEventListener('click', goBack);

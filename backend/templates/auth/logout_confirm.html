@@ -19,7 +19,7 @@
           {% if next %}
             <input type="hidden" name="next" value="{{ next }}">
           {% else %}
-            <input type="hidden" name="next" value="{% url 'login' %}">
+            <input type="hidden" name="next" value="{% url 'auth_front:login' %}">
           {% endif %}
 
           <div class="d-flex gap-2">

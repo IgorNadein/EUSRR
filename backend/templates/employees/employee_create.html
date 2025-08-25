@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Создать сотрудника{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <h3 class="mb-3">Создать сотрудника</h3>
+      <form method="post" enctype="multipart/form-data" class="card">
+        <div class="card-body">
+          {% csrf_token %}
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Email *</label>
+              <input name="email" class="form-control" value="{{ form.email|default:'' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Телефон *</label>
+              <input name="phone_number" class="form-control" value="{{ form.phone_number|default:'' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Фамилия</label>
+              <input name="last_name" class="form-control" value="{{ form.last_name|default:'' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Имя</label>
+              <input name="first_name" class="form-control" value="{{ form.first_name|default:'' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Отчество</label>
+              <input name="patronymic" class="form-control" value="{{ form.patronymic|default:'' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Пароль (опционально)</label>
+              <input name="password" type="password" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Аватар</label>
+              <input type="file" name="avatar" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2">
+          <a href="{% url 'employees:employees_list' %}" class="btn btn-outline-secondary">Отмена</a>
+          <button class="btn btn-primary" type="submit">Создать</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
