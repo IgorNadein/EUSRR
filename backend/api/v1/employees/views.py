@@ -28,8 +28,9 @@ from rest_framework.views import APIView
 
 from .serializers import (DepartmentRoleSerializer, DepartmentSerializer,
                           EmailSerializer, EmailVerifySerializer,
-                          EmployeeListSerializer, EmployeeSerializer,
-                          PositionSerializer, RegisterSerializer)
+                          EmployeeActionSerializer, EmployeeListSerializer,
+                          EmployeeSerializer, PositionSerializer,
+                          RegisterSerializer, SkillSerializer)
 
 
 def _to_bool(val: str | None) -> bool | None:
@@ -66,6 +67,74 @@ def _detect_phone_field() -> str | None:
 
 
 PHONE_FIELD = _detect_phone_field()
+
+
+class HistoryActionMixin:
+    """
+    Добавляет GET /{basename}/{pk}/history/
+    Параметры (необяз.): ?from=ISO ?to=ISO ?user=<id|email> ?type=+|~|-
+    """
+
+    history_diff_fields = None  # список полей для diff; если None — попытаемся угадать
+
+    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
+    def history(self, request, pk=None):
+        obj = self.get_object()
+        qs = obj.history.select_related("history_user").order_by(
+            "-history_date", "-history_id"
+        )
+
+        q_from = request.query_params.get("from")
+        q_to = request.query_params.get("to")
+        q_user = request.query_params.get("user")
+        q_type = request.query_params.get("type")
+
+        if q_from:
+            try:
+                qs = qs.filter(history_date__gte=q_from)
+            except:
+                pass
+        if q_to:
+            try:
+                qs = qs.filter(history_date__lte=q_to)
+            except:
+                pass
+        if q_user:
+            qs = qs.filter(
+                models.Q(history_user__id__iexact=q_user)
+                | models.Q(history_user__email__iexact=q_user)
+            )
+        if q_type in {"+", "~", "-"}:
+            qs = qs.filter(history_type=q_type)
+
+        items = list(qs)
+        results = []
+        for i, cur in enumerate(items):
+            prev = items[i + 1] if i + 1 < len(items) else None
+            changes = {}
+            # какие поля сравнивать
+            if self.history_diff_fields is not None:
+                fields = self.history_diff_fields
+            else:
+                # берём только реальные field.name модели (без M2M)
+                fields = [f.name for f in obj._meta.fields]
+
+            for name in fields:
+                new = getattr(cur, name, None)
+                old = getattr(prev, name, None) if prev else None
+                if old != new:
+                    changes[name] = {"old": old, "new": new}
+
+            results.append(
+                {
+                    "history_id": cur.history_id,
+                    "history_date": cur.history_date,
+                    "history_type": cur.history_type,  # "+", "~", "-"
+                    "history_user": getattr(cur.history_user, "email", None),
+                    "changes": changes,
+                }
+            )
+        return Response({"count": len(results), "results": results})
 
 
 class ResendEmailAPIView(APIView):
@@ -227,7 +296,7 @@ class RegisterAPIView(APIView):
         )
 
 
-class DepartmentViewSet(viewsets.ModelViewSet):
+class DepartmentViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     """
     /api/departments/
       - GET (list/detail)     — только аутентифицированные пользователи
@@ -242,6 +311,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "description"]
     ordering = ["name"]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    history_diff_fields = ["name", "description", "head_id", "head_appointed_at"]
 
     def get_queryset(self):
         # подзапрос: есть ли head среди связей отдела
@@ -623,7 +693,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         return Response(ser.data)
 
 
-class PositionViewSet(viewsets.ModelViewSet):
+class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     """
     /api/v1/positions/
       GET list/retrieve   — аутентифицированные
@@ -643,6 +713,7 @@ class PositionViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "description"]
     ordering_fields = ["name", "id"]
     ordering = ["name"]
+    history_diff_fields = ["name", "description"]
 
     def get_permissions(self):
         # важное место: выставляем требуемый perm под действие
@@ -738,6 +809,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
       ?department=<id> — роли конкретного отдела
       ?search=<name>   — поиск по названию
     """
+
     serializer_class = DepartmentRoleSerializer
     permission_classes = [IsAuthenticated, IsDeptManagerForWrite]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -777,7 +849,10 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         checker = IsDeptManagerForWrite()
         if not checker.has_object_permission(self.request, self, dept):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Недостаточно прав для управления ролями этого отдела")
+
+            raise PermissionDenied(
+                "Недостаточно прав для управления ролями этого отдела"
+            )
         serializer.save()
 
     # update/destroy — has_object_permission отработает, т.к. мы добавили IsDeptManagerForWrite
@@ -787,10 +862,14 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
     def _validate_perm_ids(self, request):
         ids = request.data.get("permission_ids")
         if not isinstance(ids, list):
-            return None, Response({"detail": "Поле 'permission_ids' должно быть списком id"}, status=400)
+            return None, Response(
+                {"detail": "Поле 'permission_ids' должно быть списком id"}, status=400
+            )
         perms = Permission.objects.filter(id__in=ids).select_related("content_type")
         if perms.count() != len(set(ids)):
-            return None, Response({"detail": "Некоторые permissions не найдены"}, status=400)
+            return None, Response(
+                {"detail": "Некоторые permissions не найдены"}, status=400
+            )
         return perms, None
 
     @action(detail=True, methods=["get"])
@@ -814,7 +893,12 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         if err:
             return err
         role.permissions.set(perms)
-        return Response({"ok": True, "permission_ids": list(role.permissions.values_list("id", flat=True))})
+        return Response(
+            {
+                "ok": True,
+                "permission_ids": list(role.permissions.values_list("id", flat=True)),
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def add_perms(self, request, pk=None):
@@ -823,7 +907,12 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         if err:
             return err
         role.permissions.add(*perms)
-        return Response({"ok": True, "permission_ids": list(role.permissions.values_list("id", flat=True))})
+        return Response(
+            {
+                "ok": True,
+                "permission_ids": list(role.permissions.values_list("id", flat=True)),
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def remove_perms(self, request, pk=None):
@@ -832,4 +921,238 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         if err:
             return err
         role.permissions.remove(*perms)
-        return Response({"ok": True, "permission_ids": list(role.permissions.values_list("id", flat=True))})
+        return Response(
+            {
+                "ok": True,
+                "permission_ids": list(role.permissions.values_list("id", flat=True)),
+            }
+        )
+
+
+class SkillViewSet(viewsets.ModelViewSet):
+    """
+    /api/v1/skills/
+      - GET list/retrieve      — IsAuthenticated
+      - POST (create)          — IsAuthenticated (любой авторизованный может создавать новые навыки)
+      - PATCH/PUT              — staff/superuser ИЛИ perm employees.change_skill
+      - DELETE                 — staff/superuser ИЛИ perm employees.delete_skill
+    Экшены:
+      - POST /skills/bulk_create   — как create (любой авторизованный)
+      - POST /skills/merge         — объединить source->target (perm employees.change_skill)
+        body: {
+          "source_id": 1,
+          "target_id": 2,
+          "reassign": true,         # переназначить сотрудникам source -> target (по умолч. true)
+          "delete_source": true     # удалить исходный навык после переназначения (по умолч. true)
+        }
+    """
+
+    queryset = Skill.objects.all().order_by("name")
+    serializer_class = SkillSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name"]
+    ordering_fields = ["name", "id"]
+    ordering = ["name"]
+    pagination_class = None
+
+    def get_permissions(self):
+        # create / bulk_create — любой аутентифицированный
+        if self.action in ("create", "bulk_create"):
+            return [IsAuthenticated()]
+
+        # merge / update / destroy — требуются модельные права
+        if self.action in ("update", "partial_update"):
+            self.required_perm_code = "employees.change_skill"
+        elif self.action == "destroy":
+            self.required_perm_code = "employees.delete_skill"
+        elif self.action == "merge":
+            self.required_perm_code = "employees.change_skill"
+        else:
+            self.required_perm_code = None  # SAFE methods → IsAuthenticated
+        return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+
+    @action(detail=False, methods=["post"])
+    def bulk_create(self, request):
+        names = request.data.get("names")
+        if not isinstance(names, list) or not names:
+            return Response(
+                {"detail": "Поле 'names' должно быть непустым списком строк"},
+                status=400,
+            )
+
+        # нормализация: trim + отбраковка пустых, дедуп (case-insensitive)
+        cleaned = []
+        seen = set()
+        for n in names:
+            if not isinstance(n, str):
+                continue
+            s = n.strip()
+            if not s:
+                continue
+            key = s.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(s)
+
+        # отфильтруем уже существующие (по точному совпадению имени)
+        existing = set(
+            Skill.objects.filter(name__in=cleaned).values_list("name", flat=True)
+        )
+        to_create = [Skill(name=n) for n in cleaned if n not in existing]
+        Skill.objects.bulk_create(to_create, ignore_conflicts=True)
+
+        created = Skill.objects.filter(
+            name__in=[n for n in cleaned if n not in existing]
+        ).order_by("name")
+        return Response(
+            {
+                "created_count": created.count(),
+                "created": SkillSerializer(created, many=True).data,
+            },
+            status=201,
+        )
+
+    @action(detail=False, methods=["post"])
+    @transaction.atomic
+    def merge(self, request):
+        """
+        Заменяет навык source на target, опционально переносит всех сотрудников и удаляет source.
+        Требуется право employees.change_skill.
+        """
+        sid = request.data.get("source_id")
+        tid = request.data.get("target_id")
+        reassign = bool(request.data.get("reassign", True))
+        delete_source = bool(request.data.get("delete_source", True))
+
+        if not sid or not tid:
+            return Response({"detail": "source_id и target_id обязательны"}, status=400)
+        try:
+            sid = int(sid)
+            tid = int(tid)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "source_id и target_id должны быть числами"}, status=400
+            )
+        if sid == tid:
+            return Response(
+                {"detail": "source_id и target_id не должны совпадать"}, status=400
+            )
+
+        try:
+            source = Skill.objects.get(pk=sid)
+            target = Skill.objects.get(pk=tid)
+        except Skill.DoesNotExist:
+            return Response({"detail": "Skill не найден"}, status=404)
+
+        moved_count = 0
+        if reassign:
+            # переназначить всем сотрудникам: source -> target
+            qs = Employee.objects.filter(skills=source).only("id").distinct()
+            for emp in qs:
+                emp.skills.add(target)
+                emp.skills.remove(source)
+                moved_count += 1
+
+        # удалить исходный навык при необходимости
+        if delete_source:
+            source.delete()
+
+        return Response(
+            {
+                "ok": True,
+                "source_id": sid,
+                "target_id": tid,
+                "reassigned_employees": moved_count,
+                "source_deleted": bool(delete_source),
+            },
+            status=200,
+        )
+
+
+class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
+    """
+    /api/v1/employee-actions/
+      - GET list/retrieve  — IsAuthenticated
+      - POST create        — staff/superuser ИЛИ perm employees.add_employeeaction
+      - PATCH/PUT update   — staff/superuser ИЛИ perm employees.change_employeeaction
+      - DELETE destroy     — staff/superuser ИЛИ perm employees.delete_employeeaction
+
+    Фильтры:
+      ?employee=<id>   — по сотруднику
+      ?date_from=ISO   — >=
+      ?date_to=ISO     — <=
+    """
+
+    serializer_class = EmployeeActionSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ["date", "id"]
+    ordering = ["-date"]
+    pagination_class = None
+    history_diff_fields = ["action", "date", "comment", "extra", "employee_id"]
+
+    def get_queryset(self):
+        qs = EmployeeAction.objects.select_related("employee").order_by(*self.ordering)
+        qp = self.request.query_params
+        emp = qp.get("employee")
+        if emp:
+            try:
+                emp_id = int(emp)
+                qs = qs.filter(employee_id=emp_id)
+            except (TypeError, ValueError):
+                return EmployeeAction.objects.none()
+        df = qp.get("date_from")
+        dt = qp.get("date_to")
+        if df:
+            try:
+                qs = qs.filter(date__gte=df)
+            except Exception:
+                pass
+        if dt:
+            try:
+                qs = qs.filter(date__lte=dt)
+            except Exception:
+                pass
+        return qs
+
+    # --- права на запись через модельные пермишены ---
+    def get_permissions(self):
+        if self.action == "create":
+            self.required_perm_code = "employees.add_employeeaction"
+            return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+        if self.action in ("update", "partial_update"):
+            self.required_perm_code = "employees.change_employeeaction"
+            return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+        if self.action == "destroy":
+            self.required_perm_code = "employees.delete_employeeaction"
+            return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+        self.required_perm_code = None
+        return super().get_permissions()
+
+    # --- бизнес-эффекты после записи события ---
+    def _apply_effects(self, action_obj: EmployeeAction):
+        emp = action_obj.employee
+        if action_obj.action == ACTION_DISMISSED:
+            # деактивируем сотрудника и связи
+            EmployeeDepartment.objects.filter(employee=emp, is_active=True).update(
+                is_active=False, date_to=timezone.now().date()
+            )
+            if emp.is_active:
+                emp.is_active = False
+                emp.save(update_fields=["is_active"])
+        else:
+            # любое иное событие делает сотрудника активным
+            if not emp.is_active:
+                emp.is_active = True
+                emp.save(update_fields=["is_active"])
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        self._apply_effects(obj)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        self._apply_effects(obj)

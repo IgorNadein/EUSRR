@@ -5,10 +5,18 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.files.base import ContentFile
-from employees.models import (Department, DepartmentRole, EmployeeDepartment,
-                              Position)
+from django.utils import timezone
 from PIL import Image
 from rest_framework import serializers
+
+from employees.models import (
+    Department,
+    DepartmentRole,
+    EmployeeAction,
+    EmployeeDepartment,
+    Position,
+    Skill,
+)
 
 Employee = get_user_model()
 
@@ -284,3 +292,23 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
             }
             for p in obj.permissions.select_related("content_type").all()
         ]
+
+
+class SkillSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Skill
+        fields = ["id", "name"]
+
+
+class EmployeeActionSerializer(serializers.ModelSerializer):
+    # по умолчанию ставим текущее время, если не передали
+    date = serializers.DateTimeField(required=False)
+
+    class Meta:
+        model = EmployeeAction
+        fields = ["id", "employee", "action", "date", "comment", "extra"]
+
+    def validate(self, attrs):
+        if "date" not in attrs:
+            attrs["date"] = timezone.now()
+        return attrs
