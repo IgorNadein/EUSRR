@@ -139,8 +139,8 @@ class Request(models.Model):
 
     class Meta:
         permissions = [
-            ("can_view_all_requests", "Can view all requests"),
-            ("can_process_requests", "Can approve/reject requests"),
+            ("can_view_all_requests", "Можно просмотреть все заявления"),
+            ("can_process_requests", "Может одобрять/отклонять заявления"),
         ]
         verbose_name = _("Заявление")
         verbose_name_plural = _("Заявления")

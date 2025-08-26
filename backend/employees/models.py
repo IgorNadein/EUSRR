@@ -128,7 +128,7 @@ class Position(models.Model):
         verbose_name_plural = "Должности"
         ordering = ["name"]
         permissions = [
-            ("assign_position_groups", "Can assign auth groups to positions"),
+            ("assign_position_groups", "Может назначать группы аутентификации для должностей"),
         ]
 
     def __str__(self) -> str:
@@ -273,9 +273,9 @@ class Department(models.Model):
         verbose_name = "Отдел"
         verbose_name_plural = "Отделы"
         permissions = [
-            ("change_department_head", "Can change department head"),
-            ("assign_department_role", "Can assign role within department"),
-            ("manage_department", "Can manage department"),
+            ("change_department_head", "Может изменять руководителя отдела"),
+            ("assign_department_role", "Может назначать роли в рамках отдела"),
+            ("manage_department", "Может управлять отделом"),
         ]
 
     def __str__(self):

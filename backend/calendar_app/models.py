@@ -112,7 +112,7 @@ class DepartmentEvent(models.Model):
             ),
         ]
         permissions = [
-            ("manage_department_events", "Can create/update/delete department events"),
+            ("manage_department_events", "Может создавать/обновлять/ удалять события отдела"),
         ]
 
     def __str__(self):

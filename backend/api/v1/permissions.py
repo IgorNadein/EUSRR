@@ -1,11 +1,9 @@
-# employees/permissions.py
+# backend\api\v1\permissions.py
 from __future__ import annotations
 
-from django.contrib.auth.models import Permission
-from django.db.models import Prefetch
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-from .models import Department, EmployeeDepartment
+from employees.models import Department, EmployeeDepartment
 
 MANAGE_PERM = "manage_department"
 CHANGE_HEAD_PERM = "change_department_head"
@@ -20,29 +18,6 @@ def user_is_dept_head(user, dept: Department) -> bool:
 
 def user_is_staffish(user) -> bool:
     return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff))
-
-
-def get_user_dept_link(user, dept: Department) -> EmployeeDepartment | None:
-    if not user or not user.is_authenticated:
-        return None
-    # можно закешировать на user, если часто вызывается:
-    cache_key = f"_dept_link_{dept.id}"
-    cached = getattr(user, cache_key, None)
-    if cached is not None:
-        return cached
-
-    link = (
-        EmployeeDepartment.objects.select_related("role")
-        .prefetch_related(
-            Prefetch(
-                "role__permissions", queryset=Permission.objects.only("id", "codename")
-            )
-        )
-        .filter(employee_id=user.id, department_id=dept.id, is_active=True)
-        .first()
-    )
-    setattr(user, cache_key, link)
-    return link
 
 
 def user_has_dept_perm(user, dept: Department, perm_code: str) -> bool:
@@ -147,6 +122,29 @@ class IsStaffOrHasModelPerm(BasePermission):
         return bool(code and user.has_perm(code))
 
 
+class IsAuthorOrStaffForComments(BasePermission):
+    """
+    Создание/чтение — любой аутентифицированный (проверяет IsAuthenticated во view).
+    Изменение/удаление — автор комментария или staff/superuser.
+    """
+    message = "Можно редактировать/удалять только свои комментарии."
+
+    def has_permission(self, request, view):
+        # IsAuthenticated уже стоит во вьюхе; дублируем True для небезопасных методов,
+        # чтобы проверка прошла до object-level.
+        return bool(request.user and request.user.is_authenticated)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if user_is_staffish(user):
+            return True
+        return getattr(obj, "author_id", None) == getattr(user, "id", None)
+
+
 __all__ = [
     "MANAGE_PERM",
     "CHANGE_HEAD_PERM",
@@ -154,6 +152,7 @@ __all__ = [
     "IsDeptManagerForWrite",
     "IsSelfOrStaff",
     "IsStaffOrHasModelPerm",
+    "IsAuthorOrStaffForComments",
     "user_is_dept_head",
     "user_has_dept_perm",
 ]

@@ -6,6 +6,7 @@ from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
                               EmployeeViewSet, PositionViewSet,
                               RegisterAPIView, ResendEmailAPIView,
                               VerifyEmailAPIView, SkillViewSet, EmployeeActionViewSet,)
+from .feed.views import PostViewSet, CommentViewSet
 
 app_name = "api_v1"
 
@@ -17,6 +18,8 @@ router.register(r"employee-actions", EmployeeActionViewSet, basename="employee-a
 router.register(r"positions", PositionViewSet, basename="positions")
 router.register(r"department-roles", DepartmentRoleViewSet, basename="department-roles")
 router.register(r"skills", SkillViewSet, basename="skills")
+router.register(r"posts", PostViewSet, basename="posts")
+router.register(r"comments", CommentViewSet, basename="comments")
 
 urlpatterns = [
     path("auth/register/", RegisterAPIView.as_view(), name="register"),

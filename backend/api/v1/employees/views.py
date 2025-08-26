@@ -16,9 +16,6 @@ from employees.constants import ACTION_DISMISSED
 from employees.models import (Department, DepartmentRole, Employee,
                               EmployeeAction, EmployeeDepartment, Position,
                               Skill)
-from employees.permissions import (ASSIGN_ROLE_PERM, MANAGE_PERM,
-                                   IsDeptManagerForWrite, IsSelfOrStaff,
-                                   IsStaffOrHasModelPerm)
 from phonenumbers import PhoneNumberFormat
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -26,6 +23,9 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..permissions import (ASSIGN_ROLE_PERM, MANAGE_PERM,
+                           IsDeptManagerForWrite, IsSelfOrStaff,
+                           IsStaffOrHasModelPerm)
 from .serializers import (DepartmentRoleSerializer, DepartmentSerializer,
                           EmailSerializer, EmailVerifySerializer,
                           EmployeeActionSerializer, EmployeeListSerializer,

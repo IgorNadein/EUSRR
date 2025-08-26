@@ -1,12 +1,59 @@
 # backend/feed/models.py
-from django.contrib.auth import get_user_model
-from django.db import models
-from django.db.models import Q
+from __future__ import annotations
 
-from .constants import (TYPE_CHOICES, TYPE_COMPANY, TYPE_DEPARTMENT,
-                        TYPE_EMPLOYEE)
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
+from django.db import models, transaction
+from django.db.models import Q
+from django.utils.deconstruct import deconstructible
+
+from .constants import TYPE_CHOICES, TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
 
 Employee = get_user_model()
+
+
+# --- helpers: валидаторы размера файлов ---
+def validate_file_size(max_mb: int):
+    max_bytes = max_mb * 1024 * 1024
+
+    def _v(f):
+        if f and getattr(f, "size", 0) > max_bytes:
+            raise ValidationError(f"Файл превышает {max_mb} MB.")
+
+    return _v
+
+
+IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"]
+FILE_EXTS = [
+    "pdf",
+    "doc",
+    "docx",
+    "xls",
+    "xlsx",
+    "txt",
+    "csv",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "zip",
+    "rar",
+    "7z",
+]
+
+
+@deconstructible
+class FileSizeValidator:
+    def __init__(self, max_mb: int):
+        self.max_mb = int(max_mb)
+
+    def __call__(self, f):
+        if f and getattr(f, "size", 0) > self.max_mb * 1024 * 1024:
+            raise ValidationError(f"Файл превышает {self.max_mb} MB.")
+
+    def __eq__(self, other):
+        return isinstance(other, FileSizeValidator) and self.max_mb == other.max_mb
 
 
 class Post(models.Model):
@@ -17,10 +64,10 @@ class Post(models.Model):
         verbose_name="Автор",
     )
     department = models.ForeignKey(
-        "employees.Department",  # строковая ссылка → без прямого импорта
+        "employees.Department",
         null=True,
         blank=True,
-        on_delete=models.PROTECT,  # защищаем посты от удаления отдела
+        on_delete=models.PROTECT,
         related_name="posts",
         verbose_name="Отдел",
         help_text="Для новостей отдела укажите отдел. Для других типов оставьте пустым.",
@@ -45,6 +92,10 @@ class Post(models.Model):
     likes_count = models.PositiveIntegerField("Лайки", default=0, db_index=True)
 
     class Meta:
+        permissions = [
+            ("publish_company_post", "Может публиковать новости на главной"),
+            ("publish_department_post", "Может публиковать новости в отделах"),
+        ]
         verbose_name = "Публикация"
         verbose_name_plural = "Публикации"
         ordering = ["-pinned", "-created_at"]
@@ -54,17 +105,15 @@ class Post(models.Model):
             models.Index(fields=["created_at"]),
             models.Index(
                 fields=["department", "-created_at"]
-            ),  # быстрый список по отделу
-            models.Index(fields=["author", "-created_at"]),  # быстрый список по автору
+            ),
+            models.Index(fields=["author", "-created_at"]),
         ]
         constraints = [
-            # Если тип = 'department' → department IS NOT NULL
             models.CheckConstraint(
                 name="post_department_required_when_type_is_department",
                 condition=Q(type=TYPE_DEPARTMENT, department__isnull=False)
                 | ~Q(type=TYPE_DEPARTMENT),
             ),
-            # Если тип != 'department' → department IS NULL (future-proof)
             models.CheckConstraint(
                 name="post_department_null_when_type_not_department",
                 condition=Q(type=TYPE_DEPARTMENT) | Q(department__isnull=True),
@@ -88,20 +137,40 @@ class Post(models.Model):
 
 
 class Comment(models.Model):
+    text = models.TextField("Комментарий", blank=True, default="")
+    image = models.ImageField(
+        "Изображение",
+        upload_to="feed/comments/images/%Y/%m/",
+        blank=True, null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=IMAGE_EXTS),
+            FileSizeValidator(10),
+        ],
+    )
+
+    attachment = models.FileField(
+        "Вложение",
+        upload_to="feed/comments/attachments/%Y/%m/",
+        blank=True, null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=FILE_EXTS),
+            FileSizeValidator(25),
+        ],
+    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    author = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.CASCADE,
+        related_name="comments",
+        verbose_name="Автор",
+        db_index=True,
+    )
     post = models.ForeignKey(
-        Post,
+        "feed.Post",
         on_delete=models.CASCADE,
         related_name="comments",
         verbose_name="Публикация",
     )
-    author = models.ForeignKey(
-        Employee,
-        on_delete=models.CASCADE,
-        related_name="comments",
-        verbose_name="Автор",
-    )
-    text = models.TextField("Комментарий")
-    created_at = models.DateTimeField("Создано", auto_now_add=True)
 
     class Meta:
         verbose_name = "Комментарий"
@@ -109,10 +178,78 @@ class Comment(models.Model):
         ordering = ["created_at"]
         indexes = [
             models.Index(fields=["created_at"]),
+            models.Index(fields=["post", "created_at"]),
+            models.Index(fields=["author", "created_at"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                name="comment_has_any_content_v3",
+                condition=(
+                    (Q(text__isnull=False) & ~Q(text=""))
+                    | Q(image__isnull=False)
+                    | Q(attachment__isnull=False)
+                ),
+                violation_error_message="Нужно указать текст, изображение или файл.",
+            ),
         ]
 
-    def __str__(self):
-        return f'Комментарий от {self.author} к "{self.post.title}"'
+    def __str__(self) -> str:
+        base = (self.text or "").strip()
+        return f"Комментарий #{self.pk or '∅'} от {self.author_id} к посту {self.post_id}: {base[:40]}"
+
+    # --- бизнес-валидация ---
+    def clean(self):
+        super().clean()
+        has_text = bool((self.text or "").strip())
+        if not (has_text or self.image or self.attachment):
+            raise ValidationError(
+                {"text": "Нужно указать текст, изображение или файл."}
+            )
+
+    def _delete_file(self, ffield: models.FileField):
+        f = getattr(self, ffield.attname)
+        if f and hasattr(f, "name"):
+            storage, name = f.storage, f.name
+            transaction.on_commit(lambda: storage.delete(name))
+
+    def delete(self, *args, **kwargs):
+        old_image = self.image
+        old_attach = self.attachment
+        super().delete(*args, **kwargs)
+        if old_image:
+            transaction.on_commit(lambda: old_image.storage.delete(old_image.name))
+        if old_attach:
+            transaction.on_commit(lambda: old_attach.storage.delete(old_attach.name))
+
+    def save(self, *args, **kwargs):
+        skip_validation = kwargs.pop("skip_validation", False)
+        if not skip_validation:
+            self.full_clean()
+        old_image_name = old_attach_name = None
+        if self.pk:
+            try:
+                old = Comment.objects.only("image", "attachment").get(pk=self.pk)
+                if old.image and old.image.name != (
+                    self.image.name if self.image else None
+                ):
+                    old_image_name = old.image.name
+                if old.attachment and old.attachment.name != (
+                    self.attachment.name if self.attachment else None
+                ):
+                    old_attach_name = old.attachment.name
+            except Comment.DoesNotExist:
+                pass
+
+        res = super().save(*args, **kwargs)
+
+        if old_image_name:
+            transaction.on_commit(lambda: self.image.storage.delete(old_image_name))
+        if old_attach_name:
+            transaction.on_commit(
+                lambda: self.attachment.storage.delete(old_attach_name)
+            )
+
+        return res
 
 
 class PostLike(models.Model):
