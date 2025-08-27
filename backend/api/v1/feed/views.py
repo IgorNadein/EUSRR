@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from django.db.models import Count, F
+from django.contrib.auth import get_user_model
+from django.db.models import (BooleanField, Count, Exists, F, OuterRef,
+                              Subquery, Value)
+from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
+from feed.models import Comment, Post, PostLike
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -8,16 +12,11 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
-from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
-from feed.models import Comment, Post, PostLike
-
-from ..permissions import (
-    IsAuthorOrStaffForComments,
-    user_has_dept_perm,
-    user_is_dept_head,
-    user_is_staffish,
-)
+from ..permissions import (IsAuthorOrStaffForComments, user_has_dept_perm,
+                           user_is_dept_head, user_is_staffish)
 from .serializers import CommentSerializer, PostListSerializer, PostSerializer
+
+Employee = get_user_model()
 
 
 def _to_id(val):
@@ -51,20 +50,30 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        qp = self.request.query_params
+        user = self.request.user
 
+        if user.is_authenticated:
+            qs = qs.annotate(
+                is_liked=Exists(PostLike.objects.filter(post=OuterRef("pk"), user=user))
+            )
+        else:
+            qs = qs.annotate(is_liked=Value(False, output_field=BooleanField()))
+
+        # только ID последнего комментария — остальное соберём в сериализаторе
+        lc = Comment.objects.filter(post_id=OuterRef("pk")).order_by("-created_at")
+        qs = qs.annotate(last_comment_id=Subquery(lc.values("id")[:1]))
+
+        # дальше — ваши фильтры type/department/author/pinned (как были)
+        qp = self.request.query_params
         t = qp.get("type")
         if t:
             qs = qs.filter(type=t)
-
         dept_id = _to_id(qp.get("department"))
         if dept_id is not None:
             qs = qs.filter(department_id=dept_id)
-
         author_id = _to_id(qp.get("author"))
         if author_id is not None:
             qs = qs.filter(author_id=author_id)
-
         pinned = qp.get("pinned")
         if pinned in ("true", "1"):
             qs = qs.filter(pinned=True)
@@ -72,6 +81,34 @@ class PostViewSet(viewsets.ModelViewSet):
             qs = qs.filter(pinned=False)
 
         return qs
+    
+    def list(self, request, *args, **kwargs):
+        """
+        Сбор последних комментариев пачкой, без N+1:
+        1) получаем страницу/список постов;
+        2) вытаскиваем их last_comment_id;
+        3) делаем один запрос in_bulk() с select_related('author');
+        4) кладём карту в serializer.context.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else queryset
+
+        ids = [getattr(o, "last_comment_id", None) for o in objects]
+        ids = [i for i in ids if i]
+        last_comments_map = {}
+        if ids:
+            last_comments_map = Comment.objects.select_related("author").in_bulk(ids)
+
+        serializer = self.get_serializer(
+            objects,
+            many=True,
+            context={**self.get_serializer_context(), "last_comments_map": last_comments_map},
+        )
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     # ---- permissions helpers
     def _can_create(self, user, t, dept):
@@ -82,7 +119,6 @@ class PostViewSet(viewsets.ModelViewSet):
         if t == TYPE_COMPANY:
             return user_is_staffish(user) or user.has_perm("feed.publish_company_post")
         if t == TYPE_DEPARTMENT and dept:
-            # В ролях сравниваем по codename без префикса app:
             return (
                 user_is_staffish(user)
                 or user_is_dept_head(user, dept)
@@ -142,26 +178,34 @@ class PostViewSet(viewsets.ModelViewSet):
         if created:
             Post.objects.filter(pk=post.pk).update(likes_count=F("likes_count") + 1)
         post.refresh_from_db(fields=["likes_count"])
-        return Response({"liked": True, "likes_count": post.likes_count}, status=status.HTTP_200_OK)
+        return Response(
+            {"liked": True, "likes_count": post.likes_count}, status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=["post"])
     def unlike(self, request, pk=None):
         post = self.get_object()
         deleted, _ = PostLike.objects.filter(post=post, user=request.user).delete()
         if deleted:
-            Post.objects.filter(pk=post.pk, likes_count__gt=0).update(likes_count=F("likes_count") - 1)
+            Post.objects.filter(pk=post.pk, likes_count__gt=0).update(
+                likes_count=F("likes_count") - 1
+            )
         post.refresh_from_db(fields=["likes_count"])
-        return Response({"liked": False, "likes_count": post.likes_count}, status=status.HTTP_200_OK)
+        return Response(
+            {"liked": False, "likes_count": post.likes_count}, status=status.HTTP_200_OK
+        )
 
 
 class CommentViewSet(viewsets.ModelViewSet):
     """
     /api/v1/comments/
-      - GET list/retrieve — аутентифицированные
-      - POST create       — аутентифицированные (author = request.user)
-      - PATCH/PUT/DELETE  — автор или staff/superuser
-      Фильтры: ?post=<id>, ?author=<id>; сортировка created_at ASC
+      - GET: аутентифицированные
+      - POST: аутентифицированные (author = request.user)
+      - PATCH/PUT/DELETE: автор или staff/superuser
+      Фильтры: ?post=<id>, ?author=<id>
+      Сортировка: created_at ASC
     """
+
     queryset = Comment.objects.select_related("post", "author").all()
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated, IsAuthorOrStaffForComments]

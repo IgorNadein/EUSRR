@@ -1,67 +1,139 @@
 {% for post in items %}
-  <article class="feed-card" data-post-card id="post-{{ post.pk }}">
+  {% firstof post.id post.pk as post_id %}
+  <article class="feed-card" data-post-card id="post-{{ post_id }}">
     <header class="feed-hd">
-      <div class="feed-ava">
-        {% if post.author and post.author.avatar %}
-          <img src="{{ post.author.avatar.url }}" alt="">
-        {% else %}<i class="bi-person"></i>{% endif %}
+
+      {# --- Аватар автора --- #}
+      <div class="feed-ava d-flex align-items-center justify-content-center">
+        {% with a=post.author %}
+          {% if a %}
+            {% firstof a.avatar.url a.avatar_url as ava_url %}
+            {% if ava_url %}
+              <img src="{{ ava_url }}" alt="">
+            {% else %}
+              <i class="bi-person"></i>
+            {% endif %}
+          {% else %}
+            <i class="bi-person"></i>
+          {% endif %}
+        {% endwith %}
       </div>
 
+      {# --- Метаданные (имя автора, дата, отдел) --- #}
       <div class="feed-meta">
         <div class="feed-author">
-          {% if post.author %}
-            <a href="{% url 'employees:employee_detail' post.author.pk %}" class="text-decoration-none">
-              {{ post.author.get_full_name|default:post.author.username }}
-            </a>
-          {% else %}Автор не указан{% endif %}
+          {% with a=post.author %}
+            {% firstof a.id post.author_id as author_id %}
+            {% if author_id %}
+              <a href="{% url 'employees:employee_detail' author_id %}" class="text-decoration-none">
+                {% if a %}
+                  {% firstof a.full_name a.get_full_name as nm %}
+                  {% if nm %}
+                    {{ nm }}
+                  {% else %}
+                    {% if a.first_name or a.last_name %}
+                      {{ a.first_name }}{% if a.last_name %} {{ a.last_name }}{% endif %}
+                    {% else %}
+                      {% firstof a.username a.email "Сотрудник" %}
+                    {% endif %}
+                  {% endif %}
+                {% else %}
+                  Сотрудник #{{ author_id }}
+                {% endif %}
+              </a>
+            {% else %}
+              Автор не указан
+            {% endif %}
+          {% endwith %}
         </div>
+
         <div class="feed-sub">
           {% if post.created_at %}
-            <time datetime="{{ post.created_at|date:'c' }}">{{ post.created_at|date:"d.m.Y H:i" }}</time>
+            {{ post.created_at_display }}
           {% endif %}
-          {% if post.type == 'department' and post.department %} · {{ post.department.name }}{% endif %}
+          {% if post.type == 'department' %}
+            {# имя отдела может прийти как department.name (ORM) или department_name (API) #}
+            {% firstof post.department.name post.department_name as dept_name %}
+            {% if dept_name %} · {{ dept_name }}{% endif %}
+          {% endif %}
         </div>
       </div>
 
-      {% if post.pinned %}<span class="feed-pin"><i class="bi-pin-angle"></i> закреплено</span>{% endif %}
+      {% if post.pinned %}
+        <span class="feed-pin"><i class="bi-pin-angle"></i> закреплено</span>
+      {% endif %}
     </header>
 
     <div class="feed-body position-relative">
       <h3 class="feed-title mb-1">
-        {% if post.pk %}
-          <a href="{% url 'feed:post_detail' post.pk %}" class="text-decoration-none stretched-link">
+        {% if post_id %}
+          <a href="{% url 'feed:post_detail' post_id %}" class="text-decoration-none stretched-link">
             {{ post.title|default:"Без названия" }}
           </a>
         {% else %}
           {{ post.title|default:"Без названия" }}
         {% endif %}
       </h3>
-      <p class="feed-text">{{ post.body|default_if_none:""|truncatewords:42 }}</p>
+
+      {% with body=post.body|default_if_none:"" %}
+        {% if body|wordcount > 42 %}
+          <div class="feed-text mb-1" id="excerpt-{{ post_id }}">
+            {{ body|truncatewords:42 }}
+          </div>
+
+          <div id="full-{{ post_id }}" class="collapse"
+              data-excerpt="#excerpt-{{ post_id }}"
+              data-btn="#more-{{ post_id }}">
+            <div class="feed-full mt-1">
+              {{ body|linebreaksbr }}
+            </div>
+          </div>
+
+          <button class="btn btn-link px-0 mt-1 small readmore-toggle"
+                  id="more-{{ post_id }}"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#full-{{ post_id }}"
+                  aria-controls="full-{{ post_id }}"
+                  aria-expanded="false">
+            <span class="txt-more">Подробнее</span>
+            <span class="txt-less d-none">Скрыть</span>
+          </button>
+        {% else %}
+          <div class="feed-full">
+            {{ body|linebreaksbr }}
+          </div>
+        {% endif %}
+      {% endwith %}
     </div>
 
+
     {% if post.image %}
-      <div class="feed-img position-relative">
-        {% if post.pk %}<a href="{% url 'feed:post_detail' post.pk %}" class="stretched-link"></a>{% endif %}
-        <img src="{{ post.image.url }}" alt="{{ post.title|default:'Публикация' }}">
-      </div>
+      {% firstof post.image.url post.image as img_url %}
+      {% if img_url %}
+        <div class="feed-img position-relative">
+          {% if post_id %}<a href="{% url 'feed:post_detail' post_id %}" class="stretched-link"></a>{% endif %}
+          <img src="{{ img_url }}" alt="{{ post.title|default:'Публикация' }}">
+        </div>
+      {% endif %}
     {% endif %}
 
     <footer class="feed-actions">
-      {# Комментарии: свернуть/развернуть ТОЛЬКО блок ниже (по умолчанию скрыт) #}
-      {% if post.pk %}
+      {# Кнопка/ссылка комментариев #}
+      {% if post_id %}
         {% if user.is_authenticated %}
           <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
                   type="button"
                   data-bs-toggle="collapse"
-                  data-bs-target="#ccoll-{{ post.pk }}"
-                  aria-controls="ccoll-{{ post.pk }}"
+                  data-bs-target="#ccoll-{{ post_id }}"
+                  aria-controls="ccoll-{{ post_id }}"
                   aria-expanded="false">
             <i class="bi-chat-dots"></i>
             <span class="txt-open">{{ post.comments_count|default:0 }}</span>
             <span class="txt-close">Скрыть</span>
           </button>
         {% else %}
-          <a href="{% url 'feed:post_detail' post.pk %}#comments"
+          <a href="{% url 'feed:post_detail' post_id %}#comments"
              class="btn btn-ghost d-inline-flex align-items-center gap-1">
             <i class="bi-chat-dots"></i><span>{{ post.comments_count|default:0 }}</span>
           </a>
@@ -69,19 +141,24 @@
       {% endif %}
 
       {% if post.attachment %}
-        <a href="{{ post.attachment.url }}" class="btn btn-ghost d-inline-flex align-items-center gap-1">
-          <i class="bi-paperclip"></i><span>Вложение</span>
-        </a>
+        {% firstof post.attachment.url post.attachment as att_url %}
+        {% if att_url %}
+          <a href="{{ att_url }}" class="btn btn-ghost d-inline-flex align-items-center gap-1">
+            <i class="bi-paperclip"></i><span>Вложение</span>
+          </a>
+        {% endif %}
       {% endif %}
 
       <span class="ms-auto"></span>
-      {% if user.is_authenticated and post.pk %}
-        <form method="post" action="{% url 'feed:toggle_like' post.pk %}" class="ms-2">
+
+      {# Лайк: через внутренний view, который ходит в API #}
+      {% if user.is_authenticated and post_id %}
+        <form method="post" action="{% url 'feed:toggle_like' post_id %}" class="ms-2">
           {% csrf_token %}
           <button type="submit"
                   class="btn btn-ghost d-inline-flex align-items-center gap-1 {% if post.is_liked %}is-liked{% endif %}"
-                  data-like-post="{{ post.pk }}"
-                  data-like-url="{% url 'feed:toggle_like' post.pk %}"
+                  data-like-post="{{ post_id }}"
+                  data-like-url="{% url 'feed:toggle_like' post_id %}"
                   aria-pressed="{% if post.is_liked %}true{% else %}false{% endif %}">
             <i class="bi {% if post.is_liked %}bi-heart-fill{% else %}bi-heart{% endif %}"></i>
             <span data-like-count>{{ post.likes_count|default:0 }}</span>
@@ -95,37 +172,62 @@
       {% endif %}
     </footer>
 
-    {# ===== СВАРАЧИВАЕМЫЙ БЛОК: всегда скрыт по умолчанию ===== #}
-    <div id="ccoll-{{ post.pk }}" class="collapse">
+    {# ===== СКЛАДНОЙ БЛОК КОММЕНТАРИЕВ ===== #}
+    <div id="ccoll-{{ post_id }}" class="collapse">
       {% if post.comments_count %}
         <div class="px-3 pt-2">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <a class="small text-primary text-decoration-none"
-               href="{% url 'feed:post_detail' post.pk %}#comments">
+               href="{% url 'feed:post_detail' post_id %}#comments">
               Показать все комментарии записи ({{ post.comments_count }})
             </a>
           </div>
 
+          {# last_comment_list — есть только в старом ORM-пути; при API просто не покажется #}
           {% with last=post.last_comment_list|first %}
             {% if last %}
               <div class="bg-body-tertiary border rounded p-2">
                 <div class="small mb-1">
-                  <a href="{% url 'employees:employee_detail' last.author.pk %}"
+                  {% firstof last.author.id last.author.pk as last_author_id %}
+                  <a href="{% url 'employees:employee_detail' last_author_id %}"
                      class="text-decoration-none fw-semibold">
-                    {{ last.author.get_full_name|default:last.author.username }}
+                    {% firstof last.author.get_full_name last.author.username "Сотрудник" %}
                   </a>
                   <span class="text-secondary">·</span>
-                  <time class="text-muted">{{ last.created_at|date:"d.m.Y H:i" }}</time>
+                  <time class="text-muted">
+                    {% firstof last.created_at|date:"d.m.Y H:i" last.created_at %}
+                  </time>
                 </div>
                 <div class="small">{{ last.text|truncatechars:220 }}</div>
               </div>
+            {% elif post.last_comment %}
+              {# НОВОЕ: из API #}
+              {% with lc=post.last_comment %}
+                <div class="bg-body-tertiary border rounded p-2">
+                  <div class="small mb-1">
+                    {% if lc.author.id %}
+                      <a href="{% url 'employees:employee_detail' lc.author.id %}"
+                        class="text-decoration-none fw-semibold">
+                        {{ lc.author.full_name|default:"Сотрудник" }}
+                      </a>
+                    {% else %}
+                      {{ lc.author.full_name|default:"Сотрудник" }}
+                    {% endif %}
+                    <span class="text-secondary">·</span>
+                    <time class="text-muted">
+                      {% firstof lc.created_at_display lc.created_at %}
+                    </time>
+                  </div>
+                  <div class="small">{{ lc.text|truncatechars:220 }}</div>
+                </div>
+              {% endwith %}
             {% endif %}
           {% endwith %}
         </div>
       {% endif %}
 
-      {% if user.is_authenticated and post.pk %}
-        <form class="px-3 pb-3 pt-2" method="post" action="{% url 'feed:post_detail' post.pk %}">
+      {% if user.is_authenticated and post_id %}
+        <form class="px-3 pb-3 pt-2" method="post" action="{% url 'feed:post_detail' post_id %}">
           {% csrf_token %}
           <input type="hidden" name="next" value="{{ request.get_full_path }}">
           <div class="input-group">
@@ -139,3 +241,34 @@
 {% empty %}
   <div class="alert alert-info shadow-sm">Пока нет новостей.</div>
 {% endfor %}
+
+
+<script>
+  (function(){
+    // когда открываем «Полный текст» — прячем краткий, меняем подпись кнопки
+    document.addEventListener('show.bs.collapse', function(e){
+      const exSel = e.target.dataset.excerpt;
+      const btnSel = e.target.dataset.btn;
+      if (exSel) document.querySelector(exSel)?.classList.add('d-none');
+      const btn = btnSel ? document.querySelector(btnSel) : null;
+      if (btn){
+        btn.querySelector('.txt-more')?.classList.add('d-none');
+        btn.querySelector('.txt-less')?.classList.remove('d-none');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+
+    // при сворачивании — показываем краткий, меняем подпись обратно
+    document.addEventListener('hide.bs.collapse', function(e){
+      const exSel = e.target.dataset.excerpt;
+      const btnSel = e.target.dataset.btn;
+      if (exSel) document.querySelector(exSel)?.classList.remove('d-none');
+      const btn = btnSel ? document.querySelector(btnSel) : null;
+      if (btn){
+        btn.querySelector('.txt-more')?.classList.remove('d-none');
+        btn.querySelector('.txt-less')?.classList.add('d-none');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  })();
+</script>

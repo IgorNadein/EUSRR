@@ -4,88 +4,282 @@
 {% block title %}Лента{% endblock %}
 
 {% block content %}
-<div class="container">
-  <div class="row justify-content-center mb-4">
-    <div class="col-lg-9 col-xl-8">
+  <style>
+    /* ===== секция «новички» (контейнер) ===== */
+    .join-wrap{
+      padding:.9rem 1rem;
+      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+      border-radius: var(--feed-radius);
+      background: var(--bs-body-bg);
+      box-shadow: var(--feed-shadow);
+    }
 
-      <div class="feed-header">
-        <i class="bi-megaphone fs-2 text-primary"></i>
-        <h2 class="title mb-0">Лента</h2>
+    /* ===== горизонтальная лента ===== */
+    .join-scroller{
+      position: relative;
+      overflow-x: auto;          /* горизонтальная прокрутка */
+      overflow-y: visible;       /* нужно для инфо-блока */
+      scrollbar-width: none;     /* Firefox скрыть полосы */
+      -ms-overflow-style: none;  /* IE/старый Edge */
+    }
+    .join-scroller::-webkit-scrollbar{ display:none; } /* Chrome/Safari */
 
-        {# КНОПКА СОЗДАНИЯ ПУБЛИКАЦИИ ПО ПРАВАМ ДОСТУПА #}
-        {% if user.is_authenticated %}
-          {# Лента отдела — если в контексте передан department #}
-          {% if department %}
-            {% if user.is_staff or department.head_id == user.id %}
-              <a class="btn btn-primary ms-auto"
-                 href="{% url 'feed:post_create' %}?department={{ department.pk }}">
-                <i class="bi-plus-circle me-1"></i> Новая публикация
-              </a>
-            {% endif %}
+    .join-rail{
+      display:flex; align-items:flex-start; gap:.9rem; /* start: инфо-блоки снизу */
+      padding:.25rem .25rem;
+    }
 
-          {# Лента сотрудника — если в контексте передан employee #}
-          {% elif employee %}
-            {% if user.is_staff or employee.pk == user.pk %}
-              <a class="btn btn-primary ms-auto"
-                 href="{% url 'feed:post_create' %}?type=employee">
-                <i class="bi-plus-circle me-1"></i> Новая публикация
-              </a>
-            {% endif %}
+    /* мягкие «маски» по краям */
+    .join-scroller::before,
+    .join-scroller::after{
+      content:""; position:absolute; top:0; bottom:0; width:32px; pointer-events:none;
+      background: linear-gradient(to right, var(--bs-body-bg), transparent);
+    }
+    .join-scroller::after{ right:0; left:auto; transform: scaleX(-1); }
+    .join-scroller::before{ left:0; }
 
-          {# Лента компании (по умолчанию) #}
-          {% else %}
-            {% if user.is_staff %}
-              <a class="btn btn-primary ms-auto"
-                 href="{% url 'feed:post_create' %}?type=company">
-                <i class="bi-plus-circle me-1"></i> Новая публикация
-              </a>
-            {% endif %}
+    @media (prefers-reduced-motion: reduce){
+      .join-scroller{ scroll-behavior: auto !important; }
+    }
+
+    /* ===== элемент ленты (ячейка) ===== */
+    .join-item{
+      --base: 56px;             /* базовый размер круга */
+      --mult: 4;                /* множитель при раскрытии */
+      --size: var(--base);      /* текущий "активный" размер */
+      position: relative;
+      display:flex; flex-direction: column; align-items:center;
+      width: var(--size);
+      flex: 0 0 var(--size);
+      transition: width .22s ease, flex-basis .22s ease;
+    }
+    .join-item:hover,
+    .join-item:focus-within{
+      --size: calc(var(--base) * var(--mult));
+      z-index: 2; /* поверх соседей */
+    }
+
+    /* круг с фото */
+    .join-ava{
+      width: var(--size); height: var(--size);
+      border-radius:999px; overflow:hidden;
+      display:grid; place-items:center;
+      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+      background: var(--bs-tertiary-bg);
+      transition: width .22s ease, height .22s ease, box-shadow .22s ease, border-color .22s ease;
+      will-change: width, height;
+    }
+    .join-ava img{ width:100%; height:100%; object-fit:cover; display:block; background: var(--bs-tertiary-bg); }
+    .join-ava .bi{ font-size: 1.2rem; opacity:.65; }
+    .join-item:hover .join-ava,
+    .join-item:focus-within .join-ava{
+      box-shadow: var(--feed-shadow-hover);
+      border-color: color-mix(in srgb, var(--bs-border-color), var(--bs-primary) 30%);
+    }
+
+    /* инфо-блок ПОД кругом */
+    .join-info{
+      width: 100%;
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: max-height .24s ease, opacity .18s ease, transform .18s ease;
+    }
+    .join-item:hover .join-info,
+    .join-item:focus-within .join-info{
+      max-height: 320px; /* с запасом под длинный список навыков */
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .join-info .name{ font-weight:800; line-height:1.2; margin-top:.5rem; text-align:center; }
+    .join-info .sub { font-size:.9rem; color: var(--bs-secondary-color); text-align:center; }
+    .join-info .skills-line{
+      font-size:.9rem; text-align:center; margin-top:.35rem;
+      word-break: break-word; white-space: normal;
+    }
+    .join-info .skills-line b{ font-weight:800; }
+    .join-info .link{ display:inline-block; margin-top:.35rem; font-size:.9rem; text-decoration:none; }
+    .join-info .link:hover{ text-decoration: underline; }
+
+    /* На маленьких экранах чуть меньше раскрываемся */
+    @media (max-width: 480px){
+      .join-item{ --mult: 3.2; }
+    }
+  </style>
+
+  <div class="container">
+    <div class="row justify-content-center mb-4">
+      <div class="col-lg-9 col-xl-8">
+
+        <div class="feed-header d-flex align-items-center gap-3">
+          <i class="bi-megaphone fs-2 text-primary"></i>
+          <h2 class="title mb-0">Лента</h2>
+
+          {% if user.is_authenticated and user.is_staff %}
+            <a class="btn btn-primary ms-auto" href="{% url 'feed:post_create' %}?type=company">
+              <i class="bi-plus-circle me-1"></i> Новая публикация
+            </a>
           {% endif %}
-        {% endif %}
-      </div>
+        </div>
 
-      {% if new_employees %}
-        <div class="feed-new mb-3">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0 text-secondary">Присоединились недавно</h6>
-            <a href="{% url 'employees:employees_list' %}" class="small text-primary">Все сотрудники</a>
-          </div>
-          <div class="d-flex flex-wrap gap-3">
-            {% for emp in new_employees %}
-              <div class="text-center" style="width:84px;">
-                <a href="{% url 'employees:employee_detail' emp.pk %}" class="text-decoration-none text-dark">
-                  <div class="feed-ava mx-auto mb-1" style="width:48px;height:48px;">
-                    {% if emp.avatar %}
-                      <img src="{{ emp.avatar.url }}" alt="">
-                    {% else %}
-                      <i class="bi-person"></i>
-                    {% endif %}
+        {% if new_employees %}
+          <div class="feed-new mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0 text-secondary">Присоединились недавно</h6>
+              <a href="{% url 'employees:employees_list' %}" class="small text-primary text-decoration-none">Все сотрудники</a>
+            </div>
+
+            <div class="join-scroller js-join-scroller" aria-label="Новые сотрудники">
+              <div class="join-rail">
+                {% for emp in new_employees %}
+                  {% firstof emp.id emp.pk as emp_id %}
+                  {% firstof emp.avatar emp.avatar_url as ava %}
+                  {% firstof emp.short_name emp.get_short_name emp.full_name emp.get_full_name emp.email "Сотрудник" as emp_name %}
+                  {% firstof emp.department.name emp.department_name as dept_name %}
+
+
+                  <div class="join-item">
+                    <a href="{% url 'employees:employee_detail' emp_id %}"
+                       class="join-ava text-decoration-none"
+                       title="{{ emp_name }}">
+                      {% if ava %}
+                        {% if ava.url %}
+                          <img src="{{ ava.url }}" alt="">
+                        {% else %}
+                          <img src="{{ ava }}" alt="">
+                        {% endif %}
+                      {% else %}
+                        <i class="bi-person" aria-hidden="true"></i>
+                        <span class="visually-hidden">{{ emp_name }}</span>
+                      {% endif %}
+                    </a>
+
+                    <div class="join-info">
+                      <div class="name">{{ emp_name }}</div>
+                      {% if dept_name %}<div class="sub">{{ dept_name }}</div>{% endif %}
+
+                      {# НАВЫКИ — печать всех, без итерации по строкам #}
+                      {% if emp.skills and emp.skills.0.name %}
+                        <div class="skills-line"><b>Навыки:</b>
+                          {% for s in emp.skills %}{% if not forloop.first %}, {% endif %}{{ s.name }}{% endfor %}
+                        </div>
+                      {% endif %}
+
+
+                      <div class="text-center">
+                        <a class="link" href="{% url 'employees:employee_detail' emp_id %}">Профиль →</a>
+                      </div>
+                    </div>
                   </div>
-                  <div class="small text-truncate">{{ emp.get_short_name|default:emp.first_name }}</div>
-                </a>
+                {% endfor %}
               </div>
-            {% endfor %}
+            </div>
           </div>
-        </div>
-      {% endif %}
-
-      <div class="feed-stream">
-        {% if page %}
-          {% include "feed/_feed_cards.html" with items=page.object_list %}
-        {% elif posts %}
-          {% include "feed/_feed_cards.html" with items=posts %}
-        {% else %}
-          <div class="alert alert-info shadow-sm mt-2">Пока нет новостей.</div>
         {% endif %}
-      </div>
 
-      {% if page %}
-        <div class="mt-4">
-          {% bootstrap_pagination page %}
+        <div class="feed-stream">
+          {% if page %}
+            {% include "feed/_feed_cards.html" with items=page.object_list %}
+          {% elif posts %}
+            {% include "feed/_feed_cards.html" with items=posts %}
+          {% else %}
+            <div class="alert alert-info shadow-sm mt-2">Пока нет новостей.</div>
+          {% endif %}
         </div>
-      {% endif %}
 
+        {% if page %}
+          <div class="mt-4">
+            {% bootstrap_pagination page %}
+          </div>
+        {% endif %}
+
+      </div>
     </div>
   </div>
-</div>
 {% endblock %}
+
+<script>
+(function(){
+  const STEP_MS = 3000;
+  const SCROLL_BEHAVIOR = 'smooth';
+
+  function centerItemInView(wrap, item){
+    const r = item.getBoundingClientRect();
+    const w = wrap.getBoundingClientRect();
+    const delta = (r.left + r.width/2) - (w.left + w.width/2);
+    wrap.scrollTo({ left: wrap.scrollLeft + delta, behavior: SCROLL_BEHAVIOR });
+  }
+
+  function initAutoScroller(wrap){
+    const rail = wrap.querySelector('.join-rail');
+    if (!rail) return;
+
+    // если контент не переполняет — автоскролл не нужен
+    const overflowX = rail.scrollWidth > wrap.clientWidth + 4;
+    if (!overflowX) return;
+
+    // удвоим содержимое для бесшовного цикла
+    const children = Array.from(rail.children);
+    rail.append(...children.map(n => n.cloneNode(true)));
+
+    // шаг = ширина первой ячейки + gap
+    function computeStep(){
+      const first = rail.firstElementChild;
+      if (!first) return 0;
+      const rect = first.getBoundingClientRect();
+      const gap = parseFloat(getComputedStyle(rail).gap || '0') || 0;
+      return Math.round(rect.width + gap);
+    }
+    let step = computeStep();
+    const origCount = children.length;
+    let timer = null, paused = false;
+
+    function tick(){
+      if (paused) return;
+      const maxLeft = (step * origCount);
+      if (wrap.scrollLeft >= maxLeft - 2){ wrap.scrollLeft = 0; }
+      wrap.scrollBy({ left: step, behavior: SCROLL_BEHAVIOR });
+    }
+
+    function start(){ if (!timer) timer = setInterval(tick, STEP_MS); }
+    function stop(){ if (timer){ clearInterval(timer); timer = null; } }
+
+    // Пауза при наведении/фокусе на конкретной ячейке + центрирование
+    rail.querySelectorAll('.join-item').forEach(item=>{
+      item.addEventListener('mouseenter', ()=>{
+        paused = true;
+        centerItemInView(wrap, item);
+      });
+      item.addEventListener('mouseleave', ()=>{ paused = false; });
+      item.addEventListener('focusin', ()=>{
+        paused = true;
+        centerItemInView(wrap, item);
+      });
+      item.addEventListener('focusout', ()=>{ paused = false; });
+    });
+
+    // Пересчёт шага на ресайз
+    let rAF = null;
+    window.addEventListener('resize', ()=>{
+      cancelAnimationFrame(rAF);
+      rAF = requestAnimationFrame(()=>{ step = computeStep(); });
+    });
+
+    // Остановка при свёрнутой вкладке
+    document.addEventListener('visibilitychange', ()=>{
+      if (document.hidden) stop(); else start();
+    });
+
+    // Уважим reduced-motion
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    start();
+  }
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.querySelectorAll('.js-join-scroller').forEach(initAutoScroller);
+  });
+})();
+</script>

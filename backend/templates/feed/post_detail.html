@@ -1,9 +1,13 @@
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
 
-{% block title %}{{ post.title|default:"Публикация" }}{% endblock %}
+{% block title %}{% firstof post.title "Публикация" %}{% endblock %}
 
 {% block content %}
+{% firstof post.id post.pk as post_id %}
+{% firstof post.author.id post.author.pk post.author_id as author_id %}
+{% firstof post.department.id post.department.pk post.department_id as dept_id %}
+
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-lg-9 col-xl-8">
@@ -14,40 +18,55 @@
           <a href="{% url 'feed:feed_list' %}" class="btn btn-ghost">
             <i class="bi-arrow-left"></i> К ленте
           </a>
-        {% elif post.type == 'department' and post.department %}
-          <a href="{% url 'employees:department_detail' post.department.pk %}" class="btn btn-ghost">
+        {% elif post.type == 'department' and dept_id %}
+          <a href="{% url 'employees:department_detail' dept_id %}" class="btn btn-ghost">
             <i class="bi-arrow-left"></i> К отделу
           </a>
         {% else %}
-          <a href="{% url 'feed:employee_feed' post.author.pk %}" class="btn btn-ghost">
-            <i class="bi-arrow-left"></i> К публикациям автора
-          </a>
-        {% endif %}
-
-        <span class="small text-secondary ms-auto">{{ post.created_at|date:"d.m.Y H:i" }}</span>
-
-        {# Пин #}
-        {% if post.type == 'company' and user.is_staff %}
-          <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-ghost">
-            <i class="bi-pin-angle"></i> {% if post.pinned %}Открепить{% else %}Закрепить{% endif %}
-          </a>
-        {% elif post.type == 'department' and post.department %}
-          {% if user.is_staff or post.department.head_id == user.id %}
-            <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-ghost">
-              <i class="bi-pin-angle"></i> {% if post.pinned %}Открепить{% else %}Закрепить{% endif %}
+          {% if author_id %}
+            <a href="{% url 'feed:employee_feed' author_id %}" class="btn btn-ghost">
+              <i class="bi-arrow-left"></i> К публикациям автора
+            </a>
+          {% else %}
+            <a href="{% url 'feed:feed_list' %}" class="btn btn-ghost">
+              <i class="bi-arrow-left"></i> К ленте
             </a>
           {% endif %}
         {% endif %}
 
+        <span class="small text-secondary ms-auto">
+        </span>
+
+        {# Пин — без скобок в условии #}
+        {% if post_id %}
+          {% if post.type == 'company' and user.is_staff %}
+            <a href="{% url 'feed:pin_post' post_id %}" class="btn btn-ghost">
+              <i class="bi-pin-angle"></i> {% if post.pinned %}Открепить{% else %}Закрепить{% endif %}
+            </a>
+          {% elif post.type == 'department' and dept_id %}
+            {% if user.is_staff %}
+              <a href="{% url 'feed:pin_post' post_id %}" class="btn btn-ghost">
+                <i class="bi-pin-angle"></i> {% if post.pinned %}Открепить{% else %}Закрепить{% endif %}
+              </a>
+            {% elif post.department and post.department.head_id == user.id %}
+              <a href="{% url 'feed:pin_post' post_id %}" class="btn btn-ghost">
+                <i class="bi-pin-angle"></i> {% if post.pinned %}Открепить{% else %}Закрепить{% endif %}
+              </a>
+            {% endif %}
+          {% endif %}
+        {% endif %}
+
         {# Редактирование #}
-        {% if user.is_staff or user.id == post.author_id %}
-          <a href="{% url 'feed:post_update' post.pk %}" class="btn btn-ghost">
-            <i class="bi-pencil"></i> Редактировать
-          </a>
-        {% elif post.type == 'department' and post.department and post.department.head_id == user.id %}
-          <a href="{% url 'feed:post_update' post.pk %}" class="btn btn-ghost">
-            <i class="bi-pencil"></i> Редактировать
-          </a>
+        {% if post_id %}
+          {% if user.is_staff or user.id == post.author_id %}
+            <a href="{% url 'feed:post_update' post_id %}" class="btn btn-ghost">
+              <i class="bi-pencil"></i> Редактировать
+            </a>
+          {% elif post.type == 'department' and post.department and post.department.head_id == user.id %}
+            <a href="{% url 'feed:post_update' post_id %}" class="btn btn-ghost">
+              <i class="bi-pencil"></i> Редактировать
+            </a>
+          {% endif %}
         {% endif %}
       </div>
 
@@ -55,19 +74,42 @@
       <article class="feed-card" data-post-card>
         <header class="feed-hd">
           <div class="feed-ava">
-            {% if post.author and post.author.avatar %}
-              <img src="{{ post.author.avatar.url }}" alt="">
-            {% else %}<i class="bi-person"></i>{% endif %}
+            {% with a=post.author %}
+              {% if a %}
+                {% firstof a.avatar.url a.avatar_url as ava_url %}
+                {% if ava_url %}<img src="{{ ava_url }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
+              {% else %}
+                <i class="bi-person"></i>
+              {% endif %}
+            {% endwith %}
           </div>
           <div class="feed-meta">
             <div class="feed-author">
-              <a href="{% url 'employees:employee_detail' post.author.pk %}" class="text-decoration-none">
-                {{ post.author.get_full_name|default:post.author.username }}
-              </a>
+              {% if author_id %}
+                <a href="{% url 'employees:employee_detail' author_id %}" class="text-decoration-none">
+                  {% with a=post.author %}
+                    {% if a %}
+                      {% firstof a.full_name a.get_full_name as nm %}
+                      {% if nm %}{{ nm }}{% else %}
+                        {% if a.first_name or a.last_name %}
+                          {{ a.first_name }}{% if a.last_name %} {{ a.last_name }}{% endif %}
+                        {% else %}
+                          {% firstof a.username a.email "Сотрудник" %}
+                        {% endif %}
+                      {% endif %}
+                    {% else %}Сотрудник #{{ author_id }}{% endif %}
+                  {% endwith %}
+                </a>
+              {% else %}Автор не указан{% endif %}
             </div>
             <div class="feed-sub">
-              <time datetime="{{ post.created_at|date:'c' }}">{{ post.created_at|date:"d.m.Y H:i" }}</time>
-              {% if post.type == 'department' and post.department %} · {{ post.department.name }}{% endif %}
+              {% if post.created_at %}
+                {{ post.created_at_display }}
+              {% endif %}
+              {% if post.type == 'department' %}
+                {% firstof post.department.name post.department_name as dept_name %}
+                {% if dept_name %} · {{ dept_name }}{% endif %}
+              {% endif %}
             </div>
           </div>
           {% if post.pinned %}
@@ -76,21 +118,27 @@
         </header>
 
         {% if post.image %}
-          <div class="feed-img">
-            <img src="{{ post.image.url }}" alt="{{ post.title|default:'Публикация' }}">
-          </div>
+          {% firstof post.image.url post.image as img_url %}
+          {% if img_url %}
+            <div class="feed-img">
+              <img src="{{ img_url }}" alt="{% firstof post.title 'Публикация' %}">
+            </div>
+          {% endif %}
         {% endif %}
 
         <div class="feed-body">
-          <h1 class="feed-title fs-4 mb-2">{{ post.title|default:"Без названия" }}</h1>
+          <h1 class="feed-title fs-4 mb-2">{% firstof post.title "Без названия" %}</h1>
           <div class="fs-6 lh-base">{{ post.body|linebreaks }}</div>
 
           {% if post.attachment %}
-            <div class="mt-3">
-              <a href="{{ post.attachment.url }}" target="_blank" class="btn btn-ghost">
-                <i class="bi-paperclip"></i> Вложение
-              </a>
-            </div>
+            {% firstof post.attachment.url post.attachment as att_url %}
+            {% if att_url %}
+              <div class="mt-3">
+                <a href="{{ att_url }}" target="_blank" class="btn btn-ghost">
+                  <i class="bi-paperclip"></i> Вложение
+                </a>
+              </div>
+            {% endif %}
           {% endif %}
         </div>
 
@@ -101,13 +149,13 @@
 
           <span class="ms-auto"></span>
 
-          {% if user.is_authenticated %}
-            <form method="post" action="{% url 'feed:toggle_like' post.pk %}">
+          {% if user.is_authenticated and post_id %}
+            <form method="post" action="{% url 'feed:toggle_like' post_id %}">
               {% csrf_token %}
               <button type="submit"
                       class="btn btn-ghost {% if post.is_liked or is_liked %}is-liked{% endif %}"
-                      data-like-post="{{ post.pk }}"
-                      data-like-url="{% url 'feed:toggle_like' post.pk %}"
+                      data-like-post="{{ post_id }}"
+                      data-like-url="{% url 'feed:toggle_like' post_id %}"
                       aria-pressed="{% if post.is_liked or is_liked %}true{% else %}false{% endif %}">
                 <i class="bi {% if post.is_liked or is_liked %}bi-heart-fill{% else %}bi-heart{% endif %}"></i>
                 <span data-like-count>{{ post.likes_count|default:0 }}</span>
@@ -132,39 +180,65 @@
 
         {% if comments %}
           <div class="feed-stream">
-            {% for comment in comments %}
-              <article id="c{{ comment.pk }}" class="feed-card">
+            {% for c in comments %}
+              {% firstof c.id c.pk as cid %}
+              {% firstof c.author.id c.author.pk c.author_id as c_author_id %}
+              <article id="c{{ cid }}" class="feed-card">
                 <header class="feed-hd">
                   <div class="feed-ava" style="width:36px;height:36px;">
-                    {% if comment.author.avatar %}
-                      <img src="{{ comment.author.avatar.url }}" alt="">
-                    {% else %}<i class="bi-person"></i>{% endif %}
+                    {% with a=c.author %}
+                      {% if a %}
+                        {% firstof a.avatar.url a.avatar_url as c_ava %}
+                        {% if c_ava %}<img src="{{ c_ava }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
+                      {% else %}
+                        <i class="bi-person"></i>
+                      {% endif %}
+                    {% endwith %}
                   </div>
                   <div class="feed-meta">
                     <div class="feed-author">
-                      <a href="{% url 'employees:employee_detail' comment.author.pk %}" class="text-decoration-none">
-                        {{ comment.author.get_full_name|default:comment.author.username }}
-                      </a>
+                      {% if c_author_id %}
+                        <a href="{% url 'employees:employee_detail' c_author_id %}" class="text-decoration-none">
+                          {% with a=c.author %}
+                            {% if a %}
+                              {% firstof a.full_name a.get_full_name as nm %}
+                              {% if nm %}{{ nm }}{% else %}
+                                {% if a.first_name or a.last_name %}
+                                  {{ a.first_name }}{% if a.last_name %} {{ a.last_name }}{% endif %}
+                                {% else %}
+                                  {% firstof a.username a.email "Сотрудник" %}
+                                {% endif %}
+                              {% endif %}
+                            {% else %}Сотрудник #{{ c_author_id }}{% endif %}
+                          {% endwith %}
+                        </a>
+                      {% else %}Автор{% endif %}
                     </div>
                     <div class="feed-sub">
-                      <time datetime="{{ comment.created_at|date:'c' }}">{{ comment.created_at|date:"d.m.Y H:i" }}</time>
+                      {% if c.created_at %}
+                        <time datetime="{{ c.created_at }}">
+                          {{ c.created_at_display }}
+                        </time>
+                      {% endif %}
                     </div>
                   </div>
 
-                  {% if request.user.is_staff or request.user.id == comment.author_id %}
+                  {% if request.user.is_staff or request.user.id == c.author_id %}
                     <div class="ms-auto d-flex gap-2">
-                      <a href="{% url 'feed:comment_update' comment.pk %}" class="btn btn-ghost btn-sm">
-                        <i class="bi-pencil"></i> 
-                      </a>
-                      <a href="{% url 'feed:comment_delete' comment.pk %}" class="btn btn-ghost btn-sm text-danger">
-                        <i class="bi-trash"></i>
-                      </a>
+                      {% if cid %}
+                        <a href="{% url 'feed:comment_update' cid %}" class="btn btn-ghost btn-sm">
+                          <i class="bi-pencil"></i>
+                        </a>
+                        <a href="{% url 'feed:comment_delete' cid %}" class="btn btn-ghost btn-sm text-danger">
+                          <i class="bi-trash"></i>
+                        </a>
+                      {% endif %}
                     </div>
                   {% endif %}
                 </header>
 
                 <div class="feed-body">
-                  <div class="fs-6">{{ comment.text|linebreaks }}</div>
+                  <div class="fs-6">{{ c.text|linebreaks }}</div>
                 </div>
               </article>
             {% endfor %}
@@ -175,7 +249,7 @@
       </section>
 
       <!-- Форма добавления комментария -->
-      {% if user.is_authenticated %}
+      {% if user.is_authenticated and post_id %}
         <div class="feed-card mt-3">
           <div class="feed-body">
             <h6 class="mb-2">Оставить комментарий</h6>

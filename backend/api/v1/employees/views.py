@@ -2,20 +2,37 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from django.db.models import Prefetch
 
 import phonenumbers
 from common.emails import send_templated_mail
 from django.conf import settings
 from django.contrib.auth.models import Group, Permission
 from django.db import IntegrityError, transaction
-from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
-                              Q, Subquery, Value, When)
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
-from employees.models import (Department, DepartmentRole, Employee,
-                              EmployeeAction, EmployeeDepartment, Position,
-                              Skill)
+from employees.models import (
+    Department,
+    DepartmentRole,
+    Employee,
+    EmployeeAction,
+    EmployeeDepartment,
+    Position,
+    Skill,
+)
 from phonenumbers import PhoneNumberFormat
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -23,14 +40,25 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..permissions import (ASSIGN_ROLE_PERM, MANAGE_PERM,
-                           IsDeptManagerForWrite, IsSelfOrStaff,
-                           IsStaffOrHasModelPerm)
-from .serializers import (DepartmentRoleSerializer, DepartmentSerializer,
-                          EmailSerializer, EmailVerifySerializer,
-                          EmployeeActionSerializer, EmployeeListSerializer,
-                          EmployeeSerializer, PositionSerializer,
-                          RegisterSerializer, SkillSerializer)
+from ..permissions import (
+    ASSIGN_ROLE_PERM,
+    MANAGE_PERM,
+    IsDeptManagerForWrite,
+    IsSelfOrStaff,
+    IsStaffOrHasModelPerm,
+)
+from .serializers import (
+    DepartmentRoleSerializer,
+    DepartmentSerializer,
+    EmailSerializer,
+    EmailVerifySerializer,
+    EmployeeActionSerializer,
+    EmployeeListSerializer,
+    EmployeeSerializer,
+    PositionSerializer,
+    RegisterSerializer,
+    SkillSerializer,
+)
 
 
 def _to_bool(val: str | None) -> bool | None:
@@ -101,8 +129,8 @@ class HistoryActionMixin:
                 pass
         if q_user:
             qs = qs.filter(
-                models.Q(history_user__id__iexact=q_user)
-                | models.Q(history_user__email__iexact=q_user)
+                Q(history_user__id__iexact=q_user)
+                | Q(history_user__email__iexact=q_user)
             )
         if q_type in {"+", "~", "-"}:
             qs = qs.filter(history_type=q_type)
@@ -527,10 +555,21 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             .order_by("-date")
             .values("action")[:1]
         )
+        dep_links_prefetch = Prefetch(
+            "departments_links",
+            queryset=EmployeeDepartment.objects.filter(is_active=True).select_related("department", "role"),
+            to_attr="dept_links",
+        )
+
+        prefetches = [
+            "skills",
+            dep_links_prefetch,
+            Prefetch("actions", queryset=EmployeeAction.objects.order_by("-date")),
+        ]
 
         qs = (
             Employee.objects.select_related("position")
-            .prefetch_related("skills")
+            .prefetch_related(*prefetches)
             .annotate(last_action_code=last_action_code_sq)
             .order_by(*self.ordering)
         )
@@ -645,8 +684,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # M2M навыки после save
-        skills = vd.pop("skills", [])
+        skills = vd.pop("skills_ids", [])
 
         # теперь в vd нет email/phone_number — дублирования не будет
         user = Employee.objects.create_user(
@@ -671,7 +709,24 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         """
         instance: Employee = request.user  # type: ignore
         if request.method.lower() == "get":
-            return Response(self.get_serializer(instance).data)
+            instance = (
+                Employee.objects.select_related("position")
+                .prefetch_related(
+                    "skills",
+                    Prefetch(
+                        "departments_links",
+                        queryset=EmployeeDepartment.objects.filter(is_active=True).select_related("department", "role"),
+                        to_attr="dept_links",
+                    ),
+                    Prefetch("actions", queryset=EmployeeAction.objects.order_by("-date")),
+                )
+                .get(pk=request.user.pk)
+            )
+            ctx = self.get_serializer_context()
+            ctx["include_actions"] = True
+            ctx["include_action_history"] = True  # <-- добавили
+            return Response(self.get_serializer(instance, context=ctx).data)
+
 
         ser = self.get_serializer(instance, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
@@ -691,6 +746,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 )
         ser.save()
         return Response(ser.data)
+    
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if getattr(self, "action", None) in {"retrieve", "me"}:
+            ctx["include_actions"] = True
+            ctx["include_action_history"] = True  # <-- добавили
+        return ctx
 
 
 class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):

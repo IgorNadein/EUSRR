@@ -102,29 +102,6 @@
       box-shadow:0 8px 24px rgba(0,0,0,.18);
     }
 
-    /* ====== переключатель темы ====== */
-    .theme-switch{
-      position:relative; display:flex; gap:.25rem;
-      background:var(--bs-tertiary-bg); border-radius:12px; padding:.25rem;
-      border:1px solid var(--bs-border-color); justify-content:center;
-    }
-    .theme-thumb{
-      position:absolute; inset:.25rem auto .25rem .25rem;
-      width:calc(33.333% - .25rem); border-radius:10px;
-      background: color-mix(in srgb, var(--bs-body-bg), #fff 12%);
-      transition: transform .25s ease, width .25s ease; z-index:0;
-    }
-    [data-bs-theme="dark"] .theme-thumb{
-      background: color-mix(in srgb, var(--bs-body-bg), #000 12%);
-    }
-    .theme-tab{
-      position:relative; z-index:1; border:0; background:transparent;
-      width:3.8rem; height:2rem; border-radius:10px;
-      display:inline-flex; align-items:center; justify-content:center;
-      color:var(--bs-body-color); opacity:.7; font-size:1.4rem; line-height:1;
-    }
-    .theme-tab.active{ opacity:1; color:var(--bs-primary); }
-
     /* ===== feed styles (карточки ленты) ===== */
     .feed-header{ display:flex; align-items:center; gap:.75rem; margin-bottom:1rem; }
     .feed-header .title{ font-weight:800; letter-spacing:.2px; margin:0; }
@@ -162,11 +139,7 @@
 
     .feed-body{ padding:.25rem 1rem 1rem 1rem; position:relative; }
     .feed-title{ font-weight:700; margin:.25rem 0 .35rem 0; font-size:1.05rem; }
-    .feed-text{
-      margin:0 0 .6rem 0; color: var(--bs-body-color);
-      display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5;
-      overflow:hidden;
-    }
+    
 
     .feed-img{ position:relative; border-top:1px solid var(--bs-border-color); background: var(--bs-tertiary-bg); }
     .feed-img img{ display:block; width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; }
@@ -219,6 +192,17 @@
     /* Иконки-действия справа в карточке */
     .action-btn{ min-height: unset; padding:.35rem .6rem; }
     .action-btn .bi{ font-size: 1rem; }
+    
+    /* Переносим длинные слова/ссылки, сохраняем переносы строк */
+    .feed-text, .feed-full{
+      overflow-wrap: anywhere;
+      width: 100%;
+      margin-right: 0;
+      padding-right: 0;
+    }
+
+    /* чтобы кнопка «Подробнее» не была перекрыта stretched-link */
+    .readmore-toggle{ position: relative; z-index: 2; }
   </style>
 
   {% block extra_css %}{% endblock %}
@@ -257,94 +241,77 @@
     });
   </script>
 
+
+
   <script>
-    // ===== Переключатель темы =====
-    (function(){
-      const media = window.matchMedia('(prefers-color-scheme: dark)');
-      const root  = document.documentElement;
-
-      function effective(mode){ return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode; }
-      function setTheme(mode, persist=true){
-        root.setAttribute('data-bs-theme', effective(mode));
-        if (persist) localStorage.setItem('theme', mode);
-        syncUI(mode);
-      }
-      function syncUI(mode){
-        document.querySelectorAll('[data-theme-value]').forEach(el=>{
-          const val = el.getAttribute('data-theme-value');
-          const is  = val === mode;
-          if (el.classList.contains('theme-tab')) el.classList.toggle('active', is);
-          const input = document.getElementById(el.getAttribute('for'));
-          if (input && input.classList.contains('btn-check')) input.checked = is;
-        });
-        const wrap = document.getElementById('themeSwitch');
-        const thumb = wrap ? wrap.querySelector('.theme-thumb') : null;
-        if (wrap && thumb){
-          const active = wrap.querySelector('.theme-tab.active') || wrap.querySelector('[data-theme-value="'+mode+'"]');
-          const wrapRect = wrap.getBoundingClientRect();
-          const btnRect  = active ? active.getBoundingClientRect() : null;
-          if (btnRect){
-            const offsetX = btnRect.left - wrapRect.left;
-            thumb.style.width = btnRect.width + 'px';
-            thumb.style.transform = 'translateX(' + offsetX + 'px)';
-          }
-        }
-      }
-
-      document.addEventListener('DOMContentLoaded', ()=>{
-        setTheme(localStorage.getItem('theme') || 'auto', false);
-        document.body.addEventListener('click', (e)=>{
-          const trg = e.target.closest('[data-theme-value]'); if (!trg) return;
-          e.preventDefault(); setTheme(trg.getAttribute('data-theme-value'));
-        });
-        media.addEventListener('change', ()=>{
-          if ((localStorage.getItem('theme') || 'auto') === 'auto') setTheme('auto', false);
-        });
-        addEventListener('resize', ()=> syncUI(localStorage.getItem('theme') || 'auto'));
-      });
-    })();
-  </script>
-
-  <!-- Глобальный обработчик лайков -->
-  <script>
+    // Глобальный обработчик лайков (использует стили/классы базового шаблона)
     (function(){
       function getCookie(name){
         const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
         return m ? m.pop() : '';
       }
+
       document.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-like-post]');
         if (!btn) return;
         e.preventDefault();
 
-        const postId = btn.getAttribute('data-like-post');
-        const url    = btn.getAttribute('data-like-url');
-        if (!url || !postId || btn.disabled) return;
+        const url = btn.getAttribute('data-like-url');
+        if (!url || btn.disabled) return;
+
+        // текущее состояние -> какая операция нужна
+        const currentlyLiked =
+          btn.classList.contains('is-liked') ||
+          btn.getAttribute('aria-pressed') === 'true';
+        const op = currentlyLiked ? 'unlike' : 'like';
 
         btn.disabled = true;
         try{
           const resp = await fetch(url, {
             method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Accept': 'application/json' },
-            body: new URLSearchParams({ next: location.href })
+            headers: {
+              'X-CSRFToken': getCookie('csrftoken'),
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new URLSearchParams({ op })
           });
           if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          const data = await resp.json();
 
-          const card = btn.closest('[data-post-card]');
-          const cnt  = card && card.querySelector('[data-like-count]');
-          if (cnt) cnt.textContent = data.likes ?? 0;
+          const data = await resp.json().catch(() => ({}));
+          // совместимость с разными ключами
+          const liked = (data.liked !== undefined) ? !!data.liked
+                      : (data.is_liked !== undefined) ? !!data.is_liked
+                      : !currentlyLiked; // если что-то пошло не так — просто инвертируем
 
-          btn.classList.toggle('is-liked', !!data.is_liked);
-          btn.setAttribute('aria-pressed', data.is_liked ? 'true' : 'false');
+          const count = (data.likes !== undefined) ? data.likes
+                      : (data.likes_count !== undefined) ? data.likes_count
+                      : null;
+
+          // обновляем кнопку/иконку/aria
+          btn.classList.toggle('is-liked', liked);
+          btn.setAttribute('aria-pressed', liked ? 'true' : 'false');
 
           const icon = btn.querySelector('.bi');
           if (icon){
-            icon.classList.toggle('bi-heart', !data.is_liked);
-            icon.classList.toggle('bi-heart-fill', !!data.is_liked);
+            icon.classList.toggle('bi-heart', !liked);
+            icon.classList.toggle('bi-heart-fill', liked);
           }
-        }catch(err){ console.error(err); }
-        finally{ btn.disabled = false; }
+
+          // счётчик (в пределах карточки)
+          const card = btn.closest('[data-post-card]');
+          const cnt  = card && card.querySelector('[data-like-count]');
+          if (cnt && count !== null) cnt.textContent = String(count);
+
+          // если есть скрытый input name="op", поддержим и серверный постбэк
+          const opInput = btn.closest('form')?.querySelector('input[name="op"]');
+          if (opInput) opInput.value = liked ? 'unlike' : 'like';
+
+        }catch(err){
+          console.error(err);
+        }finally{
+          btn.disabled = false;
+        }
       }, { passive:false });
     })();
   </script>

@@ -1,3 +1,4 @@
+# backend\employees\constants.py
 GENDER_CHOICES = (
     (1, 'Мужской'),
     (2, 'Женский'),

@@ -1,3 +1,4 @@
+# backend\api\client.py
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -67,7 +68,7 @@ class ApiClient:
 
     def _make_url(self, path: str) -> str:
         return f"{self.cfg.base_url}/{path.lstrip('/')}"
-
+    
     def _request(
         self,
         method: str,
@@ -75,12 +76,18 @@ class ApiClient:
         *,
         params=None,
         json=None,
+        data=None,
+        files=None,
         headers=None,
         retry=True,
     ) -> ApiResponse:
         url = self._make_url(path)
         hdrs = dict(self.cfg.default_headers or {})
+        # Не выставляем Content-Type вручную — requests сделает это сам (особенно важно для multipart)
         if headers:
+            # если вдруг передали Content-Type, но у нас files — лучше его удалить
+            if files and "Content-Type" in headers:
+                headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
             hdrs.update(headers)
         hdrs.update(self._auth_headers())
 
@@ -88,7 +95,9 @@ class ApiClient:
             method,
             url,
             params=params,
-            json=json,
+            json=None if files or data else json,  # при multipart json не используем
+            data=data,
+            files=files,
             headers=hdrs,
             timeout=self.cfg.timeout,
         )
@@ -101,19 +110,19 @@ class ApiClient:
                     method,
                     url,
                     params=params,
-                    json=json,
+                    json=None if files or data else json,
+                    data=data,
+                    files=files,
                     headers=hdrs,
                     timeout=self.cfg.timeout,
                 )
 
         try:
-            data = resp.json()
+            data_json = resp.json()
         except Exception:
-            data = None
-        return ApiResponse(
-            ok=resp.ok, status=resp.status_code, json=data, text=resp.text
-        )
-
+            data_json = None
+        return ApiResponse(ok=resp.ok, status=resp.status_code, json=data_json, text=resp.text)
+    
     # --- публичные методы HTTP ---
     def get(self, path: str, **kw) -> ApiResponse:
         return self._request("GET", path, **kw)

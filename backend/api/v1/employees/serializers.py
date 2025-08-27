@@ -5,18 +5,13 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.files.base import ContentFile
-from django.utils import timezone
+from employees.models import (Department, DepartmentRole, EmployeeAction,
+                              EmployeeDepartment, Position, Skill)
 from PIL import Image
 from rest_framework import serializers
 
-from employees.models import (
-    Department,
-    DepartmentRole,
-    EmployeeAction,
-    EmployeeDepartment,
-    Position,
-    Skill,
-)
+from employees.constants import ACTION_CHOICES
+
 
 Employee = get_user_model()
 
@@ -102,7 +97,7 @@ class EmailSerializer(serializers.Serializer):
 
 class EmailVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()
-    code = serializers.CharField(max_length=32)
+    code = serializers.CharField(max_length=6)
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -125,30 +120,144 @@ class RegisterSerializer(serializers.Serializer):
     skills = serializers.ListField(child=serializers.IntegerField(), required=False)
 
 
+class SkillSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Skill
+        fields = ["id", "name"]
+
+
+class PositionBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Position
+        fields = ("id", "name")
+
+
+class EmployeeActionSerializer(serializers.ModelSerializer):
+    action_display = serializers.SerializerMethodField()
+    date_display = serializers.SerializerMethodField()
+    history = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeeAction
+        fields = [
+            "id",
+            "employee",
+            "action",
+            "action_display",
+            "date",
+            "date_display",
+            "comment",
+            "extra",
+            "history",       # ← добавили
+        ]
+
+    def get_action_display(self, obj):
+        return obj.get_action_display()
+
+    def get_date_display(self, obj):
+        return obj.date.strftime("%d.%m.%Y %H:%M") if obj.date else None
+
+    def get_history(self, obj):
+        if not self.context.get("include_action_history", False):
+            return []
+
+        items = list(
+            obj.history.select_related("history_user")
+            .order_by("-history_date", "-history_id")
+        )
+
+        action_labels = dict(ACTION_CHOICES)
+        history_type_labels = {"+": "Создано", "~": "Изменено", "-": "Удалено"}
+        diff_fields = ["action", "comment", "extra"]
+
+        out = []
+        for i, cur in enumerate(items):
+            prev = items[i + 1] if i + 1 < len(items) else None
+            changes = {}
+
+            for name in diff_fields:
+                new = getattr(cur, name, None)
+                old = getattr(prev, name, None) if prev else None
+
+                if name == "date":
+                    new_fmt = new.isoformat() if new else None
+                    old_fmt = old.isoformat() if old else None
+                    if new_fmt != old_fmt:
+                        changes[name] = {"old": old_fmt, "new": new_fmt}
+                elif name == "action":
+                    if old != new:
+                        changes[name] = {
+                            "old": old,
+                            "old_display": action_labels.get(old),
+                            "new": new,
+                            "new_display": action_labels.get(new),
+                        }
+                else:
+                    if old != new:
+                        changes[name] = {"old": old, "new": new}
+
+            out.append(
+                {
+                    "history_id": cur.history_id,
+                    "history_type": cur.history_type,
+                    "history_type_display": history_type_labels.get(cur.history_type),
+                    "history_date": cur.history_date.isoformat(),
+                    "history_date_display": cur.history_date.strftime("%d.%m.%Y %H:%M"),
+                    "history_user": getattr(cur.history_user, "email", None),
+                    # текущее значение действия в этом снимке + «человеческий» перевод
+                    "action": getattr(cur, "action", None),
+                    "action_display": action_labels.get(getattr(cur, "action", None)),
+                    "changes": changes,
+                }
+            )
+        return out
+
+
 class EmployeeSerializer(serializers.ModelSerializer):
     """Полная версия сотрудника для собственных эндпоинтов /employees/."""
 
     avatar = Base64ImageField(required=False, allow_null=True)
+    actions = EmployeeActionSerializer(many=True, read_only=True)
+
+    # навыки: читаем красиво, пишем ids
+    skills = SkillSerializer(many=True, read_only=True)
+    skills_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Skill.objects.all(), many=True, write_only=True, required=False
+    )
+
+    # должность: читаем объектом, пишем через position_id
+    position = PositionBriefSerializer(read_only=True)
+    position_id = serializers.PrimaryKeyRelatedField(
+        source="position",
+        queryset=Position.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+
+    departments = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
-        # Явно укажем поля, чтобы не протекали чувствительные служебные
         fields = (
+            "avatar",
+            "actions",
             "id",
             "email",
             "last_name",
             "first_name",
             "patronymic",
+            "departments",
             "gender",
-            "avatar",
             "phone_number",
             "birth_date",
             "position",
+            "position_id",
             "telegram",
             "whatsapp",
             "wechat",
             "skills",
-            # служебные только read-only:
+            "skills_ids",
             "is_active",
             "email_verified",
             "created_at",
@@ -169,11 +278,52 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "password": {"write_only": True, "required": False},
         }
 
-    # На всякий случай выкинем поля, которых нет в fields, но если вдруг DRF попытается их притащить (обычно не будет).
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # Ничего лишнего тут нет, просто оставил хук, если захочешь добавить правку URL для avatar до абсолютного и т.п.
         return data
+
+    def update(self, instance, validated_data):
+        skills = validated_data.pop("skills_ids", None)
+        instance = super().update(instance, validated_data)
+        if skills is not None:
+            instance.skills.set(skills)
+        return instance
+
+    def get_departments(self, obj):
+        links = getattr(obj, "dept_links", None)
+        if links is None:
+            links = EmployeeDepartment.objects.select_related(
+                "department", "role"
+            ).filter(employee=obj, is_active=True)
+        out = []
+        for link in links:
+            dept = link.department
+            out.append(
+                {
+                    "id": link.department_id,
+                    "name": dept.name if link.department_id else None,
+                    "role_id": link.role_id,
+                    "role_name": link.role.name if link.role_id else None,
+                    "is_head": (dept.head_id == obj.id),
+                }
+            )
+        return out
+
+    def get_fields(self):
+        """
+        Показываем actions только в деталке сотрудника и в /employees/me,
+        либо если явно передан context['include_actions']=True.
+        Во всех остальных контекстах поле скрываем, чтобы не раздувать ответы.
+        """
+        fields = super().get_fields()
+        if self.context.get("include_actions") is True:
+            return fields
+
+        view = self.context.get("view")
+        action = getattr(view, "action", None) if view else None
+        if action not in {"retrieve", "me"}:
+            fields.pop("actions", None)
+        return fields
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -199,7 +349,9 @@ class DepartmentSerializer(serializers.ModelSerializer):
             "created_at",
             "employees_count",
         )
-        read_only_fields = ("head_appointed_at", "created_at")
+
+    # head_appointed_at и created_at только для чтения
+    read_only_fields = ("head_appointed_at", "created_at")
 
     def validate_head_id(self, value: Employee | None):
         if value and not value.is_actually_active:
@@ -209,18 +361,14 @@ class DepartmentSerializer(serializers.ModelSerializer):
         return value
 
 
-class PositionBriefSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Position
-        fields = ("id", "name")
-
-
 class EmployeeListSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(read_only=True)
     phone_number = serializers.CharField(read_only=True)
     avatar = Base64ImageField(read_only=True)
     position = PositionBriefSerializer(read_only=True)
     departments = serializers.SerializerMethodField()
+    full_name = serializers.SerializerMethodField()
+    skills = SkillSerializer(many=True, read_only=True)
 
     class Meta:
         model = Employee
@@ -231,9 +379,12 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "last_name",
             "first_name",
             "patronymic",
+            "full_name",
             "avatar",
             "position",
             "departments",
+            "skills",
+            "created_at",
         )
 
     def get_departments(self, obj):
@@ -244,15 +395,24 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             ).filter(employee=obj, is_active=True)
         out = []
         for link in links:
+            dept = link.department
             out.append(
                 {
                     "id": link.department_id,
-                    "name": link.department.name if link.department_id else None,
+                    "name": dept.name if link.department_id else None,
                     "role_id": link.role_id,
                     "role_name": link.role.name if link.role_id else None,
+                    "is_head": (dept.head_id == obj.id),  # ✅ правильная проверка
                 }
             )
         return out
+
+    def get_full_name(self, obj):
+        fn = (obj.first_name or "").strip()
+        ln = (obj.last_name or "").strip()
+        pt = (obj.patronymic or "").strip()
+        nm = f"{ln} {fn} {pt}".strip()
+        return nm
 
 
 class PositionSerializer(serializers.ModelSerializer):
@@ -280,9 +440,6 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
         model = DepartmentRole
         fields = ["id", "department", "name", "permissions", "permissions_verbose"]
 
-    def get_permissions(self, obj):
-        return list(obj.permissions.values_list("id", flat=True))
-
     def get_permissions_verbose(self, obj):
         return [
             {
@@ -292,23 +449,3 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
             }
             for p in obj.permissions.select_related("content_type").all()
         ]
-
-
-class SkillSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Skill
-        fields = ["id", "name"]
-
-
-class EmployeeActionSerializer(serializers.ModelSerializer):
-    # по умолчанию ставим текущее время, если не передали
-    date = serializers.DateTimeField(required=False)
-
-    class Meta:
-        model = EmployeeAction
-        fields = ["id", "employee", "action", "date", "comment", "extra"]
-
-    def validate(self, attrs):
-        if "date" not in attrs:
-            attrs["date"] = timezone.now()
-        return attrs

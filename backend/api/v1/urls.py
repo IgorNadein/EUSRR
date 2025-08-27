@@ -3,10 +3,11 @@ from rest_framework.routers import DefaultRouter
 
 from .calendar.viewsets import CompanyEventsViewSet, DepartmentEventsViewSet
 from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
-                              EmployeeViewSet, PositionViewSet,
-                              RegisterAPIView, ResendEmailAPIView,
-                              VerifyEmailAPIView, SkillViewSet, EmployeeActionViewSet,)
-from .feed.views import PostViewSet, CommentViewSet
+                              EmployeeActionViewSet, EmployeeViewSet,
+                              PositionViewSet, RegisterAPIView,
+                              ResendEmailAPIView, SkillViewSet,
+                              VerifyEmailAPIView)
+from .feed.views import CommentViewSet, PostViewSet
 
 app_name = "api_v1"
 

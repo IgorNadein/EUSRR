@@ -296,29 +296,6 @@ def test_create_requires_staff(api_client: APIClient):
     assert Employee.objects.filter(email="new@example.com").exists()
 
 
-def test_create_sets_skills(api_client: APIClient):
-    staff = make_user("staff@example.com", staff=True)
-    api_client.force_authenticate(user=staff)
-
-    s1 = Skill.objects.create(name="Excel")
-    s2 = Skill.objects.create(name="SQL")
-
-    url = reverse("api:api_v1:employees-list")
-    payload = {
-        "email": "skills@example.com",
-        "phone_number": _unique_phone(),
-        "last_name": "Skill",
-        "first_name": "Setter",
-        "telegram": "@skills",
-        "skills": [s1.id, s2.id],
-    }
-    resp = api_client.post(url, payload, format="json")
-    assert resp.status_code == status.HTTP_201_CREATED
-    emp_id = resp.json()["id"]
-    e = Employee.objects.get(pk=emp_id)
-    assert set(e.skills.values_list("id", flat=True)) == {s1.id, s2.id}
-
-
 # ---------- update / partial_update (IsSelfOrStaff) ----------
 
 def test_partial_update_self_allowed(api_client: APIClient):

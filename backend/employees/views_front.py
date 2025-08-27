@@ -139,12 +139,13 @@ def employee_detail(request, pk: int):
         return redirect("employees:employees_list")
 
     emp = resp.json or {}
-    can_edit = bool(
-        request.user and (request.user.is_staff or request.user.id == emp.get("id"))
-    )
-    return render(
-        request, "employees/employee_detail.html", {"emp": emp, "can_edit": can_edit}
-    )
+    can_edit = bool(request.user and (request.user.is_staff or request.user.id == emp.get("id")))
+    print("emp:", emp)
+    return render(request, "employees/employee_detail.html", {
+        "emp": emp,
+        "can_edit": can_edit,
+        # "employee_actions": employee_actions,  # ← удалить
+    })
 
 
 # ---------- ME ----------
@@ -155,10 +156,15 @@ def employee_me(request):
     if not resp.ok:
         messages.error(request, f"Ошибка API ({resp.status})")
         return redirect("employees:employees_list")
+
     emp = resp.json or {}
-    return render(
-        request, "employees/employee_detail.html", {"emp": emp, "can_edit": True}
-    )
+    print("emp", emp)
+    return render(request, "employees/employee_detail.html", {
+        "emp": emp,
+        "can_edit": True,
+        # "employee_actions": employee_actions,  # ← удалить
+    })
+
 
 
 # ---------- EDIT (self or staff) ----------

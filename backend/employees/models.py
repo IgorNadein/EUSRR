@@ -292,55 +292,65 @@ class Department(models.Model):
             )
 
         head_changed = old_head_id != self.head_id
+
+        # Если назначаем нового руководителя — фиксируем момент назначения
         if head_changed and self.head_id:
-            # фиксируем момент назначения нового руководителя
             self.head_appointed_at = timezone.now()
 
         super().save(*args, **kwargs)
 
-        if not is_create and head_changed:
-            # 1) Новый глава: гарантируем активную ссылку
-            if self.head_id:
-                try:
-                    link, created = EmployeeDepartment.objects.get_or_create(
-                        employee_id=self.head_id,
-                        department_id=self.pk,
-                        defaults={"is_active": True, "date_from": timezone.now().date()},
-                    )
-                    updated = False
-                    if not created and not link.is_active:
-                        link.is_active = True
-                        updated = True
-                    if link.date_from is None:
-                        link.date_from = timezone.now().date()
-                        updated = True
-                    if updated:
-                        link.save(update_fields=["is_active", "date_from"])
-                except IntegrityError:
-                    EmployeeDepartment.objects.filter(
-                        employee_id=self.head_id, department_id=self.pk
-                    ).update(is_active=True)
+        # --- Гарантируем: текущий руководитель всегда сотрудник отдела ---
+        if self.head_id:
+            try:
+                link, created = EmployeeDepartment.objects.get_or_create(
+                    employee_id=self.head_id,
+                    department_id=self.pk,
+                    defaults={
+                        "is_active": True,
+                        "date_from": timezone.now().date(),
+                    },
+                )
+                updates = {}
+                if not link.is_active:
+                    updates["is_active"] = True
+                if not link.date_from:
+                    updates["date_from"] = timezone.now().date()
+                if updates:
+                    EmployeeDepartment.objects.filter(pk=link.pk).update(**updates)
+            except IntegrityError:
+                # На случай гонки
+                EmployeeDepartment.objects.filter(
+                    employee_id=self.head_id, department_id=self.pk
+                ).update(is_active=True, date_from=timezone.now().date())
 
-            # 2) Старый глава:
-            if old_head_id:
-                if self.head_id is None:
-                    # снимаем главу: если ссылки нет — создадим и сразу деактивируем; если есть — деактивируем
-                    link, created = EmployeeDepartment.objects.get_or_create(
-                        employee_id=old_head_id,
-                        department_id=self.pk,
-                        defaults={"is_active": False, "date_from": timezone.now().date(), "date_to": timezone.now().date()},
-                    )
-                    if not created:
-                        EmployeeDepartment.objects.filter(
-                            employee_id=old_head_id, department_id=self.pk
-                        ).update(is_active=False, date_to=timezone.now().date())
-                else:
-                    # меняем A -> B: ссылка старого главы должна существовать и оставаться активной
-                    EmployeeDepartment.objects.get_or_create(
-                        employee_id=old_head_id,
-                        department_id=self.pk,
-                        defaults={"is_active": True, "date_from": timezone.now().date()},
-                    )
+        # --- Обрабатываем бывшего руководителя ---
+        if (not is_create) and head_changed and old_head_id:
+            if self.head_id is None:
+                # Руководителя сняли: деактивируем его принадлежность
+                link, created = EmployeeDepartment.objects.get_or_create(
+                    employee_id=old_head_id,
+                    department_id=self.pk,
+                    defaults={
+                        "is_active": False,
+                        "date_from": timezone.now().date(),
+                        "date_to": timezone.now().date(),
+                    },
+                )
+                if not created:
+                    EmployeeDepartment.objects.filter(
+                        employee_id=old_head_id, department_id=self.pk
+                    ).update(is_active=False, date_to=timezone.now().date())
+            else:
+                # Смена A -> B: по текущей логике бывший остаётся сотрудником отдела (активным)
+                # Если хотите наоборот — поменяйте is_active=True на False и добавьте date_to.
+                EmployeeDepartment.objects.get_or_create(
+                    employee_id=old_head_id,
+                    department_id=self.pk,
+                    defaults={
+                        "is_active": True,
+                        "date_from": timezone.now().date(),
+                    },
+                )
 
     @property
     def active_employees(self):

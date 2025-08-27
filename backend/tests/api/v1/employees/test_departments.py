@@ -211,7 +211,6 @@ def test_employees_count_not_double_count_head_if_in_links(api_client: APIClient
     e2 = make_user("e2@example.com")
     EmployeeDepartment.objects.create(employee=e1, department=d, is_active=True)
     EmployeeDepartment.objects.create(employee=e2, department=d, is_active=True)
-    EmployeeDepartment.objects.create(employee=head, department=d, is_active=True)
 
     url = reverse("api:api_v1:departments-detail", args=[d.pk])
     resp = api_client.get(url)

@@ -13,5 +13,5 @@ urlpatterns = [
     path("communications/", include("communications.urls", namespace="communications")),
     path("search/", include("search.urls", namespace="search")),
     path("api/", include(("api.urls", "api"), namespace="api")),
-    path("", include("feed.urls", namespace="feed")),
+    path("", include("feed.urls_front", namespace="feed")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
