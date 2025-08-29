@@ -2,6 +2,7 @@
 from itertools import count
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.urls import reverse
 from employees.models import Employee, Position
@@ -16,18 +17,19 @@ def _unique_phone() -> str:
     return f"+7999{next(_phone_seq):07d}"
 
 
-def _grant_perm(user: Employee, perm_code: str):
-    """
-    perm_code формат: 'app_label.codename', например 'employees.add_position'
-    """
-    try:
-        app_label, codename = perm_code.split(".", 1)
-    except ValueError:
-        raise AssertionError("perm_code must be 'app_label.codename'")
+def _grant_perm(user, code: str):
+    app_label, codename = code.split(".")
     perm = Permission.objects.get(content_type__app_label=app_label, codename=codename)
     user.user_permissions.add(perm)
-    user.save()
-    return perm
+
+    # Сброс кэшей пермишенов у этого инстанса
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        if hasattr(user, attr):
+            delattr(user, attr)
+
+    # Перечитать из БД (на всякий случай)
+    User = get_user_model()
+    return User.objects.get(pk=user.pk)
 
 
 def _make_user(email: str, staff: bool = False, superuser: bool = False) -> Employee:
@@ -53,7 +55,7 @@ def _make_user(email: str, staff: bool = False, superuser: bool = False) -> Empl
 
 @pytest.mark.django_db
 def test_list_requires_auth(api_client):
-    url = reverse("api:api_v1:positions-list")
+    url = reverse("api:v1:positions-list")
 
     # unauth -> 401
     resp = api_client.get(url)
@@ -74,7 +76,7 @@ def test_list_requires_auth(api_client):
 
 @pytest.mark.django_db
 def test_create_permissions(api_client):
-    url = reverse("api:api_v1:positions-list")
+    url = reverse("api:v1:positions-list")
 
     # обычный пользователь без прав -> 403
     user = _make_user("user@example.com")
@@ -104,7 +106,7 @@ def test_update_permissions_and_search_ordering(api_client):
     api_client.force_authenticate(user=user)
 
     # без прав change_position -> 403
-    url_detail = reverse("api:api_v1:positions-detail", args=[p1.id])
+    url_detail = reverse("api:v1:positions-detail", args=[p1.id])
     resp = api_client.patch(url_detail, {"description": "updated"}, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 
@@ -116,7 +118,7 @@ def test_update_permissions_and_search_ordering(api_client):
     assert p1.description == "updated"
 
     # проверим search & ordering
-    url_list = reverse("api:api_v1:positions-list")
+    url_list = reverse("api:v1:positions-list")
     resp = api_client.get(url_list, {"search": "alp"})
     assert resp.status_code == 200
     assert len(resp.data) == 1
@@ -133,7 +135,7 @@ def test_delete_permissions(api_client):
     pos = Position.objects.create(name="ToDelete")
     user = _make_user("user@example.com")
     api_client.force_authenticate(user=user)
-    url_detail = reverse("api:api_v1:positions-detail", args=[pos.id])
+    url_detail = reverse("api:v1:positions-detail", args=[pos.id])
 
     # без delete_position -> 403
     resp = api_client.delete(url_detail)
@@ -155,7 +157,7 @@ def test_set_groups_requires_special_perm(api_client):
     user = _make_user("user@example.com")
     api_client.force_authenticate(user=user)
 
-    url_set = reverse("api:api_v1:positions-set-groups", args=[pos.id])
+    url_set = reverse("api:v1:positions-set-groups", args=[pos.id])
 
     # даже с change_position НЕЛЬЗЯ менять группы — нужен assign_position_groups
     _grant_perm(user, "employees.change_position")
@@ -192,7 +194,7 @@ def test_add_and_remove_groups_and_permissions_endpoint(api_client):
     _grant_perm(user, "employees.assign_position_groups")
 
     # add_groups
-    url_add = reverse("api:api_v1:positions-add-groups", args=[pos.id])
+    url_add = reverse("api:v1:positions-add-groups", args=[pos.id])
     resp = api_client.post(url_add, {"groups": [gA.id]}, format="json")
     assert resp.status_code == 200
     assert set(pos.groups.values_list("id", flat=True)) == {gA.id}
@@ -203,7 +205,7 @@ def test_add_and_remove_groups_and_permissions_endpoint(api_client):
     assert set(pos.groups.values_list("id", flat=True)) == {gA.id, gB.id}
 
     # permissions endpoint
-    url_perms = reverse("api:api_v1:positions-permissions", args=[pos.id])
+    url_perms = reverse("api:v1:positions-permissions", args=[pos.id])
     resp = api_client.get(url_perms)
     assert resp.status_code == 200
     codes = {row["codename"] for row in resp.data["results"]}
@@ -211,13 +213,13 @@ def test_add_and_remove_groups_and_permissions_endpoint(api_client):
     assert "auth.view_group" in codes
 
     # remove_groups (уберём A)
-    url_rm = reverse("api:api_v1:positions-remove-groups", args=[pos.id])
+    url_rm = reverse("api:v1:positions-remove-groups", args=[pos.id])
     resp = api_client.post(url_rm, {"groups": [gA.id]}, format="json")
     assert resp.status_code == 200
     assert set(pos.groups.values_list("id", flat=True)) == {gB.id}
 
     # retrieve содержит groups_verbose
-    url_detail = reverse("api:api_v1:positions-detail", args=[pos.id])
+    url_detail = reverse("api:v1:positions-detail", args=[pos.id])
     resp = api_client.get(url_detail)
     assert resp.status_code == 200
     assert "groups_verbose" in resp.data
@@ -231,7 +233,7 @@ def test_groups_payload_validation(api_client):
     api_client.force_authenticate(user=user)
     _grant_perm(user, "employees.assign_position_groups")
 
-    url_set = reverse("api:api_v1:positions-set-groups", args=[pos.id])
+    url_set = reverse("api:v1:positions-set-groups", args=[pos.id])
 
     # groups не список -> 400
     resp = api_client.post(url_set, {"groups": "not-a-list"}, format="json")

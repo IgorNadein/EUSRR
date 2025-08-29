@@ -4,11 +4,10 @@ from django.urls import include, path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .auth.views import PhoneOrEmailTokenObtainPairView
-
 app_name = "api"
 
 urlpatterns = [
-    path("v1/", include(("api.v1.urls", "api_v1"), namespace="api_v1")),
+    path("v1/", include(("api.v1.urls", "v1"), namespace="v1")),
     path(
         "auth/token/",
         PhoneOrEmailTokenObtainPairView.as_view(),

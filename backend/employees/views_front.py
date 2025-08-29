@@ -14,13 +14,18 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.utils.http import urlencode
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse
 
-from .forms import (DepartmentEditForm, DepartmentForm,
-                    DepartmentMemberRoleForm,
-                    InviteToDepartmentForm, SkillForm)
+from .forms import (
+    DepartmentEditForm,
+    DepartmentForm,
+    DepartmentMemberRoleForm,
+    InviteToDepartmentForm,
+    SkillForm,
+)
 from .forms_front import DepartmentEditForm, SetHeadForm, SetMemberRoleForm
 from .models import Department, EmployeeDepartment, Skill
 
@@ -77,6 +82,24 @@ def _cleanup_payload(data: dict, keep_empty: set[str] = frozenset()) -> dict:
             continue
         cleaned[k] = v
     return cleaned
+
+
+def _extract_results(payload):
+    if isinstance(payload, dict):
+        return payload.get("results", payload.get("items", [])) or []
+    return payload or []
+
+
+def _fetch_employee_posts(api, employee_id: int):
+    # сначала пробуем ?author=, если в API другое имя фильтра — fallback на ?employee=
+    for url in (
+        f"v1/posts/?author={employee_id}&ordering=-created_at",
+        f"v1/posts/?employee={employee_id}&ordering=-created_at",
+    ):
+        r = api.get(url)
+        if r.ok:
+            data = r.json or []
+            return _extract_results(data)
 
 
 # =========================
@@ -139,32 +162,50 @@ def employee_detail(request, pk: int):
         return redirect("employees:employees_list")
 
     emp = resp.json or {}
-    can_edit = bool(request.user and (request.user.is_staff or request.user.id == emp.get("id")))
-    print("emp:", emp)
-    return render(request, "employees/employee_detail.html", {
-        "emp": emp,
-        "can_edit": can_edit,
-        # "employee_actions": employee_actions,  # ← удалить
-    })
+    can_edit = bool(
+        request.user and (request.user.is_staff or request.user.id == emp.get("id"))
+    )
+    posts = _fetch_employee_posts(api, pk)
+    sresp = api.get("v1/skills/", params={"ordering": "name"})
+    all_skills = sresp.json if sresp.ok else []
+    return render(
+        request,
+        "employees/employee_detail.html",
+        {"emp": emp, "can_edit": can_edit, "all_skills": all_skills, "posts": posts},
+    )
 
 
 # ---------- ME ----------
 @require_api_auth
 def employee_me(request):
     api = get_api_client(request)
+
     resp = api.get("v1/employees/me/")
     if not resp.ok:
         messages.error(request, f"Ошибка API ({resp.status})")
         return redirect("employees:employees_list")
 
     emp = resp.json or {}
-    print("emp", emp)
-    return render(request, "employees/employee_detail.html", {
-        "emp": emp,
-        "can_edit": True,
-        # "employee_actions": employee_actions,  # ← удалить
-    })
 
+    # новости сотрудника
+    posts = _fetch_employee_posts(api, emp.get("id"))
+
+    # все навыки для даталиста (разворачиваем results)
+    sresp = api.get("v1/skills/", params={"ordering": "name"})
+    data = sresp.json if sresp.ok else []
+    all_skills = data.get("results", data) if isinstance(data, dict) else data
+
+    return render(
+        request,
+        "employees/employee_detail.html",
+        {
+            "emp": emp,
+            "can_edit": True,
+            "is_me": True,
+            "all_skills": all_skills,
+            "posts": posts,
+        },
+    )
 
 
 # ---------- EDIT (self or staff) ----------
@@ -623,9 +664,9 @@ def edit_department_role(request, dept_id, employee_id):
     )
 
 
-# =========================
-#   Приглашение в отдел
-# =========================
+# ---------- Приглашение в отдел ----------
+
+
 @login_required
 def invite_to_department(request, pk):
     department = get_object_or_404(Department, pk=pk)
@@ -668,57 +709,34 @@ def invite_to_department(request, pk):
 
 
 # =========================
-#   Универсальный CRUD для Absence, Skill
+#   Навыки
 # =========================
-class BaseCRUDListView(LoginRequiredMixin, ListView):
-    """Базовый ListView: если у модели есть FK employee — показываем только свои записи."""
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        has_employee_fk = any(f.name == "employee" for f in self.model._meta.fields)
-        if has_employee_fk:
-            return qs.filter(employee=self.request.user)
-        return qs
 
 
-class BaseCRUDCreateView(LoginRequiredMixin, CreateView):
-    def form_valid(self, form):
-        has_employee_fk = any(f.name == "employee" for f in self.model._meta.fields)
-        if has_employee_fk:
-            form.instance.employee = self.request.user
-        return super().form_valid(form)
+@login_required
+@require_POST
+@require_api_auth
+def skill_add(request, pk: int):
+    api = get_api_client(request)
+    skill_id = request.POST.get("skill_id")
+    skill_name = (request.POST.get("skill_name") or "").strip()
+    payload = {
+        k: v for k, v in (("skill_id", skill_id), ("skill_name", skill_name)) if v
+    }
+    resp = api.post(f"v1/employees/{pk}/add_skill/", data=payload)
+    return JsonResponse(resp.json or {"detail": resp.text}, status=resp.status or 500)
 
 
-class BaseCRUDUpdateView(LoginRequiredMixin, UpdateView):
-    pass
-
-
-class BaseCRUDDeleteView(LoginRequiredMixin, DeleteView):
-    pass
-
-
-# Skill CRUD (через базовые вьюхи, чтобы ограничить видимость своими записями)
-class SkillListView(BaseCRUDListView):
-    model = Skill
-    template_name = "employees/skill_list.html"
-    context_object_name = "skills"
-
-
-class SkillCreateView(BaseCRUDCreateView):
-    model = Skill
-    form_class = SkillForm
-    template_name = "employees/skill_form.html"
-    success_url = reverse_lazy("employees:skill_list")
-
-
-class SkillUpdateView(BaseCRUDUpdateView):
-    model = Skill
-    form_class = SkillForm
-    template_name = "employees/skill_form.html"
-    success_url = reverse_lazy("employees:skill_list")
-
-
-class SkillDeleteView(BaseCRUDDeleteView):
-    model = Skill
-    template_name = "employees/skill_confirm_delete.html"
-    success_url = reverse_lazy("employees:skill_list")
+@login_required
+@require_POST
+@require_api_auth
+def skill_remove(request, pk: int):
+    api = get_api_client(request)
+    skill_id = request.POST.get("skill_id")
+    skill_name = (request.POST.get("skill_name") or "").strip()
+    payload = {
+        k: v for k, v in (("skill_id", skill_id), ("skill_name", skill_name)) if v
+    }
+    # NB: у DRF-экшена underscore: remove_skill
+    resp = api.post(f"v1/employees/{pk}/remove_skill/", data=payload)
+    return JsonResponse(resp.json or {"detail": resp.text}, status=resp.status or 500)

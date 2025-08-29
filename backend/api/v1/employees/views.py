@@ -1,64 +1,38 @@
 # backend/api/v1/employees/views.py
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import timedelta
-from django.db.models import Prefetch
 
 import phonenumbers
 from common.emails import send_templated_mail
 from django.conf import settings
 from django.contrib.auth.models import Group, Permission
 from django.db import IntegrityError, transaction
-from django.db.models import (
-    Case,
-    Count,
-    Exists,
-    F,
-    IntegerField,
-    OuterRef,
-    Q,
-    Subquery,
-    Value,
-    When,
-)
+from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
+                              Prefetch, Q, Subquery, Value, When)
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
-from employees.models import (
-    Department,
-    DepartmentRole,
-    Employee,
-    EmployeeAction,
-    EmployeeDepartment,
-    Position,
-    Skill,
-)
+from employees.models import (Department, DepartmentRole, Employee,
+                              EmployeeAction, EmployeeDepartment, Position,
+                              Skill)
 from phonenumbers import PhoneNumberFormat
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
+from rest_framework.permissions import (AllowAny, DjangoModelPermissions,
+                                        IsAdminUser, IsAuthenticated)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..permissions import (
-    ASSIGN_ROLE_PERM,
-    MANAGE_PERM,
-    IsDeptManagerForWrite,
-    IsSelfOrStaff,
-    IsStaffOrHasModelPerm,
-)
-from .serializers import (
-    DepartmentRoleSerializer,
-    DepartmentSerializer,
-    EmailSerializer,
-    EmailVerifySerializer,
-    EmployeeActionSerializer,
-    EmployeeListSerializer,
-    EmployeeSerializer,
-    PositionSerializer,
-    RegisterSerializer,
-    SkillSerializer,
-)
+from ..permissions import (ASSIGN_ROLE_PERM, MANAGE_PERM,
+                           AdminOrActionOrModelPerms, IsDeptManagerForWrite,
+                           IsSelfOrStaff)
+from .serializers import (DepartmentRoleSerializer, DepartmentSerializer,
+                          EmailSerializer, EmailVerifySerializer,
+                          EmployeeActionSerializer, EmployeeListSerializer,
+                          EmployeeSerializer, PositionSerializer,
+                          RegisterSerializer, SkillSerializer)
 
 
 def _to_bool(val: str | None) -> bool | None:
@@ -328,7 +302,7 @@ class DepartmentViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     """
     /api/departments/
       - GET (list/detail)     — только аутентифицированные пользователи
-      - POST/DELETE           — только staff/superuser
+      - POST/DELETE           — только staff/superuser или пользователи с правами
       - PATCH/PUT             — руководитель отдела ИЛИ роль с perm "manage_department"
       - Смена head            — руководитель отдела ИЛИ роль с perm "change_department_head"
       - Управление ролями     — руководитель отдела ИЛИ роль с perm "assign_department_role"
@@ -373,7 +347,7 @@ class DepartmentViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         # Создание/удаление — только админы
         if self.action in ["create", "destroy"]:
-            return [IsAdminUser()]
+            return [AdminOrActionOrModelPerms()]
         # Общие правки отдела — право manage_department на объекте
         if self.action in ["update", "partial_update"]:
             self.required_perm_code = "manage_department"
@@ -526,28 +500,61 @@ class DepartmentViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 class EmployeeViewSet(viewsets.ModelViewSet):
     """
     /api/v1/employees/
-      - GET list/retrieve          — только аутентифицированные
-      - POST (create)              — только staff/superuser (через EmployeeManager.create_user)
-      - PATCH/PUT (update/partial) — staff/superuser ИЛИ владелец (self)
-      - DELETE                     — только staff/superuser
+
+    Доступ:
+      - GET list/retrieve          — только аутентифицированные пользователи.
+      - POST (create)              — только staff/superuser (в методе create есть явная проверка).
+      - PATCH/PUT/DELETE {id}      — staff/superuser ИЛИ пользователи с модельными правами
+                                     на Employee (через AdminOrActionOrModelPerms).
+      - GET/PATCH /employees/me/   — только аутентифицированные; PATCH правит профиль текущего пользователя.
+      - POST {id}/add_skill|remove_skill — требуется спец-пермишен
+                                     "employees.manage_employee_skills" ИЛИ staff/superuser
+                                     (через AdminOrActionOrModelPerms).
 
     Поиск: last_name, first_name, patronymic, email, phone_number
+
     Фильтры:
       ?department=<id>            — участники отдела + head
       ?position=<id>              — по должности
       ?skill=<id>&skill=<id>      — любые из навыков (OR)
       ?email_verified=true|false
       ?active=true|false
-      ?actually_active=true|false — email_verified=True и не DISMISSED (или нет действий, но is_active=True)
-    Сортировка: ?ordering=last_name|first_name|created_at|id (с '-' для DESC)
+      ?actually_active=true|false — реально активные: email_verified=True и не DISMISSED
+                                    (или нет действий, но is_active=True)
+
+    Сортировка:
+      ?ordering=last_name|first_name|created_at|id  (+ '-' для DESC)
+
+    Примечания:
+      - В detail/retrieve и в me мы добавляем в контекст сериализатора флаги
+        include_actions и include_action_history — в ответе придут кадровые
+        события сотрудника и их история.
+      - Создание /employees/ доступно ТОЛЬКО staff/superuser, даже если у пользователя
+        есть модельный пермишен add_employee (это отмечено явно в create()).
     """
 
     serializer_class = EmployeeSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["last_name", "first_name", "patronymic", "email", "phone_number"]
     ordering_fields = ["last_name", "first_name", "created_at", "id"]
     ordering = ["last_name", "first_name"]
+    required_perms_by_action = {
+        "add_skill": "employees.manage_employee_skills",
+        "remove_skill": "employees.manage_employee_skills",
+    }
+
+    def get_permissions(self):
+        if self.action in {"add_skill", "remove_skill"}:
+            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
+        elif self.action in {"create", "update", "partial_update", "destroy"}:
+            if self.action in {"update", "partial_update"}:
+                return [
+                    IsAuthenticated(),
+                    (IsSelfOrStaff | AdminOrActionOrModelPerms)(),
+                ]
+            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
+        else:
+            return [IsAuthenticated()]
 
     def get_queryset(self):
         last_action_code_sq = Subquery(
@@ -557,7 +564,9 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         )
         dep_links_prefetch = Prefetch(
             "departments_links",
-            queryset=EmployeeDepartment.objects.filter(is_active=True).select_related("department", "role"),
+            queryset=EmployeeDepartment.objects.filter(is_active=True).select_related(
+                "department", "role"
+            ),
             to_attr="dept_links",
         )
 
@@ -630,18 +639,6 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         return qs
 
-    # --- права ---
-    def get_permissions(self):
-        if self.action in {"create", "destroy"}:
-            return [IsAdminUser()]
-        if self.action in {"update", "partial_update"}:
-            # class-level: аутентификация
-            # object-level: IsSelfOrStaff
-            return [IsAuthenticated(), IsSelfOrStaff()]
-        if self.action in {"me"}:
-            return [IsAuthenticated()]
-        return super().get_permissions()
-
     def get_serializer_class(self):
         # для списка отдаём облегчённый, но с нужными полями
         if self.action == "list":
@@ -700,22 +697,23 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(out.data)
         return Response(out.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    # --- профиль текущего пользователя ---
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
         """
-        GET   /api/v1/employees/me/      — ваш профиль
+        GET   /api/v1/employees/me/      — ваш профиль (ТОТ ЖЕ формат, что retrieve)
         PATCH /api/v1/employees/me/      — частичное обновление своего профиля
         """
         instance: Employee = request.user  # type: ignore
-        if request.method.lower() == "get":
+
+        if request.method == "GET":
             instance = (
                 Employee.objects.select_related("position")
                 .prefetch_related(
                     "skills",
                     Prefetch(
                         "departments_links",
-                        queryset=EmployeeDepartment.objects.filter(is_active=True).select_related("department", "role"),
+                        queryset=EmployeeDepartment.objects.filter(is_active=True)
+                        .select_related("department", "role"),
                         to_attr="dept_links",
                     ),
                     Prefetch("actions", queryset=EmployeeAction.objects.order_by("-date")),
@@ -724,34 +722,77 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             )
             ctx = self.get_serializer_context()
             ctx["include_actions"] = True
-            ctx["include_action_history"] = True  # <-- добавили
-            return Response(self.get_serializer(instance, context=ctx).data)
-
-
+            ctx["include_action_history"] = True
+            data = self.get_serializer(instance, context=ctx).data
+            return Response(data, status=status.HTTP_200_OK)
         ser = self.get_serializer(instance, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
-        # Можно повторить контакт-валидацию для PATCH:
+
         vd = ser.validated_data
         if all(k not in vd for k in ("whatsapp", "telegram", "wechat")):
-            # если пользователь пытается очистить все контакты
             new_whatsapp = vd.get("whatsapp", instance.whatsapp)
             new_telegram = vd.get("telegram", instance.telegram)
             new_wechat = vd.get("wechat", instance.wechat)
             if not (new_whatsapp or new_telegram or new_wechat):
                 return Response(
-                    {
-                        "detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."
-                    },
+                    {"detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
         ser.save()
-        return Response(ser.data)
-    
+        return Response(ser.data, status=status.HTTP_200_OK) 
+
+    @action(detail=True, methods=["post"])
+    def add_skill(self, request, pk=None):
+        """
+        body: { "skill_id": 3 } ИЛИ { "skill_name": "Python" }
+        """
+        emp = self.get_object()
+        sid = request.data.get("skill_id")
+        sname = (request.data.get("skill_name") or "").strip()
+
+        sk = None
+        if sid:
+            sk = Skill.objects.filter(pk=sid).first()
+        if not sk and sname:
+            sk = Skill.objects.filter(
+                name__iexact=sname
+            ).first() or Skill.objects.create(name=sname)
+        if not sk:
+            return Response({"detail": "Навык не найден/не указан"}, status=400)
+
+        emp.skills.add(sk)
+        return Response(
+            {"ok": True, "skill": {"id": sk.id, "name": sk.name}}, status=200
+        )
+
+    @action(detail=True, methods=["post"])
+    def remove_skill(self, request, pk=None):
+        """
+        body: { "skill_id": 3 } ИЛИ { "skill_name": "Python" }
+        """
+        emp = self.get_object()
+        sid = request.data.get("skill_id")
+        sname = (request.data.get("skill_name") or "").strip()
+
+        sk = None
+        if sid:
+            sk = Skill.objects.filter(pk=sid).first()
+        if not sk and sname:
+            sk = Skill.objects.filter(name__iexact=sname).first()
+        if not sk:
+            return Response({"detail": "Навык не найден"}, status=404)
+
+        emp.skills.remove(sk)
+        return Response(
+            {"ok": True, "removed": {"id": sk.id, "name": sk.name}}, status=200
+        )
+
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         if getattr(self, "action", None) in {"retrieve", "me"}:
             ctx["include_actions"] = True
-            ctx["include_action_history"] = True  # <-- добавили
+            ctx["include_action_history"] = True
         return ctx
 
 
@@ -769,27 +810,18 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
     queryset = Position.objects.all().prefetch_related("groups")
     serializer_class = PositionSerializer
-    permission_classes = [IsAuthenticated, IsStaffOrHasModelPerm]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "description"]
     ordering_fields = ["name", "id"]
     ordering = ["name"]
     history_diff_fields = ["name", "description"]
-
-    def get_permissions(self):
-        # важное место: выставляем требуемый perm под действие
-        if self.action == "create":
-            self.required_perm_code = "employees.add_position"
-        elif self.action in ("update", "partial_update"):
-            self.required_perm_code = "employees.change_position"
-        elif self.action == "destroy":
-            self.required_perm_code = "employees.delete_position"
-        elif self.action in ("set_groups", "add_groups", "remove_groups"):
-            self.required_perm_code = "employees.assign_position_groups"
-        else:
-            self.required_perm_code = None
-        return super().get_permissions()
+    permission_classes = [IsAuthenticated, AdminOrActionOrModelPerms]
+    required_perms_by_action = {
+        "set_groups": "employees.assign_position_groups",
+        "add_groups": "employees.assign_position_groups",
+        "remove_groups": "employees.assign_position_groups",
+    }
 
     def _validate_groups_payload(self, request):
         ids = request.data.get("groups")
@@ -861,15 +893,13 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
 class DepartmentRoleViewSet(viewsets.ModelViewSet):
     """
-    /api/v1/department-roles/
-      - GET list/retrieve         — IsAuthenticated
-      - POST/PATCH/PUT/DELETE     — руководитель отдела ИЛИ пользователь с нужной ролью отдела
-        * create/update/delete    — perm: manage_department
-        * set-perms/add-perms/remove-perms — perm: assign_department_role
-
-    Фильтры:
-      ?department=<id> — роли конкретного отдела
-      ?search=<name>   — поиск по названию
+    /api/v1/positions/
+    GET list/retrieve                 — IsAuthenticated
+    POST/PUT/PATCH/DELETE            — Admin OR Django model perms (add/change/delete_position)
+    POST /{id}/set-groups            — Admin OR employees.assign_position_groups
+    POST /{id}/add-groups            — Admin OR employees.assign_position_groups
+    POST /{id}/remove-groups         — Admin OR employees.assign_position_groups
+    GET  /{id}/permissions           — IsAuthenticated
     """
 
     serializer_class = DepartmentRoleSerializer
@@ -1016,22 +1046,14 @@ class SkillViewSet(viewsets.ModelViewSet):
     ordering_fields = ["name", "id"]
     ordering = ["name"]
     pagination_class = None
+    required_perms_by_action = {
+        "merge": "employees.change_skill",
+    }
 
     def get_permissions(self):
-        # create / bulk_create — любой аутентифицированный
         if self.action in ("create", "bulk_create"):
             return [IsAuthenticated()]
-
-        # merge / update / destroy — требуются модельные права
-        if self.action in ("update", "partial_update"):
-            self.required_perm_code = "employees.change_skill"
-        elif self.action == "destroy":
-            self.required_perm_code = "employees.delete_skill"
-        elif self.action == "merge":
-            self.required_perm_code = "employees.change_skill"
-        else:
-            self.required_perm_code = None  # SAFE methods → IsAuthenticated
-        return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+        return [IsAuthenticated(), AdminOrActionOrModelPerms()]
 
     @action(detail=False, methods=["post"])
     def bulk_create(self, request):
@@ -1182,13 +1204,13 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             self.required_perm_code = "employees.add_employeeaction"
-            return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
         if self.action in ("update", "partial_update"):
             self.required_perm_code = "employees.change_employeeaction"
-            return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
         if self.action == "destroy":
             self.required_perm_code = "employees.delete_employeeaction"
-            return [IsAuthenticated(), IsStaffOrHasModelPerm()]
+            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
         self.required_perm_code = None
         return super().get_permissions()
 

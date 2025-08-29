@@ -58,7 +58,7 @@ def test_perms_endpoint_requires_auth(api_client):
     d = Department.objects.create(name="A")
     role = DepartmentRole.objects.create(department=d, name="R")
 
-    url = reverse("api:api_v1:department-roles-perms", args=[role.id])
+    url = reverse("api:v1:department-roles-perms", args=[role.id])
 
     # unauth -> 401/403
     resp = api_client.get(url)
@@ -81,7 +81,7 @@ def test_filter_invalid_department_param(api_client):
     d = Department.objects.create(name="D")
     DepartmentRole.objects.create(department=d, name="R1")
 
-    url = reverse("api:api_v1:department-roles-list")
+    url = reverse("api:v1:department-roles-list")
 
     # нечисловой фильтр department -> просто пустой список (ошибки быть не должно)
     resp = api_client.get(url, {"department": "oops"})
@@ -105,7 +105,7 @@ def test_member_role_with_manage_can_crud_in_own_department(api_client):
     # делаем пользователя членом отдела с этой ролью
     EmployeeDepartment.objects.create(employee=user, department=dept, role=role_mgr, is_active=True)
 
-    url = reverse("api:api_v1:department-roles-list")
+    url = reverse("api:v1:department-roles-list")
 
     # create в своём отделе — должен пройти
     resp = api_client.post(url, {"department": dept.id, "name": "NewRole"}, format="json")
@@ -113,7 +113,7 @@ def test_member_role_with_manage_can_crud_in_own_department(api_client):
     role_id = resp.data["id"]
 
     # update — тоже должен пройти
-    url_detail = reverse("api:api_v1:department-roles-detail", args=[role_id])
+    url_detail = reverse("api:v1:department-roles-detail", args=[role_id])
     resp = api_client.patch(url_detail, {"name": "NewRole++"}, format="json")
     assert resp.status_code == 200
 
@@ -140,7 +140,7 @@ def test_member_role_assign_can_set_perms_without_manage(api_client):
     p_view_emp = Permission.objects.get(content_type__app_label="employees", codename="view_employee")
 
     # set_perms должен позволяться с одним правом assign_department_role
-    url_set = reverse("api:api_v1:department-roles-set-perms", args=[target_role.id])
+    url_set = reverse("api:v1:department-roles-set-perms", args=[target_role.id])
     resp = api_client.post(url_set, {"permission_ids": [p_view_emp.id]}, format="json")
     assert resp.status_code == 200
     assert set(target_role.permissions.values_list("id", flat=True)) == {p_view_emp.id}
@@ -155,12 +155,12 @@ def test_global_manage_grants_crud_in_any_department(api_client):
 
     foreign = Department.objects.create(name="Foreign-Dept")
 
-    url = reverse("api:api_v1:department-roles-list")
+    url = reverse("api:v1:department-roles-list")
     resp = api_client.post(url, {"department": foreign.id, "name": "GloballyAllowed"}, format="json")
     assert resp.status_code == 201
 
     role_id = resp.data["id"]
-    url_detail = reverse("api:api_v1:department-roles-detail", args=[role_id])
+    url_detail = reverse("api:v1:department-roles-detail", args=[role_id])
     resp = api_client.patch(url_detail, {"name": "EditOK"}, format="json")
     assert resp.status_code == 200
 
@@ -182,7 +182,7 @@ def test_role_in_other_dept_does_not_grant_cross_access(api_client):
     EmployeeDepartment.objects.create(employee=user, department=dept_a, role=role_mgr_a, is_active=True)
 
     # create в отделе B -> 403
-    url = reverse("api:api_v1:department-roles-list")
+    url = reverse("api:v1:department-roles-list")
     resp = api_client.post(url, {"department": dept_b.id, "name": "NoAccess"}, format="json")
     assert resp.status_code == 403
 
@@ -201,7 +201,7 @@ def test_set_perms_replaces_completely_and_dedup(api_client):
     # сначала добавим одно право
     role.permissions.add(p_view)
 
-    url_set = reverse("api:api_v1:department-roles-set-perms", args=[role.id])
+    url_set = reverse("api:v1:department-roles-set-perms", args=[role.id])
     # передаём список с дублями -> в итоге только p_manage
     resp = api_client.post(url_set, {"permission_ids": [p_manage.id, p_manage.id]}, format="json")
     assert resp.status_code == 200
@@ -220,7 +220,7 @@ def test_add_and_remove_idempotent(api_client):
     p2 = Permission.objects.get(content_type__app_label="employees", codename="assign_department_role")
 
     # add_perms с дублями
-    url_add = reverse("api:api_v1:department-roles-add-perms", args=[role.id])
+    url_add = reverse("api:v1:department-roles-add-perms", args=[role.id])
     resp = api_client.post(url_add, {"permission_ids": [p1.id, p1.id, p2.id]}, format="json")
     assert resp.status_code == 200
     assert set(role.permissions.values_list("id", flat=True)) == {p1.id, p2.id}
@@ -231,7 +231,7 @@ def test_add_and_remove_idempotent(api_client):
     assert set(role.permissions.values_list("id", flat=True)) == {p1.id, p2.id}
 
     # remove_perms частичный и повторный (идемпотентность)
-    url_rm = reverse("api:api_v1:department-roles-remove-perms", args=[role.id])
+    url_rm = reverse("api:v1:department-roles-remove-perms", args=[role.id])
     resp = api_client.post(url_rm, {"permission_ids": [p1.id]}, format="json")
     assert resp.status_code == 200
     assert set(role.permissions.values_list("id", flat=True)) == {p2.id}
@@ -249,7 +249,7 @@ def test_missing_department_on_create_returns_400(api_client):
     dept = Department.objects.create(name="Doc", head=head)
     EmployeeDepartment.objects.get_or_create(employee=head, department=dept, defaults={"is_active": True})
 
-    url = reverse("api:api_v1:department-roles-list")
+    url = reverse("api:v1:department-roles-list")
     # забыли передать department -> 400 (валидация сериализатора)
     resp = api_client.post(url, {"name": "RoleX"}, format="json")
     assert resp.status_code == 400
@@ -264,7 +264,7 @@ def test_permissions_payload_validation_errors(api_client):
     role = DepartmentRole.objects.create(department=dept, name="R")
 
     # не список -> 400
-    url_set = reverse("api:api_v1:department-roles-set-perms", args=[role.id])
+    url_set = reverse("api:v1:department-roles-set-perms", args=[role.id])
     resp = api_client.post(url_set, {"permission_ids": "oops"}, format="json")
     assert resp.status_code == 400
 
@@ -280,6 +280,6 @@ def test_delete_nonexistent_returns_404(api_client):
     dept = Department.objects.create(name="Del", head=head)
     EmployeeDepartment.objects.get_or_create(employee=head, department=dept, defaults={"is_active": True})
 
-    url_detail = reverse("api:api_v1:department-roles-detail", args=[999999])
+    url_detail = reverse("api:v1:department-roles-detail", args=[999999])
     resp = api_client.delete(url_detail)
     assert resp.status_code == 404

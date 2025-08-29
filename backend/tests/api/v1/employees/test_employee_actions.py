@@ -63,7 +63,7 @@ def _any_non_dismissed():
 
 @pytest.mark.django_db
 def test_list_requires_auth_and_filtering(api_client):
-    url = reverse("api:api_v1:employee-actions-list")
+    url = reverse("api:v1:employee-actions-list")
     # unauth
     assert api_client.get(url).status_code in (401, 403)
 
@@ -100,7 +100,7 @@ def test_create_requires_perm_or_staff(api_client):
     actor = _user()
     target = _user()
     api_client.force_authenticate(user=actor)
-    url = reverse("api:api_v1:employee-actions-list")
+    url = reverse("api:v1:employee-actions-list")
     payload = {
         "employee": target.id,
         "action": _any_non_dismissed(),
@@ -137,7 +137,7 @@ def test_dismissal_deactivates_employee_and_links(api_client):
     dept = Department.objects.create(name="D")
     EmployeeDepartment.objects.create(employee=emp, department=dept, is_active=True)
 
-    url = reverse("api:api_v1:employee-actions-list")
+    url = reverse("api:v1:employee-actions-list")
     resp = api_client.post(
         url,
         {
@@ -163,7 +163,7 @@ def test_non_dismissal_activates_employee(api_client):
     emp.is_active = False
     emp.save(update_fields=["is_active"])
 
-    url = reverse("api:api_v1:employee-actions-list")
+    url = reverse("api:v1:employee-actions-list")
     resp = api_client.post(
         url,
         {
@@ -190,7 +190,7 @@ def test_update_to_dismissed_applies_effects(api_client):
         employee=emp, action=_any_non_dismissed(), date=timezone.now()
     )
 
-    url_det = reverse("api:api_v1:employee-actions-detail", args=[act.id])
+    url_det = reverse("api:v1:employee-actions-detail", args=[act.id])
     resp = api_client.patch(url_det, {"action": ACTION_DISMISSED}, format="json")
     assert resp.status_code == 200
     emp.refresh_from_db()
@@ -205,7 +205,7 @@ def test_delete_requires_perm_or_staff(api_client):
     act = EmployeeAction.objects.create(
         employee=emp, action=_any_non_dismissed(), date=timezone.now()
     )
-    url_det = reverse("api:api_v1:employee-actions-detail", args=[act.id])
+    url_det = reverse("api:v1:employee-actions-detail", args=[act.id])
 
     # no perm -> 403
     assert api_client.delete(url_det).status_code == 403

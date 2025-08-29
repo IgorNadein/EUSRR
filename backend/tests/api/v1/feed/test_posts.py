@@ -77,7 +77,7 @@ def _items(resp):
 
 @pytest.mark.django_db
 def test_list_requires_auth(api_client):
-    url = reverse("api:api_v1:posts-list")
+    url = reverse("api:v1:posts-list")
     assert api_client.get(url).status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
 
     user = _user()
@@ -87,7 +87,7 @@ def test_list_requires_auth(api_client):
 
 @pytest.mark.django_db
 def test_create_company_requires_staff_or_perm(api_client):
-    url = reverse("api:api_v1:posts-list")
+    url = reverse("api:v1:posts-list")
     author = _user()
     api_client.force_authenticate(user=author)
 
@@ -118,7 +118,7 @@ def test_create_company_requires_staff_or_perm(api_client):
 
 @pytest.mark.django_db
 def test_create_department_requires_head_or_role_or_staff(api_client):
-    url = reverse("api:api_v1:posts-list")
+    url = reverse("api:v1:posts-list")
     dept = Department.objects.create(name="R&D")
 
     u = _user()
@@ -159,7 +159,7 @@ def test_create_department_requires_head_or_role_or_staff(api_client):
 
 @pytest.mark.django_db
 def test_employee_type_is_forbidden_and_department_field_validation(api_client):
-    url = reverse("api:api_v1:posts-list")
+    url = reverse("api:v1:posts-list")
     staff = _user(staff=True)
     api_client.force_authenticate(user=staff)
     dept = Department.objects.create(name="Ops")
@@ -190,7 +190,7 @@ def test_update_and_delete_permissions_match_create_rules(api_client):
 
     # создаём пост отдела от лица главы
     api_client.force_authenticate(user=head)
-    url = reverse("api:api_v1:posts-list")
+    url = reverse("api:v1:posts-list")
     resp = api_client.post(
         url,
         {"type": TYPE_DEPARTMENT, "title": "t1", "body": "b1", "department": dept.id},
@@ -199,7 +199,7 @@ def test_update_and_delete_permissions_match_create_rules(api_client):
     assert resp.status_code == status.HTTP_201_CREATED
     post_id = resp.data["id"]
 
-    url_detail = reverse("api:api_v1:posts-detail", args=[post_id])
+    url_detail = reverse("api:v1:posts-detail", args=[post_id])
 
     # другой обычный пользователь не может править/удалять
     stranger = _user()
@@ -224,7 +224,7 @@ def test_list_by_author_shows_all_authors_posts(api_client):
     _grant_dept_role_perm(author, dept, "feed.publish_department_post")
 
     api_client.force_authenticate(user=author)
-    url = reverse("api:api_v1:posts-list")
+    url = reverse("api:v1:posts-list")
 
     # company пост
     r1 = api_client.post(

@@ -1,6 +1,5 @@
 # backend\employees\models.py
-from django.contrib.auth.models import (AbstractUser, BaseUserManager, Group,
-                                        Permission)
+from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models.functions import Lower
@@ -39,25 +38,37 @@ class EmployeeManager(BaseUserManager):
 
         # Явные проверки для дружелюбной ошибки + защита от гонок ниже
         if self.model.objects.filter(email__iexact=email).exists():
-            raise ValidationError({"email": "Пользователь с таким email уже существует"})
+            raise ValidationError(
+                {"email": "Пользователь с таким email уже существует"}
+            )
         if self.model.objects.filter(phone_number=phone_number).exists():
-            raise ValidationError({"phone_number": "Пользователь с таким номером уже существует"})
+            raise ValidationError(
+                {"phone_number": "Пользователь с таким номером уже существует"}
+            )
 
         try:
             with transaction.atomic():
-                user = self.model(email=email, phone_number=phone_number, **extra_fields)
+                user = self.model(
+                    email=email, phone_number=phone_number, **extra_fields
+                )
                 user.set_password(password)
                 # для обычного пользователя подтверждение по email
                 user.email_verified = False
-                user.email_activation_code = get_random_string(6, allowed_chars="0123456789")
+                user.email_activation_code = get_random_string(
+                    6, allowed_chars="0123456789"
+                )
                 user.save(using=self._db)
         except IntegrityError as e:
             # fallback — на случай гонки: маппим в поле-специфичную ошибку
             msg = str(e).lower()
             if "email" in msg or "uniq" in msg and "email" in msg:
-                raise ValidationError({"email": "Пользователь с таким email уже существует"})
+                raise ValidationError(
+                    {"email": "Пользователь с таким email уже существует"}
+                )
             if "phone" in msg or "phone_number" in msg:
-                raise ValidationError({"phone_number": "Пользователь с таким номером уже существует"})
+                raise ValidationError(
+                    {"phone_number": "Пользователь с таким номером уже существует"}
+                )
             raise
 
         if send_activation_email:
@@ -128,7 +139,10 @@ class Position(models.Model):
         verbose_name_plural = "Должности"
         ordering = ["name"]
         permissions = [
-            ("assign_position_groups", "Может назначать группы аутентификации для должностей"),
+            (
+                "assign_position_groups",
+                "Может назначать группы аутентификации для должностей",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -181,6 +195,9 @@ class Employee(AbstractUser):
             models.Index(fields=["email"]),
             models.Index(fields=["phone_number"]),
             models.Index(Lower("email"), name="employee_email_lower_idx"),
+        ]
+        permissions = [
+            ("manage_employee_skills", "Может управлять навыками сотрудников"),
         ]
 
     def clean(self):
@@ -236,9 +253,7 @@ class EmployeeAction(models.Model):
     employee = models.ForeignKey(
         Employee, related_name="actions", on_delete=models.CASCADE
     )
-    action = models.CharField(
-        "Кадровое событие", max_length=50, choices=ACTION_CHOICES
-    )  # Увеличено для расширения
+    action = models.CharField("Кадровое событие", max_length=50, choices=ACTION_CHOICES)
     date = models.DateTimeField("Дата действия")
     comment = models.TextField("Комментарий/причина", blank=True)
     extra = models.JSONField("Дополнительно", blank=True, null=True)
@@ -398,9 +413,7 @@ class DepartmentRole(models.Model):
         Department, on_delete=models.CASCADE, related_name="roles"
     )
     name = models.CharField(max_length=150)
-    permissions = models.ManyToManyField(
-        Permission, blank=True
-    )  # права в рамках ЭТОГО отдела
+    permissions = models.ManyToManyField(Permission, blank=True)
 
     class Meta:
         verbose_name = "Роль в отделе"

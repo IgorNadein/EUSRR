@@ -57,7 +57,7 @@ def _grant_perm(user: Employee, perm_code: str):
 
 @pytest.mark.django_db
 def test_list_search_ordering_requires_auth(api_client):
-    url = reverse("api:api_v1:skills-list")
+    url = reverse("api:v1:skills-list")
     # unauth
     resp = api_client.get(url)
     assert resp.status_code in (401, 403)
@@ -89,7 +89,7 @@ def test_list_search_ordering_requires_auth(api_client):
 def test_create_allowed_for_regular_user(api_client):
     user = _mk_user()
     api_client.force_authenticate(user=user)
-    url = reverse("api:api_v1:skills-list")
+    url = reverse("api:v1:skills-list")
     resp = api_client.post(url, {"name": "Go"}, format="json")
     assert resp.status_code == 201
     assert Skill.objects.filter(name="Go").exists()
@@ -102,7 +102,7 @@ def test_update_delete_permissions(api_client):
     s = Skill.objects.create(name="Docker")
 
     # update -> 403
-    url_det = reverse("api:api_v1:skills-detail", args=[s.id])
+    url_det = reverse("api:v1:skills-detail", args=[s.id])
     resp = api_client.patch(url_det, {"name": "Docker+"}, format="json")
     assert resp.status_code == 403
 
@@ -129,7 +129,7 @@ def test_staff_bypasses_permissions(api_client):
     staff = _mk_user(staff=True)
     api_client.force_authenticate(user=staff)
     s = Skill.objects.create(name="K8s")
-    url_det = reverse("api:api_v1:skills-detail", args=[s.id])
+    url_det = reverse("api:v1:skills-detail", args=[s.id])
     assert (
         api_client.patch(url_det, {"name": "Kubernetes"}, format="json").status_code
         == 200
@@ -141,7 +141,7 @@ def test_staff_bypasses_permissions(api_client):
 def test_bulk_create_by_regular_user(api_client):
     user = _mk_user()
     api_client.force_authenticate(user=user)
-    url = reverse("api:api_v1:skills-bulk-create")
+    url = reverse("api:v1:skills-bulk-create")
 
     resp = api_client.post(
         url, {"names": [" Python ", "python", "SQL", ""]}, format="json"
@@ -166,7 +166,7 @@ def test_merge_requires_perm_and_reassigns(api_client):
     e1.skills.add(src)
     e2.skills.add(src)
 
-    url = reverse("api:api_v1:skills-merge")
+    url = reverse("api:v1:skills-merge")
 
     # без прав -> 403
     resp = api_client.post(
@@ -195,7 +195,7 @@ def test_merge_same_id_and_invalid_ids(api_client):
     _grant_perm(user, "employees.change_skill")
     s = Skill.objects.create(name="A")
 
-    url = reverse("api:api_v1:skills-merge")
+    url = reverse("api:v1:skills-merge")
     # same id
     resp = api_client.post(url, {"source_id": s.id, "target_id": s.id}, format="json")
     assert resp.status_code == 400
@@ -216,7 +216,7 @@ def test_merge_without_reassign_or_delete(api_client):
     e = _mk_user()
     e.skills.add(src)
 
-    url = reverse("api:api_v1:skills-merge")
+    url = reverse("api:v1:skills-merge")
     resp = api_client.post(
         url,
         {
@@ -248,7 +248,7 @@ def test_merge_idempotent_if_employee_already_has_target(api_client):
     e = _mk_user()
     e.skills.add(src, dst)
 
-    url = reverse("api:api_v1:skills-merge")
+    url = reverse("api:v1:skills-merge")
     resp = api_client.post(
         url, {"source_id": src.id, "target_id": dst.id}, format="json"
     )

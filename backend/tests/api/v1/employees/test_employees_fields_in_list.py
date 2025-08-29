@@ -83,7 +83,7 @@ def test_list_includes_basic_fields(api):
         "emp@example.com", first_name="Ivan", last_name="Ivanov", position=pos
     )
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     r = api.get(url)
     assert r.status_code == status.HTTP_200_OK
     items = extract_results(r.json())
@@ -127,7 +127,7 @@ def test_list_departments_include_role(api):
         employee=emp, department=dept2, is_active=True
     )  # без роли
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     r = api.get(url)
     assert r.status_code == status.HTTP_200_OK
     items = extract_results(r.json())

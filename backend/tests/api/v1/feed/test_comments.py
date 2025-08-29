@@ -53,7 +53,7 @@ def _items(resp):
 
 @pytest.mark.django_db
 def test_list_requires_auth_and_filters_ordering(api_client):
-    url = reverse("api:api_v1:comments-list")
+    url = reverse("api:v1:comments-list")
     assert api_client.get(url).status_code in (401, 403)
 
     author = _user()
@@ -88,7 +88,7 @@ def test_create_text_only_and_files(api_client):
     api_client.force_authenticate(user=user)
     p = Post.objects.create(author=user, type=TYPE_COMPANY, title="news", body="b")
 
-    url = reverse("api:api_v1:comments-list")
+    url = reverse("api:v1:comments-list")
 
     # text only
     resp = api_client.post(url, {"post": p.id, "text": "hi"}, format="multipart")
@@ -112,7 +112,7 @@ def test_create_text_only_and_files(api_client):
 def test_create_empty_payload_is_400(api_client):
     user = _user(); api_client.force_authenticate(user=user)
     p = Post.objects.create(author=user, type=TYPE_COMPANY, title="n", body="b")
-    url = reverse("api:api_v1:comments-list")
+    url = reverse("api:v1:comments-list")
 
     resp = api_client.post(url, {"post": p.id, "text": ""}, format="multipart")
     assert resp.status_code == 400
@@ -128,7 +128,7 @@ def test_update_permissions_and_validation(api_client):
     p = Post.objects.create(author=author, type=TYPE_COMPANY, title="n", body="b")
     c = Comment.objects.create(post=p, author=author, text="orig")
 
-    url_detail = reverse("api:api_v1:comments-detail", args=[c.id])
+    url_detail = reverse("api:v1:comments-detail", args=[c.id])
 
     # не автор -> 403
     api_client.force_authenticate(user=other)
@@ -156,7 +156,7 @@ def test_delete_permissions(api_client):
     author = _user(); staff = _user(staff=True); other = _user()
     p = Post.objects.create(author=author, type=TYPE_COMPANY, title="n", body="b")
     c = Comment.objects.create(post=p, author=author, text="delme")
-    url_detail = reverse("api:api_v1:comments-detail", args=[c.id])
+    url_detail = reverse("api:v1:comments-detail", args=[c.id])
 
     # другой пользователь -> 403
     api_client.force_authenticate(user=other)
@@ -169,4 +169,4 @@ def test_delete_permissions(api_client):
     # staff тоже может (создадим новый)
     c2 = Comment.objects.create(post=p, author=author, text="del2")
     api_client.force_authenticate(user=staff)
-    assert api_client.delete(reverse("api:api_v1:comments-detail", args=[c2.id])).status_code == 204
+    assert api_client.delete(reverse("api:v1:comments-detail", args=[c2.id])).status_code == 204

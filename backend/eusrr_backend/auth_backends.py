@@ -4,9 +4,8 @@ from typing import Optional
 
 from django.conf import settings
 from django.contrib.auth.backends import ModelBackend
-from django.db.models import Q
-from django.utils import timezone
-from employees.models import Employee
+from django.contrib.auth.models import Permission
+from employees.models import Department, Employee, EmployeeDepartment
 
 # phonenumbers — опционально, но очень желательно: pip install phonenumbers
 try:
@@ -100,68 +99,54 @@ class EmailOrPhoneBackend(ModelBackend):
 
 
 class PositionRoleBackend(ModelBackend):
-    """
-    Добавляет:
-      - Глобальные права от активных EmployeePosition → PositionRole.permissions
-      - Объектные права на Department из DepartmentRole.permissions (через EmployeeDepartment.role_fk)
-    """
+    def get_all_permissions(self, user_obj, obj=None):
+        perms = super().get_all_permissions(user_obj, obj)
+        if not getattr(user_obj, "is_authenticated", False) or obj is not None:
+            return perms
 
-    def _active_positions(self, user):
-        today = timezone.now().date()
-        return (
-            user.positions.select_related("position_role")
-            .prefetch_related("position_role__permissions")
-            .filter(date_from__lte=today)
-            .filter(Q(date_to__isnull=True) | Q(date_to__gte=today))
-        )
+        # 1) Глобальные права от должности — оставить
+        pos = getattr(user_obj, "position", None)
+        if pos:
+            pos_perms = (
+                Permission.objects.filter(group__positions=pos)
+                .select_related("content_type")
+                .distinct()
+            )
+            perms |= {f"{p.content_type.app_label}.{p.codename}" for p in pos_perms}
 
-    def get_user_permissions(self, user, obj=None):
-        # только глобальные (obj=None): соберём из активных должностей
-        if not user.is_authenticated or obj is not None:
-            return set()
-        perms = set()
-        for ep in self._active_positions(user):
-            pr = ep.position_role
-            if not pr:
-                continue
-            for p in pr.permissions.all():
-                perms.add(f"{p.content_type.app_label}.{p.codename}")
+        # 2) ⚠️ НЕ добавляем сюда пермишены из DepartmentRole.
+        # Они должны проверяться только на уровне конкретного Department в has_perm(..., obj=dept)
+
         return perms
 
-    def has_perm(self, user, perm, obj=None):
-        # 1) Сначала стандартные механики Django (user.user_permissions, groups, superuser)
-        if super().has_perm(user, perm, obj=obj):
+    def has_perm(self, user_obj, perm, obj=None):
+        # стандартная ветка + суперюзер/группы/пользовательские
+        if super().has_perm(user_obj, perm, obj=obj):
             return True
-        if not user.is_authenticated:
+        if not getattr(user_obj, "is_authenticated", False):
             return False
 
-        # 2) Глобальные должности (obj=None)
         if obj is None:
-            return perm in self.get_user_permissions(user)
+            # добавить глобальные (от должности)
+            return perm in self.get_all_permissions(user_obj)
 
-        # 3) Объектные права на Department — смотрим роль в ЭТОМ отделе
-        from employees.models import Department, EmployeeDepartment
-
+        # Объектные права на Department — как у вас
         if isinstance(obj, Department):
-            # начальнику отдела — всё
-            if obj.head_id == user.id:
+            if obj.head_id == user_obj.id:
                 return True
             link = (
-                EmployeeDepartment.objects.select_related("role_fk")
-                .filter(employee=user, department=obj, is_active=True)
+                EmployeeDepartment.objects.select_related("role")
+                .filter(employee=user_obj, department=obj, is_active=True)
                 .first()
             )
-            if not link or not link.role_fk:
+            if not (link and link.role_id):
                 return False
-
-            try:
-                app_label, codename = perm.split(".", 1)
-            except ValueError:
+            app_label, sep, codename = perm.partition(".")
+            if not sep:
                 return False
-
-            return link.role_fk.permissions.filter(
-                content_type__app_label=app_label, codename=codename
+            return link.role.permissions.filter(
+                content_type__app_label=app_label,
+                codename=codename,
             ).exists()
 
-        # для других obj вернёмся к базовой логике
         return False

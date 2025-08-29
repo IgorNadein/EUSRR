@@ -1,12 +1,19 @@
 import base64
 import binascii
+from collections import defaultdict
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.files.base import ContentFile
-from employees.models import (Department, DepartmentRole, EmployeeAction,
-                              EmployeeDepartment, Position, Skill)
+from employees.models import (
+    Department,
+    DepartmentRole,
+    EmployeeAction,
+    EmployeeDepartment,
+    Position,
+    Skill,
+)
 from PIL import Image
 from rest_framework import serializers
 
@@ -148,7 +155,7 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
             "date_display",
             "comment",
             "extra",
-            "history",       # ← добавили
+            "history",  # ← добавили
         ]
 
     def get_action_display(self, obj):
@@ -162,8 +169,9 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
             return []
 
         items = list(
-            obj.history.select_related("history_user")
-            .order_by("-history_date", "-history_id")
+            obj.history.select_related("history_user").order_by(
+                "-history_date", "-history_id"
+            )
         )
 
         action_labels = dict(ACTION_CHOICES)
@@ -236,6 +244,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     )
 
     departments = serializers.SerializerMethodField()
+    auth = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Employee
@@ -264,6 +273,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "updated_at",
             "last_login",
             "date_joined",
+            "auth", 
+            
         )
         read_only_fields = (
             "is_active",
@@ -272,6 +283,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "updated_at",
             "last_login",
             "date_joined",
+            "auth", 
         )
         extra_kwargs = {
             # чтобы точно не принимали/не отдавали пароль и коды
@@ -310,20 +322,56 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return out
 
     def get_fields(self):
-        """
-        Показываем actions только в деталке сотрудника и в /employees/me,
-        либо если явно передан context['include_actions']=True.
-        Во всех остальных контекстах поле скрываем, чтобы не раздувать ответы.
-        """
         fields = super().get_fields()
-        if self.context.get("include_actions") is True:
-            return fields
 
+        # actions — как и было
+        if self.context.get("include_actions") is not True:
+            view = self.context.get("view")
+            action = getattr(view, "action", None) if view else None
+            if action not in {"retrieve", "me"}:
+                fields.pop("actions", None)
+
+        # ⬇️ Новое: auth показываем только в /me или при include_auth=True
+        include_auth = self.context.get("include_auth") is True
         view = self.context.get("view")
         action = getattr(view, "action", None) if view else None
-        if action not in {"retrieve", "me"}:
-            fields.pop("actions", None)
+        if not include_auth and action != "me":
+            fields.pop("auth", None)
+
         return fields
+
+    def get_auth(self, obj):
+        """
+        Возвращает только ГЛОБАЛЬНЫЕ права текущего (request.user),
+        уже с учётом должности (PositionRoleBackend).
+        """
+        req = self.context.get("request")
+        if not req or not getattr(req.user, "is_authenticated", False):
+            return None
+
+        # Не светим auth другого сотрудника (кроме явного include_auth=True)
+        include_auth = self.context.get("include_auth") is True
+        if not include_auth and req.user.pk != getattr(obj, "pk", None):
+            return None
+
+        u = req.user
+        perms = sorted(u.get_all_permissions())  # уже включает Position-права
+
+        by_app = defaultdict(list)
+        for p in perms:
+            app, code = p.split(".", 1)
+            by_app[app].append(code)
+        perms_by_app = {app: sorted(codes) for app, codes in by_app.items()}
+
+        return {
+            "id": u.id,
+            "email": u.email or "",
+            "is_staff": u.is_staff,
+            "is_superuser": u.is_superuser,
+            "groups": list(u.groups.values_list("name", flat=True)),
+            "permissions": perms,
+            "permissions_by_app": perms_by_app,
+        }
 
 
 class DepartmentSerializer(serializers.ModelSerializer):

@@ -9,7 +9,7 @@ from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
                               VerifyEmailAPIView)
 from .feed.views import CommentViewSet, PostViewSet
 
-app_name = "api_v1"
+app_name = "v1"
 
 router = DefaultRouter()
 router.register(r"calendar/company-events", CompanyEventsViewSet, basename="company-events")

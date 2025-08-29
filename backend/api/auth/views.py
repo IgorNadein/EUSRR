@@ -6,3 +6,5 @@ from .serializers import PhoneOrEmailTokenObtainPairSerializer
 
 class PhoneOrEmailTokenObtainPairView(TokenObtainPairView):
     serializer_class = PhoneOrEmailTokenObtainPairSerializer
+
+

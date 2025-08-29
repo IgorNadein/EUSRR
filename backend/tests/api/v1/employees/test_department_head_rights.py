@@ -33,7 +33,7 @@ def _make_user(staff=False, superuser=False) -> Employee:
     return u
 
 def _dept_set_head(api_client, dept_id, head_id):
-    url = reverse("api:api_v1:departments-set-head", args=[dept_id])
+    url = reverse("api:v1:departments-set-head", args=[dept_id])
     payload = {"head_id": head_id} if head_id is not None else {"head_id": None}
     return api_client.post(url, payload, format="json")
 
@@ -47,7 +47,7 @@ def test_old_head_loses_rights_after_change(api_client):
     dept = Department.objects.create(name="Alpha", head=old_head)
 
     # Как глава — может править отдел (partial_update требует manage_department)
-    url_detail = reverse("api:api_v1:departments-detail", args=[dept.id])
+    url_detail = reverse("api:v1:departments-detail", args=[dept.id])
     resp = api_client.patch(url_detail, {"description": "init"}, format="json")
     assert resp.status_code == 200
 
@@ -79,7 +79,7 @@ def test_new_head_gets_rights_and_membership_created(api_client):
 
     # У нового главы есть права управления отделом
     api_client.force_authenticate(user=new_head)
-    url_detail = reverse("api:api_v1:departments-detail", args=[dept.id])
+    url_detail = reverse("api:v1:departments-detail", args=[dept.id])
     resp = api_client.patch(url_detail, {"description": "ok"}, format="json")
     assert resp.status_code == 200
 
@@ -97,7 +97,7 @@ def test_remove_head_deactivates_membership_and_revokes_rights(api_client):
 
     # как глава он может управлять
     api_client.force_authenticate(user=head)
-    url_detail = reverse("api:api_v1:departments-detail", args=[dept.id])
+    url_detail = reverse("api:v1:departments-detail", args=[dept.id])
     assert api_client.patch(url_detail, {"description": "ok"}, format="json").status_code == 200
 
     # staff снимает главу (head -> null)
@@ -138,7 +138,7 @@ def test_old_head_keeps_rights_if_role_grants_after_change(api_client):
 
     # старый глава уже не head, но он обладает ролью с manage_department -> должен иметь доступ
     api_client.force_authenticate(user=old_head)
-    url_detail = reverse("api:api_v1:departments-detail", args=[dept.id])
+    url_detail = reverse("api:v1:departments-detail", args=[dept.id])
     resp = api_client.patch(url_detail, {"description": "still ok"}, format="json")
     assert resp.status_code == 200
 

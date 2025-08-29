@@ -130,7 +130,7 @@ def extract_results(data):
 
 
 def test_list_requires_auth(api_client: APIClient):
-    url = reverse("api:api_v1:departments-list")
+    url = reverse("api:v1:departments-list")
     resp = api_client.get(url)
     assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -142,7 +142,7 @@ def test_list_ok_for_authenticated(api_client: APIClient):
     Department.objects.create(name="A")
     Department.objects.create(name="B")
 
-    url = reverse("api:api_v1:departments-list")
+    url = reverse("api:v1:departments-list")
     resp = api_client.get(url)
     assert resp.status_code == status.HTTP_200_OK
     items = extract_results(resp.json())
@@ -158,7 +158,7 @@ def test_search_and_ordering(api_client: APIClient):
     Department.objects.create(name="Beta", description="second")
     Department.objects.create(name="Gamma", description="third")
 
-    base = reverse("api:api_v1:departments-list")
+    base = reverse("api:v1:departments-list")
 
     # поиск
     resp = api_client.get(base, {"search": "be"})
@@ -193,7 +193,7 @@ def test_employees_count_adds_head_if_not_in_links(api_client: APIClient):
     EmployeeDepartment.objects.create(employee=e1, department=d, is_active=True)
     EmployeeDepartment.objects.create(employee=e2, department=d, is_active=True)
 
-    url = reverse("api:api_v1:departments-detail", args=[d.pk])
+    url = reverse("api:v1:departments-detail", args=[d.pk])
     resp = api_client.get(url)
     assert resp.status_code == 200
     data = resp.json()
@@ -212,7 +212,7 @@ def test_employees_count_not_double_count_head_if_in_links(api_client: APIClient
     EmployeeDepartment.objects.create(employee=e1, department=d, is_active=True)
     EmployeeDepartment.objects.create(employee=e2, department=d, is_active=True)
 
-    url = reverse("api:api_v1:departments-detail", args=[d.pk])
+    url = reverse("api:v1:departments-detail", args=[d.pk])
     resp = api_client.get(url)
     assert resp.status_code == 200
     data = resp.json()
@@ -226,7 +226,7 @@ def test_create_requires_staff(api_client: APIClient):
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
 
-    url = reverse("api:api_v1:departments-list")
+    url = reverse("api:v1:departments-list")
 
     # не staff
     resp = api_client.post(url, {"name": "New"}, format="json")
@@ -242,7 +242,7 @@ def test_create_requires_staff(api_client: APIClient):
 
 def test_destroy_requires_staff(api_client: APIClient):
     d = Department.objects.create(name="X")
-    url = reverse("api:api_v1:departments-detail", args=[d.pk])
+    url = reverse("api:v1:departments-detail", args=[d.pk])
 
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
@@ -267,7 +267,7 @@ def test_partial_update_name_requires_manage_perm(api_client: APIClient):
     api_client.force_authenticate(user=emp)
     EmployeeDepartment.objects.create(employee=emp, department=d, is_active=True)
 
-    url = reverse("api:api_v1:departments-detail", args=[d.pk])
+    url = reverse("api:v1:departments-detail", args=[d.pk])
     # без прав
     assert (
         api_client.patch(url, {"name": "New Name"}, format="json").status_code
@@ -298,7 +298,7 @@ def test_partial_update_head_requires_change_head_perm(api_client: APIClient):
         employee=emp, department=d, is_active=True, role=r_manage
     )
 
-    url = reverse("api:api_v1:departments-detail", args=[d.pk])
+    url = reverse("api:v1:departments-detail", args=[d.pk])
     # только manage → 403
     assert (
         api_client.patch(url, {"head_id": b.id}, format="json").status_code
@@ -332,7 +332,7 @@ def test_partial_update_head_same_value_does_not_require_extra_perm(
         employee=emp, department=d, is_active=True, role=r_manage
     )
 
-    url = reverse("api:api_v1:departments-detail", args=[d.pk])
+    url = reverse("api:v1:departments-detail", args=[d.pk])
     assert (
         api_client.patch(url, {"head_id": a.id}, format="json").status_code
         == status.HTTP_200_OK
@@ -356,7 +356,7 @@ def test_set_head_by_role_with_perm(api_client: APIClient):
         employee=manager, department=d, is_active=True, role=r
     )
 
-    url = reverse("api:api_v1:departments-set-head", args=[d.pk])
+    url = reverse("api:v1:departments-set-head", args=[d.pk])
     resp = api_client.post(url, {"head_id": candidate.id}, format="json")
     assert resp.status_code == 200
     d.refresh_from_db()
@@ -377,7 +377,7 @@ def test_set_head_validation_inactive_employee(api_client: APIClient):
         employee=manager, department=d, is_active=True, role=r
     )
 
-    url = reverse("api:api_v1:departments-set-head", args=[d.pk])
+    url = reverse("api:v1:departments-set-head", args=[d.pk])
     assert (
         api_client.post(url, {"head_id": inactive.id}, format="json").status_code
         == status.HTTP_400_BAD_REQUEST
@@ -395,7 +395,7 @@ def test_set_head_remove_with_null(api_client: APIClient):
         employee=manager, department=d, is_active=True, role=r
     )
 
-    url = reverse("api:api_v1:departments-set-head", args=[d.pk])
+    url = reverse("api:v1:departments-set-head", args=[d.pk])
     assert (
         api_client.post(url, {"head_id": None}, format="json").status_code
         == status.HTTP_204_NO_CONTENT
@@ -415,7 +415,7 @@ def test_set_head_requires_perm(api_client: APIClient):
         employee=emp, department=d, is_active=True
     )  # без роли
 
-    url = reverse("api:api_v1:departments-set-head", args=[d.pk])
+    url = reverse("api:v1:departments-set-head", args=[d.pk])
     assert (
         api_client.post(url, {"head_id": candidate.id}, format="json").status_code
         == status.HTTP_403_FORBIDDEN
@@ -440,7 +440,7 @@ def test_set_member_role_happy_path(api_client: APIClient):
 
     r_worker = make_role(d, "worker", [])
 
-    url = reverse("api:api_v1:departments-set-member-role", args=[d.pk])
+    url = reverse("api:v1:departments-set-member-role", args=[d.pk])
     payload = {"employee_id": emp.id, "role_id": r_worker.id, "is_active": True}
     resp = api_client.post(url, payload, format="json")
     assert resp.status_code == 200
@@ -466,7 +466,7 @@ def test_set_member_role_reject_foreign_role(api_client: APIClient):
 
     foreign_role = make_role(d2, "other", [])
 
-    url = reverse("api:api_v1:departments-set-member-role", args=[d1.pk])
+    url = reverse("api:v1:departments-set-member-role", args=[d1.pk])
     resp = api_client.post(
         url, {"employee_id": emp.id, "role_id": foreign_role.id}, format="json"
     )
@@ -485,7 +485,7 @@ def test_set_member_role_requires_perm(api_client: APIClient):
     EmployeeDepartment.objects.create(employee=emp, department=d, is_active=True)
     role = make_role(d, "worker", [])
 
-    url = reverse("api:api_v1:departments-set-member-role", args=[d.pk])
+    url = reverse("api:v1:departments-set-member-role", args=[d.pk])
     resp = api_client.post(
         url, {"employee_id": emp.id, "role_id": role.id}, format="json"
     )
@@ -501,6 +501,6 @@ def test_set_member_role_missing_employee_id(api_client: APIClient):
         employee=manager, department=d, is_active=True, role=r_assign
     )
 
-    url = reverse("api:api_v1:departments-set-member-role", args=[d.pk])
+    url = reverse("api:v1:departments-set-member-role", args=[d.pk])
     resp = api_client.post(url, {"role_id": None}, format="json")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST

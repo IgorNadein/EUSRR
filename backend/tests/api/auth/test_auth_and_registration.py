@@ -56,18 +56,18 @@ def register_payload(**overrides):
 
 
 def register(api: APIClient, **overrides):
-    url = reverse("api:api_v1:register")
+    url = reverse("api:v1:register")
     return api.post(url, register_payload(**overrides), format="json")
 
 
 def verify(api: APIClient, *, email: str, code: str | None):
-    url = reverse("api:api_v1:verify-email")
+    url = reverse("api:v1:verify-email")
     # интерфейс верификации: email + code
     return api.post(url, {"email": email, "code": code}, format="json")
 
 
 def resend(api: APIClient, *, email: str):
-    url = reverse("api:api_v1:resend-email")
+    url = reverse("api:v1:resend-email")
     return api.post(url, {"email": email}, format="json")
 
 
@@ -109,13 +109,13 @@ def test_register_success_sends_email_and_user_inactive(api):
 def test_register_missing_required_field(api, missing_field):
     payload = register_payload()
     payload.pop(missing_field)
-    resp = api.post(reverse("api:api_v1:register"), payload, format="json")
+    resp = api.post(reverse("api:v1:register"), payload, format="json")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
 def test_register_requires_at_least_one_contact(api):
     payload = register_payload(telegram="", whatsapp="", wechat="")
-    resp = api.post(reverse("api:api_v1:register"), payload, format="json")
+    resp = api.post(reverse("api:v1:register"), payload, format="json")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert "WhatsApp" in resp.json().get("detail", "") or "WeChat" in resp.json().get("detail", "") or "Telegram" in resp.json().get("detail", "")
 

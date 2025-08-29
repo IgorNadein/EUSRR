@@ -75,7 +75,7 @@ def extract_results(data):
 # ---------- basic auth / list / retrieve ----------
 
 def test_list_requires_auth(api_client: APIClient):
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     resp = api_client.get(url)
     assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -86,7 +86,7 @@ def test_list_ok_for_authenticated(api_client: APIClient):
     e2 = make_user("b@example.com")
 
     api_client.force_authenticate(user=user)
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     resp = api_client.get(url)
     assert resp.status_code == status.HTTP_200_OK
 
@@ -97,7 +97,7 @@ def test_list_ok_for_authenticated(api_client: APIClient):
 
 def test_retrieve_requires_auth(api_client: APIClient):
     e = make_user("x@example.com")
-    url = reverse("api:api_v1:employees-detail", args=[e.pk])
+    url = reverse("api:v1:employees-detail", args=[e.pk])
     assert api_client.get(url).status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -106,7 +106,7 @@ def test_retrieve_ok(api_client: APIClient):
     e = make_user("x@example.com")
     api_client.force_authenticate(user=user)
 
-    url = reverse("api:api_v1:employees-detail", args=[e.pk])
+    url = reverse("api:v1:employees-detail", args=[e.pk])
     resp = api_client.get(url)
     assert resp.status_code == status.HTTP_200_OK
     data = resp.json()
@@ -124,7 +124,7 @@ def test_search_by_email_and_last_name(api_client: APIClient):
     b = make_user("beta@example.com", first_name="Bob", last_name="Beta")
     _ = make_user("gamma@example.com", first_name="Garry", last_name="Gamma")
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
 
     # поиск по части email
     r = api_client.get(url, {"search": "bet"})
@@ -161,7 +161,7 @@ def test_filter_by_department_includes_members_and_head(api_client: APIClient):
     d = Department.objects.create(name="Dept", head=head)
     EmployeeDepartment.objects.create(employee=member, department=d, is_active=True)
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     r = api_client.get(url, {"department": d.id})
     assert r.status_code == 200
     ids = {it["id"] for it in extract_results(r.json())}
@@ -186,7 +186,7 @@ def test_filter_by_position(api_client: APIClient):
 
     _ = make_user("q1@example.com", position=p2)
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     r = api_client.get(url, {"position": p1.id})
     assert r.status_code == 200
     ids = {it["id"] for it in extract_results(r.json())}
@@ -208,7 +208,7 @@ def test_filter_by_skills_any_of(api_client: APIClient):
 
     _ = make_user("e3@example.com")  # без навыков
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     r = api_client.get(url, [("skill", s1.id), ("skill", s2.id)])
     assert r.status_code == 200
     ids = {it["id"] for it in extract_results(r.json())}
@@ -223,7 +223,7 @@ def test_filter_by_email_verified_and_active(api_client: APIClient):
     v0 = make_user("v0@example.com", verified=False, active=True)
     a0 = make_user("a0@example.com", verified=True, active=False)
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
 
     r = api_client.get(url, {"email_verified": "true"})
     ids = {it["id"] for it in extract_results(r.json())}
@@ -250,7 +250,7 @@ def test_filter_actually_active_logic(api_client: APIClient):
     # e_unver: email_verified=False, даже при active=True — не включается при actually_active=true
     e_unver = make_user("unver@example.com", verified=False, active=True)
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
 
     r = api_client.get(url, {"actually_active": "true"})
     ids = {it["id"] for it in extract_results(r.json())}
@@ -270,7 +270,7 @@ def test_create_requires_staff(api_client: APIClient):
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
 
-    url = reverse("api:api_v1:employees-list")
+    url = reverse("api:v1:employees-list")
     payload = {
         "email": "new@example.com",
         "phone_number": _unique_phone(),
@@ -301,7 +301,7 @@ def test_create_requires_staff(api_client: APIClient):
 def test_partial_update_self_allowed(api_client: APIClient):
     e = make_user("self@example.com")
     api_client.force_authenticate(user=e)
-    url = reverse("api:api_v1:employees-detail", args=[e.pk])
+    url = reverse("api:v1:employees-detail", args=[e.pk])
 
     resp = api_client.patch(url, {"first_name": "Me"}, format="json")
     assert resp.status_code == status.HTTP_200_OK
@@ -313,7 +313,7 @@ def test_partial_update_other_forbidden_for_regular_user(api_client: APIClient):
     owner = make_user("owner@example.com")
     other = make_user("other@example.com")
     api_client.force_authenticate(user=other)
-    url = reverse("api:api_v1:employees-detail", args=[owner.pk])
+    url = reverse("api:v1:employees-detail", args=[owner.pk])
 
     resp = api_client.patch(url, {"first_name": "Hack"}, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
@@ -323,7 +323,7 @@ def test_partial_update_other_allowed_for_staff(api_client: APIClient):
     target = make_user("target@example.com")
     staff = make_user("admin@example.com", staff=True)
     api_client.force_authenticate(user=staff)
-    url = reverse("api:api_v1:employees-detail", args=[target.pk])
+    url = reverse("api:v1:employees-detail", args=[target.pk])
 
     resp = api_client.patch(url, {"first_name": "Ok"}, format="json")
     assert resp.status_code == status.HTTP_200_OK
@@ -336,7 +336,7 @@ def test_destroy_requires_admin(api_client: APIClient):
     regular = make_user("regular@example.com")
     staff = make_user("staff@example.com", staff=True)
 
-    url = reverse("api:api_v1:employees-detail", args=[victim.pk])
+    url = reverse("api:v1:employees-detail", args=[victim.pk])
 
     api_client.force_authenticate(user=regular)
     assert api_client.delete(url).status_code in (
@@ -356,7 +356,7 @@ def test_me_get_returns_current_user(api_client: APIClient):
     me = make_user("me@example.com")
     api_client.force_authenticate(user=me)
 
-    url = reverse("api:api_v1:employees-me")
+    url = reverse("api:v1:employees-me")
     r = api_client.get(url)
     assert r.status_code == 200
     assert r.json()["id"] == me.id
@@ -366,7 +366,7 @@ def test_me_patch_updates_profile(api_client: APIClient):
     me = make_user("me@example.com", telegram="@me")  # уже есть контакт
     api_client.force_authenticate(user=me)
 
-    url = reverse("api:api_v1:employees-me")
+    url = reverse("api:v1:employees-me")
     r = api_client.patch(url, {"first_name": "Updated"}, format="json")
     assert r.status_code == 200
     me.refresh_from_db()
@@ -382,6 +382,6 @@ def test_me_patch_rejects_when_all_contacts_empty(api_client: APIClient):
     me = make_user("nocc@example.com", telegram="", whatsapp="", wechat="")
     api_client.force_authenticate(user=me)
 
-    url = reverse("api:api_v1:employees-me")
+    url = reverse("api:v1:employees-me")
     r = api_client.patch(url, {"first_name": "Try"}, format="json")
     assert r.status_code == status.HTTP_400_BAD_REQUEST

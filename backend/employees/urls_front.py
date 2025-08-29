@@ -20,9 +20,6 @@ urlpatterns = [
         views_front.DepartmentCreateView.as_view(),
         name="department_add",
     ),
-    # path("departments/<int:pk>/edit/", views_front.DepartmentUpdateView.as_view(), name="department_edit"),
-    # path("departments/<int:pk>/delete/", views_front.DepartmentDeleteView.as_view(), name="department_delete"),
-    # path("departments/<int:pk>/invite/", views_front.invite_to_department, name="invite_to_department"),
     path("departments/<int:dept_id>/members/<int:employee_id>/role/", views_front.edit_department_role, name="edit_department_role",),
     path("departments/", views_front.department_list, name="department_list"),
     path("departments/<int:pk>/", views_front.department_detail, name="department_detail"),
@@ -31,17 +28,9 @@ urlpatterns = [
     path("departments/<int:pk>/set-member-role/", views_front.department_set_member_role, name="department_set_member_role",),
 
     # --- Навыки ---
-    path("skills/", views_front.SkillListView.as_view(), name="skill_list"),
-    path("skills/add/", views_front.SkillCreateView.as_view(), name="skill_add"),
-    path(
-        "skills/<int:pk>/edit/",
-        views_front.SkillUpdateView.as_view(),
-        name="skill_edit",
-    ),
-    path(
-        "skills/<int:pk>/delete/",
-        views_front.SkillDeleteView.as_view(),
-        name="skill_delete",
-    ),
+    path("<int:pk>/skill/add/", views_front.skill_add, name="skill_add"),
+    path("<int:pk>/skill/remove/", views_front.skill_remove, name="skill_remove"),
+
+
 
 ]
