@@ -1,7 +1,7 @@
 # backend\employees\forms_front.py
 from django import forms
 
-from .models import Department
+from .models import Department, Employee
 
 
 class DepartmentEditForm(forms.Form):
@@ -28,3 +28,31 @@ class DepartmentForm(forms.ModelForm):
     class Meta:
         model = Department
         fields = ["name", "description", "head"]
+
+
+class EmployeeForm(forms.ModelForm):
+    class Meta:
+        model = Employee
+        fields = (
+            "first_name",
+            "last_name",
+            "patronymic",
+            "telegram",
+            "whatsapp",
+            "wechat",
+        )
+        widgets = {
+            "first_name": forms.TextInput(attrs={"autocomplete": "given-name"}),
+            "last_name": forms.TextInput(attrs={"autocomplete": "family-name"}),
+            "whatsapp": forms.TextInput(attrs={"inputmode": "tel"}),
+            "telegram": forms.TextInput(),
+            "wechat": forms.TextInput(),
+        }
+        labels = {
+            "first_name": "Имя",
+            "last_name": "Фамилия",
+            "patronymic": "Отчество",
+            "telegram": "Telegram",
+            "whatsapp": "WhatsApp",
+            "wechat": "WeChat",
+        }

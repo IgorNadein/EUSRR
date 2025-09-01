@@ -202,7 +202,7 @@
 
   /* ====== SKILLS UI ====== */
   /* плюс как «пилюля» */
-  #skillsBlock[data-editable="1"] .chip.chip-add{display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;border-style:dashed}
+  #skillsBlock[data-editable="1"] .chip.chip-add{display:inline-flex;align-items:center;cursor:pointer;border-style:dashed}
   #skillsBlock[data-editable="1"] .chip.chip-add.pulse{transform:scale(.97);transition:transform .15s ease}
   #skillsBlock[data-editable="1"] .chip.chip-add .bi{font-size:.95rem}
 
@@ -267,9 +267,18 @@
                 {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
               </div>
               {% if can_edit %}
-                <a class="btn-icon" href="{% url 'employees:employee_edit' emp.id %}" title="Редактировать профиль" aria-label="Редактировать профиль">
+                <button class="btn-icon"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#editFormWrap"
+                        aria-expanded="false"
+                        aria-controls="editFormWrap"
+                        title="Редактировать профиль" aria-label="Редактировать профиль">
                   <i class="bi-pencil-square"></i>
-                </a>
+                </button>
+                <noscript>
+                  <a class="btn btn-link p-0" href="{% url 'employees:employee_edit' emp.id %}">Редактировать</a>
+                </noscript>
               {% endif %}
             </div>
 
@@ -478,83 +487,105 @@
               {% endwith %}
             {% endif %}
             {# ====== НАВЫКИ ====== #}
-<div class="mt-3 text-start" id="skillsBlock"
-     {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
-       data-editable="1"
-     {% endif %}>
-  <div class="ios-section-title mb-2"><i class="bi bi-stars me-1"></i>Навыки</div>
+            <div class="mt-3 text-start" id="skillsBlock"
+                {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                  data-editable="1"
+                {% endif %}>
+              <div class="ios-section-title mb-2"><i class="bi bi-stars me-1"></i>Навыки</div>
 
-  <div class="chips align-items-center">
-    {% with skills=emp.skills %}
-      {% if skills %}
-        {% for s in skills %}
-          {% firstof s.name s as sk_name %}
-          {% if sk_name %}
-            <span class="chip chip-skill"
-                  data-skill-id="{{ s.id|default:'' }}"
-                  data-skill-name="{{ sk_name }}">
-              <span class="lbl">{{ sk_name }}</span>
+              <div class="chips align-items-center">
+                {% with skills=emp.skills %}
+                  {% if skills %}
+                    {% for s in skills %}
+                      {% firstof s.name s as sk_name %}
+                      {% if sk_name %}
+                        <span class="chip chip-skill"
+                              data-skill-id="{{ s.id|default:'' }}"
+                              data-skill-name="{{ sk_name }}">
+                          <span class="lbl">{{ sk_name }}</span>
 
-              {# кнопка «минус» только если есть право #}
+                          {# кнопка «минус» только если есть право #}
+                          {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                            <button type="button" class="chip-del-btn" title="Убрать навык" aria-label="Убрать навык">
+                              <i class="bi bi-dash-lg"></i>
+                            </button>
+                          {% endif %}
+                        </span>
+                      {% endif %}
+                    {% endfor %}
+                  {% else %}
+                    <span class="skills-empty"></span>
+                  {% endif %}
+                {% endwith %}
+
+                {# плюс только если есть право #}
+                {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                  <button type="button" class="chip chip-add"
+                          data-bs-toggle="collapse" data-bs-target="#skillsForm"
+                          aria-expanded="false" aria-controls="skillsForm" title="Добавить навык">
+                    <i class="bi bi-plus-lg"></i><span class="d-none d-sm-inline"></span>
+                  </button>
+                {% endif %}
+              </div>
+
               {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
-                <button type="button" class="chip-del-btn" title="Убрать навык" aria-label="Убрать навык">
-                  <i class="bi bi-dash-lg"></i>
-                </button>
+                <div id="skillsForm" class="collapse mt-2">
+                  <form id="skillAddForm" class="skill-form"
+                        action="{% url 'employees:skill_add' emp.id %}" method="post">
+                    {% csrf_token %}
+                    <div class="row g-2">
+                      <div class="col-12">
+                        <input class="form-control" name="skill_name" list="skillsAll"
+                              placeholder="Выберите или введите новый навык" required>
+                        <datalist id="skillsAll">
+                          {% for sk in all_skills %}
+                            {% if sk.name %}<option value="{{ sk.name }}"></option>{% endif %}
+                          {% endfor %}
+                        </datalist>
+                      </div>
+                      <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                          <i class="bi bi-plus-lg me-1"></i>Добавить
+                        </button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-bs-toggle="collapse" data-bs-target="#skillsForm">
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
               {% endif %}
-            </span>
-          {% endif %}
-        {% endfor %}
-      {% else %}
-        <span class="skills-empty"></span>
-      {% endif %}
-    {% endwith %}
-
-    {# плюс только если есть право #}
-    {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
-      <button type="button" class="chip chip-add"
-              data-bs-toggle="collapse" data-bs-target="#skillsForm"
-              aria-expanded="false" aria-controls="skillsForm" title="Добавить навык">
-        <i class="bi bi-plus-lg"></i><span class="d-none d-sm-inline"></span>
-      </button>
-    {% endif %}
-  </div>
-
-  {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
-    <div id="skillsForm" class="collapse mt-2">
-      <form id="skillAddForm" class="skill-form"
-            action="{% url 'employees:skill_add' emp.id %}" method="post">
-        {% csrf_token %}
-        <div class="row g-2">
-          <div class="col-12">
-            <input class="form-control" name="skill_name" list="skillsAll"
-                   placeholder="Выберите или введите новый навык" required>
-            <datalist id="skillsAll">
-              {% for sk in all_skills %}
-                {% if sk.name %}<option value="{{ sk.name }}"></option>{% endif %}
-              {% endfor %}
-            </datalist>
-          </div>
-          <div class="col-12 d-flex gap-2">
-            <button type="submit" class="btn btn-primary btn-sm">
-              <i class="bi bi-plus-lg me-1"></i>
-            </button>
-            <button type="button" class="btn btn-ghost btn-sm" data-bs-toggle="collapse" data-bs-target="#skillsForm">
-              Отмена
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
-  {% endif %}
-</div>
-
-
+            </div>
           </div>
         </article>
       </div>
 
       <!-- RIGHT -->
       <div class="col-md-8">
+        {% if can_edit %}
+        <div id="editFormWrap" class="collapse">
+          <article class="ios-card">
+            <div class="p-4">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi-pencil-square"></i>
+                <div class="ios-section-title mb-0">Редактирование профиля</div>
+                <div class="ms-auto">
+                  <button type="button" class="btn btn-sm btn-ghost"
+                          data-bs-toggle="collapse" data-bs-target="#editFormWrap">Скрыть</button>
+                </div>
+              </div>
+              <div class="mt-3">
+                {% if is_me %}
+                  {% url 'employees:employee_edit_me' as edit_endpoint %}
+                {% else %}
+                  {% url 'employees:employee_edit' emp.id as edit_endpoint %}
+                {% endif %}
+                {% include "employees/_employee_edit.html" with emp=emp endpoint=edit_endpoint %}
+              </div>
+            </div>
+          </article>
+        </div>
+      {% endif %}
         <article class="ios-card" id="activity">
           <div class="p-4">
             <div class="ios-section-title mb-3"><i class="bi-activity me-1"></i>Активность</div>
@@ -562,9 +593,6 @@
               <div class="activity-feed">
                 {% include "feed/_feed_cards.html" with items=posts only %}
               </div>
-
-            {% else %}
-              <div class="text-secondary small">Публикаций пока нет.</div>
             {% endif %}
           </div>
         </article>
@@ -572,6 +600,8 @@
     </div>
   </div>
 
+  
+{% endblock %}
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -682,8 +712,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
-
-{% endblock %}
 
 {% endblock %}
 

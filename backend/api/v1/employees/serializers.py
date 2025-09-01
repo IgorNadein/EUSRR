@@ -6,6 +6,7 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.files.base import ContentFile
+from employees.constants import ACTION_CHOICES
 from employees.models import (
     Department,
     DepartmentRole,
@@ -16,9 +17,6 @@ from employees.models import (
 )
 from PIL import Image
 from rest_framework import serializers
-
-from employees.constants import ACTION_CHOICES
-
 
 Employee = get_user_model()
 
@@ -273,8 +271,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "updated_at",
             "last_login",
             "date_joined",
-            "auth", 
-            
+            "auth",
         )
         read_only_fields = (
             "is_active",
@@ -283,7 +280,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "updated_at",
             "last_login",
             "date_joined",
-            "auth", 
+            "auth",
         )
         extra_kwargs = {
             # чтобы точно не принимали/не отдавали пароль и коды
@@ -496,4 +493,28 @@ class DepartmentRoleSerializer(serializers.ModelSerializer):
                 "name": p.name,
             }
             for p in obj.permissions.select_related("content_type").all()
+        ]
+
+
+class GroupSerializer(serializers.ModelSerializer):
+    permissions = serializers.PrimaryKeyRelatedField(
+        queryset=Permission.objects.all(), many=True, required=False
+    )
+    permissions_verbose = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Group
+        fields = ["id", "name", "permissions", "permissions_verbose"]
+
+    def get_permissions_verbose(self, obj):
+        qs = obj.permissions.select_related("content_type").all()
+        return [
+            {
+                "id": p.id,
+                "codename": f"{p.content_type.app_label}.{p.codename}",
+                "name": p.name,
+                "app": p.content_type.app_label,
+                "model": p.content_type.model,
+            }
+            for p in qs
         ]

@@ -1,0 +1,692 @@
+{# templates/employees/_employee_edit.html #}
+<style>
+  /* модал всегда выше бэкдропа/локальных стэков */
+  .modal { z-index: 1080; }
+  .modal-backdrop { z-index: 1075; }
+  /* не даём «просвечивать» через бэкдроп */
+  .modal .modal-content { background-color: var(--bs-body-bg); }
+</style>
+
+<form id="apiEditForm" class="row g-3" data-endpoint="{{ endpoint }}">
+  {% csrf_token %}
+
+  {# === ЛИЧНЫЕ ДАННЫЕ === #}
+  <div class="col-12">
+    <div class="ios-acc mb-3">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-person-badge"></i>
+        <div class="ios-section-title mb-0">Личные данные</div>
+      </div>
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+          <div class="col-sm-6">
+            <label class="form-label" for="f_first_name">Имя</label>
+            <input id="f_first_name" class="form-control" name="first_name"
+                   value="{{ emp.first_name|default:'' }}" autocomplete="given-name"
+                   data-init="{{ emp.first_name|default:'' }}">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="f_last_name">Фамилия</label>
+            <input id="f_last_name" class="form-control" name="last_name"
+                   value="{{ emp.last_name|default:'' }}" autocomplete="family-name"
+                   data-init="{{ emp.last_name|default:'' }}">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="f_patronymic">Отчество</label>
+            <input id="f_patronymic" class="form-control" name="patronymic"
+                   value="{{ emp.patronymic|default:'' }}"
+                   data-init="{{ emp.patronymic|default:'' }}">
+          </div>
+
+          <div class="col-sm-3">
+            <label class="form-label" for="f_gender">Пол</label>
+            <select id="f_gender" class="form-select" name="gender"
+                    data-init="{{ emp.gender|default_if_none:'' }}">
+              <option value="" {% if emp.gender is None %}selected{% endif %}>— Не указано —</option>
+              <option value="1" {% if emp.gender == 1 %}selected{% endif %}>Мужской</option>
+              <option value="2" {% if emp.gender == 2 %}selected{% endif %}>Женский</option>
+            </select>
+          </div>
+
+          <div class="col-sm-3">
+            <label class="form-label" for="f_birth">Дата рождения</label>
+            <input id="f_birth" class="form-control" type="date" name="birth_date"
+                   value="{{ emp.birth_date|default:'' }}"
+                   data-init="{{ emp.birth_date|default:'' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# === КОНТАКТЫ === #}
+  <div class="col-12">
+    <div class="ios-acc mb-3">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-person-lines-fill"></i>
+        <div class="ios-section-title mb-0">Контакты</div>
+      </div>
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+          <div class="col-sm-6">
+            <label class="form-label" for="f_phone">Телефон</label>
+            <input id="f_phone" class="form-control" name="phone_number"
+                   value="{{ emp.phone_number|default:'' }}" inputmode="tel"
+                   data-init="{{ emp.phone_number|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="f_email">Email</label>
+            <input id="f_email" class="form-control" type="email" name="email"
+                   value="{{ emp.email|default:'' }}" autocomplete="email"
+                   
+                   data-init="{{ emp.email|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+
+          <div class="col-sm-4">
+            <label class="form-label" for="f_telegram">Telegram</label>
+            <input id="f_telegram" class="form-control" name="telegram"
+                   value="{{ emp.telegram|default:'' }}" inputmode="text"
+                   data-init="{{ emp.telegram|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label" for="f_whatsapp">WhatsApp</label>
+            <input id="f_whatsapp" class="form-control" name="whatsapp"
+                   value="{{ emp.whatsapp|default:'' }}" inputmode="tel"
+                   data-init="{{ emp.whatsapp|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label" for="f_wechat">WeChat</label>
+            <input id="f_wechat" class="form-control" name="wechat"
+                   value="{{ emp.wechat|default:'' }}" inputmode="text"
+                   data-init="{{ emp.wechat|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# === ДОЛЖНОСТЬ (как раньше) === #}
+  <div class="col-12">
+    {% if can_edit_position or request.user.is_staff or request.user.is_superuser %}
+      <div class="ios-acc mb-2" id="positionBlock"
+           data-employee-url="{{ endpoint }}"
+           data-create-url="{{ positions_create_url }}"
+           data-can-assign="{% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}1{% else %}0{% endif %}">
+        <div class="d-flex align-items-center gap-2 px-3 py-3">
+          <i class="bi-briefcase"></i>
+          <div class="ios-section-title mb-0">Должность</div>
+        </div>
+        <div class="ios-acc-body">
+          <div class="row g-3 px-2">
+            <div class="col-md-6">
+              <label class="form-label" for="f_position">Текущая должность</label>
+              {% if all_positions %}
+                <select id="f_position" class="form-select" name="position_id"
+                        data-init="{{ emp.position.id|default:'' }}">
+                  <option value="">— Не указано —</option>
+                  {% for p in all_positions %}
+                    {% if p.id and p.name %}
+                      <option value="{{ p.id }}"
+                        {% if emp.position and emp.position.id == p.id %}selected{% endif %}>
+                        {{ p.name }}
+                      </option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              {% else %}
+                <input id="f_position" class="form-control" name="position_id"
+                       value="{{ emp.position.id|default:'' }}" placeholder="ID должности"
+                       data-init="{{ emp.position.id|default:'' }}">
+                <div class="form-text">Передайте в контекст <code>all_positions</code> для выпадающего списка.</div>
+              {% endif %}
+            </div>
+
+            {% if can_create_position or request.user.is_staff or request.user.is_superuser %}
+              <div class="col-md-6">
+                <label class="form-label d-block">Новая должность</label>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        data-bs-toggle="collapse" data-bs-target="#newPositionPane">
+                  Создать должность
+                </button>
+              </div>
+
+              <div class="col-12">
+                <div id="newPositionPane" class="collapse mt-2">
+                  <div class="row g-2">
+                    <div class="col-sm-6">
+                      <label class="form-label" for="pos_name">Название</label>
+                      <input id="pos_name" class="form-control" placeholder="Напр. Руководитель отдела">
+                    </div>
+                    <div class="col-sm-6">
+                      <label class="form-label" for="pos_desc">Описание</label>
+                      <input id="pos_desc" class="form-control" placeholder="Опционально">
+                    </div>
+
+                    {% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}
+                      <div class="col-12">
+                        {# --- Группы прав (мобильно-дружелюбный выбор) --- #}
+                        {% if all_groups %}
+                          <div class="col-12">
+                            {# выбранные группы в виде чипсов #}
+                            <div id="pos_groups_chips" class="chips mb-2"></div>
+                            {# хранение выбранных id (csv), чтобы JS легко забрал #}
+                            <input type="hidden" id="pos_groups_hidden" value="">
+
+                            
+                          </div>
+
+                          {# Модальное окно выбора групп #}
+                          <div class="modal fade" id="groupsPickerModal" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+                              <div class="modal-content">
+                                <div class="modal-header">
+                                  <h5 class="modal-title">Группы прав</h5>
+                                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                </div>
+                                <div class="modal-body">
+                                  <input type="search" class="form-control mb-3" id="groupsSearch" placeholder="Поиск по группам">
+                                  <div id="groupsList" class="list-group">
+                                    {% for g in all_groups %}
+                                      {% if g.id and g.name %}
+                                        <label class="list-group-item d-flex align-items-center gap-2">
+                                          <input class="form-check-input me-2 group-check" type="checkbox" value="{{ g.id }}">
+                                          <span class="flex-grow-1">{{ g.name }}</span>
+                                          <span class="text-secondary small">#{{ g.id }}</span>
+                                        </label>
+                                      {% endif %}
+                                    {% endfor %}
+                                  </div>
+                                </div>
+                                <div class="modal-footer">
+                                  <button type="button" id="groupsClear" class="btn btn-ghost">Сбросить</button>
+                                  <button type="button" id="groupsDone" class="btn btn-primary" data-bs-dismiss="modal">Готово</button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% else %}
+                          {# Фолбэк: если в контексте нет all_groups — оставить поле CSV #}
+                          <div class="col-12">
+                            <label class="form-label" for="pos_groups_csv">Группы прав (id через запятую)</label>
+                            <input id="pos_groups_csv" class="form-control" placeholder="Напр. 1,2,3">
+                          </div>
+                        {% endif %}
+                      </div>
+                    {% endif %}
+
+                    <div class="col-12 d-flex gap-2 mt-1">
+                      <button type="button"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#groupsPickerModal">
+                              Выбрать группы полномочий
+                            </button>
+                      <button type="button" class="btn btn-primary btn-sm" id="posCreateBtn">
+                        <span class="lbl">Создать и назначить</span>
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                      </button>
+                      <button type="button" class="btn btn-ghost btn-sm"
+                              data-bs-toggle="collapse" data-bs-target="#newPositionPane">Отмена</button>
+                    </div>
+
+                    <div class="col-12">
+                      <div class="small mt-1 d-none" id="posCreateMsg"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="ios-acc mb-2">
+        <div class="d-flex align-items-center gap-2 px-3 py-3">
+          <i class="bi-briefcase"></i>
+          <div class="ios-section-title mb-0">Должность</div>
+        </div>
+        <div class="ios-acc-body">
+          <input class="form-control" value="{% firstof emp.position.name emp.position_label '—' %}" disabled>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# === КНОПКИ === #}
+  <div class="col-12 d-flex gap-2 mt-2">
+    <button type="submit" class="btn btn-primary">
+      <span class="btn-label"><i class="bi-check2 me-1"></i>Сохранить</span>
+      <span class="btn-spinner d-none spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+    </button>
+    <button type="button" class="btn btn-ghost" data-bs-toggle="collapse" data-bs-target="#editFormWrap">Отмена</button>
+  </div>
+</form>
+
+
+
+<script>
+(function(){
+  const form = document.getElementById('apiEditForm');
+  if (!form) return;
+
+  const endpoint = form.dataset.endpoint || '';
+  if (!endpoint) { console.error('Нет endpoint для формы редактирования'); return; }
+
+  const CONTACT_FIELDS = ['email','phone_number','telegram','whatsapp','wechat'];
+
+  const btn = form.querySelector('[type="submit"]');
+  const btnLabel = btn?.querySelector('.btn-label');
+  const btnSpin  = btn?.querySelector('.btn-spinner');
+
+  function setSubmitting(on){
+    if (!btn) return;
+    if (on){ btn.setAttribute('disabled',''); btnSpin?.classList.remove('d-none'); btnLabel?.classList.add('visually-hidden'); }
+    else   { btn.removeAttribute('disabled');  btnSpin?.classList.add('d-none');   btnLabel?.classList.remove('visually-hidden'); }
+  }
+  function clearErrors(){
+    form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+    form.querySelectorAll('.invalid-feedback').forEach(el => el.textContent = '');
+  }
+  function fieldError(name, message){
+    const el = form.querySelector(`[name="${CSS.escape(name)}"]`);
+    if (!el) return;
+    el.classList.add('is-invalid');
+    const container = el.closest('[class^="col-"]') || el.parentElement;
+    let fb = container?.querySelector('.invalid-feedback');
+    if (!fb) { fb = document.createElement('div'); fb.className = 'invalid-feedback'; el.after(fb); }
+    fb.textContent = message || 'Некорректное значение';
+  }
+
+  function ensureOneContact(){
+    const hasAny = CONTACT_FIELDS.some(n => (form.elements[n]?.value || '').trim().length > 0);
+    if (hasAny) return true;
+    CONTACT_FIELDS.forEach(n => fieldError(n, 'Укажите хотя бы один контакт'));
+    form.elements[CONTACT_FIELDS[0]]?.focus();
+    return false;
+  }
+
+  // Прочитать файл в Base64
+  function readFileAsDataURL(file){
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // собрать skills_ids (массив) и сравнить с init
+  function collectSkillsPayload(){
+    const sel = form.querySelector('select[name="skills_ids"]');
+    if (!sel) return null;
+    const selected = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
+    const initCsv = sel.dataset.init || '';
+    const initArr = initCsv ? initCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
+    // сравнение (без учёта порядка)
+    const norm = a => a.slice().sort().join(',');
+    if (norm(selected) === norm(initArr)) return null;
+    return selected;
+  }
+
+  // собрать общие поля (кроме skills_ids и avatar)
+  function buildScalarPayload(){
+    const payload = {};
+    const fields = form.querySelectorAll(
+      'input[name]:not([type="file"]):not([name="clear_avatar"]):not(:disabled), select[name]:not([name="skills_ids"]):not(:disabled)'
+    );
+
+    fields.forEach(el => {
+      const name = el.name;
+      const raw = (el.value ?? '').toString().trim();
+      const init = (el.dataset.init ?? el.defaultValue ?? '').toString();
+
+      // Ничего не менялось
+      if (raw === init) return;
+
+      // Пустое значение: для некоторых полей нужно слать null
+      const shouldNull = (raw === '' && ['gender','birth_date','position_id'].includes(name));
+
+      if (shouldNull) {
+        // меняем непустое init -> null (очистка)
+        if (init !== '') payload[name] = null;
+        return;
+      }
+
+      // Типизация gender в число
+      if (name === 'gender' && raw !== '') {
+        payload[name] = Number(raw);
+        return;
+      }
+
+      // Остальные — как есть (пустые строки допустимы для текстовых полей)
+      payload[name] = raw;
+    });
+
+    return payload;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors();
+
+    if (!ensureOneContact()) return;
+
+    setSubmitting(true);
+    try{
+      const payload = buildScalarPayload();
+
+      // skills_ids (массив)
+      const skills = collectSkillsPayload();
+      if (skills) payload.skills_ids = skills;
+
+      // avatar (Base64) / clear
+      const avatarFile = document.getElementById('f_avatar')?.files?.[0] || null;
+      const clearAvatar = form.querySelector('input[name="clear_avatar"]')?.checked;
+      if (avatarFile){
+        try{
+          const dataUrl = await readFileAsDataURL(avatarFile);
+          payload.avatar = dataUrl; // Base64ImageField ожидает data URL
+        }catch(_){}
+      } else if (clearAvatar){
+        payload.avatar = ""; // очистка
+      }
+
+      // если нечего отправлять — просто обновим UI
+      if (Object.keys(payload).length === 0){
+        setSubmitting(false);
+        if (window.bootstrap) {
+          try { new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
+        }
+        location.reload();
+        return;
+      }
+
+      const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+      const resp = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin'
+      });
+
+      if (!resp.ok){
+        let body = null;
+        try { body = await resp.json(); } catch {}
+        if (body && typeof body === 'object'){
+          let shown = false;
+          for (const [k, v] of Object.entries(body)){
+            if (k === 'detail') continue;
+            const msg = Array.isArray(v) ? v.join(' ') : String(v);
+            fieldError(k, msg); shown = true;
+          }
+          if (body.detail) alert(body.detail);
+          else if (!shown)  alert('Не удалось сохранить изменения (ошибка валидации).');
+        } else {
+          const t = await resp.text();
+          alert('Не удалось сохранить изменения.\n' + (t || `HTTP ${resp.status}`));
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      // успех
+      try { if (window.bootstrap) new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
+      location.reload();
+
+    }catch(err){
+      console.error(err);
+      alert('Не удалось сохранить изменения. Попробуйте ещё раз.');
+      setSubmitting(false);
+    }
+  });
+})();
+</script>
+<script>
+(function(){
+  const form  = document.getElementById('apiEditForm');
+  const block = document.getElementById('positionBlock');
+  if (!form || !block) return;
+
+  const select    = document.getElementById('f_position');
+  const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+
+  const employeeUrl = block.dataset.employeeUrl || '';
+  const createUrl   = block.dataset.createUrl   || '';
+  const canAssign   = block.dataset.canAssign === '1';
+
+  function busy(btn, on){
+    const lbl = btn.querySelector('.lbl');
+    const sp  = btn.querySelector('.spinner-border');
+    if (on){ btn.setAttribute('disabled',''); sp?.classList.remove('d-none'); lbl?.classList.add('visually-hidden'); }
+    else    { btn.removeAttribute('disabled');  sp?.classList.add('d-none');   lbl?.classList.remove('visually-hidden'); }
+  }
+  function msg(el, text, ok){
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('d-none', !text);
+    el.classList.toggle('text-success', !!ok);
+    el.classList.toggle('text-danger', !ok);
+  }
+
+  document.getElementById('posCreateBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('posCreateBtn');
+    const m   = document.getElementById('posCreateMsg');
+    msg(m, '');
+
+    if (!createUrl || !employeeUrl){
+      msg(m, 'Не настроены URL создания/обновления.', false);
+      return;
+    }
+
+    const name = (document.getElementById('pos_name')?.value || '').trim();
+    const description = (document.getElementById('pos_desc')?.value || '').trim();
+    if (!name){ msg(m, 'Укажите название должности.', false); return; }
+
+    // собрать группы (для сериализатора PositionSerializer.groups)
+    let groupIds = [];
+    if (canAssign){
+      const msel = document.getElementById('pos_groups');          // десктопный мультиселект (если есть)
+      const hid  = document.getElementById('pos_groups_hidden');   // мобильный модал
+      const csv  = document.getElementById('pos_groups_csv');      // фолбэк
+
+      if (msel)      groupIds = Array.from(msel.selectedOptions).map(o => o.value).filter(Boolean);
+      else if (hid)  groupIds = (hid.value || '').split(',').map(s => s.trim()).filter(Boolean);
+      else if (csv)  groupIds = (csv.value || '').split(',').map(s => s.trim()).filter(Boolean);
+
+      // привести к числам (DRF примет и строки, но так чище)
+      groupIds = groupIds.map(id => Number(id)).filter(n => !Number.isNaN(n));
+    }
+
+    busy(btn, true);
+    try{
+      // 1) POST /positions/ — передаём groups сразу в create (согласно PositionSerializer)
+      const createPayload = { name, description };
+      if (canAssign && groupIds.length) createPayload.groups = groupIds;
+
+      const cResp = await fetch(createUrl, {
+        method:'POST', credentials:'same-origin',
+        headers:{ 'Content-Type':'application/json', 'X-Requested-With':'XMLHttpRequest', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify(createPayload)
+      });
+      const cData = await (async()=>{ try{return await cResp.json()}catch{return null} })();
+      if (!cResp.ok){
+        msg(m, (cData?.detail || JSON.stringify(cData) || `HTTP ${cResp.status}`), false);
+        busy(btn,false); return;
+      }
+      const newId = cData?.id;
+      if (!newId){ msg(m, 'API не вернул id новой должности.', false); busy(btn,false); return; }
+
+      // 2) PATCH сотрудника -> position_id (согласно EmployeeSerializer)
+      const eResp = await fetch(employeeUrl, {
+        method:'PATCH', credentials:'same-origin',
+        headers:{ 'Content-Type':'application/json', 'X-Requested-With':'XMLHttpRequest', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ position_id: newId })
+      });
+      if (!eResp.ok){
+        const eData = await (async()=>{ try{return await eResp.json()}catch{return null} })();
+        msg(m, 'Создано, но не назначено: ' + (eData?.detail || JSON.stringify(eData) || `HTTP ${eResp.status}`), false);
+        busy(btn,false); return;
+      }
+
+      // 3) обновить селект и закрыть панель
+      if (select){
+        let opt = Array.from(select.options).find(o => o.value == String(newId));
+        if (!opt){
+          opt = document.createElement('option');
+          opt.value = String(newId);
+          opt.textContent = cData?.name || ('Должность #'+newId);
+          select.appendChild(opt);
+        }
+        select.value = String(newId);
+        select.dataset.init = String(newId);
+      }
+      msg(m, 'Должность создана и назначена.', true);
+      try{ if (window.bootstrap) new bootstrap.Collapse(document.getElementById('newPositionPane'), {toggle:false}).hide(); }catch(_){}
+    }catch(ex){
+      console.error(ex);
+      msg(m, 'Неожиданная ошибка при создании/назначении.', false);
+    }finally{
+      busy(btn, false);
+    }
+  });
+})();
+</script>
+<script>
+(function(){
+  const chipsBox  = document.getElementById('pos_groups_chips');
+  const hiddenInp = document.getElementById('pos_groups_hidden');
+  const listBox   = document.getElementById('groupsList');
+  const searchInp = document.getElementById('groupsSearch');
+  const clearBtn  = document.getElementById('groupsClear');
+  const doneBtn   = document.getElementById('groupsDone');
+
+  if (!listBox || !hiddenInp) return;
+
+  // Текущее множество выбранных id
+  const sel = new Set((hiddenInp.value || '').split(',').map(s => s.trim()).filter(Boolean));
+
+  // Рендер чипсов
+  function renderChips(){
+    if (!chipsBox) return;
+    chipsBox.innerHTML = '';
+    if (sel.size === 0){ return; }
+    // соберём карту id->название из списка (чтобы показывать имена)
+    const nameById = {};
+    listBox.querySelectorAll('.group-check').forEach(ch => {
+      nameById[ch.value] = ch.closest('.list-group-item').querySelector('span.flex-grow-1')?.textContent || ('#'+ch.value);
+    });
+    for (const id of sel){
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.dataset.id = id;
+      chip.innerHTML = `${nameById[id] || ('#'+id)} <button type="button" class="btn btn-sm p-0 ms-1" aria-label="Удалить" style="line-height:1;">×</button>`;
+      chipsBox.appendChild(chip);
+    }
+  }
+
+  // Синхронизация чекбоксов ↔ выбранные
+  function syncChecksFromSel(){
+    listBox.querySelectorAll('.group-check').forEach(ch => {
+      ch.checked = sel.has(ch.value);
+    });
+  }
+  function syncSelFromChecks(){
+    sel.clear();
+    listBox.querySelectorAll('.group-check:checked').forEach(ch => sel.add(ch.value));
+  }
+  function saveHidden(){
+    hiddenInp.value = Array.from(sel).join(',');
+  }
+
+  // Интерактив: клик по чекбоксу
+  listBox.addEventListener('change', (e) => {
+    const ch = e.target.closest('.group-check');
+    if (!ch) return;
+    if (ch.checked) sel.add(ch.value); else sel.delete(ch.value);
+  });
+
+  // Фильтр
+  searchInp?.addEventListener('input', () => {
+    const q = (searchInp.value || '').toLowerCase().trim();
+    listBox.querySelectorAll('.list-group-item').forEach(row => {
+      const name = row.querySelector('.flex-grow-1')?.textContent.toLowerCase() || '';
+      const id   = row.querySelector('.group-check')?.value || '';
+      row.classList.toggle('d-none', !(name.includes(q) || id.includes(q)));
+    });
+  });
+
+  // Сброс
+  clearBtn?.addEventListener('click', () => {
+    sel.clear();
+    syncChecksFromSel();
+    renderChips();
+    saveHidden();
+  });
+
+  // Готово
+  doneBtn?.addEventListener('click', () => {
+    // на случай если что-то поменяли напрямую в чекбоксах
+    syncSelFromChecks();
+    renderChips();
+    saveHidden();
+  });
+
+  // Удаление из чипса
+  chipsBox?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    const chip = btn?.closest('.chip');
+    if (!chip) return;
+    sel.delete(chip.dataset.id);
+    renderChips();
+    syncChecksFromSel();
+    saveHidden();
+  });
+
+  // Инициализация при первом открытии модала (если уже есть значения)
+  renderChips();
+  syncChecksFromSel();
+
+  // === ДОПОЛНЕНИЕ К ВАШЕЙ КНОПКЕ "Создать и назначить" ===
+  // в вашем коде уже есть место, где собираются groupIds:
+  //   if (msel) ... else if (csv) ...
+  // добавим чтение из скрытого поля:
+  const posCreateBtn = document.getElementById('posCreateBtn');
+  if (posCreateBtn){
+    posCreateBtn.addEventListener('click', () => {
+      // прокинем выбранные id в data-атрибут кнопки, чтобы ваш обработчик прочитал
+      if (hiddenInp) {
+        posCreateBtn.dataset.groupsSelected = hiddenInp.value; // "1,2,3"
+      }
+    }, {capture:true});
+  }
+
+  // А внутри вашего обработчика posCreateBtn используйте ещё один источник:
+  //   const msel = document.getElementById('pos_groups');
+  //   const csv  = document.getElementById('pos_groups_csv');
+  //   const hid  = document.getElementById('pos_groups_hidden');
+  //   if (msel)      groupIds = Array.from(msel.selectedOptions).map(o => o.value).filter(Boolean);
+  //   else if (hid)  groupIds = (hid.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  //   else if (csv)  groupIds = (csv.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  //
+  // и перед отправкой:
+  //   groupIds = groupIds.map(id => Number(id)).filter(n => !Number.isNaN(n));
+})();
+</script>
+<script>
+  (function(){
+    const m = document.getElementById('groupsPickerModal');
+    if (m && m.parentNode !== document.body) {
+      document.body.appendChild(m);
+    }
+  })();
+</script>

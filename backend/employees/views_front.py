@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import base64
 import mimetypes
 from typing import Any
@@ -152,175 +153,120 @@ def employee_list(request):
     return render(request, "employees/employees_list.html", context)
 
 
-# ---------- DETAIL ----------
+# ---------- DETAIL / ME ----------
 @require_api_auth
-def employee_detail(request, pk: int):
+def employee_profile(request, pk="me"):
+    """
+    /employees/me/  и  /employees/<int:pk>/
+    Если pk == текущему пользователю — редиректим на /employees/me/
+    """
+    # --- редирект "свой id" -> /me ---
+    try:
+        int_pk = int(pk)
+    except (TypeError, ValueError):
+        int_pk = None
+
+    if (
+        int_pk is not None
+        and request.user.is_authenticated
+        and request.user.id == int_pk
+    ):
+        url = reverse("employees:profile")
+        qs = request.META.get("QUERY_STRING")
+        if qs:  # сохраняем ?tab=skills и т.п.
+            url = f"{url}?{qs}"
+        return redirect(url)  # 302 достаточно, чтобы не кэшировать навсегда
+
+    # --- обычная логика detail/me ---
     api = get_api_client(request)
-    resp = api.get(f"v1/employees/{pk}/")
+    is_me = str(pk) in {"me", "self"}
+
+    endpoint = "v1/employees/me/" if is_me else f"v1/employees/{pk}/"
+    resp = api.get(endpoint)
     if not resp.ok:
         messages.error(request, f"Сотрудник не найден ({resp.status})")
         return redirect("employees:employees_list")
 
     emp = resp.json or {}
-    can_edit = bool(
-        request.user and (request.user.is_staff or request.user.id == emp.get("id"))
-    )
-    posts = _fetch_employee_posts(api, pk)
+    emp_id = emp.get("id") or (request.user.id if is_me else pk)
+    posts = _fetch_employee_posts(api, emp_id)
+
     sresp = api.get("v1/skills/", params={"ordering": "name"})
-    all_skills = sresp.json if sresp.ok else []
-    return render(
-        request,
-        "employees/employee_detail.html",
-        {"emp": emp, "can_edit": can_edit, "all_skills": all_skills, "posts": posts},
+    sdata = sresp.json if sresp.ok else []
+    all_skills = sdata.get("results", sdata) if isinstance(sdata, dict) else sdata
+    gresp = None
+    for path in ("v1/auth/groups/", "v1/groups/"):
+        r = api.get(path, params={"ordering": "name"})
+        if r.ok:
+            gresp = r
+            break
+    gdata = gresp.json if gresp and gresp.ok else []
+    all_groups = gdata.get("results", gdata) if isinstance(gdata, dict) else gdata
+    presp = api.get("v1/positions/", params={"ordering": "name"})
+    pdata = presp.json if presp.ok else []
+    all_positions = pdata.get("results", pdata) if isinstance(pdata, dict) else pdata
+
+    can_edit = (
+        True
+        if is_me
+        else bool(
+            request.user and (request.user.is_staff or request.user.id == emp.get("id"))
+        )
     )
+    ctx = {
+        "emp": emp,
+        "can_edit": can_edit,
+        "all_skills": all_skills,
+        "all_positions": all_positions,
+        "all_groups": all_groups,
+        "posts": posts,
+    }
+    if is_me:
+        ctx["is_me"] = True
 
-
-# ---------- ME ----------
-@require_api_auth
-def employee_me(request):
-    api = get_api_client(request)
-
-    resp = api.get("v1/employees/me/")
-    if not resp.ok:
-        messages.error(request, f"Ошибка API ({resp.status})")
-        return redirect("employees:employees_list")
-
-    emp = resp.json or {}
-
-    # новости сотрудника
-    posts = _fetch_employee_posts(api, emp.get("id"))
-
-    # все навыки для даталиста (разворачиваем results)
-    sresp = api.get("v1/skills/", params={"ordering": "name"})
-    data = sresp.json if sresp.ok else []
-    all_skills = data.get("results", data) if isinstance(data, dict) else data
-
-    return render(
-        request,
-        "employees/employee_detail.html",
-        {
-            "emp": emp,
-            "can_edit": True,
-            "is_me": True,
-            "all_skills": all_skills,
-            "posts": posts,
-        },
-    )
+    return render(request, "employees/employee_detail.html", ctx)
 
 
 # ---------- EDIT (self or staff) ----------
 @require_api_auth
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["PATCH", "POST"])
 def employee_edit(request, pk: int):
     """
     Редактирование пользователя по id.
-    Разрешено staff/superuser или самому себе (проверку делает API).
     """
     api = get_api_client(request)
-
-    if request.method == "GET":
-        resp = api.get(f"v1/employees/{pk}/")
-        if not resp.ok:
-            messages.error(request, f"Сотрудник не найден ({resp.status})")
-            return redirect("employees:employees_list")
-        emp = resp.json or {}
-        return render(request, "employees/employee_edit.html", {"emp": emp})
-
-    # POST → PATCH
-    data = {
-        "last_name": request.POST.get("last_name", "").strip(),
-        "first_name": request.POST.get("first_name", "").strip(),
-        "patronymic": request.POST.get("patronymic", "").strip(),
-        "gender": request.POST.get("gender") or None,
-        "birth_date": request.POST.get("birth_date") or None,
-        "position": request.POST.get("position") or None,
-        "telegram": request.POST.get("telegram", "").strip(),
-        "whatsapp": request.POST.get("whatsapp", "").strip(),
-        "wechat": request.POST.get("wechat", "").strip(),
-    }
-
-    # skills (множественный select): skills=1&skills=2 …
-    skills = request.POST.getlist("skills")
-    if skills:
-        data["skills"] = skills
-
-    # avatar: либо новый файл, либо снять (clear_avatar=on)
-    if request.FILES.get("avatar"):
-        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
-    elif request.POST.get("clear_avatar") == "on":
-        data["avatar"] = ""  # Base64ImageField очистит
-
-    # удаляем пустые строки, чтобы не перетирать nullables
-    data = _cleanup_payload(data, keep_empty={"avatar"})
-
-    resp = api.patch(f"v1/employees/{pk}/", json=data)
-    if not resp.ok:
-        messages.error(request, f"Не удалось сохранить: {resp.status} — {resp.text}")
-        # Подставим обратно форму с введёнными данными
-        current = api.get(f"v1/employees/{pk}/").json or {}
-        current.update(
-            {k: request.POST.get(k) for k in ["last_name", "first_name", "patronymic"]}
-        )
-        return render(request, "employees/employee_edit.html", {"emp": current})
-
-    messages.success(request, "Профиль обновлён.")
-    return redirect("employees:employee_detail", pk=pk)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    resp = api.patch(f"v1/employees/{pk}/", json=payload)
+    try:
+        data = resp.json
+    except Exception:
+        data = {"detail": resp.text}
+    return JsonResponse(data or {}, status=resp.status)
 
 
 # ---------- EDIT ME ----------
 @require_api_auth
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["PATCH", "POST"])
 def employee_edit_me(request):
     """
     Редактирование собственного профиля через /api/v1/employees/me/
     """
     api = get_api_client(request)
-
-    if request.method == "GET":
-        resp = api.get("v1/employees/me/")
-        if not resp.ok:
-            messages.error(request, f"Ошибка API ({resp.status})")
-            return redirect("employees:employees_list")
-        emp = resp.json or {}
-        return render(
-            request, "employees/employee_edit.html", {"emp": emp, "is_me": True}
-        )
-
-    data = {
-        "last_name": request.POST.get("last_name", "").strip(),
-        "first_name": request.POST.get("first_name", "").strip(),
-        "patronymic": request.POST.get("patronymic", "").strip(),
-        "gender": request.POST.get("gender") or None,
-        "birth_date": request.POST.get("birth_date") or None,
-        "position": request.POST.get("position") or None,
-        "telegram": request.POST.get("telegram", "").strip(),
-        "whatsapp": request.POST.get("whatsapp", "").strip(),
-        "wechat": request.POST.get("wechat", "").strip(),
-    }
-    skills = request.POST.getlist("skills")
-    if skills:
-        data["skills"] = skills
-
-    if request.FILES.get("avatar"):
-        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
-    elif request.POST.get("clear_avatar") == "on":
-        data["avatar"] = ""
-
-    data = _cleanup_payload(data, keep_empty={"avatar"})
-
-    resp = api.patch("v1/employees/me/", json=data)
-    if not resp.ok:
-        messages.error(request, f"Не удалось сохранить: {resp.status} — {resp.text}")
-        current = api.get("v1/employees/me/").json or {}
-        current.update(
-            {k: request.POST.get(k) for k in ["last_name", "first_name", "patronymic"]}
-        )
-        return render(
-            request, "employees/employee_edit.html", {"emp": current, "is_me": True}
-        )
-
-    messages.success(request, "Профиль обновлён.")
-    return redirect("employees:employee_me")
+    # принимаем JSON из браузера
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    # отправляем в DRF
+    resp = api.patch("v1/employees/me/", json=payload)
+    try:
+        data = resp.json
+    except Exception:
+        data = {"detail": resp.text}
+    return JsonResponse(data or {}, status=resp.status)
 
 
 # ---------- CREATE (staff) ----------

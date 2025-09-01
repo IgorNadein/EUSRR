@@ -31,8 +31,9 @@ from ..permissions import (ASSIGN_ROLE_PERM, MANAGE_PERM,
 from .serializers import (DepartmentRoleSerializer, DepartmentSerializer,
                           EmailSerializer, EmailVerifySerializer,
                           EmployeeActionSerializer, EmployeeListSerializer,
-                          EmployeeSerializer, PositionSerializer,
-                          RegisterSerializer, SkillSerializer)
+                          EmployeeSerializer, GroupSerializer,
+                          PositionSerializer, RegisterSerializer,
+                          SkillSerializer)
 
 
 def _to_bool(val: str | None) -> bool | None:
@@ -544,17 +545,22 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     }
 
     def get_permissions(self):
-        if self.action in {"add_skill", "remove_skill"}:
+        # create: только staff/superuser (перепроверяете и в методе create)
+        if self.action == "create":
             return [IsAuthenticated(), AdminOrActionOrModelPerms()]
-        elif self.action in {"create", "update", "partial_update", "destroy"}:
-            if self.action in {"update", "partial_update"}:
-                return [
-                    IsAuthenticated(),
-                    (IsSelfOrStaff | AdminOrActionOrModelPerms)(),
-                ]
-            return [IsAuthenticated(), AdminOrActionOrModelPerms()]
-        else:
-            return [IsAuthenticated()]
+
+        # update/partial_update/destroy: владелец ИЛИ админ/модельные пермишены
+        if self.action in {
+            "update",
+            "partial_update",
+            "destroy",
+            "add_skill",
+            "remove_skill",
+        }:
+            return [IsAuthenticated(), (IsSelfOrStaff | AdminOrActionOrModelPerms)()]
+
+        # list / retrieve / me -> только аутентификация
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         last_action_code_sq = Subquery(
@@ -712,11 +718,14 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     "skills",
                     Prefetch(
                         "departments_links",
-                        queryset=EmployeeDepartment.objects.filter(is_active=True)
-                        .select_related("department", "role"),
+                        queryset=EmployeeDepartment.objects.filter(
+                            is_active=True
+                        ).select_related("department", "role"),
                         to_attr="dept_links",
                     ),
-                    Prefetch("actions", queryset=EmployeeAction.objects.order_by("-date")),
+                    Prefetch(
+                        "actions", queryset=EmployeeAction.objects.order_by("-date")
+                    ),
                 )
                 .get(pk=request.user.pk)
             )
@@ -735,12 +744,14 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             new_wechat = vd.get("wechat", instance.wechat)
             if not (new_whatsapp or new_telegram or new_wechat):
                 return Response(
-                    {"detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."},
+                    {
+                        "detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
         ser.save()
-        return Response(ser.data, status=status.HTTP_200_OK) 
+        return Response(ser.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def add_skill(self, request, pk=None):
@@ -1240,3 +1251,113 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         obj = serializer.save()
         self._apply_effects(obj)
+
+
+class GroupViewSet(viewsets.ModelViewSet):
+    """
+    /api/v1/groups/
+      GET list/retrieve      — аутентифицированные
+      POST/PUT/PATCH/DELETE  — staff/superuser ИЛИ пользователи с model perms
+
+    Экшены:
+      GET  /{id}/permissions
+      POST /{id}/set-permissions
+      POST /{id}/add-permissions
+      POST /{id}/remove-permissions
+    """
+
+    queryset = Group.objects.all()
+    serializer_class = GroupSerializer
+    pagination_class = None
+
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name"]
+    ordering_fields = ["name", "id"]
+    ordering = ["name"]
+
+    permission_classes = [IsAuthenticated, AdminOrActionOrModelPerms]
+    required_perms_by_action = {
+        "set_permissions": "employees.assign_group_permissions",
+        "add_permissions": "employees.assign_group_permissions",
+        "remove_permissions": "employees.assign_group_permissions",
+    }
+
+    # ----- helpers -----
+    def _validate_permissions_payload(self, request):
+        ids = request.data.get("permissions")
+        if not isinstance(ids, list):
+            return None, Response(
+                {"detail": "Поле 'permissions' должно быть списком id"}, status=400
+            )
+        qs = Permission.objects.filter(id__in=ids)
+        if qs.count() != len(set(ids)):
+            return None, Response(
+                {"detail": "Некоторые permissions не найдены"}, status=400
+            )
+        return qs, None
+
+    # ----- actions -----
+    @action(detail=True, methods=["get"])
+    def permissions(self, request, pk=None):
+        grp = self.get_object()
+        perms = (
+            Permission.objects.filter(group=grp)
+            .select_related("content_type")
+            .distinct()
+        )
+        data = [
+            {
+                "id": p.id,
+                "codename": f"{p.content_type.app_label}.{p.codename}",
+                "name": p.name,
+                "app": p.content_type.app_label,
+                "model": p.content_type.model,
+            }
+            for p in perms
+        ]
+        return Response({"count": len(data), "results": data}, status=200)
+
+    @action(detail=True, methods=["post"])
+    def set_permissions(self, request, pk=None):
+        grp = self.get_object()
+        qs, err = self._validate_permissions_payload(request)
+        if err:
+            return err
+        grp.permissions.set(qs)
+        return Response(
+            {
+                "ok": True,
+                "permission_ids": list(grp.permissions.values_list("id", flat=True)),
+            },
+            status=200,
+        )
+
+    @action(detail=True, methods=["post"])
+    def add_permissions(self, request, pk=None):
+        grp = self.get_object()
+        qs, err = self._validate_permissions_payload(request)
+        if err:
+            return err
+        grp.permissions.add(*qs)
+        return Response(
+            {
+                "ok": True,
+                "permission_ids": list(grp.permissions.values_list("id", flat=True)),
+            },
+            status=200,
+        )
+
+    @action(detail=True, methods=["post"])
+    def remove_permissions(self, request, pk=None):
+        grp = self.get_object()
+        qs, err = self._validate_permissions_payload(request)
+        if err:
+            return err
+        grp.permissions.remove(*qs)
+        return Response(
+            {
+                "ok": True,
+                "permission_ids": list(grp.permissions.values_list("id", flat=True)),
+            },
+            status=200,
+        )
