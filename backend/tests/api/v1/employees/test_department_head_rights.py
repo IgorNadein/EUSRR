@@ -9,21 +9,28 @@ from employees.models import Employee, Department, DepartmentRole, EmployeeDepar
 # --- helpers ---
 
 _seq = 1
+
+
 def _unique_email(prefix="user"):
     global _seq
     _seq += 1
     return f"{prefix}{_seq}@example.com"
+
 
 def _unique_phone():
     global _seq
     _seq += 1
     return f"+7999{_seq:07d}"
 
+
 def _make_user(staff=False, superuser=False) -> Employee:
     u = Employee.objects.create_user(
-        email=_unique_email(), password="pass",
+        email=_unique_email(),
+        password="pass",
         phone_number=_unique_phone(),
-        send_activation_email=False, first_name="T", last_name="U",
+        send_activation_email=False,
+        first_name="T",
+        last_name="U",
     )
     u.is_staff = staff
     u.is_superuser = superuser
@@ -32,12 +39,15 @@ def _make_user(staff=False, superuser=False) -> Employee:
     u.save(update_fields=["is_staff", "is_superuser", "email_verified", "is_active"])
     return u
 
+
 def _dept_set_head(api_client, dept_id, head_id):
     url = reverse("api:v1:departments-set-head", args=[dept_id])
     payload = {"head_id": head_id} if head_id is not None else {"head_id": None}
     return api_client.post(url, payload, format="json")
 
+
 # --- tests ---
+
 
 @pytest.mark.django_db
 def test_old_head_loses_rights_after_change(api_client):
@@ -60,6 +70,7 @@ def test_old_head_loses_rights_after_change(api_client):
     # Старый глава больше не глава -> прав на управление отделом больше нет
     resp = api_client.patch(url_detail, {"description": "should fail"}, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
+
 
 @pytest.mark.django_db
 def test_new_head_gets_rights_and_membership_created(api_client):
@@ -84,9 +95,12 @@ def test_new_head_gets_rights_and_membership_created(api_client):
     assert resp.status_code == 200
 
     # И ему создана активная связь членства
-    link = EmployeeDepartment.objects.filter(employee=new_head, department=dept, is_active=True).first()
+    link = EmployeeDepartment.objects.filter(
+        employee=new_head, department=dept, is_active=True
+    ).first()
     assert link is not None
     assert link.date_from is not None
+
 
 @pytest.mark.django_db
 def test_remove_head_deactivates_membership_and_revokes_rights(api_client):
@@ -98,7 +112,10 @@ def test_remove_head_deactivates_membership_and_revokes_rights(api_client):
     # как глава он может управлять
     api_client.force_authenticate(user=head)
     url_detail = reverse("api:v1:departments-detail", args=[dept.id])
-    assert api_client.patch(url_detail, {"description": "ok"}, format="json").status_code == 200
+    assert (
+        api_client.patch(url_detail, {"description": "ok"}, format="json").status_code
+        == 200
+    )
 
     # staff снимает главу (head -> null)
     api_client.force_authenticate(user=staff)
@@ -116,6 +133,7 @@ def test_remove_head_deactivates_membership_and_revokes_rights(api_client):
     resp = api_client.patch(url_detail, {"description": "nope"}, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 
+
 @pytest.mark.django_db
 def test_old_head_keeps_rights_if_role_grants_after_change(api_client):
     # setup: старый глава
@@ -124,10 +142,14 @@ def test_old_head_keeps_rights_if_role_grants_after_change(api_client):
 
     # подготовим роль отдела с manage_department и назначим её старому главе (как обычному члену)
     role = DepartmentRole.objects.create(department=dept, name="ManagerRole")
-    p_manage = Permission.objects.get(content_type__app_label="employees", codename="manage_department")
+    p_manage = Permission.objects.get(
+        content_type__app_label="employees", codename="manage_department"
+    )
     role.permissions.add(p_manage)
     EmployeeDepartment.objects.update_or_create(
-        employee=old_head, department=dept, defaults={"role": role, "is_active": True, "date_from": timezone.now().date()}
+        employee=old_head,
+        department=dept,
+        defaults={"role": role, "is_active": True, "date_from": timezone.now().date()},
     )
 
     # меняем главу
@@ -141,6 +163,7 @@ def test_old_head_keeps_rights_if_role_grants_after_change(api_client):
     url_detail = reverse("api:v1:departments-detail", args=[dept.id])
     resp = api_client.patch(url_detail, {"description": "still ok"}, format="json")
     assert resp.status_code == 200
+
 
 @pytest.mark.django_db
 def test_change_head_does_not_deactivate_old_membership_by_default(api_client):

@@ -31,18 +31,88 @@
   }
   .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
   .feed-header { gap:.6rem; flex-wrap:wrap; }
-
-  .alpha-header{
-    position:sticky; top:calc(var(--navbar-h,0px) + 6px);
-    z-index:1; background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
-    padding:.25rem .5rem; margin:.75rem 0 .25rem;
-    font-weight:800; letter-spacing:.02em; border-radius:10px; width:max-content;
-  }
-  .alpha-dot{ display:inline-block; width:.4rem; height:.4rem; border-radius:50%; background:var(--bs-primary); margin-right:.4rem; }
-
-  .feed-card.emp-row .feed-ava{ width:56px; height:56px; }
-  .badge-dept{ background:var(--bs-secondary-bg); color:var(--bs-body-color); border:1px solid var(--bs-border-color); }
 </style>
+
+<style>
+  :root{
+    --emp-avatar: 56px;
+    --emp-gap: 14px;
+  }
+
+  /* общий блок-«карточка» со скроллом */
+  #empList{
+    border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 12%);
+    border-radius: var(--feed-radius, 16px);
+    background: var(--bs-body-bg);
+    overflow:hidden;
+    padding:0;
+    max-height: calc(100vh - var(--navbar-h, 0px) - 160px);
+    overflow-y:auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* строка сотрудника */
+  #empList .emp-row{
+    padding:.6rem .75rem !important;
+    border-bottom:1px solid var(--bs-border-color);
+  }
+  #empList .emp-row:last-child{ border-bottom:0; }
+
+  /* раскладка: [аватар] [контент] [действия] */
+  #empList .emp-row .feed-hd{
+    display:grid;
+    grid-template-columns: var(--emp-avatar) 1fr auto;
+    align-items:center;
+    gap: var(--emp-gap);
+    margin:0; padding:0;
+  }
+
+  /* аватар: круг, центрирование, одинаковое поведение img и иконки */
+  #empList .emp-row .feed-ava{
+    width: var(--emp-avatar);
+    height: var(--emp-avatar);      /* вместо aspect-ratio */
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bs-secondary-bg), transparent 30%);
+    /* На случай агрессивных глобальных правил */
+    flex: none;                     /* grid не тронет размер ячейки */
+  }
+
+  #empList .emp-row .feed-ava img{
+    display: block;                 /* убираем baseline-глюк */
+    width: 100%;
+    height: 100%;                   /* принудительно квадратная вписка */
+    object-fit: cover;              /* не тянем пропорции */
+    object-position: center;
+  }
+
+  #empList .emp-row .feed-ava i{
+    font-size: 1.5rem;
+    line-height: 1;
+    opacity: .6;
+  }
+
+  /* контент */
+  #empList .emp-row .feed-meta{
+    margin:0; padding:0; min-width:0;
+  }
+  .feed-author{ font-weight:700; line-height:1.25; }
+  .emp-pos{ color:var(--bs-secondary-color); }
+
+  .feed-sub{
+    margin-top:.25rem; color:var(--bs-secondary-color);
+  }
+  .feed-sub a{ color:inherit; text-decoration:none; }
+  .feed-sub a:hover{ text-decoration:underline; }
+
+  /* действия: в правый край колонки */
+  .emp-actions{ justify-self:end; }
+</style>
+
+
 {% endblock %}
 
 {% block content %}
@@ -65,7 +135,7 @@
         <div class="ms-auto ios-search">
           <i class="bi-search"></i>
           <input id="empFilter" type="search" class="ios-search-input"
-                 placeholder="Поиск по ФИО" autocomplete="off">
+                 placeholder="Поиск по ФИО, должности или отделу" autocomplete="off">
           <button type="button" class="ios-search-clear" aria-label="Очистить">
             <i class="bi-x-lg"></i>
           </button>
@@ -75,19 +145,9 @@
       <div id="empList" class="feed-stream mt-3">
         {% if employees %}
           {% for emp in employees %}
-            {# буква-секция по первой букве фамилии (или имени, если нет фамилии) #}
-            {% with lname=emp.last_name|default_if_none:"" fname=emp.first_name|default_if_none:"" %}
-              {% with base=lname|default:fname %}
-                {% with letter=base|default:"?"|slice:":1"|upper %}
-                  {% ifchanged letter %}
-                    <div class="alpha-header"><span class="alpha-dot"></span>{{ letter }}</div>
-                  {% endifchanged %}
-                {% endwith %}
-              {% endwith %}
-            {% endwith %}
-
-            <article class="feed-card emp-row"
-                     data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }}">
+            <article class="emp-row"
+                     data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {% firstof emp.position.name emp.position_label '' %}"
+                     data-depts="{% if emp.departments %}{% for d in emp.departments %}{% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}{% elif is_filtered_by_department and current_department %}{{ current_department.name }}{% endif %}">
               <header class="feed-hd">
                 <div class="feed-ava">
                   {% if emp.avatar %}
@@ -100,8 +160,7 @@
                 <div class="feed-meta flex-grow-1">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
                     {% if emp.id %}
-                      <a href="{% url 'employees:employee_detail' emp.id %}"
-                         class="feed-author text-decoration-none">
+                      <a href="{% url 'employees:employee_detail' emp.id %}" class="feed-author text-decoration-none">
                         {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
                       </a>
                     {% else %}
@@ -109,23 +168,31 @@
                         {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
                       </span>
                     {% endif %}
+
+                    {% if emp.position and emp.position.name %}
+                      <span class="emp-pos">— {{ emp.position.name }}</span>
+                    {% elif emp.position_label %}
+                      <span class="emp-pos">— {{ emp.position_label }}</span>
+                    {% elif emp.position %}
+                      <span class="emp-pos">— Должность #{{ emp.position }}</span>
+                    {% endif %}
                   </div>
 
-                  {# бейджи отделов (если бэкенд вернул emp.departments как список словарей) #}
                   {% if emp.departments %}
-                    <div class="feed-sub mt-2 d-flex flex-wrap gap-2">
-                      {% for d in emp.departments|slice:":3" %}
-                        <span class="badge badge-dept">{{ d.name }}</span>
+                    <div class="feed-sub">
+                      {% for d in emp.departments %}
+                        {% if d.name %}
+                          {% if d.id %}
+                            <a href="{% url 'employees:department_detail' d.id %}">{{ d.name }}</a>
+                          {% else %}
+                            {{ d.name }}
+                          {% endif %}
+                          {% if not forloop.last %}, {% endif %}
+                        {% endif %}
                       {% endfor %}
-                      {% if emp.departments|length > 3 %}
-                        <span class="badge badge-dept">+{{ emp.departments|length|add:"-3" }}</span>
-                      {% endif %}
                     </div>
                   {% elif is_filtered_by_department and current_department %}
-                    {# если списка отделов нет, но мы уже отфильтрованы по отделу — покажем его #}
-                    <div class="feed-sub mt-2">
-                      <span class="badge badge-dept">{{ current_department.name }}</span>
-                    </div>
+                    <div class="feed-sub">{{ current_department.name }}</div>
                   {% endif %}
                 </div>
 
@@ -145,7 +212,7 @@
                 </div>
               </header>
 
-              <div class="feed-body pt-0"></div>
+              <div class="feed-body"></div>
             </article>
           {% endfor %}
         {% else %}
@@ -153,7 +220,6 @@
         {% endif %}
       </div>
 
-      {# Пагинация, если фронт-вьюха передала номера страниц #}
       {% if next_page or prev_page %}
         <nav class="mt-3">
           <ul class="pagination">
@@ -175,22 +241,18 @@
   (function () {
     const input = document.getElementById('empFilter');
     const clearBtn = document.querySelector('.ios-search-clear');
-    const rows = () => document.querySelectorAll('#empList .emp-row');
+    const list = document.getElementById('empList');
 
     function applyFilter(){
       const q = (input?.value || '').trim().toLowerCase();
-      rows().forEach(row => {
-        const hay = (row.getAttribute('data-name') || '').toLowerCase();
+      list.querySelectorAll('.emp-row').forEach(row => {
+        const hay = [(row.dataset.name||''), (row.dataset.depts||'')].join(' ').toLowerCase();
         row.style.display = (!q || hay.includes(q)) ? '' : 'none';
       });
     }
-
     input?.addEventListener('input', applyFilter);
-    clearBtn?.addEventListener('click', () => {
-      input.value = '';
-      input.focus();
-      input.dispatchEvent(new Event('input'));
-    });
+    clearBtn?.addEventListener('click', () => { input.value=''; input.focus(); input.dispatchEvent(new Event('input')); });
+    applyFilter();
   })();
 </script>
 {% endblock %}

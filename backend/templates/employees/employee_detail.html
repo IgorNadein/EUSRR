@@ -563,7 +563,7 @@
       <!-- RIGHT -->
       <div class="col-md-8">
         {% if can_edit %}
-        <div id="editFormWrap" class="collapse">
+        <div id="editFormWrap" class="collapse mb-4">
           <article class="ios-card">
             <div class="p-4">
               <div class="d-flex align-items-center gap-2">
@@ -712,6 +712,43 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const wrap   = document.getElementById('editFormWrap');
+  if (!wrap) return;
+
+  // определяем, мобильный ли экран
+  const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
+
+  // вычисляем отступ под фикс/стикки заголовок
+  function getTopOffset(){
+    const sticky = document.querySelector('.ios-header'); // твой page header
+    return (sticky?.offsetHeight || 0) + 8;              // + маленький зазор
+  }
+
+  function smoothScrollTo(el){
+    const top = el.getBoundingClientRect().top + window.pageYOffset - getTopOffset();
+    // если поддерживается smooth
+    try {
+      window.scrollTo({ top, behavior: 'smooth' });
+    } catch {
+      window.scrollTo(0, top);
+    }
+  }
+
+  // когда коллапс раскрылся — скроллим к нему (только на мобилках)
+  wrap.addEventListener('shown.bs.collapse', () => {
+    if (isMobile()) smoothScrollTo(wrap);
+  });
+
+  // если блок уже открыт при загрузке (например, по якорю) — тоже скроллим
+  if (wrap.classList.contains('show') && isMobile()) {
+    // небольшая задержка, чтобы страница «устаканилась»
+    setTimeout(() => smoothScrollTo(wrap), 50);
+  }
+});
+</script>
+
 
 {% endblock %}
 
