@@ -1,3 +1,4 @@
+{# templates/employees/employee_detail.html #}
 {% extends "base.html" %}
 {% load static django_bootstrap5 %}
 
@@ -7,6 +8,7 @@
 
 {% block extra_css %}
 <style>
+  /* Base card / layout */
   .ios-card{
     border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
     border-radius: var(--feed-radius);
@@ -25,7 +27,6 @@
     border-bottom: none !important;
   }
   .ios-title{ font-weight: 800; letter-spacing: -.01em; }
-
   .row.g-ios{ align-items: flex-start; }
 
   .ios-ava, .ios-ava--ph{
@@ -77,15 +78,14 @@
   .ios-section-title{ font-weight:700; font-size:1rem; margin-bottom:.5rem; }
   .rounded-ios{ border-radius:14px !important; }
 
-  /* Отделы — аккуратный список без иконок-аватаров */
+  /* Departments list */
   .ios-cell.dept-item{ justify-content: space-between; }
-  /* dept-head больше не выделяется фоном/линией */
   .ios-cell.dept-head{ border-left: 0; background: transparent; }
 
   .dept-line{ display:flex; align-items:center; gap:.5rem; }
   .dept-name{ font-weight:700; }
   .dept-role{ color: var(--bs-secondary-color); }
-  /* было: круглая иконка; станет компактная пилюля с подписью */
+
   .badge-head{
     display:inline-flex; align-items:center; gap:.35rem;
     padding:.2rem .55rem; border-radius:999px;
@@ -97,120 +97,63 @@
   }
   .badge-head .bi{ font-size:.95rem; line-height:1; }
 
-  /* На очень узких — только иконка (если будет подпись) */
+  /* NEW: blue pill like .badge-head, for the gear edit button */
+  .badge-gear{
+    display:inline-flex; align-items:center; gap:.35rem;
+    padding:.2rem .55rem; border-radius:999px; cursor:pointer;
+    background: color-mix(in srgb, var(--bs-primary) 15%, var(--bs-body-bg));
+    color: color-mix(in srgb, var(--bs-primary) 65%, black 0%);
+    border:1px solid color-mix(in srgb, var(--bs-primary) 35%, transparent);
+    font-weight:700; font-size:.8rem; line-height:1; white-space: nowrap;
+  }
+  .badge-gear .bi{ font-size:.95rem; line-height:1; }
+  .badge-gear:hover{ background: color-mix(in srgb, var(--bs-primary) 20%, var(--bs-body-bg)); }
+
   @media (max-width: 420px){
-    .badge-head .lbl{ display:none; }
+    .badge-head .lbl, .badge-gear .lbl{ display:none; }
   }
-  /* collapse не должен иметь внешних отступов — они «торчат», когда блок схлопывается */
+
   .ios-collapse-trigger + .collapse { margin-top: 0 !important; }
-
-  /* отступ делаем у внутреннего контента */
   .ios-collapse-trigger + .collapse > .ios-list,
-  .ios-collapse-trigger + .collapse > .chips {
-    margin-top: .5rem;
-  }
+  .ios-collapse-trigger + .collapse > .chips { margin-top: .5rem; }
 
-  /* на всякий случай — во время анимации скрываем всё, чтобы края/бордеры не «просвечивали» */
-  .collapsing { overflow: hidden; }
+  .collapsing { overflow: hidden; transition: height .35s ease; }
 
-  /* не трогаем скорость Bootstrap; если где-то переопределялась — вернём дефолт */
-  .collapsing {
-    transition: height .35s ease; /* стандарт Bootstrap 5 */
-  }
-
-
-  /* Единый блок для кнопки+панели */
   .ios-acc{
     border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
-    border-radius:14px;
-    background: var(--bs-body-bg);
-    overflow: hidden;
+    border-radius:14px; background: var(--bs-body-bg); overflow: hidden;
   }
-  .ios-acc + .ios-acc{ margin-top:.75rem; } /* расстояние между такими блоками */
-
-  /* Кнопка внутри общего блока — без собственного бордера/радиуса */
-  .ios-acc .ios-collapse-trigger{
-    border:0;
-    border-radius:0;
-    background: transparent;
-    width:100%;
-    padding:.6rem .9rem; /* как у тебя было */
-  }
+  .ios-acc + .ios-acc{ margin-top:.75rem; }
+  .ios-acc .ios-collapse-trigger{ border:0; border-radius:0; background: transparent; width:100%; padding:.6rem .9rem; }
   .ios-acc .ios-collapse-trigger:focus{ box-shadow:none; }
-
-  /* Панель — без внешних отступов, высота анимируется стандартом Bootstrap */
   .ios-acc .collapse{ margin:0 !important; }
-  .collapsing{ overflow:hidden; transition: height .35s ease; }
-
-
-  /* Внутренние списки/чипсы — убираем собственный бордер/радиус, они уже внутри общего блока */
   .ios-acc .ios-list{ border:0; border-radius:0; }
   .ios-acc .chips{ margin:0; }
-  
   .ios-acc .ios-acc-body{
     padding:.5rem .25rem .75rem;
     border-top:1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
   }
-</style>
-<style>
-  /* Убираем внутренний паддинг у «Активности» и возвращаем его только заголовку */
+
+  /* Activity block adjustments */
   #activity .p-4{ padding:0 !important; }
   #activity .ios-section-title{ padding:1rem 1rem .5rem !important; margin:0 !important; }
-
-  /* Растягиваем ленту на всю ширину карточки активности */
   #activity .activity-feed{ margin:0 !important; }
-
-  /* Делаем посты «монолитом»: без рамок, без тени, без скруглений.
-     Линия между постами — это бордеры .feed-card; отключаем их. */
   #activity .activity-feed .feed-card{
-    width:100% !important;
-    max-width:none !important;
-    border:0 !important;          /* ← убирает «черточку» между постами */
-    box-shadow:none !important;   /* без теней внутри монолитного блока */
-    border-radius:0 !important;
-    margin:0 !important;          /* расстояния контролируем контейнером */
+    width:100% !important; max-width:none !important; border:0 !important; box-shadow:none !important;
+    border-radius:0 !important; margin:0 !important;
   }
-
-  /* Контейнер — в столбик с равномерным зазором между постами */
-  #activity .activity-feed{
-    display:flex;
-    flex-direction:column;
-    gap:1rem;                     /* мягкий просвет без линий */
-  }
-
-  /* На случай, если внутри используешь .feed-stream/.row */
+  #activity .activity-feed{ display:flex; flex-direction:column; gap:1rem; }
   #activity .activity-feed .feed-stream{ display:flex; flex-direction:column; gap:1rem; }
   #activity .activity-feed .row > *{ flex:0 0 100% !important; max-width:100% !important; }
-
-
-  /* убираем линию между постом и блоком комментариев */
   #activity .feed-actions{ border-top: 0 !important; }
-
-  /* опционально: убрать рамку у превью последнего комментария */
   #activity .collapse .bg-body-tertiary.border{ border: 0 !important; }
 
-</style>
-
-<style>
-  /* базовые карточки/разметка — как у тебя */
-  .ios-card{border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);border-radius:var(--feed-radius);background:var(--bs-body-bg);box-shadow:var(--feed-shadow);transition:box-shadow .18s ease, transform .18s ease, border-color .18s ease;overflow:hidden}
-  .ios-card:hover{box-shadow:var(--feed-shadow-hover);transform:translateY(-1px)}
-  .ios-header{position:sticky;top:var(--navbar-h,0px);z-index:5;padding:.75rem 0;backdrop-filter:saturate(180%) blur(12px);background:color-mix(in srgb, var(--bs-body-bg) 85%, transparent);border-bottom:none!important}
-  .ios-title{font-weight:800;letter-spacing:-.01em}
-  .chips{display:flex;flex-wrap:wrap;gap:.5rem}
-  .chip{padding:.35rem .65rem;border-radius:9999px;font-size:.85rem;line-height:1;background:var(--bs-secondary-bg);color:var(--bs-body-color);border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%)}
-
-  /* ====== SKILLS UI ====== */
-  /* плюс как «пилюля» */
+  /* Skills UI */
   #skillsBlock[data-editable="1"] .chip.chip-add{display:inline-flex;align-items:center;cursor:pointer;border-style:dashed}
   #skillsBlock[data-editable="1"] .chip.chip-add.pulse{transform:scale(.97);transition:transform .15s ease}
   #skillsBlock[data-editable="1"] .chip.chip-add .bi{font-size:.95rem}
-
-  /* чип навыка */
   .chip.chip-skill{position:relative;padding:.35rem .65rem}
   .chip.chip-skill .lbl{transition:opacity .15s ease}
-
-  /* кнопка-«минус» по центру (поверх подписи), без кружка */
   .chip.chip-skill .chip-del-btn{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:transparent;border:0;padding:0;margin:0;cursor:pointer;
@@ -218,18 +161,56 @@
     visibility:hidden;opacity:0;transition:opacity .15s ease;z-index:1
   }
   .chip.chip-skill .chip-del-btn .bi{pointer-events:none}
-
-  /* показываем минус и прячем подпись ТОЛЬКО если можно редактировать */
   #skillsBlock[data-editable="1"] .chip.chip-skill:hover .lbl{opacity:0}
   #skillsBlock[data-editable="1"] .chip.chip-skill:hover .chip-del-btn,
   #skillsBlock[data-editable="1"] .chip.chip-skill:focus-within .chip-del-btn{visibility:visible;opacity:1}
-
-  /* подсказка-пусто */
   .skills-empty{color:var(--bs-secondary-color);font-size:.875rem;margin-right:.25rem}
+
+  /* Dept inline editor */
+  .dept-edit-btn{
+    width:32px;height:32px;padding:0;display:grid;place-items:center;border-radius:999px;
+    border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+    background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
+  }
+  .dept-edit-btn:hover{ background: color-mix(in srgb, var(--bs-body-bg) 88%, transparent); }
+  .dept-editor-wrap{ flex: 0 0 100%; width:100%; margin-top:.5rem; }
+  .dept-editor form{ display:flex; align-items:center; gap:.5rem; }
+  .dept-role-select{ min-width: 180px; }
+  /* полностью прячем роль, когда открыт редактор */
+  .dept-item.is-editing .dept-role{ display:none !important; }
+
+  /* не даём блоку с кнопками сжиматься/уезжать */
+  .dept-item > .d-flex{
+    flex: 0 1 auto;          /* раньше было 0 0 auto — не сжимался */
+    flex-wrap: wrap;         /* можно переносить на новую строку */
+    justify-content: flex-end;
+    gap: .35rem .5rem;       /* компактнее на переносах */
+    max-width: 100%;
+  }
+  /* 2) Левую часть реально можно ужать с многоточием */
+  .dept-line{ min-width: 0; }
+
+  /* 3) Сами пилюли не растягиваются */
+  .badge-head,
+  .badge-gear{ flex: 0 0 auto; }
+
+  /* 4) Строка отдела допускает перенос элементов (на всякий) */
+  .ios-cell{ flex-wrap: wrap; }
+
+  /* 5) При открытом редакторе полностью прячем роль */
+  .dept-item.is-editing .dept-role{ display:none !important; }
+
+  /* 6) На узких — прячем подписи внутри пилюль, чтобы всё поместилось */
+  @media (max-width: 576px){
+    .badge-head .lbl,
+    .badge-gear .lbl{ display:none; }
+  }
+  /* (аккуратная связка кнопки-разделителя и панели списка) — у тебя была потеряна скобка */
+  .ios-acc .ios-collapse-trigger + .collapse { margin-top: 0 !important; }
+  .ios-acc .ios-acc-body { border-top: 0; }
 </style>
-
-
 {% endblock %}
+
 
 {% block content %}
   <div class="container ios-page">
@@ -251,8 +232,8 @@
             <div class="ava-wrap mb-3">
               {% if emp.avatar %}
                 <img src="{{ emp.avatar }}"
-                    alt="Аватар {{ emp.last_name }} {{ emp.first_name }}"
-                    class="ios-ava" style="object-fit:cover;">
+                     alt="Аватар {{ emp.last_name }} {{ emp.first_name }}"
+                     class="ios-ava" style="object-fit:cover;">
               {% else %}
                 <div class="ios-ava--ph">
                   {% firstof emp.first_name emp.last_name "?" as initial %}
@@ -305,33 +286,34 @@
                   <i class="bi-chevron-down ios-collapse-caret"></i>
                 </button>
 
-              <div id="contactsCollapse" class="collapse">
-                <div class="ios-acc-body">
-                  <div class="ios-list">
-                    {% if emp.email %}
-                      <div class="ios-cell">
-                        <i class="bi-envelope"></i>
-                        <a href="mailto:{{ emp.email }}">{{ emp.email }}</a>
-                      </div>
-                    {% endif %}
-                    {% if emp.phone_number %}
-                      <div class="ios-cell">
-                        <i class="bi-telephone"></i>
-                        <a href="tel:{{ emp.phone_number }}">{{ emp.phone_number }}</a>
-                      </div>
-                    {% endif %}
-                    {% if emp.telegram %}<div class="ios-cell"><i class="bi-telegram"></i><span>Telegram: {{ emp.telegram }}</span></div>{% endif %}
-                    {% if emp.whatsapp %}<div class="ios-cell"><i class="bi-whatsapp"></i><span>WhatsApp: {{ emp.whatsapp }}</span></div>{% endif %}
-                    {% if emp.wechat %}<div class="ios-cell"><i class="bi-wechat"></i><span>WeChat: {{ emp.wechat }}</span></div>{% endif %}
-                    {% if not emp.email and not emp.phone_number and not emp.telegram and not emp.whatsapp and not emp.wechat %}
-                      <div class="ios-cell"><span class="text-secondary">Контакты не указаны</span></div>
-                    {% endif %}
+                <div id="contactsCollapse" class="collapse">
+                  <div class="ios-acc-body">
+                    <div class="ios-list">
+                      {% if emp.email %}
+                        <div class="ios-cell">
+                          <i class="bi-envelope"></i>
+                          <a href="mailto:{{ emp.email }}">{{ emp.email }}</a>
+                        </div>
+                      {% endif %}
+                      {% if emp.phone_number %}
+                        <div class="ios-cell">
+                          <i class="bi-telephone"></i>
+                          <a href="tel:{{ emp.phone_number }}">{{ emp.phone_number }}</a>
+                        </div>
+                      {% endif %}
+                      {% if emp.telegram %}<div class="ios-cell"><i class="bi-telegram"></i><span>Telegram: {{ emp.telegram }}</span></div>{% endif %}
+                      {% if emp.whatsapp %}<div class="ios-cell"><i class="bi-whatsapp"></i><span>WhatsApp: {{ emp.whatsapp }}</span></div>{% endif %}
+                      {% if emp.wechat %}<div class="ios-cell"><i class="bi-wechat"></i><span>WeChat: {{ emp.wechat }}</span></div>{% endif %}
+                      {% if not emp.email and not emp.phone_number and not emp.telegram and not emp.whatsapp and not emp.wechat %}
+                        <div class="ios-cell"><span class="text-secondary">Контакты не указаны</span></div>
+                      {% endif %}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {# === ОТДЕЛЫ (без картинок; роль через тире; руководитель — визуально выделен) === #}
+            {# === ОТДЕЛЫ: роль скрыта; редактор по кнопке-карандашу (только для начальников) === #}
             <div class="mt-3 text-start">
               <div class="ios-acc">
                 <button class="ios-collapse-trigger"
@@ -344,37 +326,79 @@
                   <i class="bi-chevron-down ios-collapse-caret"></i>
                 </button>
 
-              <div id="departmentsCollapse" class="collapse">
-                <div class="ios-acc-body">
-                  <div class="ios-list">
-                    {% if emp.departments and emp.departments|length %}
-                      {% for d in emp.departments %}
-                        {% if d.name %}
-                          <div class="ios-cell dept-item">
-                            <div class="dept-line">
-                              {% if d.id %}
-                                <a class="text-decoration-none dept-name" href="{% url 'employees:department_detail' d.id %}">{{ d.name }}</a>
-                              {% else %}
-                                <span class="dept-name">{{ d.name }}</span>
+                <div id="departmentsCollapse" class="collapse">
+                  <div class="ios-acc-body">
+                    <div class="ios-list">
+                      {% if emp_depts and emp_depts|length %}
+                        {% for d in emp_depts %}
+                          {% if d.name %}
+                            <div class="ios-cell dept-item"
+                                 data-dept-id="{{ d.id|default:'' }}"
+                                 data-role-id="{{ d.role_id|default:'' }}"
+                                 data-is-head="{{ d.is_head|yesno:'1,0' }}">
+                              <div class="dept-line">
+                                {% if d.id %}
+                                  <a class="text-decoration-none dept-name" href="{% url 'employees:department_detail' d.id %}">{{ d.name }}</a>
+                                {% else %}
+                                  <span class="dept-name">{{ d.name }}</span>
+                                {% endif %}
+                                <span class="dept-role">
+                                  {% if d.role_name %}— {{ d.role_name }}{% endif %}
+                                </span>
+                              </div>
+
+                              <div class="d-flex align-items-center gap-2">
+                                {% if d.is_head %}
+                                  <span class="badge-head" data-bs-toggle="tooltip" data-bs-title="Руководитель отдела">
+                                    <i class="bi-award-fill" aria-hidden="true"></i><span class="lbl">Руководитель</span>
+                                  </span>
+                                {% endif %}
+
+                                {% if d.can_edit_role %}
+                                  <button class="badge-gear" type="button"
+                                          data-bs-toggle="collapse" data-bs-target="#roleEditor-{{ d.id }}"
+                                          aria-expanded="false" aria-controls="roleEditor-{{ d.id }}"
+                                          title="Изменить роль сотрудника в этом отделе" aria-label="Изменить роль">
+                                    <i class="bi-gear-fill"></i><span class="lbl">Роль</span>
+                                  </button>
+                                {% endif %}
+                              </div>
+
+                              {% if d.can_edit_role %}
+                                <div id="roleEditor-{{ d.id }}" class="collapse dept-editor-wrap">
+                                  <div class="dept-editor">
+                                    <form method="post"
+                                          action="{% url 'employees:set_member_role' emp_id=emp.id dept_id=d.id %}">
+                                      {% csrf_token %}
+                                      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                      <select name="role_id" class="form-select form-select-sm dept-role-select">
+                                        <option value="" {% if not d.role_id %}selected{% endif %}>Без роли</option>
+                                        {% for r in d.roles_choices %}
+                                          {% if r.name %}
+                                            <option value="{{ r.id }}" {% if d.role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
+                                          {% endif %}
+                                        {% endfor %}
+                                      </select>
+                                      <button type="submit" class="btn btn-sm btn-primary dept-role-save" disabled>OK</button>
+                                      <button type="button" class="btn btn-sm btn-ghost"
+                                              data-bs-toggle="collapse" data-bs-target="#roleEditor-{{ d.id }}">Отмена</button>
+                                    </form>
+                                  </div>
+                                </div>
                               {% endif %}
-                              {% if d.role_name %}<span class="dept-role">— {{ d.role_name }}</span>{% endif %}
                             </div>
-                            {% if d.is_head %}
-                              <span class="badge-head" data-bs-toggle="tooltip" data-bs-title="Руководитель отдела">
-                                <i class="bi-award-fill" aria-hidden="true"></i>
-                              </span>
-                            {% endif %}
-                          </div>
-                        {% endif %}
-                      {% endfor %}
-                    {% else %}
-                      <div class="ios-cell"><span class="text-secondary">Отделы не указаны</span></div>
-                    {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                      {% else %}
+                        <div class="ios-cell"><span class="text-secondary">Отделы не указаны</span></div>
+                      {% endif %}
+                    </div>
                   </div>
                 </div>
-              </div>
 
+              </div>
             </div>
+
             {# === КАДРОВЫЕ СОБЫТИЯ (для аутентифицированных) === #}
             {% if request.user.is_authenticated %}
               {% with acts_src=employee_actions|default:emp.actions %}
@@ -409,7 +433,6 @@
                                       </div>
                                     {% endif %}
 
-                                    {# История этого события: без "создано/изменено", только название события и новые значения #}
                                     {% if a.history and a.history|length %}
                                       <details class="mt-2 small">
                                         <summary class="text-secondary">История</summary>
@@ -419,7 +442,6 @@
                                             <div class="py-2 border-top">
                                               <div class="d-flex align-items-baseline gap-2">
                                                 <span class="fw-semibold">
-                                                  {# Переводим код события в человекочитаемый #}
                                                   {% if new_action == 'hired' %}Принят
                                                   {% elif new_action == 'dismissed' %}Уволен
                                                   {% elif new_action == 'on_leave' %}В отпуске
@@ -437,7 +459,6 @@
 
                                               {% if h.changes %}
                                                 <div class="ms-3 mt-1">
-                                                  {# Показываем только НОВЫЕ значения (без зачёркнутых старых) #}
                                                   {% for field, diff in h.changes.items %}
                                                     {% if field != 'action' %}
                                                       <div>
@@ -486,11 +507,12 @@
                 {% endwith %}
               {% endwith %}
             {% endif %}
+
             {# ====== НАВЫКИ ====== #}
             <div class="mt-3 text-start" id="skillsBlock"
-                {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
-                  data-editable="1"
-                {% endif %}>
+                 {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                   data-editable="1"
+                 {% endif %}>
               <div class="ios-section-title mb-2"><i class="bi bi-stars me-1"></i>Навыки</div>
 
               <div class="chips align-items-center">
@@ -503,8 +525,6 @@
                               data-skill-id="{{ s.id|default:'' }}"
                               data-skill-name="{{ sk_name }}">
                           <span class="lbl">{{ sk_name }}</span>
-
-                          {# кнопка «минус» только если есть право #}
                           {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
                             <button type="button" class="chip-del-btn" title="Убрать навык" aria-label="Убрать навык">
                               <i class="bi bi-dash-lg"></i>
@@ -518,7 +538,6 @@
                   {% endif %}
                 {% endwith %}
 
-                {# плюс только если есть право #}
                 {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
                   <button type="button" class="chip chip-add"
                           data-bs-toggle="collapse" data-bs-target="#skillsForm"
@@ -536,7 +555,7 @@
                     <div class="row g-2">
                       <div class="col-12">
                         <input class="form-control" name="skill_name" list="skillsAll"
-                              placeholder="Выберите или введите новый навык" required>
+                               placeholder="Выберите или введите новый навык" required>
                         <datalist id="skillsAll">
                           {% for sk in all_skills %}
                             {% if sk.name %}<option value="{{ sk.name }}"></option>{% endif %}
@@ -556,6 +575,7 @@
                 </div>
               {% endif %}
             </div>
+
           </div>
         </article>
       </div>
@@ -563,29 +583,30 @@
       <!-- RIGHT -->
       <div class="col-md-8">
         {% if can_edit %}
-        <div id="editFormWrap" class="collapse mb-4">
-          <article class="ios-card">
-            <div class="p-4">
-              <div class="d-flex align-items-center gap-2">
-                <i class="bi-pencil-square"></i>
-                <div class="ios-section-title mb-0">Редактирование профиля</div>
-                <div class="ms-auto">
-                  <button type="button" class="btn btn-sm btn-ghost"
-                          data-bs-toggle="collapse" data-bs-target="#editFormWrap">Скрыть</button>
+          <div id="editFormWrap" class="collapse mb-4">
+            <article class="ios-card">
+              <div class="p-4">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="bi-pencil-square"></i>
+                  <div class="ios-section-title mb-0">Редактирование профиля</div>
+                  <div class="ms-auto">
+                    <button type="button" class="btn btn-sm btn-ghost"
+                            data-bs-toggle="collapse" data-bs-target="#editFormWrap">Скрыть</button>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  {% if is_me %}
+                    {% url 'employees:employee_edit_me' as edit_endpoint %}
+                  {% else %}
+                    {% url 'employees:employee_edit' emp.id as edit_endpoint %}
+                  {% endif %}
+                  {% include "employees/_employee_edit.html" with emp=emp endpoint=edit_endpoint %}
                 </div>
               </div>
-              <div class="mt-3">
-                {% if is_me %}
-                  {% url 'employees:employee_edit_me' as edit_endpoint %}
-                {% else %}
-                  {% url 'employees:employee_edit' emp.id as edit_endpoint %}
-                {% endif %}
-                {% include "employees/_employee_edit.html" with emp=emp endpoint=edit_endpoint %}
-              </div>
-            </div>
-          </article>
-        </div>
-      {% endif %}
+            </article>
+          </div>
+        {% endif %}
+
         <article class="ios-card" id="activity">
           <div class="p-4">
             <div class="ios-section-title mb-3"><i class="bi-activity me-1"></i>Активность</div>
@@ -599,12 +620,12 @@
       </div>
     </div>
   </div>
-
-  
 {% endblock %}
+
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  /* SKILLS: add/remove via AJAX form endpoints */
   const block = document.getElementById('skillsBlock');
   if (!block || block.dataset.editable !== '1') return;
 
@@ -712,45 +733,64 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
+
 <script>
+/* Smooth-scroll to profile edit on mobile */
 document.addEventListener('DOMContentLoaded', () => {
   const wrap   = document.getElementById('editFormWrap');
   if (!wrap) return;
 
-  // определяем, мобильный ли экран
   const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
 
-  // вычисляем отступ под фикс/стикки заголовок
   function getTopOffset(){
-    const sticky = document.querySelector('.ios-header'); // твой page header
-    return (sticky?.offsetHeight || 0) + 8;              // + маленький зазор
+    const sticky = document.querySelector('.ios-header');
+    return (sticky?.offsetHeight || 0) + 8;
   }
 
   function smoothScrollTo(el){
     const top = el.getBoundingClientRect().top + window.pageYOffset - getTopOffset();
-    // если поддерживается smooth
-    try {
-      window.scrollTo({ top, behavior: 'smooth' });
-    } catch {
-      window.scrollTo(0, top);
-    }
+    try { window.scrollTo({ top, behavior: 'smooth' }); }
+    catch { window.scrollTo(0, top); }
   }
 
-  // когда коллапс раскрылся — скроллим к нему (только на мобилках)
   wrap.addEventListener('shown.bs.collapse', () => {
     if (isMobile()) smoothScrollTo(wrap);
   });
 
-  // если блок уже открыт при загрузке (например, по якорю) — тоже скроллим
   if (wrap.classList.contains('show') && isMobile()) {
-    // небольшая задержка, чтобы страница «устаканилась»
     setTimeout(() => smoothScrollTo(wrap), 50);
   }
 });
 </script>
 
+<script>
+/* Enable OK button in dept role editor only when value changed + init tooltips */
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.dept-editor form').forEach(form => {
+    const select = form.querySelector('select[name="role_id"]');
+    const okBtn  = form.querySelector('.dept-role-save');
+    const initial = (select?.value ?? '');
+    const toggle = () => { if(okBtn) okBtn.disabled = (select.value === initial); };
+    if(select && okBtn){ toggle(); select.addEventListener('change', toggle); }
+  });
+  document.querySelectorAll('.dept-editor-wrap.collapse').forEach(col => {
+    const row = col.closest('.dept-item');
+    if (!row) return;
 
+    // прячем роль ещё ДО анимации
+    col.addEventListener('show.bs.collapse', () => row.classList.add('is-editing'));
+    // возвращаем роль после закрытия
+    col.addEventListener('hidden.bs.collapse', () => row.classList.remove('is-editing'));
+
+    // если по каким-то причинам коллапс уже открыт при загрузке
+    if (col.classList.contains('show')) row.classList.add('is-editing');
+  });
+
+  if (window.bootstrap){
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+      new bootstrap.Tooltip(el);
+    });
+  }
+});
+</script>
 {% endblock %}
-
-
-

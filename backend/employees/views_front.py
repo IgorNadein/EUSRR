@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
-import json
 import base64
+import json
 import mimetypes
-from typing import Any
+from typing import Any, Dict, Optional, Tuple
 
 from api.client import get_api_client
 from api.decorators import require_api_auth
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_http_methods, require_POST
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
-from django.views.decorators.http import require_POST
-from django.http import JsonResponse
 
 from .forms import (
     DepartmentEditForm,
@@ -29,7 +29,6 @@ from .forms import (
 )
 from .forms_front import DepartmentEditForm, SetHeadForm, SetMemberRoleForm
 from .models import Department, EmployeeDepartment, Skill
-
 
 # =========================
 #   Утилиты
@@ -101,6 +100,43 @@ def _fetch_employee_posts(api, employee_id: int):
         if r.ok:
             data = r.json or []
             return _extract_results(data)
+
+
+def _json_body(request: HttpRequest) -> Dict[str, Any]:
+    """Безопасно парсим JSON; если не JSON — возвращаем пустой dict."""
+    try:
+        if request.body:
+            return json.loads(request.body.decode("utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _error(message: str, status: int = 400) -> JsonResponse:
+    return JsonResponse({"detail": message}, status=status)
+
+
+def _ok(data: Dict[str, Any], status: int = 200) -> JsonResponse:
+    return JsonResponse(data, status=status)
+
+
+def _api_ok_or_error(resp) -> Tuple[bool, Dict[str, Any], int]:
+    """Унифицированная распаковка ответа API."""
+    try:
+        data = resp.json or {}
+    except Exception:
+        data = {}
+    return resp.ok, data, getattr(resp, "status", 500)
+
+
+def _has_role(link):
+    r = link.get("role")
+    if r is None:
+        return False
+    if isinstance(r, dict):
+        return bool(r.get("id") or r.get("name"))
+    s = str(r).strip()
+    return s not in {"", "None", "null", "0"}
 
 
 # =========================
@@ -213,17 +249,64 @@ def employee_profile(request, pk="me"):
             request.user and (request.user.is_staff or request.user.id == emp.get("id"))
         )
     )
+    emp_depts = []
+    for d in emp.get("departments") or []:
+        did = d.get("id")
+        if not did:
+            emp_depts.append(d)
+            continue
+
+        # узнаём head отдела
+        dresp = api.get(f"v1/departments/{did}/")
+        head_id = None
+        if dresp.ok:
+            dj = dresp.json or {}
+            head = dj.get("head") or {}
+            head_id = head.get("id") or dj.get("head_id")
+
+        # подгружаем роли отдела
+        rresp = api.get(
+            "v1/department-roles/", params={"department": did, "ordering": "name"}
+        )
+        roles = []
+        if rresp.ok:
+            rj = rresp.json
+            roles = (rj.get("results", rj) if isinstance(rj, dict) else rj) or []
+
+        can_edit_role = (
+            bool(head_id)
+            and str(head_id) == str(getattr(request.user, "id", None))
+            and not d.get("is_head")  # нельзя править главу
+            and str(emp_id) != str(getattr(request.user, "id", None))  # не себе
+        )
+
+        d2 = dict(d)
+        d2.update(
+            {
+                "roles_choices": roles,  # [{id, name, ...}]
+                "can_edit_role": can_edit_role,  # bool
+            }
+        )
+        emp_depts.append(d2)
+
+    can_edit = (
+        True
+        if is_me
+        else bool(
+            request.user and (request.user.is_staff or request.user.id == emp.get("id"))
+        )
+    )
+
     ctx = {
         "emp": emp,
+        "emp_depts": emp_depts,
         "can_edit": can_edit,
         "all_skills": all_skills,
         "all_positions": all_positions,
         "all_groups": all_groups,
         "posts": posts,
+        "is_me": True if is_me else False,
     }
-    if is_me:
-        ctx["is_me"] = True
-
     return render(request, "employees/employee_detail.html", ctx)
 
 
@@ -381,13 +464,6 @@ def department_list(request):
 # ---------- DETAIL ----------
 @require_api_auth
 def department_detail(request, pk: int):
-    """
-    Детальная страница отдела.
-    Тянет:
-      - /api/v1/departments/{id}/
-      - /api/v1/department-roles/?department={id}
-      - /api/v1/employee-departments/?department={id}&is_active=true
-    """
     api = get_api_client(request)
 
     dep = api.get(f"v1/departments/{pk}/")
@@ -396,59 +472,76 @@ def department_detail(request, pk: int):
             request,
             "Отдел не найден" if dep.status == 404 else f"Ошибка API ({dep.status})",
         )
-        return redirect("employees:dept_list")
+        return redirect("employees:department_list")
     dept = dep.json
 
-    roles_resp = api.get(
-        "v1/department-roles/", params={"department": pk, "page_size": 1000}
-    )
-    roles = (
-        roles_resp.json.get("results", [])
-        if roles_resp.ok and isinstance(roles_resp.json, dict)
-        else roles_resp.json or []
-    )
+    roles_resp = api.get("v1/department-roles/", params={"department": pk, "page_size": 1000})
+    roles = (roles_resp.json.get("results", [])
+             if roles_resp.ok and isinstance(roles_resp.json, dict)
+             else roles_resp.json or [])
 
     links_resp = api.get(
         "v1/employee-departments/",
         params={"department": pk, "is_active": True, "page_size": 1000},
     )
-    links = (
-        links_resp.json.get("results", [])
-        if links_resp.ok and isinstance(links_resp.json, dict)
-        else links_resp.json or []
-    )
+    links = (links_resp.json.get("results", [])
+             if links_resp.ok and isinstance(links_resp.json, dict)
+             else links_resp.json or [])
+
+    # 👉 нормализуем участников для селекта руководителя
+    members = []
+    for ln in links:
+        e = ln.get("employee")
+        # API может вернуть dict или id; поддержим оба варианта
+        if isinstance(e, dict):
+            emp_id = e.get("id")
+            last_name = e.get("last_name") or ""
+            first_name = e.get("first_name") or ""
+            patronymic = e.get("patronymic") or ""
+            full_name = " ".join([s for s in (last_name, first_name, patronymic) if s])
+            members.append({
+                "id": emp_id,
+                "name": full_name or f"Сотрудник #{emp_id}",
+            })
+        elif e is not None:
+            # fallback, если пришёл только id
+            emp_id = e
+            members.append({
+                "id": emp_id,
+                "name": f"Сотрудник #{emp_id}",
+            })
+
+    # Уберём дубликаты, если вдруг
+    seen = set()
+    head_choices = []
+    for m in members:
+        mid = m.get("id")
+        if mid and mid not in seen:
+            head_choices.append(m)
+            seen.add(mid)
 
     context = {
         "dept": dept,
         "roles": roles,
-        "links": links,  # элементы вида {"employee": <id>, "role": <id>|null, ...}
-        "edit_form": DepartmentEditForm(
-            initial={
-                "name": dept.get("name", ""),
-                "description": dept.get("description", ""),
-            }
-        ),
+        "links": links,
+        "head_choices": head_choices,  # 👈 добавили
+        "edit_form": DepartmentEditForm(initial={
+            "name": dept.get("name", ""),
+            "description": dept.get("description", ""),
+        }),
         "set_head_form": SetHeadForm(),
         "set_member_role_form": SetMemberRoleForm(),
     }
+
     page = request.GET.get("page") or 1
-    r = api.get(
-        "v1/feed/posts/",
-        params={"department": pk, "page": page, "ordering": "-created_at"},
-    )
+    r = api.get("v1/feed/posts/", params={"department": pk, "page": page, "ordering": "-created_at"})
     posts = []
     if r.ok:
         data = r.json
         posts = data.get("results", data) if isinstance(data, dict) else data
 
-    context.update(
-        {
-            "posts": posts,
-            "page": page,  # если пагинация нужна в шаблоне
-        }
-    )
+    context.update({"posts": posts, "page": page})
     return render(request, "employees/department_detail.html", context)
-
 
 # ---------- EDIT BASIC FIELDS ----------
 @require_api_auth
@@ -462,7 +555,7 @@ def department_edit(request, pk: int):
     form = DepartmentEditForm(request.POST)
     if not form.is_valid():
         messages.error(request, "Проверьте форму")
-        return redirect("employees:dept_detail", pk=pk)
+        return redirect("employees:department_detail", pk=pk)
 
     payload = {
         "name": form.cleaned_data["name"],
@@ -476,7 +569,7 @@ def department_edit(request, pk: int):
         )
     else:
         messages.success(request, "Отдел обновлён")
-    return redirect("employees:dept_detail", pk=pk)
+    return redirect("employees:department_detail", pk=pk)
 
 
 # ---------- SET HEAD ----------
@@ -491,7 +584,7 @@ def department_set_head(request, pk: int):
     form = SetHeadForm(request.POST)
     if not form.is_valid():
         messages.error(request, "Проверьте форму")
-        return redirect("employees:dept_detail", pk=pk)
+        return redirect("employees:department_detail", pk=pk)
 
     head_id = form.cleaned_data.get("head_id", None)
     payload = {"head_id": head_id if head_id is not None else None}  # None → снять
@@ -505,37 +598,57 @@ def department_set_head(request, pk: int):
         messages.success(
             request, "Руководитель обновлён" if head_id else "Руководитель снят"
         )
-    return redirect("employees:dept_detail", pk=pk)
+    return redirect("employees:department_detail", pk=pk)
 
 
 # ---------- SET MEMBER ROLE ----------
 @require_api_auth
 @require_http_methods(["POST"])
-def department_set_member_role(request, pk: int):
+def set_member_role(request, dept_id: int, emp_id: int):
     """
-    Назначение/снятие роли участнику отдела через POST /api/v1/departments/{id}/set_member_role/.
-    Права проверяет API (assign_department_role).
+    Серверный proxy: меняем роль сотрудника в отделе.
+    Тело: role_id (пусто => снять роль), next (опционально для редиректа).
     """
     api = get_api_client(request)
-    form = SetMemberRoleForm(request.POST)
-    if not form.is_valid():
-        messages.error(request, "Проверьте форму")
-        return redirect("employees:dept_detail", pk=pk)
 
-    payload = {
-        "employee_id": form.cleaned_data["employee_id"],
-        "role_id": form.cleaned_data.get("role_id", None),
-        "is_active": form.cleaned_data.get("is_active", None),
-    }
-    resp = api.post(f"v1/departments/{pk}/set_member_role/", json=payload)
-    if not resp.ok:
-        messages.error(
-            request,
-            f"Не удалось обновить роль ({resp.status}) — {resp.json or resp.text}",
+    role_id_raw = request.POST.get("role_id", "")
+    role_id = None
+    if str(role_id_raw).strip() not in {"", "None", "null"}:
+        try:
+            role_id = int(role_id_raw)
+        except (TypeError, ValueError):
+            role_id = None
+
+    # заодно не даём менять самому себе (UI тоже скрывает)
+    if str(emp_id) == str(getattr(request.user, "id", None)):
+        messages.error(request, "Нельзя изменять собственную роль в отделе.")
+        return redirect(
+            request.POST.get("next") or reverse("employees:profile", args=("me",))
         )
+
+    # пробрасываем в API — он сам проверит, что вы глава отдела
+    resp = api.post(
+        f"v1/departments/{dept_id}/set_member_role/",
+        json={
+            "employee_id": emp_id,
+            "role_id": role_id,
+        },
+    )
+
+    if resp.ok:
+        messages.success(request, "Роль обновлена.")
     else:
-        messages.success(request, "Роль участника обновлена")
-    return redirect("employees:dept_detail", pk=pk)
+        try:
+            data = resp.json
+        except Exception:
+            data = {}
+        err = data.get("detail") or data.get("error") or f"HTTP {resp.status}"
+        messages.error(request, f"Не удалось обновить роль: {err}")
+
+    return redirect(
+        request.POST.get("next")
+        or reverse("employees:employee_profile", args=(emp_id,))
+    )
 
 
 class StaffOnlyMixin(UserPassesTestMixin):
@@ -686,3 +799,143 @@ def skill_remove(request, pk: int):
     # NB: у DRF-экшена underscore: remove_skill
     resp = api.post(f"v1/employees/{pk}/remove_skill/", data=payload)
     return JsonResponse(resp.json or {"detail": resp.text}, status=resp.status or 500)
+
+
+# =========================
+#   Должности
+# =========================
+
+
+# ---------- CREATE POSITION ----------
+@csrf_protect
+@login_required
+@require_POST
+def position_create_front(request: HttpRequest) -> JsonResponse:
+    """
+    Создать должность (прокси к POST /api/v1/positions/).
+    Ожидает JSON или form-data с полями: name, description?, groups? (list[int]).
+    """
+    payload = _json_body(request) or request.POST.dict()
+    name = (payload.get("name") or "").strip()
+    description = (payload.get("description") or "").strip()
+
+    # groups может прийти как список, как csv или отсутствовать
+    groups = payload.get("groups")
+    if isinstance(groups, str):
+        groups = [int(x) for x in groups.split(",") if x.strip().isdigit()]
+    elif isinstance(groups, list):
+        groups = [int(x) for x in groups if str(x).isdigit()]
+    else:
+        groups = []
+
+    if not name:
+        return _error("Укажите название должности", 400)
+
+    api = get_api_client(request)
+    api_payload = {"name": name}
+    if description:
+        api_payload["description"] = description
+    if groups:
+        api_payload["groups"] = groups
+
+    resp = api.post("v1/positions/", json=api_payload)
+    ok, data, status = _api_ok_or_error(resp)
+    if not ok:
+        return JsonResponse(
+            data or {"detail": "Не удалось создать должность"}, status=status
+        )
+    return _ok(data, status=201)
+
+
+# ---------- UPDATE POSITION ----------
+@csrf_protect
+@login_required
+@require_http_methods(["PATCH", "POST"])
+def position_update_front(request: HttpRequest, pos_id: int) -> JsonResponse:
+    """
+    Обновить должность (прокси к PATCH /api/v1/positions/{id}/).
+    Приходит JSON с любыми изменяемыми полями (name, description, groups).
+    Разрешаем метод PATCH и POST (для совместимости) — на POST тоже шлём PATCH в API.
+    """
+    payload = _json_body(request) or request.POST.dict()
+
+    # Если groups пришли строкой — распарсим
+    groups = payload.get("groups", None)
+    if isinstance(groups, str):
+        payload["groups"] = [int(x) for x in groups.split(",") if x.strip().isdigit()]
+
+    api = get_api_client(request)
+    resp = api.patch(f"v1/positions/{pos_id}/", json=payload)
+    ok, data, status = _api_ok_or_error(resp)
+    if not ok:
+        return JsonResponse(
+            data or {"detail": "Не удалось обновить должность"}, status=status
+        )
+    return _ok(data)
+
+
+# ---------- ASSIGN POSITION TO EMPLOYEE ----------
+@csrf_protect
+@login_required
+@require_POST
+def employee_set_position_front(request: HttpRequest, emp_id: int) -> JsonResponse:
+    """
+    Назначить сотруднику position_id (прокси к PATCH /api/v1/employees/{id}/).
+    Ожидает JSON/form-data: position_id (int или пусто для снятия).
+    """
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Bad JSON"}, status=400)
+
+    raw = payload.get("position_id", None)
+
+    try:
+        position_id = int(str(raw).strip()) if raw is not None else None
+    except (ValueError, TypeError):
+        return JsonResponse({"detail": "position_id must be an integer"}, status=400)
+
+    if not position_id:
+        return JsonResponse({"detail": "position_id is required"}, status=400)
+    
+    api = get_api_client(request)
+    resp = api.patch(f"v1/employees/{emp_id}/", json={"position_id": position_id})
+    ok, data, status = _api_ok_or_error(resp)
+    if not ok:
+        return JsonResponse(
+            data or {"detail": "Не удалось назначить должность"}, status=status
+        )
+    return _ok(data)
+
+
+# Удобная обёртка под «/me/»
+@csrf_protect
+@login_required
+@require_POST
+def employee_set_position_me_front(request: HttpRequest) -> JsonResponse:
+    """
+    Назначить должность текущему пользователю (прокси к PATCH /api/v1/employees/me/).
+    """
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Bad JSON"}, status=400)
+
+    raw = payload.get("position_id", None)
+
+    try:
+        position_id = int(str(raw).strip()) if raw is not None else None
+    except (ValueError, TypeError):
+        return JsonResponse({"detail": "position_id must be an integer"}, status=400)
+
+    if not position_id:
+        return JsonResponse({"detail": "position_id is required"}, status=400)
+
+    api = get_api_client(request)
+    resp = api.patch("v1/employees/me/", json={"position_id": position_id})
+    ok, data, status = _api_ok_or_error(resp)
+    if not ok:
+        return JsonResponse(
+            data or {"detail": "Не удалось назначить должность"}, status=status
+        )
+    return _ok(data)

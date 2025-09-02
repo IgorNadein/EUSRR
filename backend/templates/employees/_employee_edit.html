@@ -7,7 +7,8 @@
   .modal .modal-content { background-color: var(--bs-body-bg); }
 </style>
 
-<form id="apiEditForm" class="row g-3" data-endpoint="{{ endpoint }}">
+<form id="apiEditForm" class="row g-3" data-endpoint="{{ endpoint }}"
+  action="{% if is_me %}{% url 'employees:employee_set_position_me' %}{% else %}{% url 'employees:employee_set_position' emp.id %}{% endif %}">
   {% csrf_token %}
 
   {# === ЛИЧНЫЕ ДАННЫЕ === #}
@@ -114,8 +115,8 @@
   <div class="col-12">
     {% if can_edit_position or request.user.is_staff or request.user.is_superuser %}
       <div class="ios-acc mb-2" id="positionBlock"
-           data-employee-url="{{ endpoint }}"
-           data-create-url="{{ positions_create_url }}"
+           data-create-url="{% url 'employees:position_create' %}"
+           data-assign-url="{% if is_me %}{% url 'employees:employee_set_position_me' %}{% else %}{% url 'employees:employee_set_position' emp.id %}{% endif %}"
            data-can-assign="{% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}1{% else %}0{% endif %}">
         <div class="d-flex align-items-center gap-2 px-3 py-3">
           <i class="bi-briefcase"></i>
@@ -270,186 +271,186 @@
 
 
 <script>
-(function(){
-  const form = document.getElementById('apiEditForm');
-  if (!form) return;
+  (function(){
+    const form = document.getElementById('apiEditForm');
+    if (!form) return;
 
-  const endpoint = form.dataset.endpoint || '';
-  if (!endpoint) { console.error('Нет endpoint для формы редактирования'); return; }
+    const endpoint = form.dataset.endpoint || '';
+    if (!endpoint) { console.error('Нет endpoint для формы редактирования'); return; }
 
-  const CONTACT_FIELDS = ['email','phone_number','telegram','whatsapp','wechat'];
+    const CONTACT_FIELDS = ['email','phone_number','telegram','whatsapp','wechat'];
 
-  const btn = form.querySelector('[type="submit"]');
-  const btnLabel = btn?.querySelector('.btn-label');
-  const btnSpin  = btn?.querySelector('.btn-spinner');
+    const btn = form.querySelector('[type="submit"]');
+    const btnLabel = btn?.querySelector('.btn-label');
+    const btnSpin  = btn?.querySelector('.btn-spinner');
 
-  function setSubmitting(on){
-    if (!btn) return;
-    if (on){ btn.setAttribute('disabled',''); btnSpin?.classList.remove('d-none'); btnLabel?.classList.add('visually-hidden'); }
-    else   { btn.removeAttribute('disabled');  btnSpin?.classList.add('d-none');   btnLabel?.classList.remove('visually-hidden'); }
-  }
-  function clearErrors(){
-    form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
-    form.querySelectorAll('.invalid-feedback').forEach(el => el.textContent = '');
-  }
-  function fieldError(name, message){
-    const el = form.querySelector(`[name="${CSS.escape(name)}"]`);
-    if (!el) return;
-    el.classList.add('is-invalid');
-    const container = el.closest('[class^="col-"]') || el.parentElement;
-    let fb = container?.querySelector('.invalid-feedback');
-    if (!fb) { fb = document.createElement('div'); fb.className = 'invalid-feedback'; el.after(fb); }
-    fb.textContent = message || 'Некорректное значение';
-  }
+    function setSubmitting(on){
+      if (!btn) return;
+      if (on){ btn.setAttribute('disabled',''); btnSpin?.classList.remove('d-none'); btnLabel?.classList.add('visually-hidden'); }
+      else   { btn.removeAttribute('disabled');  btnSpin?.classList.add('d-none');   btnLabel?.classList.remove('visually-hidden'); }
+    }
+    function clearErrors(){
+      form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+      form.querySelectorAll('.invalid-feedback').forEach(el => el.textContent = '');
+    }
+    function fieldError(name, message){
+      const el = form.querySelector(`[name="${CSS.escape(name)}"]`);
+      if (!el) return;
+      el.classList.add('is-invalid');
+      const container = el.closest('[class^="col-"]') || el.parentElement;
+      let fb = container?.querySelector('.invalid-feedback');
+      if (!fb) { fb = document.createElement('div'); fb.className = 'invalid-feedback'; el.after(fb); }
+      fb.textContent = message || 'Некорректное значение';
+    }
 
-  function ensureOneContact(){
-    const hasAny = CONTACT_FIELDS.some(n => (form.elements[n]?.value || '').trim().length > 0);
-    if (hasAny) return true;
-    CONTACT_FIELDS.forEach(n => fieldError(n, 'Укажите хотя бы один контакт'));
-    form.elements[CONTACT_FIELDS[0]]?.focus();
-    return false;
-  }
+    function ensureOneContact(){
+      const hasAny = CONTACT_FIELDS.some(n => (form.elements[n]?.value || '').trim().length > 0);
+      if (hasAny) return true;
+      CONTACT_FIELDS.forEach(n => fieldError(n, 'Укажите хотя бы один контакт'));
+      form.elements[CONTACT_FIELDS[0]]?.focus();
+      return false;
+    }
 
-  // Прочитать файл в Base64
-  function readFileAsDataURL(file){
-    return new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
-      fr.onerror = reject;
-      fr.readAsDataURL(file);
-    });
-  }
+    // Прочитать файл в Base64
+    function readFileAsDataURL(file){
+      return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsDataURL(file);
+      });
+    }
 
-  // собрать skills_ids (массив) и сравнить с init
-  function collectSkillsPayload(){
-    const sel = form.querySelector('select[name="skills_ids"]');
-    if (!sel) return null;
-    const selected = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
-    const initCsv = sel.dataset.init || '';
-    const initArr = initCsv ? initCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
-    // сравнение (без учёта порядка)
-    const norm = a => a.slice().sort().join(',');
-    if (norm(selected) === norm(initArr)) return null;
-    return selected;
-  }
+    // собрать skills_ids (массив) и сравнить с init
+    function collectSkillsPayload(){
+      const sel = form.querySelector('select[name="skills_ids"]');
+      if (!sel) return null;
+      const selected = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
+      const initCsv = sel.dataset.init || '';
+      const initArr = initCsv ? initCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
+      // сравнение (без учёта порядка)
+      const norm = a => a.slice().sort().join(',');
+      if (norm(selected) === norm(initArr)) return null;
+      return selected;
+    }
 
-  // собрать общие поля (кроме skills_ids и avatar)
-  function buildScalarPayload(){
-    const payload = {};
-    const fields = form.querySelectorAll(
-      'input[name]:not([type="file"]):not([name="clear_avatar"]):not(:disabled), select[name]:not([name="skills_ids"]):not(:disabled)'
-    );
+    // собрать общие поля (кроме skills_ids и avatar)
+    function buildScalarPayload(){
+      const payload = {};
+      const fields = form.querySelectorAll(
+        'input[name]:not([type="file"]):not([name="clear_avatar"]):not(:disabled), select[name]:not([name="skills_ids"]):not(:disabled)'
+      );
 
-    fields.forEach(el => {
-      const name = el.name;
-      const raw = (el.value ?? '').toString().trim();
-      const init = (el.dataset.init ?? el.defaultValue ?? '').toString();
+      fields.forEach(el => {
+        const name = el.name;
+        const raw = (el.value ?? '').toString().trim();
+        const init = (el.dataset.init ?? el.defaultValue ?? '').toString();
 
-      // Ничего не менялось
-      if (raw === init) return;
+        // Ничего не менялось
+        if (raw === init) return;
 
-      // Пустое значение: для некоторых полей нужно слать null
-      const shouldNull = (raw === '' && ['gender','birth_date','position_id'].includes(name));
+        // Пустое значение: для некоторых полей нужно слать null
+        const shouldNull = (raw === '' && ['gender','birth_date','position_id'].includes(name));
 
-      if (shouldNull) {
-        // меняем непустое init -> null (очистка)
-        if (init !== '') payload[name] = null;
-        return;
-      }
-
-      // Типизация gender в число
-      if (name === 'gender' && raw !== '') {
-        payload[name] = Number(raw);
-        return;
-      }
-
-      // Остальные — как есть (пустые строки допустимы для текстовых полей)
-      payload[name] = raw;
-    });
-
-    return payload;
-  }
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    clearErrors();
-
-    if (!ensureOneContact()) return;
-
-    setSubmitting(true);
-    try{
-      const payload = buildScalarPayload();
-
-      // skills_ids (массив)
-      const skills = collectSkillsPayload();
-      if (skills) payload.skills_ids = skills;
-
-      // avatar (Base64) / clear
-      const avatarFile = document.getElementById('f_avatar')?.files?.[0] || null;
-      const clearAvatar = form.querySelector('input[name="clear_avatar"]')?.checked;
-      if (avatarFile){
-        try{
-          const dataUrl = await readFileAsDataURL(avatarFile);
-          payload.avatar = dataUrl; // Base64ImageField ожидает data URL
-        }catch(_){}
-      } else if (clearAvatar){
-        payload.avatar = ""; // очистка
-      }
-
-      // если нечего отправлять — просто обновим UI
-      if (Object.keys(payload).length === 0){
-        setSubmitting(false);
-        if (window.bootstrap) {
-          try { new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
+        if (shouldNull) {
+          // меняем непустое init -> null (очистка)
+          if (init !== '') payload[name] = null;
+          return;
         }
-        location.reload();
-        return;
-      }
 
-      const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
-      const resp = await fetch(endpoint, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': csrftoken
-        },
-        body: JSON.stringify(payload),
-        credentials: 'same-origin'
+        // Типизация gender в число
+        if (name === 'gender' && raw !== '') {
+          payload[name] = Number(raw);
+          return;
+        }
+
+        // Остальные — как есть (пустые строки допустимы для текстовых полей)
+        payload[name] = raw;
       });
 
-      if (!resp.ok){
-        let body = null;
-        try { body = await resp.json(); } catch {}
-        if (body && typeof body === 'object'){
-          let shown = false;
-          for (const [k, v] of Object.entries(body)){
-            if (k === 'detail') continue;
-            const msg = Array.isArray(v) ? v.join(' ') : String(v);
-            fieldError(k, msg); shown = true;
-          }
-          if (body.detail) alert(body.detail);
-          else if (!shown)  alert('Не удалось сохранить изменения (ошибка валидации).');
-        } else {
-          const t = await resp.text();
-          alert('Не удалось сохранить изменения.\n' + (t || `HTTP ${resp.status}`));
-        }
-        setSubmitting(false);
-        return;
-      }
-
-      // успех
-      try { if (window.bootstrap) new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
-      location.reload();
-
-    }catch(err){
-      console.error(err);
-      alert('Не удалось сохранить изменения. Попробуйте ещё раз.');
-      setSubmitting(false);
+      return payload;
     }
-  });
-})();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearErrors();
+
+      if (!ensureOneContact()) return;
+
+      setSubmitting(true);
+      try{
+        const payload = buildScalarPayload();
+
+        // skills_ids (массив)
+        const skills = collectSkillsPayload();
+        if (skills) payload.skills_ids = skills;
+
+        // avatar (Base64) / clear
+        const avatarFile = document.getElementById('f_avatar')?.files?.[0] || null;
+        const clearAvatar = form.querySelector('input[name="clear_avatar"]')?.checked;
+        if (avatarFile){
+          try{
+            const dataUrl = await readFileAsDataURL(avatarFile);
+            payload.avatar = dataUrl; // Base64ImageField ожидает data URL
+          }catch(_){}
+        } else if (clearAvatar){
+          payload.avatar = ""; // очистка
+        }
+
+        // если нечего отправлять — просто обновим UI
+        if (Object.keys(payload).length === 0){
+          setSubmitting(false);
+          if (window.bootstrap) {
+            try { new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
+          }
+          location.reload();
+          return;
+        }
+
+        const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+        const resp = await fetch(endpoint, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrftoken
+          },
+          body: JSON.stringify(payload),
+          credentials: 'same-origin'
+        });
+
+        if (!resp.ok){
+          let body = null;
+          try { body = await resp.json(); } catch {}
+          if (body && typeof body === 'object'){
+            let shown = false;
+            for (const [k, v] of Object.entries(body)){
+              if (k === 'detail') continue;
+              const msg = Array.isArray(v) ? v.join(' ') : String(v);
+              fieldError(k, msg); shown = true;
+            }
+            if (body.detail) alert(body.detail);
+            else if (!shown)  alert('Не удалось сохранить изменения (ошибка валидации).');
+          } else {
+            const t = await resp.text();
+            alert('Не удалось сохранить изменения.\n' + (t || `HTTP ${resp.status}`));
+          }
+          setSubmitting(false);
+          return;
+        }
+
+        // успех
+        try { if (window.bootstrap) new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
+        location.reload();
+
+      }catch(err){
+        console.error(err);
+        alert('Не удалось сохранить изменения. Попробуйте ещё раз.');
+        setSubmitting(false);
+      }
+    });
+  })();
 </script>
 <script>
 (function(){
@@ -457,12 +458,11 @@
   const block = document.getElementById('positionBlock');
   if (!form || !block) return;
 
-  const select    = document.getElementById('f_position');
-  const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
-
-  const employeeUrl = block.dataset.employeeUrl || '';
-  const createUrl   = block.dataset.createUrl   || '';
-  const canAssign   = block.dataset.canAssign === '1';
+  const select     = document.getElementById('f_position');
+  const csrftoken  = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+  const createUrl  = block.dataset.createUrl || '{% url "employees:position_create" %}';
+  const assignUrl  = block.dataset.assignUrl || '';
+  const canAssign  = block.dataset.canAssign === '1';
 
   function busy(btn, on){
     const lbl = btn.querySelector('.lbl');
@@ -483,62 +483,77 @@
     const m   = document.getElementById('posCreateMsg');
     msg(m, '');
 
-    if (!createUrl || !employeeUrl){
-      msg(m, 'Не настроены URL создания/обновления.', false);
+    // ВАЛИДАЦИЯ URL'ов
+    if (!createUrl || !assignUrl){
+      msg(m, 'Не настроены URL создания/назначения.', false);
       return;
     }
 
+    // ДАННЫЕ ФОРМЫ
     const name = (document.getElementById('pos_name')?.value || '').trim();
     const description = (document.getElementById('pos_desc')?.value || '').trim();
     if (!name){ msg(m, 'Укажите название должности.', false); return; }
 
-    // собрать группы (для сериализатора PositionSerializer.groups)
+    // ГРУППЫ ПРАВ
     let groupIds = [];
     if (canAssign){
-      const msel = document.getElementById('pos_groups');          // десктопный мультиселект (если есть)
-      const hid  = document.getElementById('pos_groups_hidden');   // мобильный модал
-      const csv  = document.getElementById('pos_groups_csv');      // фолбэк
+      const msel = document.getElementById('pos_groups');        // если есть select[multiple]
+      const hid  = document.getElementById('pos_groups_hidden'); // из модального выбора
+      const csv  = document.getElementById('pos_groups_csv');    // fallback
 
       if (msel)      groupIds = Array.from(msel.selectedOptions).map(o => o.value).filter(Boolean);
       else if (hid)  groupIds = (hid.value || '').split(',').map(s => s.trim()).filter(Boolean);
       else if (csv)  groupIds = (csv.value || '').split(',').map(s => s.trim()).filter(Boolean);
 
-      // привести к числам (DRF примет и строки, но так чище)
       groupIds = groupIds.map(id => Number(id)).filter(n => !Number.isNaN(n));
     }
 
+    // ОТПРАВКА
     busy(btn, true);
     try{
-      // 1) POST /positions/ — передаём groups сразу в create (согласно PositionSerializer)
+      // 1) Создаём должность
       const createPayload = { name, description };
       if (canAssign && groupIds.length) createPayload.groups = groupIds;
 
       const cResp = await fetch(createUrl, {
-        method:'POST', credentials:'same-origin',
-        headers:{ 'Content-Type':'application/json', 'X-Requested-With':'XMLHttpRequest', 'X-CSRFToken': csrftoken },
+        method:'POST',
+        credentials:'same-origin',
+        headers:{
+          'Content-Type':'application/json',
+          'X-Requested-With':'XMLHttpRequest',
+          'X-CSRFToken': csrftoken
+        },
         body: JSON.stringify(createPayload)
       });
       const cData = await (async()=>{ try{return await cResp.json()}catch{return null} })();
       if (!cResp.ok){
         msg(m, (cData?.detail || JSON.stringify(cData) || `HTTP ${cResp.status}`), false);
-        busy(btn,false); return;
+        return;
       }
       const newId = cData?.id;
-      if (!newId){ msg(m, 'API не вернул id новой должности.', false); busy(btn,false); return; }
-
-      // 2) PATCH сотрудника -> position_id (согласно EmployeeSerializer)
-      const eResp = await fetch(employeeUrl, {
-        method:'PATCH', credentials:'same-origin',
-        headers:{ 'Content-Type':'application/json', 'X-Requested-With':'XMLHttpRequest', 'X-CSRFToken': csrftoken },
-        body: JSON.stringify({ position_id: newId })
-      });
-      if (!eResp.ok){
-        const eData = await (async()=>{ try{return await eResp.json()}catch{return null} })();
-        msg(m, 'Создано, но не назначено: ' + (eData?.detail || JSON.stringify(eData) || `HTTP ${eResp.status}`), false);
-        busy(btn,false); return;
+      if (!newId){
+        msg(m, 'API не вернул id новой должности.', false);
+        return;
       }
 
-      // 3) обновить селект и закрыть панель
+      // 2) Назначаем сотруднику
+      const eResp = await fetch(assignUrl, {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{
+          'Content-Type':'application/json',
+          'X-Requested-With':'XMLHttpRequest',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify({ position_id: newId })
+      });
+      const eData = await (async()=>{ try{return await eResp.json()}catch{return null} })();
+      if (!eResp.ok){
+        msg(m, 'Создано, но не назначено: ' + (eData?.detail || JSON.stringify(eData) || `HTTP ${eResp.status}`), false);
+        return;
+      }
+
+      // 3) Обновляем селект и закрываем панель
       if (select){
         let opt = Array.from(select.options).find(o => o.value == String(newId));
         if (!opt){
@@ -561,6 +576,7 @@
   });
 })();
 </script>
+
 <script>
 (function(){
   const chipsBox  = document.getElementById('pos_groups_chips');

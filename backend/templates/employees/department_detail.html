@@ -1,3 +1,4 @@
+{# templates/employees/department_detail.html #}
 {% extends 'base.html' %}
 {% load static django_bootstrap5 %}
 
@@ -9,29 +10,13 @@
   <div class="row justify-content-center">
     <div class="col-lg-9 col-xl-8">
 
-      {# — Заголовок — #}
+      {# ===== Заголовок ===== #}
       <div class="feed-header d-flex align-items-center gap-2 flex-wrap">
         <i class="bi-diagram-3 fs-2 text-primary"></i>
         <h2 class="title mb-0">{{ dept.name }}</h2>
 
-        {# staff или сам руководитель (без скобок) #}
-        {% if user.is_staff %}
-          <div class="ms-auto d-flex gap-2">
-            {% url 'feed:post_create' as post_create_url %}
-            {% if post_create_url %}
-              <a href="{{ post_create_url }}?department={{ dept_id }}&next={{ request.get_full_path|urlencode }}"
-                 class="btn btn-primary">
-                <i class="bi-plus-circle me-1"></i> Создать публикацию
-              </a>
-            {% endif %}
-            {% url 'employees:invite_to_department' dept_id as invite_url %}
-            {% if invite_url %}
-              <a href="{{ invite_url }}" class="btn btn-success">
-                <i class="bi-person-plus me-1"></i> Пригласить
-              </a>
-            {% endif %}
-          </div>
-        {% elif dept.head and dept.head.id == user.id %}
+        {# Кнопки только для staff или текущего руководителя #}
+        {% if user.is_staff or dept.head and dept.head.id == user.id %}
           <div class="ms-auto d-flex gap-2">
             {% url 'feed:post_create' as post_create_url %}
             {% if post_create_url %}
@@ -50,7 +35,7 @@
         {% endif %}
       </div>
 
-      {# Инфоблок — описание / руководитель #}
+      {# ===== Инфо-блок ===== #}
       {% if dept.description or dept.head %}
         <div class="feed-new mb-3">
           {% if dept.description %}
@@ -72,7 +57,76 @@
         </div>
       {% endif %}
 
-      {# Команда отдела (берём то, что пришло в links) #}
+      {# ===== Управление отделом (для staff/главы) ===== #}
+      {% if user.is_staff or dept.head and dept.head.id == user.id %}
+        <div class="feed-card mb-4">
+          <div class="feed-hd">
+            <i class="bi-gear"></i>
+            <div class="feed-meta">
+              <div class="feed-author">Управление отделом</div>
+              <div class="feed-sub">Название, описание и руководитель</div>
+            </div>
+          </div>
+          <div class="feed-body">
+            <div class="row g-3">
+
+              {# Редактирование name/description -> /employees/departments/<id>/edit/ #}
+              <div class="col-12 col-lg-6">
+                <form method="post" action="{% url 'employees:department_edit' dept.id %}">
+                  {% csrf_token %}
+                  <div class="mb-2">
+                    <label class="form-label">Название</label>
+                    <input name="name" class="form-control" value="{{ dept.name|default_if_none:'' }}" required>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Описание</label>
+                    <textarea name="description" class="form-control" rows="3">{{ dept.description|default_if_none:'' }}</textarea>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi-check2 me-1"></i>Сохранить
+                  </button>
+                </form>
+              </div>
+
+              {# Назначение/снятие руководителя -> /employees/departments/<id>/set-head/ #}
+              <div class="col-12 col-lg-6">
+                <form method="post" action="{% url 'employees:department_set_head' dept.id %}">
+                  {% csrf_token %}
+                  <label class="form-label">Руководитель</label>
+                  <select class="form-select" name="head_id">
+                    <option value="">— Снять руководителя —</option>
+                    {# Берём участников из links; поддерживаем и dict, и id #}
+                    {% for link in links %}
+                      {% with emp=link.employee %}
+                        {% if emp %}
+                          {% with eid=emp.id|default:emp %}
+                            <option value="{{ eid }}"
+                                    {% if dept.head and dept.head.id == eid %}selected{% endif %}>
+                              {% if emp.last_name %}
+                                {{ emp.last_name }}{% if emp.first_name %} {{ emp.first_name }}{% endif %}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                              {% else %}
+                                Сотрудник #{{ eid }}
+                              {% endif %}
+                            </option>
+                          {% endwith %}
+                        {% endif %}
+                      {% endwith %}
+                    {% endfor %}
+                  </select>
+                  <div class="mt-2">
+                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                      <i class="bi-person-check me-1"></i>Обновить руководителя
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      {# ===== Команда отдела (только сотрудники с назначённой ролью) ===== #}
       <div class="feed-new mb-4">
         <div class="d-flex align-items-center justify-content-between mb-2">
           <h6 class="mb-0 text-secondary">Команда отдела</h6>
@@ -85,36 +139,74 @@
           {% endif %}
         </div>
 
+        {# показываем только те связи, где есть role #}
         {% if links %}
-          <div class="d-flex gap-3 flex-nowrap overflow-auto pb-1">
-            {% for link in links %}
-              {% with emp=link.employee %}
-                {% url 'employees:employee_detail' emp.id as emp_url %}
-                <a {% if emp_url %}href="{{ emp_url }}"{% endif %}
-                   class="text-decoration-none d-inline-flex align-items-center gap-2">
-                  <div class="feed-ava" style="width:44px;height:44px;">
-                    {% if emp.avatar %}
-                      <img src="{{ emp.avatar }}" alt="">
-                    {% else %}
-                      <i class="bi-person"></i>
-                    {% endif %}
-                  </div>
-                  <div class="small text-truncate" style="max-width:140px;">
-                    <div class="fw-semibold text-reset">
-                      {{ emp.last_name }}{% if emp.first_name %} {{ emp.first_name }}{% endif %}
-                    </div>
-                    {% if link.role %}<div class="text-secondary">{{ link.role }}</div>{% endif %}
-                  </div>
-                </a>
-              {% endwith %}
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="text-secondary small">Пока нет сотрудников.</div>
+          {% with any_has_role=0 %}
+          {% for li in links %}{% if li.role %}{% with any_has_role=1 %}{% endwith %}{% endif %}{% endfor %}
+          {% endwith %}
         {% endif %}
+
+        <div class="d-flex flex-column gap-2">
+          {% for link in links %}
+            {% if link.role %}
+              {% with emp=link.employee cur_role_id=link.role.id|default:link.role %}
+                <div class="d-flex align-items-center justify-content-between p-2 border rounded">
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="feed-ava" style="width:44px;height:44px;">
+                      {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
+                    </div>
+                    <div>
+                      <div class="fw-semibold">
+                        {% with eid=emp.id|default:emp %}
+                          <a href="{% url 'employees:employee_detail' eid %}"
+                             class="text-decoration-none text-reset">
+                            {% if emp.last_name %}
+                              {{ emp.last_name }}{% if emp.first_name %} {{ emp.first_name }}{% endif %}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                            {% else %}
+                              Сотрудник #{{ eid }}
+                            {% endif %}
+                          </a>
+                        {% endwith %}
+                      </div>
+                      <div class="text-secondary small">
+                        {% if link.role.name %}{{ link.role.name }}{% else %}Роль #{{ cur_role_id }}{% endif %}
+                      </div>
+                    </div>
+                  </div>
+
+                  {# Право менять роль: staff или глава; и не себе #}
+                  {% if user.is_staff or dept.head and dept.head.id == user.id %}
+                    {% if emp.id != user.id %}
+                      {% with eid=emp.id|default:emp %}
+                        <form method="post"
+                              action="{% url 'employees:set_member_role' dept.id eid %}"
+                              class="d-flex align-items-center gap-2 mb-0">
+                          {% csrf_token %}
+                          <select name="role_id" class="form-select form-select-sm">
+                            <option value="">— Без роли —</option>
+                            {% for r in roles %}
+                              <option value="{{ r.id }}"
+                                      {% if cur_role_id == r.id %}selected{% endif %}>
+                                {{ r.name }}
+                              </option>
+                            {% endfor %}
+                          </select>
+                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                          <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
+                        </form>
+                      {% endwith %}
+                    {% endif %}
+                  {% endif %}
+                </div>
+              {% endwith %}
+            {% endif %}
+          {% empty %}
+            <div class="text-secondary small">Пока нет сотрудников с назначёнными ролями.</div>
+          {% endfor %}
+        </div>
       </div>
 
-      {# — Лента отдела — #}
+      {# ===== Лента отдела ===== #}
       <div class="feed-stream">
         {% if posts %}
           {% include "feed/_feed_cards.html" with items=posts only %}
@@ -123,7 +215,7 @@
         {% endif %}
       </div>
 
-      {# — Простейшая пагинация без Page-объекта — #}
+      {# Простейшая пагинация без Page-объекта #}
       {% if page|default:0 %}
         <div class="mt-4">
           {% if page|add:"-1" %}

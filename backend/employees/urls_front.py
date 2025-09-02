@@ -38,11 +38,17 @@ urlpatterns = [
         name="department_set_head",
     ),
     path(
-        "departments/<int:pk>/set-member-role/",
-        views_front.department_set_member_role,
-        name="department_set_member_role",
+        "<int:emp_id>/departments/<int:dept_id>/set-role/",
+        views_front.set_member_role,
+        name="set_member_role",
     ),
     # --- Навыки ---
     path("<int:pk>/skill/add/", views_front.skill_add, name="skill_add"),
     path("<int:pk>/skill/remove/", views_front.skill_remove, name="skill_remove"),
+
+    # --- Должности ---
+    path("positions/create/", views_front.position_create_front, name="position_create"),
+    path("positions/<int:pos_id>/update/", views_front.position_update_front, name="position_update"),
+    path("<int:emp_id>/set-position/", views_front.employee_set_position_front, name="employee_set_position"),
+    path("me/set-position/", views_front.employee_set_position_me_front, name="employee_set_position_me"),
 ]
