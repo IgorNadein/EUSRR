@@ -46,15 +46,18 @@
 # * `extract_results` — вытаскивает `results` из пагинированного ответа DRF или возвращает список как есть.
 
 import itertools
+
 import pytest
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Permission
-from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
+from employees.models import (
+    Department,
+    DepartmentPermission,
+    DepartmentRole,
+    EmployeeDepartment,
+)
 from rest_framework import status
 from rest_framework.test import APIClient
-
-from employees.models import Department, EmployeeDepartment, DepartmentRole
 
 pytestmark = pytest.mark.django_db
 
@@ -98,15 +101,10 @@ def make_user(
     return u
 
 
-def perm_for_department(codename: str) -> Permission:
-    """
-    Безопасно получаем/создаём Permission именно для employees.Department.
-    """
-    ct = ContentType.objects.get_for_model(Department)
-    p, _ = Permission.objects.get_or_create(
-        content_type=ct,
-        codename=codename,
-        defaults={"name": codename},
+def perm_for_department(code: str) -> DepartmentPermission:
+    """Безопасно получаем/создаём скоуп-право отдела по коду."""
+    p, _ = DepartmentPermission.objects.get_or_create(
+        code=code, defaults={"name": code}
     )
     return p
 
@@ -116,7 +114,7 @@ def make_role(
 ) -> DepartmentRole:
     r = DepartmentRole.objects.create(department=dept, name=name)
     if codes:
-        r.permissions.add(*[perm_for_department(c) for c in codes])
+        r.scoped_permissions.add(*[perm_for_department(c) for c in codes])
     return r
 
 
@@ -175,7 +173,6 @@ def test_search_and_ordering(api_client: APIClient):
     resp = api_client.get(base, {"ordering": "name"})
     names = [d["name"] for d in extract_results(resp.json())]
     assert names == ["Alpha", "Beta", "Gamma"]
-
 
 
 # ---------- tests: employees_count annotation ----------

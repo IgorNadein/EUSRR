@@ -1,4 +1,5 @@
 # backend\employees\models.py
+from common.emails import send_templated_mail
 from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
@@ -8,8 +9,7 @@ from django.utils.crypto import get_random_string
 from phonenumber_field.modelfields import PhoneNumberField
 from simple_history.models import HistoricalRecords
 
-from common.emails import send_templated_mail
-from .constants import ACTION_CHOICES, ACTION_DISMISSED, GENDER_CHOICES
+from .constants import ACTION_CHOICES, ACTION_DISMISSED, GENDER_CHOICES, DeptPerm
 
 
 class DateRangeMixin(models.Model):
@@ -406,6 +406,14 @@ class Department(models.Model):
         return employees
 
 
+class DepartmentPermission(models.Model):
+    code = models.CharField(max_length=64, choices=DeptPerm.CHOICES, unique=True)
+    name = models.CharField(max_length=150)
+
+    def __str__(self):
+        return self.name or self.code
+
+
 class DepartmentRole(models.Model):
     """Роль внутри КОНКРЕТНОГО отдела, с правами, заданными начальником отдела."""
 
@@ -413,12 +421,15 @@ class DepartmentRole(models.Model):
         Department, on_delete=models.CASCADE, related_name="roles"
     )
     name = models.CharField(max_length=150)
-    permissions = models.ManyToManyField(Permission, blank=True)
+    scoped_permissions = models.ManyToManyField(
+        DepartmentPermission, blank=True, related_name="roles"
+    )
 
     class Meta:
         verbose_name = "Роль в отделе"
         verbose_name_plural = "Роли в отделе"
         unique_together = ("department", "name")
+        ordering = ("name", "department", "id")
 
     def __str__(self):
         return f"{self.department}: {self.name}"
@@ -447,12 +458,14 @@ class EmployeeDepartment(DateRangeMixin, models.Model):
         verbose_name_plural = "Принадлежности к отделам"
         constraints = [
             models.UniqueConstraint(
-                fields=["employee", "department"], name="uniq_employee_department"
-            )
+                fields=["department_id", "employee_id"],
+                name="uniq_employee_per_department",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
         ]
         indexes = [
-            models.Index(fields=["department", "is_active"]),
-            models.Index(fields=["employee", "is_active"]),
+            models.Index(fields=["department_id", "is_active", "employee_id"]),
+            models.Index(fields=["employee_id", "department_id"]),
         ]
 
     def __str__(self):

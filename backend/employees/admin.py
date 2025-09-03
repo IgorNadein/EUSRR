@@ -255,8 +255,7 @@ class DepartmentRoleAdmin(admin.ModelAdmin):
     list_filter = ("department",)
     search_fields = ("name", "department__name")
     autocomplete_fields = ("department",)
-    filter_horizontal = ("permissions",)
-
+    filter_horizontal = ("scoped_permissions",)
 
 @admin.register(EmployeeDepartment)
 class EmployeeDepartmentAdmin(admin.ModelAdmin):

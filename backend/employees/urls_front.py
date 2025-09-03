@@ -19,7 +19,7 @@ urlpatterns = [
         name="department_add",
     ),
     path(
-        "departments/<int:dept_id>/members/<int:employee_id>/role/",
+        "departments/<int:pk>/roles/edit/",
         views_front.edit_department_role,
         name="edit_department_role",
     ),

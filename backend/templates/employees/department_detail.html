@@ -59,71 +59,8 @@
 
       {# ===== Управление отделом (для staff/главы) ===== #}
       {% if user.is_staff or dept.head and dept.head.id == user.id %}
-        <div class="feed-card mb-4">
-          <div class="feed-hd">
-            <i class="bi-gear"></i>
-            <div class="feed-meta">
-              <div class="feed-author">Управление отделом</div>
-              <div class="feed-sub">Название, описание и руководитель</div>
-            </div>
-          </div>
-          <div class="feed-body">
-            <div class="row g-3">
+        {% include "employees/_department_controls.html" with dept=dept edit_form=edit_form head_choices=head_choices %}
 
-              {# Редактирование name/description -> /employees/departments/<id>/edit/ #}
-              <div class="col-12 col-lg-6">
-                <form method="post" action="{% url 'employees:department_edit' dept.id %}">
-                  {% csrf_token %}
-                  <div class="mb-2">
-                    <label class="form-label">Название</label>
-                    <input name="name" class="form-control" value="{{ dept.name|default_if_none:'' }}" required>
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label">Описание</label>
-                    <textarea name="description" class="form-control" rows="3">{{ dept.description|default_if_none:'' }}</textarea>
-                  </div>
-                  <button type="submit" class="btn btn-primary btn-sm">
-                    <i class="bi-check2 me-1"></i>Сохранить
-                  </button>
-                </form>
-              </div>
-
-              {# Назначение/снятие руководителя -> /employees/departments/<id>/set-head/ #}
-              <div class="col-12 col-lg-6">
-                <form method="post" action="{% url 'employees:department_set_head' dept.id %}">
-                  {% csrf_token %}
-                  <label class="form-label">Руководитель</label>
-                  <select class="form-select" name="head_id">
-                    <option value="">— Снять руководителя —</option>
-                    {# Берём участников из links; поддерживаем и dict, и id #}
-                    {% for link in links %}
-                      {% with emp=link.employee %}
-                        {% if emp %}
-                          {% with eid=emp.id|default:emp %}
-                            <option value="{{ eid }}"
-                                    {% if dept.head and dept.head.id == eid %}selected{% endif %}>
-                              {% if emp.last_name %}
-                                {{ emp.last_name }}{% if emp.first_name %} {{ emp.first_name }}{% endif %}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
-                              {% else %}
-                                Сотрудник #{{ eid }}
-                              {% endif %}
-                            </option>
-                          {% endwith %}
-                        {% endif %}
-                      {% endwith %}
-                    {% endfor %}
-                  </select>
-                  <div class="mt-2">
-                    <button type="submit" class="btn btn-outline-primary btn-sm">
-                      <i class="bi-person-check me-1"></i>Обновить руководителя
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-            </div>
-          </div>
-        </div>
       {% endif %}
 
       {# ===== Команда отдела (только сотрудники с назначённой ролью) ===== #}

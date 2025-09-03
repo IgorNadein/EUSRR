@@ -6,7 +6,7 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.files.base import ContentFile
-from employees.constants import ACTION_CHOICES
+from employees.constants import ACTION_CHOICES, DeptPerm
 from employees.models import (
     Department,
     DepartmentRole,
@@ -14,7 +14,9 @@ from employees.models import (
     EmployeeDepartment,
     Position,
     Skill,
+    DepartmentPermission,
 )
+
 from PIL import Image
 from rest_framework import serializers
 
@@ -371,8 +373,38 @@ class EmployeeSerializer(serializers.ModelSerializer):
         }
 
 
+class EmployeeBriefSerializer(serializers.ModelSerializer):
+    display_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Employee
+        fields = (
+            "id",
+            "first_name",
+            "last_name",
+            "patronymic",
+            "email",
+            "phone_number",
+            "display_name",
+        )
+
+    def get_display_name(self, obj) -> str:
+        """
+        Читабельное имя сотрудника: full name -> email -> phone -> 'Сотрудник #id'
+        """
+        parts = [obj.last_name or "", obj.first_name or "", obj.patronymic or ""]
+        fio = " ".join(p.strip() for p in parts if p)
+        if fio:
+            return fio
+        if getattr(obj, "email", None):
+            return obj.email
+        if getattr(obj, "phone_number", None):
+            return obj.phone_number
+        return f"Сотрудник #{obj.id}"
+
+
 class DepartmentSerializer(serializers.ModelSerializer):
-    head = EmployeeSerializer(read_only=True)
+    head = EmployeeBriefSerializer(read_only=True)
     head_id = serializers.PrimaryKeyRelatedField(
         source="head",
         queryset=Employee.objects.all(),
@@ -388,25 +420,19 @@ class DepartmentSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
-            "head",
-            "head_id",
-            "head_appointed_at",
-            "created_at",
+            "head",  # nested read
+            "head_id",  # write
             "employees_count",
         )
 
-    # head_appointed_at и created_at только для чтения
-    read_only_fields = ("head_appointed_at", "created_at")
-
-    def validate_head_id(self, value: Employee | None):
-        if value and not value.is_actually_active:
-            raise serializers.ValidationError(
-                "Назначать можно только реально активного сотрудника"
-            )
-        return value
-
 
 class EmployeeListSerializer(serializers.ModelSerializer):
+    """
+    Списочное представление сотрудника в /employees/ (листинги, выборы и т.п.).
+    Добавляет поле display_name по тем же правилам, что и в кратком сериализаторе.
+    """
+
+    display_name = serializers.SerializerMethodField()
     email = serializers.EmailField(read_only=True)
     phone_number = serializers.CharField(read_only=True)
     avatar = Base64ImageField(read_only=True)
@@ -430,6 +456,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "departments",
             "skills",
             "created_at",
+            "display_name",
         )
 
     def get_departments(self, obj):
@@ -459,6 +486,18 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         nm = f"{ln} {fn} {pt}".strip()
         return nm
 
+    def get_display_name(self, obj: Employee) -> str:
+        """См. логику в EmployeeBriefSerializer.get_display_name()."""
+        parts = [obj.last_name or "", obj.first_name or "", obj.patronymic or ""]
+        fio = " ".join(p.strip() for p in parts if p).strip()
+        if fio:
+            return fio
+        if getattr(obj, "email", None):
+            return obj.email
+        if getattr(obj, "phone_number", None):
+            return obj.phone_number
+        return f"Сотрудник #{obj.id}"
+
 
 class PositionSerializer(serializers.ModelSerializer):
     # для записи — массив id групп, для чтения — подробная инфа
@@ -476,23 +515,92 @@ class PositionSerializer(serializers.ModelSerializer):
 
 
 class DepartmentRoleSerializer(serializers.ModelSerializer):
-    permissions = serializers.PrimaryKeyRelatedField(
-        queryset=Permission.objects.all(), many=True, required=False
+    # Новая схема: скоуп-права внутри отдела
+    scoped_permissions = serializers.PrimaryKeyRelatedField(
+        queryset=DepartmentPermission.objects.all(), many=True, required=False
     )
+    scoped_permission_codes = serializers.ListField(
+        child=serializers.CharField(), required=False, write_only=True
+    )
+
+    # Backward-compat поля (read-only), чтобы фронт/старые тесты не ломались
+    permissions = serializers.SerializerMethodField(read_only=True)
     permissions_verbose = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DepartmentRole
-        fields = ["id", "department", "name", "permissions", "permissions_verbose"]
+        fields = (
+            "id",
+            "department",
+            "name",
+            # новые write-поля
+            "scoped_permissions",
+            "scoped_permission_codes",
+            # совместимость (read-only зеркала)
+            "permissions",
+            "permissions_verbose",
+        )
+        read_only_fields = ("id",)
 
-    def get_permissions_verbose(self, obj):
+    # Поддержка записи codes вместо ids
+    def _apply_codes_if_present(self, instance: DepartmentRole, validated_data: dict):
+        codes = validated_data.pop("scoped_permission_codes", None)
+        if codes is not None:
+            qs = DepartmentPermission.objects.filter(code__in=codes)
+            if qs.count() != len(set(codes)):
+                raise serializers.ValidationError(
+                    {"scoped_permission_codes": "Некоторые коды не существуют"}
+                )
+            instance.scoped_permissions.set(list(qs))
+
+    def create(self, validated_data):
+        # вытаскиваем write-only/внешние поля до super().create()
+        codes = validated_data.pop("scoped_permission_codes", None)
+        perms = validated_data.pop("scoped_permissions", None)
+
+        role = super().create(validated_data)
+
+        if perms is not None:
+            role.scoped_permissions.set(perms)
+
+        if codes is not None:
+            qs = DepartmentPermission.objects.filter(code__in=codes)
+            if qs.count() != len(set(codes)):
+                raise serializers.ValidationError(
+                    {"scoped_permission_codes": "Некоторые коды не существуют"}
+                )
+            role.scoped_permissions.set(list(qs))
+
+        return role
+
+    def update(self, instance, validated_data):
+        # аналогично: вынимаем до super().update()
+        codes = validated_data.pop("scoped_permission_codes", None)
+        perms = validated_data.pop("scoped_permissions", None)
+
+        role = super().update(instance, validated_data)
+
+        if perms is not None:
+            role.scoped_permissions.set(perms)
+
+        if codes is not None:
+            qs = DepartmentPermission.objects.filter(code__in=codes)
+            if qs.count() != len(set(codes)):
+                raise serializers.ValidationError(
+                    {"scoped_permission_codes": "Некоторые коды не существуют"}
+                )
+            role.scoped_permissions.set(list(qs))
+
+        return role
+
+    # Backward-compat read
+    def get_permissions(self, obj: DepartmentRole):
+        return list(obj.scoped_permissions.values_list("id", flat=True))
+
+    def get_permissions_verbose(self, obj: DepartmentRole):
         return [
-            {
-                "id": p.id,
-                "codename": f"{p.content_type.app_label}.{p.codename}",
-                "name": p.name,
-            }
-            for p in obj.permissions.select_related("content_type").all()
+            {"id": p.id, "code": p.code, "name": p.name}
+            for p in obj.scoped_permissions.order_by("code").all()
         ]
 
 
@@ -518,3 +626,39 @@ class GroupSerializer(serializers.ModelSerializer):
             }
             for p in qs
         ]
+
+
+# --- payload-сериалайзеры для кастомных действий ---
+
+
+class SetHeadInput(serializers.Serializer):
+    head_id = serializers.IntegerField(
+        allow_null=True, required=False
+    )  # None -> снять руководителя
+
+
+class SetMemberRoleInput(serializers.Serializer):
+    # поддерживаем алиасы: employee / role
+    employee_id = serializers.IntegerField(required=False)
+    role_id = serializers.IntegerField(allow_null=True, required=False)
+    employee = serializers.IntegerField(required=False)
+    role = serializers.IntegerField(allow_null=True, required=False)
+    is_active = serializers.BooleanField(required=False)  # 👈 новый флаг (опционально)
+
+    def validate(self, attrs):
+        emp = attrs.get("employee_id") or attrs.get("employee")
+        role = attrs.get("role_id") if "role_id" in attrs else attrs.get("role")
+        if emp is None:
+            raise serializers.ValidationError(
+                {"employee_id": "This field is required."}
+            )
+        attrs["employee_id"] = emp
+        attrs["role_id"] = role  # может быть None (снять роль)
+        # по умолчанию считаем активным, если поле не передали
+        if "is_active" not in attrs:
+            attrs["is_active"] = True
+        return attrs
+
+
+class RemoveMemberInput(serializers.Serializer):
+    employee_id = serializers.IntegerField()

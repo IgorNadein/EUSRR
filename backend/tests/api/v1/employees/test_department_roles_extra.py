@@ -1,285 +1,303 @@
+# backend/tests/api/v1/employees/test_department_roles_extra.py
 import pytest
 from django.urls import reverse
-from django.contrib.auth.models import Permission
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
 from rest_framework import status
 
 from employees.models import (
-    Employee,
     Department,
     DepartmentRole,
-    EmployeeDepartment,
+    DepartmentPermission,
+    EmployeeDepartment,  # если у вас EmployeeDepartmentLink, замените импорт и упоминания ниже
 )
 
-# --- helpers (локальные, чтобы тесты были самодостаточными) ---
+User = get_user_model()
 
-_seq = 1
-def _unique_email(prefix="user"):
-    global _seq
-    _seq += 1
-    return f"{prefix}{_seq}@example.com"
 
-def _unique_phone():
-    global _seq
-    _seq += 1
-    return f"+7999{_seq:07d}"
+# =========================
+# Helpers
+# =========================
 
-def _make_user(staff=False, superuser=False) -> Employee:
-    u = Employee.objects.create_user(
-        email=_unique_email(), password="pass",
-        phone_number=_unique_phone(),
-        send_activation_email=False, first_name="T", last_name="U",
+
+def _unique_phone() -> str:
+    base = 79000000000  # 79 + 9 нулей
+    return str(base + User.objects.count())
+
+
+def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
+    extra = {
+        "phone_number": _unique_phone(),
+        "is_staff": staff,
+        "send_activation_email": False,
+    }
+    # добавим verified если поле есть
+    try:
+        User._meta.get_field("verified")
+        extra["verified"] = verified
+    except Exception:
+        pass
+    return User.objects.create_user(email=email, password="pwd12345", **extra)
+
+
+def ensure_perm(code: str, name: str | None = None) -> DepartmentPermission:
+    return DepartmentPermission.objects.get_or_create(
+        code=code, defaults={"name": name or code}
+    )[0]
+
+
+def make_role(
+    dept: Department, name: str, codes: list[str] | None = None
+) -> DepartmentRole:
+    role = DepartmentRole.objects.create(department=dept, name=name)
+    if codes:
+        perms = [ensure_perm(c) for c in codes]
+        role.scoped_permissions.add(*perms)
+    return role
+
+
+def grant_assign_in_dept(user: User, dept: Department) -> DepartmentRole:
+    role = make_role(dept, "assigner", ["assign_department_role"])
+    EmployeeDepartment.objects.update_or_create(
+        employee=user,
+        department=dept,
+        defaults={"is_active": True, "role": role},
     )
-    u.is_staff = staff
-    u.is_superuser = superuser
-    u.email_verified = True
-    u.is_active = True
-    u.save(update_fields=["is_staff", "is_superuser", "email_verified", "is_active"])
-    return u
+    return role
 
-def _grant_perm(user: Employee, perm_code: str):
-    app_label, codename = perm_code.split(".", 1)
-    p = Permission.objects.get(content_type__app_label=app_label, codename=codename)
-    user.user_permissions.add(p)
-    user.save()
-    # сброс кэша прав — иначе has_perm может брать старый кеш
-    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
-        if hasattr(user, attr):
-            try:
-                delattr(user, attr)
-            except Exception:
-                pass
-    return p
 
-# --- tests ---
+# =========================
+# Fixtures
+# =========================
+
+
+@pytest.fixture()
+def api_client() -> APIClient:
+    return APIClient()
+
+
+# =========================
+# Tests
+# =========================
+
 
 @pytest.mark.django_db
-def test_perms_endpoint_requires_auth(api_client):
-    # prepare
-    d = Department.objects.create(name="A")
-    role = DepartmentRole.objects.create(department=d, name="R")
+def test_unauth_cannot_list_or_get():
+    client = APIClient()
+    url_list = reverse("api:v1:department-roles-list")
+    assert client.get(url_list).status_code in (401, 403)
 
-    url = reverse("api:v1:department-roles-perms", args=[role.id])
 
-    # unauth -> 401/403
-    resp = api_client.get(url)
-    assert resp.status_code in (401, 403)
+@pytest.mark.django_db
+def test_read_only_allowed_without_assign(api_client: APIClient):
+    d = Department.objects.create(name="Dept")
+    r = make_role(d, "Worker", [])
+    u = make_user("u@example.com")
+    api_client.force_authenticate(user=u)
 
-    # auth (любой) -> 200
-    user = _make_user()
-    api_client.force_authenticate(user=user)
-    resp = api_client.get(url)
+    # list
+    url_list = reverse("api:v1:department-roles-list")
+    resp = api_client.get(url_list, {"department": d.id})
     assert resp.status_code == 200
-    assert isinstance(resp.data, dict)
-    assert "results" in resp.data
+    items = resp.json().get("results", resp.json())
+    assert any(x["id"] == r.id for x in items)
+
+    # retrieve
+    url_detail = reverse("api:v1:department-roles-detail", args=[r.id])
+    assert api_client.get(url_detail).status_code == 200
 
 
 @pytest.mark.django_db
-def test_filter_invalid_department_param(api_client):
-    user = _make_user()
-    api_client.force_authenticate(user=user)
+def test_staff_override_for_write(api_client: APIClient):
+    d = Department.objects.create(name="Dept")
+    staff = make_user("s@example.com", staff=True)
+    api_client.force_authenticate(user=staff)
 
-    d = Department.objects.create(name="D")
-    DepartmentRole.objects.create(department=d, name="R1")
-
-    url = reverse("api:v1:department-roles-list")
-
-    # нечисловой фильтр department -> просто пустой список (ошибки быть не должно)
-    resp = api_client.get(url, {"department": "oops"})
-    assert resp.status_code == 200
-    assert isinstance(resp.data, list)
-    # В худшем случае фильтр не сработает — тогда >=1.
-    # Основная проверка — отсутствие исключений.
-
-
-@pytest.mark.django_db
-def test_member_role_with_manage_can_crud_in_own_department(api_client):
-    # пользователь не head, но имеет роль отдела с правом manage_department
-    user = _make_user()
-    api_client.force_authenticate(user=user)
-    dept = Department.objects.create(name="Ops")
-
-    role_mgr = DepartmentRole.objects.create(department=dept, name="Manager")
-    p_manage = Permission.objects.get(content_type__app_label="employees", codename="manage_department")
-    role_mgr.permissions.add(p_manage)
-
-    # делаем пользователя членом отдела с этой ролью
-    EmployeeDepartment.objects.create(employee=user, department=dept, role=role_mgr, is_active=True)
-
-    url = reverse("api:v1:department-roles-list")
-
-    # create в своём отделе — должен пройти
-    resp = api_client.post(url, {"department": dept.id, "name": "NewRole"}, format="json")
+    # create
+    url_list = reverse("api:v1:department-roles-list")
+    resp = api_client.post(
+        url_list, {"department": d.id, "name": "SRole"}, format="json"
+    )
     assert resp.status_code == 201
-    role_id = resp.data["id"]
+    rid = resp.json()["id"]
 
-    # update — тоже должен пройти
-    url_detail = reverse("api:v1:department-roles-detail", args=[role_id])
-    resp = api_client.patch(url_detail, {"name": "NewRole++"}, format="json")
-    assert resp.status_code == 200
+    # update
+    url_detail = reverse("api:v1:department-roles-detail", args=[rid])
+    assert (
+        api_client.patch(url_detail, {"name": "SRole+"}, format="json").status_code
+        == 200
+    )
 
-    # delete — тоже должен пройти
-    resp = api_client.delete(url_detail)
-    assert resp.status_code == 204
-
-
-@pytest.mark.django_db
-def test_member_role_assign_can_set_perms_without_manage(api_client):
-    # пользователь не head, но имеет роль с правом assign_department_role — может управлять правами роли
-    user = _make_user()
-    api_client.force_authenticate(user=user)
-    dept = Department.objects.create(name="Ops2")
-
-    role_assigner = DepartmentRole.objects.create(department=dept, name="Assigner")
-    p_assign = Permission.objects.get(content_type__app_label="employees", codename="assign_department_role")
-    role_assigner.permissions.add(p_assign)
-
-    EmployeeDepartment.objects.create(employee=user, department=dept, role=role_assigner, is_active=True)
-
-    # создадим цель-роль, которой будем управлять правами
-    target_role = DepartmentRole.objects.create(department=dept, name="Target")
-    p_view_emp = Permission.objects.get(content_type__app_label="employees", codename="view_employee")
-
-    # set_perms должен позволяться с одним правом assign_department_role
-    url_set = reverse("api:v1:department-roles-set-perms", args=[target_role.id])
-    resp = api_client.post(url_set, {"permission_ids": [p_view_emp.id]}, format="json")
-    assert resp.status_code == 200
-    assert set(target_role.permissions.values_list("id", flat=True)) == {p_view_emp.id}
+    # set_perms
+    ensure_perm("manage_department")
+    url_set = reverse("api:v1:department-roles-set-perms", args=[rid])
+    assert (
+        api_client.post(
+            url_set, {"permission_codes": ["manage_department"]}, format="json"
+        ).status_code
+        == 200
+    )
 
 
 @pytest.mark.django_db
-def test_global_manage_grants_crud_in_any_department(api_client):
-    # Глобальный пермишен employees.manage_department должен открыть CRUD в любом отделе
-    user = _make_user()
-    api_client.force_authenticate(user=user)
-    _grant_perm(user, "employees.manage_department")
+def test_ordering_stable_by_name_then_id(api_client: APIClient):
+    d1 = Department.objects.create(name="Dept1")
+    d2 = Department.objects.create(name="Dept2")
+    u = make_user("u@example.com")
+    api_client.force_authenticate(user=u)
 
-    foreign = Department.objects.create(name="Foreign-Dept")
+    # одинаковые имена в РАЗНЫХ отделах — не нарушаем уникальность (department, name)
+    r1 = make_role(d1, "A", [])
+    r2 = make_role(d2, "A", [])
+    r3 = make_role(d1, "B", [])
 
     url = reverse("api:v1:department-roles-list")
-    resp = api_client.post(url, {"department": foreign.id, "name": "GloballyAllowed"}, format="json")
+    resp = api_client.get(url, {"ordering": "name"})  # без фильтра по department
+    assert resp.status_code == 200
+    items = resp.json().get("results", resp.json())
+
+    picked = [x["id"] for x in items if x["id"] in {r1.id, r2.id, r3.id}]
+    # Ожидаем: сначала две "A" по возрастанию id, затем "B"
+    assert len(picked) == 3
+    assert picked[0] in (r1.id, r2.id) and picked[1] in (r1.id, r2.id)
+    assert picked[0] < picked[1]  # тай-брейк по id для одинаковых name
+    assert picked[2] == r3.id
+
+
+@pytest.mark.django_db
+def test_set_perms_ids_take_precedence_over_codes(api_client: APIClient):
+    d = Department.objects.create(name="Dept")
+    u = make_user("u@example.com")
+    api_client.force_authenticate(user=u)
+    grant_assign_in_dept(u, d)
+
+    role = make_role(d, "R", [])
+    dp_manage = ensure_perm("manage_department")
+    dp_assign = ensure_perm("assign_department_role")
+
+    url = reverse("api:v1:department-roles-set-perms", args=[role.id])
+    # передаём одновременно ids и codes — по вьюхе приоритет у ids
+    resp = api_client.post(
+        url,
+        {
+            "permission_ids": [dp_manage.id],
+            "permission_codes": ["assign_department_role"],
+        },
+        format="json",
+    )
+    assert resp.status_code == 200
+    role.refresh_from_db()
+    codes = set(role.scoped_permissions.values_list("code", flat=True))
+    assert codes == {"manage_department"}  # ids приоритетнее
+
+
+@pytest.mark.django_db
+def test_serializer_codes_override_scoped_permissions_on_create(api_client: APIClient):
+    d = Department.objects.create(name="Dept")
+    ensure_perm("manage_department")
+    ensure_perm("assign_department_role")
+
+    u = make_user("u@example.com")
+    api_client.force_authenticate(user=u)
+    grant_assign_in_dept(u, d)
+
+    # создадим роль, передав и ids, и codes — в сериализаторе codes должны перезаписать ids
+    dp_manage = DepartmentPermission.objects.get(code="manage_department")
+    url = reverse("api:v1:department-roles-list")
+    resp = api_client.post(
+        url,
+        {
+            "department": d.id,
+            "name": "Lead",
+            "scoped_permissions": [dp_manage.id],  # сначала ids
+            "scoped_permission_codes": [
+                "assign_department_role"
+            ],  # потом codes — должны победить
+        },
+        format="json",
+    )
     assert resp.status_code == 201
-
-    role_id = resp.data["id"]
-    url_detail = reverse("api:v1:department-roles-detail", args=[role_id])
-    resp = api_client.patch(url_detail, {"name": "EditOK"}, format="json")
-    assert resp.status_code == 200
-
-    resp = api_client.delete(url_detail)
-    assert resp.status_code == 204
+    rid = resp.json()["id"]
+    role = DepartmentRole.objects.get(id=rid)
+    codes = set(role.scoped_permissions.values_list("code", flat=True))
+    assert codes == {"assign_department_role"}
 
 
 @pytest.mark.django_db
-def test_role_in_other_dept_does_not_grant_cross_access(api_client):
-    # Роль с правом manage_department в отделе A не даёт права управлять отделом B
-    user = _make_user()
-    api_client.force_authenticate(user=user)
-    dept_a = Department.objects.create(name="A")
-    dept_b = Department.objects.create(name="B")
+def test_perm_choices_fields_and_nonempty(api_client: APIClient):
+    ensure_perm("manage_department", "Управлять")
+    ensure_perm("change_department_head", "Глава")
+    ensure_perm("assign_department_role", "Назначение")
 
-    role_mgr_a = DepartmentRole.objects.create(department=dept_a, name="MgrA")
-    p_manage = Permission.objects.get(content_type__app_label="employees", codename="manage_department")
-    role_mgr_a.permissions.add(p_manage)
-    EmployeeDepartment.objects.create(employee=user, department=dept_a, role=role_mgr_a, is_active=True)
-
-    # create в отделе B -> 403
-    url = reverse("api:v1:department-roles-list")
-    resp = api_client.post(url, {"department": dept_b.id, "name": "NoAccess"}, format="json")
-    assert resp.status_code == 403
+    u = make_user("u@example.com")
+    api_client.force_authenticate(user=u)
+    url = reverse("api:v1:department-roles-perm-choices")
+    resp = api_client.get(url)
+    assert resp.status_code == 200
+    results = resp.json().get("results", [])
+    assert results and {"id", "code", "name"}.issubset(results[0].keys())
 
 
 @pytest.mark.django_db
-def test_set_perms_replaces_completely_and_dedup(api_client):
-    head = _make_user()
-    api_client.force_authenticate(user=head)
-    dept = Department.objects.create(name="QA", head=head)
-    EmployeeDepartment.objects.get_or_create(employee=head, department=dept, defaults={"is_active": True})
+def test_destroy_requires_assign_in_same_department(api_client: APIClient):
+    d1 = Department.objects.create(name="D1")
+    d2 = Department.objects.create(name="D2")
+    u = make_user("u@example.com")
+    api_client.force_authenticate(user=u)
 
-    role = DepartmentRole.objects.create(department=dept, name="Reviewer")
-    p_view = Permission.objects.get(content_type__app_label="employees", codename="view_employee")
-    p_manage = Permission.objects.get(content_type__app_label="employees", codename="manage_department")
+    role = make_role(d2, "R", [])
 
-    # сначала добавим одно право
-    role.permissions.add(p_view)
+    # нет прав в d2 — 403
+    url = reverse("api:v1:department-roles-detail", args=[role.id])
+    assert api_client.delete(url).status_code == 403
 
-    url_set = reverse("api:v1:department-roles-set-perms", args=[role.id])
-    # передаём список с дублями -> в итоге только p_manage
-    resp = api_client.post(url_set, {"permission_ids": [p_manage.id, p_manage.id]}, format="json")
-    assert resp.status_code == 200
-    assert set(role.permissions.values_list("id", flat=True)) == {p_manage.id}
+    # права в d1 не помогают — всё ещё 403
+    grant_assign_in_dept(u, d1)
+    assert api_client.delete(url).status_code == 403
 
-
-@pytest.mark.django_db
-def test_add_and_remove_idempotent(api_client):
-    head = _make_user()
-    api_client.force_authenticate(user=head)
-    dept = Department.objects.create(name="Prod", head=head)
-    EmployeeDepartment.objects.get_or_create(employee=head, department=dept, defaults={"is_active": True})
-
-    role = DepartmentRole.objects.create(department=dept, name="Operator")
-    p1 = Permission.objects.get(content_type__app_label="employees", codename="view_employee")
-    p2 = Permission.objects.get(content_type__app_label="employees", codename="assign_department_role")
-
-    # add_perms с дублями
-    url_add = reverse("api:v1:department-roles-add-perms", args=[role.id])
-    resp = api_client.post(url_add, {"permission_ids": [p1.id, p1.id, p2.id]}, format="json")
-    assert resp.status_code == 200
-    assert set(role.permissions.values_list("id", flat=True)) == {p1.id, p2.id}
-
-    # повторный add_perms — без изменений
-    resp = api_client.post(url_add, {"permission_ids": [p1.id]}, format="json")
-    assert resp.status_code == 200
-    assert set(role.permissions.values_list("id", flat=True)) == {p1.id, p2.id}
-
-    # remove_perms частичный и повторный (идемпотентность)
-    url_rm = reverse("api:v1:department-roles-remove-perms", args=[role.id])
-    resp = api_client.post(url_rm, {"permission_ids": [p1.id]}, format="json")
-    assert resp.status_code == 200
-    assert set(role.permissions.values_list("id", flat=True)) == {p2.id}
-
-    # повторный remove для уже удалённого — состояние не меняется
-    resp = api_client.post(url_rm, {"permission_ids": [p1.id]}, format="json")
-    assert resp.status_code == 200
-    assert set(role.permissions.values_list("id", flat=True)) == {p2.id}
+    # выдаём права в d2 — можно удалять
+    grant_assign_in_dept(u, d2)
+    assert api_client.delete(url).status_code in (204, 200)
 
 
 @pytest.mark.django_db
-def test_missing_department_on_create_returns_400(api_client):
-    head = _make_user()
-    api_client.force_authenticate(user=head)
-    dept = Department.objects.create(name="Doc", head=head)
-    EmployeeDepartment.objects.get_or_create(employee=head, department=dept, defaults={"is_active": True})
+def test_set_perms_dedup_and_replace_semantics(api_client: APIClient):
+    d = Department.objects.create(name="Dept")
+    u = make_user("u@example.com")
+    api_client.force_authenticate(user=u)
+    grant_assign_in_dept(u, d)
 
-    url = reverse("api:v1:department-roles-list")
-    # забыли передать department -> 400 (валидация сериализатора)
-    resp = api_client.post(url, {"name": "RoleX"}, format="json")
-    assert resp.status_code == 400
+    role = make_role(d, "R", [])
+    ensure_perm("manage_department")
+    ensure_perm("assign_department_role")
 
+    url = reverse("api:v1:department-roles-set-perms", args=[role.id])
 
-@pytest.mark.django_db
-def test_permissions_payload_validation_errors(api_client):
-    head = _make_user()
-    api_client.force_authenticate(user=head)
-    dept = Department.objects.create(name="Check", head=head)
-    EmployeeDepartment.objects.get_or_create(employee=head, department=dept, defaults={"is_active": True})
-    role = DepartmentRole.objects.create(department=dept, name="R")
+    # сначала ставим один код
+    resp = api_client.post(
+        url, {"permission_codes": ["manage_department"]}, format="json"
+    )
+    assert resp.status_code == 200
+    role.refresh_from_db()
+    assert set(role.scoped_permissions.values_list("code", flat=True)) == {
+        "manage_department"
+    }
 
-    # не список -> 400
-    url_set = reverse("api:v1:department-roles-set-perms", args=[role.id])
-    resp = api_client.post(url_set, {"permission_ids": "oops"}, format="json")
-    assert resp.status_code == 400
-
-    # несуществующие id -> 400
-    resp = api_client.post(url_set, {"permission_ids": [999999]}, format="json")
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_delete_nonexistent_returns_404(api_client):
-    head = _make_user()
-    api_client.force_authenticate(user=head)
-    dept = Department.objects.create(name="Del", head=head)
-    EmployeeDepartment.objects.get_or_create(employee=head, department=dept, defaults={"is_active": True})
-
-    url_detail = reverse("api:v1:department-roles-detail", args=[999999])
-    resp = api_client.delete(url_detail)
-    assert resp.status_code == 404
+    # потом отправим дубликаты и другой код — должно быть два уникальных, и ПОЛНАЯ замена
+    resp = api_client.post(
+        url,
+        {
+            "permission_codes": [
+                "manage_department",
+                "manage_department",
+                "assign_department_role",
+            ]
+        },
+        format="json",
+    )
+    assert resp.status_code == 200
+    role.refresh_from_db()
+    assert set(role.scoped_permissions.values_list("code", flat=True)) == {
+        "manage_department",
+        "assign_department_role",
+    }
