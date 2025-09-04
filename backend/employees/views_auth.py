@@ -14,7 +14,7 @@ from django.contrib.auth.views import \
 from django.contrib.auth.views import \
     PasswordResetView as DjangoPasswordResetView
 from django.shortcuts import redirect, render
-from django.urls import path, reverse
+from django.urls import reverse
 from django.utils.http import urlencode
 from django.views import View
 from django.views.decorators.http import require_http_methods

@@ -420,8 +420,8 @@ class DepartmentSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
-            "head",  # nested read
-            "head_id",  # write
+            "head",
+            "head_id",
             "employees_count",
         )
 
@@ -660,5 +660,42 @@ class SetMemberRoleInput(serializers.Serializer):
         return attrs
 
 
+class AddMemberInput(serializers.Serializer):
+    """
+    Входные данные для добавления сотрудника в отдел.
+    Роль НЕ назначается здесь (для этого есть set_member_role).
+    """
+
+    employee_id = serializers.IntegerField(required=False)
+    employee = serializers.IntegerField(required=False)
+
+    def validate(self, attrs):
+        emp = (
+            attrs.get("employee_id")
+            if "employee_id" in attrs
+            else attrs.get("employee")
+        )
+        if emp is None:
+            raise serializers.ValidationError(
+                {"employee_id": "This field is required."}
+            )
+        attrs["employee_id"] = emp
+        return attrs
+
+
 class RemoveMemberInput(serializers.Serializer):
-    employee_id = serializers.IntegerField()
+    """
+    Входные данные для удаления (деактивации) сотрудника из отдела.
+    """
+
+    employee_id = serializers.IntegerField(required=False)
+    employee = serializers.IntegerField(required=False)
+
+    def validate(self, attrs):
+        emp = attrs.get("employee_id", attrs.get("employee"))
+        if emp is None:
+            raise serializers.ValidationError(
+                {"employee_id": "This field is required."}
+            )
+        attrs["employee_id"] = emp
+        return attrs

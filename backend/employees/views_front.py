@@ -5,30 +5,21 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from api.client import get_api_client
 from api.decorators import require_api_auth
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.http import HttpRequest, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse, reverse_lazy
-from django.utils import timezone
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
-from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
-from .forms import (
-    DepartmentEditForm,
-    DepartmentForm,
-    DepartmentMemberRoleForm,
-    InviteToDepartmentForm,
-    SkillForm,
-)
-from .forms_front import DepartmentEditForm, SetHeadForm, SetMemberRoleForm
-from .models import Department, EmployeeDepartment, Skill
+
+from .forms_front import DepartmentEditForm, SetHeadForm
+
 
 # =========================
 #   Утилиты
@@ -68,20 +59,6 @@ def _extract_items(payload: Any):
     if isinstance(payload, list):
         return payload, len(payload), None, None
     return [], 0, None, None
-
-
-def _cleanup_payload(data: dict, keep_empty: set[str] = frozenset()) -> dict:
-    """
-    Убираем None и пустые строки, КРОМЕ ключей из keep_empty.
-    """
-    cleaned = {}
-    for k, v in data.items():
-        if v is None:
-            continue
-        if v == "" and k not in keep_empty:
-            continue
-        cleaned[k] = v
-    return cleaned
 
 
 def _extract_results(payload):
@@ -149,16 +126,15 @@ def _has_role(link):
 def employee_list(request):
     """
     Список сотрудников.
-    Ходит в /api/v1/employees/ c поддержкой поиска/сортировки/пагинации.
+    Если ?format=json — вернуть JSON (для автокомплита):
+      /employees/list/?format=json&q=...&exclude=1,2,3&limit=12
     """
     api = get_api_client(request)
 
     page = request.GET.get("page") or 1
     ordering = request.GET.get("o") or "last_name"
     q = (request.GET.get("q") or "").strip()
-    department = request.GET.get(
-        "department"
-    )  # опциональный фильтр по отделу (из detail отдела)
+    department = request.GET.get("department")
 
     params = {"page": page, "ordering": ordering}
     if q:
@@ -168,6 +144,8 @@ def employee_list(request):
 
     resp = api.get("v1/employees/", params=params)
     if not resp.ok:
+        if request.GET.get("format") == "json":
+            return JsonResponse({"results": [], "count": 0}, status=resp.status or 500)
         messages.error(request, f"Ошибка API ({resp.status})")
         return render(
             request,
@@ -177,6 +155,32 @@ def employee_list(request):
 
     payload = resp.json or {}
     items, count, next_url, prev_url = _extract_items(payload)
+
+    # JSON-ветка для автокомплита
+    if request.GET.get("format") == "json":
+        # exclude: "1,2,3"
+        raw_ex = (request.GET.get("exclude") or "").strip()
+        try:
+            ex_ids = {int(x) for x in raw_ex.split(",") if x.strip().isdigit()}
+        except Exception:
+            ex_ids = set()
+
+        try:
+            limit = int(request.GET.get("limit") or 12)
+        except Exception:
+            limit = 12
+
+        # отфильтруем и обрежем на стороне фронт-прокси
+        def _id(e):
+            try:
+                return int(e.get("id"))
+            except Exception:
+                return -1
+
+        items = [e for e in items if _id(e) not in ex_ids][:limit]
+        return JsonResponse({"results": items, "count": len(items)})
+
+    # HTML-ветка (как было)
     context = {
         "employees": items,
         "count": count,
@@ -465,23 +469,86 @@ def department_list(request):
 @require_api_auth
 def department_detail(request, pk: int):
     """
-    Тонкая вьюха: берёт агрегированный контекст у API и рендерит шаблон.
+    Страница отдела.
+
+    Тонкая фронт-вьюха: забирает агрегированный контекст у API
+    /api/v1/departments/{id}/ui-context/, дополняет его минимальными
+    метаданными для шаблона и рендерит страницу.
+
+    В контекст добавляются:
+      - members_exclude_ids: список id сотрудников, которых нельзя
+        предлагать в "Добавить участника" (те, кто уже в отделе + руководитель)
+      - can_manage / can_change_head / can_assign_roles: плоские флаги,
+        чтобы шаблонам не ходить в вложенный user_perms.
     """
     api = get_api_client(request)
     r = api.get(f"v1/departments/{pk}/ui-context/")
     if not r.ok:
-        messages.error(request, "Отдел не найден" if r.status == 404 else f"Ошибка API ({r.status})")
+        messages.error(
+            request,
+            "Отдел не найден" if r.status == 404 else f"Ошибка API ({r.status})",
+        )
         return redirect("employees:department_list")
 
-    ctx = r.json if isinstance(r.json, dict) else {}
-    # Для обратной совместимости с шаблоном продублируем флаги как плоские поля:
-    perms = ctx.get("user_perms") or {}
-    ctx.update({
-        "can_manage": perms.get("can_manage", False),
-        "can_change_head": perms.get("can_change_head", False),
-        "can_assign_roles": perms.get("can_assign_roles", False),
-    })
+    # r.json в нашем api-клиенте может быть полем или методом — поддержим оба варианта
+    try:
+        ctx = (
+            r.json
+            if isinstance(r.json, dict)
+            else (r.json() if callable(r.json) else {})
+        )
+    except Exception:
+        ctx = {}
+
+    if not isinstance(ctx, dict):
+        ctx = {}
+
+    perms = (
+        (ctx.get("user_perms") or {}) if isinstance(ctx.get("user_perms"), dict) else {}
+    )
+
+    # ——— метаданные для автодополнения «Добавить участника» ———
+    links = ctx.get("links") or []
+    exclude_ids: list[int] = []
+    for li in links:
+        emp = li.get("employee") if isinstance(li, dict) else None
+        if emp is None:
+            continue
+        # в агрегате employee может быть int (id) или объект
+        eid = emp.get("id") if isinstance(emp, dict) else emp
+        if eid:
+            try:
+                exclude_ids.append(int(eid))
+            except (TypeError, ValueError):
+                pass
+
+    # head тоже исключаем
+    dept = ctx.get("dept") or {}
+    head_id = dept.get("head_id") or (
+        (dept.get("head") or {}).get("id")
+        if isinstance(dept.get("head"), dict)
+        else None
+    )
+    if head_id:
+        try:
+            exclude_ids.append(int(head_id))
+        except (TypeError, ValueError):
+            pass
+
+    # уберём дубликаты, сохраняя порядок
+    seen = set()
+    exclude_ids = [x for x in exclude_ids if not (x in seen or seen.add(x))]
+
+    ctx.update(
+        {
+            "members_exclude_ids": exclude_ids,
+            "can_manage": bool(perms.get("can_manage")),
+            "can_change_head": bool(perms.get("can_change_head")),
+            "can_assign_roles": bool(perms.get("can_assign_roles")),
+        }
+    )
     return render(request, "employees/department_detail.html", ctx)
+
 
 # ---------- EDIT BASIC FIELDS ----------
 @require_api_auth
@@ -591,33 +658,85 @@ def set_member_role(request, dept_id: int, emp_id: int):
     )
 
 
-class StaffOnlyMixin(UserPassesTestMixin):
-    def test_func(self):
-        return self.request.user.is_staff
+@require_api_auth
+@require_http_methods(["POST"])
+def department_add_member(request, pk: int):
+    """
+    Прокси-вьюха: добавляет (активирует) сотрудника в отделе через API.
 
-    def handle_no_permission(self):
-        messages.error(self.request, "Недостаточно прав.")
-        return redirect("employees:department_list")
+    Ожидает:
+        POST form-data: employee_id
+
+    Поведение:
+        - Делает POST в /api/v1/departments/{id}/add_member/ c {"employee_id": <int>}.
+        - Сообщения об успехе/ошибке через django.contrib.messages.
+        - Редирект обратно на страницу отдела.
+    """
+    api = get_api_client(request)
+
+    raw = (request.POST.get("employee_id") or "").strip()
+    try:
+        employee_id = int(raw)
+    except (TypeError, ValueError):
+        messages.error(request, "Не выбран сотрудник.")
+        return redirect("employees:department_detail", pk=pk)
+
+    resp = api.post(
+        f"v1/departments/{pk}/add_member/", json={"employee_id": employee_id}
+    )
+    if resp.ok:
+        messages.success(request, "Сотрудник добавлен в отдел.")
+    else:
+        # аккуратно вытащим текст ошибки
+        detail = ""
+        try:
+            data = resp.json or {}
+            detail = data.get("detail") or data.get("error") or ""
+        except Exception:
+            detail = resp.text or ""
+        messages.error(request, f"Не удалось добавить: {resp.status} {detail}".strip())
+
+    return redirect("employees:department_detail", pk=pk)
 
 
-class DepartmentCreateView(LoginRequiredMixin, StaffOnlyMixin, CreateView):
-    model = Department
-    form_class = DepartmentForm
-    template_name = "employees/department_form.html"
-    success_url = reverse_lazy("employees:department_list")
+@require_api_auth
+@require_http_methods(["POST"])
+def department_remove_member(request, pk: int):
+    """
+    Прокси-вьюха: деактивирует (удаляет) сотрудника из отдела через API.
 
+    Ожидает:
+        POST form-data: employee_id
 
-class DepartmentUpdateView(LoginRequiredMixin, StaffOnlyMixin, UpdateView):
-    model = Department
-    form_class = DepartmentForm
-    template_name = "employees/department_form.html"
-    success_url = reverse_lazy("employees:department_list")
+    Поведение:
+        - Делает POST в /api/v1/departments/{id}/remove_member/ c {"employee_id": <int>}.
+        - Не изменяет роль (эта логика на API и отделена).
+        - Сообщения об успехе/ошибке через django.contrib.messages.
+        - Редирект обратно на страницу отдела.
+    """
+    api = get_api_client(request)
 
+    raw = (request.POST.get("employee_id") or "").strip()
+    try:
+        employee_id = int(raw)
+    except (TypeError, ValueError):
+        messages.error(request, "Не выбран сотрудник.")
+        return redirect("employees:department_detail", pk=pk)
 
-class DepartmentDeleteView(LoginRequiredMixin, StaffOnlyMixin, DeleteView):
-    model = Department
-    template_name = "employees/department_confirm_delete.html"
-    success_url = reverse_lazy("employees:department_list")
+    resp = api.post(
+        f"v1/departments/{pk}/remove_member/", json={"employee_id": employee_id}
+    )
+    if resp.ok:
+        messages.success(request, "Сотрудник удалён из отдела.")
+    else:
+        try:
+            data = resp.json or {}
+            detail = data.get("detail") or data.get("error") or ""
+        except Exception:
+            detail = resp.text or ""
+        messages.error(request, f"Не удалось удалить: {resp.status} {detail}".strip())
+
+    return redirect("employees:department_detail", pk=pk)
 
 
 @require_api_auth
@@ -625,8 +744,8 @@ class DepartmentDeleteView(LoginRequiredMixin, StaffOnlyMixin, DeleteView):
 def edit_department_role(request, pk: int):
     """
     Универсальный обработчик ролей отдела:
-    - op=create  : POST v1/department-roles/ {department: pk, name}
-    - op=update  : PATCH v1/department-roles/<role_id>/ {name}
+    - op=create  : POST v1/department-roles/ {department: pk, name} + сразу POST set_perms/
+    - op=update  : PATCH v1/department-roles/<role_id>/ {name} + POST set_perms/
     - op=delete  : DELETE v1/department-roles/<role_id>/
     """
     api = get_api_client(request)
@@ -638,7 +757,9 @@ def edit_department_role(request, pk: int):
         messages.error(request, "Отдел не найден.")
         return redirect("employees:department_detail", pk=pk)
     dept = dept_resp.json
-    allowed = request.user.is_staff or (dept.get("head") and dept["head"].get("id") == request.user.id)
+    allowed = request.user.is_staff or (
+        dept.get("head") and dept["head"].get("id") == request.user.id
+    )
     if not allowed:
         messages.error(request, "Недостаточно прав для управления ролями отдела.")
         return redirect("employees:department_detail", pk=pk)
@@ -650,29 +771,58 @@ def edit_department_role(request, pk: int):
                 messages.error(request, "Название роли не может быть пустым.")
                 return redirect("employees:department_detail", pk=pk)
 
-            resp = api.post("v1/department-roles/", json={"department": pk, "name": name})
+            # 1) создаём роль
+            resp = api.post(
+                "v1/department-roles/", json={"department": pk, "name": name}
+            )
             if resp.ok:
+                # 2) сразу выставляем права, если они пришли из формы
+                role_id = (resp.json or {}).get("id")
+                perm_ids = [
+                    int(x)
+                    for x in request.POST.getlist("permission_ids")
+                    if str(x).isdigit()
+                ]
+                if role_id is not None:
+                    # ВАЖНО: у set_perms — хвостовой слэш!
+                    api.post(
+                        f"v1/department-roles/{role_id}/set_perms/",
+                        json={"permission_ids": perm_ids},
+                    )
+
                 messages.success(request, f"Роль «{name}» создана.")
             else:
-                messages.error(request, f"Ошибка создания роли: {getattr(resp, 'status', '')} {resp.text or ''}")
+                messages.error(
+                    request,
+                    f"Ошибка создания роли: {getattr(resp, 'status', '')} {resp.text or ''}",
+                )
 
         elif op == "update":
             role_id = request.POST.get("role_id")
             name = (request.POST.get("name") or "").strip()
 
-            # 1) Сохраняем имя
+            # 1) имя
             if name:
                 api.patch(f"v1/department-roles/{role_id}/", json={"name": name})
 
-            # 2) Сохраняем права роли
-            perm_ids = request.POST.getlist("permission_ids")  # из чекбоксов
-            perm_ids = [int(x) for x in perm_ids if str(x).isdigit()]
-            resp = api.post(f"v1/department-roles/{role_id}/set_perms", json={"permission_ids": perm_ids})
+            # 2) права (с хвостовым слэшем!)
+            perm_ids = [
+                int(x)
+                for x in request.POST.getlist("permission_ids")
+                if str(x).isdigit()
+            ]
+            resp = api.post(
+                f"v1/department-roles/{role_id}/set_perms/",
+                json={"permission_ids": perm_ids},
+            )
 
             if resp.ok:
                 messages.success(request, f"Роль обновлена: «{name}».")
             else:
-                messages.error(request, f"Ошибка обновления роли: {getattr(resp, 'status', '')} {resp.text or ''}")
+                messages.error(
+                    request,
+                    f"Ошибка обновления роли: {getattr(resp, 'status', '')} {resp.text or ''}",
+                )
 
         elif op == "delete":
             role_id = request.POST.get("role_id")
@@ -684,7 +834,10 @@ def edit_department_role(request, pk: int):
             if resp.ok or getattr(resp, "status", None) == 204:
                 messages.success(request, "Роль удалена.")
             else:
-                messages.error(request, f"Ошибка удаления роли: {getattr(resp, 'status', '')} {resp.text or ''}")
+                messages.error(
+                    request,
+                    f"Ошибка удаления роли: {getattr(resp, 'status', '')} {resp.text or ''}",
+                )
 
         else:
             messages.error(request, "Неизвестная операция.")
@@ -692,49 +845,6 @@ def edit_department_role(request, pk: int):
         messages.error(request, f"Ошибка: {exc}")
 
     return redirect("employees:department_detail", pk=pk)
-
-# ---------- Приглашение в отдел ----------
-
-
-@login_required
-def invite_to_department(request, pk):
-    department = get_object_or_404(Department, pk=pk)
-
-    if not (request.user.is_staff or request.user == department.head):
-        messages.error(request, "Нет прав приглашать сотрудников.")
-        return redirect("employees:department_detail", pk=pk)
-
-    if request.method == "POST":
-        form = InviteToDepartmentForm(department, request.POST)
-        if form.is_valid():
-            employee = form.cleaned_data["employee"]
-
-            emp_dep, created = EmployeeDepartment.objects.get_or_create(
-                employee=employee,
-                department=department,
-                defaults={"is_active": True, "date_from": timezone.now().date()},
-            )
-            if not created and not emp_dep.is_active:
-                emp_dep.is_active = True
-                emp_dep.date_from = timezone.now().date()
-                emp_dep.date_to = None
-                emp_dep.save()
-
-            messages.success(request, f"{employee.get_full_name()} приглашён в отдел!")
-            return redirect("employees:department_detail", pk=pk)
-    else:
-        form = InviteToDepartmentForm(department)
-        if not form.fields["employee"].queryset.exists():
-            messages.info(
-                request,
-                "Нет сотрудников, которых можно пригласить — похоже, все уже в отделе.",
-            )
-
-    return render(
-        request,
-        "employees/invite_to_department.html",
-        {"form": form, "department": department},
-    )
 
 
 # =========================

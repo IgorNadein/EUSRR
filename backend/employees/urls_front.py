@@ -14,11 +14,6 @@ urlpatterns = [
     path("create/", views_front.employee_create, name="employee_create"),
     # --- Отделы ---
     path(
-        "departments/add/",
-        views_front.DepartmentCreateView.as_view(),
-        name="department_add",
-    ),
-    path(
         "departments/<int:pk>/roles/edit/",
         views_front.edit_department_role,
         name="edit_department_role",
@@ -42,13 +37,36 @@ urlpatterns = [
         views_front.set_member_role,
         name="set_member_role",
     ),
+    path(
+        "departments/<int:pk>/add-member/",
+        views_front.department_add_member,
+        name="department_add_member",
+    ),
+    path(
+        "departments/<int:pk>/remove-member/",
+        views_front.department_remove_member,
+        name="department_remove_member",
+    ),
     # --- Навыки ---
     path("<int:pk>/skill/add/", views_front.skill_add, name="skill_add"),
     path("<int:pk>/skill/remove/", views_front.skill_remove, name="skill_remove"),
-
     # --- Должности ---
-    path("positions/create/", views_front.position_create_front, name="position_create"),
-    path("positions/<int:pos_id>/update/", views_front.position_update_front, name="position_update"),
-    path("<int:emp_id>/set-position/", views_front.employee_set_position_front, name="employee_set_position"),
-    path("me/set-position/", views_front.employee_set_position_me_front, name="employee_set_position_me"),
+    path(
+        "positions/create/", views_front.position_create_front, name="position_create"
+    ),
+    path(
+        "positions/<int:pos_id>/update/",
+        views_front.position_update_front,
+        name="position_update",
+    ),
+    path(
+        "<int:emp_id>/set-position/",
+        views_front.employee_set_position_front,
+        name="employee_set_position",
+    ),
+    path(
+        "me/set-position/",
+        views_front.employee_set_position_me_front,
+        name="employee_set_position_me",
+    ),
 ]

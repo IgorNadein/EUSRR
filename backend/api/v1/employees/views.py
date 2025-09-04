@@ -59,6 +59,7 @@ from ..permissions import (
     has_dept_perm,
 )
 from .serializers import (
+    AddMemberInput,
     DepartmentRoleSerializer,
     DepartmentSerializer,
     EmailSerializer,
@@ -203,7 +204,14 @@ def _build_links_for_dept(dept: Department) -> list[dict]:
 
 def _head_choices_for_dept(dept: Department) -> list[dict]:
     """
-    Возвращает [{ "id": <int>, "name": <display_name> }] для селекта руководителя.
+    Вернёт список кандидатов для назначения руководителя отдела.
+
+    Формат элемента:
+      {
+        "id": int,            # ID сотрудника
+        "name": str,          # display_name из EmployeeBriefSerializer
+        "email": str          # email сотрудника (может быть пустой строкой)
+      }
     """
     choices, seen = [], set()
     qs = (
@@ -219,12 +227,25 @@ def _head_choices_for_dept(dept: Department) -> list[dict]:
     for link in qs:
         data = EmployeeBriefSerializer(link.employee).data
         if data["id"] not in seen:
-            choices.append({"id": data["id"], "name": data["display_name"]})
+            choices.append(
+                {
+                    "id": data["id"],
+                    "name": data["display_name"],
+                    "email": data.get("email", "") or "",
+                }
+            )
             seen.add(data["id"])
 
     if dept.head_id and dept.head_id not in seen:
         head_data = EmployeeBriefSerializer(dept.head).data
-        choices.insert(0, {"id": head_data["id"], "name": head_data["display_name"]})
+        choices.insert(
+            0,
+            {
+                "id": head_data["id"],
+                "name": head_data["display_name"],
+                "email": head_data.get("email", "") or "",
+            },
+        )
 
     return choices
 
@@ -480,13 +501,15 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     CRUD отделов + действия:
       - POST /departments/{id}/set_head
       - POST /departments/{id}/set_member_role
+      - POST /departments/{id}/add_member
       - POST /departments/{id}/remove_member
     Права:
       - update/partial_update/destroy → manage_department
-      - set_head → change_department_head
-      - set_member_role/remove_member → assign_department_role
-      - create → staff/superuser
-      - чтение → аутентифицированным
+      - set_head                   → change_department_head
+      - set_member_role           → assign_department_role     (назначение/снятие роли)
+      - add_member/remove_member  → manage_department          (управление участниками)
+      - create                    → staff/superuser
+      - чтение                    → аутентифицированным
     """
 
     queryset = Department.objects.select_related("head").prefetch_related("roles").all()
@@ -513,13 +536,15 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             return [self.ManagePerm()]
         if self.action == "set_head":
             return [self.ChangeHeadPerm()]
-        if self.action in {"set_member_role", "remove_member"}:
+        if self.action in {"set_member_role"}:
             return [self.AssignRolePerm()]
+        if self.action in {"add_member", "remove_member"}:
+            return [self.ManagePerm()]
         if self.action == "create":
             return [AdminOrActionOrModelPerms()]
         if self.action in {"members", "user_perms", "ui_context"}:
             return [IsAuthenticated()]
-        return [IsAuthenticated()]
+        return [AdminOrActionOrModelPerms()]
 
     # --- поиск и сортировка, как в старой реализации/тестах ---
     ordering = ["name"]
@@ -676,6 +701,19 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def set_member_role(self, request, pk=None):
+        """
+        Назначает/снимает РОЛЬ существующему участнику отдела.
+        Не создаёт членство и не меняет is_active.
+
+        Тело:
+            { "employee_id": <int>, "role_id": <int|null> }
+        Права:
+            AssignRolePerm (DeptPerm.ASSIGN_ROLE)
+        Ответ:
+            200 {"employee_id":..., "role_id": <int|null>, "is_active": <bool>}
+            404 если сотрудник не состоит в отделе
+            400 если роль не принадлежит отделу
+        """
         dept = self.get_object()
         payload = SetMemberRoleInput(data=request.data)
         if not payload.is_valid():
@@ -683,11 +721,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
         emp_id = payload.validated_data["employee_id"]
         role_id = payload.validated_data.get("role_id")
-        make_active = payload.validated_data.get("is_active", True)
-
-        # модель сотрудника берём из FK Department.head (без жёсткого User)
-        employee_model = Department._meta.get_field("head").remote_field.model
-        get_object_or_404(employee_model, id=emp_id)
 
         # проверяем роль, если указана, что она принадлежит этому отделу
         role = None
@@ -699,15 +732,19 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     status=400,
                 )
 
-        # создаём/обновляем линк
-        link, _ = EmployeeDepartment.objects.get_or_create(
-            employee_id=emp_id,
-            department_id=dept.id,
-            defaults={"is_active": make_active, "role": role},
-        )
-        link.is_active = bool(make_active)
-        link.role = role  # None => снять роль
-        link.save(update_fields=["is_active", "role"])
+        # членство ДОЛЖНО существовать — не создаём автоматически
+        try:
+            link = EmployeeDepartment.objects.get(
+                employee_id=emp_id, department_id=dept.id
+            )
+        except EmployeeDepartment.DoesNotExist:
+            return Response(
+                {"detail": "Employee is not a member of this department."}, status=404
+            )
+
+        # только меняем роль
+        link.role = role
+        link.save(update_fields=["role"])
 
         return Response(
             {
@@ -798,6 +835,81 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             "user_perms": user_perms,
         }
         return Response(payload, status=200)
+
+    @action(detail=True, methods=["post"], url_path="add_member")
+    @transaction.atomic
+    def add_member(self, request, pk: int | None = None):
+        """
+        Активирует/добавляет сотрудника в отдел.
+        Роль НЕ назначается здесь.
+
+        Тело:
+            { "employee_id": <int> }
+        Права:
+            ManagePerm (DeptPerm.MANAGE)
+
+        Идемпотентно:
+            если линк есть — делаем is_active=True, роль не трогаем.
+        """
+        dept = self.get_object()
+        payload = AddMemberInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        emp_id = payload.validated_data["employee_id"]
+
+        # проверим, что сотрудник существует (модель берём из FK на head)
+        employee_model = Department._meta.get_field("head").remote_field.model
+        get_object_or_404(employee_model, id=emp_id)
+
+        link, _created = EmployeeDepartment.objects.get_or_create(
+            employee_id=emp_id, department_id=dept.id, defaults={"is_active": True}
+        )
+        if not link.is_active:
+            link.is_active = True
+            link.save(update_fields=["is_active"])
+
+        return Response(
+            {
+                "employee_id": emp_id,
+                "is_active": True,
+                "role_id": (link.role_id if getattr(link, "role_id", None) else None),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="remove_member")
+    @transaction.atomic
+    def remove_member(self, request, pk: int | None = None):
+        """
+        Деактивирует (удаляет) сотрудника из отдела.
+        Роль НЕ изменяется.
+
+        Тело:
+            { "employee_id": <int> }
+        Права:
+            ManagePerm (DeptPerm.MANAGE)
+        """
+        dept = self.get_object()
+        payload = RemoveMemberInput(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        emp_id = payload.validated_data["employee_id"]
+
+        link = get_object_or_404(
+            EmployeeDepartment, employee_id=emp_id, department_id=dept.id
+        )
+        if link.is_active:
+            link.is_active = False
+            link.save(update_fields=["is_active"])
+
+        return Response(
+            {
+                "employee_id": emp_id,
+                "is_active": False,
+                "role_id": (link.role_id if getattr(link, "role_id", None) else None),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):

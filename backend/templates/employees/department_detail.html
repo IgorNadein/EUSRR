@@ -15,34 +15,37 @@
         <i class="bi-diagram-3 fs-2 text-primary"></i>
         <h2 class="title mb-0">{{ dept.name }}</h2>
 
-        {# Кнопки только для staff или текущего руководителя #}
-        {% if user.is_staff or dept.head and dept.head.id == user.id %}
-          <div class="ms-auto d-flex gap-2">
-            {% url 'feed:post_create' as post_create_url %}
-            {% if post_create_url %}
-              <a href="{{ post_create_url }}?department={{ dept_id }}&next={{ request.get_full_path|urlencode }}"
-                 class="btn btn-primary">
-                <i class="bi-plus-circle me-1"></i> Создать публикацию
-              </a>
-            {% endif %}
-            {% url 'employees:invite_to_department' dept_id as invite_url %}
-            {% if invite_url %}
-              <a href="{{ invite_url }}" class="btn btn-success">
-                <i class="bi-person-plus me-1"></i> Пригласить
-              </a>
-            {% endif %}
-          </div>
-        {% endif %}
+        <div class="ms-auto d-flex gap-2">
+          {% url 'feed:post_create' as post_create_url %}
+          {% if post_create_url %}
+            <a href="{{ post_create_url }}?department={{ dept_id }}&next={{ request.get_full_path|urlencode }}"
+               class="btn btn-primary">
+              <i class="bi-plus-circle me-1"></i> Создать публикацию
+            </a>
+          {% endif %}
+          {% url 'employees:invite_to_department' dept_id as invite_url %}
+          {% if user.is_staff or user.is_superuser or can_manage or dept.head and dept.head.id == user.id %}
+            <button type="button"
+                    class="btn btn-success btn-sm d-flex align-items-center"
+                    data-bs-toggle="modal"
+                    data-bs-target="#addMemberModal-{{ dept.id }}">
+              <i class="bi-person-plus me-1"></i>Пригласить
+            </button>
+          {% endif %}
+        </div>
       </div>
 
       {# ===== Инфо-блок ===== #}
       {% if dept.description or dept.head %}
-        <div class="feed-new mb-3">
+        <div class="feed-new mb-3 position-relative pb-4 pe-3 pt-0">
           {% if dept.description %}
-            <div class="mb-1">{{ dept.description }}</div>
+            <div class="text-break" style="white-space: pre-line; overflow-wrap:anywhere;">
+              {{ dept.description }}
+            </div>
           {% endif %}
+
           {% if dept.head %}
-            <div class="small">
+            <div class="small mt-2">
               <span class="text-secondary">Руководитель:</span>
               {% url 'employees:employee_detail' dept.head.id as head_url %}
               {% if head_url %}
@@ -54,94 +57,127 @@
               {% endif %}
             </div>
           {% endif %}
+
+          {# «голая» шестерёнка, немного отступлена от краёв #}
+          <button
+            id="deptSettingsToggle-{{ dept.id }}"
+            type="button"
+            class="position-absolute p-0 bg-transparent border-0 text-secondary"
+            style="right:.5rem; bottom:.5rem;"
+            aria-controls="deptControls-{{ dept.id }}"
+            aria-expanded="false"
+            title="Настройки отдела"
+            aria-label="Показать/скрыть настройки отдела">
+            <i class="bi-gear fs-5"></i>
+          </button>
         </div>
       {% endif %}
 
       {# ===== Управление отделом (для staff/главы) ===== #}
       {% if user.is_staff or dept.head and dept.head.id == user.id %}
-        {% include "employees/_department_controls.html" with dept=dept edit_form=edit_form head_choices=head_choices %}
-
+        <div id="deptControls-{{ dept.id }}" class="d-none">
+          {% include "employees/_department_controls.html" with dept=dept edit_form=edit_form head_choices=head_choices %}
+        </div>
       {% endif %}
 
-      {# ===== Команда отдела (только сотрудники с назначённой ролью) ===== #}
-      <div class="feed-new mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h6 class="mb-0 text-secondary">Команда отдела</h6>
-          {% url 'employees:employees_list' as employees_list_url %}
-          {% if employees_list_url %}
-            <a class="small text-primary text-decoration-none"
-               href="{{ employees_list_url }}?department={{ dept_id }}">
-              Все сотрудники →
-            </a>
-          {% endif %}
-        </div>
+      {# ===== Команда отдела — как в "Профиль" + две кнопки ===== #}
+<section class="feed-card mb-4">
+  <div class="feed-hd">
+    <i class="bi-people"></i>
+    <div class="feed-meta">
+      <div class="feed-author">Команда отдела</div>
+      <div class="feed-sub">Участники и их роли</div>
+    </div>
 
-        {# показываем только те связи, где есть role #}
-        {% if links %}
-          {% with any_has_role=0 %}
-          {% for li in links %}{% if li.role %}{% with any_has_role=1 %}{% endwith %}{% endif %}{% endfor %}
-          {% endwith %}
-        {% endif %}
+    <div class="ms-auto d-flex align-items-center gap-2">
+      {% url 'employees:employees_list' as employees_list_url %}
+      {% if employees_list_url %}
+        <a class="btn btn-link btn-sm text-decoration-none"
+           href="{{ employees_list_url }}?department={{ dept_id }}">
+          Все сотрудники →
+        </a>
+      {% endif %}
 
-        <div class="d-flex flex-column gap-2">
-          {% for link in links %}
-            {% if link.role %}
-              {% with emp=link.employee cur_role_id=link.role.id|default:link.role %}
-                <div class="d-flex align-items-center justify-content-between p-2 border rounded">
-                  <div class="d-flex align-items-center gap-2">
-                    <div class="feed-ava" style="width:44px;height:44px;">
-                      {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
-                    </div>
-                    <div>
-                      <div class="fw-semibold">
-                        {% with eid=emp.id|default:emp %}
-                          <a href="{% url 'employees:employee_detail' eid %}"
-                             class="text-decoration-none text-reset">
-                            {% if emp.last_name %}
-                              {{ emp.last_name }}{% if emp.first_name %} {{ emp.first_name }}{% endif %}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
-                            {% else %}
-                              Сотрудник #{{ eid }}
-                            {% endif %}
-                          </a>
-                        {% endwith %}
-                      </div>
-                      <div class="text-secondary small">
-                        {% if link.role.name %}{{ link.role.name }}{% else %}Роль #{{ cur_role_id }}{% endif %}
-                      </div>
-                    </div>
-                  </div>
+      {% if user.is_staff or user.is_superuser or can_manage or dept.head and dept.head.id == user.id %}
+        <button type="button"
+                class="btn btn-success btn-sm d-flex align-items-center"
+                data-bs-toggle="modal"
+                data-bs-target="#addMemberModal-{{ dept.id }}">
+          <i class="bi-person-plus me-1"></i>Пригласить
+        </button>
 
-                  {# Право менять роль: staff или глава; и не себе #}
-                  {% if user.is_staff or dept.head and dept.head.id == user.id %}
-                    {% if emp.id != user.id %}
-                      {% with eid=emp.id|default:emp %}
-                        <form method="post"
-                              action="{% url 'employees:set_member_role' dept.id eid %}"
-                              class="d-flex align-items-center gap-2 mb-0">
-                          {% csrf_token %}
-                          <select name="role_id" class="form-select form-select-sm">
-                            <option value="">— Без роли —</option>
-                            {% for r in roles %}
-                              <option value="{{ r.id }}"
-                                      {% if cur_role_id == r.id %}selected{% endif %}>
-                                {{ r.name }}
-                              </option>
-                            {% endfor %}
-                          </select>
-                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <button type="submit" class="btn btn-sm btn-outline-primary">OK</button>
-                        </form>
-                      {% endwith %}
+        <button type="button"
+                class="btn btn-outline-danger btn-sm d-flex align-items-center"
+                data-bs-toggle="modal"
+                data-bs-target="#removeMemberModal-{{ dept.id }}">
+          <i class="bi-person-dash me-1"></i>Удалить
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="feed-body">
+    <div class="feed-info">
+      {% for link in links %}
+        {% if link.role %}
+          {% with emp=link.employee cur_role_id=link.role.id|default:link.role %}
+            {% with eid=emp.id|default:emp %}
+              <div class="info-row align-items-center">
+                <div class="info-k d-flex align-items-center gap-2">
+                  <span class="feed-ava" style="width:44px;height:44px;">
+                    {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
+                  </span>
+                  <a href="{% url 'employees:employee_detail' eid %}"
+                     class="text-decoration-none">
+                    {% if emp.last_name %}
+                      {{ emp.last_name }}{% if emp.first_name %} {{ emp.first_name }}{% endif %}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                    {% else %}
+                      Сотрудник #{{ eid }}
+                    {% endif %}
+                  </a>
+                </div>
+
+                <div class="info-v d-flex align-items-center flex-wrap gap-2 justify-content-end">
+                  <span class="text-secondary small me-2">
+                    {% if link.role.name %}{{ link.role.name }}{% else %}Роль #{{ cur_role_id }}{% endif %}
+                  </span>
+
+                  {% if user.is_staff or user.is_superuser or dept.head and dept.head.id == user.id %}
+                    {% if roles %}
+                      <form method="post"
+                            action="{% url 'employees:set_member_role' dept.id eid %}"
+                            class="d-flex align-items-center gap-2 mb-0">
+                        {% csrf_token %}
+                        <select name="role_id" class="form-select form-select-sm">
+                          <option value="">— Без роли —</option>
+                          {% for r in roles %}
+                            <option value="{{ r.id }}" {% if cur_role_id == r.id %}selected{% endif %}>
+                              {{ r.name }}
+                            </option>
+                          {% endfor %}
+                        </select>
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button type="submit" class="btn btn-outline-primary btn-sm">OK</button>
+                      </form>
                     {% endif %}
                   {% endif %}
                 </div>
-              {% endwith %}
-            {% endif %}
-          {% empty %}
-            <div class="text-secondary small">Пока нет сотрудников с назначёнными ролями.</div>
-          {% endfor %}
+              </div>
+            {% endwith %}
+          {% endwith %}
+        {% endif %}
+      {% empty %}
+        <div class="info-row">
+          <div class="info-k text-secondary">—</div>
+          <div class="info-v text-secondary small">Пока нет сотрудников с назначёнными ролями.</div>
         </div>
-      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+
 
       {# ===== Лента отдела ===== #}
       <div class="feed-stream">
@@ -164,5 +200,394 @@
     </div>
   </div>
 </div>
+{# ---------- МОДАЛ «Удалить участника» ---------- #}
+{% if user.is_staff or user.is_superuser or can_manage or dept.head and dept.head.id == user.id %}
+  <div class="modal fade" id="removeMemberModal-{{ dept.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi-person-dash me-2"></i>Удалить участника</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+
+        <form method="post" action="{% url 'employees:department_remove_member' dept.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="employee_id" id="removeMemberChosen-{{ dept.id }}">
+
+          <div class="modal-body">
+            <div class="mb-3">
+              <input id="removeMemberSearch-{{ dept.id }}" type="search"
+                     class="form-control" placeholder="Поиск по ФИО или email" autocomplete="off">
+              <div class="form-text">Отображаются участники этого отдела.</div>
+            </div>
+
+            <div id="removeMemberResults-{{ dept.id }}"
+                 class="list-group list-group-flush border rounded">
+              {# список текущих участников; руководителя можно скрыть, если нельзя удалять #}
+              {% for li in links %}
+                {% with emp=li.employee eid=emp.id %}
+                    <button type="button"
+                            class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2"
+                            data-id="{{ eid }}"
+                            data-name="{{ emp.display_name|default:'' }}"
+                            data-email="{{ emp.email|default:'' }}">
+                      <span class="feed-ava"
+                            style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;background:#f3f3f3;display:flex;align-items:center;justify-content:center;">
+                        {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}<i class="bi-person"></i>{% endif %}
+                      </span>
+                      <span class="d-flex flex-column text-start">
+                        <span class="fw-semibold">{{ emp.display_name|default:emp.last_name }}</span>
+                        {% if emp.email %}<span class="text-muted small">{{ emp.email }}</span>{% endif %}
+                      </span>
+                    </button>
+                {% endwith %}
+              {% empty %}
+                <div class="list-group-item text-secondary small py-3">В отделе пока нет участников.</div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link" data-bs-dismiss="modal">
+              <i class="bi-x-lg me-1"></i>Отмена
+            </button>
+            <button type="submit" id="removeMemberSubmit-{{ dept.id }}" class="btn btn-outline-danger" disabled>
+              <i class="bi-person-dash me-1"></i>Удалить
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{# ---------- МОДАЛ «Добавить участника» ---------- #}
+{% if user.is_staff or user.is_superuser or dept.head and dept.head.id == user.id %}
+  {% with exclude_ids=members_exclude_ids %}
+  <div class="modal fade" id="addMemberModal-{{ dept.id }}" tabindex="-1" aria-hidden="true"
+       data-exclude="{% if exclude_ids %}{{ exclude_ids|join:',' }}{% endif %}">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi-person-plus me-2"></i>Добавить участника</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+
+        <form method="post" action="{% url 'employees:department_add_member' dept.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="employee_id" id="addMemberChosen-{{ dept.id }}">
+
+          <div class="modal-body">
+            <div class="mb-3">
+              <input id="addMemberSearch-{{ dept.id }}" type="search"
+                     class="form-control" placeholder="Поиск по ФИО или email" autocomplete="off"
+                     data-add-member-q>
+              <div class="form-text">Показываются только те, кто ещё не состоит в отделе.</div>
+            </div>
+
+            <div id="addMemberResults-{{ dept.id }}" class="list-group list-group-flush border rounded"
+                 data-add-member-list>
+              <div class="list-group-item text-muted small py-3">Начните вводить для поиска…</div>
+            </div>
+
+            <template id="addMemberItemTpl-{{ dept.id }}">
+              <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2" data-id="">
+                <span class="feed-ava" style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;background:#f3f3f3;display:flex;align-items:center;justify-content:center;">
+                  <i class="bi-person"></i>
+                </span>
+                <span class="d-flex flex-column text-start">
+                  <span class="fw-semibold js-name"></span>
+                  <span class="text-muted small js-email"></span>
+                </span>
+              </button>
+            </template>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link" data-bs-dismiss="modal">
+              <i class="bi-x-lg me-1"></i>Отмена
+            </button>
+            <button type="submit" id="addMemberSubmit-{{ dept.id }}" class="btn btn-success"
+                    data-add-member-submit disabled>
+              <i class="bi-person-plus me-1"></i>Добавить
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endwith %}
+{% endif %}
 {% endwith %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const btn  = document.getElementById('deptSettingsToggle-{{ dept.id }}');
+  const box  = document.getElementById('deptControls-{{ dept.id }}');
+  if (!btn || !box) return;
+
+  const key = 'deptControlsVisible:' + String({{ dept.id }});
+  let visible = localStorage.getItem(key) === '1';
+
+  function apply(){
+    if (visible){
+      box.classList.remove('d-none');
+      btn.setAttribute('aria-expanded', 'true');
+      btn.classList.remove('text-secondary');
+      btn.classList.add('text-primary');
+    } else {
+      box.classList.add('d-none');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.classList.remove('text-primary');
+      btn.classList.add('text-secondary');
+    }
+  }
+  apply();
+
+  btn.addEventListener('click', function(){
+    visible = !visible;
+    localStorage.setItem(key, visible ? '1' : '0');
+    apply();
+  });
+})();
+</script>
+
+{% if user.is_staff or user.is_superuser or dept.head and dept.head.id == user.id %}
+{% url 'employees:employees_list' as employees_list_url %}
+<script>
+/**
+ * Модал «Добавить участника»:
+ * - запросы идут через авторизованную фронт-вьюху /employees/list/?format=json
+ * - исключаются уже состоящие (атрибут data-exclude у модалки)
+ * - результаты рендерятся в список внутри модалки
+ */
+(function(){
+  const modal  = document.getElementById('addMemberModal-{{ dept.id }}');
+  if (!modal) return;
+
+  const form   = modal.querySelector('form[action$="{% url "employees:department_add_member" dept.id %}"]');
+  const input  = modal.querySelector('[data-add-member-q]');
+  const listEl = modal.querySelector('[data-add-member-list]');
+  const tpl    = modal.querySelector('#addMemberItemTpl-{{ dept.id }}');
+  const hidden = form.querySelector('input[name="employee_id"]');
+  const submit = modal.querySelector('[data-add-member-submit]');
+
+  const excludeAttr = (modal.getAttribute('data-exclude') || '').trim();
+  const exclude = new Set(
+    excludeAttr ? excludeAttr.split(',').map(x => parseInt(x, 10)).filter(n => !Number.isNaN(n)) : []
+  );
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+
+  let aborter = null;
+
+  async function searchEmployees(q){
+    if (aborter) aborter.abort();
+    aborter = new AbortController();
+
+    const params = new URLSearchParams({
+      format: 'json',
+      q: q,
+      limit: '20',
+      exclude: Array.from(exclude).join(',')
+    });
+
+    const r = await fetch('{{ employees_list_url }}?' + params.toString(), {
+      credentials: 'same-origin',
+      signal: aborter.signal
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(()=>({results:[]}));
+    return Array.isArray(data) ? data : (data.results || []);
+  }
+
+  function render(items){
+    listEl.innerHTML = '';
+    if (!items.length){
+      const empty = document.createElement('div');
+      empty.className = 'list-group-item text-muted small py-3';
+      empty.textContent = 'Ничего не найдено';
+      listEl.appendChild(empty);
+      return;
+    }
+    items.forEach(e => {
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.dataset.id = e.id;
+      const ava = node.querySelector('.feed-ava');
+      if (e.avatar){
+        ava.innerHTML = `<img src="${esc(e.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+      }
+      node.querySelector('.js-name').textContent =
+        e.display_name || (e.last_name ? (e.last_name + (e.first_name ? ' ' + e.first_name : '')) : ('Сотрудник #' + e.id));
+      node.querySelector('.js-email').textContent = e.email || '';
+      node.addEventListener('click', () => {
+        // снять прошлый выбор
+        listEl.querySelectorAll('.list-group-item').forEach(li => li.classList.remove('active'));
+        node.classList.add('active');
+        hidden.value = String(e.id);
+        submit.disabled = false;
+      });
+      listEl.appendChild(node);
+    });
+  }
+
+  const run = debounce(async (q) => {
+    submit.disabled = true;
+    hidden.value = '';
+    try { render(await searchEmployees(q)); }
+    catch { listEl.innerHTML = '<div class="list-group-item text-muted small py-3">Ошибка загрузки</div>'; }
+  }, 200);
+
+  // Навигация
+  input.addEventListener('input', () => run(input.value));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter'){
+      const cur = listEl.querySelector('.list-group-item.active') || listEl.querySelector('.list-group-item');
+      if (cur && cur.dataset.id){
+        e.preventDefault();
+        cur.click();
+      }
+    }
+  });
+
+  // При открытии модалки — фокус и первичный запрос
+  modal.addEventListener('shown.bs.modal', () => {
+    input.value = '';
+    hidden.value = '';
+    submit.disabled = true;
+    input.focus();
+    run('');
+  });
+
+  // Подстраховка при отправке формы
+  form.addEventListener('submit', (e) => {
+    if (!hidden.value){
+      e.preventDefault();
+      input.focus();
+    }
+  });
+})();
+</script>
+
+<script>
+(function(){
+  const btn  = document.getElementById('deptSettingsToggle-{{ dept.id }}');
+  const box  = document.getElementById('deptControls-{{ dept.id }}');
+  if (!btn || !box) return;
+
+  const key = 'deptControlsVisible:' + String({{ dept.id }});
+  let visible = localStorage.getItem(key) === '1';
+
+  function apply(){
+    if (visible){
+      box.classList.remove('d-none');
+      btn.setAttribute('aria-expanded', 'true');
+      btn.classList.remove('text-secondary');
+      btn.classList.add('text-primary');
+    } else {
+      box.classList.add('d-none');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.classList.remove('text-primary');
+      btn.classList.add('text-secondary');
+    }
+  }
+  apply();
+
+  btn.addEventListener('click', function(){
+    visible = !visible;
+    localStorage.setItem(key, visible ? '1' : '0');
+    apply();
+  });
+})();
+</script>
+
+{% if user.is_staff or user.is_superuser or dept.head and dept.head.id == user.id %}
+{% url 'employees:employees_list' as employees_list_url %}
+<script>
+/**
+ * Модал «Добавить участника»: ... (без изменений, оставляю как есть)
+ */
+(function(){
+  // ... (весь скрипт для addMemberModal без изменений)
+})();
+</script>
+<script>
+(function(){
+  const modalId = 'removeMemberModal-{{ dept.id }}';
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+
+  const form    = modal.querySelector('form[action="{% url "employees:department_remove_member" dept.id %}"]');
+  const input   = document.getElementById('removeMemberSearch-{{ dept.id }}');
+  const listBox = document.getElementById('removeMemberResults-{{ dept.id }}');
+  const hidden  = document.getElementById('removeMemberChosen-{{ dept.id }}');
+  const submit  = document.getElementById('removeMemberSubmit-{{ dept.id }}');
+
+  function clearActive(){
+    listBox.querySelectorAll('.list-group-item-action.active').forEach(el => el.classList.remove('active'));
+  }
+
+  // живой фильтр по имени/почте
+  function norm(s){ return String(s||'').toLowerCase(); }
+  function matches(item, q){
+    const name  = norm(item.getAttribute('data-name') || '');
+    const email = norm(item.getAttribute('data-email') || '');
+    const id    = String(item.getAttribute('data-id') || '');
+    return !q || name.includes(q) || email.includes(q) || id.includes(q);
+  }
+
+  function applyFilter(){
+    const q = norm(input.value);
+    let any = false;
+    listBox.querySelectorAll('.list-group-item-action').forEach(it => {
+      const ok = matches(it, q);
+      it.classList.toggle('d-none', !ok);
+      if (ok) any = true;
+    });
+    if (!any){
+      // если ничего — можно показать пустую заглушку
+      // (оставим список пустым без отдельного элемента для простоты)
+    }
+  }
+
+  input.addEventListener('input', applyFilter);
+
+  listBox.addEventListener('click', (e) => {
+    const it = e.target.closest('.list-group-item-action');
+    if (!it) return;
+    clearActive();
+    it.classList.add('active');
+    hidden.value = it.getAttribute('data-id') || '';
+    submit.disabled = !hidden.value;
+  });
+
+  // сброс при открытии
+  modal.addEventListener('shown.bs.modal', () => {
+    input.value = '';
+    clearActive();  // Добавлено: очистка active класса при открытии
+    applyFilter();
+    hidden.value = '';
+    submit.disabled = true;
+    input.focus();  // Добавлено: фокус на поиск для удобства
+  });
+
+  // Подстраховка при отправке формы (аналогично addMember)
+  form.addEventListener('submit', (e) => {
+    if (!hidden.value){
+      e.preventDefault();
+      input.focus();
+    }
+  });
+})();
+</script>
+
+{% endif %}
+
+
+{% endif %}
+
+
 {% endblock %}
