@@ -881,33 +881,49 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def remove_member(self, request, pk: int | None = None):
         """
-        Деактивирует (удаляет) сотрудника из отдела.
-        Роль НЕ изменяется.
+        Удаляет связь сотрудника с отделом (строку EmployeeDepartment), а не просто
+        помечает её неактивной.
 
-        Тело:
+        Тело запроса:
             { "employee_id": <int> }
+
+        Ограничения:
+            - Нельзя удалить руководителя отдела (вернёт 400).
+
         Права:
             ManagePerm (DeptPerm.MANAGE)
+
+        Ответ:
+            200 OK
+            {
+                "employee_id": <int>,
+                "removed": true
+            }
         """
         dept = self.get_object()
+
         payload = RemoveMemberInput(data=request.data)
         payload.is_valid(raise_exception=True)
+        emp_id: int = payload.validated_data["employee_id"]
 
-        emp_id = payload.validated_data["employee_id"]
+        # Защита от удаления руководителя
+        if dept.head_id == emp_id:
+            return Response(
+                {"detail": "Нельзя удалить руководителя отдела."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         link = get_object_or_404(
-            EmployeeDepartment, employee_id=emp_id, department_id=dept.id
+            EmployeeDepartment,
+            employee_id=emp_id,
+            department_id=dept.id,
         )
-        if link.is_active:
-            link.is_active = False
-            link.save(update_fields=["is_active"])
+
+        # Жёсткое удаление связи
+        link.delete()
 
         return Response(
-            {
-                "employee_id": emp_id,
-                "is_active": False,
-                "role_id": (link.role_id if getattr(link, "role_id", None) else None),
-            },
+            {"employee_id": emp_id, "removed": True},
             status=status.HTTP_200_OK,
         )
 

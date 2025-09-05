@@ -346,7 +346,7 @@ class Department(models.Model):
                     employee_id=old_head_id,
                     department_id=self.pk,
                     defaults={
-                        "is_active": False,
+                        "is_active": True,
                         "date_from": timezone.now().date(),
                         "date_to": timezone.now().date(),
                     },
@@ -354,7 +354,7 @@ class Department(models.Model):
                 if not created:
                     EmployeeDepartment.objects.filter(
                         employee_id=old_head_id, department_id=self.pk
-                    ).update(is_active=False, date_to=timezone.now().date())
+                    ).update(is_active=True, date_to=timezone.now().date())
             else:
                 # Смена A -> B: по текущей логике бывший остаётся сотрудником отдела (активным)
                 # Если хотите наоборот — поменяйте is_active=True на False и добавьте date_to.

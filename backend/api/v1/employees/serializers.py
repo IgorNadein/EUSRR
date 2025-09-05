@@ -6,7 +6,7 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.files.base import ContentFile
-from employees.constants import ACTION_CHOICES, DeptPerm
+from employees.constants import ACTION_CHOICES
 from employees.models import (
     Department,
     DepartmentRole,
@@ -375,6 +375,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
 class EmployeeBriefSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
+    avatar = Base64ImageField(read_only=True)
 
     class Meta:
         model = Employee
@@ -386,6 +387,7 @@ class EmployeeBriefSerializer(serializers.ModelSerializer):
             "email",
             "phone_number",
             "display_name",
+            "avatar",
         )
 
     def get_display_name(self, obj) -> str:

@@ -150,37 +150,96 @@ def test_add_member_requires_manage_and_does_not_assign_role(api_client: APIClie
 
 
 @pytest.mark.django_db
-def test_remove_member_requires_manage_and_does_not_touch_role(api_client: APIClient):
+def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
     """
-    remove_member:
-      - 403 при отсутствии manage_department (даже если есть assign_department_role)
-      - 200 с manage_department
-      - не трогает role (оставляет как есть)
+    Сетка проверок прав для трёх эндпоинтов отдела:
+      - без авторизации все три эндпоинта возвращают 401
+      - пользователь с manage_department МОЖЕТ add/remove (200), но НЕ МОЖЕТ set_member_role (403)
+      - пользователь с assign_department_role МОЖЕТ set_member_role (200), но НЕ МОЖЕТ add/remove (403)
+
+    ВАЖНО: remove_member теперь физически удаляет связь (hard delete), поэтому
+    перед проверкой assign_department_role мы восстанавливаем членство менеджером.
     """
     d = Department.objects.create(name="Dept")
-    target = make_user("target2@example.com")
-    some_role = make_role(d, "any")
-    EmployeeDepartment.objects.create(
-        employee=target, department=d, is_active=True, role=some_role
+    worker = make_user("worker3@example.com")
+    EmployeeDepartment.objects.create(employee=worker, department=d, is_active=True)
+    role = make_role(d, "WorkerX")
+
+    # --- 401 без авторизации ---
+    for url, payload in [
+        (url_add_member(d.pk), {"employee_id": worker.id}),
+        (url_remove_member(d.pk), {"employee_id": worker.id}),
+        (url_set_member_role(d.pk), {"employee_id": worker.id, "role_id": role.id}),
+    ]:
+        resp = api_client.post(url, payload, format="json")
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    # --- Менеджер отдела ---
+    manager = make_user("manager4@example.com")
+    grant_manage_in_dept(manager, d)
+    api_client.force_authenticate(manager)
+
+    # может add/remove
+    assert (
+        api_client.post(
+            url_add_member(d.pk), {"employee_id": worker.id}, format="json"
+        ).status_code
+        == 200
+    )
+    assert (
+        api_client.post(
+            url_remove_member(d.pk), {"employee_id": worker.id}, format="json"
+        ).status_code
+        == 200
     )
 
-    url = url_remove_member(d.pk)
+    # после hard delete связи — менеджер восстанавливает членство,
+    # чтобы далее "назначающий роли" мог менять роль
+    assert (
+        api_client.post(
+            url_add_member(d.pk), {"employee_id": worker.id}, format="json"
+        ).status_code
+        == 200
+    )
 
-    assigner = make_user("assigner2@example.com")
-    api_client.force_authenticate(assigner)
+    # но менеджер не может set_member_role
+    assert (
+        api_client.post(
+            url_set_member_role(d.pk),
+            {"employee_id": worker.id, "role_id": role.id},
+            format="json",
+        ).status_code
+        == 403
+    )
+
+    # --- Назначающий роли ---
+    assigner = make_user("assigner5@example.com")
     grant_assign_in_dept(assigner, d)
-    resp = api_client.post(url, {"employee_id": target.id}, format="json")
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    api_client.force_authenticate(assigner)
 
-    manager = make_user("manager2@example.com")
-    api_client.force_authenticate(manager)
-    grant_manage_in_dept(manager, d)
-    resp = api_client.post(url, {"employee_id": target.id}, format="json")
-    assert resp.status_code == status.HTTP_200_OK
+    # может set_member_role
+    assert (
+        api_client.post(
+            url_set_member_role(d.pk),
+            {"employee_id": worker.id, "role_id": role.id},
+            format="json",
+        ).status_code
+        == 200
+    )
 
-    link = EmployeeDepartment.objects.get(employee=target, department=d)
-    assert link.is_active is False
-    assert link.role_id == some_role.id  # роль не менялась
+    # но не может add/remove
+    assert (
+        api_client.post(
+            url_add_member(d.pk), {"employee_id": worker.id}, format="json"
+        ).status_code
+        == 403
+    )
+    assert (
+        api_client.post(
+            url_remove_member(d.pk), {"employee_id": worker.id}, format="json"
+        ).status_code
+        == 403
+    )
 
 
 # =========================
@@ -279,17 +338,20 @@ def test_set_member_role_does_not_create_membership_and_does_not_toggle_active(
 @pytest.mark.django_db
 def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
     """
-    Ещё одна сетка проверок:
+    Сетка проверок прав для трёх эндпоинтов отдела:
       - без авторизации все три эндпоинта возвращают 401
-      - пользователь с manage_department не может set_member_role (403)
-      - пользователь с assign_department_role не может add/remove (403)
+      - пользователь с manage_department МОЖЕТ add/remove (200), но НЕ МОЖЕТ set_member_role (403)
+      - пользователь с assign_department_role МОЖЕТ set_member_role (200), но НЕ МОЖЕТ add/remove (403)
+
+    ВАЖНО: remove_member теперь физически удаляет связь (hard delete), поэтому
+    перед проверкой assign_department_role мы восстанавливаем членство менеджером.
     """
     d = Department.objects.create(name="Dept")
     worker = make_user("worker3@example.com")
     EmployeeDepartment.objects.create(employee=worker, department=d, is_active=True)
     role = make_role(d, "WorkerX")
 
-    # 401 без авторизации
+    # --- 401 без авторизации ---
     for url, payload in [
         (url_add_member(d.pk), {"employee_id": worker.id}),
         (url_remove_member(d.pk), {"employee_id": worker.id}),
@@ -298,10 +360,11 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
         resp = api_client.post(url, payload, format="json")
         assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
-    # Менеджер отдела
+    # --- Менеджер отдела ---
     manager = make_user("manager4@example.com")
     grant_manage_in_dept(manager, d)
     api_client.force_authenticate(manager)
+
     # может add/remove
     assert (
         api_client.post(
@@ -315,7 +378,17 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
         ).status_code
         == 200
     )
-    # но не может set_member_role
+
+    # после hard delete связи — менеджер восстанавливает членство,
+    # чтобы далее "назначающий роли" мог менять роль
+    assert (
+        api_client.post(
+            url_add_member(d.pk), {"employee_id": worker.id}, format="json"
+        ).status_code
+        == 200
+    )
+
+    # но менеджер не может set_member_role
     assert (
         api_client.post(
             url_set_member_role(d.pk),
@@ -325,10 +398,11 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
         == 403
     )
 
-    # Назначающий роли
+    # --- Назначающий роли ---
     assigner = make_user("assigner5@example.com")
     grant_assign_in_dept(assigner, d)
     api_client.force_authenticate(assigner)
+
     # может set_member_role
     assert (
         api_client.post(
@@ -338,6 +412,7 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
         ).status_code
         == 200
     )
+
     # но не может add/remove
     assert (
         api_client.post(
@@ -376,3 +451,45 @@ def test_add_member_ignores_role_parameter(api_client: APIClient):
     link = EmployeeDepartment.objects.get(employee=target, department=d)
     assert link.is_active is True
     assert link.role_id is None, "add_member не должен трогать роль"
+
+@pytest.mark.django_db
+def test_remove_member_requires_manage_and_does_not_touch_role(api_client: APIClient):
+    """
+    remove_member (hard delete):
+      - 403 при отсутствии manage_department (даже если есть assign_department_role)
+      - 200 с manage_department
+      - удаляет связь EmployeeDepartment; объект роли остаётся без изменений
+    """
+    d = Department.objects.create(name="Dept")
+    target = make_user("target2@example.com")
+    some_role = make_role(d, "any")
+
+    # создаём членство с ролью
+    EmployeeDepartment.objects.create(
+        employee=target, department=d, is_active=True, role=some_role
+    )
+
+    url = url_remove_member(d.pk)
+
+    # нет manage → 403 (даже если есть право назначать роли)
+    assigner = make_user("assigner2@example.com")
+    grant_assign_in_dept(assigner, d)
+    api_client.force_authenticate(assigner)
+    resp = api_client.post(url, {"employee_id": target.id}, format="json")
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+    # есть manage → 200 и связь удаляется физически
+    manager = make_user("manager2@example.com")
+    grant_manage_in_dept(manager, d)
+    api_client.force_authenticate(manager)
+    resp = api_client.post(url, {"employee_id": target.id}, format="json")
+    assert resp.status_code == status.HTTP_200_OK
+
+    # связь удалена
+    assert not EmployeeDepartment.objects.filter(
+        employee=target, department=d
+    ).exists()
+
+    # роль как объект не тронута
+    role_from_db = type(some_role).objects.get(pk=some_role.pk)
+    assert role_from_db.name == "any"

@@ -1,78 +1,66 @@
 {# backend/templates/employees/_department_controls.html #}
-{# Контекст:#}
-  {# dept, head_choices, roles, dept_perm_choices,#}
-  {# can_manage, can_assign_roles, can_change_head#}
+{# Контекст: dept, head_choices, roles, dept_perm_choices, can_manage, can_assign_roles, can_change_head #}
 
+{# Модалки поверх любых локальных dropdown/оверлеев #}
+<style>
+  /* Модалки поверх всего */
+  .modal-backdrop.show { z-index: 3000 !important; }
+  .modal.show          { z-index: 3010 !important; }
+  .modal-dialog        { pointer-events: auto !important; }
+
+  /* Портальный дропдаун автокомплита ролей ниже модалки */
+  .role-portal { z-index: 1800 !important; }
+</style>
 
 {% if can_manage %}
-<section class="feed-card mb-4">
-  <div class="feed-hd">
-    <i class="bi-gear"></i>
-    <div class="feed-meta">
-      <div class="feed-author">Управление отделом</div>
-      <div class="feed-sub">Название и описание</div>
-    </div>
+<div class="ios-acc mb-3">
+  <div class="d-flex align-items-center gap-2 px-3 py-3">
+    <i class="bi-pencil-square"></i>
+    <div class="ios-section-title mb-0">Управление отделом</div>
   </div>
 
-  <div class="feed-body">
+  <div class="ios-acc-body">
     <form method="post" action="{% url 'employees:department_edit' dept.id %}">
       {% csrf_token %}
-
-      <!-- увеличенный отступ от заголовка до полей -->
-      <div class="vstack gap-3 mt-3">
-
-        <div>
+      <div class="row g-3 px-2">
+        <div class="col-12">
           <label class="form-label mb-1" for="dept_name">Название</label>
-          <input id="dept_name"
-                 name="name"
-                 class="form-control form-control-sm"
-                 value="{{ dept.name|default_if_none:'' }}"
-                 required>
+          <input id="dept_name" name="name" class="form-control"
+                 value="{{ dept.name|default_if_none:'' }}" required>
         </div>
 
-        <div>
+        <div class="col-12">
           <label class="form-label mb-1" for="dept_desc">Описание</label>
-          <textarea id="dept_desc"
-                    name="description"
-                    class="form-control form-control-sm"
-                    rows="3"
-                    data-autogrow
-                    data-max-height="240"
+          <textarea id="dept_desc" name="description" class="form-control"
+                    rows="3" data-autogrow data-max-height="240"
                     style="overflow:hidden;">{{ dept.description|default_if_none:'' }}</textarea>
         </div>
 
-        <div>
+        <div class="col-12">
           <button type="submit" class="btn btn-primary btn-sm">
             <i class="bi-check2 me-1"></i>Сохранить
           </button>
         </div>
-
       </div>
     </form>
   </div>
-</section>
+</div>
 {% endif %}
 
 
-
 {% if can_change_head %}
-<section class="feed-card mb-4">
-  <div class="feed-hd">
+<div class="ios-acc mb-3">
+  <div class="d-flex align-items-center gap-2 px-3 py-3">
     <i class="bi-person-check"></i>
-    <div class="feed-meta">
-      <div class="feed-author">Руководитель отдела</div>
-      <div class="feed-sub">Назначение / снятие</div>
-    </div>
+    <div class="ios-section-title mb-0">Руководитель отдела</div>
   </div>
 
-  <div class="feed-body">
+  <div class="ios-acc-body">
     <form id="deptHeadForm" method="post" action="{% url 'employees:department_set_head' dept.id %}">
       {% csrf_token %}
-
-      <div class="vstack gap-3 mt-3">
-        <div>
+      <div class="row g-3 px-2">
+        <div class="col-12">
           <label class="form-label mb-1" for="dept_head_text">Руководитель</label>
-
           <div class="position-relative"
                data-head-picker
                data-choices='[
@@ -80,31 +68,18 @@
                    {"id":"{{ m.id }}","name":"{{ m.name|escapejs }}","email":"{{ m.email|default_if_none:''|escapejs }}"}{% if not forloop.last %},{% endif %}
                  {% endfor %}
                ]'>
-
-            <!-- по умолчанию — имя текущего руководителя -->
-            <input id="dept_head_text"
-                   type="text"
-                   class="form-control form-control-sm"
-                   placeholder="ФИО или email"
-                   autocomplete="off"
+            <input id="dept_head_text" type="text" class="form-control"
+                   placeholder="ФИО или email" autocomplete="off"
                    value="{% if dept.head %}{{ dept.head.name|default_if_none:'' }}{% endif %}">
-
-            <!-- скрытое поле с id текущего руководителя (если есть) -->
-            <input id="dept_head_id"
-                   type="hidden"
-                   name="head_id"
+            <input id="dept_head_id" type="hidden" name="head_id"
                    value="{% if dept.head %}{{ dept.head.id }}{% endif %}">
-
-            <!-- Выпадающее меню -->
             <div class="dropdown-menu w-100 shadow" style="max-height:240px; overflow:auto;"></div>
-
             <div class="invalid-feedback">Выберите сотрудника из списка, введите точный email или очистите поле.</div>
           </div>
-
           <div class="form-text">Очистите поле и сохраните, чтобы снять руководителя.</div>
         </div>
 
-        <div>
+        <div class="col-12">
           <button type="submit" class="btn btn-primary btn-sm">
             <i class="bi-check2 me-1"></i>Сохранить
           </button>
@@ -112,135 +87,119 @@
       </div>
     </form>
   </div>
-</section>
+</div>
 {% endif %}
-
 
 
 {% if can_assign_roles %}
-<section class="feed-card mb-4">
-  <div class="feed-hd">
+<div class="ios-acc mb-3">
+  <div class="d-flex align-items-center gap-2 px-3 py-3">
     <i class="bi-list-check"></i>
-    <div class="feed-meta">
-      <div class="feed-author">Роли отдела</div>
-      <div class="feed-sub">Редактирование и создание</div>
-    </div>
+    <div class="ios-section-title mb-0">Роли отдела</div>
   </div>
 
-  <div class="feed-body">
-    <div class="vstack gap-4 mt-3">
-
+  <div class="ios-acc-body">
+    <div class="row g-3 px-2">
       <!-- Редактировать существующую роль -->
-      <form id="roleEditForm" method="post" action="{% url 'employees:edit_department_role' dept.id %}">
-        {% csrf_token %}
-        <input type="hidden" name="op" value="update">
-        <input type="hidden" name="role_id" id="edit_role_id" value="">
-        <!-- контейнер с множеством input[name=permission_ids] -->
-        <div id="edit_role_perms_hidden" class="d-none"></div>
+      <div class="col-12">
+        <form id="roleEditForm" method="post" action="{% url 'employees:edit_department_role' dept.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="op" value="update">
+          <input type="hidden" name="role_id" id="edit_role_id" value="">
+          <div id="edit_role_perms_hidden" class="d-none"></div>
 
-        <div class="vstack gap-3">
-          <div>
-            <label class="form-label mb-1" for="role_name_text">Роль</label>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label mb-1" for="role_name_text">Роль</label>
+              <div class="position-relative"
+                   data-role-picker
+                   data-choices='[
+                     {% for r in roles %}
+                       {"id":"{{ r.id }}",
+                        "name":"{{ r.name|escapejs }}",
+                        "perms":"{% if r.permissions %}{% for p in r.permissions %}{% if not forloop.first %},{% endif %}{{ p }}{% endfor %}{% endif %}"}
+                       {% if not forloop.last %},{% endif %}
+                     {% endfor %}
+                   ]'>
+                <input id="role_name_text" name="name" type="text" class="form-control"
+                       placeholder="Начните вводить название роли" autocomplete="off">
+                <input type="hidden" id="role_id_hidden">
+                <div class="dropdown-menu w-100 shadow" style="max-height:240px; overflow:auto;"></div>
+                <div class="invalid-feedback">Выберите роль из списка или введите новое название для создания.</div>
+              </div>
+            </div>
 
-            <div class="position-relative"
-                 data-role-picker
-                 data-choices='[
-                   {% for r in roles %}
-                     {"id":"{{ r.id }}",
-                      "name":"{{ r.name|escapejs }}",
-                      "perms":"{% if r.permissions %}{% for p in r.permissions %}{% if not forloop.first %},{% endif %}{{ p }}{% endfor %}{% endif %}"}
-                     {% if not forloop.last %},{% endif %}
-                   {% endfor %}
-                 ]'>
+            <div class="col-12">
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm me-2"
+                      data-bs-toggle="modal"
+                      data-bs-target="#rolePermsEditModal"
+                      {% if not dept_perm_choices %}disabled{% endif %}>
+                Выбрать права
+              </button>
+              <div id="edit_role_perms_chips" class="chips mt-2"></div>
+            </div>
 
-              <!-- видимое поле: и поиск, и редактирование названия -->
-              <input id="role_name_text"
-                     name="name"
-                     type="text"
-                     class="form-control form-control-sm"
-                     placeholder="Начните вводить название роли"
-                     autocomplete="off">
-
-              <!-- скрытое поле с id выбранной роли -->
-              <input type="hidden" id="role_id_hidden">
-
-              <!-- Выпадающее меню -->
-              <div class="dropdown-menu w-100 shadow" style="max-height:240px; overflow:auto;"></div>
-
-              <div class="invalid-feedback">Выберите роль из списка или введите новое название для создания.</div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+              <button type="submit" class="btn btn-primary btn-sm" id="roleSaveBtn" disabled>
+                <i class="bi-check2 me-1"></i>Сохранить
+              </button>
+              <button type="button" class="btn btn-outline-danger btn-sm" id="roleDeleteBtn" disabled>
+                <i class="bi-trash me-1"></i>Удалить
+              </button>
+              <button type="button"
+                      id="toggleNewRole"
+                      class="btn btn-outline-secondary btn-sm"
+                      data-toggle-target="#roleCreateForm">
+                <i class="bi-plus-lg me-1"></i>Новая роль
+              </button>
             </div>
           </div>
+        </form>
+      </div>
 
-          <div>
-            <button type="button"
-                    class="btn btn-outline-secondary btn-sm me-2"
-                    data-bs-toggle="modal"
-                    data-bs-target="#rolePermsEditModal"
-                    {% if not dept_perm_choices %}disabled{% endif %}>
-              Выбрать права
-            </button>
-            <div id="edit_role_perms_chips" class="d-flex flex-wrap gap-1 mt-2"></div>
-          </div>
-
-          <div class="d-flex flex-wrap gap-2">
-            <button type="submit" class="btn btn-primary btn-sm" id="roleSaveBtn" disabled>
-              <i class="bi-check2 me-1"></i>Сохранить
-            </button>
-            <button type="button" class="btn btn-outline-danger btn-sm" id="roleDeleteBtn" disabled>
-              <i class="bi-trash me-1"></i>Удалить
-            </button>
-            <button type="button"
-                    id="toggleNewRole"
-                    class="btn btn-outline-secondary btn-sm"
-                    data-toggle-target="#roleCreateForm">
-              <i class="bi-plus-lg me-1"></i>Новая роль
-            </button>
-          </div>
-        </div>
-      </form>
-
-      <hr class="my-0">
+      {# ——— УБРАНО <hr class="my-0"> ——— #}
 
       <!-- Форма создания роли (скрыта по умолчанию) -->
-      <form id="roleCreateForm" class="d-none" method="post" action="{% url 'employees:edit_department_role' dept.id %}">
-        {% csrf_token %}
-        <input type="hidden" name="op" value="create">
-        <!-- контейнер с множеством input[name=permission_ids] -->
-        <div id="new_role_perms_hidden" class="d-none"></div>
+      <div class="col-12">
+        <form id="roleCreateForm" class="d-none" method="post" action="{% url 'employees:edit_department_role' dept.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="op" value="create">
+          <div id="new_role_perms_hidden" class="d-none"></div>
 
-        <div class="vstack gap-3">
-          <div>
-            <label class="form-label mb-1" for="new_role_name">Название новой роли</label>
-            <input id="new_role_name" name="name" class="form-control form-control-sm" placeholder="Напр. Руководитель смены" required>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label mb-1" for="new_role_name">Название новой роли</label>
+              <input id="new_role_name" name="name" class="form-control"
+                     placeholder="Напр. Руководитель смены" required>
+            </div>
+
+            <div class="col-12">
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm me-2"
+                      data-bs-toggle="modal"
+                      data-bs-target="#rolePermsCreateModal"
+                      {% if not dept_perm_choices %}disabled{% endif %}>
+                Выбрать права
+              </button>
+              <div id="new_role_perms_chips" class="chips mt-2"></div>
+            </div>
+
+            <div class="col-12 d-flex gap-2">
+              <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi-plus-lg me-1"></i>Создать
+              </button>
+              <button type="button" id="cancelNewRole" class="btn btn-ghost btn-sm">
+                <i class="bi-x-lg me-1"></i>Отмена
+              </button>
+            </div>
           </div>
-
-          <div>
-            <button type="button"
-                    class="btn btn-outline-secondary btn-sm me-2"
-                    data-bs-toggle="modal"
-                    data-bs-target="#rolePermsCreateModal"
-                    {% if not dept_perm_choices %}disabled{% endif %}>
-              Выбрать права
-            </button>
-            <div id="new_role_perms_chips" class="d-flex flex-wrap gap-1 mt-2"></div>
-          </div>
-
-          <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-success btn-sm">
-              <i class="bi-plus-lg me-1"></i>Создать
-            </button>
-            <button type="button" id="cancelNewRole" class="btn btn-ghost btn-sm">
-              <i class="bi-x-lg me-1"></i>Отмена
-            </button>
-          </div>
-        </div>
-      </form>
-
+        </form>
+      </div>
     </div>
   </div>
-</section>
+</div>
 {% endif %}
-
 
 
 {% if not can_manage and not can_assign_roles and not can_change_head %}
@@ -310,16 +269,16 @@
   </div>
 </div>
 
-{# ===== Форма удаления роли (постит на edit_department_role/) ===== #}
+{# ===== Форма удаления роли ===== #}
 <form id="roleDeleteForm" method="post" action="{% url 'employees:edit_department_role' dept.id %}" class="d-none">
   {% csrf_token %}
   <input type="hidden" name="op" value="delete">
   <input type="hidden" name="role_id" id="delete_role_id">
 </form>
 
+{# ===== JS: автогроу / пикеры / роли ===== #}
 <script>
   (function() {
-    // Защита от повторной инициализации
     if (window.__autogrowBound) return; 
     window.__autogrowBound = true;
 
@@ -330,25 +289,18 @@
       el.style.height = newH + 'px';
       el.style.overflowY = (el.scrollHeight > max) ? 'auto' : 'hidden';
     }
-
     function bind(el) {
       if (el.dataset.autogrowBound === '1') return;
       el.dataset.autogrowBound = '1';
       el.addEventListener('input', () => autoGrow(el));
-      // Инициализация текущим значением (в т.ч. с сервером предзаполненным текстом)
       autoGrow(el);
     }
-
-    // Привязка ко всем textarea с атрибутом data-autogrow
     document.querySelectorAll('textarea[data-autogrow]').forEach(bind);
-
-    // Если у вас есть динамическая подгрузка/перерисовка — можно дергать это повторно:
-    // window.refreshAutogrow = () => document.querySelectorAll('textarea[data-autogrow]').forEach(bind);
   })();
 </script>
+
 <script>
   (function(){
-    // защитимся от повторной инициализации
     if (window.__headPickerWithEmailBound) return;
     window.__headPickerWithEmailBound = true;
 
@@ -359,13 +311,9 @@
       const input  = root.querySelector('input[type="text"]');
       const hidden = root.querySelector('input[type="hidden"][name="head_id"]');
       const menu   = root.querySelector('.dropdown-menu');
-      const choices = (JSON.parse(root.dataset.choices || '[]') || []).map(c => ({
-        id: c.id, name: c.name || '', email: c.email || ''
-      }));
+      const choices = (JSON.parse(root.dataset.choices || '[]') || []).map(c => ({ id: c.id, name: c.name || '', email: c.email || '' }));
 
-      function findById(id){
-        return choices.find(c => String(c.id) === String(id));
-      }
+      function findById(id){ return choices.find(c => String(c.id) === String(id)); }
       function findByExact(text){
         const t = text.trim();
         const byName  = choices.find(c => c.name === t);
@@ -374,7 +322,6 @@
         return byEmail || null;
       }
 
-      // Инициализация значением по умолчанию
       if (hidden.value && !input.value){
         const item = findById(hidden.value);
         if (item) input.value = item.name || item.email || '';
@@ -402,31 +349,18 @@
 
       function filter(q){
         const s = norm(q);
-        const res = s
-          ? choices.filter(c => norm(c.name).includes(s) || norm(c.email).includes(s)).slice(0, 8)
-          : choices.slice(0, 8);
+        const res = s ? choices.filter(c => norm(c.name).includes(s) || norm(c.email).includes(s)).slice(0, 8) : choices.slice(0, 8);
         listItems(res);
       }
-
       function hideMenu(){ menu.classList.remove('show'); }
 
       input.addEventListener('focus', () => filter(input.value));
-      input.addEventListener('input', () => {
-        hidden.value = '';                 // ручной ввод — сбрасываем выбранный id
-        input.classList.remove('is-invalid');
-        filter(input.value);
-      });
-
+      input.addEventListener('input', () => { hidden.value = ''; input.classList.remove('is-invalid'); filter(input.value); });
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter'){
           const first = menu.querySelector('.dropdown-item:not(.disabled)');
-          if (menu.classList.contains('show') && first){
-            e.preventDefault();
-            first.click();
-          }
-        } else if (e.key === 'Escape'){
-          hideMenu();
-        }
+          if (menu.classList.contains('show') && first){ e.preventDefault(); first.click(); }
+        } else if (e.key === 'Escape'){ hideMenu(); }
       });
 
       menu.addEventListener('click', (e) => {
@@ -437,27 +371,15 @@
         input.classList.remove('is-invalid');
         hideMenu();
       });
+      document.addEventListener('click', (e) => { if (!root.contains(e.target)) hideMenu(); });
 
-      document.addEventListener('click', (e) => {
-        if (!root.contains(e.target)) hideMenu();
-      });
-
-      // Валидация при отправке:
-      // - пустое поле → head_id пуст (снятие руководителя)
-      // - непустое поле и пустой id → пробуем точное соответствие по имени/почте; если нет — ошибка
       const form = root.closest('form');
       form?.addEventListener('submit', (e) => {
         const val = input.value.trim();
-        if (val === ''){
-          hidden.value = '';
-          return;
-        }
+        if (val === ''){ hidden.value = ''; return; }
         if (!hidden.value){
           const m = findByExact(val);
-          if (m){
-            hidden.value = m.id;
-            return;
-          }
+          if (m){ hidden.value = m.id; return; }
           e.preventDefault();
           input.classList.add('is-invalid');
           filter(val);
@@ -469,23 +391,17 @@
     document.querySelectorAll('[data-head-picker]').forEach(initPicker);
   })();
 </script>
+
 <script>
-  /**
-  * UI для блока "Роли отдела":
-  * - автокомплит по ролям в одном поле
-  * - синхронизация прав в hidden input'ы (permission_ids[])
-  * - кнопка "Новая роль" открывает/закрывает форму создания
-  */
   (function() {
-    // ===== helpers
     const esc = s => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const norm = s => String(s||'').toLowerCase();
 
     function makeChip(text, value) {
       const span = document.createElement('span');
-      span.className = 'badge rounded-pill bg-light text-dark border';
-      span.textContent = text;
+      span.className = 'chip';
       span.dataset.value = value;
+      span.textContent = text;
       return span;
     }
     function buildDict(listSelector) {
@@ -500,15 +416,10 @@
     }
     function setChips(container, ids, dict) {
       container.innerHTML = '';
-      ids.forEach(id => {
-        const p = dict.get(id);
-        container.appendChild(makeChip(p ? (p.name || id) : id, id));
-      });
+      ids.forEach(id => container.appendChild(makeChip((dict.get(id)?.name || id), id)));
     }
     function setChecks(listSelector, ids) {
-      document.querySelectorAll(listSelector + ' input[type=checkbox]').forEach(cb => {
-        cb.checked = ids.includes(cb.value);
-      });
+      document.querySelectorAll(listSelector + ' input[type=checkbox]').forEach(cb => { cb.checked = ids.includes(cb.value); });
     }
     function syncHidden(containerEl, ids) {
       containerEl.innerHTML = '';
@@ -520,32 +431,23 @@
         containerEl.appendChild(inp);
       });
     }
-    function parseIds(csv) {
-      if (!csv) return [];
-      return csv.split(',').map(x => x.trim()).filter(Boolean);
-    }
 
-    // ===== элементы редактирования
     const editForm      = document.getElementById('roleEditForm');
     const roleNameInp   = document.getElementById('role_name_text');
-    const roleIdHidden  = document.getElementById('role_id_hidden');   // внутреннее
-    const roleIdInput   = document.getElementById('edit_role_id');      // уходит на сервер
+    const roleIdHidden  = document.getElementById('role_id_hidden');
+    const roleIdInput   = document.getElementById('edit_role_id');
     const roleSaveBtn   = document.getElementById('roleSaveBtn');
     const roleDeleteBtn = document.getElementById('roleDeleteBtn');
     const editChips     = document.getElementById('edit_role_perms_chips');
     const editHidden    = document.getElementById('edit_role_perms_hidden');
-    const deleteForm    = document.getElementById('roleDeleteForm');
-    const deleteRoleId  = document.getElementById('delete_role_id');
     const editDict      = () => buildDict('#permListEdit');
 
-    // ===== элементы создания
     const createForm    = document.getElementById('roleCreateForm');
     const newRoleName   = document.getElementById('new_role_name');
     const newChips      = document.getElementById('new_role_perms_chips');
     const newHidden     = document.getElementById('new_role_perms_hidden');
     const createDict    = () => buildDict('#permListCreate');
 
-    // ===== делегирование на кнопку "Новая роль" (надежно, даже если скрипт выполнится раньше)
     document.addEventListener('click', function(e) {
       const btn = e.target.closest('#toggleNewRole');
       if (!btn) return;
@@ -553,14 +455,12 @@
       const frm = document.querySelector(targetSel);
       if (!frm) return;
 
-      const willShow = frm.classList.contains('d-none'); // true => откроем
+      const willShow = frm.classList.contains('d-none');
       if (willShow) {
         frm.classList.remove('d-none');
-        // Подставим текст из поля роли, если это новая (невыбранная) роль
         if (roleNameInp?.value && !roleIdHidden?.value) newRoleName.value = roleNameInp.value.trim();
         newRoleName?.focus();
       } else {
-        // Скрываем и чистим
         frm.classList.add('d-none');
         frm.reset?.();
         newChips.innerHTML = '';
@@ -569,35 +469,28 @@
       }
     });
 
-    // ===== автокомплит по ролям
-    // ——— автокомплит по ролям c порталом в body (не клипается родителями)
+    // Ролевой автокомплит с меню в body
     (function initRolePicker(){
       const root = document.querySelector('[data-role-picker]');
-      const roleNameInp = document.getElementById('role_name_text');
-      if (!root || !roleNameInp) return;
+      const roleInp = document.getElementById('role_name_text');
+      if (!root || !roleInp) return;
 
       const choices = JSON.parse(root.dataset.choices || '[]');
 
-      // создаём слой-меню в body
       const menuLayer = document.createElement('div');
       menuLayer.className = 'dropdown-menu shadow';
-      // визуальные параметры, чтобы было как раньше
       menuLayer.style.position = 'fixed';
       menuLayer.style.zIndex = '2000';
       menuLayer.style.maxHeight = '240px';
       menuLayer.style.overflowY = 'auto';
       document.body.appendChild(menuLayer);
 
-      const esc = s => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-      const norm = s => String(s||'').toLowerCase();
-
       function placeMenu() {
-        const r = roleNameInp.getBoundingClientRect();
+        const r = roleInp.getBoundingClientRect();
         menuLayer.style.left = r.left + 'px';
         menuLayer.style.top  = (r.bottom) + 'px';
         menuLayer.style.width = r.width + 'px';
       }
-
       function listItems(arr){
         if (!arr.length){
           menuLayer.innerHTML = '<div class="dropdown-item disabled">Ничего не найдено</div>';
@@ -616,30 +509,19 @@
         window.addEventListener('scroll', placeMenu, true);
         window.addEventListener('resize', placeMenu);
       }
-
       function hideMenu(){
         menuLayer.classList.remove('show');
         window.removeEventListener('scroll', placeMenu, true);
         window.removeEventListener('resize', placeMenu);
       }
-
       function filter(q){
         const s = norm(q);
         const res = s ? choices.filter(c => norm(c.name).includes(s)).slice(0, 10) : choices.slice(0, 10);
         listItems(res);
       }
 
-      // ссылки на элементы/функции из твоего скрипта выше
-      const roleIdHidden   = document.getElementById('role_id_hidden');
-      const roleIdInput    = document.getElementById('edit_role_id');
-      const roleSaveBtn    = document.getElementById('roleSaveBtn');
-      const roleDeleteBtn  = document.getElementById('roleDeleteBtn');
-      const editChips      = document.getElementById('edit_role_perms_chips');
-      const editHidden     = document.getElementById('edit_role_perms_hidden');
-      const editDict       = () => buildDict('#permListEdit');
-
-      roleNameInp.addEventListener('focus', () => filter(roleNameInp.value));
-      roleNameInp.addEventListener('input', () => {
+      roleInp.addEventListener('focus', () => filter(roleInp.value));
+      roleInp.addEventListener('input', () => {
         roleIdHidden.value  = '';
         roleIdInput.value   = '';
         roleSaveBtn.disabled   = true;
@@ -647,22 +529,15 @@
         setChips(editChips, [], editDict());
         syncHidden(editHidden, []);
         document.querySelectorAll('#permListEdit input[type=checkbox]').forEach(cb => cb.checked = false);
-        filter(roleNameInp.value);
+        filter(roleInp.value);
       });
-
-      roleNameInp.addEventListener('keydown', (e) => {
+      roleInp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter'){
           const first = menuLayer.querySelector('.dropdown-item:not(.disabled)');
-          if (menuLayer.classList.contains('show') && first){
-            e.preventDefault();
-            first.click();
-          }
-        } else if (e.key === 'Escape'){
-          hideMenu();
-        }
+          if (menuLayer.classList.contains('show') && first){ e.preventDefault(); first.click(); }
+        } else if (e.key === 'Escape'){ hideMenu(); }
       });
 
-      // выбор из списка
       menuLayer.addEventListener('click', (e) => {
         const btn = e.target.closest('.dropdown-item');
         if (!btn || btn.classList.contains('disabled')) return;
@@ -671,9 +546,9 @@
         const name = btn.dataset.name || '';
         const permsCsv = btn.dataset.perms || '';
 
-        roleNameInp.value   = name;
-        roleIdHidden.value  = id;
-        roleIdInput.value   = id;
+        roleInp.value        = name;
+        roleIdHidden.value   = id;
+        roleIdInput.value    = id;
         roleSaveBtn.disabled   = !id;
         roleDeleteBtn.disabled = !id;
 
@@ -685,44 +560,43 @@
         hideMenu();
       });
 
-      // клик вне поля/меню — закрыть
       document.addEventListener('click', (e) => {
-        if (!roleNameInp.contains(e.target) && !menuLayer.contains(e.target)) hideMenu();
+        if (!roleInp.contains(e.target) && !menuLayer.contains(e.target)) hideMenu();
       });
+
+      // На открытие любой модалки — гарантированно спрятать слой автокомплита
+      document.addEventListener('show.bs.modal', hideMenu);
     })();
 
-    // ===== «Права» — применить из модалки (редактирование)
     document.getElementById('applyPermsEdit')?.addEventListener('click', function() {
       const ids = Array.from(document.querySelectorAll('#permListEdit input[type=checkbox]:checked')).map(cb => cb.value);
       setChips(editChips, ids, editDict());
       syncHidden(editHidden, ids);
     });
 
-    // ===== удаление роли
     roleDeleteBtn?.addEventListener('click', function() {
       if (!roleIdInput.value) return;
       if (confirm('Удалить выбранную роль?')) {
-        deleteRoleId.value = roleIdInput.value;
-        deleteForm.submit();
+        document.getElementById('delete_role_id').value = roleIdInput.value;
+        document.getElementById('roleDeleteForm').submit();
       }
     });
 
-    // ===== «Права» — применить из модалки (создание)
     document.getElementById('applyPermsCreate')?.addEventListener('click', function() {
       const ids = Array.from(document.querySelectorAll('#permListCreate input[type=checkbox]:checked')).map(cb => cb.value);
       setChips(newChips, ids, createDict());
       syncHidden(newHidden, ids);
     });
 
-    // ===== страховка — синхронизируем права перед сабмитом формы создания
     createForm?.addEventListener('submit', function() {
       const ids = Array.from(document.querySelectorAll('#permListCreate input[type=checkbox]:checked')).map(cb => cb.value);
       syncHidden(newHidden, ids);
     });
   })();
 </script>
+
 <script>
-  // Делегированный обработчик для кнопки "Отмена"
+  // Кнопка "Отмена" — скрыть форму создания роли и сбросить выбор
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('#cancelNewRole');
     if (!btn) return;
@@ -731,18 +605,23 @@
     const frm = document.getElementById('roleCreateForm');
     if (!frm) return;
 
-    // Скрыть и очистить форму создания
     frm.classList.add('d-none');
     frm.reset?.();
 
-    // Почистить чипсы и hidden-инпуты прав
     const newChips  = document.getElementById('new_role_perms_chips');
     const newHidden = document.getElementById('new_role_perms_hidden');
     if (newChips)  newChips.innerHTML = '';
     if (newHidden) newHidden.innerHTML = '';
 
-    // Снять чекбоксы прав в модалке создания
     document.querySelectorAll('#permListCreate input[type=checkbox]')
       .forEach(cb => cb.checked = false);
   });
+</script>
+<script>
+  // Всегда держим модалки прямыми детьми <body>, чтобы избежать локальных стеков/перекрытий
+  (function () {
+    document.querySelectorAll('.modal').forEach(m => {
+      if (m.parentElement !== document.body) document.body.appendChild(m);
+    });
+  })();
 </script>

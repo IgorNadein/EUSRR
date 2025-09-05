@@ -106,15 +106,6 @@ def _api_ok_or_error(resp) -> Tuple[bool, Dict[str, Any], int]:
     return resp.ok, data, getattr(resp, "status", 500)
 
 
-def _has_role(link):
-    r = link.get("role")
-    if r is None:
-        return False
-    if isinstance(r, dict):
-        return bool(r.get("id") or r.get("name"))
-    s = str(r).strip()
-    return s not in {"", "None", "null", "0"}
-
 
 # =========================
 #   Сотрудники
@@ -627,7 +618,9 @@ def set_member_role(request, dept_id: int, emp_id: int):
             role_id = None
 
     # заодно не даём менять самому себе (UI тоже скрывает)
-    if str(emp_id) == str(getattr(request.user, "id", None)):
+    if (str(emp_id) == str(getattr(request.user, "id", None))) and not (
+        request.user.is_staff or request.user.is_superuser
+    ):
         messages.error(request, "Нельзя изменять собственную роль в отделе.")
         return redirect(
             request.POST.get("next") or reverse("employees:profile", args=("me",))
