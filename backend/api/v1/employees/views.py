@@ -38,7 +38,7 @@ from employees.models import (
     Skill,
 )
 from phonenumbers import PhoneNumberFormat
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, generics, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import (
     AllowAny,
@@ -48,6 +48,7 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from ..permissions import (
     ASSIGN_ROLE_PERM,
@@ -60,6 +61,7 @@ from ..permissions import (
 )
 from .serializers import (
     AddMemberInput,
+    DepartmentBriefSerializer,
     DepartmentRoleSerializer,
     DepartmentSerializer,
     EmailSerializer,
@@ -926,6 +928,39 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             {"employee_id": emp_id, "removed": True},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["get"], url_path="my-departments")
+    def my_departments(self, request) -> Response:
+        """Вернёт список отделов, доступных текущему пользователю.
+
+        Логика:
+            Только отделы, где пользователь является руководителем
+              или имеет активную связь в ``EmployeeDepartment`` (is_active=True).
+
+        Args:
+            request: Текущий HTTP-запрос DRF.
+
+        Returns:
+            Response: JSON-массив отделов в формате ``DepartmentSerializer`` (many=True),
+            отсортированный по названию и id.
+
+        Raises:
+            NotAuthenticated: Если пользователь не авторизован (обрабатывается классом
+                разрешений в ``get_permissions``).
+        """
+        user = request.user
+        qs = self.get_queryset()
+
+        active_link_exists = EmployeeDepartment.objects.filter(
+            department_id=OuterRef("pk"),
+            employee_id=user.id,
+            is_active=True,
+        )
+        user_qs = qs.filter(Q(head_id=user.id) | Exists(active_link_exists)).distinct()
+
+        user_qs = user_qs.order_by("name", "id")
+        data = DepartmentBriefSerializer(user_qs, many=True).data
+        return Response(data)
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):

@@ -1,41 +1,31 @@
 # backend/api/v1/feed/serializers.py
 from __future__ import annotations
 
+from typing import Any, Dict, Optional
+
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
 from feed.models import Comment, Post, PostLike
+from ..serializers import Base64ImageField
 
 Employee = get_user_model()
 
 
 class AuthorMiniSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
-    avatar_url = serializers.SerializerMethodField()
+    avatar = Base64ImageField(read_only=True)
 
     class Meta:
         model = Employee
-        fields = ["id", "first_name", "last_name", "full_name", "avatar_url"]
+        fields = ["id", "first_name", "last_name", "full_name", "avatar"]
 
     def get_full_name(self, obj):
         fn = (obj.first_name or "").strip()
         ln = (obj.last_name or "").strip()
         nm = f"{fn} {ln}".strip()
         return nm
-
-    def get_avatar_url(self, obj):
-        # пробуем несколько распространённых имён поля/метода
-        try:
-            for attr in ("avatar", "photo", "image"):
-                f = getattr(obj, attr, None)
-                if f and getattr(f, "url", None):
-                    return f.url
-            if hasattr(obj, "get_avatar_url"):
-                return obj.get_avatar_url()
-        except Exception:
-            pass
-        return None
 
 
 class CommentMiniSerializer(serializers.ModelSerializer):
@@ -70,8 +60,8 @@ class PostListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "type",
-            "department",  # write/read PK
-            "department_id",  # read-only alias
+            "department",
+            "department_id",
             "title",
             "body",
             "image",

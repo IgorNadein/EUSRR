@@ -224,9 +224,9 @@
             <div class="feed-author">Публикации отдела</div>
           </div>
         </div>
-        <div class="feed-body">
+        <div>
           {% if posts %}
-            {% include "feed/_feed_cards.html" with items=posts only %}
+            {% include "feed/_feed_cards.html" with items=posts  %}
           {% else %}
             <div class="text-secondary small">Публикаций пока нет.</div>
           {% endif %}

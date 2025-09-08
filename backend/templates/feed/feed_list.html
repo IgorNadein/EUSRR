@@ -110,8 +110,8 @@
   </style>
 
   <div class="container">
-    <div class="row justify-content-center mb-4">
-      <div class="col-lg-9 col-xl-8">
+    <div class="row gx-0"> 
+      <div class="col-12">
 
         <div class="feed-header d-flex align-items-center gap-3">
           <i class="bi-megaphone fs-2 text-primary"></i>
@@ -179,15 +179,19 @@
           </div>
         {% endif %}
 
-        <div class="feed-stream">
-          {% if page %}
-            {% include "feed/_feed_cards.html" with items=page.object_list %}
-          {% elif posts %}
-            {% include "feed/_feed_cards.html" with items=posts %}
-          {% else %}
-            <div class="alert alert-info shadow-sm mt-2">Пока нет новостей.</div>
-          {% endif %}
-        </div>
+        <section class="feed-card mb-3">
+          <div class="feed-hd">
+          </div>
+          <div>
+            {% if page %}
+              {% include "feed/_feed_cards.html" with items=page.object_list %}
+            {% elif posts %}
+              {% include "feed/_feed_cards.html" with items=posts %}
+            {% else %}
+              <div class="alert alert-info shadow-sm mt-2">Пока нет новостей.</div>
+            {% endif %}
+          </div>
+        </section>
 
         {% if page %}
           <div class="mt-4">

@@ -8,21 +8,12 @@
   main.main{ padding-bottom:0 !important; }
 
   /* ===== Контейнер страницы чата ===== */
-  .chat-root{
-    --chat-top-gap: 20px;
-    --chat-bottom-gap: 48px;
-    height: calc(100dvh - var(--navbar-h));
-    padding: var(--chat-top-gap) 0 calc(var(--chat-bottom-gap) + env(safe-area-inset-bottom));
-    box-sizing: border-box;
-    overflow: hidden;
-    display: flex; flex-direction: column;
-    background: var(--bs-body-bg);
-  }
+
   @supports(height: 100svh){
     .chat-root{ height: calc(100svh - var(--navbar-h)); }
   }
   .chat-root > .row{ height:100%; min-height:0; }
-  .chat-col{ display:flex; flex-direction:column; height:100%; min-height:0; }
+  .chat-col{ display:flex; flex-direction:column; height:93%; min-height:0; }
   .feed-header{ flex:0 0 auto; }
 
   /* ===== Карточка чата ===== */
@@ -129,8 +120,8 @@
 
 {% block content %}
 <div class="container chat-root">
-  <div class="row justify-content-center">
-    <div class="col-lg-9 col-xl-8 chat-col">
+  <div class="row gx-0"> 
+    <div class="col-12 chat-col">
 
       <!-- Заголовок -->
       <div class="feed-header">

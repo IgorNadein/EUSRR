@@ -1,13 +1,13 @@
 {% for post in items %}
   {% firstof post.id post.pk as post_id %}
-  <article class="feed-card" data-post-card id="post-{{ post_id }}">
+  <article data-post-card id="post-{{ post_id }}">
     <header class="feed-hd">
-
+      
       {# --- Аватар автора --- #}
       <div class="feed-ava d-flex align-items-center justify-content-center">
         {% with a=post.author %}
           {% if a %}
-            {% firstof a.avatar.url a.avatar_url as ava_url %}
+            {% firstof a.avatar as ava_url %}
             {% if ava_url %}
               <img src="{{ ava_url }}" alt="">
             {% else %}
@@ -20,6 +20,7 @@
       </div>
 
       {# --- Метаданные (имя автора, дата, отдел) --- #}
+      
       <div class="feed-meta">
         <div class="feed-author">
           {% with a=post.author %}
@@ -46,7 +47,7 @@
             {% endif %}
           {% endwith %}
         </div>
-
+        
         <div class="feed-sub">
           {% if post.created_at %}
             {{ post.created_at_display }}
@@ -63,8 +64,16 @@
         <span class="feed-pin"><i class="bi-pin-angle"></i></span>
       {% endif %}
     </header>
-
-    <div class="feed-body position-relative">
+    {% if post.image %}
+      {% firstof post.image.url post.image as img_url %}
+      {% if img_url %}
+        <div class="feed-img">
+          {% if post_id %}<a href="{% url 'feed:post_detail' post_id %}" class="stretched-link"></a>{% endif %}
+          <img src="{{ img_url }}" alt="{{ post.title|default:'Публикация' }}">
+        </div>
+      {% endif %}
+    {% endif %}
+    <div class="feed-body">
       <h3 class="feed-title mb-1">
         {% if post_id %}
           <a href="{% url 'feed:post_detail' post_id %}" class="text-decoration-none stretched-link">
@@ -79,6 +88,16 @@
         {% if body|wordcount > 42 %}
           <div class="feed-text mb-1" id="excerpt-{{ post_id }}">
             {{ body|truncatewords:42 }}
+            <button class="btn p-0 mt-1 small text-secondary text-decoration-none bg-transparent border-0 readmore-toggle"
+                    id="more-{{ post_id }}"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#full-{{ post_id }}"
+                    aria-controls="full-{{ post_id }}"
+                    aria-expanded="false">
+              <span class="txt-more">Подробнее</span>
+
+            </button>
           </div>
 
           <div id="full-{{ post_id }}" class="collapse"
@@ -86,19 +105,19 @@
               data-btn="#more-{{ post_id }}">
             <div class="feed-full mt-1">
               {{ body|linebreaksbr }}
-            </div>
-          </div>
+              <button class="btn p-0 mt-1 small text-secondary text-decoration-none bg-transparent readmore-toggle"
+                    id="more-{{ post_id }}"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#full-{{ post_id }}"
+                    aria-controls="full-{{ post_id }}"
+                    aria-expanded="false">
+              <span class="txt-more">Скрыть</span>
 
-          <button class="btn btn-link px-0 mt-1 small readmore-toggle"
-                  id="more-{{ post_id }}"
-                  type="button"
-                  data-bs-toggle="collapse"
-                  data-bs-target="#full-{{ post_id }}"
-                  aria-controls="full-{{ post_id }}"
-                  aria-expanded="false">
-            <span class="txt-more">Подробнее</span>
-            <span class="txt-less d-none">Скрыть</span>
-          </button>
+            </button>
+            </div>
+            
+          </div>
         {% else %}
           <div class="feed-full">
             {{ body|linebreaksbr }}
@@ -106,23 +125,11 @@
         {% endif %}
       {% endwith %}
     </div>
-
-
-    {% if post.image %}
-      {% firstof post.image.url post.image as img_url %}
-      {% if img_url %}
-        <div class="feed-img position-relative">
-          {% if post_id %}<a href="{% url 'feed:post_detail' post_id %}" class="stretched-link"></a>{% endif %}
-          <img src="{{ img_url }}" alt="{{ post.title|default:'Публикация' }}">
-        </div>
-      {% endif %}
-    {% endif %}
-
-    <footer class="feed-actions">
+    <footer class="feed-actions border-0">
       {# Кнопка/ссылка комментариев #}
       {% if post_id %}
         {% if user.is_authenticated %}
-          <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
+          <button class="btn btn-ghost d-inline-flex align-items-center gap-1 "
                   type="button"
                   data-bs-toggle="collapse"
                   data-bs-target="#ccoll-{{ post_id }}"
@@ -143,7 +150,7 @@
       {% if post.attachment %}
         {% firstof post.attachment.url post.attachment as att_url %}
         {% if att_url %}
-          <a href="{{ att_url }}" class="btn btn-ghost d-inline-flex align-items-center gap-1">
+          <a href="{{ att_url }}" class="btn btn-ghost d-inline-flex align-items-center gap-1 ">
             <i class="bi-paperclip"></i><span>Вложение</span>
           </a>
         {% endif %}
@@ -156,7 +163,7 @@
         <form method="post" action="{% url 'feed:toggle_like' post_id %}" class="ms-2">
           {% csrf_token %}
           <button type="submit"
-                  class="btn btn-ghost d-inline-flex align-items-center gap-1 {% if post.is_liked %}is-liked{% endif %}"
+                  class="btn btn-ghost d-inline-flex align-items-center gap-1{% if post.is_liked %}is-liked{% endif %}"
                   data-like-post="{{ post_id }}"
                   data-like-url="{% url 'feed:toggle_like' post_id %}"
                   aria-pressed="{% if post.is_liked %}true{% else %}false{% endif %}">
@@ -186,7 +193,7 @@
           {# last_comment_list — есть только в старом ORM-пути; при API просто не покажется #}
           {% with last=post.last_comment_list|first %}
             {% if last %}
-              <div class="bg-body-tertiary border rounded p-2">
+              <div>
                 <div class="small mb-1">
                   {% firstof last.author.id last.author.pk as last_author_id %}
                   <a href="{% url 'employees:employee_detail' last_author_id %}"

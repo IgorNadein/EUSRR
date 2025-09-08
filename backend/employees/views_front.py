@@ -79,6 +79,32 @@ def _fetch_employee_posts(api, employee_id: int):
             return _extract_results(data)
 
 
+def _fetch_department_posts(api, department_id: int) -> list[dict]:
+    """Возвращает публикации отдела (type=department), отсортированные по пину и дате.
+
+    Args:
+        api: Инициализированный API-клиент (get_api_client(request)).
+        department_id (int): ID отдела.
+
+    Returns:
+        list[dict]: Список публикаций для шаблона.
+
+    Raises:
+        RuntimeError: Если ответ API не JSON (редко, мы перехватываем безопасно).
+        ValueError: Если department_id некорректный (не int).
+    """
+    # Пробуем явный фильтр по типу и отделу; fallback — только department
+    for url in (
+        f"v1/posts/?type=department&department={int(department_id)}&ordering=-pinned,-created_at",
+        f"v1/posts/?department={int(department_id)}&ordering=-pinned,-created_at",
+    ):
+        r = api.get(url)
+        if r.ok:
+            data = r.json or []
+            return _extract_results(data)
+    return []
+
+
 def _json_body(request: HttpRequest) -> Dict[str, Any]:
     """Безопасно парсим JSON; если не JSON — возвращаем пустой dict."""
     try:
@@ -104,7 +130,6 @@ def _api_ok_or_error(resp) -> Tuple[bool, Dict[str, Any], int]:
     except Exception:
         data = {}
     return resp.ok, data, getattr(resp, "status", 500)
-
 
 
 # =========================
@@ -536,6 +561,7 @@ def department_detail(request, pk: int):
             "can_manage": bool(perms.get("can_manage")),
             "can_change_head": bool(perms.get("can_change_head")),
             "can_assign_roles": bool(perms.get("can_assign_roles")),
+            "posts": _fetch_department_posts(api, pk)
         }
     )
     return render(request, "employees/department_detail.html", ctx)

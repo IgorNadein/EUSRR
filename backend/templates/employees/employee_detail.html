@@ -406,16 +406,21 @@
           </div>
         {% endif %}
 
-        <article class="ios-card" id="activity">
-          <div class="p-4">
-            <div class="ios-section-title mb-3"><i class="bi-activity me-1"></i>Активность</div>
+        <section class="feed-card mb-3">
+          <div class="feed-hd">
+            <i class="bi-activity me-1"></i>
+            <div class="feed-meta">
+              <div class="feed-author">Активность</div>
+            </div>
+          </div>
+          <div>
             {% if posts %}
-              <div class="activity-feed">
-                {% include "feed/_feed_cards.html" with items=posts only %}
-              </div>
+              {% include "feed/_feed_cards.html" with items=posts  %}
+            {% else %}
+              <div class="text-secondary small">Публикаций пока нет.</div>
             {% endif %}
           </div>
-        </article>
+        </section>
       </div>
     </div>
   </div>

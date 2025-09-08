@@ -107,7 +107,7 @@
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Закрыть"></button>
   </div>
 
-  <div class="offcanvas-body d-flex flex-column h-100 px-3 px-lg-2">
+  <div class="offcanvas-body d-flex flex-column h-100 px-0">
     <nav class="side-nav">
       <a href="{% url 'feed:feed_list' %}"
         class="nav-link {% if request.resolver_match.url_name == 'feed_list' %}active{% endif %}"
