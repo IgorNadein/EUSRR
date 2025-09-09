@@ -135,7 +135,7 @@
               <div class="join-rail">
                 {% for emp in new_employees %}
                   {% firstof emp.id emp.pk as emp_id %}
-                  {% firstof emp.avatar emp.avatar_url as ava %}
+                  {% firstof emp.avatar emp.avatar as ava %}
                   {% firstof emp.short_name emp.get_short_name emp.full_name emp.get_full_name emp.email "Сотрудник" as emp_name %}
                   {% firstof emp.department.name emp.department_name as dept_name %}
 

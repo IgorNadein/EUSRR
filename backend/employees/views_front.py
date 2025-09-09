@@ -251,7 +251,7 @@ def employee_profile(request, pk="me"):
     sdata = sresp.json if sresp.ok else []
     all_skills = sdata.get("results", sdata) if isinstance(sdata, dict) else sdata
     gresp = None
-    for path in ("v1/auth/groups/", "v1/groups/"):
+    for path in ("v1/groups/",):
         r = api.get(path, params={"ordering": "name"})
         if r.ok:
             gresp = r

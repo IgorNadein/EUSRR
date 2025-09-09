@@ -22,7 +22,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from django.contrib.auth import get_user_model
 
-from calendar_app.models import CompanyEvent
+from calendar_app.models import CalendarEvent
 from bots.models import BotSubscriber
 from bots.filters import IsBoundSubscriber_tg, IsEmployeeActive
 from documents.models import Document, DocumentAcknowledgement
@@ -183,14 +183,14 @@ def _acknowledge(user, document):
 
 @sync_to_async
 def _get_one_time_events(date):
-    return list(CompanyEvent.objects.filter(
-        recurrence=CompanyEvent.ONE_TIME, date=date
+    return list(CalendarEvent.objects.filter(
+        recurrence=CalendarEvent.ONE_TIME, date=date
     ))
 
 
 @sync_to_async
 def _get_annual_events():
-    return list(CompanyEvent.objects.filter(recurrence=CompanyEvent.ANNUAL))
+    return list(CalendarEvent.objects.filter(recurrence=CalendarEvent.ANNUAL))
 
 
 @sync_to_async

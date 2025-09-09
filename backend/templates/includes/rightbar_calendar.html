@@ -180,7 +180,7 @@
   </div>
 </div>
 
-{# Модал создания события #}
+<!-- Модал создания события — ОБНОВЛЁННЫЙ -->
 <div class="modal fade" id="eventCreateModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <form class="modal-content" id="eventForm">
@@ -188,6 +188,7 @@
         <h5 class="modal-title">Новое событие</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
+
       <div class="modal-body">
         <div class="mb-2">
           <label class="form-label">Заголовок</label>
@@ -206,14 +207,89 @@
         </div>
 
         <div class="form-check mt-2">
-          <input class="form-check-input" type="checkbox" value="1" id="allDayChk" name="all_day">
+          <input class="form-check-input" type="checkbox" value="1" id="allDayChk" name="all_day" checked>
           <label class="form-check-label" for="allDayChk">Весь день</label>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">Повторение</label>
+            <select class="form-select" name="recurrence" id="recurrenceSelect">
+              <option value="one_time" selected>Одноразовое</option>
+              <option value="hourly">Ежечасно</option>
+              <option value="daily">Ежедневно</option>
+              <option value="weekly">Еженедельно</option>
+              <option value="monthly">Ежемесячно</option>
+              <option value="annual">Ежегодно</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Интервал</label>
+            <input type="number" class="form-control" name="recurrence_interval" id="recurrenceInterval" value="1" min="1" step="1">
+            <div class="form-text">Каждые N часов/дней/недель/месяцев</div>
+          </div>
+        </div>
+
+        <div class="mt-2 d-none" id="weeklyBlock">
+          <label class="form-label d-block mb-1">Дни недели</label>
+          <div class="d-flex flex-wrap gap-2">
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="0"> Пн
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="1"> Вт
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="2"> Ср
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="3"> Чт
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="4"> Пт
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="5"> Сб
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="6"> Вс
+            </label>
+          </div>
+          <div class="form-text">Если пусто — возьмём день недели даты начала.</div>
+        </div>
+
+        <div class="row g-2 mt-2">
+          <div class="col-6">
+            <label class="form-label">Повторять до</label>
+            <input type="date" class="form-control" name="recurrence_until" id="recurrenceUntil">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Кол-во повторов</label>
+            <input type="number" class="form-control" name="recurrence_count" id="recurrenceCount" min="1" step="1">
+            <div class="form-text">Нельзя вместе с «Повторять до»</div>
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">Цвет</label>
+            <input type="text" class="form-control" name="color" placeholder="#RRGGBB">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Локация</label>
+            <input type="text" class="form-control" name="location" placeholder="Переговорка, адрес…">
+          </div>
         </div>
 
         <small class="text-secondary d-block mt-2">
           Календарь: <span id="eventTargetLabel">Компания</span>
         </small>
       </div>
+
       <div class="modal-footer">
         <button type="submit" class="btn btn-primary">Создать</button>
       </div>
@@ -221,10 +297,11 @@
   </div>
 </div>
 
+
 <script>
   document.addEventListener('DOMContentLoaded', function(){
     if (!window.FullCalendar) return;
-
+    
     /* ===== токен из meta ===== */
     function getAccessToken(){
       const meta = document.querySelector('meta[name="api-access"]');
@@ -237,34 +314,76 @@
       return t ? { 'Authorization': 'Bearer ' + t } : {};
     }
 
-    /* ===== endpoints ===== */
-    const API_COMPANY   = '/api/v1/calendar/company-events/';
-    const API_MY_DEPTS  = '/api/v1/departments/my-departments/'; // <-- новый эндпоинт
-    const holder        = document.querySelector('.rightbar-card');
+    /* ===== endpoints (единый вьюсет) ===== */
+    const API_EVENTS   = '/api/v1/calendar/events/';
+    const API_MY_DEPTS = '/api/v1/departments/my-departments/';   // список отделов пользователя
+    const holder       = document.querySelector('.rightbar-card');
 
-    // оставим обратную совместимость: если в data-атрибуте переданы id отделов
-    const legacyDeptIds = (holder?.dataset.deptId || '').split(',').map(s=>s.trim()).filter(Boolean);
+    /* ===== только ЧИСЛОВОЙ PK отдела ===== */
+    const DIGITS_RE = /^\d+$/;
+    function extractNumericPk(d){
+      const cands = [d?.pk, d?.id, d?.department_id];
+      for (const v of cands){
+        const s = String(v ?? '').trim();
+        if (s && DIGITS_RE.test(s)) return s;
+      }
+      return null;
+    }
 
-    const deptUrl = (id) => `/api/v1/calendar/departments/${encodeURIComponent(id)}/events/`;
+    // YYYY-MM-DD в ЛОКАЛИ (без TZ-сдвига)
+    function ymdLocal(date){
+      const y = date.getFullYear();
+      const m = String(date.getMonth()+1).padStart(2,'0');
+      const d = String(date.getDate()).padStart(2,'0');
+      return `${y}-${m}-${d}`;
+    }
+
+    // базовый URL событий: для отдела добавляем department_id
+    const eventsUrl = (deptId=null) => {
+      const u = new URL(API_EVENTS, location.origin);
+      if (deptId != null) u.searchParams.set('department_id', String(deptId));
+      return u.pathname + (u.search ? ('?' + u.searchParams.toString()) : '');
+    };
+
+    // корректно вешаем диапазон дат на любой URL
+    function addRange(url, start, end){
+      const u = new URL(url, location.origin);
+      u.searchParams.set('start', ymdLocal(start));
+      u.searchParams.set('end',   ymdLocal(end));
+      return u.pathname + '?' + u.searchParams.toString();
+    }
+
+    // обратная совместимость: data-dept-id="1,2,3"
+    const legacyDeptIds = (holder?.dataset.deptId || '')
+      .split(',').map(s=>s.trim()).filter(s => DIGITS_RE.test(s));
 
     /* ===== элементы UI ===== */
     const chooserBtn        = document.getElementById('calendarChooserBtn');
     const chooserMenu       = document.getElementById('calendarChooserMenu');
     const eventTargetLabel  = document.getElementById('eventTargetLabel');
 
+    // поля модала для переключений
+    const allDayChk         = document.getElementById('allDayChk');
+    const recurrenceSelect  = document.getElementById('recurrenceSelect');
+    const weeklyBlock       = document.getElementById('weeklyBlock');
+    const recurrenceInterval= document.getElementById('recurrenceInterval');
+    const recurrenceUntil   = document.getElementById('recurrenceUntil');
+    const recurrenceCount   = document.getElementById('recurrenceCount');
+
     /* ===== состояние ===== */
-    let departments = []; // [{id, name}]
+    let departments = []; // [{id, name}] где id — всегда числовой PK
     const state = { type: 'company', deptId: null };
 
     /* ===== utils ===== */
     const dayMs = 86400000, hourMs = 3600000;
-    const isDateOnly = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const isDateOnly = v => typeof v ==='string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const toDate = v => {
       if (!v) return null;
       if (v instanceof Date) return v;
       if (typeof v === 'number') return new Date(v);
       if (typeof v === 'string'){
-        const s=v.trim(); if (isDateOnly(s)){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+        const s=v.trim();
+        if (isDateOnly(s)){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
         const t=Date.parse(s); if (!isNaN(t)) return new Date(t);
       }
       return null;
@@ -274,37 +393,41 @@
     const endOfWeek   = d => { const s=startOfWeek(d); const e=new Date(s); e.setDate(s.getDate()+7); return e; };
     const overlaps = (ev, ws, we) => ev.start < we && ev.end > ws;
 
-    async function fetchJSON(url){
-      const r = await fetch(url, { headers: { 'Accept':'application/json', ...authHeaders() } });
+    async function fetchJSON(url, opts){
+      const r = await fetch(url, { headers: { 'Accept':'application/json', ...authHeaders(), ...(opts?.headers||{}) }, ...(opts||{}) });
       if (r.status === 401) { console.warn('401 от API — нужен валидный access токен'); return []; }
-      if (!r.ok) { console.error('HTTP', r.status, url); return []; }
+      if (!r.ok) {
+        let text = await r.text();
+        try{ text = JSON.parse(text); }catch{}
+        throw { status: r.status, data: text };
+      }
       const data = await r.json();
       return Array.isArray(data) ? data : (data.results || data.items || data.events || []);
     }
-    function qsRange(start, end){
-      const s = start.toISOString().slice(0,10);
-      const e = end.toISOString().slice(0,10);
-      return `?start=${s}&end=${e}`;
-    }
 
-    /* ===== загрузка отделов через /my-departments ===== */
+    /* ===== загрузка отделов (только числовой PK) ===== */
     async function loadDepartments(){
-      // подчистим старые пункты отделов (если были)
       chooserMenu.querySelectorAll('[data-cal="dept"]').forEach(n => n.closest('li')?.remove());
 
-      let raw = await fetchJSON(API_MY_DEPTS).catch(()=>[]);
-      if (!Array.isArray(raw) || !raw.length){
-        // fallback: построим из legacy id
-        departments = legacyDeptIds.map(id => ({ id, name: `Отдел #${id}` }));
-      } else {
-        departments = raw.map(d => ({
-          id: d.id ?? d.pk ?? d.uuid ?? d.slug,
-          name: d.name ?? d.title ?? d.code ?? `Отдел #${d.id ?? d.pk ?? ''}`
-        })).filter(d => d.id != null);
+      let raw = [];
+      try{ raw = await fetchJSON(API_MY_DEPTS); }catch(e){ raw = []; }
+
+      let mapped = (Array.isArray(raw) ? raw : [])
+        .map(d => {
+          const pk = extractNumericPk(d);
+          if (!pk) return null;
+          const name = d.name ?? d.title ?? d.code ?? `Отдел #${pk}`;
+          return { id: pk, name };
+        })
+        .filter(Boolean);
+
+      if (!mapped.length && legacyDeptIds.length){
+        mapped = legacyDeptIds.map(pk => ({ id: pk, name: `Отдел #${pk}` }));
       }
 
+      departments = mapped;
+
       if (!departments.length){
-        // если отделов нет — оставляем только "Компания"
         setChooserLabel();
         return;
       }
@@ -322,13 +445,9 @@
       });
       chooserMenu.appendChild(frag);
 
-      // если уже выбран отдел, но его нет в списке — вернёмся к "Компания"
       if (state.type === 'dept' && !departments.some(d => String(d.id) === String(state.deptId))){
         state.type = 'company'; state.deptId = null;
       }
-
-      // если ничего не выбрано и хочется автоподставить первый отдел — раскомментируй:
-      // if (state.type === 'company' && departments.length) { state.type='dept'; state.deptId=departments[0].id; }
 
       setChooserLabel();
     }
@@ -351,33 +470,38 @@
       if (type === 'company'){
         state.type='company'; state.deptId=null;
       } else {
-        state.type='dept'; state.deptId=btn.dataset.id;
+        const id = btn.dataset.id;
+        if (!DIGITS_RE.test(String(id || ''))) { alert('Некорректный идентификатор отдела'); return; }
+        state.type='dept'; state.deptId=id;
       }
       setChooserLabel();
       [deskCalendar, mobCalendar].forEach(cal => cal?.refetchEvents());
-      updateWeekLists(); // источники учтём внутри
+      updateWeekLists();
     });
 
-    /* ===== комбинированная загрузка событий ===== */
+    /* ===== комбинированная загрузка событий (occurrences) ===== */
     async function fetchEventsCombined(start, end){
-      const q = qsRange(start, end);
-      let urls = [];
-      if (state.type === 'company') urls = [API_COMPANY + q];
-      else if (state.type === 'dept' && state.deptId) urls = [deptUrl(state.deptId) + q];
-      if (!urls.length) return [];
-      const parts = await Promise.all(urls.map(u => fetchJSON(u).catch(()=>[])));
-      return parts.flat();
+      let base = eventsUrl(state.type === 'dept' ? state.deptId : null);
+      const withRange = addRange(base, start, end);
+      try{
+        return await fetchJSON(withRange);
+      }catch(e){
+        console.error('Fetch events failed', e);
+        return [];
+      }
     }
 
     function normalizeEvent(ev){
       const title = pick(ev, ['title','name','summary','text']) || '';
       const rs = pick(ev, ['start','start_date','date_start','date','date_from']);
       const re = pick(ev, ['end','end_date','date_end','date_to']);
-      const allDay = ('allDay' in ev) ? !!ev.allDay : (isDateOnly(rs) && (!re || isDateOnly(re)));
+      const allDay = ('allDay' in ev) ? !!ev.allDay : (('all_day' in ev) ? !!ev.all_day : (isDateOnly(rs) && (!re || isDateOnly(re))));
       const s = toDate(rs); let e = toDate(re);
       if (!s) return null;
       if (!e) e = new Date(s.getTime() + (allDay ? dayMs : hourMs));
-      return { title, start:s, end:e, allDay, color: ev.color || null, recurrence: ev.recurrence || null };
+      const color = ev.color || ev.bgColor || null;
+      const recurrence = ev.recurrence || ev.recurrence_display || null;
+      return { title, start:s, end:e, allDay, color, recurrence };
     }
 
     function renderVertical(container, rangeLabel, events, ws, we){
@@ -491,58 +615,131 @@
     setTimeout(()=> updateWeekLists(deskCalendar || mobCalendar), 100);
     [deskCalendar, mobCalendar].forEach(cal => cal?.on('datesSet', ()=> updateWeekLists(cal)));
 
+    /* ===== UX: переключалки формы ===== */
+    function syncByRecurrence(){
+      const r = recurrenceSelect?.value || 'one_time';
+      // weekly block
+      if (r === 'weekly'){ weeklyBlock?.classList.remove('d-none'); } else { weeklyBlock?.classList.add('d-none'); }
+      // hourly требует времени → снимаем all-day и блокируем чекбокс
+      if (r === 'hourly'){
+        allDayChk.checked = false;
+        allDayChk.disabled = true;
+      } else {
+        allDayChk.disabled = false;
+      }
+    }
+    function syncByAllDay(){
+      const isAllDay = allDayChk?.checked;
+      const startEl = document.querySelector('input[name="start"]');
+      const endEl   = document.querySelector('input[name="end"]');
+      if (!startEl || !endEl) return;
+      // Если all-day — время можно не указывать, но поля не блокируем (пусть пользователь вводит, тогда чек снимем на submit)
+      // Визуально оставим как есть.
+    }
+    function syncUntilCount(){
+      const hasUntil = !!recurrenceUntil?.value;
+      if (hasUntil){
+        recurrenceCount.value = '';
+        recurrenceCount.disabled = true;
+      } else {
+        recurrenceCount.disabled = false;
+      }
+    }
+    recurrenceSelect?.addEventListener('change', syncByRecurrence);
+    allDayChk?.addEventListener('change', syncByAllDay);
+    recurrenceUntil?.addEventListener('change', syncUntilCount);
+    syncByRecurrence(); syncByAllDay(); syncUntilCount();
+
     /* ===== создание события (POST только с Bearer) ===== */
     const form = document.getElementById('eventForm');
     form?.addEventListener('submit', async (e)=>{
       e.preventDefault();
       const fd = new FormData(form);
       const title = (fd.get('title')||'').toString().trim();
-      const allDay = !!fd.get('all_day');
       let start = fd.get('start')?.toString() || '';
       let end   = fd.get('end')?.toString() || '';
+      const allDay = !!fd.get('all_day');
 
       if (!title){
         alert('Укажите заголовок'); return;
       }
 
-      let url = '';
-      let payload = {};
-      if (state.type === 'company'){
-        url = API_COMPANY;
-        const date = (start || new Date().toISOString().slice(0,16)).slice(0,10);
-        payload = { title, date };
-      }else if (state.type === 'dept' && state.deptId){
-        url = deptUrl(state.deptId);
-        if (!start) start = new Date().toISOString().slice(0,16);
-        if (!end){
-          const dt = new Date(start); dt.setHours(dt.getHours()+1);
-          end = dt.toISOString().slice(0,16);
+      // Разбираем datetime-local → даты/время
+      const nowIso = new Date().toISOString().slice(0,16);
+      const sDate = (start || nowIso).slice(0,10);
+      const eDate = (end && end.trim() ? end : start || '').slice(0,10) || sDate;
+      const sTime = (start && start.length >= 16) ? start.slice(11,16) : '';
+      const eTime = (end && end.length >= 16) ? end.slice(11,16) : '';
+
+      // Повторяемость
+      const recurrence = (fd.get('recurrence') || 'one_time').toString();
+      const recurrence_interval = Math.max(1, parseInt(fd.get('recurrence_interval') || '1', 10));
+      const recurrence_until = (fd.get('recurrence_until') || '').toString().trim();
+      const recurrence_count_raw = (fd.get('recurrence_count') || '').toString().trim();
+      const recurrence_count = recurrence_count_raw ? Math.max(1, parseInt(recurrence_count_raw, 10)) : null;
+
+      // weekly weekdays → массив чисел
+      const weekdays = Array.from(document.querySelectorAll('input[name="weekdays"]:checked')).map(el => parseInt(el.value, 10));
+
+      // Базовый payload
+      const payload = {
+        title,
+        start_date: sDate,
+        end_date: eDate,
+        all_day: allDay,
+        recurrence,
+        recurrence_interval,
+        color: (fd.get('color') || '').toString().trim() || null,
+        location: (fd.get('location') || '').toString().trim() || '',
+      };
+
+      // Время (если all_day=false ИЛИ пользователь указал оба времени)
+      if (!allDay || (sTime && eTime)) {
+        if (sTime && eTime) {
+          payload.start_time = sTime; // "HH:MM"
+          payload.end_time = eTime;   // "HH:MM"
+          payload.all_day = false;
+        } else if (recurrence === 'hourly') {
+          alert('Ежечасное событие требует и время начала, и время окончания.');
+          return;
         }
-        payload = allDay
-          ? { title, start: start.slice(0,10), end: end.slice(0,10), allDay: true }
-          : { title, start: new Date(start).toISOString(), end: new Date(end).toISOString(), allDay: false };
-      }else{
-        alert('Выберите календарь'); return;
+      }
+
+      // Ограничители серии
+      if (recurrence_until && recurrence_count){
+        alert('Нельзя одновременно задавать "Повторять до" и "Кол-во повторов". Укажите что-то одно.');
+        return;
+      }
+      if (recurrence_until) payload.recurrence_until = recurrence_until;
+      if (recurrence_count) payload.recurrence_count = recurrence_count;
+
+      // Weekly: передаём weekdays если выбраны
+      if (recurrence === 'weekly' && weekdays.length){
+        payload.weekdays = weekdays;
+      }
+
+      // Область — компания/отдел
+      if (state.type === 'dept') {
+        if (!DIGITS_RE.test(String(state.deptId))) { alert('Некорректный отдел'); return; }
+        payload.department_id = Number(state.deptId);
       }
 
       try{
-        const r = await fetch(url, {
+        await fetchJSON(API_EVENTS, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept':'application/json', ...authHeaders() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (r.status === 401){ alert('Сессия API истекла. Перезайдите.'); return; }
-        if (!r.ok){
-          const t = await r.text();
-          console.error('Create event failed', r.status, t);
-          alert('Не удалось создать событие'); return;
-        }
+
         document.querySelector('#eventCreateModal .btn-close')?.click();
         form.reset();
+        syncByRecurrence(); syncByAllDay(); syncUntilCount();
         [deskCalendar, mobCalendar].forEach(cal => cal?.refetchEvents());
         updateWeekLists();
       }catch(err){
-        console.error(err); alert('Ошибка сети');
+        console.error('Create event error', err);
+        const detail = err?.data?.detail || (typeof err?.data === 'string' ? err.data : '');
+        alert('Не удалось создать событие: ' + (detail || JSON.stringify(err?.data || {})));
       }
     });
   });

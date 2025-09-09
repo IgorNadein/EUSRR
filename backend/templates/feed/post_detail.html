@@ -76,7 +76,7 @@
           <div class="feed-ava">
             {% with a=post.author %}
               {% if a %}
-                {% firstof a.avatar.url a.avatar_url as ava_url %}
+                {% firstof a.avatar.url a.avatar as ava_url %}
                 {% if ava_url %}<img src="{{ ava_url }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
               {% else %}
                 <i class="bi-person"></i>
@@ -188,7 +188,7 @@
                   <div class="feed-ava" style="width:36px;height:36px;">
                     {% with a=c.author %}
                       {% if a %}
-                        {% firstof a.avatar.url a.avatar_url as c_ava %}
+                        {% firstof a.avatar.url a.avatar as c_ava %}
                         {% if c_ava %}<img src="{{ c_ava }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
                       {% else %}
                         <i class="bi-person"></i>

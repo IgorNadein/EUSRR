@@ -31,8 +31,10 @@ class DeptPerm:
     MANAGE = "manage_department"
     CHANGE_HEAD = "change_department_head"
     ASSIGN_ROLE = "assign_department_role"
+    MANAGE_CALENDAR = "manage_department_events"
     CHOICES = (
         (MANAGE, "Управлять отделом"),
         (CHANGE_HEAD, "Назначать руководителя"),
         (ASSIGN_ROLE, "Назначать роли участникам"),
+        (MANAGE_CALENDAR, "Управлять календарём отдела"),
     )

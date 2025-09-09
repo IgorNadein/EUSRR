@@ -1,251 +1,216 @@
-# backend/api/v1/calendar/viewsets.py
 from __future__ import annotations
 
-import copy
-import datetime as dt
-from typing import List
+from datetime import date
+from typing import Optional, Type, List, Dict, Any
 
 from django.core.cache import cache
-from django.db.models import Q
-from django.db.models.functions import ExtractDay, ExtractMonth
 from django.http import Http404
-from django.utils.http import http_date, parse_http_date_safe
-from rest_framework.decorators import action
+from django.utils.dateparse import parse_date
+from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
-from rest_framework.viewsets import ViewSet
+from rest_framework.viewsets import ModelViewSet
 
-from calendar_app.models import CompanyEvent, DepartmentEvent, Recurrence
-from .serializers import CompanyEventSerializer, DepartmentEventSerializer
-from .utils import (
-    CACHE_TTL,
-    MAX_WINDOW_DAYS,
-    RESPONSE_HEADERS,
-    can_view_department,
-    etag_for,
-    get_range,
-    last_modified,
+from calendar_app.models import CalendarEvent
+from .serializers import (
+    CalendarEventSerializer,
+    CalendarEventWriteSerializer,
 )
+from calendar_app.services.recurrence import expand_event_occurrences
+
+from ..permissions import AdminOrActionOrModelPerms, AdminOrDeptAllowed     # пермишены для "компании"
+from employees.constants import DeptPerm                    # коды прав отделов
+import logging
+logger = logging.getLogger(__name__)
 
 
-class CompanyEventsViewSet(ViewSet):
+class CalendarEventsViewSet(ModelViewSet):
+    """Единый CRUD по событиям календаря (компания/отдел) с развёрткой повторяемости.
+
+    list:
+        Возвращает МАТЕРИАЛИЗОВАННЫЕ вхождения в окне [start, end).
+        Если указан department_id — события отдела, иначе — компании.
+
+    retrieve/create/update/partial_update/destroy:
+        Работают с объектом CalendarEvent.
     """
-    GET /api/v1/calendar/company-events/?start=YYYY-MM-DD&end=YYYY-MM-DD
-    Разворачивает ежегодные события в вхождения внутри окна.
-    """
 
-    permission_classes = [IsAuthenticated]
+    queryset = CalendarEvent.objects.select_related("department").order_by(
+        "start_date", "start_time"
+    )
     renderer_classes = [JSONRenderer]
 
-    def list(self, request):
-        start, end = get_range(request)
-        base_qs = CompanyEvent.objects.only(
-            "id",
-            "title",
-            "description",
-            "date",
-            "recurrence",
-            "color",
-            "location",
-            "created_at",
-        )
-        lm = last_modified(base_qs, CompanyEvent)
+    # ---------- Внутренний пермишен для отделов ----------
 
-        # Без окна — просто всё (ограничим на всякий случай)
-        if not (start and end):
-            data = CompanyEventSerializer(
-                base_qs.order_by("date")[:1000], many=True
-            ).data
-            resp = Response(data)
-            for k, v in RESPONSE_HEADERS.items():
-                resp.headers[k] = v
-            return resp
+    class ManageCalendarPerm(AdminOrDeptAllowed):
+        """Право на управление календарём отдела (для компании молчит)."""
 
-        cache_key = (
-            f"cal:v1:company:{request.user.id}:{start.isoformat()}:{end.isoformat()}"
-        )
-        cached = cache.get(cache_key)
-        if cached:
-            # ETag
-            if request.META.get("HTTP_IF_NONE_MATCH") == cached["etag"]:
-                return Response(status=304)
-            # If-Modified-Since
-            ims = request.META.get("HTTP_IF_MODIFIED_SINCE")
-            if ims and lm:
-                ims_ts = parse_http_date_safe(ims)
-                if ims_ts:
-                    ims_dt = dt.datetime.utcfromtimestamp(ims_ts).astimezone(
-                        dt.timezone.utc
-                    )
-                    if lm <= ims_dt:
-                        return Response(status=304)
-            resp = Response(cached["data"])
-            for k, v in cached["headers"].items():
-                resp.headers[k] = v
-            return resp
+        required_code = DeptPerm.MANAGE_CALENDAR
 
-        # Фильтрация кандидатов: one-time в диапазоне + annual по (month, day)
-        qs = CompanyEvent.objects.only(
-            "id", "title", "description", "date", "recurrence", "color", "location"
-        )
-        qs = qs.annotate(month=ExtractMonth("date"), day=ExtractDay("date"))
+    # ---------- Подключение пермишенов ----------
 
-        sm, sd = start.month, start.day
-        em, ed = end.month, end.day
-        one_time_q = Q(recurrence=Recurrence.ONE_TIME, date__range=(start, end))
-        if (sm, sd) <= (em, ed):
-            ge_start = Q(month__gt=sm) | (Q(month=sm) & Q(day__gte=sd))
-            le_end = Q(month__lt=em) | (Q(month=em) & Q(day__lte=ed))
-            annual_q = Q(recurrence=Recurrence.ANNUAL) & ge_start & le_end
-        else:
-            ge_start = Q(month__gt=sm) | (Q(month=sm) & Q(day__gte=sd))
-            le_end = Q(month__lt=em) | (Q(month=em) & Q(day__lte=ed))
-            annual_q = Q(recurrence=Recurrence.ANNUAL) & (ge_start | le_end)
+    def get_permissions(self):
+        """Для компании — AdminOrActionOrModelPerms, для отдела — ManageCalendarPerm.
 
-        queryset = qs.filter(one_time_q | annual_q)
+        ВАЖНО: прокидываем найденный department_id в kwargs, чтобы пермишен
+        гарантированно его увидел на этапе has_permission().
+        """
+        dep = self._dept_id(required=False)
+        print(f"Request user: {self.request.user}, Auth: {self.request.auth}")
+        if dep is None:
+            
+            return [AdminOrActionOrModelPerms()]
 
-        # Разворачиваем annual → occurrence’ы
-        items: List[CompanyEvent] = []
-        for ev in queryset:
-            if ev.recurrence == Recurrence.ONE_TIME:
-                inst = copy.copy(ev)
-                inst.occurrence_date = ev.date
-                items.append(inst)
-            else:
-                for year in range(start.year, end.year + 1):
+        # События отдела: подложим dep в kwargs (если его не было)
+        # чтобы AdminOrDeptAllowed нашёл department_id без чтения request.data
+        self.kwargs = dict(self.kwargs)  # скопировать, т.к. может быть MappingProxy
+        self.kwargs.setdefault("department_id", dep)
+
+        return [self.ManageCalendarPerm()]
+    
+    # ---------- Сериализаторы ----------
+
+    def get_serializer_class(self) -> Type[serializers.Serializer]:
+        """Выбор сериализатора по действию.
+
+        Returns:
+            Type[serializers.Serializer]: Класс сериализатора.
+        """
+        if self.action in {"create", "update", "partial_update"}:
+            return CalendarEventWriteSerializer
+        return CalendarEventSerializer
+
+    # ---------- Утилиты ----------
+
+    def _dept_id(self, *, required: bool = False) -> Optional[int]:
+        """Читает department_id из kwargs/query/body.
+
+        ВАЖНО: *не* путать pk события с department_id.
+
+        Args:
+            required (bool): Если True — бросить 404 при отсутствии/ошибке.
+
+        Raises:
+            Http404: При некорректном или отсутствующем department_id (когда required=True).
+
+        Returns:
+            Optional[int]: PK отдела или None (компания).
+        """
+        # nested-url вида: /departments/{department_id}/events/
+        for key in ("department_pk", "department_id"):
+            if key in self.kwargs:
+                try:
+                    return int(self.kwargs[key])
+                except Exception:
+                    raise Http404("Некорректный department_id в URL.")
+
+        req = getattr(self, "request", None)
+        if req is not None:
+            for key in ("department_id", "department"):
+                val = req.query_params.get(key)
+                if val is not None:
                     try:
-                        occ = ev.date.replace(year=year)
-                    except ValueError:
-                        if ev.date.month == 2 and ev.date.day == 29:
-                            occ = dt.date(year, 2, 28)
-                        else:
-                            continue
-                    if start <= occ <= end:
-                        inst = copy.copy(ev)
-                        inst.occurrence_date = occ
-                        items.append(inst)
+                        return int(val)
+                    except Exception:
+                        raise Http404("Некорректный department_id в query.")
 
-        items.sort(key=lambda o: getattr(o, "occurrence_date", o.date))
-        if len(items) > 2000:
-            items = items[:2000]
+        data = getattr(req, "data", {}) if req is not None else {}
+        if isinstance(data, dict):
+            for key in ("department_id", "department"):
+                if key in data and data[key] is not None:
+                    try:
+                        return int(data[key])
+                    except Exception:
+                        raise Http404("Некорректный department_id в теле запроса.")
 
-        data = CompanyEventSerializer(items, many=True).data
-        etag = etag_for(cache_key, lm, len(data))
-        headers = {**RESPONSE_HEADERS}
-        if lm:
-            headers["Last-Modified"] = http_date(lm.timestamp())
-        headers["ETag"] = etag
+        if required:
+            raise Http404("Не указан department_id.")
+        return None
 
-        cache.set(
-            cache_key, {"data": data, "headers": headers, "etag": etag}, CACHE_TTL
-        )
-        resp = Response(data)
-        for k, v in headers.items():
-            resp.headers[k] = v
-        return resp
+    # ---------- QuerySet ----------
 
+    def get_queryset(self):
+        """QS для list фильтруем по компании/отделу, для detail — не фильтруем.
 
-class DepartmentEventsViewSet(ViewSet):
-    """
-    GET /api/v1/calendar/departments/<int:pk>/events/?start=...&end=...
-    Доступ: HR / руководитель отдела / сотрудник отдела.
-    Разворачивает annual c сохранением длительности.
-    """
-    permission_classes = [IsAuthenticated]
-    renderer_classes = [JSONRenderer]
+        Returns:
+            QuerySet: Набор для текущего действия.
+        """
+        qs = super().get_queryset()
+        if getattr(self, "action", None) != "list":
+            # detail — нужен полный QS, чтобы по pk находить любой объект
+            return qs
 
-    def _dept_id(self) -> int:
-        try:
-            return int(self.kwargs["pk"])
-        except Exception:
-            raise Http404
+        dep = self._dept_id(required=False)
+        return qs.filter(department__isnull=True) if dep is None else qs.filter(department_id=dep)
 
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        dept_id = self._dept_id()
-        if not can_view_department(request.user, dept_id):
-            raise Http404("Нет доступа к календарю этого отдела.")
+    # ---------- LIST: материализация повторов ----------
 
     def list(self, request, *args, **kwargs):
-        start, end = get_range(request)
-        dept_id = self._dept_id()
+        """Возвращает материализованные вхождения в окне [start, end).
 
-        base = (DepartmentEvent.objects
-                .filter(department_id=dept_id)
-                .select_related("department")
-                .only("id","title","description","start_date","end_date",
-                      "all_day","recurrence","color","location","department","created_at"))
-        lm = last_modified(base, DepartmentEvent)
+        Query params:
+            start (YYYY-MM-DD) — левая граница (включительно).
+            end   (YYYY-MM-DD) — правая граница (исключительно).
 
-        if not (start and end):
-            data = DepartmentEventSerializer(base.order_by("start_date")[:1000], many=True).data
-            resp = Response(data)
-            for k, v in RESPONSE_HEADERS.items(): resp.headers[k] = v
-            return resp
+        Returns:
+            Response: Массив объектов для FullCalendar.
+        """
+        start_str = request.query_params.get("start")
+        end_str = request.query_params.get("end")
+        if not start_str or not end_str:
+            return Response([], status=status.HTTP_200_OK)
 
-        cache_key = f"cal:v1:dept:{dept_id}:{request.user.id}:{start.isoformat()}:{end.isoformat()}"
-        cached = cache.get(cache_key)
-        if cached:
-            if request.META.get("HTTP_IF_NONE_MATCH") == cached["etag"]:
-                return Response(status=304)
-            ims = request.META.get("HTTP_IF_MODIFIED_SINCE")
-            if ims and lm:
-                ims_ts = parse_http_date_safe(ims)
-                if ims_ts:
-                    ims_dt = dt.datetime.utcfromtimestamp(ims_ts).astimezone(dt.timezone.utc)
-                    if lm <= ims_dt:
-                        return Response(status=304)
-            resp = Response(cached["data"])
-            for k, v in cached["headers"].items(): resp.headers[k] = v
-            return resp
+        r_start: Optional[date] = parse_date(start_str[:10])
+        r_end: Optional[date] = parse_date(end_str[:10])
+        if not r_start or not r_end:
+            return Response(
+                {"detail": "Некорректные параметры start/end."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if r_start >= r_end:
+            return Response([], status=status.HTTP_200_OK)
 
-        # ONE_TIME: overlap
-        one_time = base.filter(
-            Q(recurrence=Recurrence.ONE_TIME) &
-            (Q(end_date__isnull=True, start_date__range=(start, end)) |
-             Q(end_date__isnull=False, end_date__gte=start, start_date__lte=end))
-        ).order_by("start_date")
+        items: List[Dict[str, Any]] = []
+        for ev in self.get_queryset():
+            for oc in expand_event_occurrences(
+                ev, range_start=r_start, range_end=r_end, max_instances=1000
+            ):
+                items.append(
+                    {
+                        "id": ev.id,  # идентификатор «родителя»; можно заменить на oc.id, если нужен уникальный на каждое вхождение
+                        "title": ev.title,
+                        "start": oc.start.isoformat(),
+                        "end": oc.end.isoformat(),
+                        "allDay": oc.all_day,
+                        "color": ev.color or None,
+                        "recurrence": ev.recurrence,
+                        "department_id": ev.department_id,
+                    }
+                )
+        return Response(items, status=status.HTTP_200_OK)
 
-        # ANNUAL: разворачивание (с длительностью)
-        annual = base.filter(recurrence=Recurrence.ANNUAL)
+    # ---------- Создание/изменение/удаление ----------
 
-        items: List[DepartmentEvent] = []
-        for ev in one_time:
-            obj = copy.copy(ev)
-            obj.occ_start_date = ev.start_date
-            obj.occ_end_date   = ev.end_date or ev.start_date
-            items.append(obj)
+    def perform_create(self, serializer: CalendarEventWriteSerializer) -> None:
+        """Сохраняет объект, подставляя department_id из контекста (если есть) и автора.
 
-        for ev in annual:
-            s = ev.start_date; e = ev.end_date or ev.start_date
-            dur = (e - s).days
-            for year in range(start.year, end.year + 1):
-                try:
-                    s_y = s.replace(year=year)
-                except ValueError:
-                    if s.month == 2 and s.day == 29:
-                        s_y = dt.date(year, 2, 28)
-                    else:
-                        continue
-                e_y = s_y + dt.timedelta(days=dur)
-                if not (e_y < start or s_y > end):
-                    obj = copy.copy(ev)
-                    obj.occ_start_date = s_y
-                    obj.occ_end_date   = e_y
-                    items.append(obj)
+        Raises:
+            ValidationError: Если сериализатор невалиден (поднимет сам DRF).
+        """
+        dep = self._dept_id(required=False)
+        serializer.save(
+            department_id=dep if dep is not None else serializer.validated_data.get("department_id"),
+            created_by=self.request.user,
+        )
+        cache.clear()
 
-        items.sort(key=lambda o: getattr(o, "occ_start_date", o.start_date))
-        if len(items) > 2000:
-            items = items[:2000]
+    def perform_update(self, serializer: CalendarEventWriteSerializer) -> None:
+        """Обновляет событие и чистит кеш."""
+        serializer.save()
+        cache.clear()
 
-        data = DepartmentEventSerializer(items, many=True).data
-        etag = etag_for(cache_key, lm, len(data))
-        headers = {**RESPONSE_HEADERS}
-        if lm: headers["Last-Modified"] = http_date(lm.timestamp())
-        headers["ETag"] = etag
-
-        cache.set(cache_key, {"data": data, "headers": headers, "etag": etag}, CACHE_TTL)
-        resp = Response(data)
-        for k, v in headers.items(): resp.headers[k] = v
-        return resp
+    def perform_destroy(self, instance: CalendarEvent) -> None:
+        """Удаляет событие и чистит кеш."""
+        instance.delete()
+        cache.clear()
