@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <style>
-  .ios-search{ position:relative; width:100%; max-width:420px; }
+    .ios-search{ position:relative; width:100%; max-width:420px; }
   .ios-search-input{ width:100%; height:40px; padding:8px 38px; border-radius:14px; border:1px solid var(--bs-border-color);
     background: color-mix(in srgb, var(--bs-body-bg), #000 4%); font-size:15px; outline:none; transition: box-shadow .2s, border-color .2s, background .2s; }
   [data-bs-theme="dark"] .ios-search-input{ background: color-mix(in srgb, var(--bs-body-bg), #fff 6%); }
@@ -13,12 +13,20 @@
   .ios-search > .bi-search{ position:absolute; left:10px; top:50%; transform:translateY(-50%); opacity:.55; pointer-events:none; font-size:.95rem; }
   .ios-search-clear{ position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:transparent; padding:6px; display:none; }
   .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
+
   .feed-header { gap:.6rem; flex-wrap:wrap; }
+
+  /* список — единственный прокручиваемый блок */
+  #deptList{
+    max-height: calc(100dvh - var(--navbar-h) - 160px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   #deptList .dept-row{ padding:.6rem .75rem; }
   #deptList .dept-row + .dept-row{ border-top:1px solid var(--bs-border-color); }
   .feed-author{ font-weight:700; }
   .feed-sub{ color:var(--bs-secondary-color); }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -29,7 +37,7 @@
       <div class="feed-header d-flex align-items-center">
         <i class="bi-diagram-3 fs-2 text-primary"></i>
         <h2 class="title mb-0">Отделы</h2>
-
+        <span class="ms-2 small text-secondary">Всего: {{ departments|length }}</span>
         <div class="ms-auto ios-search">
           <div class="ios-search">
             <i class="bi-search"></i>
@@ -41,7 +49,16 @@
           </div>
         </div>
       </div>
-
+      {% if can_create_departments or perms.employees.add_department or request.user.is_staff or request.user.is_superuser %}
+        <div class="feed-card mb-2">
+          <a href="{% url 'employees:department_create' %}"
+            class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none"
+            role="button" aria-label="Создать отдел">
+            <span class="feed-author">Создать отдел</span>
+            <i class="bi-plus-lg"></i>
+          </a>
+        </div>
+      {% endif %}
       <div class="feed-card">
         <div id="deptList" class="py-1">
           {# поддержка обоих форматов: dict(results) или list #}
@@ -95,24 +112,70 @@
     const input    = document.getElementById('deptFilter');
     const clearBtn = document.querySelector('.ios-search-clear');
     const list     = document.getElementById('deptList');
-    const rows     = () => list.querySelectorAll('.dept-row');
-    const totalEl  = document.getElementById('empTotal');
+    const totalEmpEl  = document.getElementById('empTotal');
 
-    function apply(){
-      const q = (input?.value || '').trim().toLowerCase();
-      let total = 0;
-      rows().forEach(r => {
-        const hay = (r.getAttribute('data-haystack') || '').toLowerCase();
-        const show = !q || hay.includes(q);
-        r.style.display = show ? '' : 'none';
-        if (show) total += (parseInt(r.getAttribute('data-emp')) || 0);
-      });
-      if (totalEl) totalEl.textContent = String(total);
+    // (опционально) счётчик отделов
+    const totalDeptBadge = document.querySelector('.title ~ .ms-2.small span'); // "Всего: {{ departments|length }}"
+    const allRows = Array.from(list.querySelectorAll('.dept-row'));
+
+    // сообщение "нет результатов"
+    let emptyNotice = document.getElementById('deptEmptyNotice');
+    if (!emptyNotice){
+      emptyNotice = document.createElement('div');
+      emptyNotice.id = 'deptEmptyNotice';
+      emptyNotice.className = 'p-3 text-secondary d-none';
+      emptyNotice.textContent = 'Ничего не найдено.';
+      list.appendChild(emptyNotice);
     }
 
+    function showRow(row){
+      // вернём normal display и d-flex
+      row.style.removeProperty('display');
+      if (!row.classList.contains('d-flex')) row.classList.add('d-flex');
+    }
+    function hideRow(row){
+      // снимем d-flex (чтобы не конкурировал) и зададим inline !important
+      row.classList.remove('d-flex');
+      row.style.setProperty('display', 'none', 'important');
+    }
+
+    function normalize(s){
+      return (s || '').toLowerCase().trim();
+    }
+
+    function apply(){
+      const q = normalize(input?.value);
+      let totalEmp = 0;
+      let shown = 0;
+
+      for (const r of allRows){
+        const hay = normalize(r.getAttribute('data-haystack'));
+        const match = !q || hay.includes(q);
+
+        if (match){
+          showRow(r);
+          shown += 1;
+          totalEmp += (parseInt(r.getAttribute('data-emp')) || 0);
+        } else {
+          hideRow(r);
+        }
+      }
+
+      // переключаем "нет результатов"
+      emptyNotice.classList.toggle('d-none', shown > 0);
+
+      // обновляем счетчики
+      if (totalEmpEl) totalEmpEl.textContent = String(totalEmp);
+      if (totalDeptBadge) totalDeptBadge.textContent = String(shown);
+    }
+
+    // первичная инициализация
     apply();
+
+    // события
     input?.addEventListener('input', apply);
     clearBtn?.addEventListener('click', () => { input.value=''; input.focus(); apply(); });
   })();
 </script>
+
 {% endblock %}

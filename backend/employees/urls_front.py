@@ -1,5 +1,6 @@
 # backend/employees/urls_front.py
 from django.urls import path
+
 from . import views_front
 
 app_name = "employees"
@@ -13,6 +14,7 @@ urlpatterns = [
     path("<int:pk>/edit/", views_front.employee_edit, name="employee_edit"),
     path("create/", views_front.employee_create, name="employee_create"),
     # --- Отделы ---
+    path("departments/create/", views_front.department_create, name="department_create"),
     path(
         "departments/<int:pk>/roles/edit/",
         views_front.edit_department_role,

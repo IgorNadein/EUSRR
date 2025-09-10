@@ -131,9 +131,6 @@ class CalendarEvent(models.Model):
                 condition=~models.Q(source=""),
             ),
         ]
-        permissions = [
-            ("manage_department_events", "Может управлять событиями отдела"),
-        ]
 
     def __str__(self) -> str:
         scope = self.department or _("Компания")

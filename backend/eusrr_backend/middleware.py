@@ -12,6 +12,7 @@ class AuthRequiredMiddleware:
     # Префиксы, которые всегда пропускаем (настройка через settings при желании)
     EXEMPT_PREFIXES = (
         "/api/",
+        "/auth/reset/",
         # "/static/",       # статика
         # "/media/",        # медиа
         # "/__debug__/",    # django-debug-toolbar, если используется
@@ -20,9 +21,12 @@ class AuthRequiredMiddleware:
     # Именованные маршруты, которые можно посещать анонимно (точные пути)
     EXEMPT_NAMES = (
         "auth_front:login",
+        "auth_front:password_reset",
         "auth_front:register",
         "auth_front:verify_email",
         "auth_front:resend_email",
+        "auth_front:password_reset_done",
+        
         "auth_front"
     )
 

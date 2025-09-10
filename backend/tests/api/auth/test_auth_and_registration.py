@@ -15,9 +15,11 @@ User = get_user_model()
 
 # ======== фикстуры ========
 
+
 @pytest.fixture
 def api():
     return APIClient()
+
 
 @pytest.fixture(autouse=True)
 def _locmem_email_backend(settings):
@@ -26,6 +28,7 @@ def _locmem_email_backend(settings):
 
 
 # ======== утилиты ========
+
 
 def extract_code_from_last_email() -> str | None:
     """
@@ -71,7 +74,13 @@ def resend(api: APIClient, *, email: str):
     return api.post(url, {"email": email}, format="json")
 
 
-def jwt_obtain(api: APIClient, *, email: str | None = None, phone: str | None = None, password: str = "Str0ngPass!"):
+def jwt_obtain(
+    api: APIClient,
+    *,
+    email: str | None = None,
+    phone: str | None = None,
+    password: str = "Str0ngPass!"
+):
     """
     Ожидаем, что аутентификация поддерживает вход по email ИЛИ по телефону.
     - По email: передаём {"email": ..., "password": ...}
@@ -86,6 +95,7 @@ def jwt_obtain(api: APIClient, *, email: str | None = None, phone: str | None = 
 
 
 # ======== регистрация: happy-path ========
+
 
 def test_register_success_sends_email_and_user_inactive(api):
     resp = register(api)
@@ -105,7 +115,11 @@ def test_register_success_sends_email_and_user_inactive(api):
 
 # ======== регистрация: обязательные поля ========
 
-@pytest.mark.parametrize("missing_field", ["first_name", "last_name", "phone_number", "email", "password", "birth_date"])
+
+@pytest.mark.parametrize(
+    "missing_field",
+    ["first_name", "last_name", "phone_number", "email", "password", "birth_date"],
+)
 def test_register_missing_required_field(api, missing_field):
     payload = register_payload()
     payload.pop(missing_field)
@@ -117,7 +131,11 @@ def test_register_requires_at_least_one_contact(api):
     payload = register_payload(telegram="", whatsapp="", wechat="")
     resp = api.post(reverse("api:v1:register"), payload, format="json")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "WhatsApp" in resp.json().get("detail", "") or "WeChat" in resp.json().get("detail", "") or "Telegram" in resp.json().get("detail", "")
+    assert (
+        "WhatsApp" in resp.json().get("detail", "")
+        or "WeChat" in resp.json().get("detail", "")
+        or "Telegram" in resp.json().get("detail", "")
+    )
 
 
 def test_register_birth_date_must_be_valid_date(api):
@@ -167,6 +185,7 @@ def test_register_accepts_optional_fields(api):
 
 # ======== подтверждение email ========
 
+
 def test_verify_email_success_activates_user(api):
     assert register(api).status_code == status.HTTP_201_CREATED
     code = extract_code_from_last_email()
@@ -201,9 +220,15 @@ def test_resend_email_sends_new_code_and_old_becomes_invalid(api):
     assert new != old
 
     # старый — не подходит
-    assert verify(api, email="ivan@example.com", code=old).status_code == status.HTTP_400_BAD_REQUEST
+    assert (
+        verify(api, email="ivan@example.com", code=old).status_code
+        == status.HTTP_400_BAD_REQUEST
+    )
     # новый — активирует
-    assert verify(api, email="ivan@example.com", code=new).status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT)
+    assert verify(api, email="ivan@example.com", code=new).status_code in (
+        status.HTTP_200_OK,
+        status.HTTP_204_NO_CONTENT,
+    )
 
     u = User.objects.get(email="ivan@example.com")
     assert u.is_active and u.email_verified
@@ -227,6 +252,7 @@ def test_verify_expired_more_than_5_minutes_deletes_account(api, settings):
 
 
 # ======== авторизация (JWT): по email и по телефону ========
+
 
 def test_login_by_email_denied_before_verify(api):
     assert register(api).status_code == status.HTTP_201_CREATED

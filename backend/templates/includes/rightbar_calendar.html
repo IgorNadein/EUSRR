@@ -113,6 +113,25 @@
   #rightbarOffcanvas .week-vertical{ flex: 0 0 auto; }
 
   .calendar-fab{ position: fixed; right: 1rem; bottom: 1rem; z-index: 1060; width: 52px; height: 52px; border-radius: 9999px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+
+  /* ====== Color picker (palette) ====== */
+  .color-swatch{
+    width: 26px; height: 26px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 9999px;
+    padding: 0;
+    cursor: pointer;
+    background: transparent;
+  }
+  .color-swatch.active{
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+  }
+  /* ====== Event details modal ====== */
+  .color-dot{
+    width: 12px; height: 12px; border-radius: 9999px; display: inline-block;
+    vertical-align: middle; margin-right: 6px; border: 1px solid #00000022;
+  }
 </style>
 
 {# десктопная правая колонка #}
@@ -193,6 +212,10 @@
         <div class="mb-2">
           <label class="form-label">Заголовок</label>
           <input type="text" class="form-control" name="title" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="eventDescription">Описание</label>
+          <textarea class="form-control" id="eventDescription" name="description" rows="3" ></textarea>
         </div>
 
         <div class="row g-2 align-items-end">
@@ -277,7 +300,19 @@
         <div class="row g-2">
           <div class="col-6">
             <label class="form-label">Цвет</label>
-            <input type="text" class="form-control" name="color" placeholder="#RRGGBB">
+            <div class="d-flex align-items-center gap-2">
+              <input type="color" class="form-control form-control-color" name="color" id="eventColorInput" value="#0d6efd" title="Выберите цвет">
+              <div class="d-flex flex-wrap gap-1" id="colorPalette" aria-label="Быстрый выбор цвета">
+                <button type="button" class="color-swatch" data-color="#0d6efd" style="background-color:#0d6efd" title="Синий"></button>
+                <button type="button" class="color-swatch" data-color="#198754" style="background-color:#198754" title="Зелёный"></button>
+                <button type="button" class="color-swatch" data-color="#dc3545" style="background-color:#dc3545" title="Красный"></button>
+                <button type="button" class="color-swatch" data-color="#fd7e14" style="background-color:#fd7e14" title="Оранжевый"></button>
+                <button type="button" class="color-swatch" data-color="#ffc107" style="background-color:#ffc107" title="Жёлтый"></button>
+                <button type="button" class="color-swatch" data-color="#0dcaf0" style="background-color:#0dcaf0" title="Голубой"></button>
+                <button type="button" class="color-swatch" data-color="#6f42c1" style="background-color:#6f42c1" title="Фиолетовый"></button>
+                <button type="button" class="color-swatch" data-color="#212529" style="background-color:#212529" title="Чёрный"></button>
+              </div>
+            </div>
           </div>
           <div class="col-6">
             <label class="form-label">Локация</label>
@@ -291,17 +326,52 @@
       </div>
 
       <div class="modal-footer">
-        <button type="submit" class="btn btn-primary">Создать</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
       </div>
     </form>
   </div>
 </div>
-
+<!-- ===== Modal: Просмотр события ===== -->
+<div class="modal fade" id="eventDetailsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2">
+          <span id="detailColorDot" class="color-dot"></span>
+          <span id="detailTitle">Событие</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <dt class="col-4">Когда</dt>
+          <dd class="col-8" id="detailWhen">—</dd>
+          <dt class="col-4">Где</dt>
+          <dd class="col-8" id="detailLocation">—</dd>
+          <dt class="col-4">Описание</dt>
+          <dd class="col-8" id="detailDescription">—</dd>
+          <dt class="col-4">Контекст</dt>
+          <dd class="col-8" id="detailScope">—</dd>
+          <dt class="col-4">Повторение</dt>
+          <dd class="col-8" id="detailRecurrence">—</dd>
+        </dl>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto" id="btnDeleteEvent">Удалить</button>
+        <button type="button" class="btn btn-primary" id="btnEditEvent">Редактировать</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   document.addEventListener('DOMContentLoaded', function(){
     if (!window.FullCalendar) return;
-    
+
+    initColorPicker();
+
+
     /* ===== токен из meta ===== */
     function getAccessToken(){
       const meta = document.querySelector('meta[name="api-access"]');
@@ -309,9 +379,12 @@
       if (m) return m.trim();
       try{ return localStorage.getItem('api.access') || ''; }catch(_){ return ''; }
     }
+
+    // Сохраняем токен глобально при загрузке, чтобы избежать timing issues
+    const globalToken = getAccessToken();
+
     function authHeaders(){
-      const t = getAccessToken();
-      return t ? { 'Authorization': 'Bearer ' + t } : {};
+      return globalToken ? { 'Authorization': 'Bearer ' + globalToken } : {};
     }
 
     /* ===== endpoints (единый вьюсет) ===== */
@@ -321,6 +394,7 @@
 
     /* ===== только ЧИСЛОВОЙ PK отдела ===== */
     const DIGITS_RE = /^\d+$/;
+    const DEFAULT_EVENT_COLOR = '#0d6efd';
     function extractNumericPk(d){
       const cands = [d?.pk, d?.id, d?.department_id];
       for (const v of cands){
@@ -373,6 +447,8 @@
     /* ===== состояние ===== */
     let departments = []; // [{id, name}] где id — всегда числовой PK
     const state = { type: 'company', deptId: null };
+    // защита от гонок при загрузке отделов
+    let deptsLoadSeq = 0;
 
     /* ===== utils ===== */
     const dayMs = 86400000, hourMs = 3600000;
@@ -392,9 +468,14 @@
     const startOfWeek = d => { const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; };
     const endOfWeek   = d => { const s=startOfWeek(d); const e=new Date(s); e.setDate(s.getDate()+7); return e; };
     const overlaps = (ev, ws, we) => ev.start < we && ev.end > ws;
+    const truncate = (s, n=20) => {
+      const t = (s ?? '').toString();
+      return t.length > n ? t.slice(0, n - 1) + '…' : t;
+    };
 
-    async function fetchJSON(url, opts){
-      const r = await fetch(url, { headers: { 'Accept':'application/json', ...authHeaders(), ...(opts?.headers||{}) }, ...(opts||{}) });
+    async function fetchJSON(url, opts = {}){
+      const headers = { 'Accept':'application/json', ...authHeaders(), ...(opts.headers || {}) };
+      const r = await fetch(url, { headers, ...opts });
       if (r.status === 401) { console.warn('401 от API — нужен валидный access токен'); return []; }
       if (!r.ok) {
         let text = await r.text();
@@ -404,39 +485,141 @@
       const data = await r.json();
       return Array.isArray(data) ? data : (data.results || data.items || data.events || []);
     }
+    function setWeekdaysFromMask(mask){
+      try{
+        const m = Number(mask) || 0;
+        for (let i=0;i<=6;i++){
+          const el = document.getElementById('wd'+i);
+          if (el) el.checked = !!(m & (1<<i));
+        }
+      }catch(_){}
+    }
+
+    
+    
+    /* ===== helpers для форматирования и API детальной карточки ===== */
+    function pad(n){ return (n<10?'0':'') + n; }
+    function fmtDate(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+    function fmtTime(d){ return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+    function fmtWhen(ev){
+      if (!ev) return '—';
+      const allDay = !!ev.all_day;
+      // аккуратно парсим дату/дату-время (без UTC-сдвигов на простых датах)
+      const sd = toDate(ev.start || ev.start_date);
+      const ed = (ev.end || ev.end_date) ? toDate(ev.end || ev.end_date) : null;
+      if (allDay){
+        if (ed && fmtDate(sd) !== fmtDate(ed)) return `${fmtDate(sd)} — ${fmtDate(ed)} (весь день)`;
+        return `${fmtDate(sd)} (весь день)`;
+      }
+      if (ed) return `${fmtDate(sd)} ${fmtTime(sd)} — ${fmtDate(ed)} ${fmtTime(ed)}`;
+      return `${fmtDate(sd)} ${fmtTime(sd)}`;
+    }
+    async function apiGet(url){
+      const r = await fetch(url, { headers: { 'Accept': 'application/json', ...authHeaders() } });
+      const data = await r.json().catch(()=>null);
+      if (!r.ok){ const err=new Error('GET failed'); err.status=r.status; err.data=data; throw err; }
+      return data;
+    }
+    async function apiDelete(url){
+      const r = await fetch(url, { method:'DELETE', headers: { ...authHeaders() } });
+      if (!r.ok){ const data = await r.json().catch(()=>null); const err=new Error('DELETE failed'); err.status=r.status; err.data=data; throw err; }
+    }
+    // узлы модала (если разметка подключена)
+    const detailsModalEl = document.getElementById('eventDetailsModal');
+    // Вынесем модал в <body>, иначе позиционирование ломается, если родитель с transform
+    if (detailsModalEl && detailsModalEl.parentElement !== document.body) {
+      document.body.appendChild(detailsModalEl);
+    }
+    // Гарантируем вертикальное центрирование (если в HTML забыли класс)
+    detailsModalEl?.querySelector('.modal-dialog')?.classList.add('modal-dialog-centered');
+
+    const detailsModal   = detailsModalEl ? new bootstrap.Modal(detailsModalEl) : null;
+
+    const $dt = {
+      title: document.getElementById('detailTitle'),
+      when:  document.getElementById('detailWhen'),
+      loc:   document.getElementById('detailLocation'),
+      desc:  document.getElementById('detailDescription'),
+      scope: document.getElementById('detailScope'),
+      rec:   document.getElementById('detailRecurrence'),
+      dot:   document.getElementById('detailColorDot'),
+      btnEdit:  document.getElementById('btnEditEvent'),
+      btnDel:   document.getElementById('btnDeleteEvent'),
+    };
+    let currentDetail = null;
+    function fillDetails(ev){
+      if (!$dt.title) return; // модала нет — тихо выходим
+      $dt.title.textContent = ev.title || 'Событие';
+      $dt.when.textContent  = fmtWhen(ev);
+      $dt.loc.textContent   = ev.location || '—';
+      $dt.desc.textContent  = ev.description || '—';
+      $dt.scope.textContent = ev.department ? `Отдел: ${ev.department.name || ev.department}` : 'Компания';
+      $dt.rec.textContent   = ev.recurrence_interval ? `${ev.recurrence} ×${ev.recurrence_interval}` : (ev.recurrence || '—');
+      const col = ev.color || DEFAULT_EVENT_COLOR; if ($dt.dot) $dt.dot.style.backgroundColor = col;
+    }
+    async function openEventDetailsById(eventId){
+      try{
+        const data = await apiGet(`${API_EVENTS}${eventId}/`);
+        currentDetail = data;
+        fillDetails(data);
+        detailsModal && detailsModal.show();
+      }catch(err){
+        console.error('Load details error', err);
+        if (err.status === 403) alert('Недостаточно прав для просмотра деталей события.');
+        else alert('Не удалось загрузить событие.');
+      }
+    }
 
     /* ===== загрузка отделов (только числовой PK) ===== */
     async function loadDepartments(){
-      chooserMenu.querySelectorAll('[data-cal="dept"]').forEach(n => n.closest('li')?.remove());
+      const mySeq = ++deptsLoadSeq;  // метка версии вызова
 
       let raw = [];
       try{ raw = await fetchJSON(API_MY_DEPTS); }catch(e){ raw = []; }
 
+      // маппинг → {id, name}
       let mapped = (Array.isArray(raw) ? raw : [])
         .map(d => {
           const pk = extractNumericPk(d);
           if (!pk) return null;
           const name = d.name ?? d.title ?? d.code ?? `Отдел #${pk}`;
-          return { id: pk, name };
+          return { id: String(pk), name };
         })
         .filter(Boolean);
 
+      // если API вернул пусто — fallback к data-dept-id
       if (!mapped.length && legacyDeptIds.length){
-        mapped = legacyDeptIds.map(pk => ({ id: pk, name: `Отдел #${pk}` }));
+        mapped = legacyDeptIds.map(pk => ({ id: String(pk), name: `Отдел #${pk}` }));
       }
 
-      departments = mapped;
+      // ✅ дедуп по id
+      const uniq = new Map();
+      for (const d of mapped){
+        const key = String(d.id);
+        if (!uniq.has(key)) uniq.set(key, d);
+      }
+      const nextDepartments = Array.from(uniq.values());
+
+      // если наш вызов устарел (есть более поздний) — не трогаем DOM
+      if (mySeq !== deptsLoadSeq) return departments;
+
+      departments = nextDepartments;
+
+      // очистка пунктов отделов (только сейчас, после защиты от гонки)
+      chooserMenu.querySelectorAll('[data-cal="dept"]').forEach(n => n.closest('li')?.remove());
 
       if (!departments.length){
         setChooserLabel();
-        return;
+        return departments;
       }
 
-      const divider = chooserMenu.querySelector('.dropdown-divider') || (() => {
+      // убедимся, что есть разделитель
+      chooserMenu.querySelector('.dropdown-divider') || (() => {
         const li = document.createElement('li'); li.innerHTML = '<hr class="dropdown-divider">';
-        chooserMenu.appendChild(li); return li.querySelector('hr');
+        chooserMenu.appendChild(li);
       })();
 
+      // вставка пунктов
       const frag = document.createDocumentFragment();
       departments.forEach(d => {
         const li = document.createElement('li');
@@ -445,11 +628,12 @@
       });
       chooserMenu.appendChild(frag);
 
+      // валидация текущего выбора
       if (state.type === 'dept' && !departments.some(d => String(d.id) === String(state.deptId))){
         state.type = 'company'; state.deptId = null;
       }
-
       setChooserLabel();
+      return departments;
     }
 
     function currentDeptLabel(){
@@ -480,15 +664,43 @@
     });
 
     /* ===== комбинированная загрузка событий (occurrences) ===== */
+    // События для текущего контекста (оставляю — используется календарём)
     async function fetchEventsCombined(start, end){
       let base = eventsUrl(state.type === 'dept' ? state.deptId : null);
       const withRange = addRange(base, start, end);
-      try{
-        return await fetchJSON(withRange);
-      }catch(e){
-        console.error('Fetch events failed', e);
-        return [];
+      try{ return await fetchJSON(withRange); }
+      catch(e){ console.error('Fetch events failed', e); return []; }
+    }
+
+    // ✅ ВСЕ доступные календари: компания + все отделы пользователя
+    async function fetchEventsAllCalendars(start, end){
+      // при первом вызове убедимся, что отделы загружены
+      if (!departments || departments.length === 0){
+        try { await loadDepartments(); } catch(_) {}
       }
+      // формируем список источников с подписью
+      const sources = [
+        { url: addRange(eventsUrl(null), start, end),  label: 'Компания', type: 'company', id: null },
+        ...departments.map(d => ({
+          url: addRange(eventsUrl(d.id), start, end),
+          label: d.name,
+          type: 'dept',
+          id: d.id
+        })),
+      ];
+      const chunks = await Promise.all(sources.map(s =>
+        fetchJSON(s.url).then(arr => (arr || []).map(ev => ({ ...ev, __source: { label: s.label, type: s.type, id: s.id } })))
+                        .catch(()=>[])
+      ));
+      const merged = chunks.flat();
+      // дедуп по устойчивому ключу
+      const seen = new Set(); const out = [];
+      for (const ev of merged){
+        const key = ev.id ?? ev.pk ?? ev.uuid ?? ev.slug ?? ev._id ?? null;
+        const sk = key != null ? String(key) : null;
+        if (!sk || !seen.has(sk)){ if (sk) seen.add(sk); out.push(ev); }
+      }
+      return out;
     }
 
     function normalizeEvent(ev){
@@ -501,7 +713,10 @@
       if (!e) e = new Date(s.getTime() + (allDay ? dayMs : hourMs));
       const color = ev.color || ev.bgColor || null;
       const recurrence = ev.recurrence || ev.recurrence_display || null;
-      return { title, start:s, end:e, allDay, color, recurrence };
+      const location = ev.location || ev.place || '';
+      const description = ev.description || ev.details || ev.note || '';
+      const sourceLabel = ev.__source?.label || (ev.department?.name ?? ev.department) || 'Компания';
+      return { title, start:s, end:e, allDay, color, recurrence, location, description, sourceLabel };
     }
 
     function renderVertical(container, rangeLabel, events, ws, we){
@@ -526,29 +741,35 @@
 
       list.forEach(ev=>{
         const row = document.createElement('div'); row.className = 'week-row';
+        // цветовая точка слева от заголовка
+        const dot = document.createElement('span'); dot.className = 'color-dot';
+        dot.style.backgroundColor = ev.color || DEFAULT_EVENT_COLOR;
         const badge = document.createElement('div'); badge.className = 'date-badge';
         const dow = dfDow.format(ev.start), md = dfMD.format(ev.start);
         badge.innerHTML = `<div class="dow">${dow}</div><div class="md">${md}</div>`;
         const cont  = document.createElement('div'); cont.className = 'content';
-        const title = document.createElement('div'); title.className = 'title'; title.textContent = ev.title || 'Без названия'; title.title = ev.title || '';
+        const title = document.createElement('div'); title.className = 'title';
+        title.textContent = ev.title || 'Без названия'; title.title = ev.title || '';
+        // строка с источником, локацией и кратким описанием
         const meta  = document.createElement('div'); meta.className = 'meta';
-        const span  = ev.end - ev.start > dayMs ? `${dfMD.format(ev.start)} — ${dfMD.format(new Date(ev.end - 1))}` : `${md}`;
-        meta.textContent = span;
-        cont.append(title, meta);
+        const dateSpan  = ev.end - ev.start > dayMs ? `${dfMD.format(ev.start)} — ${dfMD.format(new Date(ev.end - 1))}` : `${md}`;
+        const parts = [ev.sourceLabel || '—'];
+        if (ev.location) parts.push(ev.location);
+        if (ev.description) parts.push(truncate(ev.description, 20));
+        meta.textContent = `${dateSpan} • ${parts.join(' • ')}`;
+        const head = document.createElement('div');
+        head.style.display = 'flex'; head.style.alignItems = 'center'; head.style.gap = '8px';
+        head.append(dot, title);
+        cont.append(head, meta);
         row.append(badge, cont);
         container.appendChild(row);
       });
     }
 
-    async function updateWeekLists(sourceCal){
+    async function updateWeekLists(){
       const now = new Date(); const ws = startOfWeek(now), we = endOfWeek(now);
-      let items = sourceCal ? (sourceCal.getEvents?.() || []).map(e => ({
-        title: e.title, start: e.start, end: e.end, allDay: e.allDay,
-        color: e.extendedProps?.color, recurrence: e.extendedProps?.recurrence
-      })) : [];
-      if (!items.length){
-        items = await fetchEventsCombined(new Date(ws.getTime()-3*dayMs), new Date(we.getTime()+3*dayMs));
-      }
+      const from = new Date(ws.getTime()-3*dayMs), to = new Date(we.getTime()+3*dayMs);
+      const items = await fetchEventsAllCalendars(from, to);
       renderVertical(document.getElementById('weekList'),        document.getElementById('weekRange'),        items, ws, we);
       renderVertical(document.getElementById('weekListMobile'), document.getElementById('weekRangeMobile'), items, ws, we);
     }
@@ -571,8 +792,18 @@
       displayEventTime: false,
       events: async (info, success, failure) => {
         try{
-          const data = await fetchEventsCombined(info.start, info.end);
-          success(data);
+          const raw = await fetchEventsCombined(info.start, info.end);
+          // Нормализуем id и цвет для FullCalendar
+          const mapped = (Array.isArray(raw) ? raw : []).map(ev => {
+            const id = ev.id ?? ev.pk ?? ev.uuid ?? ev.slug ?? ev._id;
+            const color = ev.color || ev.bgColor || null;
+            return {
+              ...ev,
+              ...(id != null ? { id } : {}),
+              ...(color ? { backgroundColor: color, borderColor: color } : {}),
+            };
+          });
+          success(mapped);
         }catch(e){
           console.error('Calendar fetch error:', e);
           failure(e);
@@ -584,9 +815,10 @@
         return { domNodes: [el] };
       },
       eventDidMount: info => {
-        if (info.event.extendedProps?.color){
-          info.el.style.backgroundColor = info.event.extendedProps.color;
-          info.el.style.borderColor = info.event.extendedProps.color;
+        const col = info.event.backgroundColor || info.event.extendedProps?.color;
+        if (col){
+          info.el.style.backgroundColor = col;
+          info.el.style.borderColor = col;
           info.el.style.color = 'var(--bs-body-bg)';
         }
         if (info.event.extendedProps?.recurrence === 'annual'){
@@ -605,15 +837,33 @@
 
     let deskCalendar=null, mobCalendar=null;
     const desk = document.getElementById('calendarRight');
-    if (desk){ deskCalendar = new FullCalendar.Calendar(desk, fcOpts); deskCalendar.on('loading', (l)=>{ if(!l) updateWeekLists(deskCalendar); }); deskCalendar.render(); }
+     if (desk){
+      deskCalendar = new FullCalendar.Calendar(desk, fcOpts);
+      deskCalendar.on('loading', (l)=>{ if(!l) updateWeekLists(); });
+      deskCalendar.on('eventClick', (info)=>{
+        info.jsEvent?.preventDefault?.();
+        const eid = info.event.id || info.event.extendedProps?.id;
+        if (eid) openEventDetailsById(eid);
+      });
+      deskCalendar.render();
+    }
     const mob  = document.getElementById('calendarRightMobile');
-    if (mob){  mobCalendar  = new FullCalendar.Calendar(mob,  fcOpts); mobCalendar.on('loading',  (l)=>{ if(!l) updateWeekLists(mobCalendar);  }); mobCalendar.render(); }
+    if (mob){
+      mobCalendar  = new FullCalendar.Calendar(mob,  fcOpts);
+      mobCalendar.on('loading',  (l)=>{ if(!l) updateWeekLists();  });
+      mobCalendar.on('eventClick', (info)=>{
+        info.jsEvent?.preventDefault?.();
+        const eid = info.event.id || info.event.extendedProps?.id;
+        if (eid) openEventDetailsById(eid);
+      });
+      mobCalendar.render();
+    }
 
     // загрузим отделы и обновим подпись селектора
     loadDepartments().then(()=> setChooserLabel());
 
-    setTimeout(()=> updateWeekLists(deskCalendar || mobCalendar), 100);
-    [deskCalendar, mobCalendar].forEach(cal => cal?.on('datesSet', ()=> updateWeekLists(cal)));
+    setTimeout(()=> updateWeekLists(), 100);
+    [deskCalendar, mobCalendar].forEach(cal => cal?.on('datesSet', ()=> updateWeekLists()));
 
     /* ===== UX: переключалки формы ===== */
     function syncByRecurrence(){
@@ -649,8 +899,118 @@
     allDayChk?.addEventListener('change', syncByAllDay);
     recurrenceUntil?.addEventListener('change', syncUntilCount);
     syncByRecurrence(); syncByAllDay(); syncUntilCount();
+    /* ===== Кнопки модала: редактирование/удаление (навешиваем ОДИН раз) ===== */
+    $dt?.btnEdit?.addEventListener?.('click', ()=>{
+      if (!currentDetail) return;
+      const form = document.getElementById('eventForm');
+      if (!form) { detailsModal?.hide(); return; }
+      form.dataset.mode = 'edit';
+      form.dataset.eventId = currentDetail.id;
 
-    /* ===== создание события (POST только с Bearer) ===== */
+      // Базовые поля
+      form.querySelector('[name="title"]').value     = currentDetail.title || '';
+      form.querySelector('[name="location"]').value  = currentDetail.location || '';
+      form.querySelector('[name="color"]').value     = currentDetail.color || DEFAULT_EVENT_COLOR;
+      form.querySelector('[name="all_day"]').checked = !!currentDetail.all_day;
+
+      // НОВОЕ: описание
+      const descEl = form.querySelector('[name="description"]');
+      if (descEl) descEl.value = currentDetail.description || '';
+
+      // Дата/время
+      const startIso = currentDetail.start
+        || (currentDetail.start_date ? `${currentDetail.start_date}T${(currentDetail.start_time || '00:00').slice(0,5)}` : '');
+      const endIso = currentDetail.end
+        || (currentDetail.end_date ? `${currentDetail.end_date}T${(currentDetail.end_time || '00:00').slice(0,5)}` : '');
+      const startEl = form.querySelector('[name="start"]');
+      const endEl   = form.querySelector('[name="end"]');
+      if (startEl) startEl.value = (startIso || '').slice(0,16);
+      if (endEl)   endEl.value   = (endIso   || '').slice(0,16);
+
+      // Повторы
+      const recSel = form.querySelector('[name="recurrence"]');
+      if (recSel) recSel.value = currentDetail.recurrence || 'one_time';
+      const recInt = form.querySelector('[name="recurrence_interval"]');
+      if (recInt) recInt.value = currentDetail.recurrence_interval || 1;
+
+      // НОВОЕ: until / count
+      const untilEl = form.querySelector('[name="recurrence_until"]');
+      if (untilEl) untilEl.value = (currentDetail.recurrence_until || '').slice(0,10);
+      const countEl = form.querySelector('[name="recurrence_count"]');
+      if (countEl) countEl.value = currentDetail.recurrence_count ?? '';
+
+      // НОВОЕ: weekly дни из маски
+      if (currentDetail.weekdays_mask != null) setWeekdaysFromMask(currentDetail.weekdays_mask);
+
+      // Синхронизация UI
+      try { typeof syncByRecurrence === 'function' && syncByRecurrence(); } catch(_){}
+
+      // Отдел (если есть select)
+      const deptSel = form.querySelector('[name="department_id"]');
+      if (deptSel && currentDetail.department){
+        const val = currentDetail.department.id ?? currentDetail.department;
+        if (val != null) deptSel.value = String(val);
+      }
+
+      // Открываем форму редактирования
+      detailsModal?.hide();
+      setTimeout(()=>{
+        const createModalEl = document.getElementById('eventCreateModal');
+        if (createModalEl) {
+          const createModal = bootstrap.Modal.getOrCreateInstance(createModalEl);
+          createModal.show();
+        } else {
+          const offcanvasEl = document.getElementById('rightbarOffcanvas');
+          if (offcanvasEl) bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl).show();
+        }
+        form.querySelector('[name="title"]')?.focus();
+      }, 150);
+    });
+
+
+    $dt?.btnDel?.addEventListener?.('click', async ()=>{
+      if (!currentDetail) return;
+      if (!confirm('Удалить это событие без возможности восстановления?')) return;
+      try{
+        await apiDelete(`${API_EVENTS}${currentDetail.id}/`);
+        detailsModal?.hide();
+        try{ deskCalendar?.refetchEvents?.(); mobCalendar?.refetchEvents?.(); }catch(_){}
+        updateWeekLists();
+      }catch(err){
+        console.error('Delete event error', err);
+        alert(err.status === 403 ? 'Недостаточно прав для удаления.' : 'Не удалось удалить событие.');
+      }
+    });
+
+    /* ===== Цвет: палитра и синхронизация с input[type=color] ===== */
+    function initColorPicker(){
+      const form = document.getElementById('eventForm');
+      if (!form) return;
+      const colorInput = form.querySelector('input[name="color"]');
+      const palette = document.getElementById('colorPalette');
+      if (!colorInput || !palette) return;
+
+      // Значение по умолчанию
+      if (!colorInput.value) colorInput.value = DEFAULT_EVENT_COLOR;
+
+      function highlightActive(){
+        const val = (colorInput.value || '').toLowerCase();
+        palette.querySelectorAll('[data-color]').forEach(btn=>{
+          btn.classList.toggle('active', (btn.dataset.color || '').toLowerCase() === val);
+        });
+      }
+      palette.querySelectorAll('[data-color]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          colorInput.value = btn.dataset.color || DEFAULT_EVENT_COLOR;
+          colorInput.dispatchEvent(new Event('input', {bubbles:true}));
+          highlightActive();
+        });
+      });
+      colorInput.addEventListener('input', highlightActive);
+      highlightActive();
+    }
+
+    /* ===== создание/редактирование события (POST/PATCH только с Bearer) ===== */
     const form = document.getElementById('eventForm');
     form?.addEventListener('submit', async (e)=>{
       e.preventDefault();
@@ -681,6 +1041,7 @@
       // weekly weekdays → массив чисел
       const weekdays = Array.from(document.querySelectorAll('input[name="weekdays"]:checked')).map(el => parseInt(el.value, 10));
 
+      const colorVal = ((fd.get('color') || '').toString().trim()) || DEFAULT_EVENT_COLOR;
       // Базовый payload
       const payload = {
         title,
@@ -689,8 +1050,9 @@
         all_day: allDay,
         recurrence,
         recurrence_interval,
-        color: (fd.get('color') || '').toString().trim() || null,
+        color: colorVal,
         location: (fd.get('location') || '').toString().trim() || '',
+        description: (fd.get('description') || '').toString().trim() || '',
       };
 
       // Время (если all_day=false ИЛИ пользователь указал оба времени)
@@ -724,22 +1086,44 @@
         payload.department_id = Number(state.deptId);
       }
 
+      // Debug headers перед отправкой
+      const postHeaders = { 'Content-Type': 'application/json', ...authHeaders() };
+      // console.debug('Headers для POST/PATCH:', postHeaders);
+      // Проверка токена
+      if (!globalToken) {
+        alert('Требуется авторизация. Войдите заново.');
+        return;
+      }
+
       try{
-        await fetchJSON(API_EVENTS, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const isEdit = form.dataset.mode === 'edit' && form.dataset.eventId;
+        const url    = isEdit ? (API_EVENTS + String(form.dataset.eventId) + '/') : API_EVENTS;
+        const method = isEdit ? 'PATCH' : 'POST';
+        await fetchJSON(url, {
+          method,
+          headers: postHeaders,
           body: JSON.stringify(payload)
         });
 
         document.querySelector('#eventCreateModal .btn-close')?.click();
         form.reset();
+        delete form.dataset.mode;
+        delete form.dataset.eventId;
         syncByRecurrence(); syncByAllDay(); syncUntilCount();
         [deskCalendar, mobCalendar].forEach(cal => cal?.refetchEvents());
         updateWeekLists();
       }catch(err){
         console.error('Create event error', err);
-        const detail = err?.data?.detail || (typeof err?.data === 'string' ? err.data : '');
-        alert('Не удалось создать событие: ' + (detail || JSON.stringify(err?.data || {})));
+        if (err && err.status === 403){
+          const where = (state?.type === 'dept') ? `отделе «${currentDeptLabel()}»` : 'компании';
+          alert(
+            'Недостаточно прав для создания события в ' + where + '.\n' +
+            'Попросите руководителя назначить вам роль «Управлять календарём отдела».'
+          );
+        } else {
+          const detail = err?.data?.detail || (typeof err?.data === 'string' ? err.data : '');
+          alert('Не удалось создать событие: ' + (detail || JSON.stringify(err?.data || {})));
+        }
       }
     });
   });

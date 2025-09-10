@@ -1,19 +1,24 @@
 # tests/conftest.py
 from __future__ import annotations
 
+import itertools
+from collections.abc import Callable
 from datetime import date, time
 from typing import Callable, Generator, Optional, Tuple, Type
 
 import pytest
 from django.apps import apps as django_apps
-import itertools
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.db import models
+from django.db import IntegrityError, models
+from django.db.models import Model as DjangoModel
+from employees.constants import DeptPerm
+from employees.models import (Department, DepartmentPermission, DepartmentRole,
+                              Employee, EmployeeDepartment)
 from rest_framework.test import APIClient
 
-
 API_EVENTS = "/api/v1/calendar/events/"
+
 
 _phone_counter = itertools.count(100_000_000)  # 9 цифр
 
@@ -87,6 +92,7 @@ def CalendarEvent() -> Type[models.Model]:
 def Recurrence():
     """Enum повторяемости из приложения (это не модель)."""
     from calendar_app.models import Recurrence as _Recurrence
+
     return _Recurrence
 
 
@@ -187,20 +193,57 @@ def dept_manager_user(make_user) -> models.Model:
 
 
 @pytest.fixture
-def give_manage_calendar_perm() -> Callable[[models.Model], None]:
-    """Выдаёт пользователю кастомное право управления календарём отдела.
+def give_manage_calendar_perm(db) -> Callable[[DjangoModel, DjangoModel], None]:
+    """Возвращает функцию, которая назначает пользователю ролевое право управления календарём в указанном отделе.
 
     Args:
-        user (models.Model): Пользователь.
+        db: Стандартная фикстура pytest-django для доступа к БД.
+
+    Returns:
+        Callable[[DjangoModel, DjangoModel], None]: Функция-замыкание, принимающая (user, department).
 
     Raises:
-        Permission.DoesNotExist: Если пермишен не найден (исправьте codename, если у вас другой).
+        TypeError: Если переданы объекты не являются Django-моделями.
+        ValueError: Если user или department не сохранены в БД (нет pk).
+        IntegrityError: При ошибке записи в БД.
     """
 
-    def _grant(user: models.Model) -> None:
-        perm = Permission.objects.get(codename="manage_department_events")
-        user.user_permissions.add(perm)
-        user.save()
+    def _grant(user: DjangoModel, department: DjangoModel) -> None:
+        """Назначает пользователю роль с правом DeptPerm.MANAGE_CALENDAR в указанном отделе.
+
+        Args:
+            user (DjangoModel): Сотрудник, которому выдаётся право (ваша модель пользователя/Employee).
+            department (DjangoModel): Отдел, в котором выдаётся право.
+
+        Raises:
+            TypeError: Если объекты не наследуются от django.db.models.Model.
+            ValueError: Если объекты не имеют первичных ключей.
+            IntegrityError: Если нарушены ограничения БД при сохранении.
+        """
+        if not isinstance(user, DjangoModel) or not isinstance(department, DjangoModel):
+            raise TypeError("Ожидаются экземпляры моделей Django (user и department).")
+        if not getattr(user, "pk", None) or not getattr(department, "pk", None):
+            raise ValueError("user и department должны быть предварительно сохранены (иметь pk).")
+
+        # 1) Скоуп-пермишен отдела
+        perm, _ = DepartmentPermission.objects.get_or_create(
+            code=DeptPerm.MANAGE_CALENDAR,
+            defaults={"name": "Управлять календарём отдела"},
+        )
+
+        # 2) Роль внутри отдела
+        role, _ = DepartmentRole.objects.get_or_create(
+            department=department,
+            name="Manager",
+        )
+        role.scoped_permissions.add(perm)
+
+        # 3) Привязка сотрудника к отделу с этой ролью
+        EmployeeDepartment.objects.update_or_create(
+            employee=user,
+            department=department,
+            defaults={"role": role, "is_active": True},
+        )
 
     return _grant
 

@@ -196,7 +196,7 @@ class ConfirmLogoutView(LoginRequiredMixin, View):
 
 
 class PasswordResetView(DjangoPasswordResetView):
-    template_name = "auth/password_reset_form.html"
+    template_name = "auth/password_reset.html"
     email_template_name = "auth/password_reset_email.txt"
     subject_template_name = "auth/password_reset_subject.txt"
     success_url = "/auth/password-reset/done/"

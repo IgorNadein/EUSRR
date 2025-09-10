@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Any, Dict, Optional
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
@@ -15,6 +16,7 @@ from employees.models import (
 from rest_framework import serializers
 
 from ..serializers import Base64ImageField
+from .utils import _normalize_phone
 
 Employee = get_user_model()
 
@@ -29,9 +31,25 @@ class EmailVerifySerializer(serializers.Serializer):
 
 
 class RegisterSerializer(serializers.Serializer):
+    """Сериализатор регистрации.
+
+    Проверяет контакты, нормализует телефон до E.164 и ограничивает допустимые
+    значения некоторых полей.
+
+    Raises:
+        serializers.ValidationError: При нарушении правил валидации.
+    """
+
     first_name = serializers.CharField(max_length=150)
     last_name = serializers.CharField(max_length=150)
-    phone_number = serializers.CharField(max_length=100)
+    phone_number = serializers.CharField(
+        max_length=100, required=False, allow_blank=True
+    )
+    # alias, если прислали "phone": положим в phone_number
+    phone = serializers.CharField(
+        max_length=100, required=False, allow_blank=True, write_only=True
+    )
+
     email = serializers.EmailField()
     password = serializers.CharField(min_length=6)
     birth_date = serializers.DateField()
@@ -40,12 +58,66 @@ class RegisterSerializer(serializers.Serializer):
     whatsapp = serializers.CharField(required=False, allow_blank=True, default="")
     wechat = serializers.CharField(required=False, allow_blank=True, default="")
 
-    # Доп. поля модели можно тоже принять, но они опциональны:
     avatar = Base64ImageField(required=False, allow_null=True)
     patronymic = serializers.CharField(required=False, allow_blank=True, default="")
-    gender = serializers.IntegerField(required=False, allow_null=True)
+
+    gender = serializers.ChoiceField(
+        required=False,
+        allow_null=True,
+        choices=((0, "Не указан"), (1, "Мужской"), (2, "Женский")),
+    )
+
     position = serializers.IntegerField(required=False, allow_null=True)
     skills = serializers.ListField(child=serializers.IntegerField(), required=False)
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        """Глобальная валидация: контакты + телефон (alias) + нормализация E.164.
+
+        Args:
+            attrs: Входные атрибуты.
+
+        Returns:
+            Отвалидированные атрибуты.
+
+        Raises:
+            serializers.ValidationError: Если нет контактов или телефон невалиден.
+        """
+        # контакты: нужен хотя бы один
+        if not (
+            (attrs.get("telegram") or "").strip()
+            or (attrs.get("whatsapp") or "").strip()
+            or (attrs.get("wechat") or "").strip()
+        ):
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram"
+                    ]
+                }
+            )
+
+        # alias "phone" → phone_number (если не задан)
+        if not attrs.get("phone_number") and attrs.get("phone"):
+            attrs["phone_number"] = attrs["phone"]
+
+        # нормализация телефона
+        norm = _normalize_phone(attrs.get("phone_number"))
+        if not norm:
+            raise serializers.ValidationError(
+                {"phone_number": "Неверный номер телефона (требуется формат E.164)."}
+            )
+        attrs["phone_number"] = norm
+
+        # (опционально) проверим, что position существует — чтобы не молча проигнорировать
+        pos_id = attrs.get("position")
+        if pos_id is not None:
+            exists = Position.objects.filter(pk=pos_id).exists()
+            if not exists:
+                raise serializers.ValidationError(
+                    {"position": "Указанная должность не найдена."}
+                )
+
+        return attrs
 
 
 class SkillSerializer(serializers.ModelSerializer):

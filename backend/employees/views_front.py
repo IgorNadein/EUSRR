@@ -561,7 +561,7 @@ def department_detail(request, pk: int):
             "can_manage": bool(perms.get("can_manage")),
             "can_change_head": bool(perms.get("can_change_head")),
             "can_assign_roles": bool(perms.get("can_assign_roles")),
-            "posts": _fetch_department_posts(api, pk)
+            "posts": _fetch_department_posts(api, pk),
         }
     )
     return render(request, "employees/department_detail.html", ctx)
@@ -594,6 +594,111 @@ def department_edit(request, pk: int):
     else:
         messages.success(request, "Отдел обновлён")
     return redirect("employees:department_detail", pk=pk)
+
+
+# ---------- CREATE (staff) ----------
+@login_required
+@require_api_auth
+@require_http_methods(["GET", "POST"])
+def department_create(request):
+    """
+    Страница создания отдела.
+    Работает ТОЛЬКО через API: POST v1/departments/
+    Доступ: суперпользователь/страфф или обладатели perms.employees.add_department.
+    """
+    # Мягкая проверка прав на фронте (API всё равно откажет 403 при отсутствии прав)
+    if not (
+        request.user.is_superuser
+        or request.user.is_staff
+        or request.user.has_perm("employees.add_department")
+    ):
+        return redirect("employees:department_list")
+
+    if request.method == "GET":
+        form = DepartmentEditForm()
+        return render(
+            request,
+            "employees/department_create.html",
+            {
+                "form": form,
+                "page_title": "Создать отдел",
+                "submit_label": "Создать",
+                "object": None,
+            },
+        )
+
+    # POST
+    form = DepartmentEditForm(request.POST)
+    if not form.is_valid():
+        return render(
+            request,
+            "employees/department_create.html",
+            {
+                "form": form,
+                "page_title": "Создать отдел",
+                "submit_label": "Создать",
+                "object": None,
+            },
+            status=400,
+        )
+
+    api = get_api_client(request)
+    payload = {
+        "name": form.cleaned_data["name"],
+        "description": form.cleaned_data.get("description") or "",
+    }
+
+    # Отправляем в API
+    r = api.post("v1/departments/", json=payload)
+    if r.ok and isinstance(r.json, dict):
+        dept_id = r.json.get("id")
+        messages.success(request, "Отдел успешно создан.")
+        if dept_id:
+            return redirect("employees:department_detail", pk=dept_id)
+        # если по какой-то причине id не вернули — уходим в список
+        return redirect("employees:department_list")
+
+    # Обработка ошибок API: 400 — ошибки сериализатора, 403 — запрет
+    try:
+        err = r.json()
+    except Exception:
+        err = None
+
+    if r.status_code == 400 and isinstance(err, dict):
+        # Пытаемся сопоставить ошибки полям формы
+        attached = False
+        for field in ("name", "description", "non_field_errors"):
+            if field in err:
+                msgs = err[field]
+                if isinstance(msgs, (list, tuple)) and msgs:
+                    if field in form.fields:
+                        form.add_error(field, msgs[0])
+                    else:
+                        form.add_error(None, msgs[0])
+                    attached = True
+        if not attached:
+            form.add_error(
+                None, "Не удалось создать отдел. Проверьте введённые данные."
+            )
+        status_code = 400
+    elif r.status_code == 403:
+        form.add_error(None, "Недостаточно прав для создания отдела.")
+        status_code = 403
+    else:
+        form.add_error(None, f"Ошибка API ({r.status_code}). Повторите попытку позже.")
+        status_code = 502
+
+    return render(
+        request,
+        "employees/department_create.html",
+        {
+            "form": form,
+            "page_title": "Создать отдел",
+            "submit_label": "Создать",
+            "object": None,
+        },
+        status=status_code,
+    )
 
 
 # ---------- SET HEAD ----------

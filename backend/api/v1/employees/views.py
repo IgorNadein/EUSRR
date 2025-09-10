@@ -3,265 +3,43 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-import phonenumbers
 from common.emails import send_templated_mail
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.db import IntegrityError, transaction
-from django.db.models import (
-    Case,
-    Count,
-    Exists,
-    F,
-    IntegerField,
-    OuterRef,
-    Prefetch,
-    Q,
-    Subquery,
-    Value,
-    When,
-)
+from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
+                              Prefetch, Q, Subquery, Value, When)
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
-from employees.models import (
-    Department,
-    DepartmentPermission,
-    DepartmentRole,
-    DeptPerm,
-    EmployeeAction,
-    EmployeeDepartment,
-    Position,
-    Skill,
-)
-from phonenumbers import PhoneNumberFormat
-from rest_framework import filters, generics, permissions, status, viewsets
+from employees.models import (Department, DepartmentPermission, DepartmentRole,
+                              DeptPerm, EmployeeAction, EmployeeDepartment,
+                              Position, Skill)
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import (
-    AllowAny,
-    IsAuthenticated,
-)
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-
-from ..permissions import (
-
-    AdminOrActionOrModelPerms,
-    AdminOrDeptAllowed,
-    IsSelfOrStaff,
-    has_dept_perm,
-)
-from .serializers import (
-    AddMemberInput,
-    DepartmentBriefSerializer,
-    DepartmentRoleSerializer,
-    DepartmentSerializer,
-    EmailSerializer,
-    EmailVerifySerializer,
-    EmployeeActionSerializer,
-    EmployeeBriefSerializer,
-    EmployeeListSerializer,
-    EmployeeSerializer,
-    GroupSerializer,
-    PositionSerializer,
-    RegisterSerializer,
-    RemoveMemberInput,
-    SetHeadInput,
-    SetMemberRoleInput,
-    SkillSerializer,
-)
+from ..permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
+                           IsSelfOrStaff, has_dept_perm)
+from .serializers import (AddMemberInput, DepartmentBriefSerializer,
+                          DepartmentRoleSerializer, DepartmentSerializer,
+                          EmailSerializer, EmailVerifySerializer,
+                          EmployeeActionSerializer, EmployeeBriefSerializer,
+                          EmployeeListSerializer, EmployeeSerializer,
+                          GroupSerializer, PositionSerializer,
+                          RegisterSerializer, RemoveMemberInput, SetHeadInput,
+                          SetMemberRoleInput, SkillSerializer)
+from .utils import (_build_links_for_dept, _detect_phone_field,
+                    _ensure_department_permissions, _head_choices_for_dept,
+                    _normalize_phone, _perm_choices_synced, _to_bool,
+                    _validate_head_active)
 
 Employee = get_user_model()
-
-
-def _to_bool(val: str | None) -> bool | None:
-    if val is None:
-        return None
-    s = str(val).strip().lower()
-    if s in {"1", "true", "yes", "да"}:
-        return True
-    if s in {"0", "false", "no", "нет"}:
-        return False
-    return None
-
-
-def _normalize_phone(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    if phonenumbers is None:
-        return str(raw).strip()
-    region = getattr(settings, "PHONE_DEFAULT_REGION", "RU")
-    try:
-        pn = phonenumbers.parse(str(raw), region)
-        if not phonenumbers.is_valid_number(pn):
-            return None
-        return phonenumbers.format_number(pn, PhoneNumberFormat.E164)
-    except Exception:
-        return None
-
-
-def _detect_phone_field() -> str | None:
-    for n in ("phone", "phone_number", "mobile", "msisdn", "tel"):
-        if any(f.name == n for f in Employee._meta.fields):
-            return n
-    return None
-
-
-def _validate_head_active(
-    dept: Department,
-    employee_id: int,
-    require_email_verified: bool = True,
-) -> tuple[bool, dict | None]:
-    """
-    Проверить, можно ли назначить сотрудника руководителем отдела.
-
-    Parameters
-    ----------
-    dept : Department
-        Отдел, в который назначается руководитель.
-    employee_id : int
-        Кандидат на роль руководителя.
-    require_email_verified : bool, optional
-        Требовать ли подтверждение email. Для действий, совершаемых не-руководителем,
-        оставляем True; для действий текущего руководителя можно ослабить до False.
-
-    Returns
-    -------
-    (True, None) | (False, {"head_id": [..]})
-        True — назначать можно; False — нельзя (причина в словаре).
-    """
-    employee_model = Department._meta.get_field("head").remote_field.model
-    emp = employee_model.objects.filter(id=employee_id).first()
-    if not emp:
-        return False, {"head_id": ["Employee not found."]}
-
-    # Должен быть включён аккаунт
-    if getattr(emp, "is_active", True) is False:
-        return False, {"head_id": ["Employee is inactive."]}
-
-    # Требование верификации email — опционально
-    if require_email_verified and getattr(emp, "email_verified", True) is False:
-        return False, {"head_id": ["Employee is inactive."]}
-
-    return True, None
-
-
-def _ensure_department_permissions() -> list[dict]:
-    """
-    Гарантирует наличие записей DepartmentPermission на основе DeptPerm.CHOICES.
-    Возвращает список словарей {id, code, name} в порядке CHOICES.
-    """
-    items: list[dict] = []
-    # пробежимся по CHOICES, создадим/обновим имя, соберём выдачу
-    for code, label in DeptPerm.CHOICES:
-        obj, _ = DepartmentPermission.objects.get_or_create(
-            code=code, defaults={"name": label}
-        )
-        # если имя в БД отстаёт от CHOICES — мягко синхронизируем
-        if obj.name != label:
-            obj.name = label
-            obj.save(update_fields=["name"])
-        items.append({"id": obj.id, "code": obj.code, "name": obj.name})
-    return items
-
-
-def _build_links_for_dept(dept: Department) -> list[dict]:
-    """
-    Возвращает список линков отдела:
-    [{ "employee": <EmployeeBriefSerializer.data>, "role": {"id","name"}|None, "is_active": bool }, ...]
-    """
-    links: list[dict] = []
-    qs = (
-        EmployeeDepartment.objects.filter(department_id=dept.id)
-        .select_related("employee", "role")
-        .order_by(
-            "employee__last_name",
-            "employee__first_name",
-            "employee__patronymic",
-            "employee_id",
-        )
-    )
-    for link in qs:
-        emp_data = EmployeeBriefSerializer(link.employee).data  # содержит display_name
-        role = {"id": link.role_id, "name": link.role.name} if link.role_id else None
-        links.append(
-            {"employee": emp_data, "role": role, "is_active": bool(link.is_active)}
-        )
-
-    # гарантируем присутствие head
-    if dept.head_id and all(item["employee"]["id"] != dept.head_id for item in links):
-        head_data = EmployeeBriefSerializer(dept.head).data
-        links.insert(0, {"employee": head_data, "role": None, "is_active": True})
-
-    return links
-
-
-def _head_choices_for_dept(dept: Department) -> list[dict]:
-    """
-    Вернёт список кандидатов для назначения руководителя отдела.
-
-    Формат элемента:
-      {
-        "id": int,            # ID сотрудника
-        "name": str,          # display_name из EmployeeBriefSerializer
-        "email": str          # email сотрудника (может быть пустой строкой)
-      }
-    """
-    choices, seen = [], set()
-    qs = (
-        EmployeeDepartment.objects.filter(department_id=dept.id)
-        .select_related("employee")
-        .order_by(
-            "employee__last_name",
-            "employee__first_name",
-            "employee__patronymic",
-            "employee_id",
-        )
-    )
-    for link in qs:
-        data = EmployeeBriefSerializer(link.employee).data
-        if data["id"] not in seen:
-            choices.append(
-                {
-                    "id": data["id"],
-                    "name": data["display_name"],
-                    "email": data.get("email", "") or "",
-                }
-            )
-            seen.add(data["id"])
-
-    if dept.head_id and dept.head_id not in seen:
-        head_data = EmployeeBriefSerializer(dept.head).data
-        choices.insert(
-            0,
-            {
-                "id": head_data["id"],
-                "name": head_data["display_name"],
-                "email": head_data.get("email", "") or "",
-            },
-        )
-
-    return choices
-
-
-def _perm_choices_synced() -> list[dict]:
-    """
-    Возвращает справочник прав для ролей отдела, синхронизируя записи с DeptPerm.CHOICES.
-    """
-    items = []
-    for code, label in DeptPerm.CHOICES:
-        obj, _ = DepartmentPermission.objects.get_or_create(
-            code=code, defaults={"name": label}
-        )
-        if obj.name != label:
-            obj.name = label
-            obj.save(update_fields=["name"])
-        items.append({"id": obj.id, "code": obj.code, "name": obj.name})
-    return items
 
 
 PHONE_FIELD = _detect_phone_field()
@@ -394,17 +172,22 @@ class VerifyEmailAPIView(APIView):
 
 
 class RegisterAPIView(APIView):
-    """
-    POST /api/v1/auth/register/
-    Требует: first_name, last_name, phone_number, email, birth_date, password,
-             и хотя бы один из: telegram / whatsapp / wechat
+    """Регистрация пользователя.
+
+    Принимает JSON или multipart/form-data. Поле `avatar` можно передавать:
+    - как файл (`multipart/form-data`);
+    - как base64/data URI — если используете `Base64ImageField`.
+
+    Важно: хотя бы одно из полей `telegram/whatsapp/wechat` должно быть заполнено.
     """
 
     throttle_scope = "anon"
     permission_classes = [AllowAny]
+    parser_classes = (JSONParser, FormParser, MultiPartParser)
 
     @transaction.atomic
     def post(self, request):
+        # 0) Хард-проверка контактов (как в тестах ожидается detail)
         if not (
             request.data.get("telegram")
             or request.data.get("whatsapp")
@@ -425,27 +208,21 @@ class RegisterAPIView(APIView):
         password = v["password"]
         phone_raw = v.get("phone_number") or request.data.get("phone")
         phone_norm = _normalize_phone(phone_raw)
-
-        # Телефон обязателен и должен быть валиден (E.164)
         if not phone_norm:
             return Response({"ok": False, "error": "invalid_phone"}, status=400)
 
-        # 1) Дубликат телефона — жёстко 400
         if Employee.objects.filter(phone_number=phone_norm).exists():
             return Response({"ok": False, "error": "phone_taken"}, status=400)
 
-        # 2) Логика по email
         user = Employee.objects.filter(email__iexact=email).first()
         if user and user.email_verified:
             return Response({"ok": False, "error": "email_taken"}, status=400)
         if user and not user.email_verified:
-            # без регенерации кода/письма — просто мягкий ответ
             return Response(
                 {"ok": True, "pending_verification": True, "user_id": user.id},
                 status=200,
             )
 
-        # 3) Создание нового
         extra = {
             "first_name": v["first_name"],
             "last_name": v["last_name"],
@@ -453,33 +230,44 @@ class RegisterAPIView(APIView):
             "telegram": v.get("telegram", ""),
             "whatsapp": v.get("whatsapp", ""),
             "wechat": v.get("wechat", ""),
+            # можно сразу пробросить, если ваш create_user это поддерживает:
+            # "patronymic": v.get("patronymic") or "",
+            # "gender": v.get("gender"),
         }
-        phone_for_create = phone_norm
 
         try:
             user = Employee.objects.create_user(
                 email=email,
                 password=password,
-                phone_number=phone_for_create,
+                phone_number=phone_norm,
                 **extra,
             )
-
         except IntegrityError as e:
             msg = str(e).lower()
-            if "phone" in msg or "phone_number" in msg:
+            if "phone" in msg:
                 return Response({"ok": False, "error": "phone_taken"}, status=400)
             if "email" in msg:
                 return Response({"ok": False, "error": "email_taken"}, status=400)
             raise
 
-        # доп. поля
+        # 🔧 ВАЖНО: присвоить аватар и опциональные атрибуты
+        avatar = v.get("avatar")
+        if avatar:
+            user.avatar = (
+                avatar  # ImageField принимает InMemoryUploadedFile/ContentFile
+            )
+        if v.get("patronymic"):
+            user.patronymic = v["patronymic"]
+        if v.get("gender") is not None:
+            user.gender = v["gender"]
         pos_id = v.get("position")
         if pos_id:
-            Position.objects.filter(pk=pos_id).first() and setattr(
-                user, "position_id", pos_id
+            user.position_id = (
+                pos_id if Position.objects.filter(pk=pos_id).exists() else None
             )
         skills_ids = v.get("skills") or []
         if skills_ids:
+            user.save()  # сохранить перед m2m
             user.skills.set(Skill.objects.filter(pk__in=skills_ids))
         user.save()
 
@@ -489,6 +277,7 @@ class RegisterAPIView(APIView):
                 "email": user.email,
                 "email_verified": user.email_verified,
                 "is_active": user.is_active,
+                # при желании можно вернуть data URI (если хотите): "avatar": Base64ImageField().to_representation(user.avatar)
             },
             status=status.HTTP_201_CREATED,
         )
@@ -760,7 +549,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         Список участников отдела в формате, удобном для фронта-шаблона.
         """
         dept = self.get_object()
-        links = _build_links_for_dept(dept)
+        links = _build_links_for_dept(dept, EmployeeBriefSerializer)
         return Response({"count": len(links), "results": links}, status=200)
 
     @action(detail=True, methods=["get"], url_path="user-perms")
@@ -806,9 +595,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         )
         roles_data = DepartmentRoleSerializer(roles_qs, many=True).data
 
-        links = _build_links_for_dept(dept)
+        links = _build_links_for_dept(dept, EmployeeBriefSerializer)
         perm_choices = _perm_choices_synced()
-        head_choices = _head_choices_for_dept(dept)
+        head_choices = _head_choices_for_dept(dept, EmployeeBriefSerializer)
         user_perms = {
             "is_head": (
                 request.user.id == dept.head_id
