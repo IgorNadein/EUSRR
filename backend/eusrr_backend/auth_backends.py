@@ -144,7 +144,7 @@ class PositionRoleBackend(ModelBackend):
             app_label, sep, codename = perm.partition(".")
             if not sep:
                 return False
-            return link.role.permissions.filter(
+            return link.role.scoped_permissions.filter(
                 content_type__app_label=app_label,
                 codename=codename,
             ).exists()

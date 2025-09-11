@@ -152,7 +152,6 @@ def test_head_can_change_head_and_loses_rights_afterwards(api_client: APIClient)
     # старый руководитель меняет руководителя на другого
     api_client.force_authenticate(user=old_head)
     url_set_head = reverse("api:v1:departments-set-head", args=[d.id])
-    print("DEBUG:", new_head.id, new_head.email_verified, new_head.is_active)
     resp = api_client.post(url_set_head, {"head_id": new_head.id}, format="json")
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["head"]["id"] == new_head.id

@@ -329,7 +329,14 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             return [self.ManagePerm()]
         if self.action == "create":
             return [AdminOrActionOrModelPerms()]
-        if self.action in {"members", "user_perms", "ui_context"}:
+        if self.action in {
+            "members",
+            "user_perms",
+            "ui_context",
+            "list",
+            "retrieve",
+            "my_departments",
+        }:
             return [IsAuthenticated()]
         return [AdminOrActionOrModelPerms()]
 
@@ -1077,7 +1084,7 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     ordering_fields = ["name", "id"]
     ordering = ["name"]
     history_diff_fields = ["name", "description"]
-    permission_classes = [IsAuthenticated, AdminOrActionOrModelPerms]
+    permission_classes = [AdminOrActionOrModelPerms]
     required_perms_by_action = {
         "set_groups": "employees.assign_position_groups",
         "add_groups": "employees.assign_position_groups",
@@ -1094,6 +1101,18 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if qs.count() != len(set(ids)):
             return None, Response({"detail": "Некоторые группы не найдены"}, status=400)
         return qs, None
+
+    def get_permissions(self):
+        """Возвращает пермишены для текущего экшена.
+
+        Returns:
+            list: Инスタнсы DRF-permission'ов.
+        """
+        if self.action in {"list", "retrieve", "permissions"}:
+            return [IsAuthenticated()]
+        if self.action == "create":
+            return [AdminOrActionOrModelPerms()]
+        return [AdminOrActionOrModelPerms()]
 
     @action(detail=True, methods=["post"])
     def set_groups(self, request, pk=None):
@@ -1296,7 +1315,7 @@ class SkillViewSet(viewsets.ModelViewSet):
     }
 
     def get_permissions(self):
-        if self.action in ("create", "bulk_create"):
+        if self.action in ("create", "bulk_create", "list", "retrieve"):
             return [IsAuthenticated()]
         return [IsAuthenticated(), AdminOrActionOrModelPerms()]
 

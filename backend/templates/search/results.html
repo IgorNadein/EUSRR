@@ -1,19 +1,363 @@
 {% extends "base.html" %}
+{% load static django_bootstrap5 %}
+
+{% block title %}Поиск{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ios-search{ position:relative; width:100%; max-width:420px; }
+  .ios-search-input{
+    width:100%; height:40px; padding:8px 38px;
+    border-radius:14px; border:1px solid var(--bs-border-color);
+    background: color-mix(in srgb, var(--bs-body-bg), #000 4%);
+    font-size:15px; outline:none;
+    transition: box-shadow .2s, border-color .2s, background .2s;
+  }
+  [data-bs-theme="dark"] .ios-search-input{
+    background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+  }
+  .ios-search-input:focus{
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .15);
+  }
+  .ios-search > .bi-search{
+    position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    opacity:.55; pointer-events:none; font-size:.95rem;
+  }
+  .ios-search-clear{
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
+    border:0; background:transparent; padding:6px; display:none;
+  }
+  .ios-search-clear .bi-x-lg{ opacity:.6; font-size:.9rem; }
+  .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
+
+  .feed-header { gap:.6rem; flex-wrap:wrap; }
+  .result-row { cursor:default; }
+  .list-results > .result-row + .result-row { border-top:1px solid var(--bs-border-color); }
+</style>
+{% endblock %}
+
 {% block content %}
-  <h2>Результаты поиска: "{{ query }}"</h2>
-  {% if results %}
-    {% for result in results %}
-      <div class="my-3">
-        {% if result.model_name == 'post' %}
-          <h4>{{ result.object.title }}</h4>
-          <p>{{ result.object.content|truncatewords:20 }}</p>
-        {% elif result.model_name == 'employee' %}
-          <h4>{{ result.object.name }}</h4>
-          <p>{{ result.object.email }} | {{ result.object.position }}</p>
-        {% endif %}
+<div class="container">
+  <div class="row gx-0">
+    <div class="col-12">
+
+      <!-- Заголовок + iOS-поиск -->
+      <div class="feed-header d-flex align-items-center">
+        <i class="bi-search fs-2 text-primary"></i>
+        <h2 class="title mb-0">Поиск</h2>
+
+        <div class="ms-auto ios-search">
+          <i class="bi-search"></i>
+          <input type="search" id="globalSearch" class="ios-search-input" placeholder="Фильтр по заголовкам" autocomplete="off">
+          <button type="button" class="ios-search-clear" aria-label="Очистить"><i class="bi-x-lg"></i></button>
+        </div>
       </div>
-    {% endfor %}
-  {% else %}
-    <p>Ничего не найдено.</p>
-  {% endif %}
+
+      <!-- Сегментированный фильтр типов -->
+      <div class="feed-new mb-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <div class="btn-group" role="group" aria-label="Фильтр результатов">
+            <input type="radio" class="btn-check" name="srchFilter" id="fltAll" autocomplete="off" checked>
+            <label class="btn btn-ghost" for="fltAll" data-filter="all">Все ({{ total }})</label>
+
+            <input type="radio" class="btn-check" name="srchFilter" id="fltPosts" autocomplete="off">
+            <label class="btn btn-ghost" for="fltPosts" data-filter="post">Публикации ({{ counts.post }})</label>
+
+            <input type="radio" class="btn-check" name="srchFilter" id="fltEmployees" autocomplete="off">
+            <label class="btn btn-ghost" for="fltEmployees" data-filter="employee">Сотрудники ({{ counts.employee }})</label>
+
+            <input type="radio" class="btn-check" name="srchFilter" id="fltDepartments" autocomplete="off">
+            <label class="btn btn-ghost" for="fltDepartments" data-filter="department">Отделы ({{ counts.department }})</label>
+
+            <input type="radio" class="btn-check" name="srchFilter" id="fltRequests" autocomplete="off">
+            <label class="btn btn-ghost" for="fltRequests" data-filter="request">Заявления ({{ counts.request }})</label>
+
+            <input type="radio" class="btn-check" name="srchFilter" id="fltChats" autocomplete="off">
+            <label class="btn btn-ghost" for="fltChats" data-filter="chat">Чаты ({{ counts.chat }})</label>
+
+            <input type="radio" class="btn-check" name="srchFilter" id="fltMessages" autocomplete="off">
+            <label class="btn btn-ghost" for="fltMessages" data-filter="message">Сообщения ({{ counts.message }})</label>
+
+            <input type="radio" class="btn-check" name="srchFilter" id="fltEvents" autocomplete="off">
+            <label class="btn btn-ghost" for="fltEvents" data-filter="event">События ({{ counts.event }})</label>
+          </div>
+        </div>
+      </div>
+
+      {% if total > 0 %}
+
+        {# ===== ПУБЛИКАЦИИ ===== #}
+        {% if counts.post %}
+        <div class="feed-card mb-3 section" data-sec="post">
+          <div class="feed-hd">
+            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-journal-text"></i></div>
+            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Публикации</h6></div>
+          </div>
+          <div class="list-results">
+            {% for item in results %}
+              {% if item.model_name == 'post' %}
+                {% with post=item.object %}
+                <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="post" data-haystack="{{ post.title|default_if_none:'' }}">
+                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-journal-text"></i></div>
+                  <div class="flex-grow-1 position-relative">
+                    <a href="{% url 'feed:post_detail' post.pk %}" class="feed-author text-decoration-none stretched-link">{{ post.title }}</a>
+                    <div class="feed-sub mt-1 text-secondary">{{ post.created_at|date:"d.m.Y H:i" }}</div>
+                    {% if post.body %}<div class="small mt-1 text-body">{{ post.body|truncatewords:35 }}</div>{% endif %}
+                  </div>
+                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
+                </div>
+                {% endwith %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# ===== СОТРУДНИКИ ===== #}
+        {% if counts.employee %}
+        <div class="feed-card mb-3 section" data-sec="employee">
+          <div class="feed-hd">
+            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-person-badge"></i></div>
+            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Сотрудники</h6></div>
+          </div>
+          <div class="list-results">
+            {% for item in results %}
+              {% if item.model_name == 'employee' %}
+                {% with emp=item.object %}
+                <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="employee" data-haystack="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic|default_if_none:'' }}">
+                  <div class="feed-ava" style="width:44px;height:44px;">
+                    {% if emp.avatar %}<img src="{{ emp.avatar.url }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
+                  </div>
+                  <div class="flex-grow-1 position-relative">
+                    <a href="{% url 'employees:employee_detail' emp.pk %}" class="feed-author text-decoration-none stretched-link">
+                      {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                    </a>
+                    <div class="feed-sub mt-1 text-secondary">
+                      {% if emp.position %}{{ emp.position.name }} · {% endif %}
+                      {{ emp.email }}{% if emp.phone_number %} · {{ emp.phone_number }}{% endif %}
+                    </div>
+                  </div>
+                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
+                </div>
+                {% endwith %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# ===== ОТДЕЛЫ ===== #}
+        {% if counts.department %}
+        <div class="feed-card mb-3 section" data-sec="department">
+          <div class="feed-hd">
+            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
+            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Отделы</h6></div>
+          </div>
+          <div class="list-results">
+            {% for item in results %}
+              {% if item.model_name == 'department' %}
+                {% with dept=item.object %}
+                <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="department" data-haystack="{{ dept.name|default_if_none:'' }}">
+                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
+                  <div class="flex-grow-1 position-relative">
+                    <a href="{% url 'employees:department_detail' dept.pk %}" class="feed-author text-decoration-none stretched-link">{{ dept.name }}</a>
+                    <div class="feed-sub mt-1 text-secondary">
+                      {% if dept.head %}Руководитель: {{ dept.head.last_name }} {{ dept.head.first_name }}{% if dept.head.patronymic %} {{ dept.head.patronymic }}{% endif %}{% endif %}
+                    </div>
+                    {% if dept.description %}<div class="small mt-1 text-body">{{ dept.description|truncatewords:35 }}</div>{% endif %}
+                  </div>
+                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
+                </div>
+                {% endwith %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# ===== ЗАЯВЛЕНИЯ ===== #}
+        {% if counts.request %}
+        <div class="feed-card mb-3 section" data-sec="request">
+          <div class="feed-hd">
+            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-file-earmark-text"></i></div>
+            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Заявления</h6></div>
+          </div>
+          <div class="list-results">
+            {% for item in results %}
+              {% if item.model_name == 'request' %}
+                {% with req=item.object %}
+                <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="request" data-haystack="{% firstof req.title req.get_type_display '' %}">
+                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-file-earmark-text"></i></div>
+                  <div class="flex-grow-1 position-relative">
+                    <a href="{% url 'requests_app:request_detail' req.pk %}" class="feed-author text-decoration-none stretched-link">
+                      {% firstof req.title req.get_type_display "Заявление" %}
+                    </a>
+                    <div class="feed-sub mt-1 text-secondary">
+                      Автор: {{ req.employee }}{% if req.department %} · Отдел: {{ req.department }}{% endif %} · {{ req.created_at|date:"d.m.Y H:i" }}
+                    </div>
+                    {% if req.comment %}<div class="small mt-1 text-body">{{ req.comment|truncatewords:35 }}</div>{% endif %}
+                  </div>
+                  <div class="ms-2 mt-1">
+                    {% if req.status == 'pending' %}<span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">На рассмотрении</span>
+                    {% elif req.status == 'approved' %}<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Одобрено</span>
+                    {% elif req.status == 'rejected' %}<span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Отклонено</span>
+                    {% elif req.status == 'cancelled' %}<span class="badge bg-dark-subtle text-dark-emphasis border border-dark-subtle">Отменено</span>
+                    {% elif req.status == 'draft' %}<span class="badge bg-light text-body border">Черновик</span>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endwith %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# ===== ЧАТЫ ===== #}
+        {% if counts.chat %}
+        <div class="feed-card mb-3 section" data-sec="chat">
+          <div class="feed-hd">
+            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-dots"></i></div>
+            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Чаты</h6></div>
+          </div>
+          <div class="list-results">
+            {% for item in results %}
+              {% if item.model_name == 'chat' %}
+                {% with chat=item.object %}
+                {% firstof chat.name chat.department.name chat.pk as chat_label %}
+                <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="chat" data-haystack="{{ chat_label }}">
+                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-dots"></i></div>
+                  <div class="flex-grow-1 position-relative">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                      {% if chat.type == 'global' %}
+                        Глобальный чат
+                      {% elif chat.type == 'department' and chat.department %}
+                        Чат отдела: {{ chat.department.name }}
+                      {% elif chat.type == 'private' %}
+                        {% for u in chat.participants.all %}{% if u != request.user %}{% if not forloop.first %}, {% endif %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}
+                      {% else %}
+                        {{ chat_label }}
+                      {% endif %}
+                    </a>
+                  </div>
+                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
+                </div>
+                {% endwith %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# ===== СООБЩЕНИЯ ===== #}
+        {% if counts.message %}
+        <div class="feed-card mb-3 section" data-sec="message">
+          <div class="feed-hd">
+            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-left-text"></i></div>
+            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Сообщения</h6></div>
+          </div>
+          <div class="list-results">
+            {% for item in results %}
+              {% if item.model_name == 'message' %}
+                {% with msg=item.object %}
+                {% firstof msg.chat.name msg.chat.department.name msg.chat.pk as msg_chat_label %}
+                <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="message" data-haystack="{{ msg.content|default_if_none:'' }}">
+                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-left-text"></i></div>
+                  <div class="flex-grow-1 position-relative">
+                    <a href="{% url 'communications:chat_detail' msg.chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                      {% if msg.author %}{{ msg.author.get_full_name|default:msg.author.username }}: {% endif %}
+                      {{ msg.content|default:"(вложение)"|truncatechars:120 }}
+                    </a>
+                    <div class="feed-sub mt-1 text-secondary">
+                      {{ msg.created_at|date:"d.m.Y H:i" }} · Чат: {{ msg_chat_label }}
+                    </div>
+                  </div>
+                </div>
+                {% endwith %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# ===== СОБЫТИЯ ===== #}
+        {% if counts.event %}
+        <div class="feed-card mb-3 section" data-sec="event">
+          <div class="feed-hd">
+            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-calendar-event"></i></div>
+            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">События</h6></div>
+          </div>
+          <div class="list-results">
+            {% for item in results %}
+              {% if item.model_name == 'event' %}
+                {% with ev=item.object %}
+                {% firstof ev.title ev.name "Событие" as ev_title %}
+                <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="event" data-haystack="{{ ev_title }}">
+                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-calendar-event"></i></div>
+                  <div class="flex-grow-1 position-relative">
+                    <div class="feed-author">{{ ev_title }}</div>
+                    <div class="feed-sub mt-1 text-secondary">
+                      {% if ev.start %}Начало: {{ ev.start|date:"d.m.Y H:i" }}
+                      {% elif ev.starts_at %}Начало: {{ ev.starts_at|date:"d.m.Y H:i" }}{% endif %}
+                      {% if ev.location %} · {{ ev.location }}{% endif %}
+                      {% if ev.department %} · {% firstof ev.department.name ev.department " " %}{% endif %}
+                    </div>
+                  </div>
+                </div>
+                {% endwith %}
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+      {% else %}
+        <div class="alert alert-info shadow-sm mt-3">Ничего не найдено.</div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const input = document.getElementById('globalSearch');
+  const clearBtn = document.querySelector('.ios-search-clear');
+  const labels = document.querySelectorAll('[data-filter]');
+  const radios = document.querySelectorAll('input[name="srchFilter"]');
+  const sections = document.querySelectorAll('.section');
+  const norm = s => (s||'').toString().toLowerCase().trim();
+
+  function applyFilter(){
+    const text = norm(input?.value || '');
+    const activeLabel = document.querySelector('input[name="srchFilter"]:checked + label');
+    const active = activeLabel ? activeLabel.dataset.filter : 'all';
+
+    sections.forEach(sec => {
+      const type = sec.dataset.sec;
+      const typeAllowed = (active === 'all' || active === type);
+      if (!typeAllowed) { sec.style.display = 'none'; return; }
+
+      const rows = sec.querySelectorAll('.result-row');
+      let visible = 0;
+      rows.forEach(row => {
+        const hay = norm(row.dataset.haystack);
+        const show = (text === '' || hay.includes(text));
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      sec.style.display = (text === '' || visible > 0) ? '' : 'none';
+    });
+  }
+
+  labels.forEach(l => l.addEventListener('click', () => setTimeout(applyFilter, 0)));
+  radios.forEach(r => r.addEventListener('change', applyFilter));
+  if (input){ input.addEventListener('input', applyFilter); }
+  if (clearBtn && input){
+    clearBtn.addEventListener('click', () => { input.value=''; input.focus(); input.dispatchEvent(new Event('input')); });
+  }
+  applyFilter();
+})();
+</script>
 {% endblock %}

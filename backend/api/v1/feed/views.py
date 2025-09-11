@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Any, List
+
 from django.contrib.auth import get_user_model
-from django.db.models import (BooleanField, Count, Exists, F, OuterRef,
-                              Subquery, Value)
+from django.db.models import BooleanField, Count, Exists, F, OuterRef, Subquery, Value
+from employees.constants import DeptPerm
 from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
 from feed.models import Comment, Post, PostLike
 from rest_framework import filters, status, viewsets
@@ -12,8 +14,14 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
-from ..permissions import (IsAuthorOrStaffForComments, user_has_dept_perm,
-                           user_is_dept_head, user_is_staffish)
+from ..permissions import (
+    AdminOrActionOrModelPerms,
+    AdminOrDeptAllowed,
+    IsSelfOrStaff,
+    user_has_dept_perm,
+    user_is_dept_head,
+    user_is_staffish,
+)
 from .serializers import CommentSerializer, PostListSerializer, PostSerializer
 
 Employee = get_user_model()
@@ -33,17 +41,96 @@ def _to_id(val):
 
 
 class PostViewSet(viewsets.ModelViewSet):
+    """CRUD ленты + like/unlike, pin/unpin.
+
+    Доступ (коротко):
+      - list/retrieve/like/unlike — IsAuthenticated
+      - create:
+          * type=company    → AdminOrActionOrModelPerms + required_perm_code="feed.publish_company_post"
+          * type=department → AdminOrDeptAllowed с кодом DeptPerm.CREATE_POST|publish_department_post
+      - update/partial_update/destroy:
+          * company         → как для company-create
+          * department      → как для department-create
+      - pin/unpin — только staff/superuser
+    """
+
     queryset = (
         Post.objects.select_related("author", "department")
         .annotate(comments_count=Count("comments", distinct=True))
         .order_by("-pinned", "-created_at")
     )
-    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["title", "body"]
     ordering_fields = ["created_at", "pinned", "likes_count"]
     ordering = ["-pinned", "-created_at"]
+
+    class PostDeptPerm(AdminOrDeptAllowed):
+        """Департаментные права для операций над постами отдела.
+
+        SAFE-методы разрешены (IsAuthenticated стоит на вьюхе).
+        Коды прав подставляются динамически из get_permissions().
+        """
+
+        allow_safe_without_code = True
+
+        def has_permission(self, request, view) -> bool:
+            """На create, если type=department, но department не указан,
+            не режем запрос — даём сериализатору вернуть 400 вместо 403.
+            """
+            if getattr(view, "action", None) == "create":
+                t = (request.data.get("type") or "").strip()
+                if t == TYPE_DEPARTMENT:
+                    dept_id = self._to_int_or_none(
+                        self._extract_dept_id_from_request(request, view)
+                    )
+                    if dept_id is None:
+                        return True  # пропускаем к валидации сериализатора
+            return super().has_permission(request, view)
+
+    def get_permissions(self) -> List[Any]:
+        """Возвращает DRF-пермишены под текущий action (без вызова get_object())."""
+        if self.action in {"list", "retrieve", "like", "unlike"}:
+            return [IsAuthenticated()]
+
+        if self.action in {"pin", "unpin"}:
+            return [IsAdminUser()]
+
+        # --- CREATE: смотрим на тип из тела запроса ---
+        if self.action == "create":
+            t = (self.request.data.get("type") or "").strip()
+            if t == TYPE_COMPANY:
+                return [IsAuthenticated(), AdminOrActionOrModelPerms()]
+            # department → департаментное право на создание
+            dept_code = getattr(DeptPerm, "CREATE_POST", "publish_department_post")
+            perm = self.PostDeptPerm()
+            perm.required_code = DeptPerm.CREATE_POST
+            return [IsAuthenticated(), perm]
+
+        # --- UPDATE/PATCH/DELETE: определяем тип поста из БД, но без get_object() ---
+        if self.action in {"update", "partial_update", "destroy"}:
+            lookup = getattr(self, "lookup_url_kwarg", None) or getattr(
+                self, "lookup_field", "pk"
+            )
+            pk = self.kwargs.get(lookup)
+            info = (
+                Post.objects.filter(pk=pk).values("type", "department_id").first() or {}
+            )
+            if info.get("type") == TYPE_COMPANY:
+                return [IsAuthenticated(), AdminOrActionOrModelPerms()]
+
+            # department
+            dept_code = DeptPerm.MANAGE_FEED
+            perm = self.PostDeptPerm()
+            perm.required_code_map = {
+                "update": dept_code,
+                "partial_update": dept_code,
+                "destroy": dept_code,
+            }
+            return [IsAuthenticated(), perm]
+
+        # дефолт: просто аутентификация
+        return [IsAuthenticated()]
 
     def get_serializer_class(self):
         return PostListSerializer if self.action == "list" else PostSerializer
@@ -59,11 +146,11 @@ class PostViewSet(viewsets.ModelViewSet):
         else:
             qs = qs.annotate(is_liked=Value(False, output_field=BooleanField()))
 
-        # только ID последнего комментария — остальное соберём в сериализаторе
+        # последний комментарий (id) — без N+1
         lc = Comment.objects.filter(post_id=OuterRef("pk")).order_by("-created_at")
         qs = qs.annotate(last_comment_id=Subquery(lc.values("id")[:1]))
 
-        # дальше — ваши фильтры type/department/author/pinned (как были)
+        # фильтры
         qp = self.request.query_params
         t = qp.get("type")
         if t:
@@ -81,17 +168,10 @@ class PostViewSet(viewsets.ModelViewSet):
             qs = qs.filter(pinned=False)
 
         return qs
-    
-    def list(self, request, *args, **kwargs):
-        """
-        Сбор последних комментариев пачкой, без N+1:
-        1) получаем страницу/список постов;
-        2) вытаскиваем их last_comment_id;
-        3) делаем один запрос in_bulk() с select_related('author');
-        4) кладём карту в serializer.context.
-        """
-        queryset = self.filter_queryset(self.get_queryset())
 
+    def list(self, request, *args, **kwargs):
+        """Возвращает список постов с картой последних комментариев без N+1."""
+        queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         objects = page if page is not None else queryset
 
@@ -104,61 +184,29 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(
             objects,
             many=True,
-            context={**self.get_serializer_context(), "last_comments_map": last_comments_map},
+            context={
+                **self.get_serializer_context(),
+                "last_comments_map": last_comments_map,
+            },
         )
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
-    # ---- permissions helpers
-    def _can_create(self, user, t, dept):
-        if not user or not user.is_authenticated:
-            return False
-        if t == TYPE_EMPLOYEE:
-            return False
-        if t == TYPE_COMPANY:
-            return user_is_staffish(user) or user.has_perm("feed.publish_company_post")
-        if t == TYPE_DEPARTMENT and dept:
-            return (
-                user_is_staffish(user)
-                or user_is_dept_head(user, dept)
-                or user_has_dept_perm(user, dept, "publish_department_post")
-            )
-        return False
+    # --- ВАЖНО: возвращаем perform_create, чтобы заполнить author ---
+    def perform_create(self, serializer: PostSerializer) -> None:
+        """Сохраняет пост, проставляя автора текущим пользователем.
 
-    def _can_edit(self, user, post: Post):
-        if post.type == TYPE_COMPANY:
-            return user_is_staffish(user) or user.has_perm("feed.publish_company_post")
-        if post.type == TYPE_DEPARTMENT and post.department_id:
-            return (
-                user_is_staffish(user)
-                or user_is_dept_head(user, post.department)
-                or user_has_dept_perm(user, post.department, "publish_department_post")
-            )
-        return False
+        Raises:
+            ValidationError: если сериализатор невалиден (обрабатывается DRF).
+        """
+        serializer.save(author=self.request.user)
 
-    # ---- hooks
-    def perform_create(self, serializer):
-        user = self.request.user
-        t = self.request.data.get("type") or serializer.validated_data.get("type")
-        dept = serializer.validated_data.get("department")
-        if not self._can_create(user, t, dept):
-            raise PermissionDenied("Недостаточно прав для публикации.")
-        serializer.save(author=user)
+    # --- actions (pin/unpin и лайки) ---
 
-    def perform_update(self, serializer):
-        if not self._can_edit(self.request.user, self.get_object()):
-            raise PermissionDenied("Недостаточно прав для изменения публикации.")
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if not self._can_edit(self.request.user, instance):
-            raise PermissionDenied("Недостаточно прав для удаления публикации.")
-        return super().perform_destroy(instance)
-
-    # ---- actions
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
     def pin(self, request, pk=None):
+        """Пинует пост (только staff/superuser)."""
         post = self.get_object()
         if not post.pinned:
             Post.objects.filter(pk=post.pk).update(pinned=True)
@@ -166,13 +214,15 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
     def unpin(self, request, pk=None):
+        """Снимает пин (только staff/superuser)."""
         post = self.get_object()
         if post.pinned:
             Post.objects.filter(pk=post.pk).update(pinned=False)
         return Response({"pinned": False})
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def like(self, request, pk=None):
+        """Ставит лайк текущего пользователя (идемпотентно)."""
         post = self.get_object()
         _, created = PostLike.objects.get_or_create(post=post, user=request.user)
         if created:
@@ -182,8 +232,9 @@ class PostViewSet(viewsets.ModelViewSet):
             {"liked": True, "likes_count": post.likes_count}, status=status.HTTP_200_OK
         )
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def unlike(self, request, pk=None):
+        """Снимает лайк текущего пользователя (идемпотентно)."""
         post = self.get_object()
         deleted, _ = PostLike.objects.filter(post=post, user=request.user).delete()
         if deleted:
@@ -192,7 +243,8 @@ class PostViewSet(viewsets.ModelViewSet):
             )
         post.refresh_from_db(fields=["likes_count"])
         return Response(
-            {"liked": False, "likes_count": post.likes_count}, status=status.HTTP_200_OK
+            {"liked": False, "likes_count": post.likes_count},
+            status=status.HTTP_200_OK,
         )
 
 
@@ -208,7 +260,9 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     queryset = Comment.objects.select_related("post", "author").all()
     serializer_class = CommentSerializer
-    permission_classes = [IsAuthenticated, IsAuthorOrStaffForComments]
+    owner_id_attrs = ("author_id",)
+    owner_obj_attrs = ("author",)
+    permission_classes = [IsAuthenticated, (IsSelfOrStaff | AdminOrActionOrModelPerms)]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ["created_at", "id"]

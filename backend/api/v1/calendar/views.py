@@ -57,7 +57,6 @@ class CalendarEventsViewSet(ModelViewSet):
         гарантированно его увидел на этапе has_permission().
         """
         dep = self._dept_id(required=False)
-        print(f"Request user: {self.request.user}, Auth: {self.request.auth}")
         if dep is None:
             
             return [AdminOrActionOrModelPerms()]

@@ -8,12 +8,15 @@ from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
                               RegisterAPIView, ResendEmailAPIView,
                               SkillViewSet, VerifyEmailAPIView)
 from .feed.views import CommentViewSet, PostViewSet
+from .documents.views import DocumentViewSet
 
 app_name = "v1"
 
 router = DefaultRouter()
 
 router.register(r"calendar/events", CalendarEventsViewSet, basename="events")
+
+router.register(r"documents", DocumentViewSet, basename="documents")
 
 router.register(r"departments", DepartmentViewSet, basename="departments")
 router.register(r"employees", EmployeeViewSet, basename="employees")

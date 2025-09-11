@@ -148,7 +148,7 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
             "date_display",
             "comment",
             "extra",
-            "history",  # ← добавили
+            "history",
         ]
 
     def get_action_display(self, obj):

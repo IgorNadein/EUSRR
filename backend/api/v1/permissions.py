@@ -1,13 +1,16 @@
 # backend\api\v1\permissions.py
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from django.contrib.auth.models import AbstractBaseUser
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from employees.constants import DeptPerm
 from employees.models import Department, EmployeeDepartment
-from rest_framework.permissions import (SAFE_METHODS, BasePermission,
-                                        DjangoModelPermissions)
+from rest_framework.permissions import (
+    SAFE_METHODS,
+    BasePermission,
+    DjangoModelPermissions,
+)
 
 MANAGE_PERM = "manage_department"
 CHANGE_HEAD_PERM = "change_department_head"
@@ -25,20 +28,46 @@ def user_is_staffish(user) -> bool:
 
 
 def user_has_dept_perm(user, dept: Department, perm_code: str) -> bool:
+    """Проверяет, есть ли у пользователя право `perm_code` в указанном отделе.
+
+    Правила:
+        - Неаутентифицированным → False.
+        - staff/superuser → True.
+        - Руководитель отдела → True.
+        - Иначе: существует активная связь EmployeeDepartment, и у роли есть
+          DepartmentPermission с нужным code.
+
+    Args:
+        user (User): Текущий пользователь.
+        dept (Department): Отдел.
+        perm_code (str): Код департаментного права (см. DeptPerm.CHOICES).
+
+    Returns:
+        bool: True, если доступ разрешён.
+
+    Raises:
+        ValueError: Если `dept` не задан или не имеет id.
+    """
     if not (user and user.is_authenticated):
         return False
-    # staff/superuser — сразу ок (оставим как было)
-    if user_is_staffish(user):
+
+    # staff/superuser — сразу ок
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
         return True
+
+    if not isinstance(dept, Department) or getattr(dept, "id", None) is None:
+        raise ValueError("Argument `dept` must be Department instance with a valid id.")
+
     # руководитель — сразу ок
-    if user_is_dept_head(user, dept):
+    if getattr(dept, "head_id", None) == user.id:
         return True
-    # основная проверка: активная связь + у роли есть нужный Permission
+
+    # основная проверка: активная связь + у роли есть нужный DepartmentPermission.code
     return EmployeeDepartment.objects.filter(
         employee_id=user.id,
         department_id=dept.id,
         is_active=True,
-        role__scoped_permissions__codename=perm_code,
+        role__scoped_permissions__code=perm_code,  # <-- ВАЖНО: `code`, не `codename`
     ).exists()
 
 
@@ -207,24 +236,14 @@ class AdminOrDeptAllowed(BasePermission):
     # -------- main checks --------
 
     def has_permission(self, request, view) -> bool:
-        """Проверка доступа на уровне запроса (до доступа к объекту).
-
-        Правила:
-            - Неаутентифицированные → False.
-            - superuser/staff → True.
-            - Если код не требуется:
-                - SAFE-методы → allow_safe_without_code ? True : False
-                - небезопасные → False
-            - Если код требуется:
-                - Пытаемся найти department_id в запросе;
-                - Если нашли → проверяем has_dept_perm(user, dept_id, code);
-                - Если не нашли:
-                    * если detail-вью → отложить проверку до has_object_permission (вернуть True);
-                    * иначе → False.
-
-        Returns:
-            bool: Разрешить/запретить доступ.
-        """
+        """См. докстринг класса. Если dept_id не найден, но это detail-запрос,
+        откладываем проверку до object-level (вернём True)."""
+        print(
+            view.action,
+            view.kwargs,
+            self.get_required_code(request, view),
+            self._to_int_or_none(self._extract_dept_id_from_request(request, view)),
+        )
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return False
@@ -234,7 +253,7 @@ class AdminOrDeptAllowed(BasePermission):
         code = self.get_required_code(request, view)
         if not code:
             return (
-                request.method in SAFE_METHODS
+                (request.method in SAFE_METHODS)
                 if self.allow_safe_without_code
                 else False
             )
@@ -242,9 +261,19 @@ class AdminOrDeptAllowed(BasePermission):
         dept_id = self._to_int_or_none(
             self._extract_dept_id_from_request(request, view)
         )
+
         if dept_id is None:
-            # detail-экшены проверим на объекте
-            return True if getattr(view, "detail", False) else False
+            # robust: считаем detail, если есть lookup в kwargs
+            lookup_kw = getattr(view, "lookup_url_kwarg", None) or getattr(
+                view, "lookup_field", "pk"
+            )
+            is_detail = getattr(view, "detail", None)
+            if is_detail is None:
+                is_detail = lookup_kw in getattr(view, "kwargs", {})
+            if is_detail:
+                # отложим проверку до has_object_permission
+                return True
+            return False
 
         return has_dept_perm(user, dept_id, code)
 
@@ -280,98 +309,151 @@ class AdminOrDeptAllowed(BasePermission):
             dept_id = self._to_int_or_none(
                 self._extract_dept_id_from_request(request, view)
             )
-        if dept_id is None:
-            return False
 
         return has_dept_perm(request.user, dept_id, code)
 
 
 class IsSelfOrStaff(BasePermission):
-    # На class-level пускаем любого аутентифицированного.
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated)
+    """Staff/superuser или владелец объекта (настраиваемые поля владельца через атрибуты вью)."""
 
-    # На object-level: сам объект, либо staff/superuser.
+    DEFAULT_OWNER_ID_ATTRS = ("author_id", "user_id", "owner_id", "employee_id")
+    DEFAULT_OWNER_OBJ_ATTRS = ("author", "user", "owner", "employee")
+
+    def has_permission(self, request, view) -> bool:
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated)
+
     def has_object_permission(self, request, view, obj):
         user = request.user
         if not user or not user.is_authenticated:
             return False
+        if request.method in SAFE_METHODS:
+            return True
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return True
 
-        # Основной случай — объект сотрудника.
-        try:
-            from employees.models import \
-                Employee  # локальный импорт, чтобы избежать циклов
-        except Exception:
-            Employee = None
+        # Прочитаем конфиг владельческих полей с вью (если задан)
+        owner_id_attrs = getattr(view, "owner_id_attrs", self.DEFAULT_OWNER_ID_ATTRS)
+        owner_obj_attrs = getattr(view, "owner_obj_attrs", self.DEFAULT_OWNER_OBJ_ATTRS)
+        uid = getattr(user, "id", None)
 
-        if Employee is not None and isinstance(obj, Employee):
-            return obj.pk == user.pk
+        for attr in owner_id_attrs:
+            if hasattr(obj, attr) and getattr(obj, attr) == uid:
+                return True
+        for attr in owner_obj_attrs:
+            owner = getattr(obj, attr, None)
+            if owner is not None and getattr(owner, "id", None) == uid:
+                return True
 
-        # Fallback: сравнить id из URL, если obj не Employee (на всякий случай)
+        # Fallback для вью «/users/{id}/»
         lookup = getattr(view, "lookup_field", "pk")
-        return str(view.kwargs.get(lookup)) == str(user.pk)
-
-
-class IsAuthorOrStaffForComments(BasePermission):
-    """
-    Создание/чтение — любой аутентифицированный (проверяет IsAuthenticated во view).
-    Изменение/удаление — автор комментария или staff/superuser.
-    """
-
-    message = "Можно редактировать/удалять только свои комментарии."
-
-    def has_permission(self, request, view):
-        # IsAuthenticated уже стоит во вьюхе; дублируем True для небезопасных методов,
-        # чтобы проверка прошла до object-level.
-        return bool(request.user and request.user.is_authenticated)
-
-    def has_object_permission(self, request, view, obj):
-        if request.method in SAFE_METHODS:
-            return True
-        user = request.user
-        if not (user and user.is_authenticated):
-            return False
-        if user_is_staffish(user):
-            return True
-        return getattr(obj, "author_id", None) == getattr(user, "id", None)
+        return str(view.kwargs.get(lookup)) == str(uid)
 
 
 class AdminOrActionOrModelPerms(DjangoModelPermissions):
-    """
-    Админ/суперпользователь → всегда True.
-    Если задан код права (view.required_perm_code или required_perms_by_action[action]),
-    проверяем его через user.has_perm(...). Иначе — стандартные DjangoModelPermissions.
+    """Комбинированная политика доступа для документов.
+
+    Поведение:
+        - staff/superuser → полный доступ (всегда True).
+        - Если на вью задан `required_perm_code` или есть карта
+          `required_perms_by_action[action]`, проверяем её через `user.has_perm(...)`.
+        - Иначе:
+            * для SAFE-методов (`GET/HEAD/OPTIONS`) требуем `view_<model>`;
+            * для остальных методов используем стандартную карту `DjangoModelPermissions`
+              (`add/change/delete`).
+
+    Raises:
+        exceptions.MethodNotAllowed: если передан неизвестный HTTP-метод.
     """
 
-    def has_permission(self, request, view):
+    def has_permission(self, request, view) -> bool:
+        """Проверка доступа на уровне запроса.
+
+        Args:
+            request: DRF Request.
+            view: Текущий ViewSet.
+
+        Returns:
+            bool: Разрешён ли доступ.
+        """
         user = request.user
-        if not user or not user.is_authenticated:
+        if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
             return False
         if user.is_superuser or user.is_staff:
             return True
 
-        mapping = getattr(view, "required_perms_by_action", {}) or {}
-        action = getattr(view, "action", None)
-        code = getattr(view, "required_perm_code", None) or mapping.get(action)
+        code = self._explicit_perm_code(view)
         if code:
             return user.has_perm(code)
 
+        # SAFE-методы → требуем view_<model>
+        if request.method in SAFE_METHODS:
+            model = self._model_from_view(view)
+            return user.has_perm(
+                f"{model._meta.app_label}.view_{model._meta.model_name}"
+            )
+
+        # Остальные → стандартная логика DjangoModelPermissions
         return super().has_permission(request, view)
 
-    def has_object_permission(self, request, view, obj):
+    def has_object_permission(self, request, view, obj) -> bool:
+        """Проверка доступа к конкретному объекту.
+
+        Args:
+            request: DRF Request.
+            view: Текущий ViewSet.
+            obj: Объект модели.
+
+        Returns:
+            bool: Разрешён ли доступ.
+        """
         user = request.user
         if user.is_superuser or user.is_staff:
             return True
 
-        mapping = getattr(view, "required_perms_by_action", {}) or {}
-        action = getattr(view, "action", None)
-        code = getattr(view, "required_perm_code", None) or mapping.get(action)
+        code = self._explicit_perm_code(view)
         if code:
             return user.has_perm(code)
 
+        if request.method in SAFE_METHODS:
+            meta = obj._meta
+            return user.has_perm(f"{meta.app_label}.view_{meta.model_name}")
+
+        # Для остальных методов полагаемся на проверку уровня запроса
         return super().has_object_permission(request, view, obj)
+
+    @staticmethod
+    def _explicit_perm_code(view) -> Optional[str]:
+        """Возвращает явный код права, заданный на уровне вью.
+
+        Args:
+            view: DRF ViewSet.
+
+        Returns:
+            Optional[str]: Код права или None.
+        """
+        mapping = getattr(view, "required_perms_by_action", {}) or {}
+        action = getattr(view, "action", None)
+        return getattr(view, "required_perm_code", None) or mapping.get(action)
+
+    @staticmethod
+    def _model_from_view(view):
+        """Извлекает модель из view.queryset.
+
+        Args:
+            view: DRF ViewSet.
+
+        Returns:
+            type: Класс модели.
+
+        Raises:
+            AssertionError: если у вью нет queryset/model (для ModelViewSet не ожидается).
+        """
+        qs = getattr(view, "queryset", None)
+        assert qs is not None and hasattr(
+            qs, "model"
+        ), "View must define `.queryset` with `.model`"
+        return qs.model
 
 
 __all__ = [
@@ -379,7 +461,6 @@ __all__ = [
     "CHANGE_HEAD_PERM",
     "ASSIGN_ROLE_PERM",
     "IsSelfOrStaff",
-    "IsAuthorOrStaffForComments",
     "AdminOrActionOrModelPerms",
     "user_is_dept_head",
     "user_has_dept_perm",

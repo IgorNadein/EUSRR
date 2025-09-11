@@ -92,10 +92,7 @@ class Post(models.Model):
     likes_count = models.PositiveIntegerField("Лайки", default=0, db_index=True)
 
     class Meta:
-        permissions = [
-            ("publish_company_post", "Может публиковать новости на главной"),
-            ("publish_department_post", "Может публиковать новости в отделах"),
-        ]
+
         verbose_name = "Публикация"
         verbose_name_plural = "Публикации"
         ordering = ["-pinned", "-created_at"]
