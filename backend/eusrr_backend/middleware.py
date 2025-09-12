@@ -3,6 +3,7 @@ from django.conf import settings
 from django.shortcuts import redirect
 from django.urls import reverse, NoReverseMatch
 
+
 class AuthRequiredMiddleware:
     """
     Разрешает доступ НЕавторизованным только к страницам логина/регистрации/верификации
@@ -10,11 +11,12 @@ class AuthRequiredMiddleware:
     """
 
     # Префиксы, которые всегда пропускаем (настройка через settings при желании)
+
     EXEMPT_PREFIXES = (
         "/api/",
         "/auth/reset/",
-        # "/static/",       # статика
-        # "/media/",        # медиа
+        "/static/",  # статика
+        "/media/",  # медиа
         # "/__debug__/",    # django-debug-toolbar, если используется
     )
 
@@ -26,8 +28,7 @@ class AuthRequiredMiddleware:
         "auth_front:verify_email",
         "auth_front:resend_email",
         "auth_front:password_reset_done",
-        
-        "auth_front"
+        "auth_front",
     )
 
     def __init__(self, get_response):

@@ -1,14 +1,103 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Sequence
+import json
+from typing import Any, Dict, Sequence, Iterable
 
+from django.conf import settings
+from django.http import QueryDict
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import UploadedFile
+from django.template.defaultfilters import filesizeformat
 from documents.models import Document, DocumentAcknowledgement
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
 
 User = get_user_model()
+
+
+class RecipientIDsField(serializers.Field):
+    """Принимает recipient_ids в форматах: список, JSON-строка или CSV.
+
+    Примеры:
+        - [1, 2, 3]
+        - "[1,2,3]"
+        - "1,2,3"
+
+    Возвращает:
+        list[int]: Нормализованный список целых ID.
+
+    Raises:
+        serializers.ValidationError: Некорректный формат/значения.
+    """
+
+    def to_internal_value(self, data: Any) -> list[int]:
+        """Парсит raw-значение из запроса в список int.
+
+        При multipart (QueryDict) поддерживает repeat-params: recipient_ids=1&recipient_ids=2...
+        """
+        # 1) Спец. случай: multipart/QueryDict с repeat-params
+        # DRF в обычное Field передаёт "последнее" значение, поэтому
+        # забираем полный список через parent.initial_data.getlist(self.field_name)
+        parent_data = getattr(self.parent, "initial_data", None)  # type: ignore[attr-defined]
+        if isinstance(parent_data, QueryDict):
+            values = parent_data.getlist(self.field_name)  # type: ignore[attr-defined]
+            if len(values) > 1:
+                data = values
+            elif len(values) == 1 and not isinstance(data, (list, tuple)):
+                # один элемент: оставим строкой — ниже распарсится как JSON/CSV/число
+                data = values[0]
+
+        # 2) Уже список/кортеж?
+        if isinstance(data, (list, tuple)):
+            # если это ['1','2','3'] — ок; если это ['[1,2]'] — распакуем как строку
+            if (
+                len(data) == 1
+                and isinstance(data[0], str)
+                and (data[0].strip().startswith("[") or "," in data[0])
+            ):
+                data = data[0]
+            else:
+                vals = list(data)
+        # 3) Строка: JSON-массив или CSV или одно число
+        if isinstance(data, str):
+            s = data.strip()
+            try:
+                if s.startswith("[") and s.endswith("]"):
+                    parsed = json.loads(s)
+                    if not isinstance(parsed, list):
+                        raise serializers.ValidationError("Ожидается JSON-массив ID.")
+                    vals = parsed
+                elif "," in s:
+                    vals = [p.strip() for p in s.split(",") if p.strip()]
+                else:
+                    vals = [s]
+            except serializers.ValidationError:
+                raise
+            except Exception as e:
+                raise serializers.ValidationError(
+                    f"Неверный формат recipient_ids: {e!s}"
+                )
+        elif data in (None, ""):
+            vals = []
+        elif not isinstance(data, (list, tuple)):
+            raise serializers.ValidationError(
+                "Ожидается список, JSON-строка или CSV-строка."
+            )
+
+        # Приведение к int
+        try:
+            return [int(x) for x in vals]
+        except Exception:
+            raise serializers.ValidationError(
+                "ID получателей должны быть целыми числами."
+            )
+
+    def to_representation(self, value: Iterable[int]) -> list[int]:
+        """Отдаёт список ID (на всякий случай; поле write_only)."""
+        if value is None:
+            return []
+        return list(value)
 
 
 class DocumentReadSerializer(serializers.ModelSerializer):
@@ -37,7 +126,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
         )
 
     def get_is_acknowledged(self, obj: Document) -> bool:
-        """Проверяет, отмечал ли текущий пользователь ознакомление.
+        """Возвращает флаг ознакомления текущего пользователя.
 
         Args:
             obj (Document): Документ.
@@ -45,6 +134,10 @@ class DocumentReadSerializer(serializers.ModelSerializer):
         Returns:
             bool: True, если текущий пользователь уже ознакомился.
         """
+        annotated = getattr(obj, "_is_acknowledged", None)
+        if annotated is not None:
+            return bool(annotated)
+
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return False
@@ -58,17 +151,14 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
 
     Поддерживает:
         - загрузку файла (multipart)
-        - `sent_to_all`
-        - `recipient_ids` (список ID пользователей), если `sent_to_all == False`
+        - sent_to_all
+        - recipient_ids (repeat/JSON/CSV) при sent_to_all=false
     """
 
-    # Принимаем список ID вместо M2M-структуры
-    recipient_ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
+    recipient_ids = RecipientIDsField(
         write_only=True,
         required=False,
-        allow_empty=True,
-        help_text="Список ID сотрудников (используется, когда sent_to_all=false).",
+        help_text="Список ID сотрудников (repeat/JSON/CSV) при sent_to_all=false.",
     )
 
     class Meta:
@@ -81,19 +171,25 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "sent_to_all",
             "recipient_ids",
         )
+        extra_kwargs = {
+            "file": {"required": False, "allow_null": True},
+        }
 
     def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
-        """Общая валидация полей.
+        """Согласованность полей.
 
         Args:
-            attrs (dict): Данные.
+            attrs (dict): Данные после field-level валидаций.
 
         Returns:
-            dict: Провалидированные данные.
+            dict: Те же данные.
 
         Raises:
-            serializers.ValidationError: При логических несоответствиях.
+            serializers.ValidationError: Если sent_to_all=false и нет recipient_ids.
         """
+        if self.instance is None and not attrs.get("file"):
+            raise serializers.ValidationError({"file": "Обязательное поле."})
+
         sent_to_all = attrs.get("sent_to_all", True)
         recipient_ids = attrs.get("recipient_ids", [])
         if sent_to_all is False and not recipient_ids:
@@ -105,7 +201,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         return attrs
 
     def _set_recipients(self, doc: Document, recipient_ids: Sequence[int]) -> int:
-        """Привязывает получателей по списку ID.
+        """Привязывает получателей по списку ID (только активные).
 
         Args:
             doc (Document): Документ.
@@ -117,30 +213,24 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         if not recipient_ids:
             doc.recipients.clear()
             return 0
-        users = User.objects.filter(is_active=True, id__in=list(set(recipient_ids)))
+        users = User.objects.filter(is_active=True, id__in=set(recipient_ids))
         doc.recipients.set(users)
         return users.count()
 
     def create(self, validated_data: Dict[str, Any]) -> Document:
-        """Создание документа.
-
-        ВАЖНО: чтобы уведомления (signals) не улетели до установки M2M,
-        мы временно отключим `post_save` сигнал и вызовем уведомление вручную уже после назначения получателей.
+        """Создание документа с корректной установкой получателей и уведомлением.
 
         Args:
             validated_data (dict): Данные.
 
         Returns:
             Document: Созданный документ.
-
-        Raises:
-            serializers.ValidationError: Если входные данные недопустимы.
         """
         recipient_ids = validated_data.pop("recipient_ids", [])
         request = self.context.get("request")
         uploader = getattr(request, "user", None)
 
-        # Подключим/отключим сигнал аккуратно
+        # временно отключаем сигнал, чтобы M2M успели установиться
         from django.db.models.signals import post_save
 
         try:
@@ -152,56 +242,69 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             post_save.disconnect(on_document_saved, sender=Document)
 
         try:
-            doc = Document.objects.create(
-                uploaded_by=uploader,  # type: ignore[arg-type]
-                **validated_data,
-            )
+            doc = Document.objects.create(uploaded_by=uploader, **validated_data)  # type: ignore[arg-type]
             if validated_data.get("sent_to_all") is False:
                 self._set_recipients(doc, recipient_ids)
         finally:
             if on_document_saved:
                 post_save.connect(on_document_saved, sender=Document)
 
-        # Ручное уведомление после полной подготовки (если доступно)
+        # уведомление после полной подготовки
         try:
-            from documents.notification import \
-                notify_users_about_document  # type: ignore
+            from documents.notification import notify_users_about_document  # type: ignore
 
             notify_users_about_document(doc)
         except Exception:
-            # если уведомлялка неактивна — просто молча пропустим
             pass
 
         return doc
 
     def update(self, instance: Document, validated_data: Dict[str, Any]) -> Document:
-        """Обновление документа.
-
-        Сценарии:
-            - можно заменить файл/описание/заголовок
-            - переключить `sent_to_all`
-            - обновить получателей через `recipient_ids`
+        """Частичное обновление документа.
 
         Args:
-            instance (Document): Документ для обновления.
-            validated_data (dict): Новые данные.
+            instance (Document): Экземпляр.
+            validated_data (dict): Данные.
 
         Returns:
             Document: Обновлённый документ.
         """
         recipient_ids = validated_data.pop("recipient_ids", None)
-
-        for field in ("title", "description", "sent_to_all", "file"):
-            if field in validated_data:
-                setattr(instance, field, validated_data[field])
+        for f in ("title", "description", "sent_to_all", "file"):
+            if f in validated_data:
+                setattr(instance, f, validated_data[f])
         instance.save()
 
-        if recipient_ids is not None:
-            # Если теперь "всем" — очистим M2M
-            if validated_data.get("sent_to_all", instance.sent_to_all):
-                instance.recipients.clear()
-            else:
-                self._set_recipients(instance, recipient_ids)
+        # очищаем получателей при sent_to_all=true
+        if "sent_to_all" in validated_data and instance.sent_to_all:
+            instance.recipients.clear()
+        elif recipient_ids is not None:
+            self._set_recipients(instance, recipient_ids)
 
-        # уведомления по обновлению — по желанию; оставим тихо
         return instance
+
+    def validate_file(self, f: UploadedFile) -> UploadedFile:
+        """Проверяет, что размер загружаемого файла не превышает системный лимит.
+
+        Лимит берётся из settings.DATA_UPLOAD_MAX_MEMORY_SIZE. Если он задан (truthy),
+        и размер файла больше лимита, возвращается 400 (ValidationError).
+
+        Args:
+            f (UploadedFile): Загружаемый файл.
+
+        Returns:
+            UploadedFile: Исходный файл при успешной проверке.
+
+        Raises:
+            serializers.ValidationError: Размер файла превышает допустимый лимит.
+            TypeError: Если невозможно определить размер файла.
+        """
+        limit = getattr(settings, "DATA_UPLOAD_MAX_MEMORY_SIZE", None)
+        if limit:
+            size = getattr(f, "size", None)
+            if size is None:
+                raise TypeError("Невозможно определить размер файла")
+            if int(size) > int(limit):
+                human = filesizeformat(limit)
+                raise serializers.ValidationError(f"Файл слишком большой: > {human}.")
+        return f

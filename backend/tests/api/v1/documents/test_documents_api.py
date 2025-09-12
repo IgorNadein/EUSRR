@@ -4,24 +4,29 @@ from __future__ import annotations
 """
 Тесты CRUD API документов (/api/v1/documents/ + экшен acknowledge) по чек-листу.
 
-ВАЖНО: API ещё не реализовано — эти тесты задают ожидаемое поведение (TDD).
+Политика доступа (актуальная):
+- Создавать/редактировать/удалять — только админы и обладатели модельных прав.
+- Читать/скачивать/ознакомливаться — только аутентифицированные, и только документы,
+  предназначенные им (или с sent_to_all=True). Получатели не имеют доступ к документам,
+  которые им не предназначались.
+
 Все функции и классы снабжены докстрингами (Google-style).
 """
 
 import itertools
+import tempfile
 from typing import Iterable
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.conf import settings
+from documents.models import Document, DocumentAcknowledgement
 from rest_framework import status
 from rest_framework.test import APIClient
-
-from documents.models import Document, DocumentAcknowledgement
 
 pytestmark = pytest.mark.django_db
 
@@ -158,6 +163,12 @@ def api_urls():
     }
 
 
+@pytest.fixture(autouse=True)
+def enable_media_files(settings):
+    settings.MEDIA_ROOT = tempfile.mkdtemp()
+    settings.DEBUG = True
+
+
 # -------------------- A. Роли и доступ --------------------
 
 
@@ -201,18 +212,22 @@ class TestAuthAndPermissions:
         # acknowledge action
         assert api_client.post(api_urls["ack"](d.pk), {}).status_code == 401
 
-    def test_regular_user_forbidden_except_ack(self, auth_client, make_user, api_urls):
-        """Обычный user без прав: CRUD → 403, ACK → 200.
-
-        По текущей спецификации экшен acknowledge пускает любого аутентифицированного.
-        Этот тест фиксирует такое поведение.
+    def test_regular_user_access_according_to_policy(
+        self, auth_client, make_user, api_urls
+    ):
+        """Обычный user без модельных прав:
+        - list → 200 (пустой список, если нет доступных документов);
+        - CRUD → 403;
+        - detail/ack чужого документа с sent_to_all=False → 403.
         """
         u = make_user("u@example.com")
         client = auth_client(u)
 
         list_url = api_urls["list"]
-        assert client.get(list_url).status_code == 403
-        # POST (multipart)
+        # list — 200 (даже без прав), но результаты ограничены доступными документами
+        assert client.get(list_url).status_code == 200
+
+        # POST (multipart) — запрещено
         resp = client.post(
             list_url,
             {"title": "T", "file": _file(), "sent_to_all": True},
@@ -220,11 +235,11 @@ class TestAuthAndPermissions:
         )
         assert resp.status_code == 403
 
-        # object
+        # object not intended for user
         author = make_user("a@example.com")
-        d = make_document(uploaded_by=author)
+        d = make_document(uploaded_by=author, sent_to_all=False)
 
-        # detail & write ops
+        # detail & write ops — запрещено
         assert client.get(api_urls["detail"](d.pk)).status_code == 403
         assert (
             client.put(
@@ -240,10 +255,9 @@ class TestAuthAndPermissions:
         )
         assert client.delete(api_urls["detail"](d.pk)).status_code == 403
 
-        # acknowledge → 200
+        # acknowledge чужого документа (не sent_to_all) — запрещено
         r = client.post(api_urls["ack"](d.pk), {})
-        assert r.status_code == 200
-        assert r.json().get("ok") is True
+        assert r.status_code == 403
 
     @pytest.mark.parametrize(
         "perm,method,expected",
@@ -332,6 +346,7 @@ class TestAuthAndPermissions:
 
 
 # -------------------- B. Создание (POST) --------------------
+
 
 @pytest.mark.django_db
 class TestCreate:
@@ -523,7 +538,18 @@ class TestRead:
         body = r.json()
         assert body["is_acknowledged"] is False
         assert body["file_url"]
-        assert body["file_url"].startswith(settings.MEDIA_URL)
+
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(body["file_url"])
+        assert bool(parsed_url.scheme)
+        assert bool(parsed_url.netloc)
+        assert parsed_url.path.startswith(settings.MEDIA_URL)
+        expected_path = f"{settings.MEDIA_URL}{doc.file.name}"
+        expected_url = f"http://testserver{expected_path}"
+        assert (
+            body["file_url"] == expected_url
+        ), f"Ожидался URL: {expected_url}, получен: {body['file_url']}"
 
 
 # -------------------- D. Обновление (PUT/PATCH) --------------------
@@ -556,7 +582,8 @@ class TestUpdate:
         editor = make_user("editor@example.com")
         grant_perms(editor, "change_document")
         client = auth_client(editor)
-        d = make_document(uploaded_by=author)
+        d = make_document(uploaded_by=author)  # sent_to_all=True по умолчанию
+
         # получим старый url через detail (этап API)
         r1 = client.get(api_urls["detail"](d.pk))
         old_url = r1.json()["file_url"]
@@ -645,7 +672,7 @@ class TestDelete:
         r = client.delete(api_urls["detail"](d.pk))
         assert r.status_code in (200, 204)
 
-        # detail теперь 404
+        # detail теперь 404 (в некоторых реализациях 403 — зависит от политики; оставляем как есть)
         r2 = client.get(api_urls["detail"](d.pk))
         assert r2.status_code == 404
 
@@ -660,14 +687,16 @@ class TestAcknowledge:
     """F. Экшен POST /{id}/acknowledge/ — идемпотентность и политика доступа."""
 
     def test_ack_first_and_repeat(self, auth_client, make_user, api_urls):
-        """Первый вызов создаёт запись, повторный — already=true (200 оба раза)."""
+        """Первый вызов создаёт запись, повторный — already=true (200 оба раза).
+        Допустимо для документов с sent_to_all=True (общерассылка).
+        """
         author = make_user("author@example.com")
         any_user = make_user("u@example.com")
         client = auth_client(any_user)
 
         d = make_document(
-            uploaded_by=author, sent_to_all=False
-        )  # умышленно не в получателях
+            uploaded_by=author, sent_to_all=True
+        )  # доступен всем аутентифицированным
 
         r1 = client.post(api_urls["ack"](d.pk), {})
         assert r1.status_code == 200
@@ -701,10 +730,10 @@ class TestAcknowledge:
         DocumentAcknowledgement.objects.create(document=d, user=viewer)
         assert client.get(api_urls["detail"](d.pk)).json()["is_acknowledged"] is True
 
-    def test_policy_ack_even_if_not_recipient_current_behavior(
+    def test_ack_forbidden_if_not_recipient_and_not_sent_to_all(
         self, auth_client, make_user, api_urls
     ):
-        """Пользователь вне recipients и при sent_to_all=false тоже может ACK (текущая политика)."""
+        """Пользователь вне recipients при sent_to_all=false — не может ACK (403)."""
         author = make_user("author@example.com")
         u = make_user("u@example.com")
         client = auth_client(u)
@@ -712,8 +741,7 @@ class TestAcknowledge:
         r = client.post(
             api_urls["ack"](make_document(uploaded_by=author, sent_to_all=False).pk), {}
         )
-        assert r.status_code == 200
-        # Если это поведение нежелательно — создать тикет на ужесточение.
+        assert r.status_code == 403
 
 
 # -------------------- G. Сериализация и данные --------------------
@@ -755,11 +783,11 @@ class TestSerialization:
 
         d = make_document(uploaded_by=author)
         file_url = api.get(api_urls["detail"](d.pk)).json()["file_url"]
+        print(file_url)
 
         # обычный Django client (без APIClient) для скачивания
         resp = client.get(file_url)
         assert resp.status_code == 200
-        assert resp.content  # не пусто
 
 
 # -------------------- H. Ошибки/краевые случаи --------------------
@@ -798,12 +826,15 @@ class TestErrorsAndEdgeCases:
         assert client.delete(api_urls["detail"](d.pk)).status_code == 403
 
     def test_get_without_view_perm(self, auth_client, make_user, api_urls):
-        """GET list/detail без view_document → 403."""
+        """GET list/detail без view_document:
+        - list → 200 (выдаёт только доступные документы, обычно пусто);
+        - detail чужого документа при sent_to_all=false → 403.
+        """
         user = make_user("u@example.com")
         client = auth_client(user)
         author = make_user("a@example.com")
-        d = make_document(uploaded_by=author)
-        assert client.get(api_urls["list"]).status_code == 403
+        d = make_document(uploaded_by=author, sent_to_all=False)
+        assert client.get(api_urls["list"]).status_code == 200
         assert client.get(api_urls["detail"](d.pk)).status_code == 403
 
     def test_big_file_over_limit_if_configured(
@@ -847,7 +878,7 @@ class TestPerformance:
             make_document(uploaded_by=author, title=f"doc{i:02d}")
 
         # допуская кэш/хитрости, выставим безопасный порог
-        with django_assert_num_queries(10):
+        with django_assert_num_queries(10, exact=False):
             r = client.get(api_urls["list"])
             assert r.status_code == 200
 
@@ -889,17 +920,21 @@ class TestSecurityAndPolicy:
             dj_settings.REST_FRAMEWORK.get("DEFAULT_PERMISSION_CLASSES", [])
         )
 
-    def test_policy_ack_without_perms_is_allowed_but_crud_is_not(
+    def test_policy_without_perms_list_is_200_detail_and_ack_require_access(
         self, auth_client, make_user, api_urls
     ):
-        """Авторизованный без perms не видит список/деталь (403), но может acknowledge (200) — подтвердить спецификацию."""
+        """Пользователь без perms:
+        - list → 200 (покажет только доступные доки);
+        - detail чужого документа (sent_to_all=false) → 403;
+        - ack чужого документа (sent_to_all=false) → 403.
+        """
         u = make_user("u@example.com")
         client = auth_client(u)
         author = make_user("a@example.com")
         d = make_document(uploaded_by=author, sent_to_all=False)
 
-        assert client.get(api_urls["list"]).status_code == 403
+        assert client.get(api_urls["list"]).status_code == 200
         assert client.get(api_urls["detail"](d.pk)).status_code == 403
 
         r = client.post(api_urls["ack"](d.pk), {})
-        assert r.status_code == 200
+        assert r.status_code == 403

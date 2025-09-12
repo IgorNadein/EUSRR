@@ -4,7 +4,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Count, Exists, OuterRef, QuerySet
 from documents.models import Document, DocumentAcknowledgement
 from rest_framework import status
 from rest_framework.decorators import action
@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from ..permissions import AdminOrActionOrModelPerms
+from .permissions import DocumentReadOrModelPerms
 from .serializers import DocumentReadSerializer, DocumentWriteSerializer
 
 User = get_user_model()
@@ -31,39 +32,88 @@ class DocumentViewSet(ModelViewSet):
         .select_related("uploaded_by")
         .prefetch_related("recipients")
     )
-    permission_classes = [AdminOrActionOrModelPerms]
+    permission_classes = [DocumentReadOrModelPerms]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_serializer_class(self):
-        """Выбор сериализатора: на чтение — Read, на запись — Write."""
-        if self.action in ("list", "retrieve"):
-            return DocumentReadSerializer
-        return DocumentWriteSerializer
+        """Возвращает сериализатор в зависимости от действия.
+
+        Returns:
+            type: Класс сериализатора для чтения/записи.
+        """
+        if self.action in ("create", "update", "partial_update"):
+            return DocumentWriteSerializer
+        return DocumentReadSerializer
+
+    def get_queryset(self) -> QuerySet[Document]:
+        """Базовый queryset + аннотация флага ознакомления текущего пользователя.
+
+        Returns:
+            QuerySet[Document]: оптимизированный для списка без N+1.
+        """
+        qs = super().get_queryset()
+        request = getattr(self, "request", None)
+        user = getattr(request, "user", None)
+
+        # Для аутентифицированных аннотируем флаг "я ознакомился"
+        if user and user.is_authenticated:
+            subq = DocumentAcknowledgement.objects.filter(
+                document=OuterRef("pk"), user=user
+            )
+            qs = qs.annotate(_is_acknowledged=Exists(subq))
+        return qs
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Создаёт документ для рассылки.
+        """Создаёт документ и возвращает read-схему + recipient_count.
 
-        Returns:
-            Response: 201 Created с данными документа (read-сериализатор).
+        recipient_count:
+        - 0, если sent_to_all=True;
+        - число активных пользователей из переданных recipient_ids (неактивные/несуществующие игнорируются).
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # Сохраним нормализованные ID до save(), т.к. serializer.save() их вытаскивает.
+        input_recipient_ids = list(serializer.validated_data.get("recipient_ids", []))
+
         doc = serializer.save()
+
         read = DocumentReadSerializer(doc, context={"request": request})
-        return Response(read.data, status=status.HTTP_201_CREATED)
+        data = dict(read.data)
 
-    @transaction.atomic
+        if doc.sent_to_all:
+            data["recipient_count"] = 0
+        else:
+            active_count = User.objects.filter(
+                is_active=True, id__in=input_recipient_ids
+            ).aggregate(n=Count("id", distinct=True))["n"]
+            data["recipient_count"] = active_count
+            print(('input_recipient_ids', input_recipient_ids))
+
+        return Response(data, status=status.HTTP_201_CREATED)
+
     def update(self, request, *args, **kwargs):
-        """Полное обновление документа."""
-        return super().update(request, *args, **kwargs)
+        """Полная замена документа.
 
-    @transaction.atomic
+        Returns:
+            Response: Тело ответа в формате read-сериализатора (с file_url).
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        doc = serializer.save()
+
+        read = DocumentReadSerializer(doc, context={"request": request})
+        return Response(read.data, status=status.HTTP_200_OK)
+
     def partial_update(self, request, *args, **kwargs):
-        """Частичное обновление документа."""
-        return super().partial_update(request, *args, **kwargs)
+        """Частичное обновление (PATCH) — аналогично update, но partial=True."""
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
 
-    @action(methods=["post"], detail=True, permission_classes=[IsAuthenticated])
+    @action(methods=["post"], detail=True)
     def acknowledge(self, request, pk=None):
         """Отметить ознакомление текущего пользователя с документом.
 
@@ -79,3 +129,4 @@ class DocumentViewSet(ModelViewSet):
             document=doc, user=request.user
         )
         return Response({"ok": True, "already": not created})
+    

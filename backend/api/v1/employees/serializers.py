@@ -369,6 +369,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 class EmployeeBriefSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     avatar = Base64ImageField(read_only=True)
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -380,6 +381,7 @@ class EmployeeBriefSerializer(serializers.ModelSerializer):
             "email",
             "phone_number",
             "display_name",
+            "full_name",
             "avatar",
         )
 
@@ -396,6 +398,15 @@ class EmployeeBriefSerializer(serializers.ModelSerializer):
         if getattr(obj, "phone_number", None):
             return obj.phone_number
         return f"Сотрудник #{obj.id}"
+
+    def get_full_name(self, obj: Employee) -> str:
+        """Полное имя для совместимости с тестами документов."""
+        parts = [
+            obj.last_name or "",
+            obj.first_name or "",
+            getattr(obj, "patronymic", "") or "",
+        ]
+        return " ".join(p.strip() for p in parts if p)
 
 
 class DepartmentSerializer(serializers.ModelSerializer):

@@ -51,21 +51,16 @@ class CalendarEventsViewSet(ModelViewSet):
     # ---------- Подключение пермишенов ----------
 
     def get_permissions(self):
-        """Для компании — AdminOrActionOrModelPerms, для отдела — ManageCalendarPerm.
-
-        ВАЖНО: прокидываем найденный department_id в kwargs, чтобы пермишен
-        гарантированно его увидел на этапе has_permission().
-        """
         dep = self._dept_id(required=False)
         if dep is None:
-            
+            # компания
+            if getattr(self, "action", None) == "list":
+                # список событий компании — достаточно быть залогиненным
+                return [IsAuthenticated()]
             return [AdminOrActionOrModelPerms()]
-
-        # События отдела: подложим dep в kwargs (если его не было)
-        # чтобы AdminOrDeptAllowed нашёл department_id без чтения request.data
-        self.kwargs = dict(self.kwargs)  # скопировать, т.к. может быть MappingProxy
+        # отдел
+        self.kwargs = dict(self.kwargs)
         self.kwargs.setdefault("department_id", dep)
-
         return [self.ManageCalendarPerm()]
     
     # ---------- Сериализаторы ----------

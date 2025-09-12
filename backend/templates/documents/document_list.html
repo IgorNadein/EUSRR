@@ -9,7 +9,7 @@
         <li class="list-group-item d-flex justify-content-between align-items-start">
           <div class="ms-2 me-auto">
             <div class="fw-bold">
-              <a href="{{ doc.file.url }}" target="_blank">{{ doc.title }}</a>
+              <a href="{{ doc.file_url }}" target="_blank">{{ doc.title }}</a>
             </div>
             {{ doc.description|default:"– без описания –" }}<br>
             <small class="text-muted">Загружен: {{ doc.uploaded_at|date:"d.m.Y H:i" }}</small>

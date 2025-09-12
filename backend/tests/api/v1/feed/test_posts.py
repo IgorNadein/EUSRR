@@ -175,22 +175,12 @@ def make_user(user_factory):
 
 
 @pytest.fixture
-def auth(api_client: APIClient):
-    """Возвращает функцию для аутентификации клиента под заданным пользователем.
-
-    Args:
-        api_client (APIClient): DRF APIClient.
-
-    Returns:
-        Callable[[User], APIClient]: Аутентифицированный клиент.
-    """
-
+def auth():
     def _as(u: User) -> APIClient:
-        api_client.force_authenticate(user=u)
-        return api_client
-
+        c = APIClient()
+        c.force_authenticate(user=u)
+        return c
     return _as
-
 
 # ------------------------ A. Аноним ------------------------
 
