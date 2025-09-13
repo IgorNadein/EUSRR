@@ -4,16 +4,16 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, QuerySet
+from django.db.models import Count, Exists, OuterRef, QuerySet, Q
 from documents.models import Document, DocumentAcknowledgement
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import (SAFE_METHODS, BasePermission,
-                                        IsAuthenticated)
+from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from ..employees.serializers import EmployeeBriefSerializer
 from ..permissions import AdminOrActionOrModelPerms
 from .permissions import DocumentReadOrModelPerms
 from .serializers import DocumentReadSerializer, DocumentWriteSerializer
@@ -89,7 +89,7 @@ class DocumentViewSet(ModelViewSet):
                 is_active=True, id__in=input_recipient_ids
             ).aggregate(n=Count("id", distinct=True))["n"]
             data["recipient_count"] = active_count
-            print(('input_recipient_ids', input_recipient_ids))
+            print(("input_recipient_ids", input_recipient_ids))
 
         return Response(data, status=status.HTTP_201_CREATED)
 
@@ -129,4 +129,44 @@ class DocumentViewSet(ModelViewSet):
             document=doc, user=request.user
         )
         return Response({"ok": True, "already": not created})
-    
+
+    @action(
+        detail=True, methods=["get"], permission_classes=[AdminOrActionOrModelPerms]
+    )
+    def acknowledgements(self, request, pk=None):
+        """Ведомость ознакомлений: доступна только staff/модельные права.
+        Поддерживает ?search= для фильтра и отдаёт непагинированно (или подключите пагинацию).
+        """
+        doc = self.get_object()
+        q = (request.query_params.get("search") or "").strip()
+        base = User.objects.filter(is_active=True)
+        if not doc.sent_to_all:
+            base = base.filter(pk__in=doc.recipients.values_list("pk", flat=True))
+        if q:
+            base = base.filter(
+                Q(email__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(patronymic__icontains=q)
+            )
+        acked_qs = base.filter(document_acknowledgements__document=doc)
+        unacked_qs = base.exclude(pk__in=acked_qs.values("pk"))
+
+        acked = EmployeeBriefSerializer(
+            acked_qs, many=True, context={"request": request}
+        ).data
+        unacked = EmployeeBriefSerializer(
+            unacked_qs, many=True, context={"request": request}
+        ).data
+        # при желании подключите PageNumberPagination и верните {"acknowledged": page1, "unacknowledged": page2}
+        return Response(
+            {
+                "acknowledged": acked,
+                "unacknowledged": unacked,
+                "counts": {
+                    "acknowledged": acked_qs.count(),
+                    "unacknowledged": unacked_qs.count(),
+                    "total": base.count(),
+                },
+            }
+        )

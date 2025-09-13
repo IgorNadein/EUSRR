@@ -7,6 +7,7 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 from rest_framework.permissions import DjangoModelPermissions
 from rest_framework.request import Request
 from rest_framework.views import View
+from ..permissions import AdminOrActionOrModelPerms
 
 
 def _has_any_model_perm(
@@ -20,7 +21,7 @@ def _has_any_model_perm(
     return False
 
 
-class DocumentReadOrModelPerms(DjangoModelPermissions):
+class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
     """Чтение/скачивание/ознакомление: любой аутентифицированный,
     но доступ только к 'своим' документам (или если есть модельные права/админ).
     Создание/редактирование/удаление: только админы и обладатели модельных прав.
