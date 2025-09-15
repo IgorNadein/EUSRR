@@ -4,6 +4,8 @@
 {% block title %}Редактировать комментарий{% endblock %}
 
 {% block content %}
+{% firstof post.id post.pk as post_id %}
+{% firstof comment.id comment.pk as comment_id %}
 <div class="container">
   <h4 class="mb-3">Редактировать комментарий к: “{{ post.title }}”</h4>
   <form method="post" class="card p-3 shadow-sm">
@@ -11,7 +13,7 @@
     {% bootstrap_form form %}
     <div class="mt-3 d-flex gap-2">
       <button type="submit" class="btn btn-primary">Сохранить</button>
-      <a class="btn btn-secondary" href="{% url 'feed:post_detail' post.pk %}#c{{ comment.pk }}">Отмена</a>
+      <a class="btn btn-secondary" href="{% url 'feed:post_detail' post_id %}#c{{ comment_id }}">Отмена</a>
     </div>
   </form>
 </div>

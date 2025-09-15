@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -246,4 +247,12 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
 }
 
-API_BASE_URL = "http://127.0.0.1:9000/api"
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_ACCESS_MIN", "30"))),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "7"))),
+    "ALGORITHM": "HS256",
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "LEEWAY": 30,  # допускаем ±30с рассинхронизации времени
+}
+
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
