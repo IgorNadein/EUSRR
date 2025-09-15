@@ -1,34 +1,19 @@
 from __future__ import annotations
 
 import itertools
-from typing import Any, Callable, Dict, Final, Optional
+from typing import Callable, Final, Optional  # убрал Any, Dict
+from django.core.exceptions import FieldDoesNotExist  # новое
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.db import models
 from rest_framework.test import APIClient
 
-# === при необходимости поменяй URL выдачи токена (SimpleJWT) ===
-TOKEN_OBTAIN_URL: Final[str] = "/api/auth/token/"
+from .contract import MODEL_VIEW_PERMISSION
 
-
-# Путь коллекции и деталки (поменяйте при необходимости)
-LIST_URL: Final[str] = "/api/v1/requests/"
-DETAIL_URL_FMT: Final[str] = "/api/v1/requests/{id}/"
-
-# Модельное право, дающее доступ видеть чужие заявки (укажите ваш codename)
-# пример: "requests_app.view_request"
-MODEL_VIEW_PERMISSION: Final[str] = "requests_app.view_request"
-
-# Минимальный валидный payload для создания заявления
-# ❗ Заполните под ваш сериализатор (обязательные поля!)
-SAMPLE_CREATE_PAYLOAD: Dict[str, Any] = {
-    # "title": "Командировка",
-    # "body": "По проекту А",
-}
-# =============================================================
-
-_phone_counter = itertools.count(100_000_000)  # 9 цифр для номера после +79
+_phone_counter: Final = itertools.count(100_000_000)  # 9 цифр для номера после +79
+_email_counter: Final = itertools.count(1)  # для уникальных email по умолчанию
 
 
 def _detect_phone_field(User: type[models.Model]) -> Optional[str]:
@@ -41,16 +26,14 @@ def _detect_phone_field(User: type[models.Model]) -> Optional[str]:
 
     Returns:
         Optional[str]: Имя поля телефона или None, если поле не найдено.
-
-    Raises:
-        AttributeError: Если у модели отсутствует _meta (не должно случиться у Django-моделей).
     """
     candidates = ("phone", "phone_number", "mobile", "mobile_phone")
     for name in candidates:
         try:
             User._meta.get_field(name)  # type: ignore[attr-defined]
             return name
-        except Exception:
+        except (AttributeError, FieldDoesNotExist):
+            # нет _meta или такое поле отсутствует — пробуем следующий вариант
             continue
     return None
 
@@ -60,10 +43,8 @@ def _next_ru_phone() -> str:
 
     Returns:
         str: Телефон в формате +79XXXXXXXXX.
-
-    Raises:
-        OverflowError: Если счётчик телефонов переполнится (практически нереально в тестах).
     """
+    # примечание: переполнение счётчика в тестовой среде нереалистично
     return f"+79{next(_phone_counter):09d}"
 
 
@@ -73,9 +54,6 @@ def api_client() -> APIClient:
 
     Returns:
         APIClient: Клиент без заголовков авторизации.
-
-    Raises:
-        RuntimeError: Если DRF не установлен/не сконфигурирован.
     """
     return APIClient()
 
@@ -87,20 +65,16 @@ def make_user() -> Callable[..., models.Model]:
     По умолчанию:
       - задаёт уникальный email;
       - автоматически проставляет телефон в найденное поле;
-      - при необходимости выставляет флаги is_staff/is_superuser;
+      - отключает отправку писем активации в менеджере (`send_activation_email=False`);
+      - выставляет флаги is_staff/is_superuser при необходимости;
       - устанавливает пароль.
-
-    Returns:
-        Callable[..., models.Model]: Функция создания пользователя.
-
-    Raises:
-        Exception: Любые ошибки создания пользователя прокидываются наверх.
     """
     User = get_user_model()
     phone_field = _detect_phone_field(User)
+    username_field = getattr(User, "USERNAME_FIELD", "email")
 
     def _make_user(
-        email: str = "user@example.com",
+        email: Optional[str] = None,
         *,
         password: str = "pass12345",
         is_staff: bool = False,
@@ -111,7 +85,7 @@ def make_user() -> Callable[..., models.Model]:
         """Создаёт пользователя и возвращает его инстанс.
 
         Args:
-            email (str): Email пользователя (должен быть уникален, если так настроена модель).
+            email (Optional[str]): Email пользователя. Если не указан — сгенерируется уникальный.
             password (str): Пароль (если пустой — пароль не устанавливается).
             is_staff (bool): Флаг персонала админки.
             is_superuser (bool): Флаг суперпользователя.
@@ -124,14 +98,17 @@ def make_user() -> Callable[..., models.Model]:
         Raises:
             ValueError: Если менеджер модели требует телефон, а мы не смогли его задать.
         """
-        kwargs: dict[str, object] = {"email": email, **extra}
+        if email is None:
+            email = f"user{next(_email_counter)}@example.com"
 
-        # Если модель содержит тел. поле — заполним его (некоторые менеджеры делают его обязательным).
+        # Отключаем реальную отправку писем активации в тестах.
+        extra = {**extra, "send_activation_email": False}
+
+        kwargs: dict[str, object] = {username_field: email, "email": email, **extra}
+
         if phone_field:
             kwargs[phone_field] = phone or _next_ru_phone()
         elif phone is not None:
-            # Если тест явно передал phone, а поле называется иначе — пусть упадёт в менеджере;
-            # это подсветит реальное имя поля.
             kwargs["phone"] = phone  # type: ignore[assignment]
 
         user = User.objects.create_user(**kwargs)  # type: ignore[arg-type]
@@ -149,27 +126,13 @@ def make_user() -> Callable[..., models.Model]:
 
 @pytest.fixture
 def regular_user(make_user: Callable[..., models.Model]) -> models.Model:
-    """Обычный пользователь без спецправ.
-
-    Args:
-        make_user (Callable[..., models.Model]): Фабрика пользователей.
-
-    Returns:
-        models.Model: Пользователь.
-    """
+    """Обычный пользователь без спецправ."""
     return make_user(email="regular@example.com")
 
 
 @pytest.fixture
 def admin_user(make_user: Callable[..., models.Model]) -> models.Model:
-    """Администратор (суперпользователь).
-
-    Args:
-        make_user (Callable[..., models.Model]): Фабрика пользователей.
-
-    Returns:
-        models.Model: Суперпользователь.
-    """
+    """Администратор (суперпользователь)."""
     return make_user(email="admin@example.com", is_staff=True, is_superuser=True)
 
 
@@ -178,12 +141,6 @@ def auth_client() -> Callable[[models.Model], APIClient]:
     """Фабрика авторизованных DRF-клиентов с использованием force_authenticate.
 
     Это быстрый и надёжный способ авторизации в unit-тестах API без зависимости от JWT.
-
-    Returns:
-        Callable[[models.Model], APIClient]: Функция, принимающая пользователя и возвращающая авторизованный клиент.
-
-    Raises:
-        AssertionError: Если передан объект, не являющийся Django-моделью.
     """
 
     def _build(user: models.Model) -> APIClient:
@@ -196,66 +153,36 @@ def auth_client() -> Callable[[models.Model], APIClient]:
     return _build
 
 
-def _obtain_access_token(api_client: APIClient, username: str, password: str) -> str:
-    """Получает access-токен через эндпоинт SimpleJWT.
-
-    Args:
-        api_client (APIClient): Клиент без авторизации.
-        username (str): Имя пользователя.
-        password (str): Пароль пользователя.
-
-    Returns:
-        str: Строка access-токена.
-
-    Raises:
-        AssertionError: Если эндпоинт вернул не 200/201 или тело ответа без токена.
-        KeyError: Если формат тела ответа неожиданный.
-    """
-    resp = api_client.post(TOKEN_OBTAIN_URL, {"username": username, "password": password}, format="json")
-    assert resp.status_code in (200, 201), f"Token obtain failed: {resp.status_code} {resp.content!r}"
-    access = resp.data.get("access") or resp.data.get("token")
-    assert access, f"No access token in response: {resp.data}"
-    return str(access)
-
-
 @pytest.fixture
-def jwt_auth_client(api_client: APIClient, regular_user: models.Model) -> APIClient:
-    """DRF-клиент, авторизованный через Bearer-токен (SimpleJWT).
+def grant_model_perm() -> Callable[[models.Model, str], None]:
+    """Выдаёт пользователю модельное право (по умолчанию из MODEL_VIEW_PERMISSION).
 
-    Полезно для интеграционных тестов, где важно пройти реальный путь аутентификации.
-
-    Args:
-        api_client (APIClient): Неаутентифицированный клиент.
-        regular_user (models.Model): Пользователь.
-
-    Returns:
-        APIClient: Клиент с заголовком Authorization.
-
-    Raises:
-        AssertionError: Если не удалось получить токен или эндпоинт недоступен.
+    Возвращает функцию grant(user, perm_label='app_label.codename').
     """
-    # В менеджере пользователя может быть username/email — берём .get_username() для совместимости
-    username = getattr(regular_user, "get_username", lambda: getattr(regular_user, "username", "regular"))()
-    token = _obtain_access_token(api_client, username, "pass12345")
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
-    return api_client
 
+    def _grant(user: models.Model, perm_label: str = MODEL_VIEW_PERMISSION) -> None:
+        """Назначает пользователю право `perm_label`.
 
-@pytest.fixture
-def jwt_admin_auth_client(api_client: APIClient, admin_user: models.Model) -> APIClient:
-    """DRF-клиент с Bearer-токеном суперпользователя (SimpleJWT).
+        Args:
+            user (models.Model): Экземпляр пользователя.
+            perm_label (str): Право в формате 'app_label.codename' (по умолчанию MODEL_VIEW_PERMISSION).
 
-    Args:
-        api_client (APIClient): Неаутентифицированный клиент.
-        admin_user (models.Model): Суперпользователь.
+        Raises:
+            AssertionError: Если указанное право не найдено.
+            ValueError: Если строка права не в формате 'app_label.codename'.
+        """
+        if "." not in perm_label:
+            raise ValueError("perm_label должен быть в формате 'app_label.codename'")
+        app_label, codename = perm_label.split(".", 1)
+        perm = Permission.objects.filter(
+            content_type__app_label=app_label,
+            codename=codename,
+        ).first()
+        assert perm is not None, (
+            f"Permission '{perm_label}' не найден. Убедись, что приложение в INSTALLED_APPS "
+            "и применены миграции (manage.py migrate)."
+        )
+        user.user_permissions.add(perm)
+        # save() не требуется: изменение M2M уже записано
 
-    Returns:
-        APIClient: Клиент с заголовком Authorization.
-
-    Raises:
-        AssertionError: Если не удалось получить токен.
-    """
-    username = getattr(admin_user, "get_username", lambda: getattr(admin_user, "username", "admin"))()
-    token = _obtain_access_token(api_client, username, "pass12345")
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
-    return api_client
+    return _grant

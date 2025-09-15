@@ -55,6 +55,7 @@ def attachment_mime_validator(value):
 
 
 class Request(models.Model):
+    """Заявление сотрудника: тип, даты, статус, согласование и вложение."""
 
     TYPE_VACATION = "vacation"
     TYPE_SICK = "sick_leave"
