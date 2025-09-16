@@ -256,3 +256,18 @@ SIMPLE_JWT = {
 }
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
+
+# LOGGING = {
+#     'version': 1,
+#     'handlers': {
+#         'console': {
+#             'class': 'logging.StreamHandler',
+#         },
+#     },
+#     'loggers': {
+#         'your_app': {
+#             'handlers': ['console'],
+#             'level': 'DEBUG',
+#         },
+#     },
+# }

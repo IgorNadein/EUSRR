@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.db import models
 from rest_framework.test import APIClient
+from requests_app.models import Request as Req
 
 from .contract import MODEL_VIEW_PERMISSION
 
@@ -79,6 +80,7 @@ def make_user() -> Callable[..., models.Model]:
         password: str = "pass12345",
         is_staff: bool = False,
         is_superuser: bool = False,
+        is_active=True,
         phone: Optional[str] = None,
         **extra: object,
     ) -> models.Model:
@@ -118,6 +120,8 @@ def make_user() -> Callable[..., models.Model]:
             user.is_staff = True
         if is_superuser:
             user.is_superuser = True
+        if is_active:
+            user.is_active = True
         user.save()
         return user
 
@@ -154,35 +158,73 @@ def auth_client() -> Callable[[models.Model], APIClient]:
 
 
 @pytest.fixture
-def grant_model_perm() -> Callable[[models.Model, str], None]:
-    """Выдаёт пользователю модельное право (по умолчанию из MODEL_VIEW_PERMISSION).
-
-    Возвращает функцию grant(user, perm_label='app_label.codename').
-    """
-
-    def _grant(user: models.Model, perm_label: str = MODEL_VIEW_PERMISSION) -> None:
-        """Назначает пользователю право `perm_label`.
-
-        Args:
-            user (models.Model): Экземпляр пользователя.
-            perm_label (str): Право в формате 'app_label.codename' (по умолчанию MODEL_VIEW_PERMISSION).
-
-        Raises:
-            AssertionError: Если указанное право не найдено.
-            ValueError: Если строка права не в формате 'app_label.codename'.
-        """
-        if "." not in perm_label:
-            raise ValueError("perm_label должен быть в формате 'app_label.codename'")
-        app_label, codename = perm_label.split(".", 1)
-        perm = Permission.objects.filter(
-            content_type__app_label=app_label,
-            codename=codename,
-        ).first()
-        assert perm is not None, (
-            f"Permission '{perm_label}' не найден. Убедись, что приложение в INSTALLED_APPS "
-            "и применены миграции (manage.py migrate)."
+def grant_model_perm(db):
+    def _grant(user, perm_str: str):
+        app_label, codename = perm_str.split(".")
+        perm = Permission.objects.get(
+            content_type__app_label=app_label, codename=codename
         )
         user.user_permissions.add(perm)
-        # save() не требуется: изменение M2M уже записано
+        # сбиваем кэш прав на текущем экземпляре
+        if hasattr(user, "_perm_cache"):
+            delattr(user, "_perm_cache")
+        # возвращаем свежий экземпляр из БД
+        return get_user_model().objects.get(pk=user.pk)
 
     return _grant
+
+
+@pytest.fixture
+def make_request(db):
+    """Фабрика: создаёт заявку с минимальными полями.
+
+    Если передан финальный статус (APPROVED/REJECTED), гарантирует заполненный approver,
+    чтобы пройти CHECK-констрейнт БД `request_approver_required_on_decision`.
+    """
+
+    def _make(
+        *,
+        employee: models.Model,
+        type_: str = Req.TYPE_VACATION,
+        status: str | None = None,
+        comment: str = "",
+        approver: models.Model | None = None,
+    ) -> Req:
+        """Создаёт `requests_app.Request`.
+
+        Args:
+            employee (models.Model): Владелец заявки.
+            type_ (str): Тип заявки.
+            status (str | None): Начальный статус (если None — возьмётся дефолт модели).
+            comment (str): Комментарий.
+            approver (models.Model | None): Согласующий; обязателен для финальных статусов.
+
+        Returns:
+            Req: Созданный объект.
+
+        Raises:
+            ValueError: Если для финального статуса не удалось определить approver.
+        """
+        obj = Req.objects.create(employee=employee, type=type_, comment=comment)
+
+        if status:
+            obj.status = status
+
+            # Для «решённых» статусов БД требует approver.
+            final_statuses = {
+                getattr(Req, "STATUS_APPROVED", "approved"),
+                getattr(Req, "STATUS_REJECTED", "rejected"),
+            }
+            if status in final_statuses:
+                obj.approver = approver or employee  # в тестах допустимо
+                # Опционально поставим время решения, если модель его использует
+                if hasattr(obj, "decided_at") and not obj.decided_at:
+                    from django.utils import timezone
+
+                    obj.decided_at = timezone.now()
+
+            obj.save()
+
+        return obj
+
+    return _make

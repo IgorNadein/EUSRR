@@ -783,7 +783,6 @@ class TestSerialization:
 
         d = make_document(uploaded_by=author)
         file_url = api.get(api_urls["detail"](d.pk)).json()["file_url"]
-        print(file_url)
 
         # обычный Django client (без APIClient) для скачивания
         resp = client.get(file_url)

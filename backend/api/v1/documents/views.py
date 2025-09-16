@@ -89,7 +89,6 @@ class DocumentViewSet(ModelViewSet):
                 is_active=True, id__in=input_recipient_ids
             ).aggregate(n=Count("id", distinct=True))["n"]
             data["recipient_count"] = active_count
-            print(("input_recipient_ids", input_recipient_ids))
 
         return Response(data, status=status.HTTP_201_CREATED)
 

@@ -277,10 +277,6 @@ class TestDepartmentRole:
 
     def test_create_update_delete_own_department(self, make_user, auth, urls):
         """В своём отделе → 201/200/204; в другом отделе → 403."""
-        print(
-            "TEST PUBLISH CODE =",
-            getattr(DeptPerm, "CREATE_POST", "publish_department_post"),
-        )
 
         u = make_user("role@example.com")
         d1 = _mk_dept("D1")

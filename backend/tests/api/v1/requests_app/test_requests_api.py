@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from requests_app.models import Request as Req
+from django.contrib.auth import get_user_model
 
 
 pytestmark = pytest.mark.django_db
@@ -34,63 +35,19 @@ def _results(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
-@pytest.fixture
-def make_request(db):
-    """Фабрика: создаёт заявку с минимальными полями.
-
-    Если передан финальный статус (APPROVED/REJECTED), гарантирует заполненный approver,
-    чтобы пройти CHECK-констрейнт БД `request_approver_required_on_decision`.
-    """
-
-    def _make(
-        *,
-        employee: models.Model,
-        type_: str = Req.TYPE_VACATION,
-        status: str | None = None,
-        comment: str = "",
-        approver: models.Model | None = None,
-    ) -> Req:
-        """Создаёт `requests_app.Request`.
-
-        Args:
-            employee (models.Model): Владелец заявки.
-            type_ (str): Тип заявки.
-            status (str | None): Начальный статус (если None — возьмётся дефолт модели).
-            comment (str): Комментарий.
-            approver (models.Model | None): Согласующий; обязателен для финальных статусов.
-
-        Returns:
-            Req: Созданный объект.
-
-        Raises:
-            ValueError: Если для финального статуса не удалось определить approver.
-        """
-        obj = Req.objects.create(employee=employee, type=type_, comment=comment)
-
-        if status:
-            obj.status = status
-
-            # Для «решённых» статусов БД требует approver.
-            final_statuses = {getattr(Req, "STATUS_APPROVED", "approved"),
-                              getattr(Req, "STATUS_REJECTED", "rejected")}
-            if status in final_statuses:
-                obj.approver = approver or employee  # в тестах допустимо
-                # Опционально поставим время решения, если модель его использует
-                if hasattr(obj, "decided_at") and not obj.decided_at:
-                    from django.utils import timezone
-                    obj.decided_at = timezone.now()
-
-            obj.save()
-
-        return obj
-
-    return _make
+def _reload(user):
+    # сбрасываем кэш прав на текущем экземпляре (если уже вычислялся)
+    if hasattr(user, "_perm_cache"):
+        delattr(user, "_perm_cache")
+    # подменяем объект свежим из БД — это важно для force_authenticate
+    return get_user_model().objects.get(pk=user.pk)
 
 
 
 # ------------------------------------------------------------------------------
 # 1) СПИСКИ / ВИДИМОСТЬ
 # ------------------------------------------------------------------------------
+
 
 def test_list_unauth_401(api_client: APIClient) -> None:
     """Неаутентифицированный доступ к списку → 401."""
@@ -175,6 +132,7 @@ def test_list_manager_with_model_perm_sees_all(
 # 2) ДЕТАЛЬНЫЙ ПРОСМОТР
 # ------------------------------------------------------------------------------
 
+
 def test_detail_regular_user_own_and_forbidden_foreign(
     auth_client, regular_user: models.Model, make_user, make_request
 ) -> None:
@@ -215,17 +173,26 @@ def test_detail_admin_and_manager_can_see_any(
 # 3) СОЗДАНИЕ
 # ------------------------------------------------------------------------------
 
+
 def test_create_regular_user_forces_employee_and_default_status(
     auth_client, regular_user: models.Model
 ) -> None:
     """POST: обычному пользователю принудительно проставляется employee=текущий и дефолтный статус."""
     client = auth_client(regular_user)
-    payload = {"type": Req.TYPE_VACATION, "comment": "Отпуск на недельку", "employee": 999, "status": Req.STATUS_APPROVED}
+    payload = {
+        "type": Req.TYPE_VACATION,
+        "comment": "Отпуск на недельку",
+        "employee": 999,
+        "status": Req.STATUS_APPROVED,
+    }
     resp = client.post(API_BASE, data=payload, format="json")
     assert resp.status_code == 201
     data = resp.json()
     # Поле employee — текущий пользователь
-    assert str(data["employee"]["id"]) == str(regular_user.id) or data["employee"]["id"] == regular_user.id
+    assert (
+        str(data["employee"]["id"]) == str(regular_user.id)
+        or data["employee"]["id"] == regular_user.id
+    )
     # Статус должен быть не финальный (дефолт модели — pending)
     assert data["status"] in (Req.STATUS_DRAFT, Req.STATUS_PENDING)
 
@@ -246,6 +213,7 @@ def test_create_admin_can_set_employee(
 # 4) ОБНОВЛЕНИЕ / 5) УДАЛЕНИЕ
 # ------------------------------------------------------------------------------
 
+
 def test_update_own_pending_ok_and_final_forbidden(
     auth_client, regular_user: models.Model, make_request
 ) -> None:
@@ -254,8 +222,12 @@ def test_update_own_pending_ok_and_final_forbidden(
     final = make_request(employee=regular_user, status=Req.STATUS_APPROVED)
 
     client = auth_client(regular_user)
-    ok = client.patch(f"{API_BASE}{pending.id}/", data={"comment": "обновлено"}, format="json")
-    deny = client.patch(f"{API_BASE}{final.id}/", data={"comment": "нельзя"}, format="json")
+    ok = client.patch(
+        f"{API_BASE}{pending.id}/", data={"comment": "обновлено"}, format="json"
+    )
+    deny = client.patch(
+        f"{API_BASE}{final.id}/", data={"comment": "нельзя"}, format="json"
+    )
 
     assert ok.status_code == 200
     assert deny.status_code in (400, 403)
@@ -268,7 +240,9 @@ def test_update_foreign_hidden(
     other = make_user(email="z@example.com")
     foreign = make_request(employee=other)
     client = auth_client(regular_user)
-    resp = client.patch(f"{API_BASE}{foreign.id}/", data={"comment": "try"}, format="json")
+    resp = client.patch(
+        f"{API_BASE}{foreign.id}/", data={"comment": "try"}, format="json"
+    )
     assert resp.status_code in (403, 404)
 
 
@@ -290,6 +264,7 @@ def test_delete_own_pending_ok_final_forbidden(
 # ------------------------------------------------------------------------------
 # 6) ЭКШЕНЫ СТАТУСОВ
 # ------------------------------------------------------------------------------
+
 
 def test_actions_permissions_and_effects(
     auth_client, admin_user: models.Model, make_user, grant_model_perm, make_request
@@ -334,6 +309,7 @@ def test_actions_permissions_and_effects(
 # 7) КОММЕНТАРИИ
 # ------------------------------------------------------------------------------
 
+
 def test_comments_forbidden_for_regular_user(
     auth_client,
     regular_user: models.Model,
@@ -365,16 +341,16 @@ def test_comments_allowed_for_admin_and_manager(
     grant_model_perm,
     make_request,
 ) -> None:
-    """Админ и пользователь с модельными правами могут видеть и оставлять комментарии.
-
-    Проверяем оба актёра:
-      - admin (is_staff=True)
-      - manager с правом просмотра/изменения заявок.
+    """Проверяет доступ к комментариям:
+    - Админ видит и создаёт.
+    - Менеджер с ТОЛЬКО чтением видит, но НЕ создаёт.
+    - Менеджер с чтением+добавлением — и видит, и создаёт.
+    - Менеджер с ТОЛЬКО добавлением — создаёт (чтение невлияет на добавление).
     """
     owner = make_user(email="owner-comments@example.com")
     req = make_request(employee=owner)
 
-    # Админ
+    # --- Админ ---
     aclient = auth_client(admin_user)
     get_a = aclient.get(f"{API_BASE}{req.id}/comments/")
     assert get_a.status_code == 200, "Админ должен видеть список комментариев"
@@ -386,31 +362,59 @@ def test_comments_allowed_for_admin_and_manager(
     )
     assert post_a.status_code == 201, "Админ должен уметь создавать комментарий"
 
-    # Менеджер с модельными правами
-    manager = make_user(email="manager-comments@example.com")
-    grant_model_perm(manager, "requests_app.view_requestcomment")
-    grant_model_perm(manager, "requests_app.add_requestcomment") 
+    # --- Менеджер: только право чтения комментариев ---
+    manager_view_only = make_user(email="manager-comments-view@example.com")
+    grant_model_perm(manager_view_only, "requests_app.view_requestcomment")
+    manager_view_only = _reload(manager_view_only)
 
+    mclient_v = auth_client(manager_view_only)
+    get_m_v = mclient_v.get(f"{API_BASE}{req.id}/comments/")
+    assert (
+        get_m_v.status_code == 200
+    ), "С правом view_requestcomment список должен быть доступен"
 
-    mclient = auth_client(manager)
-    get_m = mclient.get(f"{API_BASE}{req.id}/comments/")
-
-    assert get_m.status_code == 200, "Пользователь с правами должен видеть список"
-    data = get_m.json()
-    assert isinstance(data, list)
-
-    post_m = mclient.post(
+    post_m_v = mclient_v.post(
         f"{API_BASE}{req.id}/comments/",
-        data={"text": "от менеджера"},
+        data={"text": "попытка без add"},
         format="json",
     )
-    assert post_m.status_code == 201, "Пользователь с правами должен создавать комментарии"
-    body = post_m.json()
-    assert body.get("text") == "от менеджера"
+    assert (
+        post_m_v.status_code == 403
+    ), "Одно чтение не даёт права создавать комментарий"
+
+    # --- Менеджер: добавляем право на добавление, теперь должно быть можно ---
+    grant_model_perm(manager_view_only, "requests_app.add_requestcomment")
+    manager_view_only = _reload(manager_view_only) 
+
+    post_m_va = auth_client(manager_view_only).post(
+        f"{API_BASE}{req.id}/comments/",
+        data={"text": "от менеджера после выдачи add"},
+        format="json",
+    )
+    assert (
+        post_m_va.status_code == 201
+    ), "При наличии view+add создание должно быть разрешено"
+    assert post_m_va.json().get("text") == "от менеджера после выдачи add"
+
+    # --- Менеджер: только право добавления (без чтения) — ок ---
+    manager_add_only = make_user(email="manager-comments-add@example.com")
+    grant_model_perm(manager_add_only, "requests_app.add_requestcomment")
+    manager_view_only = _reload(manager_view_only) 
+
+    post_m_a = auth_client(manager_add_only).post(
+        f"{API_BASE}{req.id}/comments/",
+        data={"text": "только add, без view"},
+        format="json",
+    )
+    assert (
+        post_m_a.status_code == 201
+    ), "Без прав на чтение комментарий свободно создается"
+
 
 # ------------------------------------------------------------------------------
 # 8) ФИЛЬТРЫ
 # ------------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "flt,expected_types",
@@ -450,9 +454,8 @@ def test_filters_type_status_applied_within_scope(
 # 9) БЕЗОПАСНОСТЬ / ПРОЧЕЕ
 # ------------------------------------------------------------------------------
 
-def test_invalid_filter_does_not_crash(
-    auth_client, admin_user: models.Model
-) -> None:
+
+def test_invalid_filter_does_not_crash(auth_client, admin_user: models.Model) -> None:
     """Странные значения фильтров не приводят к 500."""
     client = auth_client(admin_user)
     resp = client.get(f"{API_BASE}?type=__sql__' OR 1=1 --&status=")

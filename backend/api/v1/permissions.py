@@ -1,7 +1,7 @@
 # backend\api\v1\permissions.py
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from employees.constants import DeptPerm
@@ -17,7 +17,7 @@ CHANGE_HEAD_PERM = "change_department_head"
 ASSIGN_ROLE_PERM = "assign_department_role"
 
 
-def user_is_dept_head(user, dept: Department) -> bool:
+def user_is_dept_head(user, dept: Department) -> bool:  
     return bool(
         user and user.is_authenticated and dept.head_id == getattr(user, "id", None)
     )
@@ -238,12 +238,7 @@ class AdminOrDeptAllowed(BasePermission):
     def has_permission(self, request, view) -> bool:
         """См. докстринг класса. Если dept_id не найден, но это detail-запрос,
         откладываем проверку до object-level (вернём True)."""
-        print(
-            view.action,
-            view.kwargs,
-            self.get_required_code(request, view),
-            self._to_int_or_none(self._extract_dept_id_from_request(request, view)),
-        )
+
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return False
@@ -351,109 +346,124 @@ class IsSelfOrStaff(BasePermission):
 
 
 class AdminOrActionOrModelPerms(DjangoModelPermissions):
-    """Комбинированная политика доступа для документов.
-
-    Поведение:
-        - staff/superuser → полный доступ (всегда True).
-        - Если на вью задан `required_perm_code` или есть карта
-          `required_perms_by_action[action]`, проверяем её через `user.has_perm(...)`.
-        - Иначе:
-            * для SAFE-методов (`GET/HEAD/OPTIONS`) требуем `view_<model>`;
-            * для остальных методов используем стандартную карту `DjangoModelPermissions`
-              (`add/change/delete`).
-
-    Raises:
-        exceptions.MethodNotAllowed: если передан неизвестный HTTP-метод.
-    """
-
-    def has_permission(self, request, view) -> bool:
-        """Проверка доступа на уровне запроса.
+    @staticmethod
+    def _normalize_codes(value: Any) -> Optional[list[str]]:
+        """Приводит конфигурацию кодов прав к списку строк.
 
         Args:
-            request: DRF Request.
-            view: Текущий ViewSet.
+            value (Any): Значение из конфигурации прав:
+                - str — один код,
+                - Iterable[str] — несколько кодов,
+                - None — отсутствует.
+
+        Returns:
+            Optional[list[str]]: Список кодов или None.
+
+        Raises:
+            TypeError: Если найден нестроковый элемент в Iterable.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            v = value.strip()
+            return [v] if v else None
+        if isinstance(value, Iterable):
+            out: list[str] = []
+            for v in value:
+                if not isinstance(v, str):
+                    raise TypeError("Коды прав должны быть строками.")
+                v = v.strip()
+                if v:
+                    out.append(v)
+            return out or None
+        return None
+
+    @staticmethod
+    def _explicit_perm_codes(view) -> Optional[list[str]]:
+        """Достаёт из вью «явные» коды прав (ИЛИ между кодами).
+
+        Поддерживаемые формы на ViewSet:
+          - required_perm_code: str | Iterable[str]
+          - required_perms_by_action[action]: str | Iterable[str]
+          - required_perms_by_action[action]: {method: str|Iterable[str]}
+            где method сравнивается без учёта регистра, возможны '*', 'ANY',
+            а HEAD трактуется как GET.
+
+        Args:
+            view: DRF ViewSet с полями `action`, `request` (опционально).
+
+        Returns:
+            Optional[list[str]]: Список кодов прав или None.
+        """
+        # 1) Единый код(ы) на всю вью
+        codes = AdminOrActionOrModelPerms._normalize_codes(
+            getattr(view, "required_perm_code", None)
+        )
+        if codes:
+            return codes
+
+        # 2) Карта по экшенам (+ по методам)
+        mapping = getattr(view, "required_perms_by_action", None) or {}
+        if not isinstance(mapping, dict):
+            return None
+
+        action = getattr(view, "action", None)
+        if not action or action not in mapping:
+            return None
+
+        value = mapping[action]
+
+        # 2.1) Прямо строка/итерируемое — сразу нормализуем
+        codes = AdminOrActionOrModelPerms._normalize_codes(value)
+        if codes is not None:
+            return codes
+
+        # 2.2) Вложенная карта по методам
+        if isinstance(value, dict):
+            method = getattr(getattr(view, "request", None), "method", None)
+            if not method:
+                return None
+            m = method.upper()
+            keys = (m, m.lower())
+            if m == "HEAD":
+                keys += ("GET", "get")
+            keys += ("*", "ANY")
+            for k in keys:
+                if k in value:
+                    return AdminOrActionOrModelPerms._normalize_codes(value[k])
+            return None
+
+        # Иное — игнорируем
+        return None
+
+    def has_permission(self, request, view) -> bool:
+        """Проверка прав на уровне запроса.
+
+        Логика:
+          - staff/superuser → True
+          - если на вью есть «явные» коды (см. выше) — достаточно ЛЮБОГО из них
+          - иначе: для SAFE-методов требуем view_<model>, остальные — по DjangoModelPermissions
 
         Returns:
             bool: Разрешён ли доступ.
         """
-        user = request.user
-        if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated):
             return False
-        if user.is_superuser or user.is_staff:
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return True
 
-        code = self._explicit_perm_code(view)
-        if code:
-            return user.has_perm(code)
+        explicit = self._explicit_perm_codes(view)
+        if explicit:
+            return any(user.has_perm(code) for code in explicit)
 
-        # SAFE-методы → требуем view_<model>
         if request.method in SAFE_METHODS:
             model = self._model_from_view(view)
             return user.has_perm(
                 f"{model._meta.app_label}.view_{model._meta.model_name}"
             )
 
-        # Остальные → стандартная логика DjangoModelPermissions
         return super().has_permission(request, view)
-
-    def has_object_permission(self, request, view, obj) -> bool:
-        """Проверка доступа к конкретному объекту.
-
-        Args:
-            request: DRF Request.
-            view: Текущий ViewSet.
-            obj: Объект модели.
-
-        Returns:
-            bool: Разрешён ли доступ.
-        """
-        user = request.user
-        if user.is_superuser or user.is_staff:
-            return True
-
-        code = self._explicit_perm_code(view)
-        if code:
-            return user.has_perm(code)
-
-        if request.method in SAFE_METHODS:
-            meta = obj._meta
-            return user.has_perm(f"{meta.app_label}.view_{meta.model_name}")
-
-        # Для остальных методов полагаемся на проверку уровня запроса
-        return super().has_object_permission(request, view, obj)
-
-    @staticmethod
-    def _explicit_perm_code(view) -> Optional[str]:
-        """Возвращает явный код права, заданный на уровне вью.
-
-        Args:
-            view: DRF ViewSet.
-
-        Returns:
-            Optional[str]: Код права или None.
-        """
-        mapping = getattr(view, "required_perms_by_action", {}) or {}
-        action = getattr(view, "action", None)
-        return getattr(view, "required_perm_code", None) or mapping.get(action)
-
-    @staticmethod
-    def _model_from_view(view):
-        """Извлекает модель из view.queryset.
-
-        Args:
-            view: DRF ViewSet.
-
-        Returns:
-            type: Класс модели.
-
-        Raises:
-            AssertionError: если у вью нет queryset/model (для ModelViewSet не ожидается).
-        """
-        qs = getattr(view, "queryset", None)
-        assert qs is not None and hasattr(
-            qs, "model"
-        ), "View must define `.queryset` with `.model`"
-        return qs.model
 
 
 __all__ = [

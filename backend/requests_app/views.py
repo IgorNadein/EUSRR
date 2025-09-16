@@ -454,3 +454,6 @@ def request_comment_delete(request, pk, comment_id):
 
     default_url = reverse(_detail_or_process_name(request.user), args=[pk])
     return redirect(_safe_back_url(request, default_url))
+
+
+

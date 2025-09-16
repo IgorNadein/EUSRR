@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from django.contrib.auth import get_user_model
 from requests_app.models import Request, RequestComment
@@ -9,6 +9,7 @@ from rest_framework import serializers
 from ..employees.serializers import EmployeeBriefSerializer
 
 User = get_user_model()
+
 
 
 class RequestReadSerializer(serializers.ModelSerializer):
@@ -54,97 +55,99 @@ class RequestReadSerializer(serializers.ModelSerializer):
         )
 
 
-class RequestWriteSerializer(serializers.ModelSerializer):
-    """Сериализатор записи заявки (создание/обновление).
 
-    Принцип: обычным пользователям нельзя указывать/менять `employee`, `approver`,
-    `status`, `decided_at`, `created_at`, `updated_at`. Эти поля управляются
-    системой или через отдельные экшены (approve/reject/cancel).
+class RequestWriteSerializer(serializers.ModelSerializer):
+    """Сериализатор записи заявки.
+
+    Обычным пользователям запрещено передавать `employee`, `status`, `approver` —
+    они будут проигнорированы. Админы/обладатели прав могут их указывать.
+
+    Поле `employee` умышленно НЕ делаем read_only, чтобы админ мог его задать.
+    Для обычных пользователей оно подставится автоматически в `create()`/`perform_create()`.
 
     Raises:
-        serializers.ValidationError: При попытке изменить запрещённые поля
-            или при неверных данных (валидация модели сработает в `.save()`).
+        serializers.ValidationError: При некорректных данных (кроме запрещённых полей у обычных пользователей — они вычищаются).
     """
+
+    # Важно: снять обязательность, чтобы отсутствие полей не роняло валидацию
+    employee = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+    status = serializers.ChoiceField(
+        choices=Request.STATUS_CHOICES, required=False, allow_null=True
+    )
+    approver = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = Request
         fields = (
             "id",
-            "employee",     # будет проигнорирован для обычных пользователей
-            "approver",     # только для админов/обладателей прав
+            "employee",
+            "approver",
             "department",
             "type",
             "title",
             "date_from",
             "date_to",
             "comment",
-            "status",       # будет проигнорирован (меняется экшенами)
+            "status",
             "attachment",
         )
         read_only_fields = ("id",)
 
-    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        """Фильтрует запрещённые к записи поля для обычных пользователей.
+    def _is_power(self) -> bool:
+        """Определяет, имеет ли пользователь расширенные права на создание/изменение.
 
         Returns:
-            dict[str, Any]: Очищенные данные.
+            bool: True для staff или имеющих модельные права; иначе False.
         """
-        user: User = self.context["request"].user
-        is_power = (
-            user.is_staff
+        user = self.context["request"].user
+        return bool(
+            getattr(user, "is_staff", False)
+            or user.has_perm("requests_app.add_request")
             or user.has_perm("requests_app.change_request")
             or user.has_perm("requests_app.can_process_requests")
         )
 
-        # Обычным пользователям запрещаем управлять этими полями напрямую
-        blocked = {"employee", "approver", "status"}
-        if not is_power:
-            for k in list(attrs.keys()):
-                if k in blocked:
-                    attrs.pop(k, None)
+    def to_internal_value(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Предвалидационная очистка входа.
 
-        # Если хотите жестко запретить менять status даже админам через write-эндпойнты,
-        # раскомментируйте следующую строку:
-        # attrs.pop("status", None)
+        Для обычного пользователя удаляет `employee`, `status`, `approver` до полевой валидации,
+        чтобы не получить 400 из-за, например, несуществующего PK в `employee`.
 
-        return attrs
+        Args:
+            data (Mapping[str, Any]): Входные данные запроса.
+
+        Returns:
+            dict[str, Any]: Преобразованные данные для дальнейшей валидации.
+        """
+        if not self._is_power():
+            # data может быть QueryDict — сделаем копию как обычный dict
+            data = dict(data)
+            data.pop("employee", None)
+            data.pop("status", None)
+            data.pop("approver", None)
+        return super().to_internal_value(data)
 
     def create(self, validated_data: dict[str, Any]) -> Request:
-        """Создаёт заявку.
+        """Создание заявки.
 
-        Обычным пользователям принудительно проставляется `employee=self.request.user`
-        и статус по умолчанию (`STATUS_PENDING` из модели).
+        Обычным пользователям проставляет текущего пользователя; статус берётся из default модели.
+
+        Args:
+            validated_data (dict[str, Any]): Провалидированные данные.
 
         Returns:
             Request: Созданная заявка.
         """
-        user: User = self.context["request"].user
-        is_power = user.is_staff or user.has_perm("requests_app.add_request")
-
-        if not is_power:
-            validated_data["employee"] = user
-            # статус возьмётся из default модели (STATUS_PENDING)
-
+        if not self._is_power():
+            validated_data["employee"] = self.context["request"].user
+            validated_data.pop("status", None)
+            validated_data.pop("approver", None)
         return super().create(validated_data)
-
-    def update(self, instance: Request, validated_data: dict[str, Any]) -> Request:
-        """Обновляет заявку.
-
-        Обычным пользователям нельзя менять владельца/согласующего/статус.
-        Дополнительно не даём редактировать финальные заявки.
-
-        Raises:
-            serializers.ValidationError: Если заявка в финальном статусе.
-        """
-        user: User = self.context["request"].user
-        if getattr(instance, "is_final", False) and not (
-            user.is_staff or user.has_perm("requests_app.change_request")
-        ):
-            raise serializers.ValidationError("Финальная заявка недоступна для правок.")
-
-        # Поля employee/approver/status уже вычищены в validate() при необходимости
-        return super().update(instance, validated_data)
-
+   
 
 class RequestCommentSerializer(serializers.ModelSerializer):
     """Сериализатор комментариев к заявке."""
