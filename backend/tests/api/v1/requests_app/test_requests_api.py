@@ -43,7 +43,6 @@ def _reload(user):
     return get_user_model().objects.get(pk=user.pk)
 
 
-
 # ------------------------------------------------------------------------------
 # 1) СПИСКИ / ВИДИМОСТЬ
 # ------------------------------------------------------------------------------
@@ -384,7 +383,7 @@ def test_comments_allowed_for_admin_and_manager(
 
     # --- Менеджер: добавляем право на добавление, теперь должно быть можно ---
     grant_model_perm(manager_view_only, "requests_app.add_requestcomment")
-    manager_view_only = _reload(manager_view_only) 
+    manager_view_only = _reload(manager_view_only)
 
     post_m_va = auth_client(manager_view_only).post(
         f"{API_BASE}{req.id}/comments/",
@@ -399,7 +398,7 @@ def test_comments_allowed_for_admin_and_manager(
     # --- Менеджер: только право добавления (без чтения) — ок ---
     manager_add_only = make_user(email="manager-comments-add@example.com")
     grant_model_perm(manager_add_only, "requests_app.add_requestcomment")
-    manager_view_only = _reload(manager_view_only) 
+    manager_view_only = _reload(manager_view_only)
 
     post_m_a = auth_client(manager_add_only).post(
         f"{API_BASE}{req.id}/comments/",

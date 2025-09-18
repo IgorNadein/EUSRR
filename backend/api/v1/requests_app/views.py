@@ -7,25 +7,33 @@ from django.shortcuts import get_object_or_404  # раскомментируйт
 from employees.models import EmployeeDepartment
 from requests_app.models import Request as EmployeeRequest
 from requests_app.models import RequestComment
+
 # from django.shortcuts import get_object_or_404  # <- не используется
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import (SAFE_METHODS, BasePermission,
-                                        IsAuthenticated)
+from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.request import Request as DRFRequest
 from rest_framework.response import Response
-from rest_framework.serializers import \
-    BaseSerializer  # <- для типизации get_serializer_class
+from rest_framework.serializers import (
+    BaseSerializer,
+)  # <- для типизации get_serializer_class
 
-from ..permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
-                           IsSelfOrStaff)
-from .permissions import (CommentsPermission, DeptCanProcess,
-                          DeptChangeRequest, DeptComments, DeptViewRequest,
-                          NotFinalOrStaff)
-from .serializers import (RequestCommentSerializer, RequestReadSerializer,
-                          RequestWriteSerializer)
+from ..permissions import AdminOrActionOrModelPerms, AdminOrDeptAllowed, IsSelfOrStaff
+from .permissions import (
+    CommentsPermission,
+    DeptCanProcess,
+    DeptChangeRequest,
+    DeptComments,
+    DeptViewRequest,
+    NotFinalOrStaff,
+)
+from .serializers import (
+    RequestCommentSerializer,
+    RequestReadSerializer,
+    RequestWriteSerializer,
+)
 
 
 class RequestViewSet(viewsets.ModelViewSet):
@@ -74,14 +82,16 @@ class RequestViewSet(viewsets.ModelViewSet):
         - остальное (CRUD): владелец ИЛИ staff ИЛИ модельные права.
         """
         if self.action == "comments":
-            return [CommentsPermission()]
+            return [(CommentsPermission | DeptComments)()]
         if self.action in {"approve", "reject"}:
-            return [IsAuthenticated(), (AdminOrActionOrModelPerms)()]
+            return [(AdminOrActionOrModelPerms | DeptCanProcess)()]
         if self.action == "cancel":
-            return [IsAuthenticated(), IsSelfOrStaff()]
+            return [IsSelfOrStaff()]
+        if self.action == "retrieve":
+            return [(IsSelfOrStaff | DeptViewRequest | AdminOrActionOrModelPerms)()]
         if self.action == "destroy":
-            return [IsAuthenticated(), IsSelfOrStaff(), NotFinalOrStaff()]
-        return [(IsSelfOrStaff | AdminOrActionOrModelPerms)()]
+            return [(IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)(), NotFinalOrStaff()]
+        return [(IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)()]
 
     def get_serializer_class(self) -> type[BaseSerializer]:
         """Возвращает сериализатор в зависимости от action."""
@@ -109,7 +119,9 @@ class RequestViewSet(viewsets.ModelViewSet):
         params = self.request.query_params
 
         mine_raw = (params.get("mine") or "").lower()
-        want_mine = (params.get("view") == "mine") or (mine_raw in {"1", "true", "yes", "on"})
+        want_mine = (params.get("view") == "mine") or (
+            mine_raw in {"1", "true", "yes", "on"}
+        )
 
         if user.is_staff or self._can_view_all(user):
             if want_mine:
@@ -117,8 +129,11 @@ class RequestViewSet(viewsets.ModelViewSet):
         else:
             # отделы, где у пользователя есть dept-право 'view_request'
             dept_ids_qs = (
-                EmployeeDepartment.objects
-                .filter(employee_id=user.id, is_active=True, role__scoped_permissions__code="view_request")
+                EmployeeDepartment.objects.filter(
+                    employee_id=user.id,
+                    is_active=True,
+                    role__scoped_permissions__code="view_request",
+                )
                 .values_list("department_id", flat=True)
                 .distinct()
             )
@@ -136,27 +151,28 @@ class RequestViewSet(viewsets.ModelViewSet):
 
     # --- ВАЖНО: не ловить 404 на detail-экшенах из-за урезанного get_queryset() ---
 
-    def get_object(self):
-        """Возвращает объект для detail-экшенов.
+    def get_object(self) -> EmployeeRequest:
+        """Возвращает объект заявки для detail-экшенов.
 
-        Для 'approve', 'reject', 'comments', 'cancel' берём объект из полного
-        набора записей по первичному ключу (в обход get_queryset()), затем
-        вызываем check_object_permissions() — чтобы объектные пермишены отработали.
-        Для остальных действий — стандартное поведение базового класса.
+        Для экшенов {'approve', 'reject', 'comments', 'cancel', 'retrieve'}:
+        - достаём объект **в обход** урезанного get_queryset() по PK,
+        - прогоняем через object-level пермишены (check_object_permissions),
+          чтобы при отсутствии прав получить **403 Forbidden**, а не 404.
 
         Returns:
             EmployeeRequest: Объект заявки.
 
         Raises:
-            Http404: Если объект не найден.
-            PermissionDenied: Если объектные права не пройдены.
+            Http404: Если объект с таким PK не существует вообще.
+            PermissionDenied: Если object-level пермишены не пройдены.
         """
-        if getattr(self, "action", None) in {"approve", "reject", "comments", "cancel"}:
+        if getattr(self, "action", None) in {"approve", "reject", "comments", "cancel", "retrieve"}:
             lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-            lookup_val = self.kwargs[lookup_url_kwarg]
-            obj = get_object_or_404(EmployeeRequest, **{self.lookup_field: lookup_val})
+            lookup_value = self.kwargs[lookup_url_kwarg]
+            obj = get_object_or_404(EmployeeRequest, **{self.lookup_field: lookup_value})
             self.check_object_permissions(self.request, obj)
             return obj
+
         return super().get_object()
 
     # ---------- CRUD ----------

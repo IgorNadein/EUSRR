@@ -215,7 +215,8 @@ DEFAULT_FROM_EMAIL = os.getenv(
 ASGI_APPLICATION = "eusrr_backend.asgi.application"
 
 AUTHENTICATION_BACKENDS = [
-    "eusrr_backend.auth_backends.EmailOrPhoneBackend",
+    "eusrr_backend.auth_backends.LDAP3Backend",
+    "eusrr_backend.auth_backends.SuperuserOnlyBackend",
     "eusrr_backend.auth_backends.PositionRoleBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
@@ -256,6 +257,32 @@ SIMPLE_JWT = {
 }
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
+
+
+# --- LDAP Write-back ---
+LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
+LDAP_URI = os.getenv("LDAP_URI", "ldaps://ldap.robotail.local:636")
+LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")
+LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
+
+# Где искать пользователей
+LDAP_USER_BASE = os.getenv("LDAP_USER_BASE", "ou=People,dc=example,dc=org")
+
+# Белый список: локальные поля -> LDAP-атрибуты
+LDAP_WRITE_ATTRS = {
+    "first_name": "givenName",
+    "last_name": "sn",
+    "phone": "telephoneNumber",  # фактическое имя локального телефонного поля подставим программно
+    # "photo": "jpegPhoto",  # включим позже через Celery
+}
+
+LDAP_WRITE_TIMEOUT = int(os.getenv("LDAP_WRITE_TIMEOUT", "5"))
+
+# Атрибут для optimistic locking (AD vs OpenLDAP)
+LDAP_ASSERT_ATTR_AD = "whenChanged"
+LDAP_ASSERT_ATTR_OL = "modifyTimestamp"
+LDAP_ASSERT_ATTR = os.getenv("LDAP_ASSERT_ATTR", LDAP_ASSERT_ATTR_AD)
+
 
 # LOGGING = {
 #     'version': 1,

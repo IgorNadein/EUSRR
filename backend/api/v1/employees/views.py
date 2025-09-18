@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from common.emails import send_templated_mail
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.db import IntegrityError, transaction
@@ -17,6 +18,7 @@ from employees.constants import ACTION_DISMISSED
 from employees.models import (Department, DepartmentPermission, DepartmentRole,
                               DeptPerm, EmployeeAction, EmployeeDepartment,
                               Position, Skill)
+from integrations.ldap_writeback import update_employee_in_ldap  # наш сервис
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -43,6 +45,13 @@ Employee = get_user_model()
 
 
 PHONE_FIELD = _detect_phone_field()
+
+_ME_ALLOWED_FIELDS = {
+    "first_name", "last_name", "patronymic",
+    "phone_number", "avatar",
+    "telegram", "whatsapp", "wechat",
+    "birth_date", "position_id",
+}
 
 
 class HistoryActionMixin:
@@ -838,6 +847,9 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             dep_links_prefetch,
             Prefetch("actions", queryset=EmployeeAction.objects.order_by("-date")),
         ]
+        
+        if getattr(self, "action", None) in {"retrieve", "me"}:
+            prefetches.append(Prefetch("actions", queryset=EmployeeAction.objects.order_by("-date")))
 
         qs = (
             Employee.objects.select_related("position")
@@ -960,6 +972,36 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(out.data)
         return Response(out.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    def partial_update(self, request, *args, **kwargs):
+        """Частичное обновление сотрудника с опциональным write-back в LDAP.
+
+        Возвращает 409 при конфликте в каталоге (optimistic lock) и 503 при сетевых/LDAP-ошибках.
+        """
+        instance = self.get_object()
+
+        # Валидацию делаем штатным сериализатором
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        # Пишем в LDAP, только если включено и есть whitelisted поля
+        if update_employee_in_ldap and getattr(settings, "LDAP_WRITE_ENABLED", False):
+            payload = {}
+            # маппим нужные локальные поля → передадим сервису (он сам сопоставит к LDAP-атрибутам)
+            for k in ("first_name", "last_name", "phone_number"):
+                if k in serializer.validated_data:
+                    payload[k] = serializer.validated_data[k]
+            if payload:
+                try:
+                    update_employee_in_ldap(instance, payload=payload)
+                except RuntimeError as e:
+                    return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+                except Exception as e:
+                    return Response({"detail": f"LDAP error: {e}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        # Локальное сохранение (включая прочие поля)
+        self.perform_update(serializer)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
         """
@@ -991,9 +1033,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             ctx["include_action_history"] = True
             data = self.get_serializer(instance, context=ctx).data
             return Response(data, status=status.HTTP_200_OK)
-        ser = self.get_serializer(instance, data=request.data, partial=True)
+        # 1) Явный allowlist: email менять только через отдельный процесс верификации
+        safe_payload = {k: v for k, v in request.data.items() if k in _ME_ALLOWED_FIELDS}
+
+        ser = self.get_serializer(instance, data=safe_payload, partial=True)
         ser.is_valid(raise_exception=True)
 
+        # 2) Проверка канала связи (как и было)
         vd = ser.validated_data
         if all(k not in vd for k in ("whatsapp", "telegram", "wechat")):
             new_whatsapp = vd.get("whatsapp", instance.whatsapp)
@@ -1001,11 +1047,23 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             new_wechat = vd.get("wechat", instance.wechat)
             if not (new_whatsapp or new_telegram or new_wechat):
                 return Response(
-                    {
-                        "detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."
-                    },
+                    {"detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+        # 3) LDAP write-back: только whitelisted поля
+        if update_employee_in_ldap and getattr(settings, "LDAP_WRITE_ENABLED", False):
+            payload = {}
+            for k in ("first_name", "last_name", "phone_number"):
+                if k in ser.validated_data:
+                    payload[k] = ser.validated_data[k]
+            if payload:
+                try:
+                    update_employee_in_ldap(instance, payload=payload)
+                except RuntimeError as e:
+                    return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+                except Exception as e:
+                    return Response({"detail": f"LDAP error: {e}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         ser.save()
         return Response(ser.data, status=status.HTTP_200_OK)

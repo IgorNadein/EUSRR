@@ -18,6 +18,7 @@ from employees.models import (
     EmployeeDepartment,
 )
 
+
 def _grant_dept_perm(user, dept, code: str) -> None:
     """Выдаёт пользователю департаментное право `code` для отдела `dept`.
 
@@ -30,9 +31,7 @@ def _grant_dept_perm(user, dept, code: str) -> None:
     perm, _ = DepartmentPermission.objects.get_or_create(
         code=code, defaults={"name": code}
     )
-    role, _ = DepartmentRole.objects.get_or_create(
-        department=dept, name=f"auto-{code}"
-    )
+    role, _ = DepartmentRole.objects.get_or_create(department=dept, name=f"auto-{code}")
     role.scoped_permissions.add(perm)
 
     link, _ = EmployeeDepartment.objects.get_or_create(
@@ -49,14 +48,17 @@ def _grant_dept_perm(user, dept, code: str) -> None:
 import pytest
 from django.utils.crypto import get_random_string
 
+
 def _random_email(prefix: str) -> str:
     return f"{prefix}-{get_random_string(6).lower()}@example.com"
+
 
 @pytest.fixture
 def two_departments(db):
     d1 = Department.objects.create(name=f"Dept A {get_random_string(4)}")
     d2 = Department.objects.create(name=f"Dept B {get_random_string(4)}")
     return d1, d2
+
 
 @pytest.fixture
 def dept_dataset(db, make_user, make_request, two_departments):
@@ -84,7 +86,15 @@ def dept_dataset(db, make_user, make_request, two_departments):
         req2.department = d2
         req2.save(update_fields=["department"])
 
-    return {"dept1": d1, "dept2": d2, "owner1": owner1, "owner2": owner2, "req1": req1, "req2": req2}
+    return {
+        "dept1": d1,
+        "dept2": d2,
+        "owner1": owner1,
+        "owner2": owner2,
+        "req1": req1,
+        "req2": req2,
+    }
+
 
 # ---------- Тесты видимости ----------
 
@@ -146,7 +156,7 @@ def test_dept_processor_can_approve_own_department_request(
         setattr(processor, "department", data["dept1"])
         processor.save(update_fields=["department"])
 
-    for code in ("can_process_requests", "change_request"):
+    for code in ("can_process_requests",):
         _grant_dept_perm(processor, data["dept1"], code)
 
     client = auth_client(processor)

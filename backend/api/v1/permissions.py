@@ -1,9 +1,10 @@
 # backend\api\v1\permissions.py
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple, Type
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
+from django.db.models import Model
 from employees.constants import DeptPerm
 from employees.models import Department, EmployeeDepartment
 from rest_framework.permissions import (
@@ -11,13 +12,14 @@ from rest_framework.permissions import (
     BasePermission,
     DjangoModelPermissions,
 )
+from rest_framework.request import Request
 
 MANAGE_PERM = "manage_department"
 CHANGE_HEAD_PERM = "change_department_head"
 ASSIGN_ROLE_PERM = "assign_department_role"
 
 
-def user_is_dept_head(user, dept: Department) -> bool:  
+def user_is_dept_head(user, dept: Department) -> bool:
     return bool(
         user and user.is_authenticated and dept.head_id == getattr(user, "id", None)
     )
@@ -309,43 +311,102 @@ class AdminOrDeptAllowed(BasePermission):
 
 
 class IsSelfOrStaff(BasePermission):
-    """Staff/superuser или владелец объекта (настраиваемые поля владельца через атрибуты вью)."""
+    """Доступ для staff/superuser или владельца объекта.
 
-    DEFAULT_OWNER_ID_ATTRS = ("author_id", "user_id", "owner_id", "employee_id")
-    DEFAULT_OWNER_OBJ_ATTRS = ("author", "user", "owner", "employee")
+    ВАЖНО:
+        • SAFE-методы НЕ дают автоматического допуска.
+        • Добавлена поддержка кейса "объект = сам пользователь" (self-update).
+    """
 
-    def has_permission(self, request, view) -> bool:
+    DEFAULT_OWNER_ID_ATTRS: Tuple[str, ...] = ("employee_id", "author_id", "user_id", "owner_id")
+    DEFAULT_OWNER_OBJ_ATTRS: Tuple[str, ...] = ("employee", "author", "user", "owner")
+
+    def has_permission(self, request: Request, view) -> bool:
+        """Пускаем только аутентифицированных.
+
+        Args:
+            request (Request): DRF-запрос.
+            view: DRF ViewSet.
+
+        Returns:
+            bool: True если пользователь аутентифицирован.
+        """
         user = getattr(request, "user", None)
         return bool(user and user.is_authenticated)
 
-    def has_object_permission(self, request, view, obj):
-        user = request.user
+    def has_object_permission(self, request: Request, view, obj) -> bool:
+        """Разрешает доступ staff/superuser или владельцу объекта.
+
+        Логика владельца:
+            1) Совпадение *_id полей (employee_id/user_id/…)
+            2) Совпадение связанных owner-объектов (employee/user/…)
+            3) Фоллбек "self-object": obj.__class__ == user.__class__ и obj.pk == user.pk
+
+        Args:
+            request (Request): DRF-запрос.
+            view: DRF ViewSet.
+            obj: Проверяемый объект.
+
+        Returns:
+            bool: True если доступ разрешён.
+
+        Raises:
+            Ничего не выбрасывает.
+        """
+        user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return False
-        if request.method in SAFE_METHODS:
-            return True
+
+        # Админский доступ
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return True
 
-        # Прочитаем конфиг владельческих полей с вью (если задан)
-        owner_id_attrs = getattr(view, "owner_id_attrs", self.DEFAULT_OWNER_ID_ATTRS)
-        owner_obj_attrs = getattr(view, "owner_obj_attrs", self.DEFAULT_OWNER_OBJ_ATTRS)
-        uid = getattr(user, "id", None)
-
+        # 1) *_id поля владельца
+        owner_id_attrs: Iterable[str] = getattr(view, "owner_id_attrs", self.DEFAULT_OWNER_ID_ATTRS)
         for attr in owner_id_attrs:
-            if hasattr(obj, attr) and getattr(obj, attr) == uid:
+            if getattr(obj, attr, None) == user.id:
                 return True
+
+        # 2) связанные owner-объекты
+        owner_obj_attrs: Iterable[str] = getattr(view, "owner_obj_attrs", self.DEFAULT_OWNER_OBJ_ATTRS)
         for attr in owner_obj_attrs:
             owner = getattr(obj, attr, None)
-            if owner is not None and getattr(owner, "id", None) == uid:
+            if owner is not None and getattr(owner, "id", None) == user.id:
                 return True
 
-        # Fallback для вью «/users/{id}/»
-        lookup = getattr(view, "lookup_field", "pk")
-        return str(view.kwargs.get(lookup)) == str(uid)
+        # 3) self-object: редактирование собственной учётки (Employee ↔ Employee)
+        try:
+            if obj.__class__ is user.__class__ and getattr(obj, "pk", None) == getattr(user, "pk", None):
+                return True
+        except Exception:
+            # максимально безопасно: не пускаем, если что-то пошло не так
+            pass
+
+        return False
 
 
 class AdminOrActionOrModelPerms(DjangoModelPermissions):
+    """staff/superuser ИЛИ явные пермы экшена ИЛИ стандартные DjangoModelPermissions.
+
+    Логика:
+      1) staff/superuser → True
+      2) Если на вью заданы «явные» коды прав для текущего action (метод `_explicit_perm_codes`),
+         достаточно ЛЮБОГО из них → True/False
+      3) Иначе — делегируем в DjangoModelPermissions.has_permission():
+         - для SAFE_METHODS потребует `view_<model>`
+         - для небезопасных — коды из perms_map (add/change/delete)
+    """
+
+    perms_map = {
+        "GET": ["%(app_label)s.view_%(model_name)s"],
+        "OPTIONS": [],
+        "HEAD": [],
+        "POST": ["%(app_label)s.add_%(model_name)s"],
+        "PUT": ["%(app_label)s.change_%(model_name)s"],
+        "PATCH": ["%(app_label)s.change_%(model_name)s"],
+        "DELETE": ["%(app_label)s.delete_%(model_name)s"],
+    }
+
     @staticmethod
     def _normalize_codes(value: Any) -> Optional[list[str]]:
         """Приводит конфигурацию кодов прав к списку строк.
@@ -436,16 +497,18 @@ class AdminOrActionOrModelPerms(DjangoModelPermissions):
         # Иное — игнорируем
         return None
 
-    def has_permission(self, request, view) -> bool:
-        """Проверка прав на уровне запроса.
+    def has_permission(self, request: Request, view) -> bool:
+        """Проверяет доступ на уровне запроса.
 
-        Логика:
-          - staff/superuser → True
-          - если на вью есть «явные» коды (см. выше) — достаточно ЛЮБОГО из них
-          - иначе: для SAFE-методов требуем view_<model>, остальные — по DjangoModelPermissions
+        Args:
+            request (Request): DRF-запрос.
+            view: DRF View/ViewSet.
 
         Returns:
             bool: Разрешён ли доступ.
+
+        Raises:
+            PermissionDenied: не выбрасывается здесь; при False DRF отдаст 403.
         """
         user = getattr(request, "user", None)
         if not (user and user.is_authenticated):
@@ -453,16 +516,14 @@ class AdminOrActionOrModelPerms(DjangoModelPermissions):
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return True
 
-        explicit = self._explicit_perm_codes(view)
+        # 1) Явные пермы, привязанные к action (если у тебя есть такой механизм)
+        explicit: Optional[Iterable[str]] = getattr(
+            self, "_explicit_perm_codes", lambda _v: None
+        )(view)
         if explicit:
             return any(user.has_perm(code) for code in explicit)
 
-        if request.method in SAFE_METHODS:
-            model = self._model_from_view(view)
-            return user.has_perm(
-                f"{model._meta.app_label}.view_{model._meta.model_name}"
-            )
-
+        # 2) Всё остальное — родителю (в т.ч. SAFE_METHODS → view_<model>)
         return super().has_permission(request, view)
 
 
