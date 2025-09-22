@@ -1,6 +1,6 @@
 # backend\communications\routing.py
-from django.urls import path
 from django.urls import re_path
+
 from .consumers import ChatConsumer, ChatListConsumer
 
 websocket_urlpatterns = [

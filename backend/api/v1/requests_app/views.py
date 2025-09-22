@@ -7,25 +7,38 @@ from django.shortcuts import get_object_or_404  # раскомментируйт
 from employees.models import EmployeeDepartment
 from requests_app.models import Request as EmployeeRequest
 from requests_app.models import RequestComment
+from requests_app.enums import RequestStatus
+
 # from django.shortcuts import get_object_or_404  # <- не используется
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import (
+    NotAuthenticated,
+    PermissionDenied,
+    ValidationError,
+)
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import (SAFE_METHODS, BasePermission,
-                                        IsAuthenticated)
+from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.request import Request as DRFRequest
 from rest_framework.response import Response
-from rest_framework.serializers import \
-    BaseSerializer  # <- для типизации get_serializer_class
+from rest_framework.serializers import (
+    BaseSerializer,
+)  # <- для типизации get_serializer_class
 
-from ..permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
-                           IsSelfOrStaff)
-from .permissions import (CommentsPermission, DeptCanProcess,
-                          DeptChangeRequest, DeptComments, DeptViewRequest,
-                          NotFinalOrStaff)
-from .serializers import (RequestCommentSerializer, RequestReadSerializer,
-                          RequestWriteSerializer)
+from ..permissions import AdminOrActionOrModelPerms, AdminOrDeptAllowed, IsSelfOrStaff
+from .permissions import (
+    CommentsPermission,
+    DeptCanProcess,
+    DeptChangeRequest,
+    DeptComments,
+    DeptViewRequest,
+    NotFinalOrStaff,
+)
+from .serializers import (
+    RequestCommentSerializer,
+    RequestReadSerializer,
+    RequestWriteSerializer,
+)
 
 
 class RequestViewSet(viewsets.ModelViewSet):
@@ -50,19 +63,14 @@ class RequestViewSet(viewsets.ModelViewSet):
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     pagination_class = None
 
-    # Декларативная карта прав. Поддерживаются:
-    # - строка ("approve": "app.perm")
-    # - список (ИЛИ прав)
-    # - карта по методам для action ("comments": {"GET": "...", "POST": "..."}).
     required_perms_by_action = {
         "comments": {
             "GET": "requests_app.view_requestcomment",
-            "HEAD": "requests_app.view_requestcomment",  # на всякий случай
+            "HEAD": "requests_app.view_requestcomment",
             "POST": "requests_app.add_requestcomment",
         },
         "reject": ["requests_app.can_process_requests", "requests_app.change_request"],
         "approve": ["requests_app.can_process_requests", "requests_app.change_request"],
-        # cancel — проверяется владением/админством, отдельный код не нужен
     }
 
     def get_permissions(self) -> list[BasePermission]:
@@ -74,14 +82,19 @@ class RequestViewSet(viewsets.ModelViewSet):
         - остальное (CRUD): владелец ИЛИ staff ИЛИ модельные права.
         """
         if self.action == "comments":
-            return [CommentsPermission()]
+            return [(CommentsPermission | DeptComments)()]
         if self.action in {"approve", "reject"}:
-            return [IsAuthenticated(), (AdminOrActionOrModelPerms)()]
+            return [(AdminOrActionOrModelPerms | DeptCanProcess)()]
         if self.action == "cancel":
-            return [IsAuthenticated(), IsSelfOrStaff()]
+            return [IsSelfOrStaff()]
+        if self.action == "retrieve":
+            return [(IsSelfOrStaff | DeptViewRequest | AdminOrActionOrModelPerms)()]
         if self.action == "destroy":
-            return [IsAuthenticated(), IsSelfOrStaff(), NotFinalOrStaff()]
-        return [(IsSelfOrStaff | AdminOrActionOrModelPerms)()]
+            return [
+                (IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)(),
+                NotFinalOrStaff(),
+            ]
+        return [(IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)()]
 
     def get_serializer_class(self) -> type[BaseSerializer]:
         """Возвращает сериализатор в зависимости от action."""
@@ -109,16 +122,20 @@ class RequestViewSet(viewsets.ModelViewSet):
         params = self.request.query_params
 
         mine_raw = (params.get("mine") or "").lower()
-        want_mine = (params.get("view") == "mine") or (mine_raw in {"1", "true", "yes", "on"})
+        want_mine = (params.get("view") == "mine") or (
+            mine_raw in {"1", "true", "yes", "on"}
+        )
 
         if user.is_staff or self._can_view_all(user):
             if want_mine:
                 qs = qs.filter(employee_id=user.id)
         else:
-            # отделы, где у пользователя есть dept-право 'view_request'
             dept_ids_qs = (
-                EmployeeDepartment.objects
-                .filter(employee_id=user.id, is_active=True, role__scoped_permissions__code="view_request")
+                EmployeeDepartment.objects.filter(
+                    employee_id=user.id,
+                    is_active=True,
+                    role__scoped_permissions__code="view_request",
+                )
                 .values_list("department_id", flat=True)
                 .distinct()
             )
@@ -136,27 +153,35 @@ class RequestViewSet(viewsets.ModelViewSet):
 
     # --- ВАЖНО: не ловить 404 на detail-экшенах из-за урезанного get_queryset() ---
 
-    def get_object(self):
-        """Возвращает объект для detail-экшенов.
+    def get_object(self) -> EmployeeRequest:
+        """Возвращает объект заявки для detail-экшенов.
 
-        Для 'approve', 'reject', 'comments', 'cancel' берём объект из полного
-        набора записей по первичному ключу (в обход get_queryset()), затем
-        вызываем check_object_permissions() — чтобы объектные пермишены отработали.
-        Для остальных действий — стандартное поведение базового класса.
+        Для экшенов {'approve', 'reject', 'comments', 'cancel', 'retrieve'}:
+        - достаём объект **в обход** урезанного get_queryset() по PK,
+        - прогоняем через object-level пермишены (check_object_permissions),
+          чтобы при отсутствии прав получить **403 Forbidden**, а не 404.
 
         Returns:
             EmployeeRequest: Объект заявки.
 
         Raises:
-            Http404: Если объект не найден.
-            PermissionDenied: Если объектные права не пройдены.
+            Http404: Если объект с таким PK не существует вообще.
+            PermissionDenied: Если object-level пермишены не пройдены.
         """
-        if getattr(self, "action", None) in {"approve", "reject", "comments", "cancel"}:
+        if getattr(self, "action", None) in {
+            "approve",
+            "reject",
+            "comments",
+            "cancel",
+            "retrieve",
+        }:
             lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-            lookup_val = self.kwargs[lookup_url_kwarg]
-            obj = get_object_or_404(EmployeeRequest, **{self.lookup_field: lookup_val})
+            lookup_value = self.kwargs[lookup_url_kwarg]
+            base = EmployeeRequest.objects.select_related("employee", "approver", "department")
+            obj = get_object_or_404(base, **{self.lookup_field: lookup_value})
             self.check_object_permissions(self.request, obj)
             return obj
+
         return super().get_object()
 
     # ---------- CRUD ----------
@@ -164,8 +189,14 @@ class RequestViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer: RequestWriteSerializer) -> None:
         """Создание: для не-админа принудительно ставим себя как автора."""
         user = self.request.user
+        if not user or not user.is_authenticated:
+            raise NotAuthenticated("Authentication required")
         is_power = user.is_staff or user.has_perm("requests_app.add_request")
         extra = {"employee": user} if not is_power else {}
+        save_as = (self.request.query_params.get("save_as") or "").strip().lower()
+        if save_as == "draft":
+            extra["status"] = RequestStatus.DRAFT  # ✅ обычному пользователю поле в payload всё равно бы «очистили»
+
         serializer.save(**extra)
 
     def perform_update(self, serializer: RequestWriteSerializer) -> None:
@@ -184,7 +215,16 @@ class RequestViewSet(viewsets.ModelViewSet):
             user.is_staff or user.has_perm("requests_app.change_request")
         ):
             raise PermissionDenied("Нельзя редактировать чужую заявку.")
-        serializer.save()
+        extra: dict[str, Any] = {}
+        save_as = (self.request.query_params.get("save_as") or "").strip().lower()
+
+        if save_as == "draft":
+            extra["status"] = RequestStatus.DRAFT
+        elif save_as == "submit" and obj.status == RequestStatus.DRAFT:
+            # ⬅️ явная подача «на рассмотрение» из черновика
+            extra["status"] = RequestStatus.PENDING
+
+        serializer.save(**extra)
 
     # ---------- Комментарии ----------
 
@@ -195,7 +235,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         GET: список комментариев (staff, владелец или право view_requestcomment).
         POST: создание {"text": "..."} (staff, владелец или право add_requestcomment).
         """
-        req_obj = self.get_object()  # проходит через check_object_permissions()
+        req_obj = self.get_object()
 
         if request.method in {"GET", "HEAD"}:
             qs = RequestComment.objects.filter(request=req_obj).select_related("author")
@@ -235,7 +275,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         Raises:
             ValidationError: Если заявка уже финальная.
         """
-        obj = self.get_object()  # права проверит AdminOrActionOrModelPerms
+        obj = self.get_object()
         if getattr(obj, "is_final", False):
             raise ValidationError("Заявка уже в финальном статусе.")
         obj.reject(by_user=request.user)
@@ -250,7 +290,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         Raises:
             PermissionDenied: Если заявка финальная (для не admin).
         """
-        obj = self.get_object()  # владение/admin проверит IsSelfOrStaff
+        obj = self.get_object()
         if getattr(obj, "is_final", False) and not request.user.is_staff:
             raise PermissionDenied("Финальная заявка уже не может быть отменена.")
         obj.cancel()

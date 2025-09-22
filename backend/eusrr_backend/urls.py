@@ -7,7 +7,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("employees.urls_front_auth", namespace="auth_front")),
     path("documents/", include("documents.urls", namespace="documents")),
-    path("requests/", include("requests_app.urls", namespace="requests_app")),
+    path("requests/", include("requests_app.urls_front", namespace="requests")),
     path("employees/", include("employees.urls_front", namespace="employees")),
     path("communications/", include("communications.urls", namespace="communications")),
     path("search/", include("search.urls", namespace="search")),

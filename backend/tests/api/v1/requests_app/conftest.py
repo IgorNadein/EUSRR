@@ -10,6 +10,7 @@ from django.contrib.auth.models import Permission
 from django.db import models
 from rest_framework.test import APIClient
 from requests_app.models import Request as Req
+from requests_app.enums import RequestStatus, RequestType
 
 from .contract import MODEL_VIEW_PERMISSION
 
@@ -185,7 +186,7 @@ def make_request(db):
     def _make(
         *,
         employee: models.Model,
-        type_: str = Req.TYPE_VACATION,
+        type_: str = RequestType.VACATION,
         status: str | None = None,
         comment: str = "",
         approver: models.Model | None = None,

@@ -11,7 +11,7 @@ def test_my_requests_shows_only_own(client, user, other_user, login):
     other = baker.make(Request, employee=other_user, status=Request.STATUS_PENDING, _quantity=3)
 
     login(user)
-    resp = client.get(reverse("requests_app:my_requests"))
+    resp = client.get(reverse("requests:request_list"))
     assert resp.status_code == 200
     page = resp.context["page"]
     ids = {obj.pk for obj in page.object_list}
@@ -21,15 +21,15 @@ def test_my_requests_shows_only_own(client, user, other_user, login):
 
 def test_all_requests_requires_hr(client, user, hr_user, login):
     # гость → редирект на логин
-    resp = client.get(reverse("requests_app:all_requests"))
+    resp = client.get(reverse("requests:request_list"))
     assert resp.status_code in (302, 303)
 
     # не-HR → тоже редирект на логин (так работает user_passes_test без raise_exception)
     login(user)
-    resp = client.get(reverse("requests_app:all_requests"))
+    resp = client.get(reverse("requests:request_list"))
     assert resp.status_code in (302, 303)
 
     # HR → ок
     login(hr_user)
-    resp = client.get(reverse("requests_app:all_requests"))
+    resp = client.get(reverse("requests:request_list"))
     assert resp.status_code == 200

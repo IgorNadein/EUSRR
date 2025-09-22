@@ -3,13 +3,15 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from django.contrib.auth import get_user_model
+from requests_app.enums import RequestStatus, RequestType
 from requests_app.models import Request, RequestComment
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
+from .validators import (RequestApproverNotEmployeeValidator,
+                         RequestDatesByTypeValidator)
 
 User = get_user_model()
-
 
 
 class RequestReadSerializer(serializers.ModelSerializer):
@@ -55,7 +57,6 @@ class RequestReadSerializer(serializers.ModelSerializer):
         )
 
 
-
 class RequestWriteSerializer(serializers.ModelSerializer):
     """Сериализатор записи заявки.
 
@@ -74,7 +75,7 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         queryset=User.objects.all(), required=False, allow_null=True
     )
     status = serializers.ChoiceField(
-        choices=Request.STATUS_CHOICES, required=False, allow_null=True
+        choices=RequestStatus, required=False, allow_null=True
     )
     approver = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True
@@ -96,6 +97,10 @@ class RequestWriteSerializer(serializers.ModelSerializer):
             "attachment",
         )
         read_only_fields = ("id",)
+        validators = [
+            RequestDatesByTypeValidator(),
+            RequestApproverNotEmployeeValidator(),
+        ]
 
     def _is_power(self) -> bool:
         """Определяет, имеет ли пользователь расширенные права на создание/изменение.
@@ -141,13 +146,34 @@ class RequestWriteSerializer(serializers.ModelSerializer):
 
         Returns:
             Request: Созданная заявка.
+
+        Raises:
+            serializers.ValidationError: Если не удалось определить автора.
         """
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if not user or getattr(user, "is_anonymous", False):
+            raise serializers.ValidationError(
+                {"detail": "Требуется аутентификация для создания заявки."}
+            )
+
         if not self._is_power():
-            validated_data["employee"] = self.context["request"].user
+            # обычный пользователь: запрещённые поля убираем/переписываем
             validated_data.pop("status", None)
             validated_data.pop("approver", None)
+            validated_data["employee"] = user
+        else:
+            # staff/менеджер: если employee не указан — ставим текущего
+            validated_data.setdefault("employee", user)
+
+        if not validated_data.get("employee"):
+            raise serializers.ValidationError(
+                {"employee": "Автор должен быть установлен сервером."}
+            )
+
         return super().create(validated_data)
-   
+
 
 class RequestCommentSerializer(serializers.ModelSerializer):
     """Сериализатор комментариев к заявке."""

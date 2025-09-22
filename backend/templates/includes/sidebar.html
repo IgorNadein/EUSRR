@@ -127,23 +127,14 @@
         <span class="side-icon"><i class="bi-diagram-3"></i></span>
         <span>Отделы</span>
       </a>
-      <a href="{% url 'requests_app:my_requests' %}"
-        class="nav-link {% if request.resolver_match.url_name == 'my_requests' %}active{% endif %}"
-        {% if request.resolver_match.url_name == 'my_requests' %}aria-current="page"{% endif %}>
-        <span class="side-icon"><i class="bi-journal-text"></i></span>
-        <span>Мои заявления</span>
+      <a href="{% url 'requests:request_list' %}"
+        class="nav-link {% if request.resolver_match.url_name == 'request_list' %}active{% endif %}"
+        {% if request.resolver_match.url_name == 'request_list' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-clipboard-check"></i></span>
+        <span>Заявления</span>
       </a>
-      {% if perms.requests_app.can_view_all_requests or user.headed_departments.exists %}
-        {% with url_name=request.resolver_match.url_name %}
-          <a href="{% url 'requests_app:all_requests' %}"
-            class="nav-link {% if url_name|in_list:'all_requests,request_process' %}active{% endif %}"
-            {% if url_name|in_list:'all_requests,request_process' %}aria-current="page"{% endif %}>
-            <span class="side-icon"><i class="bi-clipboard-check"></i></span>
-            <span>Заявления сотрудников</span>
-          </a>
-        {% endwith %}
-      {% endif %}
-      {% with total=unread_total|default:0 %}
+      
+      {% with total=chat_unread_total|default:0 %}
       <a href="{% url 'communications:chat_list' %}"
         class="nav-link {% if request.resolver_match.app_name == 'communications' %}active{% endif %}"
         {% if request.resolver_match.app_name == 'communications' %}aria-current="page"{% endif %}
@@ -207,61 +198,61 @@
 </script>
 
 <script>
-(function(){
-  const media = window.matchMedia('(prefers-color-scheme: dark)');
-  const root  = document.documentElement;
-  const MODES = ['light','auto','dark'];
-  const ICONS = { light:'bi-sun-fill', auto:'bi-circle-half', dark:'bi-moon-stars' };
-  const LABEL = { light:'Светлая',     auto:'Авто',           dark:'Темная' };
+  (function(){
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const root  = document.documentElement;
+    const MODES = ['light','auto','dark'];
+    const ICONS = { light:'bi-sun-fill', auto:'bi-circle-half', dark:'bi-moon-stars' };
+    const LABEL = { light:'Светлая',     auto:'Авто',           dark:'Темная' };
 
-  // какие-то проекты любят хранить 'theme' в LS — используем тот же ключ
-  function getSavedMode(){ return localStorage.getItem('theme') || 'auto'; }
-  function setSavedMode(m){ try{ localStorage.setItem('theme', m); }catch(_){} }
+    // какие-то проекты любят хранить 'theme' в LS — используем тот же ключ
+    function getSavedMode(){ return localStorage.getItem('theme') || 'auto'; }
+    function setSavedMode(m){ try{ localStorage.setItem('theme', m); }catch(_){} }
 
-  function effective(mode){ return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode; }
+    function effective(mode){ return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode; }
 
-  function applyMode(mode, persist=true){
-    const eff = effective(mode);
-    root.setAttribute('data-bs-theme', eff);
-    if (persist) setSavedMode(mode);
-    updateButtons(mode);
-  }
+    function applyMode(mode, persist=true){
+      const eff = effective(mode);
+      root.setAttribute('data-bs-theme', eff);
+      if (persist) setSavedMode(mode);
+      updateButtons(mode);
+    }
 
-  function updateButtons(mode){
-    document.querySelectorAll('.js-theme-btn').forEach(btn=>{
-      const icon = btn.querySelector('.bi');
-      const lab  = btn.querySelector('.mode-label');
-      // сброс иконок
-      if (icon){
-        icon.className = 'bi ' + (ICONS[mode] || ICONS.auto);
-      }
-      if (lab){ lab.textContent = LABEL[mode] || LABEL.auto; }
-      btn.dataset.mode = mode;
-      btn.title = `Тема: ${LABEL[mode]}. Нажмите, чтобы переключить`;
-      btn.setAttribute('aria-label', `Тема: ${LABEL[mode]}. Нажмите, чтобы переключить`);
+    function updateButtons(mode){
+      document.querySelectorAll('.js-theme-btn').forEach(btn=>{
+        const icon = btn.querySelector('.bi');
+        const lab  = btn.querySelector('.mode-label');
+        // сброс иконок
+        if (icon){
+          icon.className = 'bi ' + (ICONS[mode] || ICONS.auto);
+        }
+        if (lab){ lab.textContent = LABEL[mode] || LABEL.auto; }
+        btn.dataset.mode = mode;
+        btn.title = `Тема: ${LABEL[mode]}. Нажмите, чтобы переключить`;
+        btn.setAttribute('aria-label', `Тема: ${LABEL[mode]}. Нажмите, чтобы переключить`);
+      });
+    }
+
+    function nextMode(cur){
+      const i = MODES.indexOf(cur); return MODES[(i >= 0 ? i : 0) + 1 === MODES.length ? 0 : i + 1];
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const start = getSavedMode();
+      applyMode(start, false);
+
+      document.body.addEventListener('click', (e)=>{
+        const btn = e.target.closest('.js-theme-btn'); if (!btn) return;
+        e.preventDefault();
+        const cur = btn.dataset.mode || getSavedMode() || 'auto';
+        const nxt = nextMode(cur);
+        applyMode(nxt, true);
+      });
+
+      // если системная тема поменялась и у нас «Авто», нужно обновить
+      media.addEventListener('change', ()=>{ if ((localStorage.getItem('theme') || 'auto') === 'auto'){ applyMode('auto', false); } });
     });
-  }
-
-  function nextMode(cur){
-    const i = MODES.indexOf(cur); return MODES[(i >= 0 ? i : 0) + 1 === MODES.length ? 0 : i + 1];
-  }
-
-  document.addEventListener('DOMContentLoaded', ()=>{
-    const start = getSavedMode();
-    applyMode(start, false);
-
-    document.body.addEventListener('click', (e)=>{
-      const btn = e.target.closest('.js-theme-btn'); if (!btn) return;
-      e.preventDefault();
-      const cur = btn.dataset.mode || getSavedMode() || 'auto';
-      const nxt = nextMode(cur);
-      applyMode(nxt, true);
-    });
-
-    // если системная тема поменялась и у нас «Авто», нужно обновить
-    media.addEventListener('change', ()=>{ if ((localStorage.getItem('theme') || 'auto') === 'auto'){ applyMode('auto', false); } });
-  });
-})();
+  })();
 </script>
 
 

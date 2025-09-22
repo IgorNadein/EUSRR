@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from requests_app.models import Request as Req
+from requests_app.enums import RequestStatus, RequestType
 from django.contrib.auth import get_user_model
 
 
@@ -43,7 +44,6 @@ def _reload(user):
     return get_user_model().objects.get(pk=user.pk)
 
 
-
 # ------------------------------------------------------------------------------
 # 1) СПИСКИ / ВИДИМОСТЬ
 # ------------------------------------------------------------------------------
@@ -62,8 +62,8 @@ def test_list_regular_user_sees_only_own(
     other = make_user(email="other@example.com")
 
     # Сгенерируем заявки двух пользователей
-    r1 = make_request(employee=regular_user, type_=Req.TYPE_VACATION)
-    _ = make_request(employee=other, type_=Req.TYPE_SICK)
+    r1 = make_request(employee=regular_user, type_=RequestType.VACATION)
+    _ = make_request(employee=other, type_=RequestType.SICK_LEAVE)
 
     client = auth_client(regular_user)
 
@@ -89,8 +89,8 @@ def test_list_admin_default_all_and_mine_toggle(
     u1 = make_user(email="u1@example.com")
     u2 = make_user(email="u2@example.com")
 
-    r1 = make_request(employee=u1, type_=Req.TYPE_VACATION)
-    r2 = make_request(employee=u2, type_=Req.TYPE_SICK)
+    r1 = make_request(employee=u1, type_=RequestType.VACATION)
+    r2 = make_request(employee=u2, type_=RequestType.SICK_LEAVE)
 
     client = auth_client(admin_user)
 
@@ -180,10 +180,10 @@ def test_create_regular_user_forces_employee_and_default_status(
     """POST: обычному пользователю принудительно проставляется employee=текущий и дефолтный статус."""
     client = auth_client(regular_user)
     payload = {
-        "type": Req.TYPE_VACATION,
+        "type": RequestType.VACATION,
         "comment": "Отпуск на недельку",
         "employee": 999,
-        "status": Req.STATUS_APPROVED,
+        "status": RequestStatus.APPROVED,
     }
     resp = client.post(API_BASE, data=payload, format="json")
     assert resp.status_code == 201
@@ -194,7 +194,7 @@ def test_create_regular_user_forces_employee_and_default_status(
         or data["employee"]["id"] == regular_user.id
     )
     # Статус должен быть не финальный (дефолт модели — pending)
-    assert data["status"] in (Req.STATUS_DRAFT, Req.STATUS_PENDING)
+    assert data["status"] in (RequestStatus.DRAFT, RequestStatus.PENDING)
 
 
 def test_create_admin_can_set_employee(
@@ -203,7 +203,7 @@ def test_create_admin_can_set_employee(
     """POST: админ может создавать заявку для другого пользователя."""
     other = make_user(email="y@example.com")
     client = auth_client(admin_user)
-    payload = {"type": Req.TYPE_SICK, "employee": other.id, "comment": "Больничный"}
+    payload = {"type": RequestType.SICK_LEAVE, "employee": other.id, "comment": "Больничный"}
     resp = client.post(API_BASE, data=payload, format="json")
     assert resp.status_code == 201
     assert str(resp.json()["employee"]["id"]) == str(other.id)
@@ -218,8 +218,8 @@ def test_update_own_pending_ok_and_final_forbidden(
     auth_client, regular_user: models.Model, make_request
 ) -> None:
     """PATCH: владелец правит не финальную заявку; финальную — нельзя (403/400)."""
-    pending = make_request(employee=regular_user, status=Req.STATUS_PENDING)
-    final = make_request(employee=regular_user, status=Req.STATUS_APPROVED)
+    pending = make_request(employee=regular_user, status=RequestStatus.PENDING)
+    final = make_request(employee=regular_user, status=RequestStatus.APPROVED)
 
     client = auth_client(regular_user)
     ok = client.patch(
@@ -250,8 +250,8 @@ def test_delete_own_pending_ok_final_forbidden(
     auth_client, regular_user: models.Model, make_request
 ) -> None:
     """DELETE: владелец может удалить не финальную; финальную — нельзя."""
-    pending = make_request(employee=regular_user, status=Req.STATUS_PENDING)
-    final = make_request(employee=regular_user, status=Req.STATUS_REJECTED)
+    pending = make_request(employee=regular_user, status=RequestStatus.PENDING)
+    final = make_request(employee=regular_user, status=RequestStatus.REJECTED)
 
     client = auth_client(regular_user)
     ok = client.delete(f"{API_BASE}{pending.id}/")
@@ -274,35 +274,35 @@ def test_actions_permissions_and_effects(
     manager = make_user(email="manager3@example.com")
     grant_model_perm(manager, "requests_app.change_request")  # или can_process_requests
 
-    req = make_request(employee=owner, status=Req.STATUS_PENDING)
+    req = make_request(employee=owner, status=RequestStatus.PENDING)
 
     # Менеджер может approve
     mclient = auth_client(manager)
     resp = mclient.post(f"{API_BASE}{req.id}/approve/", data={}, format="json")
     assert resp.status_code == 200
-    assert resp.json()["status"] == Req.STATUS_APPROVED
+    assert resp.json()["status"] == RequestStatus.APPROVED
 
     # Повторный approve/reject на финальной — ожидаем 400/403
     again = mclient.post(f"{API_BASE}{req.id}/approve/", data={}, format="json")
     assert again.status_code in (400, 403)
 
     # Владелец отменяет НЕ финальную (создадим новую pending)
-    req2 = make_request(employee=owner, status=Req.STATUS_PENDING)
+    req2 = make_request(employee=owner, status=RequestStatus.PENDING)
     oclient = auth_client(owner)
     c_ok = oclient.post(f"{API_BASE}{req2.id}/cancel/", data={}, format="json")
     assert c_ok.status_code == 200
-    assert c_ok.json()["status"] == Req.STATUS_CANCELLED
+    assert c_ok.json()["status"] == RequestStatus.CANCELLED
 
     # Отменить финальную владельцу нельзя
     c_deny = oclient.post(f"{API_BASE}{req.id}/cancel/", data={}, format="json")
     assert c_deny.status_code in (400, 403)
 
     # Админ может reject любую
-    req3 = make_request(employee=owner, status=Req.STATUS_PENDING)
+    req3 = make_request(employee=owner, status=RequestStatus.PENDING)
     aclient = auth_client(admin_user)
     r_admin = aclient.post(f"{API_BASE}{req3.id}/reject/", data={}, format="json")
     assert r_admin.status_code == 200
-    assert r_admin.json()["status"] == Req.STATUS_REJECTED
+    assert r_admin.json()["status"] == RequestStatus.REJECTED
 
 
 # ------------------------------------------------------------------------------
@@ -384,7 +384,7 @@ def test_comments_allowed_for_admin_and_manager(
 
     # --- Менеджер: добавляем право на добавление, теперь должно быть можно ---
     grant_model_perm(manager_view_only, "requests_app.add_requestcomment")
-    manager_view_only = _reload(manager_view_only) 
+    manager_view_only = _reload(manager_view_only)
 
     post_m_va = auth_client(manager_view_only).post(
         f"{API_BASE}{req.id}/comments/",
@@ -399,7 +399,7 @@ def test_comments_allowed_for_admin_and_manager(
     # --- Менеджер: только право добавления (без чтения) — ок ---
     manager_add_only = make_user(email="manager-comments-add@example.com")
     grant_model_perm(manager_add_only, "requests_app.add_requestcomment")
-    manager_view_only = _reload(manager_view_only) 
+    manager_view_only = _reload(manager_view_only)
 
     post_m_a = auth_client(manager_add_only).post(
         f"{API_BASE}{req.id}/comments/",
@@ -419,8 +419,8 @@ def test_comments_allowed_for_admin_and_manager(
 @pytest.mark.parametrize(
     "flt,expected_types",
     [
-        ("?type=vacation", {Req.TYPE_VACATION}),
-        ("?status=pending", {Req.STATUS_PENDING}),
+        ("?type=vacation", {RequestType.VACATION}),
+        ("?status=pending", {RequestStatus.PENDING}),
     ],
 )
 def test_filters_type_status_applied_within_scope(
@@ -434,8 +434,8 @@ def test_filters_type_status_applied_within_scope(
     """Фильтры type/status применяются поверх выбранной области (all/mine)."""
     u1 = make_user(email="fu1@example.com")
     u2 = make_user(email="fu2@example.com")
-    make_request(employee=u1, type_=Req.TYPE_VACATION, status=Req.STATUS_PENDING)
-    make_request(employee=u2, type_=Req.TYPE_SICK, status=Req.STATUS_REJECTED)
+    make_request(employee=u1, type_=RequestType.VACATION, status=RequestStatus.PENDING)
+    make_request(employee=u2, type_=RequestType.SICK_LEAVE, status=RequestStatus.REJECTED)
 
     client = auth_client(admin_user)
 

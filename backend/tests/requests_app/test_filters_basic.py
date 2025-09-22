@@ -9,6 +9,7 @@ pytestmark = pytest.mark.django_db
 
 def test_my_requests_filters_by_date_status_type(client, user, hr_user, login):
     from requests_app.models import Request
+    from requests_app.enums import RequestStatus, RequestType
 
     login(user)
 
@@ -16,24 +17,24 @@ def test_my_requests_filters_by_date_status_type(client, user, hr_user, login):
     r1 = baker.make(
         Request,
         employee=user,
-        status=Request.STATUS_PENDING,
-        type=Request.TYPE_VACATION,
+        status=RequestStatus.PENDING,
+        type=RequestType.VACATION,
         created_at=now - timedelta(days=10),
     )
     r2 = baker.make(
         Request,
         employee=user,
-        status=Request.STATUS_PENDING,  # сначала pending
-        type=Request.TYPE_SICK,
+        status=RequestStatus.PENDING,  # сначала pending
+        type=RequestType.SICK_LEAVE,
         created_at=now - timedelta(days=2),
     )
     # корректно апрувим (заполнит approver и decided_at)
     r2.approve(by_user=hr_user)
 
-    url = reverse("requests_app:my_requests")
+    url = reverse("requests:request_list")
     params = {
-        "status": Request.STATUS_APPROVED,
-        "type": Request.TYPE_SICK,
+        "status": RequestStatus.APPROVED,
+        "type": RequestType.SICK_LEAVE,
         "from": (now - timedelta(days=5)).date().isoformat(),
         "to": now.date().isoformat(),
     }

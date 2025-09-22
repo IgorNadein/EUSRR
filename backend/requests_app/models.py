@@ -9,7 +9,12 @@ from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .constants import MAX_ATTACHMENT_SIZE, SAFE_EXTENSIONS, SAFE_MIME_TYPES
+from .constants import (
+    MAX_ATTACHMENT_SIZE,
+    SAFE_EXTENSIONS,
+    SAFE_MIME_TYPES,
+)
+from .enums import FINAL_STATUS, RequestStatus, RequestType
 
 logger = logging.getLogger(__name__)
 
@@ -57,36 +62,6 @@ def attachment_mime_validator(value):
 class Request(models.Model):
     """Заявление сотрудника: тип, даты, статус, согласование и вложение."""
 
-    TYPE_VACATION = "vacation"
-    TYPE_SICK = "sick_leave"
-    TYPE_TRANSFER = "transfer"
-    TYPE_DISMISSAL = "dismissal"
-    TYPE_OTHER = "other"
-
-    TYPE_CHOICES = [
-        (TYPE_VACATION, _("Отпуск")),
-        (TYPE_SICK, _("Больничный")),
-        (TYPE_TRANSFER, _("Перевод")),
-        (TYPE_DISMISSAL, _("Увольнение")),
-        (TYPE_OTHER, _("Другое")),
-    ]
-
-    STATUS_DRAFT = "draft"
-    STATUS_PENDING = "pending"
-    STATUS_APPROVED = "approved"
-    STATUS_REJECTED = "rejected"
-    STATUS_CANCELLED = "cancelled"
-
-    STATUS_CHOICES = [
-        (STATUS_DRAFT, _("Черновик")),
-        (STATUS_PENDING, _("На рассмотрении")),
-        (STATUS_APPROVED, _("Одобрено")),
-        (STATUS_REJECTED, _("Отклонено")),
-        (STATUS_CANCELLED, _("Отменено")),
-    ]
-
-    FINAL_STATUS_SET = {STATUS_APPROVED, STATUS_REJECTED, STATUS_CANCELLED}
-
     employee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -109,18 +84,18 @@ class Request(models.Model):
         verbose_name=_("Отдел"),
     )
 
-    type = models.CharField(_("Тип заявления"), choices=TYPE_CHOICES, max_length=32)
+    type = models.CharField(
+        _("Тип заявления"), choices=RequestType.choices, max_length=32
+    )
     title = models.CharField(_("Тема"), max_length=200, blank=True)
     date_from = models.DateField(_("Дата начала"), null=True, blank=True)
     date_to = models.DateField(_("Дата окончания"), null=True, blank=True)
     comment = models.TextField(_("Комментарий"), blank=True)
 
-    status = models.CharField(
-        _("Статус"),
-        choices=STATUS_CHOICES,
-        max_length=16,
-        default=STATUS_PENDING,
-    )
+    status = models.CharField(_("Статус"),
+                              choices=RequestStatus.choices,
+                              max_length=16,
+                              default=RequestStatus.PENDING)
 
     attachment = models.FileField(
         _("Вложение"),
@@ -166,24 +141,22 @@ class Request(models.Model):
             ),
             models.CheckConstraint(
                 name="request_approver_required_on_decision",
-                condition=Q(status__in=["approved", "rejected"], approver__isnull=False)
-                | Q(
-                    status__in=["draft", "pending", "cancelled"], approver__isnull=True
-                ),
+                condition=Q(status__in=[RequestStatus.APPROVED, RequestStatus.REJECTED],
+                            approver__isnull=False)
+                | Q(status__in=[RequestStatus.DRAFT, RequestStatus.PENDING, RequestStatus.CANCELLED],
+                    approver__isnull=True),
             ),
         ]
 
     def clean(self):
-        if self.type in {self.TYPE_VACATION, self.TYPE_SICK} and not (
+        if self.type in {RequestType.VACATION, RequestType.SICK_LEAVE} and not (
             self.date_from and self.date_to
         ):
+
             raise ValidationError(
                 _("Для выбранного типа укажите даты начала и окончания.")
             )
-        if (
-            self.type in {self.TYPE_TRANSFER, self.TYPE_DISMISSAL}
-            and not self.date_from
-        ):
+        if self.type in {RequestType.TRANSFER, RequestType.DISMISSAL} and not self.date_from:
             raise ValidationError(_("Для перевода/увольнения укажите дату начала."))
 
         if self.approver_id and self.approver_id == self.employee_id:
@@ -196,40 +169,36 @@ class Request(models.Model):
 
     @property
     def is_final(self):
-        return self.status in self.FINAL_STATUS_SET
+        return self.status in FINAL_STATUS
 
     def approve(self, by_user):
-        self.status = self.STATUS_APPROVED
+        self.status = RequestStatus.APPROVED
         self.approver = by_user
         self.decided_at = timezone.now()
         self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
 
     def reject(self, by_user):
-        self.status = self.STATUS_REJECTED
+        self.status = RequestStatus.REJECTED
         self.approver = by_user
         self.decided_at = timezone.now()
         self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
 
     def cancel(self):
-        self.status = self.STATUS_CANCELLED
+        self.status = RequestStatus.CANCELLED
         if self.approver_id is not None:
             self.approver = None
         self.decided_at = timezone.now()
         self.save(update_fields=["status", "approver", "decided_at", "updated_at"])
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
+        """Синхронизация decided_at/approver с текущим статусом.
+
+        Raises:
+            ValueError: Если нарушена согласованность полей (редко).
         """
-        Страховка на случай изменения статуса напрямую:
-        - финальные статусы → ставим decided_at, если пусто;
-        - draft/pending/cancelled → чистим approver (в синхроне с БД-constraint).
-        """
-        if self.status in self.FINAL_STATUS_SET and not self.decided_at:
+        if self.status in FINAL_STATUS and not self.decided_at:
             self.decided_at = timezone.now()
-        if (
-            self.status
-            in {self.STATUS_DRAFT, self.STATUS_PENDING, self.STATUS_CANCELLED}
-            and self.approver_id
-        ):
+        if self.status in {RequestStatus.DRAFT, RequestStatus.PENDING, RequestStatus.CANCELLED} and self.approver_id:
             self.approver = None
         super().save(*args, **kwargs)
 

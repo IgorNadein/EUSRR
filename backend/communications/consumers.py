@@ -2,11 +2,11 @@
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
-from django.db.models import Q
-from .models import Chat, Message, ChatReadState
+from .models import Chat, ChatReadState, Message
 
 
 def serialize_message(m: Message) -> dict:

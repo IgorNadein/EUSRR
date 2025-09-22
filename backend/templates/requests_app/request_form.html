@@ -12,7 +12,7 @@
       <div class="feed-header">
         <i class="bi-clipboard-plus fs-2 text-primary"></i>
         <h2 class="title mb-0">Новое заявление</h2>
-        <a href="{% url 'requests_app:my_requests' %}" class="ms-auto btn btn-ghost">
+        <a href="{% url 'requests:request_list' %}" class="ms-auto btn btn-ghost">
           <i class="bi-arrow-left"></i> Мои заявления
         </a>
       </div>
@@ -38,7 +38,7 @@
           <button type="submit" class="btn btn-primary">
             <i class="bi-check-circle"></i> Отправить заявление
           </button>
-          <a href="{% url 'requests_app:my_requests' %}" class="btn btn-ghost">
+          <a href="{% url 'requests:request_list' %}" class="btn btn-ghost">
             Отмена
           </a>
         </div>
