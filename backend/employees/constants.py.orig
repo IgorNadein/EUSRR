@@ -46,4 +46,8 @@ class DeptPerm:
         (MANAGE_FEED, "Редактировать публикации отдела"),
         (VIEW_REQUESTCOMMENT, "Просмотр комментариев по заявлениям"),
         (ADD_REQUESTCOMMENT, "Добавление коментариев по заявлениям"),
+<<<<<<< HEAD
     )
+=======
+    )
+>>>>>>> origin/feat/ldap-writeback

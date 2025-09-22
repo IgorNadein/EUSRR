@@ -181,6 +181,24 @@ class Employee(AbstractUser):
     email_verified = models.BooleanField("Email подтверждён", default=False)
     email_activation_code = models.CharField(max_length=6, blank=True, null=True)
 
+    ldap_guid = models.CharField(
+        "LDAP GUID",
+        max_length=64,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Устойчивый ID из LDAP (entryUUID/objectGUID в hex/строке).",
+    )
+    ldap_dn = models.CharField(
+        "LDAP DN",
+        max_length=512,
+        null=True,
+        blank=True,
+        help_text="Текущий DN записи в каталоге (для отладки/трассировки).",
+    )
+    last_ldap_modify_ts = models.CharField("LDAP modify ts", max_length=64, null=True, blank=True)
+    last_ldap_sync_at = models.DateTimeField("Последняя успешная запись в LDAP", null=True, blank=True)
+
     objects = EmployeeManager()
 
     USERNAME_FIELD = "email"
@@ -247,6 +265,26 @@ class Employee(AbstractUser):
             self.save()
             return True
         return False
+
+    def mark_ldap_managed(self, guid: str, dn: str | None = None) -> None:
+        """Помечает профиль как управляемый LDAP и сохраняет связку.
+
+        Args:
+            guid: Устойчивый идентификатор (entryUUID/objectGUID) из LDAP.
+            dn: Distinguished Name (может меняться при перемещениях).
+
+        Raises:
+            ValueError: Если guid пуст.
+        """
+        if not guid:
+            raise ValueError("ldap_guid обязателен")
+        self.ldap_guid = guid
+        self.ldap_dn = dn or self.ldap_dn
+        self.is_ldap_managed = True
+        # для LDAP-пользователей пароль локально не нужен
+        if hasattr(self, "set_unusable_password"):
+            self.set_unusable_password()
+        self.save(update_fields=["ldap_guid", "ldap_dn", "is_ldap_managed", "password"])
 
 
 class EmployeeAction(models.Model):

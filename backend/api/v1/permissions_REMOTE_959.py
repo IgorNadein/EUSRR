@@ -318,12 +318,7 @@ class IsSelfOrStaff(BasePermission):
         • Добавлена поддержка кейса "объект = сам пользователь" (self-update).
     """
 
-    DEFAULT_OWNER_ID_ATTRS: Tuple[str, ...] = (
-        "employee_id",
-        "author_id",
-        "user_id",
-        "owner_id",
-    )
+    DEFAULT_OWNER_ID_ATTRS: Tuple[str, ...] = ("employee_id", "author_id", "user_id", "owner_id")
     DEFAULT_OWNER_OBJ_ATTRS: Tuple[str, ...] = ("employee", "author", "user", "owner")
 
     def has_permission(self, request: Request, view) -> bool:
@@ -367,17 +362,13 @@ class IsSelfOrStaff(BasePermission):
             return True
 
         # 1) *_id поля владельца
-        owner_id_attrs: Iterable[str] = getattr(
-            view, "owner_id_attrs", self.DEFAULT_OWNER_ID_ATTRS
-        )
+        owner_id_attrs: Iterable[str] = getattr(view, "owner_id_attrs", self.DEFAULT_OWNER_ID_ATTRS)
         for attr in owner_id_attrs:
             if getattr(obj, attr, None) == user.id:
                 return True
 
         # 2) связанные owner-объекты
-        owner_obj_attrs: Iterable[str] = getattr(
-            view, "owner_obj_attrs", self.DEFAULT_OWNER_OBJ_ATTRS
-        )
+        owner_obj_attrs: Iterable[str] = getattr(view, "owner_obj_attrs", self.DEFAULT_OWNER_OBJ_ATTRS)
         for attr in owner_obj_attrs:
             owner = getattr(obj, attr, None)
             if owner is not None and getattr(owner, "id", None) == user.id:
@@ -385,9 +376,7 @@ class IsSelfOrStaff(BasePermission):
 
         # 3) self-object: редактирование собственной учётки (Employee ↔ Employee)
         try:
-            if obj.__class__ is user.__class__ and getattr(obj, "pk", None) == getattr(
-                user, "pk", None
-            ):
+            if obj.__class__ is user.__class__ and getattr(obj, "pk", None) == getattr(user, "pk", None):
                 return True
         except Exception:
             # максимально безопасно: не пускаем, если что-то пошло не так

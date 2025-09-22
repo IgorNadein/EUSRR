@@ -212,4 +212,8 @@ class DeptComments(AdminOrDeptAllowed):
             return DeptPerm.VIEW_REQUESTCOMMENT
         if request.method == "POST":
             return DeptPerm.ADD_REQUESTCOMMENT
+<<<<<<< HEAD
         return None
+=======
+        return None
+>>>>>>> origin/feat/ldap-writeback

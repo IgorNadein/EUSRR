@@ -7,11 +7,8 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db.models import Model
 from employees.constants import DeptPerm
 from employees.models import Department, EmployeeDepartment
-from rest_framework.permissions import (
-    SAFE_METHODS,
-    BasePermission,
-    DjangoModelPermissions,
-)
+from rest_framework.permissions import (SAFE_METHODS, BasePermission,
+                                        DjangoModelPermissions)
 from rest_framework.request import Request
 
 MANAGE_PERM = "manage_department"
