@@ -18,7 +18,6 @@
   .req-actions{ display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
   .badge-status{ font-weight:600; }
   .text-mono{ font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .ios-page{ max-width: 1120px; }
 </style>
 
 <style>
@@ -113,6 +112,15 @@
   }
 </style>
 
+<style>
+  .comment-new textarea {
+    resize: vertical;
+    max-height: 300px;
+    min-height: 100px;
+    overflow-y: auto;
+  }
+</style>
+
 {% endblock %}
 
 {% block content %}
@@ -122,6 +130,7 @@
   <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
     <i class="bi-clipboard-check fs-2 text-primary"></i>
     <h2 class="title ios-title mb-0">Заявления</h2>
+
       <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
         {% if can_process or user.is_staff or user.is_superuser %}
           <!-- Переключатель области (Мои / Все) -->
@@ -148,12 +157,11 @@
 
   {# ===== Фильтры ===== #}
   <form class="feed-new mb-3" method="get">
-    <div class="row g-2 align-items-end">
+    <div class="row g-2 align-items-center">
       <div class="col-12 col-sm-4">
         <label class="form-label mb-1">Тип</label>
         <select name="type" class="form-select">
           <option value="">— Любой —</option>
-          {# Значения из Request.TYPE_CHOICES #}
           <option value="vacation"    {% if filters.type == 'vacation' %}selected{% endif %}>Отпуск</option>
           <option value="sick_leave"  {% if filters.type == 'sick_leave' %}selected{% endif %}>Больничный</option>
           <option value="transfer"    {% if filters.type == 'transfer' %}selected{% endif %}>Перевод</option>
@@ -172,13 +180,14 @@
           <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>Отменено</option>
         </select>
       </div>
-      <div class="col-12 col-sm-4">
-        <label class="form-label mb-1 d-block"> </label>
-        <div class="d-flex gap-2">
-          <input type="hidden" name="view" value="{{ scope }}">
-          <button class="btn btn-outline-primary " type="submit"><i class="bi-funnel me-1"></i></button>
-          <a class="btn btn-outline-secondary" href="?view={{ scope }}"><i class="bi-x-lg me-1"></i></a>
-        </div>
+      <div class="col-12 col-sm-4 d-flex justify-content-end gap-2">
+        <input type="hidden" name="view" value="{{ scope }}">
+        <button class="btn btn-outline-primary d-flex align-items-center justify-content-center" type="submit">
+          <i class="bi-funnel"></i>
+        </button>
+        <a class="btn btn-outline-secondary d-flex align-items-center justify-content-center" href="?view={{ scope }}">
+          <i class="bi-x-lg"></i>
+        </a>
       </div>
     </div>
   </form>
@@ -187,56 +196,51 @@
   <div id="reqList" class="feed-card mb-3">
     {% if requests %}
       {% for obj in requests %}
-        <div class="req-row">
-          <div class="feed-hd">
+        <article class="req-row" id="req-{{ obj.id }}">
+          <header class="feed-hd">
             <div class="feed-ico"><i class="bi-journal-text"></i></div>
-
-            <div class="d-flex flex-column">
+            <div class="feed-meta d-flex flex-column">
               <div class="d-flex align-items-center flex-wrap gap-2">
-                <strong>
-                  {{ obj.title|default:"Без заголовка" }}
-                </strong>
-                {# === Тип (локализация кода в русскую метку) === #}
-                {% if obj.type %}
-                {% with tp=obj.type|lower %}
-                    <span class="badge text-bg-light" title="{{ obj.type }}">
+                <strong>{{ obj.title|default:"Без заголовка" }}</strong>
+                {% if obj.employee %}
+                  <span class="small text-secondary">
+                    <i class="bi-person-circle me-1"></i>
+                    {% if obj.employee.id == user.id %}
+                      <a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>
+                    {% else %}
+                      <a href="{% url 'employees:employee_detail' obj.employee.id %}" class="text-decoration-none">
+                        {{ obj.employee.full_name|default:obj.employee.display_name|default:"Сотрудник" }}
+                      </a>
+                    {% endif %}
+                  </span>
+                {% endif %}
+                {% if obj.type %}{% with tp=obj.type|lower %}
+                  <span class="badge text-bg-light" title="{{ obj.type }}">
                     {% if tp == 'vacation' %}Отпуск
                     {% elif tp == 'sick_leave' %}Больничный
                     {% elif tp == 'transfer' %}Перевод
                     {% elif tp == 'dismissal' %}Увольнение
                     {% elif tp == 'other' %}Другое
                     {% else %}{{ obj.type }}{% endif %}
-                    </span>
-                {% endwith %}
-                {% endif %}
-
-                {# === Статус (и цвет, и переведённая метка) === #}
-                {% if obj.status %}
-                {% with st=obj.status|lower %}
-                    <span class="badge badge-status
-                                {% if st == 'approved' %} text-bg-success
-                                {% elif st == 'rejected' %} text-bg-danger
-                                {% elif st == 'pending' %} text-bg-warning
-                                {% elif st == 'cancelled' %} text-bg-secondary
-                                {% else %} text-bg-light{% endif %}"
-                        title="{{ obj.status }}">
+                  </span>
+                {% endwith %}{% endif %}
+                {% if obj.status %}{% with st=obj.status|lower %}
+                  <span class="badge badge-status
+                    {% if st == 'approved' %} text-bg-success
+                    {% elif st == 'rejected' %} text-bg-danger
+                    {% elif st == 'pending' %} text-bg-warning
+                    {% elif st == 'cancelled' %} text-bg-secondary
+                    {% else %} text-bg-light{% endif %}" title="{{ obj.status }}">
                     {% if st == 'draft' %}Черновик
                     {% elif st == 'pending' %}На рассмотрении
                     {% elif st == 'approved' %}Одобрено
                     {% elif st == 'rejected' %}Отклонено
                     {% elif st == 'cancelled' %}Отменено
                     {% else %}{{ obj.status }}{% endif %}
-                    </span>
-                {% endwith %}
-                {% endif %}
-                {% if obj.attachment %}
-                  <a href="{{ obj.attachment }}" class="link-secondary d-inline-flex align-items-center gap-1">
-                    <i class="bi-paperclip"></i><span>Вложение</span>
-                  </a>
-                {% endif %}
+                  </span>
+                {% endwith %}{% endif %}
               </div>
-
-              <div class="text-body-secondary small d-flex flex-wrap gap-3 mt-1">
+              <div class="small text-secondary d-flex flex-wrap gap-3 mt-1">
                 {% if obj.date_from or obj.date_to %}
                   <span class="text-mono"><i class="bi-calendar3 me-1"></i>
                     {{ obj.date_from|default:"—" }} → {{ obj.date_to|default:"—" }}
@@ -253,99 +257,83 @@
                 {% endif %}
               </div>
             </div>
-
-            <!-- Тогглер панели действий -->
-            <div class="mt-2 d-flex justify-content-end">
-              <button
-                class="btn btn-outline-secondary btn-sm btn-review d-inline-flex align-items-center gap-1 action-toggle"
-                type="button"
-                data-bs-toggle="collapse"
-                data-bs-target="#reqActions-{{ obj.id }}"
-                aria-expanded="false"
-                aria-controls="reqActions-{{ obj.id }}">
-                <i class="bi-eye"></i><span>Рассмотреть</span><i class="bi-chevron-down chev ms-1"></i>
+            {% if obj.employee.id != user.id and can_process %}
+            <div class="ms-auto d-flex gap-1">
+              <!-- Одобрить -->
+              <button type="button" class="btn btn-ghost btn-sm text-success"
+                      data-bs-toggle="modal" data-bs-target="#reqApproveModal"
+                      data-id="{{ obj.id }}" title="Одобрить">
+                <i class="bi-hand-thumbs-up"></i>
+              </button>
+              <!-- Отклонить -->
+              <button type="button" class="btn btn-ghost btn-sm text-danger"
+                      data-bs-toggle="modal" data-bs-target="#reqRejectModal"
+                      data-id="{{ obj.id }}" title="Отклонить">
+                <i class="bi-hand-thumbs-down"></i>
               </button>
             </div>
-
-
-            
-          </div>
-          <!-- Выезжающая панель действий -->
-          <div id="reqActions-{{ obj.id }}" class="collapse" data-bs-parent="#reqList">
-            <div class="req-drawer">
-              <div class="req-drawer__inner">
-                <div class="req-drawer__head">
-                  <div class="req-drawer__title">Действия с заявлением #{{ obj.id }}</div>
-                  {% if obj.status %}
-                    {% with st=obj.status|lower %}
-                      <span class="badge
-                        {% if st == 'approved' %} text-bg-success
-                        {% elif st == 'rejected' %} text-bg-danger
-                        {% elif st == 'pending' %} text-bg-warning
-                        {% elif st == 'cancelled' %} text-bg-secondary
-                        {% else %} text-bg-light{% endif %}">
-                        {% if st == 'draft' %}Черновик{% elif st == 'pending' %}На рассмотрении{% elif st == 'approved' %}Одобрено{% elif st == 'rejected' %}Отклонено{% elif st == 'cancelled' %}Отменено{% else %}{{ obj.status }}{% endif %}
-                      </span>
-                    {% endwith %}
-                  {% endif %}
-                </div>
-                
-                
-                <div class="req-actions-grid">
-                  <!-- Комментарии -->
-                  <a class="btn btn-outline-secondary btn-sm"
-                    href="?view={{ scope }}{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}&comments_for={{ obj.id }}">
-                    <i class="bi-chat-left-text me-1"></i>Комментарии
-                  </a>
-                  {% if obj.status and obj.status|lower != 'approved' and obj.status|lower != 'rejected' and obj.status|lower != 'cancelled' %}
-                    <!-- Редактировать -->
-                    <button type="button" class="btn btn-outline-primary btn-sm"
-                            data-bs-toggle="modal" data-bs-target="#reqEditModal"
-                            data-id="{{ obj.id }}"
-                            data-title="{{ obj.title|default_if_none:'' }}"
-                            data-type="{{ obj.type|default_if_none:'' }}"
-                            data-date_from="{{ obj.date_from|default_if_none:'' }}"
-                            data-date_to="{{ obj.date_to|default_if_none:'' }}"
-                            data-comment="{{ obj.comment|default_if_none:'' }}"
-                            data-status="{{ obj.status|lower }}">
-                      <i class="bi-pencil-square me-1"></i>Изменить
-                    </button>
-
-                    {% if can_process %}
-                      <!-- Основные процессные -->
-                      <button type="button" class="btn btn-soft-success btn-sm"
-                              data-bs-toggle="modal" data-bs-target="#reqApproveModal"
-                              data-id="{{ obj.id }}">
-                        <i class="bi-check-lg me-1"></i>Одобрить
-                      </button>
-                      <button type="button" class="btn btn-soft-danger btn-sm"
-                              data-bs-toggle="modal" data-bs-target="#reqRejectModal"
-                              data-id="{{ obj.id }}">
-                        <i class="bi-x-lg me-1"></i>Отклонить
-                      </button>
-                    {% endif %}
-                    <button type="button" class="btn btn-outline-secondary btn-sm"
-                            data-bs-toggle="modal" data-bs-target="#reqCancelModal"
-                            data-id="{{ obj.id }}">
-                      <i class="bi-slash-circle me-1"></i>Отменить
-                    </button>
-                  {% endif %}
-
-                  <!-- Destructive справа/ниже на маленьких экранах -->
-                  <button type="button" class="btn btn-outline-danger btn-sm"
-                          data-bs-toggle="modal" data-bs-target="#reqDeleteModal"
-                          data-id="{{ obj.id }}">
-                    <i class="bi-trash3 me-1"></i>Удалить
-                  </button>
-                </div>
-              </div>
+            {% endif %}
+            {% if obj.employee.id == user.id %}
+            <div class="ms-auto d-flex gap-1">
+              <button type="button" class="btn btn-ghost btn-sm text-primary"
+                      data-bs-toggle="modal" data-bs-target="#reqEditModal"
+                      data-id="{{ obj.id }}"
+                      data-title="{{ obj.title|default_if_none:'' }}"
+                      data-type="{{ obj.type|default_if_none:'' }}"
+                      data-date_from="{{ obj.date_from|default_if_none:'' }}"
+                      data-date_to="{{ obj.date_to|default_if_none:'' }}"
+                      data-comment="{{ obj.comment|default_if_none:'' }}"
+                      data-status="{{ obj.status|lower }}" title="Изменить">
+                <i class="bi-pencil"></i>
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm text-secondary"
+                      data-bs-toggle="modal" data-bs-target="#reqCancelModal"
+                      data-id="{{ obj.id }}" title="Отменить">
+                <i class="bi-slash-circle"></i>
+              </button>
             </div>
-          </div>
+            {% endif %}
+          </header>
 
           {% if obj.comment %}
             <div class="mt-2 small text-body-secondary">{{ obj.comment }}</div>
           {% endif %}
-        </div>
+
+          <footer class="feed-actions border-0 mt-2 d-flex align-items-center gap-2">
+            <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#rcoll-{{ obj.id }}"
+                    aria-controls="rcoll-{{ obj.id }}"
+                    aria-expanded="false">
+              <i class="bi-chat-dots"></i>
+              <span data-role="count">{{ obj.comments_count|default:0 }}</span>
+              <span class="txt-close">Скрыть</span>
+            </button>
+            {% if obj.attachment %}
+              <a href="{{ obj.attachment }}" class="btn btn-ghost d-inline-flex align-items-center gap-1">
+                <i class="bi-paperclip"></i><span>Вложение</span>
+              </a>
+            {% endif %}
+          </footer>
+
+          <div id="rcoll-{{ obj.id }}" class="collapse" data-request-id="{{ obj.id }}" data-comments-collapse>
+            <div class="comments-block p-3">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <strong class="small mb-0">Комментарии</strong>
+                <div class="spinner-border spinner-border-sm text-secondary" role="status" style="display:none;"></div>
+              </div>
+              <div class="comments-list" data-role="list"></div>
+              <form class="comment-new mt-3" data-role="form" autocomplete="off">
+                {% csrf_token %}
+                <div class="input-group input-group-sm">
+                  <textarea class="form-control" rows="3" placeholder="Написать…" data-role="text"></textarea>
+                  <button class="btn btn-outline-primary" type="submit" title="Отправить"><i class="bi-send"></i></button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </article>
       {% endfor %}
     {% else %}
       <div class="p-4 text-center text-body-secondary">Нет заявлений.</div>
@@ -689,5 +677,112 @@
       modal.show();
     });
   {% endif %}
+</script>
+
+<script>
+(function(){
+  const renderComment = (c) => {
+    const author = (c.author && (c.author.full_name || c.author.display_name || c.author.username)) || '—';
+    return `<div class="comment-item">`+
+           `<div class="comment-meta"><span class="comment-author">${author}</span>`+
+           `<span class="text-mono">${c.created_at || ''}</span></div>`+
+           `<div class="comment-text">${escapeHtml(c.text || '')}</div>`+
+           `</div>`;
+  };
+  const escapeHtml = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const updateCount = (reqId, count) => {
+    const btn = document.querySelector(`[data-bs-target="#rcoll-${reqId}"] [data-role="count"]`)
+              || document.querySelector(`#req-${reqId} [data-role="count"]`);
+    if(btn) btn.textContent = count;
+  };
+
+  const loadComments = async (collapseEl) => {
+    const reqId = collapseEl.getAttribute('data-request-id');
+    const block = collapseEl.querySelector('.comments-block');
+    const listEl = block.querySelector('[data-role=list]');
+    const spinner = block.querySelector('.spinner-border');
+    if(collapseEl.dataset.loaded === '1') return;
+    spinner.style.display = 'inline-block';
+    try {
+      const resp = await fetch(`{% url 'requests:request_comments' 0 %}`.replace('/0/', `/${reqId}/`), { headers:{ 'Accept':'application/json' } });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const data = await resp.json();
+      listEl.innerHTML = data.length ? data.map(renderComment).join('') : '<div class="small text-body-secondary">Комментариев нет.</div>';
+      collapseEl.dataset.loaded = '1';
+      updateCount(reqId, data.length);
+    } catch(e){
+      listEl.innerHTML = '<div class="small text-danger">Не удалось загрузить.</div>';
+    } finally { spinner.style.display = 'none'; }
+  };
+
+  const postComment = async (block, text) => {
+    const reqId = block.closest('[data-comments-collapse]').getAttribute('data-request-id');
+    const form = block.querySelector('form[data-role="form"]');
+    const formData = new FormData(form);
+    formData.set('text', text);
+    const csrfToken = form.querySelector('input[name="csrfmiddlewaretoken"]').value;
+    const url = `{% url 'requests:request_comment_add' 0 %}`.replace('/0/', `/${reqId}/`);
+    const resp = await fetch(url, { method: 'POST', body: formData, headers:{ 'X-CSRFToken': csrfToken }, credentials:'same-origin' });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    return resp.json();
+  };
+
+  document.addEventListener('show.bs.collapse', (e) => {
+    if(!e.target.matches('[data-comments-collapse]')) return;
+    loadComments(e.target);
+  });
+
+  document.addEventListener('submit', async (e) => {
+    const form = e.target.closest('[data-comments-collapse] form[data-role=form]');
+    if(!form) return;
+    e.preventDefault();
+    const block = form.closest('.comments-block');
+    const textarea = form.querySelector('[data-role=text]');
+    const txt = (textarea.value || '').trim();
+    if(!txt) return;
+    form.querySelector('button').disabled = true;
+    try {
+      const saved = await postComment(block, txt);
+      const listEl = block.querySelector('[data-role=list]');
+      if(listEl.querySelector('.text-body-secondary')) listEl.innerHTML = '';
+      listEl.insertAdjacentHTML('beforeend', renderComment(saved));
+      textarea.value='';
+      const reqId = block.closest('[data-comments-collapse]').getAttribute('data-request-id');
+      updateCount(reqId, listEl.querySelectorAll('.comment-item').length);
+    } catch(err){
+      alert('Ошибка отправки комментария');
+    } finally { form.querySelector('button').disabled = false; }
+  });
+})();
+
+// Предзагрузка количества комментариев, чтобы заменить 0 фактическим числом
+document.addEventListener('DOMContentLoaded', () => {
+  const fetchCount = async (reqId, span) => {
+    try {
+      const resp = await fetch(`{% url 'requests:request_comments' 0 %}`.replace('/0/', `/${reqId}/`), { headers:{ 'Accept':'application/json' } });
+      if(!resp.ok) return;
+      const data = await resp.json();
+      span.textContent = Array.isArray(data) ? data.length : 0;
+    } catch(e){ /* ignore */ }
+  };
+  document.querySelectorAll('[data-comments-collapse]').forEach(el => {
+    const reqId = el.getAttribute('data-request-id');
+    const span = document.querySelector(`[data-bs-target="#rcoll-${reqId}"] [data-role="count"]`);
+    if(span && span.textContent.trim() === '0') fetchCount(reqId, span);
+  });
+});
+</script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const textareas = document.querySelectorAll('.comment-new textarea');
+    textareas.forEach(textarea => {
+      textarea.addEventListener('input', () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+      });
+    });
+  });
 </script>
 {% endblock %}
