@@ -1,27 +1,25 @@
 # eusrr_backend/auth_backends.py
 from __future__ import annotations
 
+import logging
 import re
-from typing import Optional, Any
+from typing import Any, List, Optional, Tuple
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.models import Permission
-from employees.models import Department, Employee, EmployeeDepartment
 from django.http import HttpRequest
+from django.utils import timezone
+from employees.ldap.utils import esc_filter
+from employees.models import Department, Employee, EmployeeDepartment
+from employees.utils import _normalize_phone
+from ldap3 import SUBTREE, Connection, Server
+from ldap3.core.exceptions import LDAPBindError, LDAPSocketOpenError
 
-from ldap3 import ALL, SUBTREE, Connection, Server
+logger = logging.getLogger(__name__)
 
 UserModel = get_user_model()
-
-# phonenumbers — опционально, но очень желательно: pip install phonenumbers
-try:
-    import phonenumbers
-    from phonenumbers import PhoneNumberFormat
-except Exception:
-    phonenumbers = None
-    PhoneNumberFormat = None
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -30,40 +28,15 @@ def _looks_like_email(s: str) -> bool:
     return bool(EMAIL_RE.match(s or ""))
 
 
-def _normalize_phone(raw: str) -> Optional[str]:
-    """
-    Приводим номер к формату E.164 (+79991234567).
-    Возвращаем None, если распарсить не удалось или пакет не установлен.
-    """
-    if not raw:
-        return None
-    if phonenumbers is None:
-        # fallback — без нормализации
-        return str(raw).strip()
-    region = getattr(settings, "PHONE_DEFAULT_REGION", "RU")
-    try:
-        pn = phonenumbers.parse(str(raw), region)
-        if not phonenumbers.is_valid_number(pn):
-            return None
-        return phonenumbers.format_number(pn, PhoneNumberFormat.E164)
-    except Exception:
-        return None
+def _model_has_field(model, field_name: str) -> bool:
+    """Проверяет наличие поля модели по имени (по _meta)."""
+    return any(getattr(f, "name", None) == field_name for f in model._meta.get_fields())
 
 
-def _detect_phone_field() -> Optional[str]:
-    """
-    Определяем имя поля телефона в модели Employee.
-    Поддерживаем распространённые варианты.
-    """
-    candidates = ("phone", "phone_number", "mobile", "msisdn", "tel")
-    field_names = {f.name for f in Employee._meta.get_fields()}
-    for name in candidates:
-        if name in field_names:
-            return name
-    return None
-
-
-PHONE_FIELD = _detect_phone_field()
+_DEFAULT_PHONE_FIELD = getattr(settings, "AUTH_PHONE_FIELD", "phone_number")
+PHONE_FIELD: Optional[str] = (
+    _DEFAULT_PHONE_FIELD if _model_has_field(UserModel, _DEFAULT_PHONE_FIELD) else None
+)
 
 
 class EmailOrPhoneBackend(ModelBackend):
@@ -106,222 +79,397 @@ class EmailOrPhoneBackend(ModelBackend):
         return None
 
 
-
 class LDAP3Backend(ModelBackend):
-    """LDAP-аутентификация через ldap3, поддержка логина по email или телефону.
+    """LDAP-аутентификация через ldap3 с логином по email/телефону/uid.
 
-    Правила сопоставления:
-      • Входная строка (identifier) может быть email или телефоном.
-      • LDAP-фильтр ищет по uid/mail и, при наличии E.164, по mobile/telephoneNumber.
-      • В БД ищем пользователя прежде всего по email из LDAP (USERNAME_FIELD='email').
-        Если email отсутствует — ищем по телефону (E.164) в поле PHONE_FIELD.
-      • Автосоздание выключено по умолчанию (LDAP_AUTO_CREATE=False), чтобы не плодить записи.
-        Включайте только если уверены, что сможете заполнить обязательные поля модели.
+    Особенности:
+        * Поиск DN сервисной учёткой (service bind), затем проверка пароля user bind.
+        * Автосоздание локального пользователя (опционально).
+        * Лёгкая синхронизация профиля (имя/фамилия/email/телефон/DN/GUID).
 
     Безопасность:
-      • Если локальный пользователь найден, но is_active=False и LDAP_RESPECT_IS_ACTIVE=True — не пускаем.
-      • Пароль в БД не используем/не трогаем — проверка идёт через LDAP bind.
+        * Пароли не логируются.
+        * Рекомендуется LDAPS/StartTLS с проверкой сертификата.
+
     """
 
     def authenticate(
         self,
         request,
-        username: str | None = None,
-        password: str | None = None,
-        **kwargs,
-    ) -> Optional[UserModel]:
-        """Аутентифицирует по identifier (email/телефон) и паролю.
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        **kwargs: Any,
+    ):
+        """Аутентифицирует пользователя через LDAP/AD.
+
+        Логика:
+            1) Валидирует входные данные и настройки.
+            2) Service bind -> поиск записи пользователя (DN) по идентификатору/телефону.
+            3) User bind -> проверка пароля.
+            4) Поиск/создание локального пользователя и лёгкая синхронизация профиля.
 
         Args:
-            request: HttpRequest или None.
-            username: Идентификатор (email/телефон/uid — что передал фронт).
-            password: Пароль.
+            request: Django HttpRequest или None.
+            username: Идентификатор (может быть email/телефон/uid).
+            password: Пароль пользователя.
+            **kwargs: Могут содержать email/login/USERNAME_FIELD.
 
         Returns:
-            Optional[UserModel]: Пользователь при успехе, иначе None.
+            User | None: Аутентифицированный пользователь или None при неудаче.
 
         Raises:
-            Ничего не бросает — при ошибке/несовпадении возвращает None.
+            None: Метод перехватывает ошибки LDAP/сети и возвращает None при сбое.
         """
         identifier = (
-            username
-            or kwargs.get("email")
-            or kwargs.get("login")
-            or kwargs.get(getattr(UserModel, "USERNAME_FIELD", "email"))
+            (username or "")
+            or (kwargs.get("email") or "")
+            or (kwargs.get("login") or "")
+            or (kwargs.get(getattr(UserModel, "USERNAME_FIELD", "email")) or "")
+        ).strip()
+
+        logger.debug(
+            "LDAP3Backend.authenticate called: identifier_provided=%s, password_provided=%s, LDAP_ENABLED=%s",
+            bool(identifier),
+            bool(password),
+            getattr(settings, "LDAP_ENABLED", False),
         )
+
         if (
             not identifier
             or not password
             or not getattr(settings, "LDAP_ENABLED", False)
         ):
-            return None
-        if Connection is None or Server is None:
+            logger.debug("Fast-exit: identifier/password missing or LDAP disabled")
             return None
 
-        # Подготовим данные для фильтра: email/сырой телефон/E.164
-        raw = str(identifier).strip()
-        is_email = _looks_like_email(raw)
-        e164 = _normalize_phone(raw)  # ваша утилита; может вернуть None
-
-        uri = getattr(settings, "LDAP_URI", None)
-        user_base = getattr(settings, "LDAP_USER_BASE", None)
+        uri = getattr(settings, "LDAP_URI", "")
+        user_base = getattr(settings, "LDAP_USERS_AUTH", None) or getattr(
+            settings, "LDAP_USER_BASE", None
+        )
         bind_dn = getattr(settings, "LDAP_BIND_DN", "")
         bind_pw = getattr(settings, "LDAP_BIND_PASSWORD", "")
-        tpl = getattr(
-            settings, "LDAP_USER_FILTER", "(|(uid={username})(mail={username}))"
+
+        base_tpl = getattr(
+            settings,
+            "LDAP_USER_FILTER",
+            "(|(uid={username})(mail={username}))",
         )
-        phone_attrs: tuple[str, ...] = tuple(
+        phone_attrs: Tuple[str, ...] = tuple(
             getattr(settings, "LDAP_PHONE_ATTRS", ("mobile", "telephoneNumber"))
         )
+
         if not uri or not user_base:
+            logger.warning("Fast-exit: LDAP_URI or LDAP_USERS_AUTH not configured")
             return None
 
-        def _esc(v: str) -> str:
-            # Простейший экранизатор для LDAP фильтра
-            return (
-                v.replace("\\", "\\5c")
-                .replace("*", "\\2a")
-                .replace("(", "\\28")
-                .replace(")", "\\29")
-                .replace("\x00", "")
+        raw = identifier
+        is_email = _looks_like_email(raw)
+        e164 = _normalize_phone(raw)
+        logger.debug(
+            "Identifier parse: is_email=%s, normalized_phone=%s", is_email, e164
+        )
+
+        # --- Service bind & search ---
+        # Важно: используем get_info=NONE для скорости/минимума утечек.
+        server = Server(uri)  # get_info=NONE по умолчанию
+        svc_conn: Optional[Connection] = None
+        try:
+            logger.debug("Service bind: connecting...")
+            if bind_dn and bind_pw:
+                svc_conn = Connection(
+                    server,
+                    user=bind_dn,
+                    password=bind_pw,
+                    auto_bind=True,
+                    receive_timeout=30,
+                )
+                logger.debug("Service bind OK (bind_dn)")
+            else:
+                svc_conn = Connection(server, auto_bind=True, receive_timeout=30)
+                logger.debug("Service bind OK (anonymous/simple)")
+
+            # Базовый объектный фильтр (по умолчанию — пользователи AD)
+            base_object_filter = getattr(
+                settings,
+                "LDAP_OBJECT_FILTER",
+                "(&(objectCategory=person)(objectClass=user))",
             )
 
-        server = Server(uri, get_info=ALL)
-        try:
-            conn = (
-                Connection(server, user=bind_dn, password=bind_pw, auto_bind=True)
-                if (bind_dn or bind_pw)
-                else Connection(server, auto_bind=True)
-            )
-        except Exception:
-            return None
+            # Фильтр по идентификатору
+            if "{username}" in base_tpl:
+                id_filter = base_tpl.format(username=esc_filter(raw))
+                logger.debug("Using configured ID filter: %s", id_filter)
+            else:
+                base_object_filter = base_tpl  # админ дал базовый объектный фильтр
+                if is_email:
+                    id_attrs = getattr(
+                        settings,
+                        "LDAP_LOGIN_MAIL_ATTRS",
+                        ("mail", "userPrincipalName"),
+                    )
+                else:
+                    id_attrs = getattr(
+                        settings,
+                        "LDAP_LOGIN_UID_ATTRS",
+                        ("uid", "sAMAccountName"),
+                    )
+                id_filter = (
+                    "(|" + "".join(f"({a}={esc_filter(raw)})" for a in id_attrs) + ")"
+                )
+                logger.debug("Built default ID filter: %s", id_filter)
 
-        # Собираем расширенный фильтр:
-        #   из шаблона (uid/mail) + по телефону (если есть e164)
-        base_filter = tpl.format(username=_esc(raw))
-        phone_filter = ""
-        if e164:
-            pf = "".join(f"({attr}={_esc(e164)})" for attr in phone_attrs)
-            phone_filter = f"(|{pf})"
-        ldap_filter = f"(|{base_filter}{phone_filter})" if phone_filter else base_filter
+            phone_filter = ""
+            if e164:
+                phone_filter = (
+                    "(|"
+                    + "".join(f"({attr}={esc_filter(e164)})" for attr in phone_attrs)
+                    + ")"
+                )
+                logger.debug("Built phone filter: %s", phone_filter)
 
-        try:
-            ok = conn.search(
+            # (& base_object (| id_filter phone_filter?))
+            if phone_filter:
+                ldap_filter = f"(&{base_object_filter}(|{id_filter}{phone_filter}))"
+            else:
+                ldap_filter = f"(&{base_object_filter}{id_filter})"
+            logger.debug("FINAL LDAP search filter=%s", ldap_filter)
+
+            ok = svc_conn.search(
                 search_base=user_base,
                 search_filter=ldap_filter,
                 search_scope=SUBTREE,
-                attributes=["*"],
+                attributes=[
+                    getattr(settings, "LDAP_ATTR_GIVENNAME", "givenName"),
+                    getattr(settings, "LDAP_ATTR_SN", "sn"),
+                    getattr(settings, "LDAP_ATTR_MAIL", "mail"),
+                    "telephoneNumber",
+                    "mobile",
+                    "userAccountControl",
+                    "objectGUID",
+                    "userPrincipalName",
+                ],
                 size_limit=1,
             )
-            if not ok or not conn.entries:
-                conn.unbind()
+            entries_count = len(svc_conn.entries) if svc_conn else 0
+            logger.debug("Search ok=%s entries=%s", ok, entries_count)
+            if not ok or not svc_conn.entries:
+                logger.info("No entries found -> auth failed")
                 return None
-            entry = conn.entries[0]
-            user_dn = entry.entry_dn
-        except Exception:
-            conn.unbind()
-            return None
 
-        # Проверяем пароль bind'ом пользователя
+            entry = svc_conn.entries[0]
+            user_dn: str = str(entry.entry_dn)
+            logger.debug("Found DN: %s", user_dn)
+
+        except (LDAPSocketOpenError, LDAPBindError) as e:
+            logger.error("Service bind/search LDAP error: %s: %s", type(e).__name__, e)
+            return None
+        except Exception as e:
+            logger.exception("Service bind/search unexpected error: %s", e)
+            return None
+        finally:
+            try:
+                if svc_conn is not None:
+                    svc_conn.unbind()
+                    logger.debug("Service connection unbound")
+            except Exception as e:
+                logger.warning("Service unbind error: %s", e)
+
+        # --- User bind (password check) ---
         try:
-            check = Connection(server, user=user_dn, password=password, auto_bind=True)
-            check.unbind()
-        except Exception:
-            conn.unbind()
+            logger.debug("User bind check for DN=%s ...", user_dn)
+            user_conn = Connection(
+                server,
+                user=user_dn,
+                password=password,
+                auto_bind=True,
+                receive_timeout=30,
+            )
+            user_conn.unbind()
+            logger.debug("User bind OK (password valid)")
+        except LDAPBindError as e:
+            logger.info("User bind FAILED (invalid credentials): %s", e)
+            return None
+        except Exception as e:
+            logger.error("User bind FAILED: %s: %s", type(e).__name__, e)
             return None
 
-        # Достаём атрибуты
+        # --- Read attributes ---
         get = self._attr
         first_name = (
             get(entry, getattr(settings, "LDAP_ATTR_GIVENNAME", "givenName")) or ""
         )
         last_name = get(entry, getattr(settings, "LDAP_ATTR_SN", "sn")) or ""
         email = (get(entry, getattr(settings, "LDAP_ATTR_MAIL", "mail")) or "").lower()
-        phone_val = get(entry, getattr(settings, "LDAP_ATTR_PHONE", "telephoneNumber"))
-        phone_e164 = _normalize_phone(phone_val) if phone_val else None
+        logger.debug(
+            "Attrs: first_name=%r last_name=%r email=%r", first_name, last_name, email
+        )
 
-        # 1) Ищем локального пользователя — сначала по email
+        phone_e164: Optional[str] = None
+        for attr in list(phone_attrs) + [
+            getattr(settings, "LDAP_ATTR_PHONE", "telephoneNumber")
+        ]:
+            val = get(entry, attr)
+            if val:
+                phone_e164 = _normalize_phone(val)
+                logger.debug(
+                    "Phone candidate attr=%s raw=%r -> norm=%r", attr, val, phone_e164
+                )
+                if phone_e164:
+                    break
+
+        # --- AD disabled flag ---
+        if getattr(settings, "LDAP_RESPECT_AD_DISABLED", False):
+            uac_raw = get(entry, "userAccountControl")
+            try:
+                uac_int = int(str(uac_raw).strip())
+                if (uac_int & 0x0002) != 0:
+                    logger.info("AD says account is DISABLED -> auth denied")
+                    return None
+            except Exception as e:
+                logger.debug("UAC parse error: %s (ignored)", e)
+
+        # --- Find or create local user ---
         user = None
-        if email:
+        if email and _model_has_field(UserModel, "email"):
+            logger.debug("Lookup local user by email=%r", email)
             user = UserModel.objects.filter(email__iexact=email).first()
-
-        # 2) Если не нашли и есть телефон — ищем по телефону
         if user is None and PHONE_FIELD and phone_e164:
+            logger.debug("Lookup local user by %s=%r", PHONE_FIELD, phone_e164)
             user = UserModel.objects.filter(**{PHONE_FIELD: phone_e164}).first()
 
-        # Уважать локальную блокировку
         if user and getattr(settings, "LDAP_RESPECT_IS_ACTIVE", True):
-            if hasattr(user, "is_active") and not user.is_active:
-                conn.unbind()
+            if not self.user_can_authenticate(user):
+                logger.info("user_can_authenticate=False -> auth denied")
                 return None
 
-        # Авто-создание — только если явно разрешено И хватает полей
-        if user is None and getattr(settings, "LDAP_AUTO_CREATE", False):
+        auto_create = bool(
+            getattr(settings, "LDAP_AUTO_CREATE", False)
+            or getattr(settings, "LDAP_REGISTRATION_CREATE", False)
+        )
+        logger.debug("auto_create=%s", auto_create)
+
+        if user is None and auto_create:
             payload: dict[str, Any] = {}
-            if hasattr(UserModel, "email") and email:
+            if _model_has_field(UserModel, "email") and email:
                 payload["email"] = email
             if PHONE_FIELD and phone_e164:
                 payload[PHONE_FIELD] = phone_e164
-            if hasattr(UserModel, "first_name"):
+            if _model_has_field(UserModel, "first_name"):
                 payload["first_name"] = first_name
-            if hasattr(UserModel, "last_name"):
+            if _model_has_field(UserModel, "last_name"):
                 payload["last_name"] = last_name
 
-            # Проверим, что заполняем ключевые поля модели
             key_field = getattr(UserModel, "USERNAME_FIELD", "email")
             key_ok = (key_field != "email") or bool(payload.get("email"))
             phone_ok = (not PHONE_FIELD) or (PHONE_FIELD in payload)
+            logger.debug(
+                "Auto-create checks: key_field=%r key_ok=%s phone_ok=%s payload_keys=%s",
+                key_field,
+                key_ok,
+                phone_ok,
+                list(payload.keys()),
+            )
+
             if key_ok and phone_ok:
                 user = UserModel.objects.create(**payload)
-                if hasattr(user, "is_active") and user.is_active is False:
+                logger.info("Local user CREATED: id=%s", getattr(user, "id", None))
+                if self.user_can_authenticate(user) is False and hasattr(
+                    user, "is_active"
+                ):
                     user.is_active = True
                     user.save(update_fields=["is_active"])
+                    logger.debug("Local user activated (is_active=True)")
             else:
-                conn.unbind()
-                return None  # не рискуем плодить «пустышки»
+                logger.info("Auto-create refused (insufficient key data)")
+                return None
 
-        # Лёгкий апдейт профиля (без пароля)
+        # --- Light profile sync ---
         if user:
-            changed, updates = False, []
-            if hasattr(user, "first_name") and user.first_name != first_name:
+            changed: List[str] = []
+
+            if (
+                _model_has_field(UserModel, "first_name")
+                and user.first_name != first_name
+            ):
                 user.first_name = first_name
-                changed = True
-                updates.append("first_name")
-            if hasattr(user, "last_name") and user.last_name != last_name:
+                changed.append("first_name")
+            if _model_has_field(UserModel, "last_name") and user.last_name != last_name:
                 user.last_name = last_name
-                changed = True
-                updates.append("last_name")
-            if email and hasattr(user, "email") and (user.email or "").lower() != email:
+                changed.append("last_name")
+            if (
+                email
+                and _model_has_field(UserModel, "email")
+                and (user.email or "").lower() != email
+            ):
                 user.email = email
-                changed = True
-                updates.append("email")
+                changed.append("email")
             if (
                 PHONE_FIELD
                 and phone_e164
                 and getattr(user, PHONE_FIELD, None) != phone_e164
             ):
                 setattr(user, PHONE_FIELD, phone_e164)
-                changed = True
-                updates.append(PHONE_FIELD)
-            if changed:
-                user.save(update_fields=list(set(updates)) or None)
+                changed.append(PHONE_FIELD)
 
-        conn.unbind()
-        return user
+            if hasattr(user, "ldap_dn") and getattr(user, "ldap_dn") != user_dn:
+                setattr(user, "ldap_dn", user_dn)
+                changed.append("ldap_dn")
+
+            guid = get(entry, "objectGUID")
+            if (
+                hasattr(user, "ldap_guid")
+                and guid
+                and getattr(user, "ldap_guid") != str(guid)
+            ):
+                # При необходимости замените str(guid) на корректную конверсию GUID.
+                setattr(user, "ldap_guid", str(guid))
+                changed.append("ldap_guid")
+
+            if hasattr(user, "is_ldap_managed") and not getattr(
+                user, "is_ldap_managed", False
+            ):
+                setattr(user, "is_ldap_managed", True)
+                changed.append("is_ldap_managed")
+
+            if hasattr(user, "last_ldap_sync_at"):
+                setattr(user, "last_ldap_sync_at", timezone.now())
+                changed.append("last_ldap_sync_at")
+
+            if changed:
+                user.save(update_fields=list(set(changed)))
+                logger.debug("Local user updated fields: %s", sorted(set(changed)))
+            else:
+                logger.debug("Local user has no changes to save")
+
+            if not self.user_can_authenticate(user):
+                logger.info("user_can_authenticate=False after sync -> auth denied")
+                return None
+
+            logger.info(
+                "AUTH SUCCESS: user_id=%s email=%s",
+                getattr(user, "id", None),
+                getattr(user, "email", None),
+            )
+            return user
+
+        logger.info(
+            "AUTH FAILED: no local user (auto_create disabled or constraints not met)"
+        )
+        return None
 
     @staticmethod
-    def _attr(entry, name: str) -> Optional[str]:
-        """Возвращает первое строковое значение атрибута LDAP.
+    def _attr(entry: Any, name: str) -> Optional[str]:
+        """Возвращает первое строковое значение LDAP-атрибута.
 
         Args:
             entry: ldap3 Entry.
-            name (str): Имя атрибута.
+            name: Имя атрибута (например, 'mail').
 
         Returns:
-            Optional[str]: Значение или None.
+            str | None: Нормализованное строковое значение или None.
 
         Raises:
-            None
+            None: Ошибки приводят к возврату None и логируются на debug.
         """
         try:
             val = getattr(entry, name, None)
@@ -331,7 +479,8 @@ class LDAP3Backend(ModelBackend):
             if isinstance(raw, (list, tuple)):
                 return str(raw[0]).strip() if raw else None
             return str(raw).strip()
-        except Exception:
+        except Exception as e:
+            logger.debug("LDAP3Backend._attr('%s') error: %s", name, e)
             return None
 
 
@@ -371,46 +520,6 @@ class SuperuserOnlyBackend(ModelBackend):
         if user and getattr(user, "is_superuser", False):
             return user
         return None
-
-
-# class EmailOrPhoneBackend(ModelBackend):
-#     """
-#     Аутентификация по email ИЛИ по телефону (E.164) + стандартная проверка пароля.
-#     Пользователь должен быть активен (is_active=True) — активируйте после verify_email().
-#     """
-
-#     def authenticate(self, request, username=None, password=None, **kwargs):
-#         login = username or kwargs.get("email") or kwargs.get("phone")
-#         if not login or not password:
-#             return None
-
-#         user: Optional[Employee] = None
-
-#         # 1) Email
-#         if _looks_like_email(login):
-#             user = Employee.objects.filter(email__iexact=login).first()
-#         else:
-#             # 2) Phone
-#             if PHONE_FIELD:
-#                 normalized = _normalize_phone(login)
-#                 # сначала пробуем нормализованный E.164
-#                 if normalized:
-#                     user = Employee.objects.filter(**{PHONE_FIELD: normalized}).first()
-#                 # если не нашли — пробуем как ввёл пользователь (на случай старых данных)
-#                 if not user:
-#                     raw = str(login).strip()
-#                     user = Employee.objects.filter(**{PHONE_FIELD: raw}).first()
-
-#         if not user:
-#             return None
-
-#         # допускаем логин только активных (email подтверждён → is_active=True)
-#         if not user.is_active:
-#             return None
-
-#         if user.check_password(password):
-#             return user
-#         return None
 
 
 class PositionRoleBackend(ModelBackend):

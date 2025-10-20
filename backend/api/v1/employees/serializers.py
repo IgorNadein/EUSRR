@@ -11,7 +11,7 @@ from eusrr_backend.auth_backends import PHONE_FIELD as DETECTED_PHONE_FIELD
 from rest_framework import serializers
 
 from ..serializers import Base64ImageField
-from .utils import _normalize_phone
+from employees.utils import _normalize_phone
 
 Employee = get_user_model()
 

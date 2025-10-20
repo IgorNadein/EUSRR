@@ -36,6 +36,8 @@ class DeptPerm:
     MANAGE_FEED = "manage_department_feed"
     VIEW_REQUESTCOMMENT = "view_requestcomment"
     ADD_REQUESTCOMMENT = "add_requestcomment"
+    VIEW_REQUEST = "view_request"
+    CAN_PROCESS_REQUESTS = "can_process_requests"
 
     CHOICES = (
         (MANAGE, "Управлять отделом"),
@@ -46,4 +48,6 @@ class DeptPerm:
         (MANAGE_FEED, "Редактировать публикации отдела"),
         (VIEW_REQUESTCOMMENT, "Просмотр комментариев по заявлениям"),
         (ADD_REQUESTCOMMENT, "Добавление коментариев по заявлениям"),
+        (VIEW_REQUEST, "Просмотр заявлений отдела"),
+        (CAN_PROCESS_REQUESTS, "Рассмотрение заявлений отдела"),
     )

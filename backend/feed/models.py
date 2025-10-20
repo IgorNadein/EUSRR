@@ -67,7 +67,7 @@ class Post(models.Model):
         "employees.Department",
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="posts",
         verbose_name="Отдел",
         help_text="Для новостей отдела укажите отдел. Для других типов оставьте пустым.",

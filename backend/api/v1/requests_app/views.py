@@ -4,7 +4,7 @@ from typing import Any, List, Optional  # было: Any, Dict, List, Type
 
 from django.db.models import Q, QuerySet
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
-from employees.models import EmployeeDepartment
+from employees.models import EmployeeDepartment, Department  # добавлен Department
 from requests_app.models import Request as EmployeeRequest
 from requests_app.models import RequestComment
 from requests_app.enums import RequestStatus
@@ -115,7 +115,10 @@ class RequestViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet[EmployeeRequest]:
         """Список заявок с учётом прав:
         - staff/глобальные видят всё (или только свои при ?view=mine),
-        - остальные: свои + по отделам, где есть право 'view_request'.
+        - остальные: свои + отделы с правом 'view_request', руководимые отделы,
+          отделы с правом 'can_process_requests'.
+        - Вариант B: добавляем заявки сотрудников этих отделов даже если
+          у заявок department_id = NULL.
         """
         qs = super().get_queryset()
         user = self.request.user
@@ -128,18 +131,50 @@ class RequestViewSet(viewsets.ModelViewSet):
 
         if user.is_staff or self._can_view_all(user):
             if want_mine:
-                qs = qs.filter(employee_id=user.id)
-        else:
-            dept_ids_qs = (
-                EmployeeDepartment.objects.filter(
-                    employee_id=user.id,
-                    is_active=True,
-                    role__scoped_permissions__code="view_request",
-                )
-                .values_list("department_id", flat=True)
-                .distinct()
+                return qs.filter(employee_id=user.id)
+            return qs
+
+        view_dept_ids = (
+            EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                is_active=True,
+                role__scoped_permissions__code="view_request",
             )
-            scope = Q(employee_id=user.id) | Q(department_id__in=dept_ids_qs)
+            .values_list("department_id", flat=True)
+            .distinct()
+        )
+        proc_dept_ids = (
+            EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                is_active=True,
+                role__scoped_permissions__code="can_process_requests",
+            )
+            .values_list("department_id", flat=True)
+            .distinct()
+        )
+        head_dept_ids = Department.objects.filter(head_id=user.id).values_list(
+            "id", flat=True
+        )
+        combined_ids = set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
+
+        # сотрудники этих отделов (активные)
+        dept_emp_ids = (
+            EmployeeDepartment.objects.filter(
+                department_id__in=list(combined_ids) if combined_ids else [],
+                is_active=True,
+            )
+            .values_list("employee_id", flat=True)
+            .distinct()
+        ) if combined_ids else []
+
+        if want_mine:
+            qs = qs.filter(employee_id=user.id)
+        else:
+            scope = Q(employee_id=user.id)
+            if combined_ids:
+                scope |= Q(department_id__in=list(combined_ids))
+            if dept_emp_ids:
+                scope |= Q(employee_id__in=list(dept_emp_ids))
             qs = qs.filter(scope)
 
         t = (params.get("type") or "").strip()

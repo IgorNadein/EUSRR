@@ -132,6 +132,13 @@ class Position(models.Model):
     groups = models.ManyToManyField(
         Group, blank=True, related_name="positions", verbose_name="Группы прав"
     )
+    ldap_group_dn = models.CharField(
+        "DN агрегаторной группы должности в AD (POS_*)",
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Напр.: CN=POS_engineer,OU=Position,OU=company,DC=robotail,DC=local",
+    )
     history = HistoricalRecords()
 
     class Meta:
@@ -181,23 +188,7 @@ class Employee(AbstractUser):
     email_verified = models.BooleanField("Email подтверждён", default=False)
     email_activation_code = models.CharField(max_length=6, blank=True, null=True)
 
-    ldap_guid = models.CharField(
-        "LDAP GUID",
-        max_length=64,
-        unique=True,
-        null=True,
-        blank=True,
-        help_text="Устойчивый ID из LDAP (entryUUID/objectGUID в hex/строке).",
-    )
-    ldap_dn = models.CharField(
-        "LDAP DN",
-        max_length=512,
-        null=True,
-        blank=True,
-        help_text="Текущий DN записи в каталоге (для отладки/трассировки).",
-    )
-    last_ldap_modify_ts = models.CharField("LDAP modify ts", max_length=64, null=True, blank=True)
-    last_ldap_sync_at = models.DateTimeField("Последняя успешная запись в LDAP", null=True, blank=True)
+    is_ldap_managed = models.BooleanField("Управляется LDAP", default=False)
 
     objects = EmployeeManager()
 
@@ -267,24 +258,17 @@ class Employee(AbstractUser):
         return False
 
     def mark_ldap_managed(self, guid: str, dn: str | None = None) -> None:
-        """Помечает профиль как управляемый LDAP и сохраняет связку.
-
-        Args:
-            guid: Устойчивый идентификатор (entryUUID/objectGUID) из LDAP.
-            dn: Distinguished Name (может меняться при перемещениях).
-
-        Raises:
-            ValueError: Если guid пуст.
-        """
         if not guid:
             raise ValueError("ldap_guid обязателен")
-        self.ldap_guid = guid
-        self.ldap_dn = dn or self.ldap_dn
         self.is_ldap_managed = True
-        # для LDAP-пользователей пароль локально не нужен
         if hasattr(self, "set_unusable_password"):
             self.set_unusable_password()
-        self.save(update_fields=["ldap_guid", "ldap_dn", "is_ldap_managed", "password"])
+        self.save(update_fields=["is_ldap_managed", "password"])
+
+        st, _ = LdapSyncState.objects.get_or_create(
+            model="employee", object_pk=str(self.pk)
+        )
+        st.touch(ldap_guid=guid, ldap_dn=dn, sync_dir="ldap")
 
 
 class EmployeeAction(models.Model):
@@ -322,6 +306,14 @@ class Department(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    ldap_group_dn = models.CharField(
+        "DN агрегаторной группы отдела в AD (DEP_*)",
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Напр.: CN=DEP_it,OU=Department,OU=company,DC=robotail,DC=local",
+    )
+
     class Meta:
         verbose_name = "Отдел"
         verbose_name_plural = "Отделы"
@@ -346,13 +338,11 @@ class Department(models.Model):
 
         head_changed = old_head_id != self.head_id
 
-        # Если назначаем нового руководителя — фиксируем момент назначения
         if head_changed and self.head_id:
             self.head_appointed_at = timezone.now()
 
         super().save(*args, **kwargs)
 
-        # --- Гарантируем: текущий руководитель всегда сотрудник отдела ---
         if self.head_id:
             try:
                 link, created = EmployeeDepartment.objects.get_or_create(
@@ -462,6 +452,13 @@ class DepartmentRole(models.Model):
     scoped_permissions = models.ManyToManyField(
         DepartmentPermission, blank=True, related_name="roles"
     )
+    ldap_group_dn = models.CharField(
+        "DN агрегаторной группы роли в AD (ROLE_*)",
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Напр.: CN=ROLE_it__oncall,OU=Role,OU=company,DC=robotail,DC=local",
+    )
 
     class Meta:
         verbose_name = "Роль в отделе"
@@ -520,3 +517,94 @@ class Skill(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# --- LDAP sync state -------------------------------------------------
+
+
+class LdapSyncState(models.Model):
+    """Единое состояние синхронизации LDAP для любых объектов.
+
+    Attributes:
+        model (str): Имя модели в Django ('employee','department','group','dept_role','position').
+        object_pk (str): Первичный ключ объекта (строкой, чтобы покрыть UUID/INT).
+        ldap_dn (str): Последний известный DN в LDAP.
+        ldap_guid (str | None): GUID из LDAP (objectGUID/entryUUID), если применимо.
+        last_ldap_modify_ts (datetime | None): Последний modifyTimestamp/whenChanged из LDAP.
+        last_django_modify_ts (datetime | None): Последний updated_at из Django на момент фиксации.
+        last_sync_dir (str): 'ldap'|'django'|'auto' — направление последнего успешного синка.
+        data_hash (str | None): Хэш значимых полей (опционально) для ускоренной детекции изменений.
+        updated_at (datetime): Время обновления записи состояния.
+
+    Raises:
+        ValueError: При неверных значениях полей валидации (на уровне БД доп. ограничений нет).
+    """
+
+    model = models.CharField(max_length=32, db_index=True)
+    object_pk = models.CharField(max_length=64, db_index=True)
+
+    ldap_dn = models.TextField(blank=True, default="")
+    ldap_guid = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+
+    last_ldap_modify_ts = models.DateTimeField(null=True, blank=True)
+    last_django_modify_ts = models.DateTimeField(null=True, blank=True)
+
+    last_sync_dir = models.CharField(max_length=8, default="ldap")
+    data_hash = models.CharField(max_length=64, null=True, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Состояние синхронизации LDAP"
+        verbose_name_plural = "Состояния синхронизации LDAP"
+        unique_together = (("model", "object_pk"),)
+
+    def touch(
+        self,
+        *,
+        ldap_dn: str | None = None,
+        ldap_guid: str | None = None,
+        last_ldap_modify_ts=None,
+        last_django_modify_ts=None,
+        sync_dir: str | None = None,
+        data_hash: str | None = None,
+    ) -> None:
+        """Обновляет поля состояния для записи.
+
+        Args:
+            ldap_dn (str | None): Новый DN.
+            ldap_guid (str | None): Новый GUID.
+            last_ldap_modify_ts: Новый штамп LDAP (UTC).
+            last_django_modify_ts: Новый штамп Django (UTC).
+            sync_dir (str | None): Направление ('ldap'|'django'|'auto').
+            data_hash (str | None): Хэш полезных данных.
+
+        Raises:
+            ValueError: Если sync_dir не из допустимого набора.
+        """
+        if sync_dir and sync_dir not in ("ldap", "django", "auto"):
+            raise ValueError("sync_dir должен быть 'ldap'|'django'|'auto'")
+        if ldap_dn is not None:
+            self.ldap_dn = ldap_dn
+        if ldap_guid is not None:
+            self.ldap_guid = ldap_guid
+        if last_ldap_modify_ts is not None:
+            self.last_ldap_modify_ts = last_ldap_modify_ts
+        if last_django_modify_ts is not None:
+            self.last_django_modify_ts = last_django_modify_ts
+        if sync_dir:
+            self.last_sync_dir = sync_dir
+        if data_hash is not None:
+            self.data_hash = data_hash
+        self.updated_at = timezone.now()
+        self.save(
+            update_fields=[
+                "ldap_dn",
+                "ldap_guid",
+                "last_ldap_modify_ts",
+                "last_django_modify_ts",
+                "last_sync_dir",
+                "data_hash",
+                "updated_at",
+            ]
+        )

@@ -6,7 +6,7 @@ from api.decorators import require_api_auth
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import AbstractBaseUser
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -14,6 +14,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.generic import TemplateView
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import localtime
+from employees.models import Department, EmployeeDepartment  # добавлены импорты
 
 
 def _api_unpack(resp: Any) -> Tuple[bool, Dict[str, Any], int]:
@@ -117,17 +118,29 @@ def _parse_page_payload(
 
 
 def _user_can_process_requests(user: AbstractBaseUser) -> bool:
-    """Проверяет, может ли пользователь обрабатывать заявки (approve/reject).
+    """Определяет, показывать ли расширенный скоуп (вкладку «Все» и действия).
 
-    Args:
-        user (AbstractBaseUser): Пользователь.
-
-    Returns:
-        bool: True, если is_staff или есть perm `requests_app.can_process_requests`.
+    True если:
+      - staff / superuser;
+      - есть модельное право `requests_app.can_process_requests`;
+      - руководитель хотя бы одного отдела;
+      - есть департаментное право `can_process_requests` или `view_request`.
     """
-    if getattr(user, "is_staff", False):
+    if not user or getattr(user, "is_anonymous", False):
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
         return True
-    return user.has_perm("requests_app.can_process_requests")
+    if user.has_perm("requests_app.can_process_requests"):
+        return True
+    if Department.objects.filter(head_id=user.id).exists():
+        return True
+    dept_perm_codes = {"can_process_requests", "view_request"}
+    has_dept_perm = EmployeeDepartment.objects.filter(
+        employee_id=user.id,
+        is_active=True,
+        role__scoped_permissions__code__in=dept_perm_codes,
+    ).exists()
+    return has_dept_perm
 
 
 @method_decorator([csrf_protect, require_api_auth], name="dispatch")
@@ -544,3 +557,52 @@ class RequestsView(LoginRequiredMixin, TemplateView):
             )
         )
         return redirect(reverse("requests:request_list"))
+
+
+def request_comments(request: HttpRequest, pk: int) -> JsonResponse:
+    """Прокси: список комментариев (JSON) для заявки.
+    Требует авторизации (используем ту же обёртку клиента, что и основная вью).
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    api = get_api_client(request)
+    ok, data, st = _api_unpack(api.get(f"v1/requests/{pk}/comments/"))
+    if not ok:
+        return JsonResponse(data or {"detail": f"HTTP {st}"}, status=st)
+
+    results, *_ = _parse_page_payload(data)
+    return JsonResponse(results, safe=False)
+
+
+def request_comment_add(request: HttpRequest, pk: int) -> JsonResponse:
+    """Прокси: добавление комментария.
+    POST: принимает form/multipart или JSON с полем text.
+    """
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    text: str = ""
+    ct = (request.content_type or "").split(";")[0].strip().lower()
+    if ct == "application/json":
+        try:
+            import json as _json
+            payload = _json.loads(request.body or b"{}")
+            text = (payload.get("text") or "").strip()
+        except Exception:
+            text = ""
+    else:
+        text = (request.POST.get("text") or "").strip()
+
+    if not text:
+        return JsonResponse({"detail": "Empty comment"}, status=400)
+
+    api = get_api_client(request)
+    ok, data, st = _api_unpack(
+        api.post(f"v1/requests/{pk}/comments/", json={"text": text})
+    )
+    if not ok and st != 201:
+        return JsonResponse(data or {"detail": f"HTTP {st}"}, status=st)
+    return JsonResponse(data, status=201)

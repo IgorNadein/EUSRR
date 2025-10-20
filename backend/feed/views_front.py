@@ -528,6 +528,7 @@ def post_update(request, pk):
             "context_type": context_type,
             "department": department,
             "cancel_url": cancel_url,
+            "is_update": True,
         },
     )
 

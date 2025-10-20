@@ -2,17 +2,32 @@
 {% load static django_bootstrap5 %}
 
 {% block title %}
-  {% if form.instance.pk %}Редактировать{% else %}Создать{% endif %} публикацию
+  {% if is_update %}Редактировать{% else %}Создать{% endif %} публикацию
 {% endblock %}
 
 {% block content %}
+<style>
+  /* авто-рост для больших текстов */
+  textarea.autogrow {
+    overflow: hidden;            /* без внутренних скроллов, пока не упремся в max-height */
+    resize: none;                /* убираем ручной ресайз, если хочешь оставить — поменяй на 'vertical' */
+    min-height: 120px;           /* стартовая высота (на вкус) */
+    max-height: 70vh;            /* чтобы не занимало весь экран */
+  }
+  /* когда достигли max-height — позволим вертикальный скролл */
+  textarea.autogrow.is-max {
+    overflow-y: auto;
+  }
+</style>
+
+
 <div class="container">
   <!-- Header (без кнопки Отмена) -->
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div class="d-flex align-items-center gap-2">
       <i class="bi-megaphone fs-3 text-primary"></i>
       <h2 class="mb-0">
-        {% if form.instance.pk %}Редактировать{% else %}Создать{% endif %} публикацию
+        {% if is_update %}Редактировать{% else %}Создать{% endif %} публикацию
       </h2>
       {% if context_type == 'department' and department %}
         <span class="badge bg-secondary">Отдел: {{ department.name }}</span>
@@ -107,4 +122,46 @@
     });
   })();
 </script>
+<script>
+  (function(){
+    const form = document.querySelector('form.card');  // твоя форма публикации
+    if (!form) return;
+
+    // навешиваем класс и обработчики на все textarea внутри формы
+    const areas = Array.from(form.querySelectorAll('textarea'));
+    if (!areas.length) return;
+
+    areas.forEach(el => {
+      el.classList.add('autogrow');
+      autoSize(el);
+      el.addEventListener('input', () => autoSize(el));
+    });
+
+    // подгонка при смене размеров окна (перелом колонок и т.п.)
+    let raf;
+    window.addEventListener('resize', () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => areas.forEach(autoSize));
+    });
+
+    function autoSize(el){
+      // сброс высоты -> вычисление по контенту
+      el.classList.remove('is-max');
+      el.style.height = 'auto';
+      const borderBox = getComputedStyle(el).boxSizing === 'border-box';
+      const style = getComputedStyle(el);
+      const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      const desired = el.scrollHeight + (borderBox ? 0 : border);
+      el.style.height = desired + 'px';
+
+      // если упёрлись в max-height — включаем скролл
+      const maxH = parseFloat(style.maxHeight);
+      if (!Number.isNaN(maxH) && desired >= maxH) {
+        el.style.height = style.maxHeight;
+        el.classList.add('is-max');
+      }
+    }
+  })();
+</script>
+
 {% endblock %}

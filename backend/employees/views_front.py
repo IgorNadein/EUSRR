@@ -211,14 +211,28 @@ def employee_list(request):
 
 # ---------- DETAIL / ME ----------
 @require_api_auth
-def employee_profile(request, pk="me"):
-    """
-    /employees/me/  и  /employees/<int:pk>/
-    Если pk == текущему пользователю — редиректим на /employees/me/
+def employee_profile(request, pk: str | int = "me"):
+    """Профиль сотрудника (/employees/me/ и /employees/<pk>/).
+
+    Поведение:
+      * Если pk совпадает с текущим пользователем — выполняется 302 редирект на /employees/me/?<query>.
+      * Подтягивает данные сотрудника, посты, справочники (навыки/должности/группы).
+      * Передаёт в шаблон персональные группы сотрудника для рендера «пилюль».
+      * Передаёт `endpoint` для PATCH-редактирования профиля через фронтовую вьюху.
+
+    Args:
+        request (HttpRequest): HTTP-запрос.
+        pk (str | int, optional): 'me'/'self' или числовой ID сотрудника. По умолчанию 'me'.
+
+    Returns:
+        HttpResponse: Отрисованный шаблон профиля либо редирект/сообщение об ошибке.
+
+    Raises:
+        None: Все ошибки бэкенд-API обрабатываются и отражаются через messages/redirect.
     """
     # --- редирект "свой id" -> /me ---
     try:
-        int_pk = int(pk)
+        int_pk = int(pk)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         int_pk = None
 
@@ -237,8 +251,8 @@ def employee_profile(request, pk="me"):
     api = get_api_client(request)
     is_me = str(pk) in {"me", "self"}
 
-    endpoint = "v1/employees/me/" if is_me else f"v1/employees/{pk}/"
-    resp = api.get(endpoint)
+    endpoint_api = "v1/employees/me/" if is_me else f"v1/employees/{pk}/"
+    resp = api.get(endpoint_api)
     if not resp.ok:
         messages.error(request, f"Сотрудник не найден ({resp.status})")
         return redirect("employees:employees_list")
@@ -247,28 +261,29 @@ def employee_profile(request, pk="me"):
     emp_id = emp.get("id") or (request.user.id if is_me else pk)
     posts = _fetch_employee_posts(api, emp_id)
 
+    # Справочники
     sresp = api.get("v1/skills/", params={"ordering": "name"})
     sdata = sresp.json if sresp.ok else []
     all_skills = sdata.get("results", sdata) if isinstance(sdata, dict) else sdata
-    gresp = None
-    for path in ("v1/groups/",):
-        r = api.get(path, params={"ordering": "name"})
-        if r.ok:
-            gresp = r
-            break
-    gdata = gresp.json if gresp and gresp.ok else []
-    all_groups = gdata.get("results", gdata) if isinstance(gdata, dict) else gdata
+
+    gresp_all = api.get("v1/groups/", params={"ordering": "name"})
+    gdata_all = gresp_all.json if gresp_all.ok else []
+    all_groups = (
+        gdata_all.get("results", gdata_all) if isinstance(gdata_all, dict) else gdata_all
+    ) or []
+
+    # Персональные группы сотрудника (для «пилюль»)
+    pg_resp = api.get("v1/groups/", params={"ordering": "name", "member": emp_id})
+    pg_data = pg_resp.json if pg_resp.ok else []
+    emp_personal_groups = (
+        pg_data.get("results", pg_data) if isinstance(pg_data, dict) else pg_data
+    ) or []
+
     presp = api.get("v1/positions/", params={"ordering": "name"})
     pdata = presp.json if presp.ok else []
     all_positions = pdata.get("results", pdata) if isinstance(pdata, dict) else pdata
 
-    can_edit = (
-        True
-        if is_me
-        else bool(
-            request.user and (request.user.is_staff or request.user.id == emp.get("id"))
-        )
-    )
+    # Отделы/роли
     emp_depts = []
     for d in emp.get("departments") or []:
         did = d.get("id")
@@ -309,12 +324,20 @@ def employee_profile(request, pk="me"):
         )
         emp_depts.append(d2)
 
+    # Права на редактирование профиля
     can_edit = (
         True
         if is_me
         else bool(
             request.user and (request.user.is_staff or request.user.id == emp.get("id"))
         )
+    )
+
+    # ВАЖНО: endpoint фронтовой вьюхи для PATCH профиля (а не прямой DRF-URL)
+    endpoint = (
+        reverse("employees:employee_edit_me")
+        if is_me
+        else reverse("employees:employee_edit", args=[emp_id])
     )
 
     ctx = {
@@ -324,8 +347,10 @@ def employee_profile(request, pk="me"):
         "all_skills": all_skills,
         "all_positions": all_positions,
         "all_groups": all_groups,
+        "emp_personal_groups": emp_personal_groups,
         "posts": posts,
         "is_me": True if is_me else False,
+        "endpoint": endpoint,  # для data-endpoint в _employee_edit.html
     }
     return render(request, "employees/employee_detail.html", ctx)
 
@@ -411,6 +436,107 @@ def employee_create(request):
     new_emp = resp.json or {}
     messages.success(request, "Сотрудник создан.")
     return redirect("employees:employee_detail", pk=new_emp.get("id"))
+
+
+
+# =========================
+# Группы
+# =========================
+
+
+from django.views.decorators.http import require_http_methods
+from django.http import JsonResponse
+from django.contrib import messages
+import json
+
+# ... уже есть: require_api_auth, get_api_client
+
+@require_api_auth
+@require_http_methods(["POST"])
+def employee_groups_bulk(request, pk: int):
+    """
+    Назначить/снять персональные группы сотруднику.
+    Body: { "action": "add"|"remove", "group_ids": [1,2,3] }
+    """
+    api = get_api_client(request)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    action = (payload.get("action") or "").strip().lower()
+    group_ids = payload.get("group_ids") or []
+    if action not in {"add", "remove"}:
+        return JsonResponse({"detail": "action must be 'add' or 'remove'"}, status=400)
+    try:
+        gids = [int(x) for x in group_ids]
+    except Exception:
+        return JsonResponse({"detail": "group_ids must be a list of integers"}, status=400)
+    if not gids:
+        return JsonResponse({"detail": "group_ids is empty"}, status=400)
+
+    ok, errors = 0, {}
+    endpoint = "add-members" if action == "add" else "remove-members"
+    for gid in gids:
+        r = api.post(f"v1/groups/{gid}/{endpoint}/", json={"member_ids": [pk]})
+        if r.ok:
+            ok += 1
+        else:
+            try:
+                j = r.json or {}
+                msg = j.get("detail") or r.text or f"HTTP {r.status}"
+            except Exception:
+                msg = r.text or f"HTTP {r.status}"
+            errors[str(gid)] = msg
+    status_code = 200 if not errors else 207  # Multi-Status семантически уместен
+    return JsonResponse({"ok": True, "processed": ok, "failed": errors}, status=status_code)
+
+
+@require_api_auth
+@require_http_methods(["POST"])
+def group_create(request):
+    """
+    Создать группу (LDAP+БД) через DRF.
+    Body: { "name": "CN-Name" }
+    """
+    api = get_api_client(request)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"detail": "name is required"}, status=400)
+
+    resp = api.post("v1/groups/", json={"name": name})
+    try:
+        data = resp.json
+    except Exception:
+        data = {"detail": resp.text}
+    return JsonResponse(data or {}, status=resp.status)
+
+
+@require_api_auth
+@require_http_methods(["POST"])
+def group_delete(request):
+    """
+    Удалить группу (LDAP+БД) через DRF.
+    Body: { "group_id": 123 }
+    """
+    api = get_api_client(request)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    gid = payload.get("group_id")
+    try:
+        gid = int(gid)
+    except Exception:
+        return JsonResponse({"detail": "group_id must be int"}, status=400)
+
+    resp = api.delete(f"v1/groups/{gid}/")
+    if not resp.ok:
+        return JsonResponse({"detail": resp.text}, status=resp.status)
+    return JsonResponse({"ok": True, "id": gid}, status=200)
 
 
 # =========================
@@ -664,7 +790,7 @@ def department_create(request):
     except Exception:
         err = None
 
-    if r.status_code == 400 and isinstance(err, dict):
+    if getattr(r, "status", None) == 400 and isinstance(err, dict):
         # Пытаемся сопоставить ошибки полям формы
         attached = False
         for field in ("name", "description", "non_field_errors"):
@@ -681,11 +807,11 @@ def department_create(request):
                 None, "Не удалось создать отдел. Проверьте введённые данные."
             )
         status_code = 400
-    elif r.status_code == 403:
+    elif getattr(r, "status", None) == 403:
         form.add_error(None, "Недостаточно прав для создания отдела.")
         status_code = 403
     else:
-        form.add_error(None, f"Ошибка API ({r.status_code}). Повторите попытку позже.")
+        form.add_error(None, f"Ошибка API ({getattr(r, "status", None)}). Повторите попытку позже.")
         status_code = 502
 
     return render(
@@ -1049,6 +1175,19 @@ def position_create_front(request: HttpRequest) -> JsonResponse:
             data or {"detail": "Не удалось создать должность"}, status=status
         )
     return _ok(data, status=201)
+
+@require_api_auth
+@require_http_methods(["GET"])
+def position_detail_front(request: HttpRequest, pos_id: int) -> JsonResponse:
+    """
+    Прокси к GET /api/v1/positions/{id}/ — возвращает JSON должности.
+    """
+    api = get_api_client(request)
+    resp = api.get(f"v1/positions/{pos_id}/")
+    ok, data, status = _api_ok_or_error(resp)
+    if not ok:
+        return JsonResponse(data or {"detail": "Не удалось получить должность"}, status=status)
+    return JsonResponse(data or {}, status=200)
 
 
 # ---------- UPDATE POSITION ----------

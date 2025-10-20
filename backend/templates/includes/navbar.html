@@ -33,7 +33,15 @@
       </button>
     {% endif %}
 
-    <a class="navbar-brand fw-semibold me-3" href="/">EUSRR</a>
+    {% load static %}
+    <a class="navbar-brand d-flex align-items-center gap-2 me-3" href="/">
+      <img src="{% static BRAND_LOGO %}"
+          alt="{{ BRAND_NAME }}"
+          width="28" height="28"
+          class="align-text-bottom"
+          style="image-rendering:auto">
+      <span class="fw-semibold d-none d-sm-inline">{{ BRAND_NAME }}</span>
+    </a>
 
     {% if user.is_authenticated %}
       <!-- Группа: поиск + колокол -->

@@ -13,6 +13,11 @@ urlpatterns = [
     path("<int:pk>/", views_front.employee_profile, name="employee_detail"),
     path("<int:pk>/edit/", views_front.employee_edit, name="employee_edit"),
     path("create/", views_front.employee_create, name="employee_create"),
+
+    # --- Группы ---
+    path("employees/<int:pk>/groups/bulk/", views_front.employee_groups_bulk, name="employee_groups_bulk"),
+    path("groups/create/", views_front.group_create, name="group_create"),
+    path("groups/delete/", views_front.group_delete, name="group_delete"),
     # --- Отделы ---
     path("departments/create/", views_front.department_create, name="department_create"),
     path(
@@ -71,4 +76,5 @@ urlpatterns = [
         views_front.employee_set_position_me_front,
         name="employee_set_position_me",
     ),
+    path("positions/<int:pos_id>/", views_front.position_detail_front, name="position_detail"),
 ]
