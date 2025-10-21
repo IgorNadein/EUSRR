@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from phonenumber_field.modelfields import PhoneNumberField
 from simple_history.models import HistoricalRecords
+from django.db.models import Q  # для условий в уникальных ограничениях
 
 from .constants import ACTION_CHOICES, ACTION_DISMISSED, GENDER_CHOICES, DeptPerm
 
@@ -229,14 +230,13 @@ class Employee(AbstractUser):
 
     @property
     def departments(self):
-        # Отделы, где сотрудник активен
-        department_ids = EmployeeDepartment.objects.filter(
+        """Возвращает максимум один активный отдел (по новой логике)."""
+        dept_ids = EmployeeDepartment.objects.filter(
             employee=self, is_active=True
-        ).values_list("department_id", flat=True)
-        # Плюс отделы, где сотрудник начальник
+        ).values_list("department_id", flat=True)[:1]
         head_ids = Department.objects.filter(head=self).values_list("id", flat=True)
         return Department.objects.filter(
-            models.Q(id__in=department_ids) | models.Q(id__in=head_ids)
+            Q(id__in=dept_ids) | Q(id__in=head_ids)
         ).distinct()
 
     @property
@@ -343,16 +343,29 @@ class Department(models.Model):
 
         super().save(*args, **kwargs)
 
+        # --- Обновляем принадлежность текущего руководителя ---
         if self.head_id:
-            try:
-                link, created = EmployeeDepartment.objects.get_or_create(
+            link = EmployeeDepartment.objects.filter(employee_id=self.head_id).first()
+            if link and link.department_id != self.pk:
+                # Переназначаем отдел
+                EmployeeDepartment.objects.filter(pk=link.pk).update(
+                    department_id=self.pk,
+                    is_active=True,
+                    date_to=None,
+                )
+                if not link.date_from:
+                    EmployeeDepartment.objects.filter(pk=link.pk).update(
+                        date_from=timezone.now().date()
+                    )
+            elif not link:
+                EmployeeDepartment.objects.create(
                     employee_id=self.head_id,
                     department_id=self.pk,
-                    defaults={
-                        "is_active": True,
-                        "date_from": timezone.now().date(),
-                    },
+                    is_active=True,
+                    date_from=timezone.now().date(),
                 )
+            else:
+                # Обновляем статус если нужно
                 updates = {}
                 if not link.is_active:
                     updates["is_active"] = True
@@ -360,78 +373,12 @@ class Department(models.Model):
                     updates["date_from"] = timezone.now().date()
                 if updates:
                     EmployeeDepartment.objects.filter(pk=link.pk).update(**updates)
-            except IntegrityError:
-                # На случай гонки
-                EmployeeDepartment.objects.filter(
-                    employee_id=self.head_id, department_id=self.pk
-                ).update(is_active=True, date_from=timezone.now().date())
 
         # --- Обрабатываем бывшего руководителя ---
-        if (not is_create) and head_changed and old_head_id:
-            if self.head_id is None:
-                # Руководителя сняли: деактивируем его принадлежность
-                link, created = EmployeeDepartment.objects.get_or_create(
-                    employee_id=old_head_id,
-                    department_id=self.pk,
-                    defaults={
-                        "is_active": True,
-                        "date_from": timezone.now().date(),
-                        "date_to": timezone.now().date(),
-                    },
-                )
-                if not created:
-                    EmployeeDepartment.objects.filter(
-                        employee_id=old_head_id, department_id=self.pk
-                    ).update(is_active=True, date_to=timezone.now().date())
-            else:
-                # Смена A -> B: по текущей логике бывший остаётся сотрудником отдела (активным)
-                # Если хотите наоборот — поменяйте is_active=True на False и добавьте date_to.
-                EmployeeDepartment.objects.get_or_create(
-                    employee_id=old_head_id,
-                    department_id=self.pk,
-                    defaults={
-                        "is_active": True,
-                        "date_from": timezone.now().date(),
-                    },
-                )
-
-    @property
-    def active_employees(self):
-        """
-        Все активные сотрудники отдела (через EmployeeDepartment),
-        включая руководителя, если он есть и активен.
-        """
-        qs = self.employeedepartment.filter(is_active=True).select_related("employee")
-        employees = [ed.employee for ed in qs if ed.employee.is_actually_active]
-
-        if self.head and self.head.is_actually_active and self.head not in employees:
-            employees.append(self.head)
-
-        return employees
-
-    @property
-    def new_employees(self):
-        """
-        Новые сотрудники отдела за последний месяц (по дате присоединения).
-        """
-        month_ago = timezone.now() - timezone.timedelta(days=30)
-        qs = self.employeedepartment.filter(
-            is_active=True, date_from__gte=month_ago
-        ).select_related("employee")
-
-        employees = [ed.employee for ed in qs if ed.employee.is_actually_active]
-
-        # Добавляем руководителя, если он недавно назначен и активен
-        if (
-            self.head
-            and self.head_appointed_at
-            and self.head_appointed_at >= month_ago
-            and self.head.is_actually_active
-            and self.head not in employees
-        ):
-            employees.append(self.head)
-
-        return employees
+        if (not is_create) and head_changed and old_head_id and old_head_id != self.head_id:
+            # Бывший руководитель остаётся в старом отделе (по требованию можно деактивировать)
+            # Здесь ничего не делаем, так как запись уже существует и не должна меняться.
+            pass
 
 
 class DepartmentPermission(models.Model):
@@ -493,15 +440,23 @@ class EmployeeDepartment(DateRangeMixin, models.Model):
         verbose_name_plural = "Принадлежности к отделам"
         constraints = [
             models.UniqueConstraint(
-                fields=["department_id", "employee_id"],
-                name="uniq_employee_per_department",
-                deferrable=models.Deferrable.DEFERRED,
+                fields=["employee_id"],
+                name="uniq_department_per_employee",
             ),
         ]
         indexes = [
             models.Index(fields=["department_id", "is_active", "employee_id"]),
             models.Index(fields=["employee_id", "department_id"]),
         ]
+
+    def clean(self):
+        super().clean()
+        # Запрещаем более одной активной принадлежности (и вообще единственную запись по сотруднику)
+        existing = EmployeeDepartment.objects.filter(employee_id=self.employee_id)
+        if self.pk:
+            existing = existing.exclude(pk=self.pk)
+        if existing.exists():
+            raise ValidationError({"employee": "Сотрудник уже состоит в другом отделе"})
 
     def __str__(self):
         role_name = self.role.name if self.role else "сотрудник"
