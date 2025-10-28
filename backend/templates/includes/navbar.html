@@ -1,25 +1,5 @@
 {% load static %}
-<style>
-  /* Компактный бейдж уведомлений вплотную к колоколу */
-  .bell-wrapper{ position: relative; line-height: 1; display: inline-block; }
-  .bell-dot{
-    position: absolute; top: -2px; right: -2px;
-    width: 9px; height: 9px; border-radius: 999px;
-    background: var(--bs-danger); color: #fff;
-    font-size: 7px; line-height: 9px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 0 1px rgba(255,255,255,.65);
-  }
-
-  /* Кнопка «гамбургера» — без круга/рамки */
-  .menu-toggle{
-    padding: 0; border: 0; background: transparent; line-height: 1; color: #fff;
-  }
-  .menu-toggle:focus{ outline: none; box-shadow: none; }
-
-  /* Спрятать стрелочку у dropdown-аватара */
-  .dropdown-toggle.no-caret::after{ display: none !important; }
-</style>
+<link rel="stylesheet" href="{% static 'css/components/navbar.css' %}">
 
 <nav class="navbar navbar-expand bg-primary app-navbar" data-bs-theme="dark">
   <div class="container-fluid align-items-center">
