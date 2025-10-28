@@ -63,9 +63,32 @@
   
   --feed-radius: 18px;
   --feed-shadow: var(--shadow-md);
+  --feed-shadow-hover: var(--shadow-lg);
   --feed-padding: 1rem;
   --feed-avatar-size: 44px;
   --feed-gap: 0.75rem;
+  
+  /* ========== iOS Компоненты ========== */
+  
+  --ios-overlay-bg: rgba(0, 0, 0, 0.4);
+  --ios-sheet-radius: 24px 24px 0 0;
+  --ios-grip-width: 36px;
+  --ios-grip-height: 5px;
+  --ios-search-radius: 10px;
+  
+  /* ========== Аватары ========== */
+  
+  --avatar-xs: 28px;
+  --avatar-sm: 36px;
+  --avatar-md: 44px;
+  --avatar-lg: 64px;
+  --avatar-xl: 96px;
+  
+  /* ========== Календарь ========== */
+  
+  --calendar-day-size: 1.6rem;
+  --calendar-event-radius: 6px;
+  --calendar-wrap-radius: 10px;
   
   /* ========== Переходы и анимации ========== */
   
