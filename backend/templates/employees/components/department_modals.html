@@ -1,0 +1,197 @@
+{# ---------- МОДАЛ «Удалить участника» ---------- #}
+{% if user.is_staff or user.is_superuser or can_manage or dept.head.id == user.id %}
+  <div class="modal fade" id="removeMemberModal-{{ dept.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi-person-dash me-2"></i>Удалить участника</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+
+        <form method="post" action="{% url 'employees:department_remove_member' dept.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="employee_id" id="removeMemberChosen-{{ dept.id }}">
+          <input type="hidden" name="member_id"   id="removeMemberLink-{{ dept.id }}">
+
+          <div class="modal-body">
+            <div class="mb-3">
+              <input id="removeMemberSearch-{{ dept.id }}" type="search"
+                     class="form-control" placeholder="Поиск по ФИО или email" autocomplete="off">
+              <div class="form-text">Отображаются участники этого отдела.</div>
+            </div>
+
+            <div id="removeMemberResults-{{ dept.id }}"
+                 class="list-group list-group-flush border rounded">
+              {% for li in links %}
+                {% with emp=li.employee %}
+                  <button type="button"
+                          class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2"
+                          data-id="{{ emp.id }}"
+                          data-link-id="{{ li.id }}"
+                          data-name="{{ emp.display_name|default:emp.last_name }}"
+                          data-email="{{ emp.email|default:'' }}">
+                    <span class="feed-ava"
+                          style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                      {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}<i class="bi-person"></i>{% endif %}
+                    </span>
+                    <span class="d-flex flex-column text-start">
+                      <span class="fw-semibold">{{ emp.display_name|default:emp.last_name }}</span>
+                      {% if emp.email %}<span class="text-muted small">{{ emp.email }}</span>{% endif %}
+                    </span>
+                  </button>
+                {% endwith %}
+              {% empty %}
+                <div class="list-group-item text-secondary small py-3">В отделе пока нет участников.</div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link" data-bs-dismiss="modal">
+              <i class="bi-x-lg me-1"></i>Отмена
+            </button>
+            <button type="submit" id="removeMemberSubmit-{{ dept.id }}" class="btn btn-outline-danger" disabled>
+              <i class="bi-person-dash me-1"></i>Удалить
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{# ---------- МОДАЛ «Добавить участника» ---------- #}
+{% if user.is_staff or user.is_superuser or can_manage or dept.head.id == user.id %}
+  {% with exclude_ids=members_exclude_ids %}
+  <div class="modal fade" id="addMemberModal-{{ dept.id }}" tabindex="-1" aria-hidden="true"
+       data-exclude="{% if exclude_ids %}{{ exclude_ids|join:',' }}{% endif %}">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi-person-plus me-2"></i>Добавить участника</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+
+        <form method="post" action="{% url 'employees:department_add_member' dept.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="employee_id" id="addMemberChosen-{{ dept.id }}">
+
+          <div class="modal-body">
+            <div class="mb-3">
+              <input id="addMemberSearch-{{ dept.id }}" type="search"
+                     class="form-control" placeholder="Поиск по ФИО или email" autocomplete="off"
+                     data-add-member-q>
+              <div class="form-text">Показываются только те, кто ещё не состоит в отделе.</div>
+            </div>
+
+            <div id="addMemberResults-{{ dept.id }}" class="list-group list-group-flush border rounded"
+                 data-add-member-list>
+              <div class="list-group-item text-muted small py-3">Начните вводить для поиска…</div>
+            </div>
+
+            <template id="addMemberItemTpl-{{ dept.id }}">
+              <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2" data-id="">
+                <span class="feed-ava" style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                  <i class="bi-person"></i>
+                </span>
+                <span class="d-flex flex-column text-start">
+                  <span class="fw-semibold js-name"></span>
+                  <span class="text-muted small js-email"></span>
+                </span>
+              </button>
+            </template>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link" data-bs-dismiss="modal">
+              <i class="bi-x-lg me-1"></i>Отмена
+            </button>
+            <button type="submit" id="addMemberSubmit-{{ dept.id }}" class="btn btn-success"
+                    data-add-member-submit disabled>
+              <i class="bi-person-plus me-1"></i>Добавить
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endwith %}
+{% endif %}
+
+{# ---------- МОДАЛ «Назначить роль» ---------- #}
+{% if roles %}
+  {% if user.is_superuser or user.is_staff or can_assign_roles or dept.head.id == user.id %}
+    <div class="modal fade" id="setRoleModal-{{ dept.id }}" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title"><i class="bi-award me-2"></i>Назначить роль</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+          </div>
+
+          {# порядок аргументов: emp_id, dept_id #}
+          <form method="post"
+                action="{% url 'employees:set_member_role' 0 dept.id %}"
+                data-action-template="{% url 'employees:set_member_role' 0 dept.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="employee_id" id="setRoleChosen-{{ dept.id }}">
+
+            <div class="modal-body">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label for="setRoleSearch-{{ dept.id }}" class="form-label">Участник</label>
+                  <input id="setRoleSearch-{{ dept.id }}" type="search"
+                         class="form-control" placeholder="Поиск по ФИО или email" autocomplete="off">
+                  <div id="setRoleResults-{{ dept.id }}"
+                       class="list-group list-group-flush border rounded mt-2" style="max-height:320px;overflow:auto;">
+                    {% for li in links %}
+                      {% with emp=li.employee %}
+                        <button type="button"
+                                class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2"
+                                data-id="{{ emp.id }}"
+                                data-name="{{ emp.display_name|default:emp.last_name }}"
+                                data-email="{{ emp.email|default:'' }}">
+                          <span class="feed-ava"
+                                style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                            {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}<i class="bi-person"></i>{% endif %}
+                          </span>
+                          <span class="d-flex flex-column text-start">
+                            <span class="fw-semibold">{{ emp.display_name|default:emp.last_name }}</span>
+                            {% if emp.email %}<span class="text-muted small">{{ emp.email }}</span>{% endif %}
+                          </span>
+                        </button>
+                      {% endwith %}
+                    {% empty %}
+                      <div class="list-group-item text-secondary small py-3">В отделе пока нет участников.</div>
+                    {% endfor %}
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label for="setRoleSelect-{{ dept.id }}" class="form-label">Роль</label>
+                  <select name="role_id" id="setRoleSelect-{{ dept.id }}" class="form-select">
+                    <option value="">— Без роли —</option>
+                    {% for r in roles %}
+                      <option value="{{ r.id }}">{{ r.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <div class="form-text">Выберите участника слева и роль здесь.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-link" data-bs-dismiss="modal">
+                <i class="bi-x-lg me-1"></i>Отмена
+              </button>
+              <button type="submit" id="setRoleSubmit-{{ dept.id }}" class="btn btn-primary" disabled>
+                <i class="bi-check2 me-1"></i>Сохранить
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endif %}
+

@@ -1,0 +1,40 @@
+      {# --- Инфо-блок отдела (под командой) --- #}
+      {% if dept.description or dept.head %}
+        <section class="feed-card mb-3">
+          <div class="feed-body position-relative pb-4 pe-3 pt-0">
+            {% if dept.description %}
+              <div class="text-break" style="white-space: pre-line; overflow-wrap:anywhere;">
+                {{ dept.description }}
+              </div>
+            {% endif %}
+
+            {% if dept.head %}
+              <div class="small mt-2">
+                <span class="text-secondary">Руководитель:</span>
+                {% url 'employees:employee_detail' dept.head.id as head_url %}
+                {% if head_url %}
+                  <a class="text-decoration-none" href="{{ head_url }}">
+                    {{ dept.head.last_name }}{% if dept.head.first_name %} {{ dept.head.first_name }}{% endif %}
+                  </a>
+                {% else %}
+                  {{ dept.head.last_name }}{% if dept.head.first_name %} {{ dept.head.first_name }}{% endif %}
+                {% endif %}
+              </div>
+            {% endif %}
+
+            {% if user.is_staff or dept.head.id == user.id or can_manage or can_assign_roles or can_change_head %}
+              <button
+                type="button"
+                class="position-absolute p-0 bg-transparent border-0 text-secondary"
+                style="right:.5rem; bottom:.5rem;"
+                data-bs-toggle="collapse"
+                data-bs-target="#deptEditWrap-{{ dept.id }}"
+                aria-controls="deptEditWrap-{{ dept.id }}"
+                title="Настройки отдела"
+                aria-label="Показать/скрыть настройки отдела">
+                <i class="bi-gear fs-5"></i>
+              </button>
+            {% endif %}
+          </div>
+        </section>
+      {% endif %}

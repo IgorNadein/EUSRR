@@ -171,7 +171,7 @@ class RequestsView(LoginRequiredMixin, TemplateView):
         ValueError: При невалидных входных данных для конкретных экшенов.
     """
 
-    template_name = "requests/request_list.html"
+    template_name = "requests_app/request_list_full.html"
 
     # ---------- GET ----------
 

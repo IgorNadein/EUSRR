@@ -1,0 +1,64 @@
+  {# ===== Заголовок ===== #}
+  <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
+    <i class="bi-diagram-3 fs-2 text-primary"></i>
+    <h2 class="title ios-title mb-0">{{ dept.name }}</h2>
+    {% if user.is_staff or user.is_superuser or can_manage or dept.head.id == user.id %}
+    <div class="ms-2 header-icon-group d-inline-flex align-items-center gap-2">
+
+      {# Добавить участника #}
+      <button type="button"
+              class="btn-icon btn-icon--success"
+              data-bs-toggle="modal"
+              data-bs-target="#addMemberModal-{{ dept.id }}"
+              data-bs-toggle="tooltip"
+              title="Добавить участника"
+              aria-label="Добавить участника">
+        <i class="bi-person-plus" aria-hidden="true"></i>
+      </button>
+
+      {# Назначить роль #}
+      {% if roles %}
+        {% if user.is_superuser or user.is_staff or can_assign_roles or dept.head.id == user.id %}
+          <button type="button"
+                  class="btn-icon btn-icon--primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#setRoleModal-{{ dept.id }}"
+                  data-bs-toggle="tooltip"
+                  title="Назначить роль"
+                  aria-label="Назначить роль">
+            <i class="bi-award" aria-hidden="true"></i>
+          </button>
+        {% endif %}
+      {% endif %}
+
+      {# Удалить участника #}
+      <button type="button"
+              class="btn-icon btn-icon--danger"
+              data-bs-toggle="modal"
+              data-bs-target="#removeMemberModal-{{ dept.id }}"
+              data-bs-toggle="tooltip"
+              title="Удалить участника"
+              aria-label="Удалить участника">
+        <i class="bi-person-dash" aria-hidden="true"></i>
+      </button>
+
+    </div>
+    {% endif %}
+
+    <div class="ms-auto d-flex gap-2">
+      {% url 'feed:post_create' as post_create_url %}
+      {% if user.is_authenticated and user.id in members_exclude_ids %}
+        <a href="{{ post_create_url }}?department={{ dept_id }}&next={{ request.get_full_path|urlencode }}"
+            class="btn btn-primary">
+          <i class="bi-plus-circle me-1"></i> Создать публикацию
+        </a>
+      {% endif %}
+
+      
+    </div>
+  </div>
+
+  {# ===== Две колонки как в employee_detail: слева основное, справа сайдбар ===== #}
+  <div class="row g-4 align-items-start">
+
+    {# ===== ЛЕВАЯ КОЛОНКА (основная, как в профиле): команда + инфо ===== #}

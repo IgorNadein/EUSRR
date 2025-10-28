@@ -12,54 +12,27 @@ from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import FieldError
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import (
-    Case,
-    Count,
-    Exists,
-    F,
-    IntegerField,
-    OuterRef,
-    Prefetch,
-    Q,
-    Subquery,
-    Value,
-    When,
-)
+from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
+                              Prefetch, Q, Subquery, Value, When)
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
-from employees.ldap.connections import _conn
-from employees.ldap.directory_service import (
-    DirectoryDbError,
-    DirectoryDepartmentDTO,
-    DirectoryLdapError,
-    DirectoryService,
-    DirectoryServiceError,
-    DirectoryUserDTO,
-)
-from employees.models import (
-    Department,
-    DepartmentPermission,
-    DepartmentRole,
-    DeptPerm,
-    EmployeeAction,
-    EmployeeDepartment,
-    LdapSyncState,
-    Position,
-    Skill,
-)
-from employees.utils import (
-    _build_links_for_dept,
-    _detect_phone_field,
-    _ensure_department_permissions,
-    _head_choices_for_dept,
-    _normalize_phone,
-    _perm_choices_synced,
-    _to_bool,
-    _validate_head_active,
-)
+from employees.ldap.directory_service import (DirectoryDepartmentDTO,
+                                              DirectoryService,
+                                              DirectoryUserDTO)
+from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
+                                   DirectoryServiceError)
+from employees.ldap.infrastructure.connections import _conn
+from employees.models import (Department, DepartmentPermission, DepartmentRole,
+                              DeptPerm, EmployeeAction, EmployeeDepartment,
+                              LdapSyncState, Position, Skill)
+from employees.utils import (_build_links_for_dept, _detect_phone_field,
+                             _ensure_department_permissions,
+                             _head_choices_for_dept, _normalize_phone,
+                             _perm_choices_synced, _to_bool,
+                             _validate_head_active)
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -67,31 +40,16 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..permissions import (
-    AdminOrActionOrModelPerms,
-    AdminOrDeptAllowed,
-    IsSelfOrStaff,
-    has_dept_perm,
-)
-from .serializers import (
-    AddMemberInput,
-    DepartmentBriefSerializer,
-    DepartmentRoleSerializer,
-    DepartmentSerializer,
-    EmailSerializer,
-    EmailVerifySerializer,
-    EmployeeActionSerializer,
-    EmployeeBriefSerializer,
-    EmployeeListSerializer,
-    EmployeeSerializer,
-    GroupSerializer,
-    PositionSerializer,
-    RegisterSerializer,
-    RemoveMemberInput,
-    SetHeadInput,
-    SetMemberRoleInput,
-    SkillSerializer,
-)
+from ..permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
+                           IsSelfOrStaff, has_dept_perm)
+from .serializers import (AddMemberInput, DepartmentBriefSerializer,
+                          DepartmentRoleSerializer, DepartmentSerializer,
+                          EmailSerializer, EmailVerifySerializer,
+                          EmployeeActionSerializer, EmployeeBriefSerializer,
+                          EmployeeListSerializer, EmployeeSerializer,
+                          GroupSerializer, PositionSerializer,
+                          RegisterSerializer, RemoveMemberInput, SetHeadInput,
+                          SetMemberRoleInput, SkillSerializer)
 
 Employee = get_user_model()
 

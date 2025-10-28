@@ -11,7 +11,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.models import Permission
 from django.http import HttpRequest
 from django.utils import timezone
-from employees.ldap.utils import esc_filter
+from employees.ldap.utils.text_utils import esc_filter
 from employees.models import Department, Employee, EmployeeDepartment
 from employees.utils import _normalize_phone
 from ldap3 import SUBTREE, Connection, Server

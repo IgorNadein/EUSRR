@@ -1,0 +1,513 @@
+{# ==== JS: круг с автоскроллом/ручным управлением и индикатором ==== #}
+<script>
+(function(){
+  const wheel = document.getElementById('teamWheel-{{ dept.id }}');
+  if (!wheel) return;
+
+  const columns = wheel.querySelector('[data-columns]');
+  const col1 = columns.querySelector('[data-col="1"]');
+  const col2 = columns.querySelector('[data-col="2"]');
+  const col3 = columns.querySelector('[data-col="3"]');
+  const col4 = columns.querySelector('[data-col="4"]');
+
+  const focus     = wheel.querySelector('[data-focus]');
+  const fImg      = wheel.querySelector('[data-focus-img]');
+  const fFallback = wheel.querySelector('[data-focus-fallback]');
+
+  const wrapper  = wheel.closest('.team-wrap');
+  const hintBox  = wrapper ? wrapper.querySelector('[data-hint]') : null;
+  const details  = wrapper ? wrapper.querySelector('[data-details]') : null;
+  const dName    = wrapper ? wrapper.querySelector('[data-details-name]') : null;
+  const dRole    = wrapper ? wrapper.querySelector('[data-details-role]') : null;
+  const dMail    = wrapper ? wrapper.querySelector('[data-details-email]') : null;
+
+  const arcProg = wheel.querySelector('.arc-prog');
+
+  // Источник данных
+  const src = document.getElementById('teamData-{{ dept.id }}');
+  const members = Array.from(src ? src.children : []).map(n => ({
+    id: Number(n.getAttribute('data-id') || '0'),
+    name: n.getAttribute('data-name') || '',
+    role: n.getAttribute('data-role') || '',
+    email: n.getAttribute('data-email') || '',
+    avatar: n.getAttribute('data-avatar') || '',
+    active: n.getAttribute('data-active') === '1'
+  }));
+
+  // Если никого нет — показываем руководителя
+  if (!members.length){
+    columns.classList.add('d-none');
+    focus.classList.remove('d-none');
+
+    const headAva = "{{ dept.head.avatar|default:'' }}";
+    const headName= "{% if dept.head %}{{ dept.head.display_name|default:dept.head.last_name }}{% else %}Руководитель{% endif %}";
+    const headRole= "Руководитель отдела";
+    const headMail= "{% if dept.head and dept.head.email %}{{ dept.head.email }}{% endif %}";
+
+    if (headAva){
+      fImg.src = headAva; fImg.alt = headName; fImg.style.display = 'block';
+      fFallback.style.display = 'none';
+    } else {
+      fImg.removeAttribute('src'); fImg.style.display = 'none';
+      fFallback.style.display = 'block';
+    }
+    if (hintBox) hintBox.classList.add('d-none');
+    if (details){
+      details.classList.remove('d-none');
+      dName && (dName.textContent = headName);
+      dRole && (dRole.textContent = headRole);
+      dMail && (dMail.textContent = headMail);
+    }
+    return;
+  }
+
+  // Сортировки для 4 колонок: во всех — весь список
+  const byNameAsc  = [...members].sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+  const byNameDesc = [...members].sort((a,b)=>b.name.localeCompare(a.name,'ru'));
+  const byIdAsc    = [...members].sort((a,b)=>a.id-b.id);
+  const byRoleAsc  = [...members].sort((a,b)=>{
+    const ra = (a.role||'').toLowerCase(), rb = (b.role||'').toLowerCase();
+    if (ra === rb) return a.name.localeCompare(b.name,'ru');
+    return ra < rb ? -1 : 1;
+  });
+
+  function makeItem(m){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'wheel-item';
+    btn.setAttribute('data-id', String(m.id));
+    btn.setAttribute('data-name', m.name);
+    btn.setAttribute('data-role', m.role || '');
+    btn.setAttribute('data-email', m.email || '');
+    btn.setAttribute('data-avatar', m.avatar || '');
+
+    const inner = document.createElement('span');
+    inner.className = 'ava';
+    if (m.avatar){
+      const img = document.createElement('img');
+      img.alt = '';
+      img.src = m.avatar;
+      inner.appendChild(img);
+    } else {
+      const ico = document.createElement('i');
+      ico.className = 'bi-person';
+      inner.appendChild(ico);
+    }
+    btn.appendChild(inner);
+    return btn;
+  }
+
+  function fillCol(root, arr){
+    root.innerHTML = '';
+    // Дублируем для «бесконечной» прокрутки
+    for (let k=0;k<2;k++){
+      arr.forEach(m => root.appendChild(makeItem(m)));
+    }
+  }
+  fillCol(col1, byNameAsc);
+  fillCol(col2, byNameDesc);
+  fillCol(col3, byIdAsc);
+  fillCol(col4, byRoleAsc);
+
+  // Виртуальный скролл
+  let vScroll = 0;
+  let dir = 1;                // 1 -> вниз, -1 -> вверх
+  const speed = 0.45;         // px/frame
+  let hover = false;
+  let focused = false;
+  let maxY = Math.max(0, columns.scrollHeight - wheel.clientHeight);
+
+  function applyScroll(){
+    columns.style.transform = `translateY(${-vScroll}px)`;
+    if (maxY <= 0){
+      arcProg.style.strokeDashoffset = 1;
+    } else {
+      const p = vScroll / maxY; // 0..1
+      arcProg.style.strokeDashoffset = (1 - p).toFixed(4);
+    }
+  }
+
+  function recalc(){
+    maxY = Math.max(0, columns.scrollHeight - wheel.clientHeight);
+    vScroll = Math.min(vScroll, maxY);
+    applyScroll();
+  }
+  new ResizeObserver(recalc).observe(wheel);
+  window.addEventListener('resize', recalc);
+
+  function loop(){
+    if (!hover && !focused && maxY > 0){
+      vScroll += dir * speed;
+      if (vScroll >= maxY){
+        vScroll = maxY;
+        dir = -1; // на нижней границе едем вверх
+      } else if (vScroll <= 0){
+        vScroll = 0;
+        dir = 1;  // цикл завершается только на верхней точке
+      }
+      applyScroll();
+    }
+    requestAnimationFrame(loop);
+  }
+  applyScroll();
+  requestAnimationFrame(loop);
+
+  // Hover — пауза автоскролла, включаем ручной
+  wheel.addEventListener('mouseenter', ()=>{ hover = true; });
+  wheel.addEventListener('mouseleave', ()=>{ hover = false; });
+
+  // Ручной скролл колесом
+  wheel.addEventListener('wheel', (e)=>{
+    if (!focused){
+      e.preventDefault();
+      vScroll = Math.min(maxY, Math.max(0, vScroll + e.deltaY));
+      applyScroll();
+    }
+  }, { passive: false });
+
+  // Ручной скролл тачем
+  let tStartY = null;
+  wheel.addEventListener('touchstart', (e)=>{
+    if (e.touches && e.touches.length){
+      tStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+  wheel.addEventListener('touchmove', (e)=>{
+    if (tStartY != null && !focused){
+      const y = e.touches[0].clientY;
+      const dy = tStartY - y;
+      vScroll = Math.min(maxY, Math.max(0, vScroll + dy));
+      tStartY = y;
+      applyScroll();
+      e.preventDefault();
+    }
+  }, { passive: false });
+  wheel.addEventListener('touchend', ()=>{ tStartY = null; });
+
+  // Фокус: клик по мини-аве
+  columns.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.wheel-item');
+    if (!btn) return;
+    const ava = btn.getAttribute('data-avatar') || '';
+    const name= btn.getAttribute('data-name') || 'Сотрудник';
+    const role= btn.getAttribute('data-role') || '';
+    const mail= btn.getAttribute('data-email') || '';
+
+    focused = true;
+    columns.classList.add('d-none');
+    focus.classList.remove('d-none');
+
+    if (ava){
+      fImg.src = ava; fImg.alt = name; fImg.style.display = 'block';
+      fFallback.style.display = 'none';
+    } else {
+      fImg.removeAttribute('src'); fImg.style.display = 'none';
+      fFallback.style.display = 'block';
+    }
+    hintBox && hintBox.classList.add('d-none');
+    if (details){
+      details.classList.remove('d-none');
+      dName && (dName.textContent = name);
+      dRole && (dRole.textContent = role);
+      dMail && (dMail.textContent = mail);
+    }
+  });
+
+  // Выход из фокуса — клик по большому кругу
+  focus.addEventListener('click', ()=>{
+    focused = false;
+    focus.classList.add('d-none');
+    columns.classList.remove('d-none');
+  });
+})();
+</script>
+
+{# ===== Переключатель панели настроек (скролл к блоку при открытии) ===== #}
+<script>
+/* Smooth-scroll к «Настройкам отдела» при открытии на мобильных */
+document.addEventListener('DOMContentLoaded', () => {
+  const wrap = document.getElementById('deptEditWrap-{{ dept.id }}');
+  if (!wrap) return;
+
+  const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
+
+  function headerOffset(){
+    const sticky = document.querySelector('.ios-header');
+    return (sticky?.offsetHeight || 0) + 8;
+  }
+  function smoothScrollTo(el){
+    const top = el.getBoundingClientRect().top + window.pageYOffset - headerOffset();
+    try { window.scrollTo({ top, behavior: 'smooth' }); }
+    catch { window.scrollTo(0, top); }
+  }
+
+  wrap.addEventListener('shown.bs.collapse', () => {
+    if (isMobile()) smoothScrollTo(wrap);
+  });
+
+  if (wrap.classList.contains('show') && isMobile()) {
+    setTimeout(() => smoothScrollTo(wrap), 50);
+  }
+});
+</script>
+
+{# ===== Модал «Добавить участника»: AJAX-поиск ===== #}
+<script>
+{% url 'employees:employees_list' as employees_list_url %}
+(function(){
+  const modal  = document.getElementById('addMemberModal-{{ dept.id }}');
+  if (!modal) return;
+
+  const form   = modal.querySelector('form');
+  const input  = modal.querySelector('[data-add-member-q]');
+  const listEl = modal.querySelector('[data-add-member-list]');
+  const tpl    = modal.querySelector('#addMemberItemTpl-{{ dept.id }}');
+  const hidden = form ? form.querySelector('input[name="employee_id"]') : null;
+  const submit = modal.querySelector('[data-add-member-submit]');
+  if (!form || !input || !listEl || !tpl || !hidden || !submit) return;
+
+  const excludeAttr = (modal.getAttribute('data-exclude') || '').trim();
+  const exclude = new Set(
+    excludeAttr ? excludeAttr.split(',').map(x => parseInt(x, 10)).filter(n => !Number.isNaN(n)) : []
+  );
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+
+  let aborter = null;
+
+  async function searchEmployees(q){
+    if (aborter) aborter.abort();
+    aborter = new AbortController();
+
+    const params = new URLSearchParams({
+      format: 'json',
+      q: q,
+      limit: '20',
+      exclude: Array.from(exclude).join(',')
+    });
+
+    const r = await fetch('{{ employees_list_url }}?' + params.toString(), {
+      credentials: 'same-origin',
+      signal: aborter.signal
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(()=>({results:[]}));
+    return Array.isArray(data) ? data : (data.results || []);
+  }
+
+  function render(items){
+    listEl.innerHTML = '';
+    if (!items.length){
+      const empty = document.createElement('div');
+      empty.className = 'list-group-item text-muted small py-3';
+      empty.textContent = 'Ничего не найдено';
+      listEl.appendChild(empty);
+      return;
+    }
+    items.forEach(e => {
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.dataset.id = e.id;
+      const ava = node.querySelector('.feed-ava');
+      if (ava){
+        ava.innerHTML = e.avatar
+          ? `<img src="${esc(e.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+          : '<i class="bi-person"></i>';
+      }
+      const nameEl = node.querySelector('.js-name');
+      if (nameEl){
+        nameEl.textContent = e.display_name || (e.last_name ? (e.last_name + (e.first_name ? ' ' + e.first_name : '')) : ('Сотрудник #' + e.id));
+      }
+      const emailEl = node.querySelector('.js-email');
+      if (emailEl) emailEl.textContent = e.email || '';
+
+      node.addEventListener('click', () => {
+        listEl.querySelectorAll('.list-group-item').forEach(li => li.classList.remove('active'));
+        node.classList.add('active');
+        hidden.value = String(e.id);
+        submit.disabled = false;
+        submit.removeAttribute('disabled');
+      });
+      listEl.appendChild(node);
+    });
+  }
+
+  const run = debounce(async (q) => {
+    submit.disabled = true;
+    hidden.value = '';
+    try { render(await searchEmployees(q)); }
+    catch { listEl.innerHTML = '<div class="list-group-item text-muted small py-3">Ошибка загрузки</div>'; }
+  }, 200);
+
+  input.addEventListener('input', () => run(input.value));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter'){
+      const cur = listEl.querySelector('.list-group-item.active') || listEl.querySelector('.list-group-item');
+      if (cur && cur.dataset.id){
+        e.preventDefault();
+        cur.click();
+      }
+    }
+  });
+
+  modal.addEventListener('shown.bs.modal', () => {
+    input.value = '';
+    hidden.value = '';
+    submit.disabled = true;
+    input.focus();
+    run('');
+  });
+
+  form.addEventListener('submit', (e) => {
+    if (!hidden.value){
+      e.preventDefault();
+      input.focus();
+    }
+  });
+})();
+</script>
+
+{# ===== Модал «Удалить участника»: локальный выбор ===== #}
+<script>
+(function(){
+  const modal  = document.getElementById('removeMemberModal-{{ dept.id }}');
+  if (!modal) return;
+
+  const form      = modal.querySelector('form');
+  const input     = document.getElementById('removeMemberSearch-{{ dept.id }}');
+  const listBox   = document.getElementById('removeMemberResults-{{ dept.id }}');
+  const hiddenEmp = document.getElementById('removeMemberChosen-{{ dept.id }}');
+  const hiddenLink= document.getElementById('removeMemberLink-{{ dept.id }}');
+  const submit    = document.getElementById('removeMemberSubmit-{{ dept.id }}');
+  if (!form || !input || !listBox || !hiddenEmp || !hiddenLink || !submit) return;
+
+  function norm(s){ return String(s||'').toLowerCase(); }
+  function clearActive(){ listBox.querySelectorAll('.active').forEach(el => el.classList.remove('active')); }
+  function matches(item, q){
+    const name  = norm(item.getAttribute('data-name') || '');
+    const email = norm(item.getAttribute('data-email') || '');
+    const id    = String(item.getAttribute('data-id') || '');
+    return !q || name.includes(q) || email.includes(q) || id.includes(q);
+  }
+  function applyFilter(){
+    const q = norm(input.value);
+    listBox.querySelectorAll('.list-group-item, .list-group-item-action').forEach(it => {
+      const ok = matches(it, q);
+      it.classList.toggle('d-none', !ok);
+    });
+  }
+
+  input.addEventListener('input', applyFilter);
+
+  listBox.addEventListener('click', (e) => {
+    const it = e.target.closest('[data-id]');
+    if (!it) return;
+    clearActive();
+    it.classList.add('active');
+    hiddenEmp.value  = it.getAttribute('data-id') || '';
+    hiddenLink.value = it.getAttribute('data-link-id') || '';
+    submit.disabled  = !(hiddenEmp.value || hiddenLink.value);
+    if (!submit.disabled) submit.removeAttribute('disabled');
+  });
+
+  modal.addEventListener('shown.bs.modal', () => {
+    input.value = '';
+    clearActive();
+    applyFilter();
+    hiddenEmp.value  = '';
+    hiddenLink.value = '';
+    submit.disabled  = true;
+    input.focus();
+  });
+
+  form.addEventListener('submit', (e) => {
+    if (!hiddenEmp.value && !hiddenLink.value){
+      e.preventDefault();
+      input.focus();
+    }
+  });
+})();
+</script>
+
+{# ===== Модал «Назначить роль»: подстановка empId в action ===== #}
+<script>
+(function(){
+  const modal   = document.getElementById('setRoleModal-{{ dept.id }}');
+  if (!modal) return;
+
+  const form    = modal.querySelector('form');
+  const actionTpl = form ? form.getAttribute('data-action-template') : null;
+  const input   = document.getElementById('setRoleSearch-{{ dept.id }}');
+  const listBox = document.getElementById('setRoleResults-{{ dept.id }}');
+  const hidden  = document.getElementById('setRoleChosen-{{ dept.id }}');
+  const select  = document.getElementById('setRoleSelect-{{ dept.id }}');
+  const submit  = document.getElementById('setRoleSubmit-{{ dept.id }}');
+  if (!form || !input || !listBox || !hidden || !select || !submit) return;
+
+  function setAction(empId){
+    if (!actionTpl) return;
+    // /employees/0/departments/<deptId>/set-role/ -> /employees/<empId>/departments/<deptId>/set-role/
+    const newAction = actionTpl.replace(/(\/employees\/)(\d+)(\/)/, '$1' + String(empId) + '$3');
+    form.setAttribute('action', newAction);
+  }
+
+  function norm(s){ return String(s||'').toLowerCase(); }
+  function clearActive(){ listBox.querySelectorAll('.active').forEach(el => el.classList.remove('active')); }
+  function matches(item, q){
+    const name  = norm(item.getAttribute('data-name') || '');
+       const email = norm(item.getAttribute('data-email') || '');
+    const id    = String(item.getAttribute('data-id') || '');
+    return !q || name.includes(q) || email.includes(q) || id.includes(q);
+  }
+  function applyFilter(){
+    const q = norm(input.value);
+    listBox.querySelectorAll('.list-group-item, .list-group-item-action').forEach(it => {
+      const ok = matches(it, q);
+      it.classList.toggle('d-none', !ok);
+    });
+  }
+
+  input.addEventListener('input', applyFilter);
+
+  listBox.addEventListener('click', (e) => {
+    const it = e.target.closest('[data-id]');
+    if (!it) return;
+    clearActive();
+    it.classList.add('active');
+    const empId = it.getAttribute('data-id') || '';
+    hidden.value = empId;
+    if (empId) {
+      setAction(empId);
+      submit.disabled = false;
+      submit.removeAttribute('disabled');
+    } else {
+      submit.disabled = true;
+    }
+  });
+
+  modal.addEventListener('shown.bs.modal', () => {
+    input.value = '';
+    clearActive();
+    applyFilter();
+    hidden.value = '';
+    submit.disabled = true;
+    input.focus();
+    if (actionTpl) form.setAttribute('action', actionTpl);
+  });
+
+  form.addEventListener('submit', (e) => {
+    if (!hidden.value){
+      e.preventDefault();
+      input.focus();
+    }
+  });
+})();
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.bootstrap) return;
+    document.querySelectorAll('[data-tooltip="1"]').forEach(el => {
+      try { new bootstrap.Tooltip(el); } catch(_) {}
+    });
+  });
+</script>

@@ -10,25 +10,25 @@
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt
 cp backend/.env backend/.env.local || true
-# edit backend/.env.local if needed (USE_SQLITE=True by default)
+# Edit backend/.env.local if needed (USE_SQLITE=True by default)
 python backend/manage.py migrate
 python backend/manage.py createsuperuser
 python backend/manage.py runserver 0.0.0.0:9000
 ```
-Open http://127.0.0.1:9000/
+Open [http://127.0.0.1:9000/](http://127.0.0.1:9000/)
 
 ## Full stack with Docker (Postgres + Redis)
 1. Put your secrets into `backend/.env` (use `.env.example` as a template). **Never commit real secrets.**
-2. Fix Dockerfile to use `eusrr_backend.asgi` (or use the provided `Dockerfile.fixed`).
+2. Ensure the `Dockerfile` uses `eusrr_backend.asgi` (or use the provided `Dockerfile.fixed`).
 3. Launch:
 ```bash
 docker compose up --build
 ```
-The app will be available on http://127.0.0.1:9000/
+The app will be available at [http://127.0.0.1:9000/](http://127.0.0.1:9000/)
 
 ## Useful commands
 ```bash
-# Telegram bot
+# Start Telegram bot
 python backend/manage.py start_telegram_bot
 
 # Run tests
@@ -36,6 +36,6 @@ pytest -q backend
 ```
 
 ## Notes
-- Set `API_BASE_URL` to match where the app is served (default http://127.0.0.1:9000/api).
-- For Channels websockets, keep Redis reachable at `${REDIS_HOST}:${REDIS_PORT}`.
-- The `hikcentral` DB is configured as a secondary Postgres. Externalize its DSN via envs if you plan to use it.
+- Set `API_BASE_URL` to match where the app is served (default: [http://127.0.0.1:9000/api](http://127.0.0.1:9000/api)).
+- For Channels websockets, ensure Redis is reachable at `${REDIS_HOST}:${REDIS_PORT}`.
+- The `hikcentral` DB is configured as a secondary Postgres. Externalize its DSN via environment variables if you plan to use it.

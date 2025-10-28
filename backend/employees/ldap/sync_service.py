@@ -1,43 +1,122 @@
+"""DEPRECATED: Этот модуль сохранён для обратной совместимости.
+
+Используйте вместо него:
+    from employees.ldap.services.sync_service import SyncService
+    
+Функции в этом модуле являются обёртками над новым SyncService.
+"""
+
 from __future__ import annotations
 
 import logging
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import Iterable, Tuple
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
-from django.db import transaction
-from django.utils import timezone
-from ldap3 import BASE, Connection
+from ldap3 import BASE
 
-from ..models import Department, Employee, EmployeeDepartment, LdapSyncState
+from ..models import Employee, EmployeeDepartment, LdapSyncState
 from .config import SyncConfig
-from .connections import _ldap
-from .dn import _ensure_user_dn, _move_to_department, _target_department_ou_dn
-from .dto import LdapPersonDTO, _entry_to_dto
-from .groups import _desired_group_cns_for_employee, sync_user_groups_by_cns
-from .helpers import is_taken, read_attrs, modify_user_attrs
-from .repo_db import (
-    _bind_user_department,
-    _cleanup_absent_users,
-    _find_user_for_dto,
-    _load_existing_users_index,
-    _touch_sync_state,
-)
-from .utils import (
-    _paged_search,
-    build_logins_for_user,
+from .infrastructure.connections import _ldap
+from .utils.dn_utils import (
+    _ensure_user_dn,
+    _move_to_department,
+    _target_department_ou_dn,
     extract_department_from_dn,
-    get_attr_str,
-    normalize_avatar_to_jpeg,
 )
+from .utils.group_utils import (
+    _desired_group_cns_for_employee,
+    sync_user_groups_by_cns,
+)
+from .repositories.ldap_repository import (
+    is_taken,
+    read_attrs,
+    modify_user_attrs,
+)
+
+from .utils.ldap_utils import (
+
+    build_logins_for_user,
+
+)
+from .utils.image_utils import normalize_avatar_to_jpeg
+from .services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 
+# Создаём глобальный экземпляр для backward compatibility
+_sync_service = SyncService()
 
-# ------------------------- ВСПОМОГАТЕЛЬНАЯ ИНФРАСТРУКТУРА ------------------------- #
+
+# ==================== WRAPPER FUNCTIONS ====================
+
+
+def import_departments(*, cfg: SyncConfig) -> Tuple[int, int, int]:
+    """DEPRECATED: Используйте SyncService().import_departments().
+
+    Импорт OU отделов из LDAP в Django.
+
+    Args:
+        cfg: Конфигурация синхронизации.
+
+    Returns:
+        Tuple[int, int, int]: (created, updated, deleted).
+    """
+    return _sync_service.import_departments(cfg)
+
+
+def import_users(*, cfg: SyncConfig) -> Tuple[int, int, int]:
+    """DEPRECATED: Используйте SyncService().import_users().
+
+    Импорт пользователей из LDAP в Django.
+
+    Args:
+        cfg: Конфигурация синхронизации.
+
+    Returns:
+        Tuple[int, int, int]: (created, updated, deleted).
+    """
+    return _sync_service.import_users(cfg)
+
+
+def export_users(*, cfg: SyncConfig) -> Tuple[int, int, int, int, int]:
+    """DEPRECATED: Используйте SyncService().export_users().
+
+    Полный экспорт пользователей из Django в LDAP.
+
+    Args:
+        cfg: Конфигурация синхронизации.
+
+    Returns:
+        Tuple[int, int, int, int, int]: 
+            (logins_set, moved, avatars_set, groups_added, groups_removed).
+    """
+    return _export_users_legacy(cfg=cfg)
+
+
+def export_users_delete(
+    *, cfg: SyncConfig, employees: Iterable[Employee]
+) -> int:
+    """DEPRECATED: Используйте SyncService().export_users_delete().
+
+    Удаляет учётные записи пользователей в LDAP.
+
+    Args:
+        cfg: Конфигурация синхронизации.
+        employees: Итератор пользователей для удаления.
+
+    Returns:
+        int: Количество успешно удалённых DN.
+    """
+    return _sync_service.export_users_delete(cfg, employees)
+
+
+# ==================== LEGACY IMPLEMENTATIONS ====================
+# Эти функции сохранены для сложной логики export_users,
+# которая ещё не полностью перенесена в новые сервисы
 
 
 def _employees_with_dn_qs():
+    """Возвращает QuerySet сотрудников с LDAP DN."""
     emp_ids = (
         LdapSyncState.objects.filter(model="employee")
         .exclude(ldap_dn="")
@@ -47,6 +126,7 @@ def _employees_with_dn_qs():
 
 
 def _ensure_and_persist_user_dn(conn, emp, *, do_write):
+    """Обеспечивает наличие DN и сохраняет в LdapSyncState."""
     user_dn = _ensure_user_dn(conn, emp)
     if do_write:
         st, _ = LdapSyncState.objects.get_or_create(
@@ -57,343 +137,18 @@ def _ensure_and_persist_user_dn(conn, emp, *, do_write):
     return user_dn
 
 
-def _validate_bases(*, cfg: SyncConfig) -> Tuple[str, str]:
-    """Возвращает пары базовых DN для пользователей и отделов, валидирует наличие.
-
-    Args:
-        cfg (SyncConfig): Конфигурация синхронизации.
-
-    Returns:
-        Tuple[str, str]: (base_users, base_deps).
-
-    Raises:
-        RuntimeError: Если не заданы базовые DN.
-    """
-    base_users = (cfg.users_base_dn or getattr(settings, "LDAP_USERS_BASE", "")).strip()
-    base_deps = (
-        cfg.departments_base_dn or getattr(settings, "LDAP_DEPARTMENTS_BASE", "")
-    ).strip()
-    if not (base_users and base_deps):
-        raise RuntimeError("LDAP_USERS_BASE/LDAP_DEPARTMENTS_BASE не заданы.")
-    return base_users, base_deps
-
-
-def _collect_ldap_entries(conn: Connection, base_users: str, base_deps: str) -> List:
-    """Читает все записи user из OU пользователей и OU отделов.
-
-    Args:
-        conn (Connection): Readonly-подключение.
-        base_users (str): База пользователей.
-        base_deps (str): База отделов.
-
-    Returns:
-        List: Список ldap3 entries.
-    """
-    flt = "(&(objectCategory=person)(objectClass=user))"
-    return _paged_search(conn, base_users, flt) + _paged_search(conn, base_deps, flt)
-
-
-# ----------------------------- IMPORT: DEPARTMENTS ----------------------------- #
-
-
-def import_departments(*, cfg: SyncConfig) -> tuple[int, int, int]:
-    """Импорт OU отделов из LDAP в Django в режиме «зеркала» (пропуская корневой контейнер).
-
-    Args:
-        cfg (SyncConfig): Конфигурация синхронизации.
-
-    Returns:
-        tuple[int, int, int]: (created, updated, deleted).
-
-    Raises:
-        RuntimeError: Если не задана база отделов.
-    """
-    raw_base = cfg.departments_base_dn or getattr(settings, "LDAP_DEPARTMENTS_BASE", "")
-    base = raw_base.strip().strip('"').strip("'")
-    created_names: list[str] = []
-    updated_heads: list[tuple[str, str]] = []  # (dept, head_email/ID)
-    deleted_names: list[str] = []
-    if not base:
-        raise RuntimeError("departments_base_dn не задан.")
-
-    with _ldap() as conn, transaction.atomic():
-        entries = _paged_search(conn, base, "(objectClass=organizationalUnit)")
-        base_dn_lower = base.lower()
-        root_ou_name = (
-            base.split(",", 1)[0][3:].strip()
-            if base.upper().startswith("OU=")
-            else None
-        )
-
-        created = updated = deleted = 0
-        seen_names: set[str] = set()
-
-        for e in entries:
-            a = getattr(e, "entry_attributes_as_dict", {}) or {}
-            dn: str = str(getattr(e, "entry_dn", "")) or get_attr_str(
-                a, "distinguishedName"
-            )
-            dn = (dn or "").strip()
-            if not dn or dn.lower() == base_dn_lower:
-                continue
-
-            name: str = (get_attr_str(a, "ou") or get_attr_str(a, "name")).strip()
-            if not name:
-                continue
-            # Страховка от совпадения имени с корневым OU
-            if (
-                root_ou_name
-                and name.lower() == root_ou_name.lower()
-                and dn.lower() != base_dn_lower
-            ):
-                pass
-
-            seen_names.add(name)
-            dept, was_created = Department.objects.get_or_create(name=name)
-            if was_created:
-                created += 1
-                if cfg.show_changes:
-                    print(f"[CHG] + Dept: {name}  DN={dn}")
-
-            head_dn: str = get_attr_str(a, "managedBy")
-            head_obj = None
-            if head_dn:
-                head_pk = (
-                    LdapSyncState.objects.filter(
-                        model="employee", ldap_dn__iexact=head_dn
-                    )
-                    .values_list("object_pk", flat=True)
-                    .first()
-                )
-                if head_pk:
-                    head_obj = Employee.objects.filter(pk=head_pk).first()
-
-            if head_obj and getattr(dept, "head_id", None) != head_obj.id:
-                if not cfg.dry_run:
-                    dept.head = head_obj
-                    if hasattr(dept, "head_appointed_at"):
-                        dept.head_appointed_at = timezone.now()
-                        dept.save(update_fields=["head", "head_appointed_at"])
-                    else:
-                        dept.save(update_fields=["head"])
-                updated += 1
-                if cfg.show_changes:
-                    who = head_obj.email or f"id={head_obj.id}"
-                    print(f"[CHG] ~ Dept head: {name} -> {who}")
-
-            state, _ = LdapSyncState.objects.get_or_create(
-                model="department", object_pk=str(dept.pk)
-            )
-            state.touch(
-                ldap_dn=dn,
-                last_ldap_modify_ts=None,
-                last_django_modify_ts=timezone.now(),
-                sync_dir="ldap",
-            )
-
-        to_delete_qs = Department.objects.exclude(name__in=seen_names)
-        if cfg.show_changes:
-            deleted_names = list(to_delete_qs.values_list("name", flat=True))
-            for n in deleted_names:
-                verb = "будет удалён" if cfg.dry_run else "удалён"
-                print(f"[CHG] - Dept: {n} ({verb})")
-        deleted_count = to_delete_qs.count()
-        if cfg.dry_run:
-            deleted = deleted_count
-        else:
-            Department.objects.filter(
-                pk__in=to_delete_qs.values_list("pk", flat=True)
-            ).update(head=None)
-            to_delete_qs.delete()
-            LdapSyncState.objects.filter(model="department").exclude(
-                object_pk__in=Department.objects.values_list("pk", flat=True)
-            ).delete()
-            deleted = deleted_count
-
-        return created, updated, deleted
-
-
-# ----------------------------- IMPORT: USERS ----------------------------- #
-
-
-def _create_user_from_dto(dto: LdapPersonDTO) -> Optional[Employee]:
-    """Создаёт нового Employee по данным из LDAP с подготовкой контактов.
-
-    Args:
-        dto (LdapPersonDTO): Нормализованные данные из LDAP.
-
-    Returns:
-        Optional[Employee]: Созданный пользователь или None (если пропущен из-за валидации).
-
-    Raises:
-        django.db.DatabaseError: Ошибки сохранения в БД.
-    """
-    if not dto.phone_e164:
-        logger.warning(
-            "LDAP import: skip create for DN=%s, email=%s — no valid phone to satisfy model.clean()",
-            dto.dn,
-            dto.email,
-        )
-        return None
-
-    user = Employee(
-        email=dto.email,
-        first_name=dto.given,
-        last_name=dto.sn,
-        is_active=dto.is_active,
-        is_ldap_managed=True,
+def _active_dept_name(emp: Employee) -> str | None:
+    """Имя активного отдела сотрудника."""
+    link = (
+        EmployeeDepartment.objects.filter(employee=emp, is_active=True)
+        .select_related("department")
+        .first()
     )
-    # Контакты
-    user.phone_number = dto.phone_e164
-    if not (
-        getattr(user, "whatsapp", None)
-        or getattr(user, "telegram", None)
-        or getattr(user, "wechat", None)
-    ):
-        user.whatsapp = dto.phone_e164
-
-    try:
-        user.full_clean(exclude=["password"])
-    except ValidationError as exc:
-        logger.warning(
-            "LDAP import: skip create for DN=%s, email=%s — %s", dto.dn, dto.email, exc
-        )
-        return None
-
-    user.save()
-    return user
-
-
-def _update_user_from_dto(user: Employee, dto: LdapPersonDTO) -> Employee:
-    changed = False
-    for field, val in (
-        ("email", dto.email),
-        ("first_name", dto.given),
-        ("last_name", dto.sn),
-        ("is_active", dto.is_active),
-    ):
-        if val is not None and getattr(user, field) != val:
-            setattr(user, field, val)
-            changed = True
-
-    if dto.phone_e164:
-        if user.phone_number != dto.phone_e164:
-            user.phone_number = dto.phone_e164
-            changed = True
-        if not (user.whatsapp or user.telegram or user.wechat):
-            user.whatsapp = dto.phone_e164
-            changed = True
-
-    if not user.is_ldap_managed:
-        user.is_ldap_managed = True
-        changed = True
-
-    if changed:
-        user.save()
-    return user
-
-
-def import_users(*, cfg: SyncConfig) -> tuple[int, int, int]:
-    """Импорт пользователей из LDAP в Django в «зеркальном» режиме.
-
-    Этапы:
-        1) Чтение/нормализация LDAP → DTO.
-        2) Разделение на update/create и применение в БД.
-        3) Привязка к отделам.
-        4) Фиксация состояния синхронизации.
-        5) Очистка отсутствующих.
-
-    Args:
-        cfg (SyncConfig): Конфиг синхронизации.
-
-    Returns:
-        tuple[int, int, int]: (created, updated, deleted).
-    """
-    base_users, base_deps = _validate_bases(cfg=cfg)
-
-    with _ldap() as conn, transaction.atomic():
-        entries = _collect_ldap_entries(conn, base_users, base_deps)
-
-        seen_guids: Set[str] = set()
-        seen_dns: Set[str] = set()
-        dtos: List[LdapPersonDTO] = []
-        for e in entries:
-            dto = _entry_to_dto(e)
-            if dto.dn:
-                seen_dns.add(dto.dn)
-            if dto.guid:
-                seen_guids.add(dto.guid)
-            dtos.append(dto)
-
-        by_guid, by_email = _load_existing_users_index(dtos)
-        to_create: List[LdapPersonDTO] = []
-        to_update: List[Tuple[Employee, LdapPersonDTO]] = []
-
-        for dto in dtos:
-            existing = _find_user_for_dto(dto, by_guid=by_guid, by_email=by_email)
-            (to_update if existing else to_create).append(
-                (existing, dto) if existing else dto
-            )
-
-        created = updated = skipped = 0
-        processed: List[Tuple[Employee, LdapPersonDTO]] = []
-
-        # UPDATE
-        for user, dto in to_update:
-            processed.append((_update_user_from_dto(user, dto), dto))
-            updated += 1
-
-        # CREATE
-        for dto in to_create:
-            user = _create_user_from_dto(dto)
-            if not user:
-                skipped += 1
-                continue
-            processed.append((user, dto))
-            created += 1
-
-        if cfg.show_changes:
-            for dto in to_create:
-                print(f"[CHG] + User: {dto.email or '(no email)'}  DN={dto.dn}")
-            for existing, dto in to_update:
-                print(f"[CHG] ~ User: {existing.email}  DN={dto.dn}")
-
-        if skipped:
-            logger.warning(
-                "[LDAP] Пропущено записей из-за валидации/контактов: %s", skipped
-            )
-
-        # Bind departments + sync state
-        for user, dto in processed:
-            _bind_user_department(user, dto.dn)
-            _touch_sync_state(
-                user,
-                dn=dto.dn,
-                guid=dto.guid,
-                last_ldap_modify_ts=dto.when_changed,
-                sync_dir="ldap",
-                dry_run=cfg.dry_run,
-            )
-
-        deleted = _cleanup_absent_users(
-            seen_guids=seen_guids, seen_dns=seen_dns, dry_run=cfg.dry_run, show_changes=cfg.show_changes
-        )
-
-    return created, updated, deleted
-
-
-# ----------------------------- EXPORT: LOGINS/UPN ----------------------------- #
+    return link.department.name if link and link.department_id else None
 
 
 def export_users_create_attrs(*, cfg: SyncConfig) -> int:
-    """Создаёт недостающие sAMAccountName/UPN и базовые ФИО-атрибуты.
-
-    Args:
-        cfg (SyncConfig): Конфиг (используется `dry_run` и `settings.LDAP_UPN_SUFFIX`).
-
-    Returns:
-        int: Кол-во пользователей, для которых были выставлены логины/UPN.
-    """
+    """Создаёт недостающие sAMAccountName/UPN и базовые ФИО-атрибуты."""
     upn_suffix: str = getattr(settings, "LDAP_UPN_SUFFIX", "robotail.local")
     do_write = not cfg.dry_run
     assigned = 0
@@ -401,17 +156,23 @@ def export_users_create_attrs(*, cfg: SyncConfig) -> int:
     with _ldap() as conn:
         for emp in _employees_with_dn_qs():
             try:
-                user_dn = _ensure_and_persist_user_dn(conn, emp, do_write=do_write)
+                user_dn = _ensure_and_persist_user_dn(
+                    conn, emp, do_write=do_write
+                )
             except RuntimeError as e:
                 logger.warning("[WARN] %s", e)
                 continue
 
-            cur = read_attrs(conn, user_dn, ["sAMAccountName", "userPrincipalName"])
+            cur = read_attrs(
+                conn, user_dn, ["sAMAccountName", "userPrincipalName"]
+            )
             if cur["sAMAccountName"] and cur["userPrincipalName"]:
                 continue
 
             guid = (
-                LdapSyncState.objects.filter(model="employee", object_pk=str(emp.pk))
+                LdapSyncState.objects.filter(
+                    model="employee", object_pk=str(emp.pk)
+                )
                 .values_list("ldap_guid", flat=True)
                 .first()
             )
@@ -421,7 +182,9 @@ def export_users_create_attrs(*, cfg: SyncConfig) -> int:
                 last_name=emp.last_name or "",
                 email=emp.email or "",
                 upn_suffix=upn_suffix,
-                is_taken_sam=lambda s: is_taken(conn, attributes={"sAMAccountName": s}),
+                is_taken_sam=lambda s: is_taken(
+                    conn, attributes={"sAMAccountName": s}
+                ),
                 is_taken_upn=lambda u: is_taken(
                     conn, attributes={"userPrincipalName": u}
                 ),
@@ -435,7 +198,9 @@ def export_users_create_attrs(*, cfg: SyncConfig) -> int:
                     "userPrincipalName": upn,
                     "givenName": emp.first_name or None,
                     "sn": emp.last_name or None,
-                    "displayName": f"{emp.first_name} {emp.last_name}".strip() or None,
+                    "displayName": (
+                        f"{emp.first_name} {emp.last_name}".strip() or None
+                    ),
                 },
                 do_write=do_write,
             )
@@ -444,42 +209,19 @@ def export_users_create_attrs(*, cfg: SyncConfig) -> int:
     return assigned
 
 
-# ----------------------------- EXPORT: PROFILE (MOVE + AVATAR) ----------------------------- #
-
-
-def _active_dept_name(emp: Employee) -> Optional[str]:
-    """Имя активного отдела сотрудника по таблице связей.
-
-    Args:
-        emp (Employee): Сотрудник.
-
-    Returns:
-        Optional[str]: Название отдела или None.
-    """
-    link = (
-        EmployeeDepartment.objects.filter(employee=emp, is_active=True)
-        .select_related("department")
-        .first()
-    )
-    return link.department.name if link and link.department_id else None
-
-
-def export_users_update_profile(*, cfg: SyncConfig) -> Tuple[int, int]:
-    """Обновляет профильные данные пользователей: перемещение между отделами и аватары.
-
-    Args:
-        cfg (SyncConfig): Конфиг (используется `dry_run`).
-
-    Returns:
-        Tuple[int, int]: (moved, avatars_set).
-    """
+def export_users_update_profile(
+    *, cfg: SyncConfig
+) -> Tuple[int, int]:
+    """Обновляет профильные данные: перемещение между отделами и аватары."""
     do_write = not cfg.dry_run
     moved = avatars_set = 0
 
     with _ldap() as conn:
         for emp in _employees_with_dn_qs():
             try:
-                user_dn = _ensure_and_persist_user_dn(conn, emp, do_write=do_write)
+                user_dn = _ensure_and_persist_user_dn(
+                    conn, emp, do_write=do_write
+                )
             except RuntimeError as e:
                 logger.warning("[WARN] %s", e)
                 continue
@@ -502,13 +244,13 @@ def export_users_update_profile(*, cfg: SyncConfig) -> Tuple[int, int]:
                         and conn.entries
                     ):
                         logger.warning(
-                            "[WARN] Целевой OU отдела не найден: %s", target_ou
+                            "[WARN] Целевой OU не найден: %s", target_ou
                         )
-                        continue  # не считаем такой MOVE
+                        continue
                 moved += 1
 
             # avatar -> thumbnailPhoto
-            avatar_bytes: Optional[bytes] = None
+            avatar_bytes: bytes | None = None
             avatar_field = getattr(emp, "avatar", None)
             if avatar_field and hasattr(avatar_field, "read"):
                 avatar_bytes = avatar_field.read()
@@ -533,25 +275,17 @@ def export_users_update_profile(*, cfg: SyncConfig) -> Tuple[int, int]:
     return moved, avatars_set
 
 
-# ----------------------------- EXPORT: GROUPS SYNC ----------------------------- #
-
-
 def export_users_sync_groups(*, cfg: SyncConfig) -> Tuple[int, int]:
-    """Приводит членства пользователей в LDAP-группах к целевому набору.
-
-    Args:
-        cfg (SyncConfig): Конфиг синхронизации.
-
-    Returns:
-        Tuple[int, int]: (groups_added, groups_removed).
-    """
+    """Приводит членства пользователей в LDAP-группах к целевому набору."""
     do_write = not cfg.dry_run
     groups_added = groups_removed = 0
 
     with _ldap() as conn:
         for emp in _employees_with_dn_qs():
             try:
-                user_dn = _ensure_and_persist_user_dn(conn, emp, do_write=do_write)
+                user_dn = _ensure_and_persist_user_dn(
+                    conn, emp, do_write=do_write
+                )
             except RuntimeError as e:
                 logger.warning("[WARN] %s", e)
                 continue
@@ -564,9 +298,8 @@ def export_users_sync_groups(*, cfg: SyncConfig) -> Tuple[int, int]:
             extra_bases: list[str] = []
             dept_for_roles = target_dept or current_dept
             if dept_for_roles:
-                extra_bases.append(
-                    f"OU=Roles,OU={dept_for_roles},{getattr(settings, 'LDAP_DEPARTMENTS_BASE', '')}"
-                )
+                dept_base = getattr(settings, "LDAP_DEPARTMENTS_BASE", "")
+                extra_bases.append(f"OU=Roles,OU={dept_for_roles},{dept_base}")
 
             added, removed = sync_user_groups_by_cns(
                 conn,
@@ -581,94 +314,35 @@ def export_users_sync_groups(*, cfg: SyncConfig) -> Tuple[int, int]:
     return groups_added, groups_removed
 
 
-# ----------------------------- EXPORT: DELETE ACCOUNTS ----------------------------- #
+def _export_users_legacy(*, cfg: SyncConfig) -> Tuple[int, int, int, int, int]:
+    """Legacy реализация export_users через старые функции."""
+    from django.utils import timezone
 
-
-def _ldap_delete_dn(conn: Connection, dn: str, *, do_write: bool) -> None:
-    """Удаляет объект по DN в LDAP.
-
-    Args:
-        conn (Connection): RW-подключение.
-        dn (str): DN удаляемого объекта.
-        do_write (bool): Если False — noop.
-
-    Raises:
-        RuntimeError: Если сервер вернул ошибку удаления.
-    """
-    if not do_write:
-        return
-    if not conn.delete(dn):
-        raise RuntimeError(f"LDAP delete failed for {dn}: {conn.result}")
-
-
-def export_users_delete(*, cfg: SyncConfig, employees: Iterable[Employee]) -> int:
-    """Удаляет учётные записи пользователей в LDAP по их DN.
-
-    ⚠️ Передайте конкретный набор `employees` (уволенные и т.п.).
-
-    Args:
-        cfg (SyncConfig): Конфиг (`dry_run`).
-        employees (Iterable[Employee]): Кого удалять.
-
-    Returns:
-        int: Количество успешно удалённых DN (включая dry-run).
-    """
-    do_write = not cfg.dry_run
-    deleted = 0
-
-    with _ldap() as conn:
-        for emp in employees:
-            state_dn = (
-                LdapSyncState.objects.filter(model="employee", object_pk=str(emp.pk))
-                .values_list("ldap_dn", flat=True)
-                .first()
-            )
-            user_dn = (state_dn or "").strip()
-            if not user_dn:
-                logger.warning(
-                    "[WARN] Пропуск удаления: у сотрудника pk=%s пустой ldap_dn", emp.pk
-                )
-                continue
-            if not (
-                conn.search(user_dn, "(objectClass=*)", BASE, attributes=["dn"])
-                and conn.entries
-            ):
-                logger.warning("[WARN] DN не найден в LDAP, пропуск: %s", user_dn)
-                continue
-            _ldap_delete_dn(conn, user_dn, do_write=do_write)
-            deleted += 1
-
-    return deleted
-
-
-# ----------------------------- ОРКЕСТРАТОР: ПОЛНАЯ СИНХРОНИЗАЦИЯ ----------------------------- #
-
-
-def export_users(*, cfg: SyncConfig) -> tuple[int, int, int, int, int]:
-    """Полный экспорт пользователей из Django в LDAP (логины/UPN, MOVE, avatar, группы) + фиксация LdapSyncState.
-
-    Args:
-        cfg (SyncConfig): Конфиг синхронизации.
-
-    Returns:
-        tuple[int, int, int, int, int]: (logins_set, moved, avatars_set, groups_added, groups_removed).
-    """
     logins_set = export_users_create_attrs(cfg=cfg)
     moved, avatars_set = export_users_update_profile(cfg=cfg)
     groups_added, groups_removed = export_users_sync_groups(cfg=cfg)
 
     do_write = not cfg.dry_run
-    with _ldap() as conn, transaction.atomic():
-        now = timezone.now()
-        for emp in _employees_with_dn_qs().only("pk"):
-            try:
-                user_dn = _ensure_and_persist_user_dn(conn, emp, do_write=do_write)
-            except RuntimeError as e:
-                logger.warning("[WARN] state.touch пропущен: %s", e)
-                continue
-            state, _ = LdapSyncState.objects.get_or_create(
-                model="employee", object_pk=str(emp.pk)
-            )
-            state.touch(ldap_dn=user_dn, last_django_modify_ts=now, sync_dir="django")
+    with _ldap() as conn:
+        from django.db import transaction
+
+        with transaction.atomic():
+            now = timezone.now()
+            for emp in _employees_with_dn_qs().only("pk"):
+                try:
+                    user_dn = _ensure_and_persist_user_dn(
+                        conn, emp, do_write=do_write
+                    )
+                except RuntimeError as e:
+                    logger.warning("[WARN] state.touch пропущен: %s", e)
+                    continue
+                state, _ = LdapSyncState.objects.get_or_create(
+                    model="employee", object_pk=str(emp.pk)
+                )
+                state.touch(
+                    ldap_dn=user_dn,
+                    last_django_modify_ts=now,
+                    sync_dir="django",
+                )
 
     return logins_set, moved, avatars_set, groups_added, groups_removed

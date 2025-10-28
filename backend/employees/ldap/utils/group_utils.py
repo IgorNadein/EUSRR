@@ -5,8 +5,8 @@ from typing import Iterable, Optional
 from django.conf import settings
 from ldap3 import BASE, SUBTREE, Connection
 
-from ..models import Employee
-from .utils import esc_filter
+from employees.models import Employee
+from .text_utils import esc_filter
 
 
 def _read_user_memberof_dns(conn: Connection, user_dn: str) -> set[str]:
