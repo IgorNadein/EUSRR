@@ -16,8 +16,9 @@ initTeamWheel({
 </script>
 
 {# ===== Переключатель панели настроек (скролл к блоку при открытии) ===== #}
-<script>
-/* Smooth-scroll к «Настройкам отдела» при открытии на мобильных */
+<script type="module">
+import { smoothScrollTo } from '{% static "js/utils/scroll.js" %}';
+
 document.addEventListener('DOMContentLoaded', () => {
   const wrap = document.getElementById('deptEditWrap-{{ dept.id }}');
   if (!wrap) return;
@@ -28,25 +29,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const sticky = document.querySelector('.ios-header');
     return (sticky?.offsetHeight || 0) + 8;
   }
-  function smoothScrollTo(el){
-    const top = el.getBoundingClientRect().top + window.pageYOffset - headerOffset();
-    try { window.scrollTo({ top, behavior: 'smooth' }); }
-    catch { window.scrollTo(0, top); }
-  }
 
   wrap.addEventListener('shown.bs.collapse', () => {
-    if (isMobile()) smoothScrollTo(wrap);
+    if (isMobile()) smoothScrollTo(wrap, { offset: headerOffset() });
   });
 
   if (wrap.classList.contains('show') && isMobile()) {
-    setTimeout(() => smoothScrollTo(wrap), 50);
+    setTimeout(() => smoothScrollTo(wrap, { offset: headerOffset() }), 50);
   }
 });
 </script>
 
 {# ===== Модал «Добавить участника»: AJAX-поиск ===== #}
-<script>
+<script type="module">
 {% url 'employees:employees_list' as employees_list_url %}
+import { esc } from '{% static "js/utils/stringUtils.js" %}';
+import { debounce } from '{% static "js/utils/timing.js" %}';
+
 (function(){
   const modal  = document.getElementById('addMemberModal-{{ dept.id }}');
   if (!modal) return;
@@ -63,9 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const exclude = new Set(
     excludeAttr ? excludeAttr.split(',').map(x => parseInt(x, 10)).filter(n => !Number.isNaN(n)) : []
   );
-
-  function esc(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-  function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 
   let aborter = null;
 
@@ -161,7 +157,9 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 {# ===== Модал «Удалить участника»: локальный выбор ===== #}
-<script>
+<script type="module">
+import { norm } from '{% static "js/utils/stringUtils.js" %}';
+
 (function(){
   const modal  = document.getElementById('removeMemberModal-{{ dept.id }}');
   if (!modal) return;
@@ -174,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const submit    = document.getElementById('removeMemberSubmit-{{ dept.id }}');
   if (!form || !input || !listBox || !hiddenEmp || !hiddenLink || !submit) return;
 
-  function norm(s){ return String(s||'').toLowerCase(); }
   function clearActive(){ listBox.querySelectorAll('.active').forEach(el => el.classList.remove('active')); }
   function matches(item, q){
     const name  = norm(item.getAttribute('data-name') || '');
@@ -223,7 +220,9 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 {# ===== Модал «Назначить роль»: подстановка empId в action ===== #}
-<script>
+<script type="module">
+import { norm } from '{% static "js/utils/stringUtils.js" %}';
+
 (function(){
   const modal   = document.getElementById('setRoleModal-{{ dept.id }}');
   if (!modal) return;
@@ -244,7 +243,6 @@ document.addEventListener('DOMContentLoaded', () => {
     form.setAttribute('action', newAction);
   }
 
-  function norm(s){ return String(s||'').toLowerCase(); }
   function clearActive(){ listBox.querySelectorAll('.active').forEach(el => el.classList.remove('active')); }
   function matches(item, q){
     const name  = norm(item.getAttribute('data-name') || '');
