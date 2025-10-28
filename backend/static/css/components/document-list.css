@@ -1,6 +1,10 @@
 /**
  * document-list.css
  * Стили списка документов, виджета получателей, и подтверждений
+ * 
+ * Использует:
+ * - common.css (.btn-icon, .badge-acked, .feed-author, .feed-sub)
+ * - feed-cards.css (.feed-hd, .feed-ava)
  */
 
 /* ─────────────────────────────────────────────────────────────
@@ -42,39 +46,10 @@
   color: var(--bs-primary);
 }
 
-.btn-icon {
-  width: 36px;
-  height: 36px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 10px;
-  background: transparent;
-}
-
-.btn-icon--danger {
-  color: var(--bs-danger);
-}
-
 .doc-actions {
   display: flex;
   align-items: center;
   gap: .4rem;
-}
-
-.badge-acked {
-  background: #d1e7dd;
-  color: #0f5132;
-  border: 1px solid #badbcc;
-  padding: .28rem .55rem;
-  border-radius: 999px;
-  font-size: .8rem;
-}
-
-[data-bs-theme="dark"] .badge-acked {
-  background: #234;
-  color: #8fd4b3;
-  border-color: #1f3b33;
 }
 
 .scope-switch .btn {

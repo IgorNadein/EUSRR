@@ -1,15 +1,11 @@
 /**
  * department-list.css
  * Стили списка отделов
+ * 
+ * Использует:
+ * - common.css (.feed-author, .feed-sub)
+ * - feed-cards.css (.feed-header)
  */
-
-/* ─────────────────────────────────────────────────────────────
-   HEADER
-────────────────────────────────────────────────────────────── */
-.feed-header {
-  gap: .6rem;
-  flex-wrap: wrap;
-}
 
 /* ─────────────────────────────────────────────────────────────
    SCROLLABLE LIST
@@ -27,12 +23,4 @@
 
 #deptList .dept-row + .dept-row {
   border-top: 1px solid var(--bs-border-color);
-}
-
-.feed-author {
-  font-weight: 700;
-}
-
-.feed-sub {
-  color: var(--bs-secondary-color);
 }

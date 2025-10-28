@@ -3,6 +3,10 @@
  * 
  * Стили для списка сотрудников с аватарами, должностями и действиями
  * Оптимизирован для вертикальной прокрутки и адаптивного отображения
+ * 
+ * Использует:
+ * - common.css (.feed-author, .feed-sub)
+ * - feed-cards.css (.feed-hd, .feed-ava)
  */
 
 /* Токены списка сотрудников */
@@ -85,8 +89,8 @@
   min-width: 0; 
 }
 
-.feed-author{ 
-  font-weight: 700; 
+/* Специфичные стили для employee list */
+#empList .feed-author{ 
   line-height: 1.25; 
 }
 
@@ -94,18 +98,8 @@
   color: var(--bs-secondary-color); 
 }
 
-.feed-sub{ 
+#empList .feed-sub{ 
   margin-top: .25rem; 
-  color: var(--bs-secondary-color); 
-}
-
-.feed-sub a{ 
-  color: inherit; 
-  text-decoration: none; 
-}
-
-.feed-sub a:hover{ 
-  text-decoration: underline; 
 }
 
 /* Действия справа */

@@ -1,20 +1,14 @@
 /**
  * base-app.css
  * Базовые стили приложения: layout, navbar, sidebar, кнопки, feed-элементы
+ * 
+ * Зависимости: variables.css (все переменные размеров, цветов, теней)
  */
 
 :root {
-  --sidebar-w: 190px;
-  --rightbar-w: 350px;
-  --navbar-h: 60px;
   --bs-primary: #007AFF;
   --bs-link-color: var(--bs-primary);
   --bs-link-hover-color: #0062CC;
-
-  /* feed tokens */
-  --feed-radius: 18px;
-  --feed-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 10px 30px rgba(0, 0, 0, .08);
-  --feed-shadow-hover: 0 4px 10px rgba(0, 0, 0, .06), 0 16px 40px rgba(0, 0, 0, .12);
 }
 
 [data-bs-theme="dark"] {

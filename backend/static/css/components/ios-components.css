@@ -1,6 +1,10 @@
 /**
  * ios-components.css
- * iOS-style компоненты: карточки, списки, аккордеоны, badges, кнопки-иконки
+ * iOS-style компоненты: карточки, списки, аккордеоны, badges
+ * 
+ * Зависимости:
+ * - variables.css (--feed-radius, --feed-shadow, --navbar-h и др.)
+ * - common.css (.btn-icon используется отсюда, не дублируется)
  */
 
 /* ─────────────────────────────────────────────────────────────
@@ -68,63 +72,6 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   ICON BUTTONS
-────────────────────────────────────────────────────────────── */
-.btn-icon {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: 9999px;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
-  background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
-  color: var(--bs-body-color);
-}
-
-.btn-icon:hover {
-  background: color-mix(in srgb, var(--bs-body-bg) 88%, transparent);
-}
-
-/* Варианты окраски */
-.btn-icon--primary {
-  color: var(--bs-primary);
-  border-color: color-mix(in srgb, var(--bs-primary) 30%, var(--bs-border-color));
-}
-
-.btn-icon--primary:hover {
-  background: color-mix(in srgb, var(--bs-primary) 16%, var(--bs-body-bg));
-}
-
-.btn-icon--success {
-  color: var(--bs-success);
-  border-color: color-mix(in srgb, var(--bs-success) 30%, var(--bs-border-color));
-}
-
-.btn-icon--success:hover {
-  background: color-mix(in srgb, var(--bs-success) 16%, var(--bs-body-bg));
-}
-
-.btn-icon--danger {
-  color: var(--bs-danger);
-  border-color: color-mix(in srgb, var(--bs-danger) 30%, var(--bs-border-color));
-}
-
-.btn-icon--danger:hover {
-  background: color-mix(in srgb, var(--bs-danger) 16%, var(--bs-body-bg));
-}
-
-.btn-icon:focus-visible {
-  outline: 2px solid color-mix(in srgb, currentColor 60%, transparent);
-  outline-offset: 2px;
-}
-
-.header-icon-group .btn-icon {
-  width: 36px;
-  height: 36px;
-}
-
-/* ─────────────────────────────────────────────────────────────
    NAME & ROLE
 ────────────────────────────────────────────────────────────── */
 .ios-name {
@@ -140,20 +87,11 @@
 /* ─────────────────────────────────────────────────────────────
    CHIPS
 ────────────────────────────────────────────────────────────── */
+/* Base .chip определён в common.css */
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: .5rem;
-}
-
-.chip {
-  padding: .35rem .65rem;
-  border-radius: 9999px;
-  font-size: .85rem;
-  line-height: 1;
-  background: var(--bs-secondary-bg);
-  color: var(--bs-body-color);
-  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
 }
 
 /* ─────────────────────────────────────────────────────────────

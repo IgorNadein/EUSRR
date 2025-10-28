@@ -13,13 +13,14 @@
 /* Переменные */
 @import '../variables.css';
 
+/* Общие переиспользуемые классы */
+@import 'common.css';
+
 /* Компоненты карточек ленты */
 @import 'feed-cards.css';
 
 /* Компонент поиска iOS-стиль */
 @import 'ios-search.css';
 
-/* Дополнительные компоненты (будут добавлены) */
-/* @import 'modals.css'; */
-/* @import 'badges.css'; */
-/* @import 'buttons.css'; */
+/* iOS компоненты */
+@import 'ios-components.css';

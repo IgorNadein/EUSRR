@@ -1,6 +1,10 @@
 /**
  * request-list.css
  * Стили списка заявлений и панели действий
+ * 
+ * Зависимости:
+ * - common.css (.badge-status)
+ * - feed-cards.css (.feed-stream, .feed-hd)
  */
 
 /* ─────────────────────────────────────────────────────────────
@@ -47,10 +51,6 @@
   align-items: center;
   gap: .4rem;
   flex-wrap: wrap;
-}
-
-.badge-status {
-  font-weight: 600;
 }
 
 .text-mono {
