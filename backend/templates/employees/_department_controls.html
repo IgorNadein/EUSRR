@@ -297,15 +297,15 @@
     }
     document.querySelectorAll('textarea[data-autogrow]').forEach(bind);
   })();
+{% load static %}
 </script>
 
-<script>
-  (function(){
-    if (window.__headPickerWithEmailBound) return;
-    window.__headPickerWithEmailBound = true;
+<script type="module">
+import { esc, norm } from '{% static "js/utils/stringUtils.js" %}';
 
-    function esc(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-    function norm(s){ return String(s || '').toLowerCase(); }
+(function(){
+  if (window.__headPickerWithEmailBound) return;
+  window.__headPickerWithEmailBound = true;
 
     function initPicker(root){
       const input  = root.querySelector('input[type="text"]');
