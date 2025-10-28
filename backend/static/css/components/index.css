@@ -10,12 +10,16 @@
  * {% endblock %}
  */
 
-/* Переменные (будут созданы далее) */
-/* @import 'variables.css'; */
+/* Переменные */
+@import '../variables.css';
 
-/* Общие компоненты (будут созданы в Фазе 3) */
-/* @import 'feed-cards.css'; */
-/* @import 'ios-search.css'; */
+/* Компоненты карточек ленты */
+@import 'feed-cards.css';
+
+/* Компонент поиска iOS-стиль */
+@import 'ios-search.css';
+
+/* Дополнительные компоненты (будут добавлены) */
 /* @import 'modals.css'; */
 /* @import 'badges.css'; */
 /* @import 'buttons.css'; */
