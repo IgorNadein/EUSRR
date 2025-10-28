@@ -1,0 +1,159 @@
+/**
+ * request-list.css
+ * Стили списка заявлений и панели действий
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   REQUEST LIST
+────────────────────────────────────────────────────────────── */
+/* Список заявлений в стиле общего feed-списка */
+#reqList.feed-stream {
+  display: block;
+  gap: 0 !important;
+}
+
+#reqList .req-row {
+  padding: .9rem 1rem !important;
+  margin: 0 !important;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+#reqList .req-row:last-child {
+  border-bottom: 0;
+}
+
+#reqList .feed-hd {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: .75rem;
+  margin: 0;
+  padding: 0 !important;
+}
+
+#reqList .feed-ico {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bs-body-bg) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+  color: var(--bs-primary);
+}
+
+.req-actions {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+
+.badge-status {
+  font-weight: 600;
+}
+
+.text-mono {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   REQUEST DRAWER (выезжающая панель действий)
+────────────────────────────────────────────────────────────── */
+.req-drawer {
+  margin-top: .6rem;
+  padding: .75rem;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: .75rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .04);
+}
+
+.req-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .5rem;
+}
+
+.req-drawer__title {
+  font-size: .85rem;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  color: var(--bs-secondary-color);
+  font-weight: 600;
+}
+
+.req-actions-grid {
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: stretch;
+}
+
+.req-actions-grid .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Кнопка «Рассмотреть» — стрелка вращается */
+.action-toggle .chev {
+  transition: transform .2s ease;
+}
+
+.action-toggle[aria-expanded="true"] .chev {
+  transform: rotate(180deg);
+}
+
+/* Плавное появление контента внутри collapse */
+.collapse .req-drawer__inner {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.collapse.show .req-drawer__inner {
+  opacity: 1;
+  transform: none;
+  transition: opacity .16s ease .04s, transform .16s ease .04s;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SOFT BUTTONS (акценты для destructive/approve)
+────────────────────────────────────────────────────────────── */
+.btn-soft-danger {
+  background: color-mix(in srgb, var(--bs-danger) 10%, transparent);
+  border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .btn-soft-danger {
+  background: color-mix(in srgb, var(--bs-danger) 16%, transparent);
+}
+
+.btn-soft-success {
+  background: color-mix(in srgb, var(--bs-success) 12%, transparent);
+  border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .btn-soft-success {
+  background: color-mix(in srgb, var(--bs-success) 18%, transparent);
+}
+
+/* Кнопка-тогглер — компактнее и нейтральнее */
+.btn-review {
+  --bs-btn-padding-y: .25rem;
+  --bs-btn-padding-x: .6rem;
+  --bs-btn-font-size: .875rem;
+  border-radius: .5rem;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMMENT TEXTAREA
+────────────────────────────────────────────────────────────── */
+.comment-new textarea {
+  resize: vertical;
+  max-height: 300px;
+  min-height: 100px;
+  overflow-y: auto;
+}
