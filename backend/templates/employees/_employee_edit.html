@@ -1,12 +1,7 @@
 {# templates/employees/_employee_edit.html #}
 {# Форма редактирования сотрудника - рефакторированная версия #}
-<style>
-  /* модал всегда выше бэкдропа/локальных стэков */
-  .modal { z-index: 1080; }
-  .modal-backdrop { z-index: 1075; }
-  /* не даём «просвечивать» через бэкдроп */
-  .modal .modal-content { background-color: var(--bs-body-bg); }
-</style>
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/components/modal-overrides.css' %}">
 
 <form id="apiEditForm" class="row g-3" data-endpoint="{{ endpoint }}"
   action="{% if is_me %}{% url 'employees:employee_set_position_me' %}{% else %}{% url 'employees:employee_set_position' emp.id %}{% endif %}">

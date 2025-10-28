@@ -5,23 +5,11 @@
   {% if is_update %}Редактировать{% else %}Создать{% endif %} публикацию
 {% endblock %}
 
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/components/post-form.css' %}">
+{% endblock %}
+
 {% block content %}
-<style>
-  /* авто-рост для больших текстов */
-  textarea.autogrow {
-    overflow: hidden;            /* без внутренних скроллов, пока не упремся в max-height */
-    resize: none;                /* убираем ручной ресайз, если хочешь оставить — поменяй на 'vertical' */
-    min-height: 120px;           /* стартовая высота (на вкус) */
-    max-height: 70vh;            /* чтобы не занимало весь экран */
-  }
-  /* когда достигли max-height — позволим вертикальный скролл */
-  textarea.autogrow.is-max {
-    overflow-y: auto;
-  }
-</style>
-
-
-<div class="container">
   <!-- Header (без кнопки Отмена) -->
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div class="d-flex align-items-center gap-2">
