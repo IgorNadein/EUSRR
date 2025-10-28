@@ -1,0 +1,21 @@
+/**
+ * feed-header.css
+ * Общие стили заголовка списка (используется в разных секциях)
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   FEED HEADER
+────────────────────────────────────────────────────────────── */
+.feed-header {
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* Дополнительные стили для строк результатов */
+.result-row {
+  cursor: default;
+}
+
+.list-results > .result-row + .result-row {
+  border-top: 1px solid var(--bs-border-color);
+}

@@ -1,16 +1,10 @@
 {# backend/templates/employees/_department_controls.html #}
 {# Контекст: dept, head_choices, roles, dept_perm_choices, can_manage, can_assign_roles, can_change_head #}
 
-{# Модалки поверх любых локальных dropdown/оверлеев #}
-<style>
-  /* Модалки поверх всего */
-  .modal-backdrop.show { z-index: 3000 !important; }
-  .modal.show          { z-index: 3010 !important; }
-  .modal-dialog        { pointer-events: auto !important; }
-
-  /* Портальный дропдаун автокомплита ролей ниже модалки */
-  .role-portal { z-index: 1800 !important; }
-</style>
+{% load static %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/components/department-controls.css' %}">
+{% endblock %}
 
 {% if can_manage %}
 <div class="ios-acc mb-3">
