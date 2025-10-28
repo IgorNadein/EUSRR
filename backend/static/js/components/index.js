@@ -24,7 +24,7 @@ export {
 // export { CalendarWidget } from './calendarWidget.js';
 
 // Компоненты отображения (будут созданы в Фазе 4)
-// export { TeamWheel } from './teamWheel.js';
+export { initTeamWheel } from './teamWheel.js';
 
 // Версия компонентов
 export const COMPONENTS_VERSION = '1.0.0';
