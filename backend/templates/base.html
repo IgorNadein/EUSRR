@@ -481,6 +481,26 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.8/locales-all.global.min.js" defer></script>
 
+  {# Импорт утилит из модулей #}
+  <script type="module">
+    import { esc, norm, escAttr, truncate, getInitials } from '{% static "js/utils/stringUtils.js" %}';
+    import { debounce, throttle, delay } from '{% static "js/utils/timing.js" %}';
+    import { smoothScrollTo, scrollToTop, isElementInViewport } from '{% static "js/utils/scroll.js" %}';
+    
+    // Экспортируем в window для обратной совместимости с существующим кодом
+    window.esc = esc;
+    window.norm = norm;
+    window.escAttr = escAttr;
+    window.truncate = truncate;
+    window.getInitials = getInitials;
+    window.debounce = debounce;
+    window.throttle = throttle;
+    window.delay = delay;
+    window.smoothScrollTo = smoothScrollTo;
+    window.scrollToTop = scrollToTop;
+    window.isElementInViewport = isElementInViewport;
+  </script>
+
   <script>
     // реальная высота navbar -> CSS var
     document.addEventListener('DOMContentLoaded', () => {
@@ -794,12 +814,9 @@
         return `${z2(d.getDate())}.${z2(d.getMonth()+1)}.${d.getFullYear()}`;
       }
 
-      function esc(s){
-        return String(s || '')
-          .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-          .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-          .replace(/'/g,'&#39;');
-      }
+      // HTML экранирование и утилиты импортированы из модулей
+      // См. блок импорта утилит ниже
+      
       function avatarHTML(url){
         return url
           ? `<span class="mini-ava border"><img src="${url}" alt="" loading="lazy"></span>`
@@ -937,7 +954,7 @@
         private: document.querySelector('.chat-section[data-sec="private"]')
       };
       let active = 'all';
-      const norm = s => (s || '').toLowerCase().replace(/\s+/g,' ').trim();
+      // norm() импортирован из утилит, доступен через window.norm
 
       function apply(){
         const q = norm(search?.value || '');

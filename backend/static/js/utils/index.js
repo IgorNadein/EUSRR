@@ -13,14 +13,33 @@
  * import { esc } from '{% static "js/utils/stringUtils.js" %}';
  */
 
-// Утилиты работы со строками (будут созданы в Фазе 2)
-// export { esc, norm } from './stringUtils.js';
+// Утилиты работы со строками
+export { 
+  esc, 
+  norm, 
+  escAttr, 
+  truncate, 
+  getInitials 
+} from './stringUtils.js';
 
-// Утилиты для работы со временем (будут созданы в Фазе 2)
-// export { debounce, throttle } from './timing.js';
+// Утилиты для работы со временем
+export { 
+  debounce, 
+  throttle, 
+  delay, 
+  poll, 
+  once 
+} from './timing.js';
 
-// Утилиты прокрутки (будут созданы в Фазе 2)
-// export { smoothScrollTo } from './scroll.js';
+// Утилиты прокрутки
+export { 
+  smoothScrollTo, 
+  scrollToTop, 
+  scrollToBottom,
+  isElementInViewport,
+  getScrollPosition,
+  onScrollThreshold
+} from './scroll.js';
 
-// Placeholder export для валидности модуля
+// Версия утилит
 export const UTILS_VERSION = '1.0.0';
