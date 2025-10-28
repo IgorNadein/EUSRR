@@ -10,11 +10,21 @@
  * </script>
  */
 
-// Компоненты (будут созданы в Фазе 4)
-// export { EmployeeForm } from './employeeForm.js';
-// export { CalendarWidget } from './calendarWidget.js';
-// export { TeamWheel } from './teamWheel.js';
-// export { ListFilter } from './listFilter.js';
+// Компоненты фильтрации
+export { 
+  ListFilter, 
+  createDataAttrMatcher, 
+  createSelectorMatcher 
+} from './listFilter.js';
 
-// Placeholder export для валидности модуля
+// Компоненты форм (будут созданы в Фазе 4)
+// export { EmployeeForm } from './employeeForm.js';
+
+// Компоненты календаря (будут созданы в Фазе 4)
+// export { CalendarWidget } from './calendarWidget.js';
+
+// Компоненты отображения (будут созданы в Фазе 4)
+// export { TeamWheel } from './teamWheel.js';
+
+// Версия компонентов
 export const COMPONENTS_VERSION = '1.0.0';
