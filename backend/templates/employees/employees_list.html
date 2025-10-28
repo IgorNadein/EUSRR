@@ -238,22 +238,17 @@
   </div>
 </div>
 
-<script>
-  (function () {
-    const input = document.getElementById('empFilter');
-    const clearBtn = document.querySelector('.ios-search-clear');
-    const list = document.getElementById('empList');
-
-    function applyFilter(){
-      const q = (input?.value || '').trim().toLowerCase();
-      list.querySelectorAll('.emp-row').forEach(row => {
-        const hay = [(row.dataset.name||''), (row.dataset.depts||'')].join(' ').toLowerCase();
-        row.style.display = (!q || hay.includes(q)) ? '' : 'none';
-      });
-    }
-    input?.addEventListener('input', applyFilter);
-    clearBtn?.addEventListener('click', () => { input.value=''; input.focus(); input.dispatchEvent(new Event('input')); });
-    applyFilter();
-  })();
+<script type="module">
+  import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
+  
+  // Используем ListFilter вместо кастомной функции applyFilter()
+  new ListFilter({
+    listSelector: '#empList',
+    itemSelector: '.emp-row',
+    searchInputSelector: '#empFilter',
+    clearButtonSelector: '.ios-search-clear',
+    matchFn: createDataAttrMatcher(['name', 'depts']),
+    debounceMs: 300
+  });
 </script>
 {% endblock %}
