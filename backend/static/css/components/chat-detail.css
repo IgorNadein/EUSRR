@@ -1,0 +1,238 @@
+/**
+ * chat-detail.css
+ * Стили страницы детального чата: layout, scroll, bubbles, composer
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   PAGE LAYOUT
+────────────────────────────────────────────────────────────── */
+/* прибиваем низ страницы и добавляем воздух снизу */
+main.main {
+  padding-bottom: 0 !important;
+}
+
+/* ===== Контейнер страницы чата ===== */
+@supports(height: 100svh) {
+  .chat-root {
+    height: calc(100svh - var(--navbar-h));
+  }
+}
+
+.chat-root > .row {
+  height: 100%;
+  min-height: 0;
+}
+
+.chat-col {
+  display: flex;
+  flex-direction: column;
+  height: 93%;
+  min-height: 0;
+}
+
+.feed-header {
+  flex: 0 0 auto;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT BOX
+────────────────────────────────────────────────────────────── */
+.feed-card.chat-box {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr auto; /* лента + композер */
+  overflow: hidden;
+  margin-bottom: 0;
+  background: var(--bs-body-bg);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT SCROLL (с кастомным скроллбаром)
+────────────────────────────────────────────────────────────── */
+.chat-scroll {
+  overflow-y: auto;
+  padding: .75rem;
+  min-height: 0;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 70%) transparent;
+}
+
+.chat-scroll:hover {
+  scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 55%) transparent;
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 0;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--bs-body-color), transparent 75%);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+.chat-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--bs-body-color), transparent 55%);
+}
+
+[data-bs-theme="dark"] .chat-scroll {
+  scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 78%) transparent;
+}
+
+[data-bs-theme="dark"] .chat-scroll:hover {
+  scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 60%) transparent;
+}
+
+[data-bs-theme="dark"] .chat-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--bs-body-color), transparent 78%);
+}
+
+[data-bs-theme="dark"] .chat-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--bs-body-color), transparent 60%);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .chat-scroll {
+    scrollbar-width: none;
+  }
+
+  .chat-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMPOSER
+────────────────────────────────────────────────────────────── */
+.chat-composer {
+  position: sticky;
+  bottom: 0;
+  border-top: none;
+  box-shadow: inset 0 1px 0 var(--bs-border-color);
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+  background-clip: padding-box;
+  background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
+  padding: .5rem .75rem calc(.5rem + env(safe-area-inset-bottom)) .75rem;
+  backdrop-filter: blur(8px);
+  z-index: 1;
+}
+
+.composer-wrap {
+  display: flex;
+  align-items: end;
+  gap: .5rem;
+  flex-wrap: nowrap;
+}
+
+.composer-tools {
+  display: flex;
+  gap: .25rem;
+  align-items: center;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SCROLL TO BOTTOM BUTTON
+────────────────────────────────────────────────────────────── */
+.scroll-to-bottom {
+  position: absolute;
+  right: .75rem;
+  bottom: 4.25rem;
+  z-index: 2;
+  display: none;
+}
+
+.scroll-to-bottom.show {
+  display: block;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BUBBLES & AVATARS
+────────────────────────────────────────────────────────────── */
+.bubble {
+  border-radius: 16px;
+  padding: .5rem .75rem;
+  word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+}
+
+.bubble-me {
+  background: color-mix(in srgb, var(--bs-primary) 92%, #fff 0%);
+  color: #fff;
+}
+
+.bubble-other {
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+}
+
+.mini-ava {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.mini-ava img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DIVIDERS (день / непрочитанные)
+────────────────────────────────────────────────────────────── */
+.day-divider,
+.unread-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  margin: .5rem 0 1rem;
+  font-size: .85rem;
+  line-height: 1;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
+}
+
+.day-divider::before,
+.day-divider::after,
+.unread-divider::before,
+.unread-divider::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: color-mix(in srgb, var(--bs-border-color), transparent 30%);
+}
+
+.day-divider > span,
+.unread-divider > span {
+  flex: 0 0 auto;
+  padding: 0 .5rem;
+  background: transparent;
+}
+
+.day-divider {
+  color: var(--bs-secondary-color);
+}
+
+.unread-divider {
+  color: var(--bs-danger);
+}
