@@ -1,0 +1,176 @@
+/**
+ * Join Scroller Component
+ * 
+ * Горизонтальная прокручиваемая лента новых сотрудников с hover-эффектами
+ * Используется на главной странице ленты для отображения недавно присоединившихся
+ */
+
+/* ===== секция «новички» (контейнер) ===== */
+.join-wrap{
+  padding: .9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+  border-radius: var(--feed-radius);
+  background: var(--bs-body-bg);
+  box-shadow: var(--feed-shadow);
+}
+
+/* ===== горизонтальная лента ===== */
+.join-scroller{
+  position: relative;
+  overflow-x: auto;          /* горизонтальная прокрутка */
+  overflow-y: visible;       /* нужно для инфо-блока */
+  scrollbar-width: none;     /* Firefox скрыть полосы */
+  -ms-overflow-style: none;  /* IE/старый Edge */
+}
+
+.join-scroller::-webkit-scrollbar{ 
+  display: none; 
+} /* Chrome/Safari */
+
+.join-rail{
+  display: flex; 
+  align-items: flex-start; 
+  gap: .9rem; /* start: инфо-блоки снизу */
+  padding: .25rem .25rem;
+}
+
+/* мягкие «маски» по краям */
+.join-scroller::before,
+.join-scroller::after{
+  content: ""; 
+  position: absolute; 
+  top: 0; 
+  bottom: 0; 
+  width: 32px; 
+  pointer-events: none;
+  background: linear-gradient(to right, var(--bs-body-bg), transparent);
+}
+
+.join-scroller::after{ 
+  right: 0; 
+  left: auto; 
+  transform: scaleX(-1); 
+}
+
+.join-scroller::before{ 
+  left: 0; 
+}
+
+@media (prefers-reduced-motion: reduce){
+  .join-scroller{ 
+    scroll-behavior: auto !important; 
+  }
+}
+
+/* ===== элемент ленты (ячейка) ===== */
+.join-item{
+  --base: 56px;             /* базовый размер круга */
+  --mult: 4;                /* множитель при раскрытии */
+  --size: var(--base);      /* текущий "активный" размер */
+  position: relative;
+  display: flex; 
+  flex-direction: column; 
+  align-items: center;
+  width: var(--size);
+  flex: 0 0 var(--size);
+  transition: width .22s ease, flex-basis .22s ease;
+}
+
+.join-item:hover,
+.join-item:focus-within{
+  --size: calc(var(--base) * var(--mult));
+  z-index: 2; /* поверх соседей */
+}
+
+/* круг с фото */
+.join-ava{
+  width: var(--size); 
+  height: var(--size);
+  border-radius: 999px; 
+  overflow: hidden;
+  display: grid; 
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  background: var(--bs-tertiary-bg);
+  transition: width .22s ease, height .22s ease, box-shadow .22s ease, border-color .22s ease;
+  will-change: width, height;
+}
+
+.join-ava img{ 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover; 
+  display: block; 
+  background: var(--bs-tertiary-bg); 
+}
+
+.join-ava .bi{ 
+  font-size: 1.2rem; 
+  opacity: .65; 
+}
+
+.join-item:hover .join-ava,
+.join-item:focus-within .join-ava{
+  box-shadow: var(--feed-shadow-hover);
+  border-color: color-mix(in srgb, var(--bs-border-color), var(--bs-primary) 30%);
+}
+
+/* инфо-блок ПОД кругом */
+.join-info{
+  width: 100%;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: max-height .24s ease, opacity .18s ease, transform .18s ease;
+}
+
+.join-item:hover .join-info,
+.join-item:focus-within .join-info{
+  max-height: 320px; /* с запасом под длинный список навыков */
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.join-info .name{ 
+  font-weight: 800; 
+  line-height: 1.2; 
+  margin-top: .5rem; 
+  text-align: center; 
+}
+
+.join-info .sub { 
+  font-size: .9rem; 
+  color: var(--bs-secondary-color); 
+  text-align: center; 
+}
+
+.join-info .skills-line{
+  font-size: .9rem; 
+  text-align: center; 
+  margin-top: .35rem;
+  word-break: break-word; 
+  white-space: normal;
+}
+
+.join-info .skills-line b{ 
+  font-weight: 800; 
+}
+
+.join-info .link{ 
+  display: inline-block; 
+  margin-top: .35rem; 
+  font-size: .9rem; 
+  text-decoration: none; 
+}
+
+.join-info .link:hover{ 
+  text-decoration: underline; 
+}
+
+/* На маленьких экранах чуть меньше раскрываемся */
+@media (max-width: 480px){
+  .join-item{ 
+    --mult: 3.2; 
+  }
+}
