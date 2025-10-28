@@ -17,14 +17,11 @@ export {
   createSelectorMatcher 
 } from './listFilter.js';
 
-// Компоненты форм (будут созданы в Фазе 4)
-// export { EmployeeForm } from './employeeForm.js';
+// Компоненты календаря
+export { initCalendarWidget } from './calendarWidget.js';
 
-// Компоненты календаря (будут созданы в Фазе 4)
-// export { CalendarWidget } from './calendarWidget.js';
-
-// Компоненты отображения (будут созданы в Фазе 4)
+// Компоненты отображения
 export { initTeamWheel } from './teamWheel.js';
 
 // Версия компонентов
-export const COMPONENTS_VERSION = '1.0.0';
+export const COMPONENTS_VERSION = '1.1.0';
