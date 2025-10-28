@@ -1,0 +1,21 @@
+/**
+ * CSS Components Index
+ * 
+ * Этот файл служит единой точкой входа для всех CSS компонентов.
+ * Импортируйте компоненты по мере их создания.
+ * 
+ * Использование в шаблонах:
+ * {% block extra_css %}
+ * <link rel="stylesheet" href="{% static 'css/components/index.css' %}">
+ * {% endblock %}
+ */
+
+/* Переменные (будут созданы далее) */
+/* @import 'variables.css'; */
+
+/* Общие компоненты (будут созданы в Фазе 3) */
+/* @import 'feed-cards.css'; */
+/* @import 'ios-search.css'; */
+/* @import 'modals.css'; */
+/* @import 'badges.css'; */
+/* @import 'buttons.css'; */

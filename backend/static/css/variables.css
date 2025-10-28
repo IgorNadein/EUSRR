@@ -1,0 +1,137 @@
+/**
+ * CSS Variables
+ * 
+ * Глобальные CSS переменные для обеспечения единообразия дизайна.
+ * Использование: var(--variable-name)
+ * 
+ * Подключение в base.html:
+ * <link rel="stylesheet" href="{% static 'css/variables.css' %}">
+ */
+
+:root {
+  /* ========== Цветовая схема ========== */
+  
+  /* Основные цвета интерфейса (наследуются от Bootstrap) */
+  /* --bs-primary, --bs-secondary, --bs-success, --bs-danger, --bs-warning, --bs-info */
+  
+  /* Дополнительные цвета приложения */
+  --app-primary: #0d6efd;
+  --app-success: #198754;
+  --app-danger: #dc3545;
+  --app-warning: #ffc107;
+  --app-info: #0dcaf0;
+  
+  /* Фоновые цвета */
+  --bg-light: #f8f9fa;
+  --bg-dark: #212529;
+  --bg-card: #ffffff;
+  
+  /* Цвета текста */
+  --text-primary: #212529;
+  --text-secondary: #6c757d;
+  --text-muted: #adb5bd;
+  
+  /* ========== Размеры и отступы ========== */
+  
+  /* Высота компонентов */
+  --navbar-height: 60px;
+  --sidebar-width: 260px;
+  --rightbar-width: 280px;
+  
+  /* Радиусы скругления */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 50%;
+  
+  /* Отступы */
+  --spacing-xs: 0.25rem;  /* 4px */
+  --spacing-sm: 0.5rem;   /* 8px */
+  --spacing-md: 1rem;     /* 16px */
+  --spacing-lg: 1.5rem;   /* 24px */
+  --spacing-xl: 2rem;     /* 32px */
+  
+  /* ========== Тени ========== */
+  
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.16);
+  
+  /* ========== Компоненты Feed ========== */
+  
+  --feed-radius: 18px;
+  --feed-shadow: var(--shadow-md);
+  --feed-padding: 1rem;
+  --feed-avatar-size: 44px;
+  --feed-gap: 0.75rem;
+  
+  /* ========== Переходы и анимации ========== */
+  
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  
+  /* ========== Z-индексы ========== */
+  
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  
+  /* ========== Типографика ========== */
+  
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  
+  --font-size-xs: 0.75rem;   /* 12px */
+  --font-size-sm: 0.875rem;  /* 14px */
+  --font-size-base: 1rem;    /* 16px */
+  --font-size-lg: 1.125rem;  /* 18px */
+  --font-size-xl: 1.25rem;   /* 20px */
+  
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* ========== Границы ========== */
+  
+  --border-width: 1px;
+  --border-color: #dee2e6;
+  --border-radius: var(--radius-md);
+}
+
+/* ========== Тёмная тема (если потребуется) ========== */
+/*
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-card: #2d3748;
+    --text-primary: #f7fafc;
+    --text-secondary: #e2e8f0;
+    --border-color: #4a5568;
+  }
+}
+*/
+
+/* ========== Вспомогательные классы с переменными ========== */
+
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+
+.radius-sm { border-radius: var(--radius-sm); }
+.radius-md { border-radius: var(--radius-md); }
+.radius-lg { border-radius: var(--radius-lg); }
+.radius-xl { border-radius: var(--radius-xl); }
+.radius-full { border-radius: var(--radius-full); }
+
+.transition-fast { transition: all var(--transition-fast); }
+.transition-base { transition: all var(--transition-base); }
+.transition-slow { transition: all var(--transition-slow); }
