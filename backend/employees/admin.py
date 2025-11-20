@@ -68,6 +68,20 @@ class EmployeeChangeForm(forms.ModelForm):
         ),
         required=False,
     )
+    
+    # Добавляем явные поля для дат, чтобы superuser мог их редактировать
+    created_at = forms.DateTimeField(
+        label="Дата создания",
+        required=False,
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+        help_text="Только для superuser"
+    )
+    updated_at = forms.DateTimeField(
+        label="Дата обновления", 
+        required=False,
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+        help_text="Только для superuser"
+    )
 
     class Meta:
         model = Employee
@@ -93,11 +107,24 @@ class EmployeeChangeForm(forms.ModelForm):
             "groups",
             "user_permissions",
             "last_login",
+            "created_at",
+            "updated_at",
         )
 
     def clean_password(self):
         # Возвращаем исходное значение (хэш), даже если пользователь ничего не ввёл
         return self.initial.get("password")
+    
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        # Если superuser изменил даты, применяем их
+        if self.cleaned_data.get('created_at'):
+            user.created_at = self.cleaned_data['created_at']
+        if self.cleaned_data.get('updated_at'):
+            user.updated_at = self.cleaned_data['updated_at']
+        if commit:
+            user.save()
+        return user
 
 
 # =========================
@@ -227,6 +254,34 @@ class EmployeeAdmin(DjangoUserAdmin):
     )
 
     inlines = [EmployeeDepartmentInline,]
+
+    def save_model(self, request, obj, form, change):
+        """
+        Переопределяем сохранение, чтобы superuser мог менять created_at/updated_at.
+        """
+        # Если superuser изменил даты, временно отключаем auto_now
+        if request.user.is_superuser:
+            if 'created_at' in form.changed_data or 'updated_at' in form.changed_data:
+                # Сохраняем с update_fields, чтобы обойти auto_now
+                update_fields = []
+                if 'created_at' in form.changed_data:
+                    obj.created_at = form.cleaned_data['created_at']
+                    update_fields.append('created_at')
+                if 'updated_at' in form.changed_data:
+                    obj.updated_at = form.cleaned_data['updated_at']
+                    update_fields.append('updated_at')
+                
+                # Сначала сохраняем объект без дат
+                super().save_model(request, obj, form, change)
+                
+                # Потом обновляем даты напрямую через queryset
+                if update_fields:
+                    Employee.objects.filter(pk=obj.pk).update(
+                        **{field: getattr(obj, field) for field in update_fields}
+                    )
+                return
+        
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Position)
