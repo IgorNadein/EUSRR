@@ -165,7 +165,13 @@ class EmployeeAdmin(DjangoUserAdmin):
 
     filter_horizontal = ("groups", "user_permissions", "skills")
 
-    readonly_fields = ("last_login", "created_at", "updated_at")
+    def get_readonly_fields(self, request, obj=None):
+        """
+        Только superuser может редактировать даты создания/обновления.
+        """
+        if request.user.is_superuser:
+            return ("last_login",)
+        return ("last_login", "created_at", "updated_at")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
