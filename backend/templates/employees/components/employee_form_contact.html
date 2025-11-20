@@ -1,0 +1,52 @@
+{# employees/components/employee_form_contact.html #}
+{# Секция "Контакты": Email, телефон, мессенджеры #}
+
+<div class="col-12">
+  <div class="ios-acc mb-3">
+    <div class="d-flex align-items-center gap-2 px-3 py-3">
+      <i class="bi-person-lines-fill"></i>
+      <div class="ios-section-title mb-0">Контакты</div>
+    </div>
+    <div class="ios-acc-body">
+      <div class="row g-3 px-2">
+        <div class="col-sm-6">
+          <label class="form-label" for="f_phone">Телефон</label>
+          <input id="f_phone" class="form-control" name="phone_number"
+                 value="{{ emp.phone_number|default:'' }}" inputmode="tel"
+                 data-init="{{ emp.phone_number|default:'' }}" data-contact="1">
+          <div class="invalid-feedback"></div>
+        </div>
+        <div class="col-sm-6">
+          <label class="form-label" for="f_email">Email</label>
+          <input id="f_email" class="form-control" type="email" name="email"
+                 value="{{ emp.email|default:'' }}" autocomplete="email"
+                 
+                 data-init="{{ emp.email|default:'' }}" data-contact="1">
+          <div class="invalid-feedback"></div>
+        </div>
+
+        <div class="col-sm-4">
+          <label class="form-label" for="f_telegram">Telegram</label>
+          <input id="f_telegram" class="form-control" name="telegram"
+                 value="{{ emp.telegram|default:'' }}" inputmode="text"
+                 data-init="{{ emp.telegram|default:'' }}" data-contact="1">
+          <div class="invalid-feedback"></div>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label" for="f_whatsapp">WhatsApp</label>
+          <input id="f_whatsapp" class="form-control" name="whatsapp"
+                 value="{{ emp.whatsapp|default:'' }}" inputmode="tel"
+                 data-init="{{ emp.whatsapp|default:'' }}" data-contact="1">
+          <div class="invalid-feedback"></div>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label" for="f_wechat">WeChat</label>
+          <input id="f_wechat" class="form-control" name="wechat"
+                 value="{{ emp.wechat|default:'' }}" inputmode="text"
+                 data-init="{{ emp.wechat|default:'' }}" data-contact="1">
+          <div class="invalid-feedback"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -7,14 +7,14 @@ from api.v1.permissions import AdminOrDeptAllowed
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from employees.constants import DeptPerm
+from employees.models import Department
 
 
 class CommentsPermission(BasePermission):
-    """Доступ к экшену `comments` по *модельным* правам.
+    """Комментарии: модельные права, staff, head.
 
-    - GET/HEAD: `requests_app.view_requestcomment` ИЛИ staff.
-    - POST:     `requests_app.add_requestcomment` ИЛИ staff.
-    - Владелец без прав — НЕТ.
+    GET/HEAD: view_requestcomment OR staff OR head (прямой/по сотруднику).
+    POST: add_requestcomment OR staff OR head (прямой/по сотруднику).
     """
 
     message = "Недостаточно прав для доступа к комментариям."
@@ -29,9 +29,24 @@ class CommentsPermission(BasePermission):
     def has_permission(self, request: Request, view: Any) -> bool:
         return bool(getattr(request.user, "is_authenticated", False))
 
+    def _is_head_for_request(self, user, obj) -> bool:
+        dept = getattr(obj, "department", None)
+        if dept is not None and getattr(dept, "head_id", None) == user.id:
+            return True
+        emp_id = getattr(obj, "employee_id", None)
+        if not emp_id:
+            return False
+        return Department.objects.filter(
+            head_id=user.id,
+            employeedepartment__employee_id=emp_id,
+            employeedepartment__is_active=True,
+        ).exists()
+
     def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
         user = request.user
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return True
+        if self._is_head_for_request(user, obj):
             return True
         code = self._required_perm(request)
         return bool(code and user.has_perm(code))

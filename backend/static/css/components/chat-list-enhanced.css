@@ -1,0 +1,133 @@
+/* Context Menu Styles */
+.context-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 4px 0;
+    min-width: 200px;
+    z-index: 9999;
+}
+
+.context-menu button {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 8px 16px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.context-menu button:hover {
+    background: #f8f9fa;
+}
+
+.context-menu hr {
+    margin: 4px 0;
+    border-color: #dee2e6;
+}
+
+/* Chat List Update Animation */
+.chat-row.updated {
+    background: #e3f2fd;
+    transition: background 0.3s ease-out;
+}
+
+/* Pinned Chat Indicator */
+.chat-row.pinned {
+    background: #fffbeb;
+    border-left: 4px solid var(--bs-warning);
+}
+
+.chat-pinned-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--bs-warning);
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    z-index: 1;
+}
+
+/* Chat Avatars */
+.chat-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #dee2e6;
+}
+
+.chat-avatar-group {
+    display: flex;
+    align-items: center;
+}
+
+.chat-avatar-group img {
+    margin-left: -8px;
+    border: 2px solid white;
+}
+
+.chat-avatar-group img:first-child {
+    margin-left: 0;
+}
+
+/* Chat Actions Menu Button */
+.chat-actions-menu {
+    display: flex;
+    align-items: center;
+    position: static !important;
+}
+
+.chat-row {
+    overflow: visible !important;
+}
+
+.list-chats {
+    overflow: visible !important;
+}
+
+.feed-card {
+    overflow: visible !important;
+}
+
+.chat-actions-menu .btn {
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.chat-row:hover .chat-actions-menu .btn {
+    opacity: 1;
+}
+
+.chat-actions-menu .btn:focus,
+.chat-actions-menu .btn[aria-expanded="true"] {
+    opacity: 1;
+}
+
+.chat-actions-menu .dropdown-menu {
+    font-size: 0.9rem;
+    min-width: 200px;
+    position: absolute !important;
+    z-index: 1050 !important;
+}
+
+.chat-actions-menu .dropdown-item {
+    padding: 0.5rem 1rem;
+}
+
+.chat-actions-menu .dropdown-item i {
+    width: 20px;
+    text-align: center;
+}

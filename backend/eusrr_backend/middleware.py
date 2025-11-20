@@ -65,3 +65,76 @@ class AuthRequiredMiddleware:
 
         # 3) Иначе — редирект на страницу логина
         return redirect(settings.LOGIN_URL)  # у тебя name="login" -> /auth/login/
+
+
+class EmailVerificationMiddleware:
+    """
+    Проверяет что залогиненные пользователи имеют подтверждённый email.
+    Неверифицированные пользователи редиректятся на страницу верификации.
+    
+    Исключения:
+    - Staff пользователи могут работать без верификации (админка)
+    - API запросы обрабатываются на уровне permissions
+    - Страницы верификации и статика доступны всем
+    """
+
+    EXEMPT_PREFIXES = (
+        "/api/",  # API обрабатывает свои permissions
+        "/static/",
+        "/media/",
+        "/admin/",  # Админка доступна staff
+    )
+
+    EXEMPT_NAMES = (
+        "auth_front:verify_email",
+        "auth_front:resend_email",
+        "auth_front:login",
+        "auth_front:logout",
+        "auth_front:register",
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        
+        # Резолвим разрешённые пути
+        allowed_exact = set()
+        for name in self.EXEMPT_NAMES:
+            try:
+                allowed_exact.add(reverse(name))
+            except NoReverseMatch:
+                pass
+        self.allowed_exact = tuple(allowed_exact)
+        
+        self.allowed_prefixes = self.EXEMPT_PREFIXES
+
+    def __call__(self, request):
+        # Анонимные пользователи - обрабатываются AuthRequiredMiddleware
+        if not request.user.is_authenticated:
+            return self.get_response(request)
+
+        # Staff пользователи могут работать без верификации
+        if request.user.is_staff:
+            return self.get_response(request)
+
+        # Проверяем email_verified
+        if not getattr(request.user, "email_verified", True):
+            path = request.path_info
+
+            # Пропускаем разрешённые префиксы
+            if any(path.startswith(p) for p in self.allowed_prefixes):
+                return self.get_response(request)
+
+            # Пропускаем точные разрешённые пути
+            if path in self.allowed_exact:
+                return self.get_response(request)
+
+            # Редирект на страницу верификации
+            try:
+                verify_url = reverse("auth_front:verify_email")
+                if path != verify_url:
+                    return redirect(verify_url)
+            except NoReverseMatch:
+                # Если нет страницы верификации - пропускаем
+                pass
+
+        return self.get_response(request)

@@ -1,0 +1,11 @@
+{% load static %}
+{# === JavaScript инициализация календаря === #}
+
+<script type="module">
+  import { initCalendarWidget } from '{% static "js/components/calendarWidget.js" %}';
+  
+  const widget = initCalendarWidget();
+  if (widget) {
+    window.calendarWidget = widget;
+  }
+</script>

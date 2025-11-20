@@ -1,0 +1,50 @@
+{# employees/components/employee_form_personal.html #}
+{# Секция "Личные данные": ФИО, пол, дата рождения #}
+
+<div class="col-12">
+  <div class="ios-acc mb-3">
+    <div class="d-flex align-items-center gap-2 px-3 py-3">
+      <i class="bi-person-badge"></i>
+      <div class="ios-section-title mb-0">Личные данные</div>
+    </div>
+    <div class="ios-acc-body">
+      <div class="row g-3 px-2">
+        <div class="col-sm-6">
+          <label class="form-label" for="f_first_name">Имя</label>
+          <input id="f_first_name" class="form-control" name="first_name"
+                 value="{{ emp.first_name|default:'' }}" autocomplete="given-name"
+                 data-init="{{ emp.first_name|default:'' }}">
+        </div>
+        <div class="col-sm-6">
+          <label class="form-label" for="f_last_name">Фамилия</label>
+          <input id="f_last_name" class="form-control" name="last_name"
+                 value="{{ emp.last_name|default:'' }}" autocomplete="family-name"
+                 data-init="{{ emp.last_name|default:'' }}">
+        </div>
+        <div class="col-sm-6">
+          <label class="form-label" for="f_patronymic">Отчество</label>
+          <input id="f_patronymic" class="form-control" name="patronymic"
+                 value="{{ emp.patronymic|default:'' }}"
+                 data-init="{{ emp.patronymic|default:'' }}">
+        </div>
+
+        <div class="col-sm-3">
+          <label class="form-label" for="f_gender">Пол</label>
+          <select id="f_gender" class="form-select" name="gender"
+                  data-init="{{ emp.gender|default_if_none:'' }}">
+            <option value="" {% if emp.gender is None %}selected{% endif %}>— Не указано —</option>
+            <option value="1" {% if emp.gender == 1 %}selected{% endif %}>Мужской</option>
+            <option value="2" {% if emp.gender == 2 %}selected{% endif %}>Женский</option>
+          </select>
+        </div>
+
+        <div class="col-sm-3">
+          <label class="form-label" for="f_birth">Дата рождения</label>
+          <input id="f_birth" class="form-control" type="date" name="birth_date"
+                 value="{{ emp.birth_date|default:'' }}"
+                 data-init="{{ emp.birth_date|default:'' }}">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

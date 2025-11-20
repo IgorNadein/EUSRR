@@ -1,0 +1,173 @@
+/**
+ * logout-modal.css
+ * Стили iOS-style модального окна выхода
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   OVERLAY
+────────────────────────────────────────────────────────────── */
+/* Overlay поверх всего (и навбара тоже) */
+.ios-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  background: color-mix(in srgb, var(--bs-body-bg), #000 35%);
+  backdrop-filter: blur(10px) saturate(110%);
+  display: grid;
+  place-items: end center; /* bottom sheet по умолчанию */
+}
+
+@media (min-width: 992px) {
+  .ios-overlay {
+    place-items: center;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SHEET / CARD
+────────────────────────────────────────────────────────────── */
+/* Bottom sheet / Card */
+.ios-sheet {
+  width: 100%;
+  max-width: 560px;
+  background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, .28);
+  animation: slideUp .28s ease both;
+}
+
+@media (min-width: 992px) {
+  .ios-sheet {
+    border-radius: 18px;
+    animation: popIn .18s ease both;
+  }
+}
+
+/* Грип-бар как в iOS */
+.ios-grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bs-body-color), transparent 70%);
+  margin: var(--space-1) auto var(--space-1) auto;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CONTENT
+────────────────────────────────────────────────────────────── */
+.ios-body {
+  padding: var(--space-2) var(--space-3) var(--space-3) var(--space-3);
+}
+
+@media (min-width: 992px) {
+  .ios-body {
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-3);
+  }
+}
+
+.ios-title {
+  margin: .25rem 0 .25rem 0;
+  text-align: center;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.ios-sub {
+  text-align: center;
+  color: var(--bs-secondary-color);
+  margin: 0 0 1rem 0;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   AVATAR & ICON
+────────────────────────────────────────────────────────────── */
+/* Аватар + иконка выхода */
+.ios-ava {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  background: var(--bs-tertiary-bg);
+  display: grid;
+  place-items: center;
+  margin: .25rem auto .75rem auto;
+}
+
+.ios-ava img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ios-ico {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bs-danger), #000 12%);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  margin: .25rem auto .75rem auto;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BUTTONS
+────────────────────────────────────────────────────────────── */
+.ios-actions {
+  display: grid;
+  gap: .6rem;
+}
+
+.ios-btn {
+  min-height: 48px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.ios-btn-danger {
+  background: var(--bs-danger);
+  border-color: var(--bs-danger);
+  color: #fff;
+}
+
+.ios-btn-danger:hover {
+  filter: brightness(1.02);
+}
+
+.ios-btn-ghost {
+  background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  color: var(--bs-body-color);
+}
+
+.ios-btn-ghost:hover {
+  background: color-mix(in srgb, var(--bs-body-bg), #fff 9%);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ANIMATIONS
+────────────────────────────────────────────────────────────── */
+@keyframes slideUp {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(.98);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

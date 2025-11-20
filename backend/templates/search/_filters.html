@@ -1,0 +1,24 @@
+{# Фильтры для страницы поиска #}
+<form method="get" class="row g-2 align-items-end">
+  <div class="col-12 col-sm-9">
+    <label class="form-label mb-1">Тип результата</label>
+    <select name="type" class="form-select" id="searchTypeFilter">
+      <option value="all">Все ({{ total }})</option>
+      <option value="post">Публикации ({{ counts.post }})</option>
+      <option value="employee">Сотрудники ({{ counts.employee }})</option>
+      <option value="department">Отделы ({{ counts.department }})</option>
+      <option value="request">Заявления ({{ counts.request }})</option>
+      <option value="chat">Чаты ({{ counts.chat }})</option>
+      <option value="message">Сообщения ({{ counts.message }})</option>
+      <option value="event">События ({{ counts.event }})</option>
+    </select>
+  </div>
+  <div class="col-12 col-sm-3 d-flex justify-content-end gap-2">
+    <button class="btn btn-outline-primary d-flex align-items-center justify-content-center gap-1" type="button" id="applySearchFilter">
+      <i class="bi-funnel"></i><span>Применить</span>
+    </button>
+    <button type="button" class="btn btn-outline-secondary d-flex align-items-center justify-content-center" id="resetSearchFilter" title="Сбросить фильтры">
+      <i class="bi-x-lg"></i>
+    </button>
+  </div>
+</form>

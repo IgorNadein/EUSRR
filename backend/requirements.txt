@@ -29,3 +29,5 @@ channels==4.3.1
 channels_redis==4.3.0
 daphne==4.2.1
 
+ldap3==2.9.1
+pycryptodome==3.23.0

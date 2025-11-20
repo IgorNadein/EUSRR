@@ -1,0 +1,31 @@
+{% load static %}
+{# Подключаем модули для управления формой сотрудника #}
+<script type="module">
+  import { initEmployeeForm } from '{% static "js/components/employeeFormHandler.js" %}';
+  import { initPositionManager } from '{% static "js/components/positionManager.js" %}';
+  import { initPositionGroupPicker, initPositionEditGroupPicker } from '{% static "js/components/groupPickers.js" %}';
+  import { initEmployeeGroupsManager } from '{% static "js/components/employeeGroupsManager.js" %}';
+  
+  // Инициализация после полной загрузки DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAll);
+  } else {
+    // DOM уже загружен
+    initAll();
+  }
+  
+  function initAll() {
+    const employeeForm = initEmployeeForm();
+    const positionMgr = initPositionManager();
+    const groupPicker = initPositionGroupPicker();
+    const editGroupPicker = initPositionEditGroupPicker();
+    const groupsMgr = initEmployeeGroupsManager();
+    
+    // Экспортируем в window для обратной совместимости (только если инициализированы)
+    if (employeeForm) window.employeeForm = employeeForm;
+    if (positionMgr) window.positionManager = positionMgr;
+    if (groupPicker) window.groupPicker = groupPicker;
+    if (editGroupPicker) window.editGroupPicker = editGroupPicker;
+    if (groupsMgr) window.employeeGroupsManager = groupsMgr;
+  }
+</script>

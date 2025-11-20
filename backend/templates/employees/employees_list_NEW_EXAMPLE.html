@@ -1,0 +1,156 @@
+{# ПРИМЕР ИСПОЛЬЗОВАНИЯ: employees_list.html С НОВЫМ КОМПОНЕНТОМ #}
+{% extends 'base.html' %}
+{% load static django_bootstrap5 %}
+
+{% block title %}Сотрудники{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/employee-list.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row gx-0"> 
+    <div class="col-12">
+
+      {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+      {% include "includes/components/page_header.html" with 
+        icon="bi-people"
+        title="Сотрудники"
+        count=employees|length
+        count_label="Всего:"
+        search_id="empFilter"
+        search_placeholder="Поиск по ФИО, должности или отделу"
+        create_url=create_url
+        create_text="Создать профиль"
+        create_icon="bi-person-plus"
+        has_filters=True
+        filters_target="empFilters"
+      %}
+
+      {# ===== НОВЫЙ БЛОК ФИЛЬТРОВ (опционально) ===== #}
+      <div class="collapse page-filters-collapse" id="empFilters">
+        <div class="page-filters">
+          <form method="get" class="row g-3">
+            <div class="col-12 col-md-6 col-lg-3">
+              <label class="form-label">Отдел</label>
+              <select name="department" class="form-select">
+                <option value="">Все отделы</option>
+                {% for dept in departments %}
+                  <option value="{{ dept.id }}" {% if request.GET.department == dept.id|stringformat:"s" %}selected{% endif %}>
+                    {{ dept.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-3">
+              <label class="form-label">Должность</label>
+              <select name="position" class="form-select">
+                <option value="">Все должности</option>
+                {% for pos in positions %}
+                  <option value="{{ pos.id }}" {% if request.GET.position == pos.id|stringformat:"s" %}selected{% endif %}>
+                    {{ pos.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-3">
+              <label class="form-label">Статус</label>
+              <select name="is_active" class="form-select">
+                <option value="">Все</option>
+                <option value="true" {% if request.GET.is_active == "true" %}selected{% endif %}>Активные</option>
+                <option value="false" {% if request.GET.is_active == "false" %}selected{% endif %}>Неактивные</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-lg-3 d-flex align-items-end gap-2">
+              <button type="submit" class="btn btn-primary">Применить</button>
+              <a href="{% url 'employees:employees_list' %}" class="btn btn-outline-secondary">Сбросить</a>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {# ===== СПИСОК СОТРУДНИКОВ ===== #}
+      <div id="empList" class="feed-stream">
+        {% if employees %}
+          {% for emp in employees %}
+            <article class="emp-row"
+                     data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {% firstof emp.position.name emp.position_label '' %}"
+                     data-depts="{% if emp.departments %}{% for d in emp.departments %}{% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}{% elif is_filtered_by_department and current_department %}{{ current_department.name }}{% endif %}">
+              <header class="feed-hd">
+                <div class="feed-ava">
+                  {% if emp.avatar %}
+                    <img src="{{ emp.avatar }}" alt="{{ emp.last_name }} {{ emp.first_name }}">
+                  {% else %}
+                    <i class="bi-person"></i>
+                  {% endif %}
+                </div>
+
+                <div class="feed-meta flex-grow-1">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    {% if emp.id %}
+                      <a href="{% url 'employees:employee_detail' emp.id %}" class="feed-author text-decoration-none">
+                        {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                      </a>
+                    {% else %}
+                      <span class="feed-author">
+                        {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+                      </span>
+                    {% endif %}
+
+                    {% if emp.position and emp.position.name %}
+                      <span class="emp-pos">— {{ emp.position.name }}</span>
+                    {% elif emp.position_label %}
+                      <span class="emp-pos">— {{ emp.position_label }}</span>
+                    {% endif %}
+                  </div>
+
+                  <div class="feed-sub">
+                    {% if emp.departments %}
+                      {% for d in emp.departments %}
+                        {% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}
+                      {% endfor %}
+                    {% elif is_filtered_by_department and current_department %}
+                      {{ current_department.name }}
+                    {% endif %}
+                  </div>
+                </div>
+
+                {% if emp.id %}
+                {% endif %}
+              </header>
+            </article>
+          {% endfor %}
+        {% else %}
+          <div class="p-3 text-secondary text-center">
+            Сотрудники не найдены.
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initEmployeeFilter } from "{% static 'js/components/employeeFilterHandler.js' %}";
+  
+  // Инициализация поиска (если есть)
+  if (document.getElementById('empFilter')) {
+    initEmployeeFilter({
+      inputId: 'empFilter',
+      clearSelector: '.ios-search-clear',
+      listId: 'empList',
+      rowSelector: '.emp-row'
+    });
+  }
+</script>
+
+{% endblock %}

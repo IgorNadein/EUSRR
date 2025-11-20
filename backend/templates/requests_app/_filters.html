@@ -1,0 +1,40 @@
+{# Фильтры для страницы заявлений #}
+<form method="get" class="row g-2 align-items-end">
+  <div class="col-12 col-sm-3">
+    <label class="form-label mb-1">Область</label>
+    <select name="view" class="form-select">
+      <option value="mine" {% if scope == 'mine' %}selected{% endif %}>Мои</option>
+      <option value="all" {% if scope == 'all' %}selected{% endif %}>Все</option>
+    </select>
+  </div>
+  <div class="col-12 col-sm-3">
+    <label class="form-label mb-1">Тип</label>
+    <select name="type" class="form-select">
+      <option value="">— Любой —</option>
+      <option value="vacation"    {% if filters.type == 'vacation' %}selected{% endif %}>Отпуск</option>
+      <option value="sick_leave"  {% if filters.type == 'sick_leave' %}selected{% endif %}>Больничный</option>
+      <option value="transfer"    {% if filters.type == 'transfer' %}selected{% endif %}>Перевод</option>
+      <option value="dismissal"   {% if filters.type == 'dismissal' %}selected{% endif %}>Увольнение</option>
+      <option value="other"       {% if filters.type == 'other' %}selected{% endif %}>Другое</option>
+    </select>
+  </div>
+  <div class="col-12 col-sm-3">
+    <label class="form-label mb-1">Статус</label>
+    <select name="status" class="form-select">
+      <option value="">— Любой —</option>
+      <option value="draft"     {% if filters.status == 'draft' %}selected{% endif %}>Черновик</option>
+      <option value="pending"   {% if filters.status == 'pending' %}selected{% endif %}>На рассмотрении</option>
+      <option value="approved"  {% if filters.status == 'approved' %}selected{% endif %}>Одобрено</option>
+      <option value="rejected"  {% if filters.status == 'rejected' %}selected{% endif %}>Отклонено</option>
+      <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>Отменено</option>
+    </select>
+  </div>
+  <div class="col-12 col-sm-3 d-flex justify-content-end gap-2">
+    <button class="btn btn-outline-primary d-flex align-items-center justify-content-center gap-1" type="submit">
+      <i class="bi-funnel"></i><span>Применить</span>
+    </button>
+    <a class="btn btn-outline-secondary d-flex align-items-center justify-content-center" href="?" title="Сбросить фильтры">
+      <i class="bi-x-lg"></i>
+    </a>
+  </div>
+</form>

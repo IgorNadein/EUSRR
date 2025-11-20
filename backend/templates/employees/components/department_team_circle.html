@@ -1,0 +1,76 @@
+      {# --- Команда отдела (круг) --- #}
+      <section class="feed-card mb-3">
+        <div class="feed-hd">
+          
+          <i class="bi-people"></i>
+          <div class="feed-meta">
+            <div class="feed-author">{% url 'employees:employees_list' as employees_list_url %}
+      {% if employees_list_url %}
+        <a class="feed-author"
+           href="{{ employees_list_url }}?department={{ dept_id }}">
+          Команда отдела →
+        </a>
+      {% endif %} </div>
+          </div>
+        </div>
+        
+        <div class="feed-body d-flex flex-column align-items-center">
+          <div class="team-wrap d-flex flex-column align-items-center">
+
+            {# КРУГ #}
+            <div id="teamWheel-{{ dept.id }}" class="team-wheel"
+                 aria-live="polite"
+                 aria-label="Сотрудники отдела (скролл)">
+              <div class="wheel-plane" data-plane>
+                <div class="wheel-columns" data-columns>
+                  <div class="wheel-col col-1" data-col="1"></div>
+                  <div class="wheel-col col-2" data-col="2"></div>
+                  <div class="wheel-col col-3" data-col="3"></div>
+                  <div class="wheel-col col-4" data-col="4"></div>
+                </div>
+              </div>
+
+              {# Слой фокуса #}
+              <div class="wheel-focus d-none" data-focus>
+                <div class="focus-inner">
+                  <img alt="" data-focus-img>
+                  <i class="bi-person" data-focus-fallback></i>
+                </div>
+              </div>
+
+              {# ПОЛУКРУЖНЫЙ ИНДИКАТОР СКРОЛЛА (справа по дуге) #}
+              <svg class="scroll-arc" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                <path class="arc-track" d="M 50 2 A 48 48 0 0 1 50 98"></path>
+                <path class="arc-prog"  d="M 50 2 A 48 48 0 0 1 50 98" pathLength="1"></path>
+              </svg>
+            </div>
+
+            {# Источник данных для круга #}
+            <div id="teamData-{{ dept.id }}" class="d-none" data-team-source>
+              {% for li in links %}
+                {% with emp=li.employee %}
+                  <div
+                    data-id="{{ emp.id }}"
+                    data-name="{{ emp.display_name|default:emp.last_name }}"
+                    data-role="{{ li.role.name|default:'' }}"
+                    data-email="{{ emp.email|default:'' }}"
+                    data-avatar="{{ emp.avatar|default:'' }}"
+                    data-active="{{ li.is_active|yesno:'1,0' }}"
+                  ></div>
+                {% endwith %}
+              {% empty %}
+              {% endfor %}
+            </div>
+
+            {# Текст под кругом #}
+            <div class="mt-3 text-center w-100 d-flex flex-column align-items-center">
+              <div class="team-info d-none mt-2" data-details>
+                <div class="fw-semibold" data-details-name></div>
+                <div class="text-secondary small" data-details-role></div>
+                <div class="small" data-details-email></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>

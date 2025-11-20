@@ -4,85 +4,22 @@
 {% block title %}Документы{% endblock %}
 
 {% block extra_css %}
-<style>
-  /* Список документов в общей «карточке» */
-  #docList.feed-stream{ display:block; gap:0 !important; }
-  #docList .doc-row{ padding:.9rem 1rem !important; margin:0 !important; border-bottom:1px solid var(--bs-border-color); }
-  #docList .doc-row:last-child{ border-bottom:0; }
-  #docList .feed-hd{ display:grid; grid-template-columns: 28px 1fr auto; align-items:center; gap:.75rem; margin:0; padding:0 !important; }
-  #docList .feed-ico{ width:28px; height:28px; display:grid; place-items:center; border-radius:8px;
-    background: color-mix(in srgb, var(--bs-body-bg) 90%, transparent);
-    border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%); color: var(--bs-primary); }
-  .btn-icon{ width:36px; height:36px; display:inline-grid; place-items:center; border:1px solid var(--bs-border-color); border-radius:10px; background:transparent; }
-  .btn-icon--danger{ color:var(--bs-danger); }
-  .doc-actions{ display:flex; align-items:center; gap:.4rem; }
-  .badge-acked{ background:#d1e7dd; color:#0f5132; border:1px solid #badbcc; padding:.28rem .55rem; border-radius:999px; font-size:.8rem; }
-  [data-bs-theme="dark"] .badge-acked{ background:#234; color:#8fd4b3; border-color:#1f3b33; }
-  .scope-switch .btn{ min-height:36px; border-radius:999px; }
-
-  /* ===== Виджет выбора получателей ===== */
-  .recipient-picker{ border:1px solid var(--bs-border-color); border-radius:12px; padding:.75rem; background: var(--bs-body-bg); }
-  .recipient-picker .rp-selected{ display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.5rem; }
-  .recipient-picker .rp-chip{ display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--bs-border-color); border-radius:999px; padding:.2rem .55rem; font-size:.85rem; }
-  .recipient-picker .rp-chip button{ border:0; background:transparent; padding:0 .2rem; line-height:1; }
-  .recipient-picker .rp-search{ position:relative; }
-  .recipient-picker .rp-search input{ width:100%; }
-  .recipient-picker .rp-results{ margin-top:.5rem; max-height:220px; overflow:auto; border:1px solid var(--bs-border-color); border-radius:10px; }
-  .recipient-picker .rp-item{ display:flex; align-items:center; gap:.5rem; padding:.45rem .6rem; border-bottom:1px solid var(--bs-border-color); }
-  .recipient-picker .rp-item:last-child{ border-bottom:0; }
-  .recipient-picker .rp-item small{ color:var(--bs-secondary-color); }
-  .recipient-picker .rp-empty{ padding:.6rem; text-align:center; color:var(--bs-secondary-color); }
-  .recipient-picker .rp-avatar{ width:26px; height:26px; border-radius:50%; background:color-mix(in srgb, var(--bs-primary) 12%, transparent); display:inline-grid; place-items:center; font-size:.7rem; }
-  .recipient-block[hidden]{ display:none !important; }
-</style>
-<style>
-  .acks-list{ max-height: 50vh; overflow:auto; margin:0; padding-left:1.1rem; }
-  .acks-empty{ color: var(--bs-secondary-color); }
-  .acks-more{ margin-top:.5rem; }
-  .feed-ava{
-    width:32px;height:32px;flex:0 0 32px;border-radius:50%;
-    overflow:hidden;display:flex;align-items:center;justify-content:center;
-  }
-  .rp-avatar{ width:100%;height:100%;object-fit:cover; }
-</style>
-
+<link rel="stylesheet" href="{% static 'css/components/common.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="container ios-page">
 
-  {# ===== Шапка страницы ===== #}
-  <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
-    <i class="bi-file-earmark-text fs-2 text-primary"></i>
-    <h2 class="title ios-title mb-0">Документы</h2>
-
-    {% if can_manage_documents or user.is_staff or user.is_superuser %}
-      <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-        <!-- Переключатель области (Мои / Все) -->
-        <div class="btn-group scope-switch" role="group" aria-label="Область">
-          <a href="{{ scope_urls.mine }}"
-             class="btn btn-outline-secondary {% if scope == 'mine' %}active{% endif %}">
-            Мои
-          </a>
-          <a href="{{ scope_urls.all }}"
-             class="btn btn-outline-secondary {% if scope == 'all' %}active{% endif %}">
-            Все
-          </a>
-        </div>
-
-        {% if perms.documents.add_document %}
-          <button type="button"
-                  class="btn btn-primary d-flex align-items-center gap-2"
-                  data-bs-toggle="modal"
-                  data-bs-target="#docCreateModal">
-            <i class="bi-plus-lg"></i><span>Создать документ</span>
-          </button>
-        {% endif %}
-      </div>
-    {% else %}
-      <span class="ms-2 small text-secondary">Показаны ваши документы</span>
-    {% endif %}
-  </div>
+  {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+  {% if perms.documents.add_document %}
+    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal="docCreateModal" create_text="Создать документ" %}
+  {% else %}
+    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal='' create_text="Создать документ" %}
+  {% endif %}
 
   {# ===== Карточка со списком ===== #}
   <div class="feed-card mb-3">
@@ -317,427 +254,49 @@
 </div>
 
 {% endblock %}
+
 {% block extra_js %}
-  <script>
-    (function(){
-      const apiListUrl = "{{ api_document_list_url|default:'' }}";
-      const apiDetailBase = "{{ api_document_detail_base|default:'' }}"; // + {id}/
-      const employeesApi = "{% url 'api:v1:employees-list' %}";
-      const accessMeta = document.querySelector('meta[name="api-access"]');
-      const ACCESS = accessMeta ? accessMeta.content : "";
-      const headersAuth = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
+<script type="module">
+  import { RecipientPicker } from "{% static 'js/components/recipientPickerHandler.js' %}";
+  import { initDocumentCrud } from "{% static 'js/components/documentCrudHandler.js' %}";
+  import { initDocumentAcks } from "{% static 'js/components/documentAcksHandler.js' %}";
 
-      /* ===== Утилиты ===== */
-      const debounce = (fn, ms=300) => {
-        let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); };
-      };
+  // Получаем токен доступа и настраиваем заголовки
+  const accessMeta = document.querySelector('meta[name="api-access"]');
+  const ACCESS = accessMeta ? accessMeta.content : '';
+  const headersAuth = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
 
-      function initials(name){
-        const parts = (name || "").trim().split(/\s+/).slice(0,2);
-        return parts.map(p=>p[0]||"").join("").toUpperCase() || "U";
-      }
+  // URL для API
+  const apiListUrl = "{{ api_document_list_url|default:'' }}";
+  const apiDetailBase = "{{ api_document_detail_base|default:'' }}";
+  const employeesApi = "{% url 'api:v1:employees-list' %}";
 
-      class RecipientPicker {
+  // Инициализация RecipientPicker для формы создания
+  const createPicker = new RecipientPicker(
+    document.getElementById('createRecipients'),
+    { headers: headersAuth, apiUrl: employeesApi }
+  );
 
-        constructor(root, opts){
-          this.root = root;
-          this.headers = opts.headers || {};
-          this.apiUrl = opts.apiUrl;
-          this.q = "";
-          this.selected = new Map(); // id -> {id, display_name, email}
-          this.elSelected = root.querySelector('.rp-selected');
-          this.elSearch = root.querySelector('.rp-search input');
-          this.elResults = root.querySelector('.rp-results');
-          this._bind();
-          this._fetch();
-        }
-        _bind(){
-          this.elSearch.addEventListener('input', debounce(()=>{
-            this.q = this.elSearch.value.trim();
-            this._fetch();
-          }, 250));
-          this.elResults.addEventListener('change', (e)=>{
-            const cb = e.target.closest('input[type=checkbox][data-id]');
-            if(!cb) return;
-            const id = Number(cb.dataset.id);
-            const payload = JSON.parse(cb.dataset.payload || "{}");
-            if(cb.checked){
-              this.selected.set(id, payload);
-            }else{
-              this.selected.delete(id);
-            }
-            this._renderSelected();
-          });
-          this.elSelected.addEventListener('click', (e)=>{
-            const btn = e.target.closest('button[data-id]');
-            if(!btn) return;
-            const id = Number(btn.dataset.id);
-            this.selected.delete(id);
-            const cb = this.elResults.querySelector(`input[type=checkbox][data-id="${id}"]`);
-            if(cb) cb.checked = false;
-            this._renderSelected();
-          });
-        }
-        async _fetch(){
-          const url = new URL(this.apiUrl, window.location.origin);
-          if(this.q) url.searchParams.set('search', this.q);
-          url.searchParams.set('ordering', 'last_name,first_name');
-          url.searchParams.set('page_size', '20');
-          try{
-            const resp = await fetch(url.toString(), {headers: this.headers});
-            if(!resp.ok) throw new Error('HTTP ' + resp.status);
-            const data = await resp.json();
-            const items = Array.isArray(data) ? data : (data.results || []);
-            this._renderResults(items);
-          }catch(err){
-            this.elResults.innerHTML = `<div class="rp-empty">Не удалось загрузить сотрудников</div>`;
-          }
-        }
-        _renderResults(items){
-          const escHtml = (s) =>
-            String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-          const escAttr = (s) =>
-            String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  // Инициализация RecipientPicker для формы редактирования
+  const editPicker = new RecipientPicker(
+    document.getElementById('editRecipients'),
+    { headers: headersAuth, apiUrl: employeesApi }
+  );
 
-          if(!items.length){
-            this.elResults.innerHTML = `<div class="rp-empty">Ничего не найдено</div>`;
-            return;
-          }
+  // Инициализация CRUD операций для документов
+  initDocumentCrud({
+    apiListUrl: apiListUrl,
+    apiDetailBase: apiDetailBase,
+    headers: headersAuth,
+    createPicker: createPicker,
+    editPicker: editPicker
+  });
 
-          this.elResults.innerHTML = items.map(emp=>{
-            const id    = Number(emp.id);
-            const name  = emp.display_name || emp.full_name || emp.email || ('#'+id);
-            const email = emp.email || '';
-            const checked = this.selected.has(id) ? 'checked' : '';
-            const payloadObj = { id, display_name: name, email };
-            const payload = escAttr(JSON.stringify(payloadObj));
-
-            const av = emp.avatar
-              ? `<span class="feed-ava"><img src="${escAttr(emp.avatar)}" class="rp-avatar" alt=""></span>`
-              : `<span class="feed-ava"><i class="bi-person"></i></span>`;
-
-            return `<label class="rp-item">
-                      ${av}
-                      <div class="flex-grow-1">
-                        <div>${escHtml(name)}</div>
-                        ${email ? `<small>${escHtml(email)}</small>` : ''}
-                      </div>
-                      <input type="checkbox" data-id="${id}" data-payload='${payload}' ${checked} />
-                    </label>`;
-          }).join('');
-        }
-        _renderSelected(){
-          const chips = Array.from(this.selected.values()).map(v=>{
-            const n = v.display_name || v.email || ('#'+v.id);
-            return `<span class="rp-chip">${n}<button type="button" title="Убрать" data-id="${v.id}">&times;</button></span>`;
-          });
-          this.elSelected.innerHTML = chips.join('') || `<span class="text-secondary">Никто не выбран</span>`;
-        }
-        /** Установить выбранных получателей массивом объектов {id, display_name, email} */
-        setSelected(list){
-          this.selected.clear();
-          (list||[]).forEach(v=>{ if(v && v.id) this.selected.set(Number(v.id), v); });
-          this._renderSelected();
-          // синхронизируем чекбоксы в текущем списке результатов
-          this.elResults.querySelectorAll('input[type=checkbox][data-id]').forEach(cb=>{
-            const id = Number(cb.dataset.id);
-            cb.checked = this.selected.has(id);
-          });
-        }
-        /** Получить массив выбранных ID */
-        getIds(){ return Array.from(this.selected.keys()); }
-      }
-
-      function toggleRecipientsBlock(checkbox, block){
-        block.hidden = checkbox.checked; // скрыть, если "всем"
-      }
-
-      function appendRecipientIdsToFD(fd, ids){
-        // API ждёт повторяемые recipient_ids
-        for(const id of ids){ fd.append("recipient_ids", String(id)); }
-      }
-
-      /* ===== CREATE ===== */
-      const createForm = document.getElementById('docCreateForm');
-      const createAll = document.getElementById('createSentToAll');
-      const createBlock = document.getElementById('createRecipientsBlock');
-      const createPicker = new RecipientPicker(
-        document.getElementById('createRecipients'),
-        { headers: headersAuth, apiUrl: employeesApi }
-      );
-      toggleRecipientsBlock(createAll, createBlock);
-      createAll.addEventListener('change', ()=> toggleRecipientsBlock(createAll, createBlock));
-
-      if (createForm){
-        createForm.addEventListener('submit', async (e)=>{
-          e.preventDefault();
-          const fd = new FormData(createForm);
-          fd.set("sent_to_all", createAll.checked ? "true" : "false");
-          if(!createAll.checked){
-            const ids = createPicker.getIds();
-            if(ids.length === 0){
-              alert('Выберите получателей или включите «Отправить всем».');
-              return;
-            }
-            appendRecipientIdsToFD(fd, ids);
-          }else{
-            fd.delete("recipient_ids");
-          }
-          try{
-            const resp = await fetch(apiListUrl, { method:'POST', headers: headersAuth, body: fd });
-            if(!resp.ok) throw new Error('HTTP ' + resp.status);
-            await resp.json();
-            window.location.reload();
-          }catch(err){
-            alert('Не удалось создать документ: ' + err.message);
-          }
-        });
-      }
-
-      /* ===== EDIT / DELETE ===== */
-      const listEl = document.getElementById('docList');
-      const editModal = document.getElementById('docEditModal');
-      const editForm  = document.getElementById('docEditForm');
-      const editAll   = document.getElementById('editSentToAll');
-      const editBlock = document.getElementById('editRecipientsBlock');
-      const editPicker = new RecipientPicker(
-        document.getElementById('editRecipients'),
-        { headers: headersAuth, apiUrl: employeesApi }
-      );
-      toggleRecipientsBlock(editAll, editBlock);
-      editAll.addEventListener('change', ()=> toggleRecipientsBlock(editAll, editBlock));
-
-      function openEdit(btn){
-        const id = btn.getAttribute('data-doc-id');
-        editForm.elements.id.value = id;
-        editForm.elements.title.value = btn.getAttribute('data-doc-title') || '';
-        editForm.elements.description.value = btn.getAttribute('data-doc-description') || '';
-        const all = btn.getAttribute('data-doc-sent_to_all') === '1';
-        editAll.checked = all;
-        toggleRecipientsBlock(editAll, editBlock);
-
-        // подтягиваем текущих получателей документа
-        fetch(apiDetailBase + id + '/', { headers: headersAuth })
-          .then(r=> r.ok ? r.json() : Promise.reject(r.status))
-          .then(data=>{
-            const recs = (data && data.recipients) ? data.recipients.map(r=>({
-              id: r.id, display_name: (r.display_name || r.full_name || r.email || ('#'+r.id)), email: r.email || ''
-            })) : [];
-            editPicker.setSelected(recs);
-          })
-          .catch(()=> editPicker.setSelected([]));
-
-        bootstrap.Modal.getOrCreateInstance(editModal).show();
-      }
-
-      async function doDelete(btn){
-        if(!confirm('Удалить документ?')) return;
-        const id = btn.getAttribute('data-doc-id');
-        try{
-          const resp = await fetch(apiDetailBase + id + '/', { method:'DELETE', headers: headersAuth });
-          if(resp.status === 204){ window.location.reload(); return; }
-          if(!resp.ok) throw new Error('HTTP ' + resp.status);
-          window.location.reload();
-        }catch(err){
-          alert('Не удалось удалить документ: ' + err.message);
-        }
-      }
-
-      if(listEl){
-        listEl.addEventListener('click', (e)=>{
-          const btn = e.target.closest('button[data-action]');
-          if(!btn) return;
-          const action = btn.getAttribute('data-action');
-          if(action === 'edit') openEdit(btn);
-          if(action === 'delete') doDelete(btn);
-        });
-      }
-
-      if (editForm){
-        editForm.addEventListener('submit', async (e)=>{
-          e.preventDefault();
-          const id = editForm.elements.id.value;
-          const fd = new FormData(editForm);
-          fd.set("sent_to_all", editAll.checked ? "true" : "false");
-          if(!editAll.checked){
-            const ids = editPicker.getIds();
-            if(ids.length === 0){
-              alert('Выберите получателей или включите «Отправить всем».');
-              return;
-            }
-            appendRecipientIdsToFD(fd, ids);
-          }else{
-            fd.delete("recipient_ids");
-          }
-          // если файл не выбран — не посылаем ключ
-          if(!(editForm.elements.file && editForm.elements.file.files.length)){
-            fd.delete('file');
-          }
-          try{
-            const resp = await fetch(apiDetailBase + id + '/', { method:'PATCH', headers: headersAuth, body: fd });
-            if(!resp.ok) throw new Error('HTTP ' + resp.status);
-            await resp.json();
-            window.location.reload();
-          }catch(err){
-            alert('Не удалось сохранить: ' + err.message);
-          }
-        });
-      }
-    })();
-  </script>
-  <script>
-    (function(){
-      const apiDetailBase = "{{ api_document_detail_base|default:'' }}"; // /api/v1/documents/
-      const accessMeta = document.querySelector('meta[name="api-access"]');
-      const ACCESS = accessMeta ? accessMeta.content : "";
-      const headersAuth = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
-
-      const modalEl   = document.getElementById('acksModal');
-      const modalInst = () => bootstrap.Modal.getOrCreateInstance(modalEl);
-      const elTitle   = document.getElementById('acksDocTitle');
-      const elTotals  = document.getElementById('acksTotals');
-      const elYes     = document.getElementById('acksYes');
-      const elNo      = document.getElementById('acksNo');
-      const elSearch  = document.getElementById('acksSearch');
-
-      // Храним загруженные данные и состояние пагинации вывода
-      let state = {
-        docId: null,
-        docTitle: "",
-        rawYes: [],
-        rawNo: [],
-        filter: "",
-        // сколько одновременно показываем (порциями)
-        pageSize: 100,
-        shownYes: 0,
-        shownNo: 0
-      };
-
-      const debounce = (fn, ms=300) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
-      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-
-      function buildItem(u){
-        const name  = esc(u.display_name || u.full_name || u.email || ('#'+u.id));
-        const email = u.email ? ` <small class="text-secondary">${esc(u.email)}</small>` : '';
-        const when  = u.acknowledged_at ? ` <small class="text-secondary">(${esc(u.acknowledged_at)})</small>` : '';
-        return `<li>${name}${email}${when}</li>`;
-      }
-
-      function applyFilter(list, term){
-        if(!term) return list;
-        const t = term.toLowerCase();
-        return list.filter(u => {
-          const name = (u.display_name || u.full_name || u.email || '').toLowerCase();
-          const email = (u.email || '').toLowerCase();
-          return name.includes(t) || email.includes(t);
-        });
-      }
-
-      function renderLists(){
-        const yes = applyFilter(state.rawYes, state.filter);
-        const no  = applyFilter(state.rawNo,  state.filter);
-
-        elTotals.textContent = `Ознакомились: ${yes.length} • Не ознакомились: ${no.length} • Всего: ${yes.length + no.length}`;
-
-        // Порционное отображение
-        const sliceYes = yes.slice(0, state.shownYes || state.pageSize);
-        const sliceNo  = no.slice(0,  state.shownNo  || state.pageSize);
-
-        elYes.innerHTML = sliceYes.length
-          ? `<ul class="acks-list">${sliceYes.map(buildItem).join('')}</ul>`
-          : `<div class="acks-empty">— никого —</div>`;
-        elNo.innerHTML = sliceNo.length
-          ? `<ul class="acks-list">${sliceNo.map(buildItem).join('')}</ul>`
-          : `<div class="acks-empty">— никого —</div>`;
-
-        // Кнопки «Показать ещё» при необходимости
-        const needMoreYes = sliceYes.length < yes.length;
-        const needMoreNo  = sliceNo.length  < no.length;
-
-        if(needMoreYes){
-          const btn = document.createElement('button');
-          btn.className = 'btn btn-sm btn-outline-secondary acks-more';
-          btn.textContent = `Показать ещё (${Math.min(state.pageSize, yes.length - sliceYes.length)})`;
-          btn.addEventListener('click', ()=>{
-            state.shownYes = sliceYes.length + state.pageSize;
-            renderLists();
-          });
-          elYes.appendChild(btn);
-        }
-        if(needMoreNo){
-          const btn = document.createElement('button');
-          btn.className = 'btn btn-sm btn-outline-secondary acks-more';
-          btn.textContent = `Показать ещё (${Math.min(state.pageSize, no.length - sliceNo.length)})`;
-          btn.addEventListener('click', ()=>{
-            state.shownNo = sliceNo.length + state.pageSize;
-            renderLists();
-          });
-          elNo.appendChild(btn);
-        }
-      }
-
-      async function fetchAcks(docId, searchTerm){
-        // Если API поддерживает ?search= — используем его; иначе заберём всё и фильтруем локально
-        const url = new URL(apiDetailBase + docId + "/acknowledgements/", window.location.origin);
-        if(searchTerm) url.searchParams.set('search', searchTerm);
-        try{
-          const resp = await fetch(url.toString(), { headers: headersAuth });
-          if(!resp.ok) throw new Error('HTTP ' + resp.status);
-          const data = await resp.json();
-
-          // Поддержка двух форматов:
-          // 1) непагинированный: { acknowledged: [...], unacknowledged: [...] }
-          // 2) с пагинацией: { acknowledged: {results: [...], count:..}, unacknowledged: {...} }
-          const ack = Array.isArray(data.acknowledged) ? data.acknowledged : (data.acknowledged?.results || []);
-          const un  = Array.isArray(data.unacknowledged) ? data.unacknowledged : (data.unacknowledged?.results || []);
-
-          state.rawYes = ack;
-          state.rawNo  = un;
-          state.shownYes = state.pageSize;
-          state.shownNo  = state.pageSize;
-          renderLists();
-        }catch(err){
-          elYes.innerHTML = `<div class="text-danger small">Не удалось загрузить: ${esc(err.message)}</div>`;
-          elNo.innerHTML  = `<div class="text-danger small">Не удалось загрузить: ${esc(err.message)}</div>`;
-          elTotals.textContent = '—';
-        }
-      }
-
-      function openAcks(docId, title){
-        state.docId = docId;
-        state.docTitle = title || '';
-        state.filter = '';
-        state.shownYes = state.pageSize;
-        state.shownNo  = state.pageSize;
-
-        elTitle.textContent = title || '';
-        elSearch.value = '';
-        elYes.innerHTML = `<div class="text-secondary">Загружается…</div>`;
-        elNo.innerHTML  = `<div class="text-secondary">Загружается…</div>`;
-        elTotals.textContent = '—';
-
-        modalInst().show();
-        fetchAcks(docId, /*search*/ null);
-      }
-
-      // Делегирование: кнопка "Ознакомления"
-      document.addEventListener('click', (e)=>{
-        const btn = e.target.closest('button[data-action="show-acks"]');
-        if(!btn) return;
-        const id = btn.getAttribute('data-doc-id');
-        const title = btn.getAttribute('data-doc-title') || '';
-        openAcks(id, title);
-      });
-
-      // Поиск (дебаунс)
-      elSearch.addEventListener('input', debounce(()=>{
-        state.filter = elSearch.value.trim();
-        // Если API поддерживает поиск — можно перезагрузить данными с сервера:
-        // fetchAcks(state.docId, state.filter);
-        // А пока — локальная фильтрация:
-        renderLists();
-      }, 250));
-    })();
-  </script>
-
+  // Инициализация модалки ознакомлений
+  initDocumentAcks({
+    apiDetailBase: apiDetailBase,
+    headers: headersAuth,
+    pageSize: 100
+  });
+</script>
 {% endblock %}

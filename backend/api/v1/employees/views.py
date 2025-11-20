@@ -1,12 +1,17 @@
 # backend/api/v1/employees/views.py
 from __future__ import annotations
 
+import traceback
 from datetime import timedelta
+from typing import Any, Dict, List, Optional
 
 from common.emails import send_templated_mail
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.db import IntegrityError, transaction
+from django.core.exceptions import FieldError
+from django.core.files.base import ContentFile
+from django.db import transaction
 from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
                               Prefetch, Q, Subquery, Value, When)
 from django.db.models.functions import Coalesce
@@ -14,9 +19,20 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
+from employees.ldap.directory_service import (DirectoryDepartmentDTO,
+                                              DirectoryService,
+                                              DirectoryUserDTO)
+from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
+                                   DirectoryServiceError)
+from employees.ldap.infrastructure.connections import _conn
 from employees.models import (Department, DepartmentPermission, DepartmentRole,
                               DeptPerm, EmployeeAction, EmployeeDepartment,
-                              Position, Skill)
+                              LdapSyncState, Position, Skill)
+from employees.utils import (_build_links_for_dept, _detect_phone_field,
+                             _ensure_department_permissions,
+                             _head_choices_for_dept, _normalize_phone,
+                             _perm_choices_synced, _to_bool,
+                             _validate_head_active)
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -34,15 +50,59 @@ from .serializers import (AddMemberInput, DepartmentBriefSerializer,
                           GroupSerializer, PositionSerializer,
                           RegisterSerializer, RemoveMemberInput, SetHeadInput,
                           SetMemberRoleInput, SkillSerializer)
-from .utils import (_build_links_for_dept, _detect_phone_field,
-                    _ensure_department_permissions, _head_choices_for_dept,
-                    _normalize_phone, _perm_choices_synced, _to_bool,
-                    _validate_head_active)
 
 Employee = get_user_model()
 
 
 PHONE_FIELD = _detect_phone_field()
+
+
+def _is_ldap_enabled():
+    """Проверяет, включена ли интеграция с LDAP."""
+    return getattr(settings, "LDAP_ENABLED", False)
+
+
+def _ldap_try(fn):
+    """Выполняет функцию, которая работает с LDAP, и обрабатывает ошибки.
+    
+    Если LDAP отключен, функция не выполняется и возвращается None.
+    """
+    if not _is_ldap_enabled():
+        return None
+    
+    try:
+        fn()
+        return None
+    except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
+        return Response(
+            {"detail": f"LDAP sync failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY
+        )
+
+
+def _with_ldap_service(operation_name="LDAP operation"):
+    """Декоратор для методов, которые используют DirectoryService.
+    
+    Пропускает выполнение LDAP-операций если LDAP отключен.
+    При ошибках LDAP возвращает Response с кодом 502.
+    
+    Args:
+        operation_name: Название операции для логирования
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if not _is_ldap_enabled():
+                # LDAP отключен - пропускаем операцию
+                return None
+            
+            try:
+                return func(*args, **kwargs)
+            except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
+                return Response(
+                    {"detail": f"{operation_name} failed: {e}"},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+        return wrapper
+    return decorator
 
 
 class HistoryActionMixin:
@@ -147,9 +207,14 @@ class VerifyEmailAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        """Подтверждает email и активирует пользователя.
+        
+        В режиме с LDAP активирует запись в LDAP.
+        В режиме без LDAP просто активирует пользователя в БД.
+        """
         ser = EmailVerifySerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        email = ser.validated_data["email"]
+        email = ser.validated_data["email"].strip().lower()
         code = ser.validated_data["code"].strip()
 
         user = Employee.objects.filter(email__iexact=email).first()
@@ -166,20 +231,68 @@ class VerifyEmailAPIView(APIView):
                 user.delete()
                 return Response({"ok": False, "error": "expired"}, status=400)
 
-        if user.verify_email(code):
-            return Response({"ok": True, "user_id": user.id}, status=200)
-        return Response({"ok": False, "error": "invalid_code"}, status=400)
+        if not user.verify_email(code):
+            return Response({"ok": False, "error": "invalid_code"}, status=400)
+
+        ldap_enabled = _is_ldap_enabled()
+
+        if ldap_enabled:
+            # Режим с LDAP: активируем запись в LDAP
+            try:
+                svc = DirectoryService()
+                
+                # Проверяем наличие LDAP-идентификаторов
+                has_ldap = (
+                    getattr(user, "ldap_guid", None) 
+                    or getattr(user, "ldap_dn", None)
+                )
+                
+                if has_ldap:
+                    # Запись существует - просто активируем
+                    user = svc.update_user(user, {"is_active": True})
+                else:
+                    # Запись отсутствует - создаём и активируем
+                    try:
+                        user = svc.create_user(user, activate=True)
+                    except Exception as create_err:
+                        # Если не удалось создать в LDAP, активируем в БД
+                        user.is_active = True
+                        user.save(update_fields=["is_active"])
+                        # Логируем, но не прерываем процесс
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(
+                            f"Failed to create LDAP record for {email}: "
+                            f"{create_err}"
+                        )
+                
+                # Убеждаемся, что БД тоже активна
+                if not user.is_active:
+                    user.is_active = True
+                    user.save(update_fields=["is_active"])
+            except DirectoryLdapError as e:
+                return Response(
+                    {"ok": False, "error": "ldap_error", "detail": str(e)}, status=502
+                )
+            except DirectoryDbError as e:
+                return Response(
+                    {"ok": False, "error": "db_error", "detail": str(e)}, status=500
+                )
+            except DirectoryServiceError as e:
+                return Response(
+                    {"ok": False, "error": "service_error", "detail": str(e)}, status=400
+                )
+        else:
+            # Режим без LDAP: просто активируем пользователя в БД
+            if not user.is_active:
+                user.is_active = True
+                user.save(update_fields=["is_active"])
+
+        return Response({"ok": True, "user_id": user.id}, status=200)
 
 
 class RegisterAPIView(APIView):
-    """Регистрация пользователя.
-
-    Принимает JSON или multipart/form-data. Поле `avatar` можно передавать:
-    - как файл (`multipart/form-data`);
-    - как base64/data URI — если используете `Base64ImageField`.
-
-    Важно: хотя бы одно из полей `telegram/whatsapp/wechat` должно быть заполнено.
-    """
+    """Регистрация: создаём учётку в LDAP (disabled) с паролем, в БД — set_unusable_password."""
 
     throttle_scope = "anon"
     permission_classes = [AllowAny]
@@ -187,7 +300,7 @@ class RegisterAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        # 0) Хард-проверка контактов (как в тестах ожидается detail)
+        # 0) хотя бы один контакт
         if not (
             request.data.get("telegram")
             or request.data.get("whatsapp")
@@ -206,8 +319,9 @@ class RegisterAPIView(APIView):
 
         email = v["email"].strip().lower()
         password = v["password"]
-        phone_raw = v.get("phone_number") or request.data.get("phone")
-        phone_norm = _normalize_phone(phone_raw)
+        phone_norm = _normalize_phone(
+            v.get("phone_number") or request.data.get("phone")
+        )
         if not phone_norm:
             return Response({"ok": False, "error": "invalid_phone"}, status=400)
 
@@ -215,69 +329,112 @@ class RegisterAPIView(APIView):
             return Response({"ok": False, "error": "phone_taken"}, status=400)
 
         user = Employee.objects.filter(email__iexact=email).first()
-        if user and user.email_verified:
-            return Response({"ok": False, "error": "email_taken"}, status=400)
-        if user and not user.email_verified:
-            return Response(
-                {"ok": True, "pending_verification": True, "user_id": user.id},
-                status=200,
-            )
-
-        extra = {
-            "first_name": v["first_name"],
-            "last_name": v["last_name"],
-            "birth_date": v["birth_date"],
-            "telegram": v.get("telegram", ""),
-            "whatsapp": v.get("whatsapp", ""),
-            "wechat": v.get("wechat", ""),
-            # можно сразу пробросить, если ваш create_user это поддерживает:
-            # "patronymic": v.get("patronymic") or "",
-            # "gender": v.get("gender"),
-        }
-
-        try:
-            user = Employee.objects.create_user(
-                email=email,
-                password=password,
-                phone_number=phone_norm,
-                **extra,
-            )
-        except IntegrityError as e:
-            msg = str(e).lower()
-            if "phone" in msg:
-                return Response({"ok": False, "error": "phone_taken"}, status=400)
-            if "email" in msg:
+        if user:
+            if user.email_verified:
+                # Email уже верифицирован - нельзя регистрироваться
                 return Response({"ok": False, "error": "email_taken"}, status=400)
-            raise
+            else:
+                # Есть неверифицированный пользователь - повторная отправка кода
+                return Response(
+                    {"ok": True, "pending_verification": True, "user_id": user.id},
+                    status=200,
+                )
 
-        # 🔧 ВАЖНО: присвоить аватар и опциональные атрибуты
-        avatar = v.get("avatar")
-        if avatar:
-            user.avatar = (
-                avatar  # ImageField принимает InMemoryUploadedFile/ContentFile
+        avatar_file = v.get("avatar") or getattr(request, "FILES", {}).get("avatar")
+        avatar_bytes = None
+        avatar_name = None
+        if avatar_file:
+            try:
+                avatar_bytes = (
+                    avatar_file.read() if hasattr(avatar_file, "read") else None
+                )
+                avatar_name = getattr(avatar_file, "name", None) or "avatar.jpg"
+            except Exception:
+                avatar_bytes = None
+                avatar_name = None
+
+        ldap_enabled = _is_ldap_enabled()
+
+        if ldap_enabled:
+            # Режим с LDAP: создаём disabled учётку в LDAP + пароль
+            svc = DirectoryService()
+            dto = DirectoryUserDTO(
+                first_name=v["first_name"],
+                last_name=v["last_name"],
+                email=email,
+                phone_e164=phone_norm,
+                department_dn=None,
+                group_cns=[],
+                initial_password=password,  # пароль идёт только в LDAP
+                avatar_bytes=avatar_bytes,
+                is_active=False,  # disabled до верификации
             )
+            try:
+                emp = svc.create_user(dto)
+            except DirectoryLdapError as e:
+                return Response(
+                    {"ok": False, "error": "ldap_error", "detail": str(e)}, status=502
+                )
+            except DirectoryDbError as e:
+                return Response(
+                    {"ok": False, "error": "db_error", "detail": str(e)}, status=500
+                )
+        else:
+            # Режим без LDAP: создаём пользователя напрямую в БД
+            emp = Employee.objects.create(
+                first_name=v["first_name"],
+                last_name=v["last_name"],
+                email=email,
+                phone_number=phone_norm,
+                is_active=False,  # не активен до верификации email
+                is_ldap_managed=False,
+            )
+            # Устанавливаем пароль в БД
+            emp.set_password(password)
+
+        # 2) Заполняем доп.поля БД
+        if avatar_bytes:
+            try:
+                emp.avatar.save(avatar_name, ContentFile(avatar_bytes), save=False)
+            except Exception:
+                pass
+        
+        emp.telegram = v.get("telegram", "")
+        emp.whatsapp = v.get("whatsapp", "")
+        emp.wechat = v.get("wechat", "")
+        emp.birth_date = v["birth_date"]
+        
         if v.get("patronymic"):
-            user.patronymic = v["patronymic"]
+            emp.patronymic = v["patronymic"]
         if v.get("gender") is not None:
-            user.gender = v["gender"]
+            emp.gender = v["gender"]
+        
         pos_id = v.get("position")
-        if pos_id:
-            user.position_id = (
-                pos_id if Position.objects.filter(pk=pos_id).exists() else None
-            )
+        if pos_id and Position.objects.filter(pk=pos_id).exists():
+            emp.position_id = pos_id
+        
+        emp.save()
+        
         skills_ids = v.get("skills") or []
         if skills_ids:
-            user.save()  # сохранить перед m2m
-            user.skills.set(Skill.objects.filter(pk__in=skills_ids))
-        user.save()
+            emp.skills.set(Skill.objects.filter(pk__in=skills_ids))
+
+        # 3) Отправляем код верификации
+        emp.email_activation_code = get_random_string(6, "0123456789")
+        emp.save(update_fields=["email_activation_code"])
+        send_templated_mail(
+            subject="Подтверждение регистрации",
+            to=[emp.email],
+            template_base="emails/registration_verify_code",
+            context={"code": emp.email_activation_code, "user": emp},
+        )
 
         return Response(
             {
-                "id": user.id,
-                "email": user.email,
-                "email_verified": user.email_verified,
-                "is_active": user.is_active,
-                # при желании можно вернуть data URI (если хотите): "avatar": Base64ImageField().to_representation(user.avatar)
+                "id": emp.id,
+                "email": emp.email,
+                "email_verified": emp.email_verified,
+                "is_active": emp.is_active,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -399,98 +556,365 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             qs = qs.order_by(ordering)
         else:
             qs = qs.order_by("name")
-
         return qs
 
     # --- частичное изменение: изменение head требует отдельного кода ---
 
-    def partial_update(self, request, *args, **kwargs):
-        """
-        Если меняется head, проверяем права и валидацию.
-        Для действующего руководителя ослабляем требование email_verified.
+    def partial_update(self, request, *args, **kwargs) -> Response:
+        """Частичный апдейт отдела через сервисный слой (LDAP → DB).
+
+        Логика:
+        • Если меняется head — сперва права + валидация, затем DirectoryService.set_head().
+        • Поля name/description — через DirectoryService.update_department().
+        • Не вызываем super().partial_update() во избежание двойной записи.
+
+        Args:
+            request: DRF Request.
+            *args: Прочие позиционные аргументы.
+            **kwargs: Прочие именованные аргументы.
+
+        Returns:
+            Response: Сериализованные данные отдела после применения изменений.
+
+        Raises:
+            (внутренне обрабатываются и мапятся в HTTP-коды)
         """
         instance = self.get_object()
-        data = request.data
+        data: Dict[str, Any] = request.data
+        ldap_enabled = _is_ldap_enabled()
+        svc = DirectoryService() if ldap_enabled else None
+        print(
+            "[DEBUG:partial_update] start",
+            {
+                "dept_id": instance.id,
+                "dept_name": instance.name,
+                "current_head_id": instance.head_id,
+                "raw_keys": list(data.keys()),
+                "raw_payload": dict(data),
+                "ldap_enabled": ldap_enabled,
+            },
+        )
 
-        wants_head_change = any(k in data for k in ("head", "head_id"))
-        if wants_head_change:
-            desired = data.get("head_id", data.get("head", None))
-            if desired in ("", "null", "None"):
-                desired = None
+        # --- HEAD ---
+        if any(k in data for k in ("head", "head_id")):
+            raw_desired = data.get("head_id", data.get("head", None))
 
-            current = instance.head_id if instance.head_id is not None else None
-            desired_norm = int(desired) if desired is not None else None
+            try:
+                if raw_desired is None:
+                    pass
+                if isinstance(raw_desired, str) and raw_desired.strip().lower() in {
+                    "",
+                    "null",
+                    "none",
+                }:
+                    pass
+                try:
+                    desired_head_id = int(raw_desired)
+                except (TypeError, ValueError):
+                    raise ValueError("head_id должен быть целым числом или null")
+            except ValueError as e:
+                print("[ERROR:partial_update] parse head_id failed:", repr(e))
+                return Response(
+                    {"head_id": [str(e)]}, status=status.HTTP_400_BAD_REQUEST
+                )
+            print(
+                "[DEBUG:partial_update] head branch",
+                {
+                    "desired_head_id": desired_head_id,
+                    "current_head_id": instance.head_id,
+                },
+            )
 
-            if current != desired_norm:
-                perm = self.ChangeHeadPerm()
-                if not (
-                    perm.has_permission(request, self)
-                    and perm.has_object_permission(request, self, instance)
-                ):
-                    return Response({"detail": "Forbidden"}, status=403)
+            # --- права ---
+            perm = self.ChangeHeadPerm()
+            has_perm = perm.has_permission(
+                request, self
+            ) and perm.has_object_permission(request, self, instance)
+            print(
+                "[DEBUG:partial_update] perm check:",
+                has_perm,
+                "user_id=",
+                getattr(request.user, "id", None),
+            )
+            if not has_perm:
+                print("[ERROR:partial_update] forbidden head change")
+                return Response(
+                    {"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN
+                )
 
-                if desired_norm is None:
-                    instance.head = None
-                    instance.save(update_fields=["head"])
-                else:
-                    # ослабляем verified, если действие делает текущий head
+            # Если указали того же руководителя — пропустим лишнюю работу
+            if (desired_head_id or None) == (instance.head_id or None):
+                pass  # идем дальше — возможно пришли name/description
+            else:
+                # --- валидация кандидата ---
+                new_head = None
+                if desired_head_id is not None:
+                    employee_model = (
+                        type(instance)._meta.get_field("head").remote_field.model
+                    )
+                    new_head = get_object_or_404(employee_model, id=desired_head_id)
+
+                    # Требовать verified, если новый head — не сам текущий head-пользователь
                     require_verified = not (
-                        instance.head_id and instance.head_id == request.user.id
+                        instance.head_id
+                        and instance.head_id == getattr(request.user, "id", None)
                     )
                     ok, errs = _validate_head_active(
-                        instance, desired_norm, require_email_verified=require_verified
+                        instance,
+                        desired_head_id,
+                        require_email_verified=require_verified,
+                    )
+                    print(
+                        "[DEBUG:partial_update] head candidate validation:",
+                        ok,
+                        errs if not ok else None,
                     )
                     if not ok:
-                        return Response(errs, status=400)
+                        return Response(errs, status=status.HTTP_400_BAD_REQUEST)
 
-                    instance.head_id = desired_norm
-                    instance.save(update_fields=["head"])
+                # --- LDAP → DB ---
+                if ldap_enabled:
+                    # Режим с LDAP: синхронизируем через DirectoryService
+                    try:
+                        print(
+                            "[DEBUG:partial_update] calling DirectoryService.set_head",
+                            {
+                                "dept_id": instance.id,
+                                "new_head_id": getattr(new_head, "id", None),
+                            },
+                        )
+                        instance = svc.set_head(instance, new_head)
+                        print(
+                            "[DEBUG:partial_update] set_head OK",
+                            {
+                                "result_head_id": instance.head_id,
+                                "head_appointed_at": getattr(
+                                    instance, "head_appointed_at", None
+                                ),
+                            },
+                        )
+                    except (
+                        DirectoryLdapError,
+                        DirectoryDbError,
+                        DirectoryServiceError,
+                    ) as e:
+                        code = (
+                            status.HTTP_502_BAD_GATEWAY
+                            if isinstance(e, DirectoryLdapError)
+                            else (
+                                status.HTTP_400_BAD_REQUEST
+                                if isinstance(e, DirectoryServiceError)
+                                else status.HTTP_500_INTERNAL_SERVER_ERROR
+                            )
+                        )
+                        print(
+                            "[ERROR:partial_update] set_head FAILED:",
+                            {
+                                "exc_type": type(e).__name__,
+                                "status": code,
+                                "message": str(e),
+                                "trace": traceback.format_exc(),
+                            },
+                        )
+                        return Response({"detail": str(e)}, status=code)
+                else:
+                    # Режим без LDAP: обновляем напрямую в БД
+                    instance.head = new_head
+                    if new_head:
+                        instance.head_appointed_at = timezone.now()
+                    else:
+                        instance.head_appointed_at = None
+                    instance.save(update_fields=["head", "head_appointed_at"])
+                    print("[DEBUG:partial_update] set_head OK (no LDAP)")
 
-            # подчистим поля
-            mutable = getattr(request.data, "_mutable", None)
-            try:
-                if hasattr(request.data, "_mutable"):
-                    request.data._mutable = True
-                request.data.pop("head", None)
-                request.data.pop("head_id", None)
-            finally:
-                if hasattr(request.data, "_mutable") and mutable is not None:
-                    request.data._mutable = mutable
+        # --- NAME / DESCRIPTION ---
+        changes: Dict[str, Any] = {}
+        for k in ("name", "description"):
+            if k in data:
+                changes[k] = data.get(k)
 
-        return super().partial_update(request, *args, **kwargs)
+        print("[DEBUG:partial_update] changes branch:", changes)
+        if changes:
+            if ldap_enabled:
+                # Режим с LDAP: синхронизируем через DirectoryService
+                try:
+                    print(
+                        "[DEBUG:partial_update] calling DirectoryService.update_department",
+                        {
+                            "dept_id": instance.id,
+                            "changes": changes,
+                        },
+                    )
+                    instance = svc.update_department(instance, changes)
+                    print("[DEBUG:partial_update] update_department OK")
+                except DirectoryLdapError as e:
+                    print(
+                        "[ERROR:partial_update] update_department LDAP FAILED:",
+                        {"message": str(e), "trace": traceback.format_exc()},
+                    )
+                    return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+                except DirectoryDbError as e:
+                    print(
+                        "[ERROR:partial_update] update_department DB FAILED:",
+                        {"message": str(e), "trace": traceback.format_exc()},
+                    )
+                    return Response(
+                        {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            else:
+                # Режим без LDAP: обновляем напрямую в БД
+                for k, v in changes.items():
+                    setattr(instance, k, v)
+                instance.save(update_fields=list(changes.keys()))
+                print("[DEBUG:partial_update] update_department OK (no LDAP)")
+        resp = self.get_serializer(instance).data
+        print("[DEBUG:partial_update] done OK, response keys:", list(resp.keys()))
+        return Response(self.get_serializer(instance).data, status=status.HTTP_200_OK)
 
     # -------- actions --------
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
-    def set_head(self, request, pk=None):
+    def set_head(self, request, pk: str | None = None) -> Response:
+        """Назначение/снятие руководителя отдела через сервисный слой (LDAP → DB).
+
+        Логика:
+          • Проверка прав через ChangeHeadPerm.
+          • Валидация кандидата (email_verified ослабляется для текущего head).
+          • Применение через DirectoryService.set_head().
+
+        Args:
+            request: DRF Request.
+            pk: Идентификатор отдела из URL.
+
+        Returns:
+            Response: Данные отдела после операции.
+
+        Raises:
+            ValidationError: При невалидном вводе (поднимается сериализатором).
+            DirectoryServiceError: Бизнес-ошибка сервиса (400).
+            DirectoryLdapError: Ошибка взаимодействия с LDAP (502).
+            DirectoryDbError: Ошибка записи в БД (500).
         """
-        Назначение/снятие руководителя отдела.
-        Текущий руководитель может назначить нового head без email_verified,
-        если у кандидата is_active=True.
-        """
+        print("[DEBUG:set_head] start pk=", pk, "raw_data=", request.data)
         dept = self.get_object()
+        print(
+            "[DEBUG:set_head] dept:",
+            {"id": dept.id, "name": dept.name, "current_head_id": dept.head_id},
+        )
+
         payload = SetHeadInput(data=request.data)
         payload.is_valid(raise_exception=True)
         head_id = payload.validated_data.get("head_id")
+        print("[DEBUG:set_head] validated head_id=", head_id)
 
-        if head_id is None:
-            dept.head = None
-            dept.save(update_fields=["head"])
-            return Response(status=status.HTTP_204_NO_CONTENT)
-
-        # ослабляем требование verified, если действие делает текущий head
-        require_verified = not (dept.head_id and dept.head_id == request.user.id)
-
-        ok, errs = _validate_head_active(
-            dept, head_id, require_email_verified=require_verified
+        employee_model = Department._meta.get_field("head").remote_field.model
+        new_head = (
+            get_object_or_404(employee_model, id=head_id)
+            if head_id is not None
+            else None
         )
-        if not ok:
-            return Response(errs, status=400)
+        print(
+            "[DEBUG:set_head] resolved new_head:",
+            (
+                None
+                if new_head is None
+                else {"id": new_head.id, "email": getattr(new_head, "email", None)}
+            ),
+        )
 
-        dept.head_id = head_id
-        dept.save(update_fields=["head"])
-        return Response(self.get_serializer(dept).data, status=200)
+        # --- права ---
+        print("[DEBUG:set_head] checking permissions via ChangeHeadPerm")
+        perm = self.ChangeHeadPerm()
+        has_perm = perm.has_permission(request, self) and perm.has_object_permission(
+            request, self, dept
+        )
+        print(
+            "[DEBUG:set_head] permissions:",
+            has_perm,
+            "user_id=",
+            getattr(request.user, "id", None),
+        )
+        if not has_perm:
+            print("[ERROR:set_head] permission denied")
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        # --- валидация кандидата ---
+        if head_id is not None:
+            require_verified = not (
+                dept.head_id and dept.head_id == getattr(request.user, "id", None)
+            )
+            print(
+                "[DEBUG:set_head] validating candidate:",
+                {"candidate_id": head_id, "require_email_verified": require_verified},
+            )
+            ok, errs = _validate_head_active(
+                dept, head_id, require_email_verified=require_verified
+            )
+            print(
+                "[DEBUG:set_head] validation result:",
+                ok,
+                "errors:",
+                errs if not ok else None,
+            )
+            if not ok:
+                print("[ERROR:set_head] candidate validation failed")
+                return Response(errs, status=status.HTTP_400_BAD_REQUEST)
+
+        # --- применение ---
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: применяем через DirectoryService
+            svc = DirectoryService()
+            try:
+                print(
+                    "[DEBUG:set_head] applying via DirectoryService.set_head:",
+                    {
+                        "dept_id": dept.id,
+                        "old_head_id": dept.head_id,
+                        "new_head_id": getattr(new_head, "id", None),
+                    },
+                )
+                dept = svc.set_head(dept, new_head)
+                print(
+                    "[DEBUG:set_head] apply OK:",
+                    {
+                        "dept_id": dept.id,
+                        "result_head_id": dept.head_id,
+                        "head_appointed_at": getattr(dept, "head_appointed_at", None),
+                    },
+                )
+            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                status_code = (
+                    status.HTTP_502_BAD_GATEWAY
+                    if isinstance(e, DirectoryLdapError)
+                    else (
+                        status.HTTP_400_BAD_REQUEST
+                        if isinstance(e, DirectoryServiceError)
+                        else status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                )
+                print(
+                    "[ERROR:set_head] apply FAILED:",
+                    {"type": type(e).__name__, "status": status_code, "message": str(e)},
+                )
+                return Response({"detail": str(e)}, status=status_code)
+        else:
+            # Режим без LDAP: обновляем напрямую в БД
+            dept.head = new_head
+            if new_head:
+                dept.head_appointed_at = timezone.now()
+            else:
+                dept.head_appointed_at = None
+            dept.save(update_fields=["head", "head_appointed_at"])
+            print("[DEBUG:set_head] apply OK (no LDAP)")
+
+        resp = self.get_serializer(dept).data
+        print(
+            "[DEBUG:set_head] response payload prepared:", {"keys": list(resp.keys())}
+        )
+        return Response(resp, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
@@ -517,6 +941,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         role_id = payload.validated_data.get("role_id")
 
         # проверяем роль, если указана, что она принадлежит этому отделу
+        employee_model = Department._meta.get_field("head").remote_field.model
+        employee = get_object_or_404(employee_model, id=emp_id)
         role = None
         if role_id is not None:
             role = get_object_or_404(DepartmentRole, id=role_id)
@@ -526,19 +952,41 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     status=400,
                 )
 
-        # членство ДОЛЖНО существовать — не создаём автоматически
-        try:
-            link = EmployeeDepartment.objects.get(
-                employee_id=emp_id, department_id=dept.id
-            )
-        except EmployeeDepartment.DoesNotExist:
-            return Response(
-                {"detail": "Employee is not a member of this department."}, status=404
-            )
-
-        # только меняем роль
-        link.role = role
-        link.save(update_fields=["role"])
+        svc = DirectoryService() if _is_ldap_enabled() else None
+        
+        if svc:
+            # Режим с LDAP: синхронизируем роли
+            try:
+                # внутри: проверяет наличие линка, меняет роль, (опц.) LDAP-группу
+                svc.set_member_role(dept, employee, role)
+                link = EmployeeDepartment.objects.get(
+                    employee_id=emp_id, department_id=dept.id
+                )
+            except EmployeeDepartment.DoesNotExist:
+                return Response(
+                    {"detail": "Employee is not a member of this department."}, status=404
+                )
+            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                return Response(
+                    {"detail": str(e)},
+                    status=(
+                        502
+                        if isinstance(e, DirectoryLdapError)
+                        else 400 if isinstance(e, DirectoryServiceError) else 500
+                    ),
+                )
+        else:
+            # Режим без LDAP: просто обновляем роль в линке
+            try:
+                link = EmployeeDepartment.objects.get(
+                    employee_id=emp_id, department_id=dept.id
+                )
+                link.role = role
+                link.save(update_fields=["role"])
+            except EmployeeDepartment.DoesNotExist:
+                return Response(
+                    {"detail": "Employee is not a member of this department."}, status=404
+                )
 
         return Response(
             {
@@ -633,93 +1081,129 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="add_member")
     @transaction.atomic
     def add_member(self, request, pk: int | None = None):
-        """
-        Активирует/добавляет сотрудника в отдел.
-        Роль НЕ назначается здесь.
-
-        Тело:
-            { "employee_id": <int> }
-        Права:
-            ManagePerm (DeptPerm.MANAGE)
-
-        Идемпотентно:
-            если линк есть — делаем is_active=True, роль не трогаем.
-        """
+        """Добавляет сотрудника в отдел: MOVE в OU → активирует линк (LDAP → DB)."""
         dept = self.get_object()
         payload = AddMemberInput(data=request.data)
         payload.is_valid(raise_exception=True)
 
         emp_id = payload.validated_data["employee_id"]
 
-        # проверим, что сотрудник существует (модель берём из FK на head)
         employee_model = Department._meta.get_field("head").remote_field.model
-        get_object_or_404(employee_model, id=emp_id)
+        employee = get_object_or_404(employee_model, id=emp_id)
 
-        link, _created = EmployeeDepartment.objects.get_or_create(
-            employee_id=emp_id, department_id=dept.id, defaults={"is_active": True}
-        )
-        if not link.is_active:
-            link.is_active = True
-            link.save(update_fields=["is_active"])
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: добавляем через DirectoryService
+            svc = DirectoryService()
+            try:
+                svc.add_member(dept, employee)
+                link = (
+                    EmployeeDepartment.objects.filter(
+                        employee_id=emp_id, department_id=dept.id
+                    )
+                    .only("role_id", "is_active")
+                    .first()
+                )
 
-        return Response(
-            {
-                "employee_id": emp_id,
-                "is_active": True,
-                "role_id": (link.role_id if getattr(link, "role_id", None) else None),
-            },
-            status=status.HTTP_200_OK,
-        )
+                return Response(
+                    {
+                        "employee_id": emp_id,
+                        "is_active": True,
+                        "role_id": getattr(link, "role_id", None) if link else None,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                return Response(
+                    {"detail": str(e)},
+                    status=(
+                        status.HTTP_502_BAD_GATEWAY
+                        if isinstance(e, DirectoryLdapError)
+                        else (
+                            status.HTTP_400_BAD_REQUEST
+                            if isinstance(e, DirectoryServiceError)
+                            else status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+                    ),
+                )
+        else:
+            # Режим без LDAP: создаём/активируем линк напрямую
+            link, created = EmployeeDepartment.objects.get_or_create(
+                employee_id=emp_id,
+                department_id=dept.id,
+                defaults={"is_active": True}
+            )
+            if not created and not link.is_active:
+                link.is_active = True
+                link.save(update_fields=["is_active"])
+            
+            return Response(
+                {
+                    "employee_id": emp_id,
+                    "is_active": True,
+                    "role_id": link.role_id,
+                },
+                status=status.HTTP_200_OK,
+            )
 
     @action(detail=True, methods=["post"], url_path="remove_member")
     @transaction.atomic
     def remove_member(self, request, pk: int | None = None):
-        """
-        Удаляет связь сотрудника с отделом (строку EmployeeDepartment), а не просто
-        помечает её неактивной.
-
-        Тело запроса:
-            { "employee_id": <int> }
-
-        Ограничения:
-            - Нельзя удалить руководителя отдела (вернёт 400).
-
-        Права:
-            ManagePerm (DeptPerm.MANAGE)
-
-        Ответ:
-            200 OK
-            {
-                "employee_id": <int>,
-                "removed": true
-            }
-        """
+        """Удаляет члена отдела: MOVE в Users OU → удаляет линк (LDAP → DB)."""
         dept = self.get_object()
 
         payload = RemoveMemberInput(data=request.data)
         payload.is_valid(raise_exception=True)
         emp_id: int = payload.validated_data["employee_id"]
 
-        # Защита от удаления руководителя
+        employee_model = Department._meta.get_field("head").remote_field.model
+        employee = get_object_or_404(employee_model, id=emp_id)
+        # защита от удаления руководителя — ДО вызова сервиса
         if dept.head_id == emp_id:
             return Response(
                 {"detail": "Нельзя удалить руководителя отдела."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        link = get_object_or_404(
-            EmployeeDepartment,
-            employee_id=emp_id,
-            department_id=dept.id,
-        )
-
-        # Жёсткое удаление связи
-        link.delete()
-
-        return Response(
-            {"employee_id": emp_id, "removed": True},
-            status=status.HTTP_200_OK,
-        )
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: удаляем через DirectoryService
+            svc = DirectoryService()
+            try:
+                svc.remove_member(dept, employee)
+                return Response(
+                    {"employee_id": emp_id, "removed": True},
+                    status=status.HTTP_200_OK,
+                )
+            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                return Response(
+                    {"detail": str(e)},
+                    status=(
+                        502
+                        if isinstance(e, DirectoryLdapError)
+                        else 400 if isinstance(e, DirectoryServiceError) else 500
+                    ),
+                )
+        else:
+            # Режим без LDAP: деактивируем линк напрямую
+            try:
+                link = EmployeeDepartment.objects.get(
+                    employee_id=emp_id,
+                    department_id=dept.id
+                )
+                link.is_active = False
+                link.save(update_fields=["is_active"])
+                return Response(
+                    {"employee_id": emp_id, "removed": True},
+                    status=status.HTTP_200_OK,
+                )
+            except EmployeeDepartment.DoesNotExist:
+                return Response(
+                    {"detail": "Employee is not a member of this department."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
     @action(detail=False, methods=["get"], url_path="my-departments")
     def my_departments(self, request) -> Response:
@@ -754,6 +1238,81 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         data = DepartmentBriefSerializer(user_qs, many=True).data
         return Response(data)
 
+    def create(self, request, *args, **kwargs):
+        """Создание отдела: сначала LDAP OU → затем запись Department (если LDAP включен)."""
+        print("[DEBUG] Начало создания отдела. Данные запроса:", request.data)
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        head = None
+        head_id = ser.validated_data.get("head") or ser.validated_data.get("head_id")
+        if head_id:
+            print("[DEBUG] Найден head_id:", head_id)
+            employee_model = Department._meta.get_field("head").remote_field.model
+            head = get_object_or_404(employee_model, id=head_id)
+
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: создаём через DirectoryService
+            dto = DirectoryDepartmentDTO(
+                name=ser.validated_data["name"],
+                description=ser.validated_data.get("description", ""),
+                head=head,
+            )
+            svc = DirectoryService()
+            try:
+                print("[DEBUG] Создание отдела в DirectoryService:", dto)
+                dept = svc.create_department(dto)
+                print("[DEBUG] Отдел успешно создан:", dept)
+                return Response(
+                    self.get_serializer(dept).data, status=status.HTTP_201_CREATED
+                )
+            except DirectoryLdapError as e:
+                print("[ERROR] Ошибка LDAP при создании отдела:", str(e))
+                return Response({"detail": str(e)}, status=502)
+            except DirectoryDbError as e:
+                print("[ERROR] Ошибка базы данных при создании отдела:", str(e))
+                return Response({"detail": str(e)}, status=500)
+        else:
+            # Режим без LDAP: создаём напрямую в БД
+            dept = Department.objects.create(
+                name=ser.validated_data["name"],
+                description=ser.validated_data.get("description", ""),
+                head=head,
+            )
+            print("[DEBUG] Отдел создан в БД (без LDAP):", dept)
+            return Response(
+                self.get_serializer(dept).data, status=status.HTTP_201_CREATED
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        """Удаляет отдел: сначала в LDAP → затем из БД (если LDAP включен)."""
+        print("[DEBUG] Начало удаления отдела.")
+        dept = self.get_object()
+        print("[DEBUG] Удаляемый отдел:", dept)
+        
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: удаляем через DirectoryService
+            svc = DirectoryService()
+            try:
+                print("[DEBUG] Удаление отдела в DirectoryService.")
+                svc.delete_department(dept)
+                print("[DEBUG] Отдел успешно удалён.")
+                return Response(status=204)
+            except DirectoryLdapError as e:
+                print("[ERROR] Ошибка LDAP при удалении отдела:", str(e))
+                return Response({"detail": str(e)}, status=502)
+            except DirectoryDbError as e:
+                print("[ERROR] Ошибка базы данных при удалении отдела:", str(e))
+                return Response({"detail": str(e)}, status=500)
+        else:
+            # Режим без LDAP: удаляем напрямую из БД
+            dept.delete()
+            print("[DEBUG] Отдел удалён из БД (без LDAP).")
+            return Response(status=204)
+
 
 class EmployeeViewSet(viewsets.ModelViewSet):
     """
@@ -779,6 +1338,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
       ?active=true|false
       ?actually_active=true|false — реально активные: email_verified=True и не DISMISSED
                                     (или нет действий, но is_active=True)
+      ?created_at__gte=<iso_date> — зарегистрированные после указанной даты
 
     Сортировка:
       ?ordering=last_name|first_name|created_at|id  (+ '-' для DESC)
@@ -900,6 +1460,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 )
             )
 
+        # фильтр по дате создания
+        created_at_gte = qp.get("created_at__gte")
+        if created_at_gte:
+            qs = qs.filter(created_at__gte=created_at_gte)
+
         return qs
 
     def get_serializer_class(self):
@@ -909,62 +1474,145 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         return EmployeeSerializer
 
     def create(self, request, *args, **kwargs):
+        """Создание пользователя админом: пароль уходит ТОЛЬКО в LDAP, локальный — unusable."""
         if not (request.user.is_staff or request.user.is_superuser):
-            return Response(
-                {"detail": "Only staff can create users."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return Response({"detail": "Only staff can create users."}, status=403)
 
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         vd = dict(ser.validated_data)
 
-        # Бизнес-валидация контактов
         if not (vd.get("whatsapp") or vd.get("telegram") or vd.get("wechat")):
             return Response(
                 {
                     "detail": "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram"
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                status=400,
             )
 
-        # пароль
-        password = request.data.get("password")
-        if not password:
-            import secrets
-
-            password = secrets.token_urlsafe(12)
-
-        # вынести из vd, чтобы не передать дважды
         email = vd.pop("email", None)
         phone_number = vd.pop("phone_number", None)
-        if not email or not phone_number:
+        password = request.data.get("password")
+        if not email or not phone_number or not password:
             return Response(
-                {"detail": "email и phone_number обязательны для создания."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"detail": "email, phone_number и password обязательны"}, status=400
             )
 
-        skills = vd.pop("skills_ids", [])
+        avatar_bytes = None
+        avatar_file = vd.pop("avatar", None)
+        if avatar_file and hasattr(avatar_file, "read"):
+            try:
+                avatar_bytes = avatar_file.read()
+            except Exception:
+                avatar_bytes = None
 
-        # теперь в vd нет email/phone_number — дублирования не будет
-        user = Employee.objects.create_user(
-            email=email,
-            password=password,
-            phone_number=phone_number,
-            **vd,  # avatar / names / position и т.п.
-        )
-        if skills:
-            user.skills.set(skills)
+        # Проверяем, включен ли LDAP
+        ldap_enabled = _is_ldap_enabled()
 
-        out = self.get_serializer(user)
-        headers = self.get_success_headers(out.data)
-        return Response(out.data, status=status.HTTP_201_CREATED, headers=headers)
+        if ldap_enabled:
+            # Режим с LDAP: создаём через DirectoryService
+            dto = DirectoryUserDTO(
+                first_name=vd.get("first_name", ""),
+                last_name=vd.get("last_name", ""),
+                email=email.lower(),
+                phone_e164=phone_number,
+                department_dn=vd.pop("department_dn", None),
+                group_cns=vd.pop("group_cns", []) or [],
+                initial_password=password,  # ← только LDAP
+                avatar_bytes=avatar_bytes,
+                is_active=vd.get("is_active", True),
+            )
+
+            try:
+                user = DirectoryService().create_user(dto)
+                # DB-only поля
+                for k in (
+                    "patronymic",
+                    "birth_date",
+                    "telegram",
+                    "whatsapp",
+                    "wechat",
+                    "position",
+                ):
+                    if k in vd:
+                        setattr(user, k + ("_id" if k == "position" else ""), vd[k])
+                user.save()
+                if user.position_id:
+                    try:
+                        DirectoryService().assign_position(user, user.position)
+                    except Exception:
+                        # можно залогировать warning; создание пользователя не роняем
+                        pass
+                skills = vd.get("skills_ids") or []
+                if skills:
+                    user.skills.set(skills)
+                out = self.get_serializer(user)
+                return Response(
+                    out.data, status=201, headers=self.get_success_headers(out.data)
+                )
+            except DirectoryLdapError as e:
+                return Response({"detail": str(e)}, status=502)
+            except DirectoryDbError as e:
+                return Response({"detail": str(e)}, status=500)
+        else:
+            # Режим без LDAP: создаём напрямую в БД
+            try:
+                with transaction.atomic():
+                    user = Employee.objects.create(
+                        first_name=vd.get("first_name", ""),
+                        last_name=vd.get("last_name", ""),
+                        email=email.lower(),
+                        phone_number=phone_number,
+                        is_active=vd.get("is_active", True),
+                        is_ldap_managed=False,
+                    )
+                    # Устанавливаем пароль
+                    user.set_password(password)
+
+                    # DB-only поля
+                    for k in (
+                        "patronymic",
+                        "birth_date",
+                        "telegram",
+                        "whatsapp",
+                        "wechat",
+                        "position",
+                        "gender",
+                    ):
+                        if k in vd:
+                            setattr(user, k + ("_id" if k == "position" else ""), vd[k])
+
+                    # Аватар
+                    if avatar_bytes:
+                        user.photo.save(
+                            f"avatar_{user.id}.jpg",
+                            ContentFile(avatar_bytes),
+                            save=False,
+                        )
+
+                    user.save()
+
+                    # Навыки
+                    skills = vd.get("skills_ids") or []
+                    if skills:
+                        user.skills.set(skills)
+
+                out = self.get_serializer(user)
+                return Response(
+                    out.data, status=201, headers=self.get_success_headers(out.data)
+                )
+            except Exception as e:
+                return Response(
+                    {"detail": f"Ошибка создания пользователя: {str(e)}"},
+                    status=500,
+                )
 
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
-        """
-        GET   /api/v1/employees/me/      — ваш профиль (ТОТ ЖЕ формат, что retrieve)
-        PATCH /api/v1/employees/me/      — частичное обновление своего профиля
+        """GET — профиль текущего пользователя; PATCH — частичное обновление своего профиля.
+
+        Returns:
+            Response: Данные профиля.
         """
         instance: Employee = request.user  # type: ignore
 
@@ -990,11 +1638,20 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             ctx["include_actions"] = True
             ctx["include_action_history"] = True
             data = self.get_serializer(instance, context=ctx).data
-            return Response(data, status=status.HTTP_200_OK)
+            return Response(data, status=200)
+
+        # PATCH
+        old_email = instance.email  # Сохраняем старый email
+        
         ser = self.get_serializer(instance, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
+        vd = dict(ser.validated_data)
 
-        vd = ser.validated_data
+        # Проверяем изменение email
+        new_email = vd.get("email")
+        email_changed = new_email and new_email.lower() != old_email.lower()
+
+        # Бизнес-валидация каналов связи
         if all(k not in vd for k in ("whatsapp", "telegram", "wechat")):
             new_whatsapp = vd.get("whatsapp", instance.whatsapp)
             new_telegram = vd.get("telegram", instance.telegram)
@@ -1004,11 +1661,102 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     {
                         "detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."
                     },
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=400,
                 )
 
-        ser.save()
-        return Response(ser.data, status=status.HTTP_200_OK)
+        ldap_enabled = _is_ldap_enabled()
+
+        # LDAP-часть
+        ldap_keys = {"first_name", "last_name", "email", "phone_number", "is_active"}
+        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
+
+        svc_changes = dict(ldap_changes)
+        pos_key_present = ("position" in request.data) or (
+            "position_id" in request.data
+        )
+        if pos_key_present:
+            pos_raw = (
+                request.data.get("position")
+                if "position" in request.data
+                else request.data.get("position_id")
+            )
+            svc_changes["position"] = pos_raw  # тут может быть None — так и надо
+            vd.pop("position", None)
+            vd.pop("position_id", None)
+
+        move_to_department_dn = request.data.get("department_dn")
+        group_cns = request.data.get("group_cns")
+        avatar_file = ser.validated_data.get("avatar")
+        if avatar_file and hasattr(avatar_file, "read"):
+            try:
+                svc_changes["avatar_bytes"] = avatar_file.read()
+            except Exception:
+                pass
+
+        if ldap_enabled and (svc_changes or move_to_department_dn or group_cns is not None):
+            # Режим с LDAP: обновляем через DirectoryService
+            svc = DirectoryService()
+            try:
+                instance = svc.update_user(
+                    instance,
+                    changes=svc_changes,
+                    group_cns=group_cns if group_cns is not None else None,
+                    move_to_department_dn=move_to_department_dn,
+                )
+            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                return Response(
+                    {"detail": str(e)},
+                    status=502 if isinstance(e, DirectoryLdapError) else 500,
+                )
+        elif not ldap_enabled and svc_changes:
+            # Режим без LDAP: обновляем напрямую в БД
+            for k, v in svc_changes.items():
+                if k != "position" and k != "avatar_bytes":
+                    setattr(instance, k, v)
+                elif k == "position":
+                    instance.position_id = v
+                elif k == "avatar_bytes" and v:
+                    instance.photo.save(
+                        f"avatar_{instance.id}.jpg",
+                        ContentFile(v),
+                        save=False,
+                    )
+            instance.save()
+
+        # DB-only
+        if vd:
+            ser_db = self.get_serializer(instance, data=vd, partial=True)
+            ser_db.is_valid(raise_exception=True)
+            ser_db.save()
+            instance = ser_db.instance
+            data = ser_db.data
+        else:
+            data = self.get_serializer(instance).data
+
+        # Сброс email_verified при изменении email
+        if email_changed:
+            from django.utils.crypto import get_random_string
+            from common.emails import send_templated_mail
+
+            instance.email_verified = False
+            instance.email_activation_code = get_random_string(6, "0123456789")
+            instance.save(update_fields=["email_verified", "email_activation_code"])
+
+            # Отправляем код на новый email
+            try:
+                send_templated_mail(
+                    subject="Подтверждение нового email",
+                    to=[instance.email],
+                    template_base="emails/registration_verify_code",
+                    context={"code": instance.email_activation_code, "user": instance},
+                )
+            except Exception:
+                pass
+
+            # Обновляем данные в ответе
+            data["email_verified"] = False
+
+        return Response(data, status=200)
 
     @action(detail=True, methods=["post"])
     def add_skill(self, request, pk=None):
@@ -1062,6 +1810,145 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             ctx["include_actions"] = True
             ctx["include_action_history"] = True
         return ctx
+
+    def partial_update(self, request, *args, **kwargs):
+        """Частичное обновление: сначала LDAP-совместимые поля → затем только DB-only.
+
+        Returns:
+            Response: Обновлённые данные сотрудника.
+        """
+        emp = self.get_object()
+        old_email = emp.email  # Сохраняем старый email для проверки
+        
+        ser = self.get_serializer(emp, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        vd = dict(ser.validated_data)
+        ldap_enabled = _is_ldap_enabled()
+
+        # Проверяем изменение email
+        new_email = vd.get("email")
+        email_changed = new_email and new_email.lower() != old_email.lower()
+
+        # --- LDAP часть ---
+        ldap_keys = {"first_name", "last_name", "email", "phone_number", "is_active"}
+        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
+
+        svc_changes = dict(ldap_changes)
+        pos_key_present = ("position" in request.data) or (
+            "position_id" in request.data
+        )
+        if pos_key_present:
+            pos_raw = (
+                request.data.get("position")
+                if "position" in request.data
+                else request.data.get("position_id")
+            )
+            svc_changes["position"] = pos_raw  # тут может быть None — так и надо
+            vd.pop("position", None)
+            vd.pop("position_id", None)
+
+        move_to_department_dn = request.data.get("department_dn")
+        group_cns = request.data.get("group_cns")  # список строк/None
+
+        # avatar → bytes (если разрешено править аватар в LDAP)
+        avatar_file = ser.validated_data.get("avatar")
+        if avatar_file and hasattr(avatar_file, "read"):
+            try:
+                svc_changes["avatar_bytes"] = avatar_file.read()
+            except Exception:
+                pass
+
+        if ldap_enabled:
+            # LDAP mode: sync with DirectoryService
+            svc = DirectoryService()
+            if svc_changes or move_to_department_dn or group_cns is not None:
+                try:
+                    emp = svc.update_user(
+                        emp,
+                        changes=svc_changes,
+                        group_cns=group_cns if group_cns is not None else None,
+                        move_to_department_dn=move_to_department_dn,
+                    )
+                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                    return Response(
+                        {"detail": str(e)},
+                        status=502 if isinstance(e, DirectoryLdapError) else 500,
+                    )
+        else:
+            # Non-LDAP mode: direct DB updates
+            # Restore ldap_changes back to vd for DB-only save
+            vd.update(ldap_changes)
+            
+            # Handle position update in non-LDAP mode
+            if pos_key_present:
+                pos_raw = (
+                    request.data.get("position")
+                    if "position" in request.data
+                    else request.data.get("position_id")
+                )
+                if pos_raw is None:
+                    vd["position"] = None
+                elif isinstance(pos_raw, int):
+                    try:
+                        vd["position"] = Position.objects.get(id=pos_raw)
+                    except Position.DoesNotExist:
+                        return Response(
+                            {"detail": f"Position {pos_raw} not found"}, status=400
+                        )
+                elif isinstance(pos_raw, dict) and "id" in pos_raw:
+                    try:
+                        vd["position"] = Position.objects.get(id=pos_raw["id"])
+                    except Position.DoesNotExist:
+                        return Response(
+                            {"detail": f"Position {pos_raw['id']} not found"}, status=400
+                        )
+
+            # Handle avatar in non-LDAP mode
+            if avatar_file and hasattr(avatar_file, "read"):
+                try:
+                    from django.core.files.base import ContentFile
+                    avatar_bytes = avatar_file.read()
+                    emp.avatar.save(avatar_file.name, ContentFile(avatar_bytes), save=False)
+                    vd.pop("avatar", None)  # Remove from vd as we handled it manually
+                except Exception:
+                    pass
+
+        # --- DB-only часть ---
+        # Обновляем ТОЛЬКО оставшиеся поля, чтобы не перезаписать то, что уже сделал сервис
+        if vd:
+            ser_db = self.get_serializer(emp, data=vd, partial=True)
+            ser_db.is_valid(raise_exception=True)
+            ser_db.save()
+            emp = ser_db.instance
+            data = ser_db.data
+        else:
+            data = self.get_serializer(emp).data
+
+        # Сброс email_verified при изменении email
+        if email_changed:
+            from django.utils.crypto import get_random_string
+            from common.emails import send_templated_mail
+
+            emp.email_verified = False
+            emp.email_activation_code = get_random_string(6, "0123456789")
+            emp.save(update_fields=["email_verified", "email_activation_code"])
+
+            # Отправляем код на новый email
+            try:
+                send_templated_mail(
+                    subject="Подтверждение нового email",
+                    to=[emp.email],
+                    template_base="emails/registration_verify_code",
+                    context={"code": emp.email_activation_code, "user": emp},
+                )
+            except Exception:
+                # Не падаем если не удалось отправить письмо
+                pass
+
+            # Обновляем данные в ответе
+            data["email_verified"] = False
+
+        return Response(data, status=200)
 
 
 class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
@@ -1121,9 +2008,11 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if err:
             return err
         pos.groups.set(qs)
+        err2 = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
+        if err2:
+            return err2
         return Response(
-            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))},
-            status=200,
+            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))}
         )
 
     @action(detail=True, methods=["post"])
@@ -1133,9 +2022,11 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if err:
             return err
         pos.groups.add(*qs)
+        err2 = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
+        if err2:
+            return err2
         return Response(
-            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))},
-            status=200,
+            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))}
         )
 
     @action(detail=True, methods=["post"])
@@ -1145,9 +2036,11 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if err:
             return err
         pos.groups.remove(*qs)
+        err2 = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
+        if err2:
+            return err2
         return Response(
-            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))},
-            status=200,
+            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))}
         )
 
     @action(detail=True, methods=["get"])
@@ -1169,6 +2062,27 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
             for p in perms
         ]
         return Response({"count": len(data), "results": data}, status=200)
+
+    def perform_create(self, serializer):
+        pos = serializer.save()
+        err = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
+        if err:
+            # позиция создана в БД, но LDAP не синкнулся — возвращаем 502
+            raise Exception(
+                err.data["detail"]
+            )  # или пропустите исключение, если не хотите рвать транзакцию
+
+    def perform_update(self, serializer):
+        pos = serializer.save()
+        err = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
+        if err:
+            # позиция обновлена в БД; LDAP можно синкнуть повторно позднее
+            pass
+
+    def perform_destroy(self, instance):
+        # best-effort: не блокируем удаление позиции из БД из-за LDAP
+        _ldap_try(lambda: DirectoryService().delete_position_group(instance))
+        return super().perform_destroy(instance)
 
 
 class DepartmentRoleViewSet(viewsets.ModelViewSet):
@@ -1507,16 +2421,27 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
 
 class GroupViewSet(viewsets.ModelViewSet):
-    """
-    /api/v1/groups/
-      GET list/retrieve      — аутентифицированные
-      POST/PUT/PATCH/DELETE  — staff/superuser ИЛИ пользователи с model perms
+    """CRUD и LDAP-операции с группами.
+
+    Базовые маршруты:
+        GET    /api/v1/groups/               — список (аутентифицированные)
+        GET    /api/v1/groups/{id}/          — детальная
+        POST   /api/v1/groups/               — создать (staff/superuser или с model perms)
+        PATCH  /api/v1/groups/{id}/          — частичное обновление
+        DELETE /api/v1/groups/{id}/          — удалить
 
     Экшены:
-      GET  /{id}/permissions
-      POST /{id}/set-permissions
-      POST /{id}/add-permissions
-      POST /{id}/remove-permissions
+        GET    /api/v1/groups/{id}/permissions
+        POST   /api/v1/groups/{id}/set-permissions
+        POST   /api/v1/groups/{id}/add-permissions
+        POST   /api/v1/groups/{id}/remove-permissions
+
+        POST   /api/v1/groups/{id}/rename
+        POST   /api/v1/groups/{id}/set-description
+        GET    /api/v1/groups/{id}/members
+        POST   /api/v1/groups/{id}/add-members
+        POST   /api/v1/groups/{id}/remove-members
+        POST   /api/v1/groups/{id}/replace-members
     """
 
     queryset = Group.objects.all()
@@ -1533,31 +2458,329 @@ class GroupViewSet(viewsets.ModelViewSet):
         "set_permissions": "employees.assign_group_permissions",
         "add_permissions": "employees.assign_group_permissions",
         "remove_permissions": "employees.assign_group_permissions",
+        "rename": "employees.assign_group_permissions",
+        "set_description": "employees.assign_group_permissions",
+        "add_members": "employees.assign_group_permissions",
+        "remove_members": "employees.assign_group_permissions",
+        "replace_members": "employees.assign_group_permissions",
     }
 
-    # ----- helpers -----
-    def _validate_permissions_payload(self, request):
+    # ---------- queryset ----------
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        member_raw = self.request.query_params.get(
+            "member"
+        ) or self.request.query_params.get("member_id")
+        if member_raw is None:
+            return qs
+
+        try:
+            member_id = int(str(member_raw).strip())
+        except (TypeError, ValueError):
+            return qs.none()  # некорректный id → пусто
+
+        # У Group нет явного поля на пользователя; используется обратная связь ManyToMany от пользователя:
+        # group.user_set (manager). Для ORM-фильтров используется related_query_name — в django.contrib.auth он "user".
+        # На всякий случай поддержим оба варианта: user__ и user_set__ (если кастомная модель могла переопределить имя).
+        try:
+            return qs.filter(
+                Q(user__id=member_id) | Q(user_set__id=member_id)
+            ).distinct()
+        except FieldError:
+            # если вдруг один из путей не существует — пробуем максимально совместимый
+            try:
+                return qs.filter(user__id=member_id).distinct()
+            except FieldError:
+                try:
+                    return qs.filter(user_set__id=member_id).distinct()
+                except FieldError:
+                    return qs.none()
+
+    # ---------- helpers ----------
+
+    def _validate_permissions_payload(
+        self, request
+    ) -> tuple[Optional[List[Permission]], Optional[Response]]:
+        """Валидирует payload с ID permissions.
+
+        Args:
+            request (Request): DRF Request с полем 'permissions' (list[int]).
+
+        Returns:
+            tuple[Optional[List[Permission]], Optional[Response]]: (список Permission или None, Response с 400 или None)
+
+        Raises:
+            TypeError: Если элементы 'permissions' не приводимы к int.
+        """
         ids = request.data.get("permissions")
         if not isinstance(ids, list):
             return None, Response(
-                {"detail": "Поле 'permissions' должно быть списком id"}, status=400
+                {"detail": "Поле 'permissions' должно быть списком id"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        qs = Permission.objects.filter(id__in=ids)
-        if qs.count() != len(set(ids)):
+        try:
+            pid_list = [int(x) for x in ids]
+        except (TypeError, ValueError):
             return None, Response(
-                {"detail": "Некоторые permissions не найдены"}, status=400
+                {"detail": "Список 'permissions' должен содержать целые числа"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        return qs, None
+        qs = Permission.objects.filter(id__in=pid_list)
+        if qs.count() != len(set(pid_list)):
+            return None, Response(
+                {"detail": "Некоторые permissions не найдены"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return list(qs), None
 
-    # ----- actions -----
-    @action(detail=True, methods=["get"])
-    def permissions(self, request, pk=None):
-        grp = self.get_object()
-        perms = (
-            Permission.objects.filter(group=grp)
-            .select_related("content_type")
-            .distinct()
+    def _resolve_group_dn(self, grp: Group) -> Optional[str]:
+        """Определяет DN группы по её CN.
+
+        Сначала пробует DirectoryService.group_find_dn, затем (fallback) find_group_dn.
+
+        Args:
+            grp (Group): Экземпляр Group.
+
+        Returns:
+            Optional[str]: DN группы или None, если не найдена или LDAP отключен.
+        """
+        if not _is_ldap_enabled():
+            return None
+        
+        base = getattr(settings, "LDAP_GROUPS_BASE", "") or None
+        svc = DirectoryService()
+        try:
+            return svc.group_find_dn(grp.name, bases=[base] if base else None)
+        except AttributeError:
+            # совместимость со старым API
+            return svc.find_group_dn(grp.name, bases=[base] if base else None)
+
+    def _members_payload_to_dns(self, payload: dict[str, Any]) -> list[str]:
+        """Извлекает список DN участников из payload (member_dns|member_ids).
+
+        Args:
+            payload (dict[str, Any]): Dict с ключами 'member_dns' (list[str]) и/или 'member_ids' (list[int]).
+
+        Returns:
+            list[str]: Уникальные DN (пустой список если LDAP отключен).
+
+        Raises:
+            ValueError: Если не удалось получить ни одного DN (только в LDAP режиме).
+        """
+        dns: list[str] = []
+        raw_dns = payload.get("member_dns") or []
+        if isinstance(raw_dns, list):
+            dns.extend([d.strip() for d in raw_dns if isinstance(d, str) and d.strip()])
+
+        ids = payload.get("member_ids") or []
+        if isinstance(ids, list) and ids:
+            if _is_ldap_enabled():
+                svc = DirectoryService()
+                dns.extend(svc.employee_ids_to_dns([i for i in ids if isinstance(i, int)]))
+
+        uniq, seen = [], set()
+        for d in dns:
+            if d and d not in seen:
+                uniq.append(d)
+                seen.add(d)
+        
+        if not _is_ldap_enabled():
+            return []  # В non-LDAP режиме возвращаем пустой список
+            
+        if not uniq:
+            raise ValueError("Не переданы корректные member_dns или member_ids")
+        return uniq
+
+    def _dns_to_users(self, dns: list[str]) -> list[Employee]:
+        """Маппит DN участников на локальных пользователей через LdapSyncState.
+
+        Args:
+            dns (list[str]): Список DN.
+
+        Returns:
+            list[Employee]: Пользователи, найденные по LdapSyncState(model='employee', ldap_dn IN dns).
+        """
+        if not dns:
+            return []
+
+        sub = LdapSyncState.objects.filter(
+            model="employee", object_pk=OuterRef("pk")
+        ).values_list("ldap_dn", flat=True)[:1]
+
+        return list(
+            Employee.objects.annotate(ldap_dn=Subquery(sub))
+            .filter(ldap_dn__in=dns)
+            .only("id")
         )
+
+    # ---------- override CRUD: LDAP → DB ----------
+
+    def create(self, request, *args, **kwargs) -> Response:
+        """Создаёт LDAP-группу, затем запись Group в БД и (опционально) назначает permissions.
+
+        Body (частично):
+            name (str): CN группы (обязателен)
+            ldap_parent_dn (str): контейнер, по умолчанию settings.LDAP_GROUPS_BASE
+            ldap_description (str|None)
+            ldap_scope (str): 'global'|... (по умолчанию 'global')
+            ldap_security (bool): безопасная группа (по умолчанию True)
+            permissions (list[int]): список id Django permissions (необязателен)
+
+        Returns:
+            Response: 201 с сериализованной группой или ошибка 4xx/5xx.
+
+        Raises:
+            ValidationError: При ошибке сериализатора.
+            Exception: Пробрасывается как 502/500 в зависимости от источника ошибки.
+        """
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        name: str = ser.validated_data["name"]
+
+        parent_dn = request.data.get("ldap_parent_dn") or getattr(
+            settings, "LDAP_GROUPS_BASE", None
+        )
+        description = request.data.get("ldap_description")
+        scope = request.data.get("ldap_scope", "global")
+        security_enabled = bool(request.data.get("ldap_security", True))
+
+        ldap_enabled = _is_ldap_enabled()
+
+        if ldap_enabled:
+            # LDAP mode: create group in LDAP first
+            svc = DirectoryService()
+            try:
+                svc.group_create(
+                    cn=name,
+                    parent_dn=parent_dn,
+                    description=description,
+                    scope=scope,
+                    security_enabled=security_enabled,
+                )
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        # Create DB record
+        try:
+            grp = Group.objects.create(name=name)
+            perms = ser.validated_data.get("permissions")
+            if perms:
+                grp.permissions.set(perms)
+        except Exception as e:
+            if ldap_enabled:
+                # откат LDAP-создания
+                try:
+                    svc = DirectoryService()
+                    dn = None
+                    try:
+                        dn = svc.group_find_dn(
+                            name, bases=[parent_dn] if parent_dn else None
+                        )
+                    except AttributeError:
+                        dn = svc.find_group_dn(
+                            name, bases=[parent_dn] if parent_dn else None
+                        )
+                    if dn:
+                        svc.group_delete(dn)
+                except Exception:
+                    pass
+            return Response(
+                {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        out = self.get_serializer(grp)
+        return Response(
+            out.data,
+            status=status.HTTP_201_CREATED,
+            headers=self.get_success_headers(out.data),
+        )
+
+    def partial_update(self, request, *args, **kwargs) -> Response:
+        """Частичное обновление: сначала LDAP (rename/description), затем БД.
+
+        Body:
+            name (str): новое имя (опционально)
+            ldap_description (str|None): описание (опционально, "__NO_CHANGE__" — без изменений)
+        """
+        grp = self.get_object()
+        new_name = request.data.get("name")
+        new_desc = request.data.get("ldap_description", "__NO_CHANGE__")
+        ldap_enabled = _is_ldap_enabled()
+
+        if ldap_enabled:
+            # LDAP mode: sync name/description with LDAP
+            dn = self._resolve_group_dn(grp)
+            if not dn:
+                return Response(
+                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                )
+
+            svc = DirectoryService()
+            try:
+                if new_name and new_name != grp.name:
+                    dn = svc.group_rename(dn, new_name)
+                if new_desc != "__NO_CHANGE__":
+                    svc.group_set_description(dn, (new_desc or None))
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        # Update DB
+        if new_name and new_name != grp.name:
+            grp.name = new_name
+            grp.save(update_fields=["name"])
+
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs) -> Response:
+        """Удаляет LDAP-группу (если найдена), затем запись Group в БД.
+
+        Query params:
+            force_db (bool): При ошибке удаления в LDAP всё равно удалить запись БД.
+        """
+        grp = self.get_object()
+        force_db = str(request.query_params.get("force_db", "")).lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        ldap_enabled = _is_ldap_enabled()
+
+        if ldap_enabled:
+            dn = self._resolve_group_dn(grp)
+            if dn:
+                try:
+                    DirectoryService().group_delete(dn)
+                except Exception as e:
+                    if not force_db:
+                        return Response(
+                            {"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY
+                        )
+                    # мягко логируем и продолжаем удаление из БД
+        
+        return super().destroy(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs) -> Response:
+        """Возвращает список групп. Перед выдачей — мягкий LDAP-синк каталога."""
+        if _is_ldap_enabled():
+            try:
+                DirectoryService().sync_groups_catalog(throttle_seconds=60)
+            except Exception:
+                pass
+        return super().list(request, *args, **kwargs)
+
+    # ---------- Actions: Django permissions ----------
+
+    @action(detail=True, methods=["get"])
+    def permissions(self, request, pk=None) -> Response:
+        """Возвращает permissions, привязанные к группе (через M2M).
+
+        Returns:
+            Response: {"count": int, "results": [{id, codename, name, app, model}, ...]}
+        """
+        grp = self.get_object()
+        perms = grp.permissions.select_related("content_type").distinct()
         data = [
             {
                 "id": p.id,
@@ -1568,49 +2791,465 @@ class GroupViewSet(viewsets.ModelViewSet):
             }
             for p in perms
         ]
-        return Response({"count": len(data), "results": data}, status=200)
+        return Response(
+            {"count": len(data), "results": data}, status=status.HTTP_200_OK
+        )
 
-    @action(detail=True, methods=["post"])
-    def set_permissions(self, request, pk=None):
+    @action(detail=True, methods=["post"], url_path="set-permissions")
+    def set_permissions(self, request, pk=None) -> Response:
+        """Полностью заменяет набор permissions у группы.
+
+        Body:
+            permissions (list[int]): список id разрешений.
+        """
         grp = self.get_object()
-        qs, err = self._validate_permissions_payload(request)
-        if err:
-            return err
+        qs, error = self._validate_permissions_payload(request)
+        if error:
+            return error
         grp.permissions.set(qs)
         return Response(
             {
                 "ok": True,
                 "permission_ids": list(grp.permissions.values_list("id", flat=True)),
             },
-            status=200,
+            status=status.HTTP_200_OK,
         )
 
-    @action(detail=True, methods=["post"])
-    def add_permissions(self, request, pk=None):
+    @action(detail=True, methods=["post"], url_path="add-permissions")
+    def add_permissions(self, request, pk=None) -> Response:
+        """Добавляет permissions к группе (без удаления существующих).
+
+        Body:
+            permissions (list[int]): список id разрешений.
+        """
         grp = self.get_object()
-        qs, err = self._validate_permissions_payload(request)
-        if err:
-            return err
+        qs, error = self._validate_permissions_payload(request)
+        if error:
+            return error
         grp.permissions.add(*qs)
         return Response(
             {
                 "ok": True,
                 "permission_ids": list(grp.permissions.values_list("id", flat=True)),
             },
-            status=200,
+            status=status.HTTP_200_OK,
         )
 
-    @action(detail=True, methods=["post"])
-    def remove_permissions(self, request, pk=None):
+    @action(detail=True, methods=["post"], url_path="remove-permissions")
+    def remove_permissions(self, request, pk=None) -> Response:
+        """Удаляет указанные permissions у группы.
+
+        Body:
+            permissions (list[int]): список id разрешений.
+        """
         grp = self.get_object()
-        qs, err = self._validate_permissions_payload(request)
-        if err:
-            return err
+        qs, error = self._validate_permissions_payload(request)
+        if error:
+            return error
         grp.permissions.remove(*qs)
         return Response(
             {
                 "ok": True,
                 "permission_ids": list(grp.permissions.values_list("id", flat=True)),
             },
-            status=200,
+            status=status.HTTP_200_OK,
+        )
+
+    # ---------- Actions: LDAP ----------
+
+    @action(detail=True, methods=["post"])
+    def rename(self, request, pk=None) -> Response:
+        """Переименовывает LDAP-группу и синхронизирует имя в БД.
+
+        Body:
+            new_name (str): Новое имя (CN).
+
+        Returns:
+            Response: {"ok": True, "name": str}
+        """
+        grp = self.get_object()
+        new_name = (request.data.get("new_name") or "").strip()
+        if not new_name:
+            return Response(
+                {"detail": "new_name обязателен"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            dn = self._resolve_group_dn(grp)
+            if not dn:
+                return Response(
+                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                )
+
+            svc = DirectoryService()
+            try:
+                svc.group_rename(dn, new_name)
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        
+        # Update DB
+        grp.name = new_name
+        grp.save(update_fields=["name"])
+        return Response({"ok": True, "name": grp.name}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="set-description")
+    def set_description(self, request, pk=None) -> Response:
+        """Устанавливает описание LDAP-группы.
+
+        Body:
+            description (str|None): Описание группы.
+
+        Returns:
+            Response: {"ok": True}
+        """
+        grp = self.get_object()
+        
+        if not _is_ldap_enabled():
+            # Non-LDAP mode: description stored only in LDAP, so just return OK
+            return Response({"ok": True}, status=status.HTTP_200_OK)
+        
+        dn = self._resolve_group_dn(grp)
+        if not dn:
+            return Response(
+                {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        svc = DirectoryService()
+        try:
+            svc.group_set_description(dn, request.data.get("description"))
+            return Response({"ok": True}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+    @action(detail=True, methods=["get"])
+    def members(self, request, pk=None) -> Response:
+        """Возвращает состав LDAP-группы (DN) и краткую информацию о сопоставленных сотрудниках.
+
+        Returns:
+            Response: {"dns": list[str], "employees": list[dict]}
+        """
+        grp = self.get_object()
+        
+        if not _is_ldap_enabled():
+            # Non-LDAP mode: return DB members only
+            users = grp.user_set.all()
+            employees = [
+                {
+                    "id": u.id,
+                    "email": u.email,
+                    "first_name": u.first_name,
+                    "last_name": u.last_name,
+                }
+                for u in users
+            ]
+            return Response({"dns": [], "employees": employees}, status=status.HTTP_200_OK)
+        
+        dn = self._resolve_group_dn(grp)
+        if not dn:
+            return Response(
+                {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        svc = DirectoryService()
+        try:
+            dns = svc.group_list_members(dn)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        employees = svc.employees_brief_by_dns(dns)
+        return Response({"dns": dns, "employees": employees}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="add-members")
+    def add_members(self, request, pk=None) -> Response:
+        """Добавляет участников в LDAP-группу и связывает найденных пользователей в БД.
+
+        Body:
+            member_dns (list[str])|None: Прямые DN участников.
+            member_ids (list[int])|None: ID сотрудников, которые будут преобразованы в DN.
+
+        Returns:
+            Response: {"ok": True, "ldap_added": int, "db_added": int, "ok_dns": list[str], "ok_user_ids": list[int]}
+
+        Raises:
+            400: Некорректный payload.
+            404: Группа не найдена в LDAP.
+            502: Ошибка LDAP.
+            500: Ошибка БД (с попыткой компенсировать изменения в LDAP).
+        """
+        grp = self.get_object()
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # LDAP mode: sync with LDAP first
+            dn = self._resolve_group_dn(grp)
+            if not dn:
+                return Response(
+                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                )
+            try:
+                member_dns = self._members_payload_to_dns(request.data)
+            except ValueError as e:
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            svc = DirectoryService()
+            try:
+                svc.group_add_members(dn, member_dns)
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+            users = self._dns_to_users(member_dns)
+            ok_user_ids = [u.id for u in users]
+            try:
+                with transaction.atomic():
+                    grp.user_set.add(*users)
+            except Exception as e:
+                # компенсируем LDAP
+                try:
+                    svc.group_remove_members(dn, member_dns)
+                except Exception:
+                    pass
+                return Response(
+                    {"detail": f"DB error: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {
+                    "ok": True,
+                    "ldap_added": len(member_dns),
+                    "db_added": len(users),
+                    "ok_dns": member_dns,
+                    "ok_user_ids": ok_user_ids,
+                },
+                status=status.HTTP_200_OK,
+            )
+        else:
+            # Non-LDAP mode: add members directly to DB
+            member_ids = request.data.get("member_ids") or []
+            if not isinstance(member_ids, list):
+                return Response(
+                    {"detail": "member_ids must be a list"}, status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            users = Employee.objects.filter(id__in=member_ids)
+            try:
+                with transaction.atomic():
+                    grp.user_set.add(*users)
+            except Exception as e:
+                return Response(
+                    {"detail": f"DB error: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            
+            ok_user_ids = [u.id for u in users]
+            return Response(
+                {
+                    "ok": True,
+                    "ldap_added": 0,
+                    "db_added": len(users),
+                    "ok_dns": [],
+                    "ok_user_ids": ok_user_ids,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+    @action(detail=True, methods=["post"], url_path="remove-members")
+    def remove_members(self, request, pk=None) -> Response:
+        """Удаляет участников из LDAP-группы и разрывает связи в БД.
+
+        Body:
+            member_dns (list[str])|None
+            member_ids (list[int])|None
+
+        Returns:
+            Response: {"ok": True, "ldap_removed": int, "db_removed": int, "ok_dns": list[str], "ok_user_ids": list[int]}
+
+        Errors:
+            400/404/502/500 — см. add_members.
+        """
+        grp = self.get_object()
+        ldap_enabled = _is_ldap_enabled()
+
+        if ldap_enabled:
+            # LDAP mode: sync with LDAP first
+            dn = self._resolve_group_dn(grp)
+            if not dn:
+                return Response(
+                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                )
+            try:
+                member_dns = self._members_payload_to_dns(request.data)
+            except ValueError as e:
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            svc = DirectoryService()
+            try:
+                svc.group_remove_members(dn, member_dns)
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+            users = self._dns_to_users(member_dns)
+            ok_user_ids = [u.id for u in users]
+            try:
+                with transaction.atomic():
+                    grp.user_set.remove(*users)
+            except Exception as e:
+                # компенсируем LDAP
+                try:
+                    svc.group_add_members(dn, member_dns)
+                except Exception:
+                    pass
+                return Response(
+                    {"detail": f"DB error: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {
+                    "ok": True,
+                    "ldap_removed": len(member_dns),
+                    "db_removed": len(users),
+                    "ok_dns": member_dns,
+                    "ok_user_ids": ok_user_ids,
+                },
+                status=status.HTTP_200_OK,
+            )
+        else:
+            # Non-LDAP mode: remove members directly from DB
+            member_ids = request.data.get("member_ids") or []
+            if not isinstance(member_ids, list):
+                return Response(
+                    {"detail": "member_ids must be a list"}, status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            users = Employee.objects.filter(id__in=member_ids)
+            try:
+                with transaction.atomic():
+                    grp.user_set.remove(*users)
+            except Exception as e:
+                return Response(
+                    {"detail": f"DB error: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            
+            ok_user_ids = [u.id for u in users]
+            return Response(
+                {
+                    "ok": True,
+                    "ldap_removed": 0,
+                    "db_removed": len(users),
+                    "ok_dns": [],
+                    "ok_user_ids": ok_user_ids,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+    @action(detail=True, methods=["post"], url_path="replace-members")
+    def replace_members(self, request, pk=None) -> Response:
+        """Полностью заменяет состав LDAP-группы и синхронизирует M2M в БД.
+
+        Body:
+            member_dns (list[str])|None
+            member_ids (list[int])|None
+
+        Returns:
+            Response: {"ok": True, "ldap_total": int, "db_total": int, "ok_dns": list[str], "ok_user_ids": list[int]}
+
+        Notes:
+            При ошибке БД выполняется попытка отката LDAP к исходному составу.
+        """
+        grp = self.get_object()
+        ldap_enabled = _is_ldap_enabled()
+
+        if ldap_enabled:
+            # LDAP mode: sync with LDAP first
+            dn = self._resolve_group_dn(grp)
+            if not dn:
+                return Response(
+                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                )
+            try:
+                desired_dns = self._members_payload_to_dns(request.data)
+            except ValueError as e:
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            svc = DirectoryService()
+            # сохраняем исходный состав для возможного отката
+            try:
+                prev_dns = svc.group_list_members(dn)
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+            try:
+                svc.group_replace_members(dn, desired_dns)
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+            users = self._dns_to_users(desired_dns)
+            ok_user_ids = [u.id for u in users]
+            try:
+                with transaction.atomic():
+                    grp.user_set.set(users)
+            except Exception as e:
+                # откат LDAP
+                try:
+                    svc.group_replace_members(dn, prev_dns)
+                except Exception:
+                    pass
+                return Response(
+                    {"detail": f"DB error: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {
+                    "ok": True,
+                    "ldap_total": len(desired_dns),
+                    "db_total": len(users),
+                    "ok_dns": desired_dns,
+                    "ok_user_ids": ok_user_ids,
+                },
+                status=status.HTTP_200_OK,
+            )
+        else:
+            # Non-LDAP mode: replace members directly in DB
+            member_ids = request.data.get("member_ids") or []
+            if not isinstance(member_ids, list):
+                return Response(
+                    {"detail": "member_ids must be a list"}, status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            users = Employee.objects.filter(id__in=member_ids)
+            try:
+                with transaction.atomic():
+                    grp.user_set.set(users)
+            except Exception as e:
+                return Response(
+                    {"detail": f"DB error: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            
+            ok_user_ids = [u.id for u in users]
+            return Response(
+                {
+                    "ok": True,
+                    "ldap_total": 0,
+                    "db_total": len(users),
+                    "ok_dns": [],
+                    "ok_user_ids": ok_user_ids,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {
+                "ok": True,
+                "ldap_total": len(desired_dns),
+                "db_total": len(users),
+                "ok_dns": desired_dns,
+                "ok_user_ids": ok_user_ids,
+            },
+            status=status.HTTP_200_OK,
         )

@@ -3,132 +3,28 @@
 
 {% block title %}Лента{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/join-scroller.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+{% endblock %}
+
 {% block content %}
-  <style>
-    /* ===== секция «новички» (контейнер) ===== */
-    .join-wrap{
-      padding:.9rem 1rem;
-      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
-      border-radius: var(--feed-radius);
-      background: var(--bs-body-bg);
-      box-shadow: var(--feed-shadow);
-    }
-
-    /* ===== горизонтальная лента ===== */
-    .join-scroller{
-      position: relative;
-      overflow-x: auto;          /* горизонтальная прокрутка */
-      overflow-y: visible;       /* нужно для инфо-блока */
-      scrollbar-width: none;     /* Firefox скрыть полосы */
-      -ms-overflow-style: none;  /* IE/старый Edge */
-    }
-    .join-scroller::-webkit-scrollbar{ display:none; } /* Chrome/Safari */
-
-    .join-rail{
-      display:flex; align-items:flex-start; gap:.9rem; /* start: инфо-блоки снизу */
-      padding:.25rem .25rem;
-    }
-
-    /* мягкие «маски» по краям */
-    .join-scroller::before,
-    .join-scroller::after{
-      content:""; position:absolute; top:0; bottom:0; width:32px; pointer-events:none;
-      background: linear-gradient(to right, var(--bs-body-bg), transparent);
-    }
-    .join-scroller::after{ right:0; left:auto; transform: scaleX(-1); }
-    .join-scroller::before{ left:0; }
-
-    @media (prefers-reduced-motion: reduce){
-      .join-scroller{ scroll-behavior: auto !important; }
-    }
-
-    /* ===== элемент ленты (ячейка) ===== */
-    .join-item{
-      --base: 56px;             /* базовый размер круга */
-      --mult: 4;                /* множитель при раскрытии */
-      --size: var(--base);      /* текущий "активный" размер */
-      position: relative;
-      display:flex; flex-direction: column; align-items:center;
-      width: var(--size);
-      flex: 0 0 var(--size);
-      transition: width .22s ease, flex-basis .22s ease;
-    }
-    .join-item:hover,
-    .join-item:focus-within{
-      --size: calc(var(--base) * var(--mult));
-      z-index: 2; /* поверх соседей */
-    }
-
-    /* круг с фото */
-    .join-ava{
-      width: var(--size); height: var(--size);
-      border-radius:999px; overflow:hidden;
-      display:grid; place-items:center;
-      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
-      background: var(--bs-tertiary-bg);
-      transition: width .22s ease, height .22s ease, box-shadow .22s ease, border-color .22s ease;
-      will-change: width, height;
-    }
-    .join-ava img{ width:100%; height:100%; object-fit:cover; display:block; background: var(--bs-tertiary-bg); }
-    .join-ava .bi{ font-size: 1.2rem; opacity:.65; }
-    .join-item:hover .join-ava,
-    .join-item:focus-within .join-ava{
-      box-shadow: var(--feed-shadow-hover);
-      border-color: color-mix(in srgb, var(--bs-border-color), var(--bs-primary) 30%);
-    }
-
-    /* инфо-блок ПОД кругом */
-    .join-info{
-      width: 100%;
-      overflow: hidden;
-      max-height: 0;
-      opacity: 0;
-      transform: translateY(-4px);
-      transition: max-height .24s ease, opacity .18s ease, transform .18s ease;
-    }
-    .join-item:hover .join-info,
-    .join-item:focus-within .join-info{
-      max-height: 320px; /* с запасом под длинный список навыков */
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .join-info .name{ font-weight:800; line-height:1.2; margin-top:.5rem; text-align:center; }
-    .join-info .sub { font-size:.9rem; color: var(--bs-secondary-color); text-align:center; }
-    .join-info .skills-line{
-      font-size:.9rem; text-align:center; margin-top:.35rem;
-      word-break: break-word; white-space: normal;
-    }
-    .join-info .skills-line b{ font-weight:800; }
-    .join-info .link{ display:inline-block; margin-top:.35rem; font-size:.9rem; text-decoration:none; }
-    .join-info .link:hover{ text-decoration: underline; }
-
-    /* На маленьких экранах чуть меньше раскрываемся */
-    @media (max-width: 480px){
-      .join-item{ --mult: 3.2; }
-    }
-  </style>
-
   <div class="container">
     <div class="row gx-0"> 
       <div class="col-12">
 
-        <div class="feed-header d-flex align-items-center gap-3">
-          <i class="bi-megaphone fs-2 text-primary"></i>
-          <h2 class="title mb-0">Лента</h2>
-
-          {% if user.is_authenticated and user.is_staff %}
-            <a class="btn btn-primary ms-auto" href="{% url 'feed:post_create' %}?type=company">
-              <i class="bi-plus-circle me-1"></i> Новая публикация
-            </a>
-          {% endif %}
-        </div>
+        {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+        {% if user.is_authenticated and user.is_staff %}
+          {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" search_id="feedFilter" search_placeholder="Поиск по названию, автору или содержанию" create_as_card=True create_modal="createPostModal" create_text="Создать публикацию" %}
+        {% else %}
+          {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" search_id="feedFilter" search_placeholder="Поиск по названию, автору или содержанию" %}
+        {% endif %}
 
         {% if new_employees %}
-          <div class="feed-new mb-3">
+          <div>
             <div class="d-flex justify-content-between align-items-center mb-2">
-              <h6 class="mb-0 text-secondary">Присоединились недавно</h6>
-              <a href="{% url 'employees:employees_list' %}" class="small text-primary text-decoration-none">Все сотрудники</a>
+              <h6 class="mb-0 text-secondary"></h6>
             </div>
 
             <div class="join-scroller js-join-scroller" aria-label="Новые сотрудники">
@@ -168,13 +64,13 @@
                       {% endif %}
 
 
-                      <div class="text-center">
-                        <a class="link" href="{% url 'employees:employee_detail' emp_id %}">Профиль →</a>
-                      </div>
                     </div>
                   </div>
                 {% endfor %}
               </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0 text-secondary"></h6>
             </div>
           </div>
         {% endif %}
@@ -182,10 +78,8 @@
         <section class="feed-card mb-3">
           <div class="feed-hd">
           </div>
-          <div>
-            {% if page %}
-              {% include "feed/_feed_cards.html" with items=page.object_list %}
-            {% elif posts %}
+          <div id="feedList">
+            {% if posts %}
               {% include "feed/_feed_cards.html" with items=posts %}
             {% else %}
               <div class="alert alert-info shadow-sm mt-2">Пока нет новостей.</div>
@@ -193,97 +87,57 @@
           </div>
         </section>
 
-        {% if page %}
-          <div class="mt-4">
-            {% bootstrap_pagination page %}
+        {# Пагинация #}
+        {% if next_url or prev_url %}
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <a class="btn btn-outline-secondary {% if not prev_url %}disabled{% endif %}" 
+               href="{{ prev_url|default:'#' }}"
+               {% if not prev_url %}aria-disabled="true"{% endif %}>
+              <i class="bi-arrow-left"></i> Назад
+            </a>
+            {% if count %}
+              <span class="text-body-secondary small">Всего: {{ count }}</span>
+            {% endif %}
+            <a class="btn btn-outline-secondary {% if not next_url %}disabled{% endif %}" 
+               href="{{ next_url|default:'#' }}"
+               {% if not next_url %}aria-disabled="true"{% endif %}>
+              Вперёд <i class="bi-arrow-right"></i>
+            </a>
           </div>
         {% endif %}
 
       </div>
     </div>
   </div>
-{% endblock %}
 
-<script>
-(function(){
-  const STEP_MS = 3000;
-  const SCROLL_BEHAVIOR = 'smooth';
+{# Модальное окно для создания публикации #}
+{% include "feed/components/modal_create_post.html" %}
 
-  function centerItemInView(wrap, item){
-    const r = item.getBoundingClientRect();
-    const w = wrap.getBoundingClientRect();
-    const delta = (r.left + r.width/2) - (w.left + w.width/2);
-    wrap.scrollTo({ left: wrap.scrollLeft + delta, behavior: SCROLL_BEHAVIOR });
-  }
-
-  function initAutoScroller(wrap){
-    const rail = wrap.querySelector('.join-rail');
-    if (!rail) return;
-
-    // если контент не переполняет — автоскролл не нужен
-    const overflowX = rail.scrollWidth > wrap.clientWidth + 4;
-    if (!overflowX) return;
-
-    // удвоим содержимое для бесшовного цикла
-    const children = Array.from(rail.children);
-    rail.append(...children.map(n => n.cloneNode(true)));
-
-    // шаг = ширина первой ячейки + gap
-    function computeStep(){
-      const first = rail.firstElementChild;
-      if (!first) return 0;
-      const rect = first.getBoundingClientRect();
-      const gap = parseFloat(getComputedStyle(rail).gap || '0') || 0;
-      return Math.round(rect.width + gap);
-    }
-    let step = computeStep();
-    const origCount = children.length;
-    let timer = null, paused = false;
-
-    function tick(){
-      if (paused) return;
-      const maxLeft = (step * origCount);
-      if (wrap.scrollLeft >= maxLeft - 2){ wrap.scrollLeft = 0; }
-      wrap.scrollBy({ left: step, behavior: SCROLL_BEHAVIOR });
-    }
-
-    function start(){ if (!timer) timer = setInterval(tick, STEP_MS); }
-    function stop(){ if (timer){ clearInterval(timer); timer = null; } }
-
-    // Пауза при наведении/фокусе на конкретной ячейке + центрирование
-    rail.querySelectorAll('.join-item').forEach(item=>{
-      item.addEventListener('mouseenter', ()=>{
-        paused = true;
-        centerItemInView(wrap, item);
-      });
-      item.addEventListener('mouseleave', ()=>{ paused = false; });
-      item.addEventListener('focusin', ()=>{
-        paused = true;
-        centerItemInView(wrap, item);
-      });
-      item.addEventListener('focusout', ()=>{ paused = false; });
+<script type="module">
+  import { initAutoScroller } from "{% static 'js/components/autoScrollerHandler.js' %}";
+  import { initCreatePostModal } from "{% static 'js/components/createPostModal.js' %}";
+  import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    initAutoScroller({ 
+      selector: '.js-join-scroller',
+      speed: 0.5  // пикселей за кадр (примерно 30px/сек)
     });
-
-    // Пересчёт шага на ресайз
-    let rAF = null;
-    window.addEventListener('resize', ()=>{
-      cancelAnimationFrame(rAF);
-      rAF = requestAnimationFrame(()=>{ step = computeStep(); });
+    
+    // Инициализация модала создания публикации
+    initCreatePostModal({
+      submitUrl: '{% url "feed:post_create" %}?type=company'
     });
-
-    // Остановка при свёрнутой вкладке
-    document.addEventListener('visibilitychange', ()=>{
-      if (document.hidden) stop(); else start();
+    
+    // Инициализация поиска по публикациям
+    new ListFilter({
+      listSelector: '#feedList',
+      itemSelector: '.feed-post',
+      searchInputSelector: '#feedFilter',
+      clearButtonSelector: '.ios-search-clear',
+      matchFn: createDataAttrMatcher(['searchtitle', 'searchauthor', 'searchbody']),
+      debounceMs: 300
     });
-
-    // Уважим reduced-motion
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    start();
-  }
-
-  document.addEventListener('DOMContentLoaded', ()=>{
-    document.querySelectorAll('.js-join-scroller').forEach(initAutoScroller);
   });
-})();
 </script>
+{% endblock %}

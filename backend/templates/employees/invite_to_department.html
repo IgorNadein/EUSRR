@@ -82,31 +82,32 @@
   {% endwith %}
 </div>
 
+{% load static %}
 <!-- Мини-скрипт: фильтрация select и блокировка кнопки без выбора -->
-<script>
-  (function () {
-    const search = document.getElementById('employeeSearch');
-    const select = document.querySelector('select[name="{{ form.employee.html_name }}"]');
-    const btn = document.getElementById('inviteBtn');
+<script type="module">
+import { norm } from '{% static "js/utils/stringUtils.js" %}';
 
-    if (!select) return;
+(function () {
+  const search = document.getElementById('employeeSearch');
+  const select = document.querySelector('select[name="{{ form.employee.html_name }}"]');
+  const btn = document.getElementById('inviteBtn');
 
-    // Кнопка активна только при выбранном значении
-    function toggleBtn() { btn && (btn.disabled = !select.value); }
-    select.addEventListener('change', toggleBtn);
-    toggleBtn();
+  if (!select) return;
 
-    // Кешируем исходные опции
-    const options = Array.from(select.options);
+  // Кнопка активна только при выбранном значении
+  function toggleBtn() { btn && (btn.disabled = !select.value); }
+  select.addEventListener('change', toggleBtn);
+  toggleBtn();
 
-    function norm(s) { return s.toLowerCase().replace(/\s+/g, ''); }
+  // Кешируем исходные опции
+  const options = Array.from(select.options);
 
-    if (search) {
-      search.addEventListener('input', function () {
-        const q = norm(this.value);
-        const filtered = q
-          ? options.filter(o => norm(o.text).includes(q))
-          : options;
+  if (search) {
+    search.addEventListener('input', function () {
+      const q = norm(this.value);
+      const filtered = q
+        ? options.filter(o => norm(o.text).includes(q))
+        : options;
 
         // Перерисовываем список
         select.innerHTML = '';

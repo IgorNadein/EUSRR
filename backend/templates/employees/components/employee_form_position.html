@@ -1,0 +1,359 @@
+{# === ДОЛЖНОСТЬ === #}
+<div class="col-12">
+  {% if can_edit_position or request.user.is_staff or request.user.is_superuser %}
+    <div class="ios-acc mb-2" id="positionBlock"
+         data-update-url-tpl="{% url 'employees:position_update' 0 %}"
+         data-detail-url-tpl="{% url 'employees:position_detail' 0 %}"
+         data-create-url="{% url 'employees:position_create' %}"
+         data-assign-url="{% if is_me %}{% url 'employees:employee_set_position_me' %}{% else %}{% url 'employees:employee_set_position' emp.id %}{% endif %}"
+         data-can-assign="{% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}1{% else %}0{% endif %}">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-briefcase"></i>
+        <div class="ios-section-title mb-0">Должность</div>
+      </div>
+
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+
+          {# ТЕКУЩАЯ ДОЛЖНОСТЬ #}
+          <div class="col-md-6">
+            <label class="form-label" for="f_position">Текущая должность</label>
+            {% if all_positions %}
+              <select id="f_position" class="form-select" name="position_id"
+                      data-init="{{ emp.position.id|default:'' }}">
+                <option value="">— Не указано —</option>
+                {% for p in all_positions %}
+                  {% if p.id and p.name %}
+                    <option value="{{ p.id }}"
+                      {% if emp.position and emp.position.id == p.id %}selected{% endif %}>
+                      {{ p.name }}
+                    </option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            {% else %}
+              <input id="f_position" class="form-control" name="position_id"
+                     value="{{ emp.position.id|default:'' }}" placeholder="ID должности"
+                     data-init="{{ emp.position.id|default:'' }}">
+              <div class="form-text">Передайте в контекст <code>all_positions</code> для выпадающего списка.</div>
+            {% endif %}
+          </div>
+
+          {# СОЗДАТЬ НОВУЮ #}
+          {% if can_create_position or request.user.is_staff or request.user.is_superuser %}
+            <div class="col-md-6">
+              <label class="form-label d-block">Новая должность</label>
+              <button type="button" class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="collapse" data-bs-target="#newPositionPane" aria-expanded="false" aria-controls="newPositionPane">
+                Создать должность
+              </button>
+            </div>
+
+            <div class="col-12">
+              <div id="newPositionPane" class="collapse mt-2">
+                <div class="row g-2">
+                  <div class="col-sm-6">
+                    <label class="form-label" for="pos_name">Название</label>
+                    <input id="pos_name" class="form-control" placeholder="Напр. Руководитель отдела">
+                  </div>
+                  <div class="col-sm-6">
+                    <label class="form-label" for="pos_desc">Описание</label>
+                    <input id="pos_desc" class="form-control" placeholder="Опционально">
+                  </div>
+
+                  {% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}
+                    <div class="col-12">
+                      {% if all_groups %}
+                        <div class="col-12">
+                          <div id="pos_groups_chips" class="chips mb-2"></div>
+                          <input type="hidden" id="pos_groups_hidden" value="">
+                        </div>
+
+                        {# Модал выбора групп для новой должности #}
+                        <div class="modal fade" id="groupsPickerModal" tabindex="-1" aria-hidden="true">
+                          <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+                            <div class="modal-content">
+                              <div class="modal-header">
+                                <h5 class="modal-title">Группы прав</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                              </div>
+                              <div class="modal-body">
+                                <input type="search" class="form-control mb-3" id="groupsSearch" placeholder="Поиск по группам">
+                                <div id="groupsList" class="list-group">
+                                  {% for g in all_groups %}
+                                    {% if g.id and g.name %}
+                                      <label class="list-group-item d-flex align-items-center gap-2">
+                                        <input class="form-check-input me-2 group-check" type="checkbox" value="{{ g.id }}">
+                                        <span class="flex-grow-1">{{ g.name }}</span>
+                                        <span class="text-secondary small">#{{ g.id }}</span>
+                                      </label>
+                                    {% endif %}
+                                  {% endfor %}
+                                </div>
+                              </div>
+                              <div class="modal-footer">
+                                <button type="button" id="groupsClear" class="btn btn-ghost">Сбросить</button>
+                                <button type="button" id="groupsDone" class="btn btn-primary" data-bs-dismiss="modal">Готово</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      {% else %}
+                        <div class="col-12">
+                          <label class="form-label" for="pos_groups_csv">Группы прав (id через запятую)</label>
+                          <input id="pos_groups_csv" class="form-control" placeholder="Напр. 1,2,3">
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                  <div class="col-12 d-flex flex-wrap gap-2 mt-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            data-bs-toggle="modal" data-bs-target="#groupsPickerModal">
+                      Выбрать группы полномочий
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="posCreateBtn">
+                      <span class="lbl">Создать и назначить</span>
+                      <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-sm"
+                            data-bs-toggle="collapse" data-bs-target="#newPositionPane">Отмена</button>
+                  </div>
+
+                  <div class="col-12">
+                    <div class="small mt-1 d-none" id="posCreateMsg"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          {# РЕДАКТИРОВАТЬ ВЫБРАННУЮ #}
+          <div class="col-12">
+            <div class="mt-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="collapse" data-bs-target="#editPositionPane"
+                      id="toggleEditPositionBtn" aria-expanded="false" aria-controls="editPositionPane">
+                Редактировать должность
+              </button>
+            </div>
+
+            <div id="editPositionPane" class="collapse mt-2">
+              <div class="row g-2">
+                <div class="col-sm-6">
+                  <label class="form-label" for="pos_edit_name">Название должности</label>
+                  <input id="pos_edit_name" class="form-control" placeholder="Напр. Руководитель отдела">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label" for="pos_edit_desc">Описание</label>
+                  <input id="pos_edit_desc" class="form-control" placeholder="Опционально">
+                </div>
+
+                {% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}
+                  <div class="col-12">
+                    <label class="form-label d-block">Группы полномочий</label>
+                    <div id="pos_edit_groups_chips" class="chips mb-2"></div>
+                    <input type="hidden" id="pos_edit_groups_hidden" value="">
+                    <div class="d-flex flex-wrap gap-2">
+                      <button type="button" class="btn btn-outline-secondary btn-sm"
+                              data-bs-toggle="modal" data-bs-target="#posEditGroupsPickerModal">
+                        Выбрать группы
+                      </button>
+                      <button type="button" class="btn btn-ghost btn-sm" id="posEditClearGroups">Очистить</button>
+                    </div>
+                  </div>
+
+                  {# Модал выбора групп для редактирования должности #}
+                  <div class="modal fade" id="posEditGroupsPickerModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">Группы прав (должность)</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                        </div>
+                        <div class="modal-body">
+                          <input type="search" class="form-control mb-3" id="posEditGroupsSearch" placeholder="Поиск по группам">
+                          <div id="posEditGroupsList" class="list-group">
+                            {% for g in all_groups %}
+                              {% if g.id and g.name %}
+                                <label class="list-group-item d-flex align-items-center gap-2">
+                                  <input class="form-check-input me-2 pos-edit-group-check" type="checkbox" value="{{ g.id }}">
+                                  <span class="flex-grow-1">{{ g.name }}</span>
+                                  <span class="text-secondary small">#{{ g.id }}</span>
+                                </label>
+                              {% endif %}
+                            {% endfor %}
+                          </div>
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" id="posEditGroupsClear" class="btn btn-ghost">Сбросить</button>
+                          <button type="button" id="posEditGroupsDone" class="btn btn-primary" data-bs-dismiss="modal">Готово</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+
+                <div class="col-12 d-flex flex-wrap gap-2 mt-1">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="posEditLoadBtn">
+                    <span class="lbl">Загрузить из выбранной</span>
+                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="btn btn-primary btn-sm" id="posEditSaveBtn">
+                    <span class="lbl">Сохранить изменения</span>
+                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm"
+                          data-bs-toggle="collapse" data-bs-target="#editPositionPane">Отмена</button>
+                </div>
+
+                <div class="col-12">
+                  <div class="small mt-1 d-none" id="posEditMsg"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>{# /.row #}
+      </div>{# /.ios-acc-body #}
+    </div>
+  {% else %}
+    <div class="ios-acc mb-2">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-briefcase"></i>
+        <div class="ios-section-title mb-0">Должность</div>
+      </div>
+      <div class="ios-acc-body">
+        <input class="form-control" value="{% firstof emp.position.name emp.position_label '—' %}" disabled>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+
+{# === ПЕРСОНАЛЬНЫЕ ГРУППЫ ПОЛНОМОЧИЙ === #}
+<div class="col-12">
+  {% if request.user.is_staff or request.user.is_superuser %}
+    <div class="ios-acc mb-3" id="empGroupsBlock"
+        data-bulk-url="{% url 'employees:employee_groups_bulk' emp.id %}"
+        data-create-url="{% url 'employees:group_create' %}"
+        data-delete-url="{% url 'employees:group_delete' %}">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-people"></i>
+        <div class="ios-section-title mb-0">Дополнительные полномочия</div>
+      </div>
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+
+          <div class="col-12">
+            <div class="small text-secondary mb-2">
+            </div>
+          </div>
+
+          {# <<< НОВОЕ: вывод уже назначенных групп сотруднику в виде «пилюль» >>> #}
+          <div class="col-12">
+            <label class="form-label mb-1">Назначено сотруднику</label>
+            <div id="empGroupsAssigned" class="d-flex flex-wrap gap-2">
+              {% for g in emp_personal_groups %}
+                {% if g.id and g.name %}
+                  <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border"
+                        data-gid="{{ g.id }}">{{ g.name }}</span>
+                {% endif %}
+              {% empty %}
+                <span class="text-secondary small">Нет персональных групп</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="modal"
+                      data-bs-target="#empGroupsPickerModal">
+                Выбрать группы
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" id="empGroupsAssignBtn">
+                <span class="lbl">Назначить выбранные</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+              <button type="button" class="btn btn-outline-danger btn-sm" id="empGroupsRemoveBtn">
+                <span class="lbl">Снять выбранные</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+            <input type="hidden" id="emp_groups_hidden" value="">
+            <div id="empGroupsMsg" class="small mt-2 d-none"></div>
+          </div>
+
+          <hr class="my-2">
+
+          <div class="col-12 col-md-6">
+            <label class="form-label">Создать новую группу</label>
+            <div class="input-group">
+              <input id="empGroupsCreateName" class="form-control" placeholder="CN (имя группы)">
+              <button type="button" class="btn btn-outline-secondary" id="empGroupsCreateBtn">
+                <span class="lbl">Создать</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div id="empGroupsCreateMsg" class="small mt-2 d-none"></div>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label">Удалить группу</label>
+            <div class="input-group">
+              <select id="empGroupsDeleteSelect" class="form-select">
+                <option value="">— Выберите группу —</option>
+                {% for g in all_groups %}
+                  {% if g.id and g.name %}
+                    <option value="{{ g.id }}">{{ g.name }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+              <button type="button" class="btn btn-outline-danger" id="empGroupsDeleteBtn">
+                <span class="lbl">Удалить</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div class="form-text">Удаляется и LDAP-группа, и объект в БД.</div>
+            <div id="empGroupsDeleteMsg" class="small mt-2 d-none"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Модал выбора групп для персонального назначения #}
+    <div class="modal fade" id="empGroupsPickerModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Выбор групп</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+          </div>
+          <div class="modal-body">
+            <input type="search" class="form-control mb-3" id="empGroupsSearch" placeholder="Поиск по группам">
+            <div id="empGroupsList" class="list-group">
+              {% for g in all_groups %}
+                {% if g.id and g.name %}
+                  <label class="list-group-item d-flex align-items-center gap-2">
+                    <input class="form-check-input me-2 emp-group-check" type="checkbox" value="{{ g.id }}" data-cn="{{ g.name }}">
+                    <span class="flex-grow-1">{{ g.name }}</span>
+                    <span class="text-secondary small">#{{ g.id }}</span>
+                  </label>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" id="empGroupsClear" class="btn btn-ghost">Сбросить</button>
+            <button type="button" id="empGroupsDone" class="btn btn-primary" data-bs-dismiss="modal">Готово</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+
+

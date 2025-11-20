@@ -1,0 +1,23 @@
+{# Фильтры для страницы чатов #}
+<form method="get" class="row g-2 align-items-end">
+  <div class="col-12 col-sm-8">
+    <label class="form-label mb-1">Тип чата</label>
+    <select name="chat_type" class="form-select" id="chatTypeFilter">
+      <option value="all" selected>Все</option>
+      <option value="global">Глобальный</option>
+      <option value="department">Отделы</option>
+      <option value="private">Личные</option>
+      <option value="group">Группы</option>
+      <option value="channel">Каналы</option>
+      <option value="announcement">Объявления</option>
+    </select>
+  </div>
+  <div class="col-12 col-sm-4 d-flex justify-content-end gap-2">
+    <button class="btn btn-outline-primary d-flex align-items-center justify-content-center gap-1" type="button" id="applyChatFilter">
+      <i class="bi-funnel"></i><span>Применить</span>
+    </button>
+    <button type="button" class="btn btn-outline-secondary d-flex align-items-center justify-content-center" id="resetChatFilter" title="Сбросить фильтры">
+      <i class="bi-x-lg"></i>
+    </button>
+  </div>
+</form>

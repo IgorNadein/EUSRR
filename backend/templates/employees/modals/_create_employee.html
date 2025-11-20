@@ -1,0 +1,112 @@
+{% comment %}
+Модальное окно для создания сотрудника
+Использование: {% include "employees/modals/_create_employee.html" %}
+{% endcomment %}
+
+<div class="modal fade" id="createEmployeeModal" tabindex="-1" aria-labelledby="createEmployeeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="createEmployeeModalLabel">
+          <i class="bi-person-plus me-2"></i>Создать профиль сотрудника
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <form id="createEmployeeForm" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        
+        <div class="modal-body">
+          <div id="createEmployeeErrors" class="alert alert-danger d-none mb-3"></div>
+          
+          <div class="row g-3">
+            <!-- Email и Телефон -->
+            <div class="col-md-6">
+              <label for="emp_email" class="form-label">Email <span class="text-danger">*</span></label>
+              <input type="email" class="form-control" id="emp_email" name="email">
+            </div>
+            <div class="col-md-6">
+              <label for="emp_phone" class="form-label">Телефон <span class="text-danger">*</span></label>
+              <input type="tel" class="form-control" id="emp_phone" name="phone_number">
+            </div>
+            
+            <!-- ФИО -->
+            <div class="col-md-4">
+              <label for="emp_last_name" class="form-label">Фамилия</label>
+              <input type="text" class="form-control" id="emp_last_name" name="last_name">
+            </div>
+            <div class="col-md-4">
+              <label for="emp_first_name" class="form-label">Имя</label>
+              <input type="text" class="form-control" id="emp_first_name" name="first_name">
+            </div>
+            <div class="col-md-4">
+              <label for="emp_patronymic" class="form-label">Отчество</label>
+              <input type="text" class="form-control" id="emp_patronymic" name="patronymic">
+            </div>
+            
+            <!-- Пол и Дата рождения -->
+            <div class="col-md-6">
+              <label for="emp_gender" class="form-label">Пол</label>
+              <select class="form-select" id="emp_gender" name="gender">
+                <option value="">Не указано</option>
+                <option value="1">Мужской</option>
+                <option value="2">Женский</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="emp_birth_date" class="form-label">Дата рождения</label>
+              <input type="date" class="form-control" id="emp_birth_date" name="birth_date">
+            </div>
+            
+            <!-- Должность -->
+            <div class="col-md-6">
+              <label for="emp_position" class="form-label">Должность</label>
+              <select class="form-select" id="emp_position" name="position">
+                <option value="">Не указана</option>
+                {% if positions_list %}
+                  {% for pos in positions_list %}
+                    <option value="{{ pos.id }}">{{ pos.title }}</option>
+                  {% endfor %}
+                {% endif %}
+              </select>
+            </div>
+            
+            <!-- Пароль -->
+            <div class="col-md-6">
+              <label for="emp_password" class="form-label">Пароль <small class="text-muted">(опционально)</small></label>
+              <input type="password" class="form-control" id="emp_password" name="password">
+              <div class="form-text">Если не указан, будет сгенерирован автоматически</div>
+            </div>
+            
+            <!-- Мессенджеры -->
+            <div class="col-md-4">
+              <label for="emp_telegram" class="form-label">Telegram</label>
+              <input type="text" class="form-control" id="emp_telegram" name="telegram" placeholder="@username">
+            </div>
+            <div class="col-md-4">
+              <label for="emp_whatsapp" class="form-label">WhatsApp</label>
+              <input type="text" class="form-control" id="emp_whatsapp" name="whatsapp">
+            </div>
+            <div class="col-md-4">
+              <label for="emp_wechat" class="form-label">WeChat</label>
+              <input type="text" class="form-control" id="emp_wechat" name="wechat">
+            </div>
+            
+            <!-- Аватар -->
+            <div class="col-12">
+              <label for="emp_avatar" class="form-label">Аватар</label>
+              <input type="file" class="form-control" id="emp_avatar" name="avatar" accept="image/*">
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary" id="createEmployeeSubmit">
+            <i class="bi-check-lg me-1"></i>Создать
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

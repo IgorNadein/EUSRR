@@ -124,6 +124,8 @@ def verify_email_view(request):
         err = "Неверный код подтверждения."
     elif err == "user_not_found":
         err = "Пользователь с таким email не найден."
+    elif err == "ldap_record_missing":
+        err = "Ошибка синхронизации с LDAP. Обратитесь к администратору."
     form.add_error(None, err)
     return render(request, "auth/verify_email.html", {"form": form}, status=400)
 

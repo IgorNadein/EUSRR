@@ -147,6 +147,9 @@ dmypy.json
 
 # папки со статикой и медиа
 media/
+# Собранные статические файлы Django (collectstatic)
+staticfiles/
+# Исходные static файлы НЕ игнорируются (backend/static/)
 
 # Others
 node_modules

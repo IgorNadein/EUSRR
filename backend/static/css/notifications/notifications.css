@@ -1,0 +1,425 @@
+/* Стили для системы уведомлений */
+
+/* ============================================
+   КОЛОКОЛЬЧИК В NAVBAR
+   ============================================ */
+.bell-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.bell-dot {
+    position: absolute;
+    top: -4px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background-color: #dc3545;
+    color: white;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex;
+    align-items-center;
+    justify-content: center;
+    line-height: 1;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================
+   DROPDOWN МЕНЮ УВЕДОМЛЕНИЙ
+   ============================================ */
+.notification-dropdown-menu {
+    position: fixed;
+    width: 360px;
+    max-height: 500px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Тёмная тема */
+[data-bs-theme="dark"] .notification-dropdown-menu {
+    background: #2b3035;
+    color: #dee2e6;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Заголовок */
+.notification-dropdown-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e9ecef;
+    background: #f8f9fa;
+}
+
+[data-bs-theme="dark"] .notification-dropdown-header {
+    background: #1f2327;
+    border-bottom-color: #3d4349;
+}
+
+/* Тело с прокруткой */
+.notification-dropdown-body {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 300px;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable both-edges;
+    overscroll-behavior: contain;
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 70%) transparent;
+}
+
+.notification-dropdown-body:hover {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 55%) transparent;
+}
+
+.notification-dropdown-body::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.notification-dropdown-body::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 0;
+}
+
+.notification-dropdown-body::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 75%);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+
+.notification-dropdown-body:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 55%);
+}
+
+[data-bs-theme="dark"] .notification-dropdown-body {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 78%) transparent;
+}
+
+[data-bs-theme="dark"] .notification-dropdown-body:hover {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 60%) transparent;
+}
+
+[data-bs-theme="dark"] .notification-dropdown-body::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 78%);
+}
+
+[data-bs-theme="dark"] .notification-dropdown-body:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 60%);
+}
+
+@media (hover: none), (pointer: coarse) {
+    .notification-dropdown-body {
+        scrollbar-width: none;
+    }
+
+    .notification-dropdown-body::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/* Разделитель */
+.notification-dropdown-divider {
+    height: 1px;
+    background: #e9ecef;
+    margin: 0;
+}
+
+[data-bs-theme="dark"] .notification-dropdown-divider {
+    background: #3d4349;
+}
+
+/* Секция */
+.notification-dropdown-section {
+    padding: 8px 0;
+}
+
+/* ============================================
+   ЭЛЕМЕНТЫ СПИСКА УВЕДОМЛЕНИЙ
+   ============================================ */
+.notification-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+}
+
+.notification-item:hover {
+    background-color: #f8f9fa;
+}
+
+.notification-item.unread {
+    background-color: #f0f7ff;
+}
+
+.notification-item.unread:hover {
+    background-color: #e6f2ff;
+}
+
+/* Темная тема - элементы уведомлений */
+[data-bs-theme="dark"] .notification-item {
+    border-bottom-color: #3d4349;
+}
+
+[data-bs-theme="dark"] .notification-item:hover {
+    background-color: #343a40;
+}
+
+[data-bs-theme="dark"] .notification-item.unread {
+    background-color: #1a3a52;
+}
+
+[data-bs-theme="dark"] .notification-item.unread:hover {
+    background-color: #1e4260;
+}
+
+/* Иконка уведомления */
+.notification-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+/* Контент уведомления */
+.notification-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: #212529;
+}
+
+[data-bs-theme="dark"] .notification-title {
+    color: #dee2e6;
+}
+
+.notification-message {
+    font-size: 13px;
+    color: #6c757d;
+    margin-bottom: 4px;
+}
+
+[data-bs-theme="dark"] .notification-message {
+    color: #adb5bd;
+}
+
+.notification-time {
+    font-size: 11px;
+    color: #adb5bd;
+}
+
+[data-bs-theme="dark"] .notification-time {
+    color: #6c757d;
+}
+
+/* Значок непрочитанного */
+.notification-unread-badge {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    background-color: #0d6efd;
+    border-radius: 50%;
+    margin-left: 8px;
+    align-self: center;
+}
+
+/* Пустое состояние */
+.notification-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    color: #adb5bd;
+    text-align: center;
+}
+
+.notification-empty-state i {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.notification-empty-state div {
+    font-size: 14px;
+}
+
+[data-bs-theme="dark"] .notification-empty-state {
+    color: #6c757d;
+}
+
+.extra-small {
+    font-size: 0.7rem;
+}
+
+/* ============================================
+   TOAST УВЕДОМЛЕНИЯ (FALLBACK)
+   ============================================ */
+.toast-container {
+    z-index: 9999;
+}
+
+.toast {
+    min-width: 300px;
+}
+
+/* ============================================
+   СТРАНИЦА СПИСКА УВЕДОМЛЕНИЙ
+   ============================================ */
+
+/* Карточки уведомлений - прочитанные */
+.notification-read {
+    opacity: 0.7;
+}
+
+.notification-read .card {
+    background-color: #f8f9fa;
+}
+
+[data-bs-theme="dark"] .notification-read {
+    opacity: 0.65;
+}
+
+[data-bs-theme="dark"] .notification-read .card {
+    background-color: #1f2327 !important;
+    border-color: #3d4349 !important;
+}
+
+/* Карточки уведомлений - непрочитанные */
+.notification-unread {
+    border-left: 4px solid var(--bs-primary);
+}
+
+.notification-unread .card {
+    background-color: #ffffff;
+}
+
+[data-bs-theme="dark"] .notification-unread .card {
+    background-color: #2b3035;
+    border-color: #3d4349;
+}
+
+/* Иконки категорий */
+.notification-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+/* Цвета для карточек в темной теме */
+[data-bs-theme="dark"] .card {
+    background-color: #2b3035;
+    border-color: #3d4349;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .card-body {
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .text-muted {
+    color: #adb5bd !important;
+}
+
+/* Кнопки в темной теме */
+[data-bs-theme="dark"] .btn-outline-primary {
+    color: #6ea8fe;
+    border-color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .btn-outline-primary:hover {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+[data-bs-theme="dark"] .btn-outline-secondary {
+    color: #adb5bd;
+    border-color: #6c757d;
+}
+
+[data-bs-theme="dark"] .btn-outline-secondary:hover {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    color: #fff;
+}
+
+[data-bs-theme="dark"] .btn-outline-danger {
+    color: #ea868f;
+    border-color: #ea868f;
+}
+
+[data-bs-theme="dark"] .btn-outline-danger:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
+}
+
+/* Формы в темной теме */
+[data-bs-theme="dark"] .form-select,
+[data-bs-theme="dark"] .form-control {
+    background-color: #1f2327;
+    border-color: #3d4349;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .form-select:focus,
+[data-bs-theme="dark"] .form-control:focus {
+    background-color: #2b3035;
+    border-color: #6ea8fe;
+    color: #dee2e6;
+}
+
+/* Пагинация в темной теме */
+[data-bs-theme="dark"] .pagination .page-link {
+    background-color: #2b3035;
+    border-color: #3d4349;
+    color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .pagination .page-link:hover {
+    background-color: #343a40;
+    border-color: #3d4349;
+    color: #9ec5fe;
+}
+
+[data-bs-theme="dark"] .pagination .page-item.active .page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+[data-bs-theme="dark"] .pagination .page-item.disabled .page-link {
+    background-color: #1f2327;
+    border-color: #3d4349;
+    color: #6c757d;
+}

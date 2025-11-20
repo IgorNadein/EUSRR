@@ -1,0 +1,33 @@
+{# Модальное окно просмотра деталей события #}
+<div class="modal fade" id="eventDetailsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2">
+          <span id="detailColorDot" class="color-dot"></span>
+          <span id="detailTitle">Событие</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <dt class="col-4">Когда</dt>
+          <dd class="col-8" id="detailWhen">—</dd>
+          <dt class="col-4">Где</dt>
+          <dd class="col-8" id="detailLocation">—</dd>
+          <dt class="col-4">Описание</dt>
+          <dd class="col-8" id="detailDescription">—</dd>
+          <dt class="col-4">Контекст</dt>
+          <dd class="col-8" id="detailScope">—</dd>
+          <dt class="col-4">Повторение</dt>
+          <dd class="col-8" id="detailRecurrence">—</dd>
+        </dl>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto" id="btnDeleteEvent">Удалить</button>
+        <button type="button" class="btn btn-primary" id="btnEditEvent">Редактировать</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>

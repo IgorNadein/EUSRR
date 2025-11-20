@@ -102,8 +102,11 @@ class ApiClient:
             timeout=self.cfg.timeout,
         )
 
-        if resp.status_code == 401 and retry and self.refresh:
+        # Пробуем refresh при 401 (Unauthorized) или 403 (может быть из-за истёкшего токена)
+        # Проверяем наличие refresh-токена и флаг retry
+        if resp.status_code in (401, 403) and retry and self.refresh:
             if self.refresh_tokens():
+                # Токен обновлён успешно, повторяем запрос
                 hdrs = dict(self.cfg.default_headers or {})
                 hdrs.update(self._auth_headers())
                 resp = self.session.request(

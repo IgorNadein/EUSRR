@@ -8,6 +8,8 @@ class CommunicationsConfig(AppConfig):
 
     def ready(self):
         import communications.signals
+        import communications.notification_signals  # Подключаем signals уведомлений
+        
         def create_main_global_chat(sender, **kwargs):
             from communications.models import Chat
 

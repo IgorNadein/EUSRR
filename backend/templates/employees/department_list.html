@@ -4,29 +4,11 @@
 {% block title %}Отделы{% endblock %}
 
 {% block extra_css %}
-<style>
-    .ios-search{ position:relative; width:100%; max-width:420px; }
-  .ios-search-input{ width:100%; height:40px; padding:8px 38px; border-radius:14px; border:1px solid var(--bs-border-color);
-    background: color-mix(in srgb, var(--bs-body-bg), #000 4%); font-size:15px; outline:none; transition: box-shadow .2s, border-color .2s, background .2s; }
-  [data-bs-theme="dark"] .ios-search-input{ background: color-mix(in srgb, var(--bs-body-bg), #fff 6%); }
-  .ios-search-input:focus{ border-color: var(--bs-primary); box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .15); }
-  .ios-search > .bi-search{ position:absolute; left:10px; top:50%; transform:translateY(-50%); opacity:.55; pointer-events:none; font-size:.95rem; }
-  .ios-search-clear{ position:absolute; right:4px; top:50%; transform:translateY(-50%); border:0; background:transparent; padding:6px; display:none; }
-  .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
-
-  .feed-header { gap:.6rem; flex-wrap:wrap; }
-
-  /* список — единственный прокручиваемый блок */
-  #deptList{
-    max-height: calc(100dvh - var(--navbar-h) - 160px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  #deptList .dept-row{ padding:.6rem .75rem; }
-  #deptList .dept-row + .dept-row{ border-top:1px solid var(--bs-border-color); }
-  .feed-author{ font-weight:700; }
-  .feed-sub{ color:var(--bs-secondary-color); }
+<link rel="stylesheet" href="{% static 'css/components/common.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -34,70 +16,72 @@
   <div class="row gx-0"> 
       <div class="col-12">
 
-      <div class="feed-header d-flex align-items-center">
-        <i class="bi-diagram-3 fs-2 text-primary"></i>
-        <h2 class="title mb-0">Отделы</h2>
-        <span class="ms-2 small text-secondary">Всего: {{ departments|length }}</span>
-        <div class="ms-auto ios-search">
-          <div class="ios-search">
-            <i class="bi-search"></i>
-            <input id="deptFilter" type="search" class="ios-search-input"
-                   placeholder="Поиск по названию или руководителю" autocomplete="off">
-            <button type="button" class="ios-search-clear" aria-label="Очистить">
-              <i class="bi-x-lg"></i>
-            </button>
-          </div>
-        </div>
-      </div>
+      {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
       {% if can_create_departments or perms.employees.add_department or request.user.is_staff or request.user.is_superuser %}
-        <div class="feed-card mb-2">
-          <a href="{% url 'employees:department_create' %}"
-            class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none"
-            role="button" aria-label="Создать отдел">
-            <span class="feed-author">Создать отдел</span>
-            <i class="bi-plus-lg"></i>
-          </a>
-        </div>
+        {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" create_as_card=True create_modal="createDepartmentModal" create_text="Создать отдел" %}
+      {% else %}
+        {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" %}
       {% endif %}
-      <div class="feed-card">
-        <div id="deptList" class="py-1">
+      
+      <div class="feed-card mb-3">
+        <div id="deptList" class="list-view feed-stream">
           {# поддержка обоих форматов: dict(results) или list #}
           {% with rows=departments.results|default:departments %}
             {% for dept in rows %}
               {% with h=dept.head emp=dept.employees_count|default:0 %}
                 {% url 'employees:department_detail' dept.id as dept_url %}
-                <div class="dept-row d-flex align-items-start gap-2"
+                <article class="dept-row list-row"
                      data-haystack="{{ dept.name }}{% if h %} {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}{% endif %}"
                      data-emp="{{ emp }}">
-                  <div class="flex-grow-1 position-relative">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                      {% if dept_url %}
-                        <a href="{{ dept_url }}" class="feed-author text-decoration-none stretched-link">
-                          {{ dept.name }}
-                        </a>
-                      {% else %}
-                        <span class="feed-author">{{ dept.name }}</span>
-                      {% endif %}
+                  <header class="feed-hd">
+                    <div class="feed-meta flex-grow-1">
+                      <div class="d-flex align-items-center gap-2 flex-wrap">
+                        {% if dept_url %}
+                          <a href="{{ dept_url }}" class="feed-author text-decoration-none">
+                            {{ dept.name }}
+                          </a>
+                        {% else %}
+                          <span class="feed-author">{{ dept.name }}</span>
+                        {% endif %}
+                      </div>
+                      <div class="feed-sub mt-1">
+                        {% if h %}
+                          Руководитель: {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}
+                        {% endif %}
+                        {% if h and emp %} · {% endif %}
+                        {% if emp %}{{ emp }} сотрудников{% endif %}
+                      </div>
                     </div>
-                    <div class="feed-sub mt-1">
-                      {% if h %}
-                        Руководитель: {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}
-                      {% endif %}
-                      {% if h and emp %} · {% endif %}
-                      {% if emp %}{{ emp }} сотрудников{% endif %}
-                    </div>
-                  </div>
-                  {% if dept_url %}
-                    <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
-                  {% endif %}
-                </div>
+                    {% if dept_url %}
+                    {% endif %}
+                  </header>
+                </article>
               {% endwith %}
             {% empty %}
-              <div class="p-3 text-secondary">Отделов пока нет.</div>
+              <div class="alert alert-info shadow-sm">Отделов пока нет.</div>
             {% endfor %}
           {% endwith %}
         </div>
       </div>
+
+      {# Пагинация #}
+      {% if next_url or prev_url %}
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <a class="btn btn-outline-secondary {% if not prev_url %}disabled{% endif %}" 
+             href="{{ prev_url|default:'#' }}" 
+             {% if not prev_url %}aria-disabled="true"{% endif %}>
+            <i class="bi-arrow-left"></i> Назад
+          </a>
+          {% if count %}
+            <span class="text-body-secondary small">Всего: {{ count }}</span>
+          {% endif %}
+          <a class="btn btn-outline-secondary {% if not next_url %}disabled{% endif %}" 
+             href="{{ next_url|default:'#' }}"
+             {% if not next_url %}aria-disabled="true"{% endif %}>
+            Вперёд <i class="bi-arrow-right"></i>
+          </a>
+        </div>
+      {% endif %}
 
       <div class="mt-3 text-secondary small">
         Всего сотрудников: <span id="empTotal">0</span>
@@ -107,75 +91,27 @@
   </div>
 </div>
 
-<script>
-  (function(){
-    const input    = document.getElementById('deptFilter');
-    const clearBtn = document.querySelector('.ios-search-clear');
-    const list     = document.getElementById('deptList');
-    const totalEmpEl  = document.getElementById('empTotal');
+{# Модальное окно для создания отдела #}
+{% include "employees/components/modal_create_department.html" %}
 
-    // (опционально) счётчик отделов
-    const totalDeptBadge = document.querySelector('.title ~ .ms-2.small span'); // "Всего: {{ departments|length }}"
-    const allRows = Array.from(list.querySelectorAll('.dept-row'));
-
-    // сообщение "нет результатов"
-    let emptyNotice = document.getElementById('deptEmptyNotice');
-    if (!emptyNotice){
-      emptyNotice = document.createElement('div');
-      emptyNotice.id = 'deptEmptyNotice';
-      emptyNotice.className = 'p-3 text-secondary d-none';
-      emptyNotice.textContent = 'Ничего не найдено.';
-      list.appendChild(emptyNotice);
-    }
-
-    function showRow(row){
-      // вернём normal display и d-flex
-      row.style.removeProperty('display');
-      if (!row.classList.contains('d-flex')) row.classList.add('d-flex');
-    }
-    function hideRow(row){
-      // снимем d-flex (чтобы не конкурировал) и зададим inline !important
-      row.classList.remove('d-flex');
-      row.style.setProperty('display', 'none', 'important');
-    }
-
-    function normalize(s){
-      return (s || '').toLowerCase().trim();
-    }
-
-    function apply(){
-      const q = normalize(input?.value);
-      let totalEmp = 0;
-      let shown = 0;
-
-      for (const r of allRows){
-        const hay = normalize(r.getAttribute('data-haystack'));
-        const match = !q || hay.includes(q);
-
-        if (match){
-          showRow(r);
-          shown += 1;
-          totalEmp += (parseInt(r.getAttribute('data-emp')) || 0);
-        } else {
-          hideRow(r);
-        }
-      }
-
-      // переключаем "нет результатов"
-      emptyNotice.classList.toggle('d-none', shown > 0);
-
-      // обновляем счетчики
-      if (totalEmpEl) totalEmpEl.textContent = String(totalEmp);
-      if (totalDeptBadge) totalDeptBadge.textContent = String(shown);
-    }
-
-    // первичная инициализация
-    apply();
-
-    // события
-    input?.addEventListener('input', apply);
-    clearBtn?.addEventListener('click', () => { input.value=''; input.focus(); apply(); });
-  })();
+<script type="module">
+  import { initDepartmentFilter } from "{% static 'js/components/departmentFilterHandler.js' %}";
+  import { initCreateDepartmentModal } from "{% static 'js/components/createDepartmentModal.js' %}";
+  
+  initDepartmentFilter({
+    inputId: 'deptFilter',
+    clearSelector: '.ios-search-clear',
+    listId: 'deptList',
+    totalEmpId: 'empTotal',
+    totalDeptSelector: '.title ~ .ms-2.small',
+    emptyNoticeId: 'deptEmptyNotice',
+    rowSelector: '.dept-row'
+  });
+  
+  // Инициализация модала создания отдела
+  initCreateDepartmentModal({
+    submitUrl: '{% url "api:v1:departments-list" %}'
+  });
 </script>
 
 {% endblock %}

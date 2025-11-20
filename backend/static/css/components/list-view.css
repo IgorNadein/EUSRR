@@ -1,0 +1,122 @@
+/**
+ * List View Component
+ * 
+ * Универсальные стили для списочных представлений (сотрудники, отделы и др.)
+ * Оптимизированы для вертикальной прокрутки и адаптивного отображения
+ * 
+ * Использует:
+ * - common.css (.feed-author, .feed-sub)
+ * - feed-cards.css (.feed-hd, .feed-ava)
+ */
+
+/* Токены списочных представлений */
+.list-view{
+  --list-row-py: var(--space-1);          /* вертикальные отступы строки: 8px */
+  --list-row-px: var(--space-2);          /* горизонтальные отступы строки: 16px */
+  --list-gap:    var(--space-2);          /* расстояние внутри строки: 16px */
+  --list-avatar: 56px;                    /* размер аватара */
+}
+
+/* Контейнер списков */
+.list-view{
+  background: transparent;
+  padding: 0;
+}
+
+/* Важно: убираем межстрочный gap от .feed-stream */
+.list-view.feed-stream{ 
+  display: block; 
+  gap: 0 !important; 
+}
+
+/* Строки списков */
+.list-view .list-row{
+  padding: var(--list-row-py) var(--list-row-px) !important;
+  margin: 0 !important;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.list-view .list-row:last-of-type{ 
+  border-bottom: 0; 
+}
+
+/* Шапка строки: базовый flex */
+.list-view .list-row .feed-hd{
+  display: flex;
+  align-items: center;
+  gap: var(--list-gap);
+  min-height: var(--list-avatar);  /* минимальная высота как у аватара для единообразия */
+  margin: 0; 
+  padding: 0 !important;   /* без внутренних паддингов — ими управляет строка */
+}
+
+/* Шапка с аватаром: переключаем на grid */
+.list-view .list-row:has(.feed-ava) .feed-hd{
+  display: grid;
+  grid-template-columns: var(--list-avatar) 1fr auto;
+}
+
+/* Аватар */
+.list-view .list-row .feed-ava{
+  width: var(--list-avatar);
+  height: var(--list-avatar);
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
+  background: color-mix(in srgb, var(--bs-secondary-bg), transparent 30%);
+  flex: none;
+}
+
+.list-view .list-row .feed-ava img{
+  display: block; 
+  width: 100%; 
+  height: 100%;
+  object-fit: cover; 
+  object-position: center;
+}
+
+.list-view .list-row .feed-ava i{ 
+  font-size: 1.5rem; 
+  line-height: 1; 
+  opacity: .6; 
+}
+
+/* Контент */
+.list-view .list-row .feed-meta{ 
+  margin: 0; 
+  padding: 0; 
+  min-width: 0; 
+}
+
+/* Специфичные стили для списков */
+.list-view .feed-author{ 
+  line-height: 1.25; 
+}
+
+.emp-pos{ 
+  color: var(--bs-secondary-color); 
+}
+
+.list-view .feed-sub{ 
+  margin-top: var(--space-1); 
+}
+
+/* Действия справа */
+.emp-actions{ 
+  justify-self: end; 
+}
+
+/* Хвост карточки в списке не используем — убираем отступы */
+.list-view .list-row .feed-actions{ 
+  padding: 0 !important; 
+}
+
+.list-view .list-row .feed-body:empty{ 
+  display: none !important; 
+}
+
+.list-view .list-row .feed-body{ 
+  padding: 0 !important; 
+}

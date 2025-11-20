@@ -28,8 +28,26 @@ def _api(request):
 
 
 def _paged_or_list(resp: ApiResponse):
+    """Извлекает results из пагинированного ответа или возвращает сырой список."""
     data = resp.json or {}
     return data.get("results", data)
+
+
+def _extract_page_data(resp: ApiResponse):
+    """Извлекает данные пагинации из ответа API.
+    
+    Returns:
+        tuple: (items, count, next_url, prev_url)
+    """
+    data = resp.json or {}
+    if isinstance(data, dict) and "results" in data:
+        return (
+            data["results"],
+            data.get("count", 0),
+            data.get("next"),
+            data.get("previous"),
+        )
+    return data if isinstance(data, list) else [], 0, None, None
 
 
 # ---------- Локальный multipart-враппер поверх ApiClient (без его модификации) ----------
@@ -130,8 +148,8 @@ def _api_list_new_employees(request, limit: int = 10) -> list[dict]:
     resp = _api(request).get(
         API_EMPLOYEES,
         params={
-            "is_active": "true",
-            "created_at__gte": since,  # или "created_at_after": since — см. ниже
+            "active": "true",
+            "created_at__gte": since,
             "ordering": "-created_at",
             "page_size": limit,
         },
@@ -200,10 +218,47 @@ def feed_list(request):
     Лента компании из API (?type=company).
     Блок «новые сотрудники» — тоже из API.
     """
-    posts = _api_list_posts(request, type=TYPE_COMPANY)
+    # Получаем параметры пагинации
+    page = request.GET.get("page", 1)
+    
+    # Запрашиваем посты с пагинацией
+    client = _api(request)
+    resp = client.get(API_POSTS, params={"type": TYPE_COMPANY, "page": page})
+    
+    if not resp.ok:
+        messages.error(request, f"Не удалось получить публикации: {resp.status}")
+        posts, count, next_url, prev_url = [], 0, None, None
+    else:
+        posts, count, next_url, prev_url = _extract_page_data(resp)
+    
+    # Преобразуем API URLs в frontend URLs
+    from urllib.parse import urlparse, parse_qs, urlencode
+    
+    def convert_url(api_url):
+        if not api_url:
+            return None
+        parsed = urlparse(api_url)
+        query_params = parse_qs(parsed.query)
+        clean_params = {k: v[0] if isinstance(v, list) and len(v) == 1 else v 
+                        for k, v in query_params.items()}
+        query_string = urlencode(clean_params, doseq=True)
+        return f"{request.path}?{query_string}" if query_string else request.path
+    
+    next_url = convert_url(next_url)
+    prev_url = convert_url(prev_url)
+    
     new_employees = _api_list_new_employees(request, limit=10)
+    
     return render(
-        request, "feed/feed_list.html", {"posts": posts, "new_employees": new_employees}
+        request,
+        "feed/feed_list.html",
+        {
+            "posts": posts,
+            "new_employees": new_employees,
+            "count": count,
+            "next_url": next_url,
+            "prev_url": prev_url,
+        },
     )
 
 
@@ -528,6 +583,7 @@ def post_update(request, pk):
             "context_type": context_type,
             "department": department,
             "cancel_url": cancel_url,
+            "is_update": True,
         },
     )
 

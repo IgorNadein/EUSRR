@@ -4,19 +4,14 @@ from typing import Any, Dict, Optional
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from employees.constants import ACTION_CHOICES
-from employees.models import (
-    Department,
-    DepartmentPermission,
-    DepartmentRole,
-    EmployeeAction,
-    EmployeeDepartment,
-    Position,
-    Skill,
-)
+from employees.models import (Department, DepartmentPermission, DepartmentRole,
+                              EmployeeAction, EmployeeDepartment, Position,
+                              Skill)
+from eusrr_backend.auth_backends import PHONE_FIELD as DETECTED_PHONE_FIELD
 from rest_framework import serializers
 
 from ..serializers import Base64ImageField
-from .utils import _normalize_phone
+from employees.utils import _normalize_phone
 
 Employee = get_user_model()
 
@@ -711,3 +706,27 @@ class DepartmentBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = ("id", "name")
+
+
+class ProfilePatchSerializer(serializers.Serializer):
+    """Сериализатор частичного обновления профиля с write-back в LDAP.
+
+    Разрешены только whitelisted поля. Телефон — в фактическое поле модели.
+    """
+
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+
+    # реальное имя телефонного поля в модели (phone_number)
+    _phone_field = DETECTED_PHONE_FIELD or "phone_number"
+    locals()[_phone_field] = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        """Общая валидация.
+
+        Raises:
+            serializers.ValidationError: Если нет ни одного поддерживаемого поля.
+        """
+        if not attrs:
+            raise serializers.ValidationError("No fields to update")
+        return attrs

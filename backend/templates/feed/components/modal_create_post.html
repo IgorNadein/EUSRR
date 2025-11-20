@@ -1,0 +1,56 @@
+{% comment %}
+Модальное окно для создания публикации
+Использование: {% include "feed/components/modal_create_post.html" %}
+{% endcomment %}
+
+<div class="modal fade" id="createPostModal" tabindex="-1" aria-labelledby="createPostModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="createPostModalLabel">
+          <i class="bi-megaphone me-2"></i>Создать публикацию
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <form id="createPostForm" method="POST" action="{% url 'feed:post_create' %}?type=company" novalidate enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="modal-body">
+          <div id="createPostErrors" class="alert alert-danger d-none mb-3"></div>
+          
+          <input type="hidden" name="type" id="post_type" value="company">
+          
+          <div class="mb-3">
+            <label for="post_title" class="form-label">Заголовок <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="post_title" name="title" required maxlength="255">
+          </div>
+          
+          <div class="mb-3">
+            <label for="post_body" class="form-label">Содержание <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="post_body" name="body" rows="6" required></textarea>
+          </div>
+          
+          <div class="mb-3">
+            <label for="post_image" class="form-label">Изображение</label>
+            <input type="file" class="form-control" id="post_image" name="image" accept="image/*">
+            <small class="form-text text-muted">Поддерживаются форматы: JPG, PNG, GIF</small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="post_attachment" class="form-label">Вложение</label>
+            <input type="file" class="form-control" id="post_attachment" name="attachment">
+            <small class="form-text text-muted">Любой файл до 10 МБ</small>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary" id="createPostSubmit">
+            <i class="bi-check-lg me-1"></i>Опубликовать
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

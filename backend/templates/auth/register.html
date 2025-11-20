@@ -6,17 +6,7 @@
 
 {# ВАЖНО: применяем тему ещё в <head>, чтобы не было «мигания» темы #}
 {% block extra_css %}
-<script>
-(function(){
-  const root  = document.documentElement;
-  const media = window.matchMedia('(prefers-color-scheme: dark)');
-  const getSaved = () => localStorage.getItem('theme') || 'auto';
-  const effective = (m) => m === 'auto' ? (media.matches ? 'dark' : 'light') : m;
-  const apply = () => root.setAttribute('data-bs-theme', effective(getSaved()));
-  apply();
-  media.addEventListener('change', () => { if (getSaved()==='auto') apply(); });
-})();
-</script>
+<script src="{% static 'js/utils/themeInitializer.js' %}"></script>
 {% endblock %}
 
 {% block content %}
@@ -153,129 +143,25 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  // Переключение видимости пароля
-  document.querySelectorAll('.password-toggle').forEach(icon => {
-    icon.addEventListener('click', function(){
-      const input = document.querySelector(this.getAttribute('data-target'));
-      if (!input) return;
-      input.type = input.type === 'password' ? 'text' : 'password';
-      this.classList.toggle('bi-eye');
-      this.classList.toggle('bi-eye-slash');
+<script type="module">
+  import { initPasswordToggle } from "{% static 'js/components/passwordToggleHandler.js' %}";
+  import { initAvatarPreview } from "{% static 'js/components/avatarPreviewHandler.js' %}";
+  import { initPhoneValidation } from "{% static 'js/components/phoneValidationHandler.js' %}";
+
+  document.addEventListener('DOMContentLoaded', function () {
+    // Переключение видимости пароля
+    initPasswordToggle();
+
+    // Превью аватара
+    initAvatarPreview({
+      fileInputSelector: 'input[type="file"][name="{{ form.avatar.html_name }}"]',
+      previewImageId: 'avatarPreview',
+      placeholderId: 'avatarPlaceholder'
     });
+
+    // Валидация телефонных номеров
+    initPhoneValidation();
   });
-
-  // === Превью аватара ===
-  const fileInput = document.querySelector('input[type="file"][name="{{ form.avatar.html_name }}"]');
-  const preview   = document.getElementById('avatarPreview');
-  const placeholder = document.getElementById('avatarPlaceholder');
-  const formEl = fileInput ? fileInput.closest('form') : null;
-
-  let objectURL = null;
-
-  function showPreview(url){
-    if (!preview) return;
-    // Скрыть плейсхолдер, показать картинку
-    if (placeholder) placeholder.classList.add('d-none');
-    preview.src = url;
-    preview.classList.remove('d-none');
-  }
-
-  function hidePreview(){
-    if (!preview) return;
-    // Убрать картинку, показать плейсхолдер
-    preview.removeAttribute('src');
-    preview.classList.add('d-none');
-    if (placeholder) placeholder.classList.remove('d-none');
-  }
-
-  function revokeObjectURLSafe(){
-    try { if (objectURL) URL.revokeObjectURL(objectURL); } catch(_) {}
-    objectURL = null;
-  }
-
-  if (fileInput && preview){
-    fileInput.addEventListener('change', function(){
-      revokeObjectURLSafe();
-      const file = this.files && this.files[0];
-      if (file){
-        objectURL = URL.createObjectURL(file);
-        showPreview(objectURL);
-      } else {
-        hidePreview();
-      }
-    });
-  }
-
-  // Сброс формы — вернуть плейсхолдер
-  if (formEl){
-    formEl.addEventListener('reset', function(){
-      revokeObjectURLSafe();
-      // Небольшая задержка, чтобы браузер успел очистить value у input[type=file]
-      setTimeout(hidePreview, 0);
-    });
-  }
-
-  // Освобождение URL при уходе со страницы
-  window.addEventListener('beforeunload', revokeObjectURLSafe);
-});
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  // Навешиваемся на все инпуты, помеченные data-phone-only
-  const phoneInputs = document.querySelectorAll('input[data-phone-only]');
-  const PHONE_RE = /^\+?\d{10,15}$/;
-
-  function sanitizePhone(v){
-    v = String(v || '');
-    let out = '';
-    for (let i=0;i<v.length;i++){
-      const ch = v[i];
-      if (ch >= '0' && ch <= '9') { out += ch; continue; }
-      if (ch === '+' && out.length === 0) { out = '+'; }
-    }
-    return out;
-  }
-
-  function validate(el){
-    const v = el.value;
-    const ok = v === '' || PHONE_RE.test(v);
-    el.setCustomValidity(ok ? '' : 'Введите номер телефона в формате +79991234567 (10–15 цифр).');
-  }
-
-  phoneInputs.forEach((el)=>{
-    // Ввод
-    el.addEventListener('input', function(){
-      const prev = this.value;
-      const cur = sanitizePhone(prev);
-      if (prev !== cur){
-        const pos = this.selectionStart || cur.length;
-        this.value = cur;
-        try { this.setSelectionRange(pos - (prev.length - cur.length), pos - (prev.length - cur.length)); } catch(_){}
-      }
-      validate(this);
-    });
-
-    // Вставка (paste)
-    el.addEventListener('paste', (e)=>{
-      e.preventDefault();
-      const text = (e.clipboardData || window.clipboardData).getData('text');
-      const cur = sanitizePhone(text);
-      document.execCommand('insertText', false, cur);
-    });
-
-    // Потеря фокуса — финальная проверка
-    el.addEventListener('blur', function(){
-      this.value = sanitizePhone(this.value);
-      validate(this);
-    });
-
-    // Инициализация
-    el.value = sanitizePhone(el.value);
-    validate(el);
-  });
-});
 </script>
 {% endblock %}
 

@@ -5,105 +5,11 @@
 {% block title %}Сотрудники{% endblock %}
 
 {% block extra_css %}
-  <style>
-    /* Поиск */
-    .ios-search{ position:relative; width:100%; max-width:420px; }
-    .ios-search-input{
-      width:100%; height:40px; padding:8px 38px;
-      border-radius:14px; border:1px solid var(--bs-border-color);
-      background: color-mix(in srgb, var(--bs-body-bg), #000 4%);
-      font-size:15px; outline:none;
-      transition: box-shadow .2s, border-color .2s, background .2s;
-    }
-    [data-bs-theme="dark"] .ios-search-input{
-      background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
-    }
-    .ios-search-input:focus{
-      border-color: var(--bs-primary);
-      box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .15);
-    }
-    .ios-search > .bi-search{
-      position:absolute; left:10px; top:50%; transform:translateY(-50%);
-      opacity:.55; pointer-events:none; font-size:.95rem;
-    }
-    .ios-search-clear{
-      position:absolute; right:4px; top:50%; transform:translateY(-50%);
-      border:0; background:transparent; padding:6px; display:none;
-    }
-    .ios-search-input:not(:placeholder-shown) ~ .ios-search-clear{ display:block; }
-    .feed-header { gap:.6rem; flex-wrap:wrap; }
-
-    /* Токены списка сотрудников */
-    #empList{
-      --emp-row-py: .6rem;           /* вертикальные отступы строки */
-      --emp-row-px: .75rem;          /* горизонтальные отступы строки */
-      --emp-gap:    14px;            /* расстояние внутри строки */
-      --emp-avatar: 56px;            /* размер аватара */
-    }
-
-    /* Контейнер списка (скролл в колонке) */
-    #empList{
-      border:1px solid color-mix(in srgb, var(--bs-border-color), transparent 12%);
-      border-radius: var(--feed-radius, 16px);
-      background: var(--bs-body-bg);
-      padding:0;
-      max-height: calc(100dvh - var(--navbar-h, 0px) - 160px);
-      overflow:auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* Важно: убираем межстрочный gap от .feed-stream */
-    #empList.feed-stream{ display:block; gap:0 !important; }
-
-    /* Строка сотрудника */
-    #empList .emp-row{
-      padding: var(--emp-row-py) var(--emp-row-px) !important;
-      margin:0 !important;
-      border-bottom:1px solid var(--bs-border-color);
-    }
-    #empList .emp-row:last-child{ border-bottom:0; }
-
-    /* Шапка строки: [аватар] [контент] [действия] */
-    #empList .emp-row .feed-hd{
-      display:grid;
-      grid-template-columns: var(--emp-avatar) 1fr auto;
-      align-items:center;
-      gap: var(--emp-gap);
-      margin:0; padding:0 !important;   /* без внутренних паддингов — ими управляет .emp-row */
-    }
-
-    /* Аватар */
-    #empList .emp-row .feed-ava{
-      width: var(--emp-avatar);
-      height: var(--emp-avatar);
-      border-radius: 50%;
-      overflow: hidden;
-      display:flex; align-items:center; justify-content:center;
-      background: color-mix(in srgb, var(--bs-secondary-bg), transparent 30%);
-      flex:none;
-    }
-    #empList .emp-row .feed-ava img{
-      display:block; width:100%; height:100%;
-      object-fit:cover; object-position:center;
-    }
-    #empList .emp-row .feed-ava i{ font-size:1.5rem; line-height:1; opacity:.6; }
-
-    /* Контент */
-    #empList .emp-row .feed-meta{ margin:0; padding:0; min-width:0; }
-    .feed-author{ font-weight:700; line-height:1.25; }
-    .emp-pos{ color:var(--bs-secondary-color); }
-    .feed-sub{ margin-top:.25rem; color:var(--bs-secondary-color); }
-    .feed-sub a{ color:inherit; text-decoration:none; }
-    .feed-sub a:hover{ text-decoration:underline; }
-
-    /* Действия справа */
-    .emp-actions{ justify-self:end; }
-
-    /* Хвост карточки в списке не используем — убираем отступы */
-    #empList .emp-row .feed-actions{ padding:0 !important; }
-    #empList .emp-row .feed-body:empty{ display:none !important; }
-    #empList .emp-row .feed-body{ padding:0 !important; }
-  </style>
+  <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
 {% endblock %}
 
 
@@ -112,41 +18,14 @@
   <div class="row gx-0"> 
     <div class="col-12">
 
-      <div class="feed-header d-flex align-items-center">
-        <i class="bi-people fs-2 text-primary"></i>
-        <h2 class="title mb-0">Сотрудники</h2>
-
-        {% if is_filtered_by_department and current_department %}
-          <span class="ms-2 small text-secondary">
-            Отдел: {{ current_department.name }} • {{ employees|length }}
-          </span>
-        {% else %}
-          <span class="ms-2 small text-secondary">Всего: {{ employees|length }}</span>
-        {% endif %}
-
-        <div class="ms-auto ios-search">
-          <i class="bi-search"></i>
-          <input id="empFilter" type="search" class="ios-search-input"
-                 placeholder="Поиск по ФИО, должности или отделу" autocomplete="off">
-          <button type="button" class="ios-search-clear" aria-label="Очистить">
-            <i class="bi-x-lg"></i>
-          </button>
-        </div>
-      </div>
-      {% if perms.employees.add_employee or request.user.is_staff or request.user.is_superuser %}
-        <div class="feed-card mb-2">
-          <a href="{% url 'employees:employee_create' %}"
-            class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none"
-            role="button" aria-label="Создать отдел">
-            <span class="feed-author">Создать профиль</span>
-            <i class="bi-plus-lg"></i>
-          </a>
-        </div>
-      {% endif %}
-      <div id="empList" class="feed-stream">
-        {% if employees %}
-          {% for emp in employees %}
-            <article class="emp-row"
+      {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+      {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" create_as_card=True create_modal="createEmployeeModal" create_text="Создать профиль" %}
+      
+      <div class="feed-card mb-3">
+        <div id="empList" class="list-view feed-stream">
+          {% if employees %}
+            {% for emp in employees %}
+            <article class="emp-row list-row"
                      data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {% firstof emp.position.name emp.position_label '' %}"
                      data-depts="{% if emp.departments %}{% for d in emp.departments %}{% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}{% elif is_filtered_by_department and current_department %}{{ current_department.name }}{% endif %}">
               <header class="feed-hd">
@@ -219,41 +98,52 @@
         {% else %}
           <div class="alert alert-info shadow-sm">Нет сотрудников.</div>
         {% endif %}
+        </div>
       </div>
 
-      {% if next_page or prev_page %}
-        <nav class="mt-3">
-          <ul class="pagination">
-            <li class="page-item {% if not prev_page %}disabled{% endif %}">
-              <a class="page-link" href="?page={{ prev_page }}{% if q %}&q={{ q|urlencode }}{% endif %}">Назад</a>
-            </li>
-            <li class="page-item {% if not next_page %}disabled{% endif %}">
-              <a class="page-link" href="?page={{ next_page }}{% if q %}&q={{ q|urlencode }}{% endif %}">Вперёд</a>
-            </li>
-          </ul>
-        </nav>
+      {# Пагинация #}
+      {% if next_url or prev_url %}
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <a class="btn btn-outline-secondary {% if not prev_url %}disabled{% endif %}" 
+             href="{{ prev_url|default:'#' }}"
+             {% if not prev_url %}aria-disabled="true"{% endif %}>
+            <i class="bi-arrow-left"></i> Назад
+          </a>
+          {% if count %}
+            <span class="text-body-secondary small">Всего: {{ count }}</span>
+          {% endif %}
+          <a class="btn btn-outline-secondary {% if not next_url %}disabled{% endif %}" 
+             href="{{ next_url|default:'#' }}"
+             {% if not next_url %}aria-disabled="true"{% endif %}>
+            Вперёд <i class="bi-arrow-right"></i>
+          </a>
+        </div>
       {% endif %}
 
     </div>
   </div>
 </div>
 
-<script>
-  (function () {
-    const input = document.getElementById('empFilter');
-    const clearBtn = document.querySelector('.ios-search-clear');
-    const list = document.getElementById('empList');
+{# Модальное окно для создания сотрудника #}
+{% include "employees/modals/_create_employee.html" %}
 
-    function applyFilter(){
-      const q = (input?.value || '').trim().toLowerCase();
-      list.querySelectorAll('.emp-row').forEach(row => {
-        const hay = [(row.dataset.name||''), (row.dataset.depts||'')].join(' ').toLowerCase();
-        row.style.display = (!q || hay.includes(q)) ? '' : 'none';
-      });
-    }
-    input?.addEventListener('input', applyFilter);
-    clearBtn?.addEventListener('click', () => { input.value=''; input.focus(); input.dispatchEvent(new Event('input')); });
-    applyFilter();
-  })();
+<script type="module">
+  import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
+  import { initCreateEmployeeModal } from '{% static "js/components/createEmployeeModal.js" %}';
+  
+  // Инициализация фильтра списка
+  new ListFilter({
+    listSelector: '#empList',
+    itemSelector: '.emp-row',
+    searchInputSelector: '#empFilter',
+    clearButtonSelector: '.ios-search-clear',
+    matchFn: createDataAttrMatcher(['name', 'depts']),
+    debounceMs: 300
+  });
+  
+  // Инициализация модала создания сотрудника
+  initCreateEmployeeModal({
+    submitUrl: '{% url "employees:employee_create_modal" %}'
+  });
 </script>
 {% endblock %}

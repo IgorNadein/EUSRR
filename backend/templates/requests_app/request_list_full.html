@@ -1,0 +1,487 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Заявления{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/request-list.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container ios-page">
+
+  {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+  {% if can_process or user.is_staff or user.is_superuser %}
+    {% url 'requests:request_list' as base_url %}
+    {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True scope=scope has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_as_card=True create_modal="reqCreateModal" create_text="Создать заявление" %}
+  {% else %}
+    {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_as_card=True create_modal="reqCreateModal" create_text="Создать заявление" %}
+  {% endif %}
+
+  {# ===== Список ===== #}
+  {# DEBUG: Фильтры - type: {{ filters.type }}, status: {{ filters.status }}, count: {{ requests|length }} #}
+  <div id="reqList" class="feed-card mb-3">
+    {% if requests %}
+      {% for obj in requests %}
+        <article class="req-row" id="req-{{ obj.id }}">
+          <header class="feed-hd">
+            <div ></div>
+            <div class="feed-meta d-flex flex-column">
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <strong>{{ obj.title|default:"Без заголовка" }}</strong>
+                {% if obj.employee %}
+                  <span class="small text-secondary">
+                    <i class="bi-person-circle me-1"></i>
+                    {% if obj.employee.id == user.id %}
+                      <a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>
+                    {% else %}
+                      <a href="{% url 'employees:employee_detail' obj.employee.id %}" class="text-decoration-none">
+                        {{ obj.employee.full_name|default:obj.employee.display_name|default:"Сотрудник" }}
+                      </a>
+                    {% endif %}
+                  </span>
+                {% endif %}
+                {% if obj.type %}{% with tp=obj.type|lower %}
+                  <span class="badge text-bg-light" title="{{ obj.type }}">
+                    {% if tp == 'vacation' %}Отпуск
+                    {% elif tp == 'sick_leave' %}Больничный
+                    {% elif tp == 'transfer' %}Перевод
+                    {% elif tp == 'dismissal' %}Увольнение
+                    {% elif tp == 'other' %}Другое
+                    {% else %}{{ obj.type }}{% endif %}
+                  </span>
+                {% endwith %}{% endif %}
+                {% if obj.status %}{% with st=obj.status|lower %}
+                  <span class="badge badge-status
+                    {% if st == 'approved' %} text-bg-success
+                    {% elif st == 'rejected' %} text-bg-danger
+                    {% elif st == 'pending' %} text-bg-warning
+                    {% elif st == 'cancelled' %} text-bg-secondary
+                    {% else %} text-bg-light{% endif %}" title="{{ obj.status }}">
+                    {% if st == 'draft' %}Черновик
+                    {% elif st == 'pending' %}На рассмотрении
+                    {% elif st == 'approved' %}Одобрено
+                    {% elif st == 'rejected' %}Отклонено
+                    {% elif st == 'cancelled' %}Отменено
+                    {% else %}{{ obj.status }}{% endif %}
+                  </span>
+                {% endwith %}{% endif %}
+              </div>
+              <div class="small text-secondary d-flex flex-wrap gap-3 mt-1">
+                {% if obj.date_from or obj.date_to %}
+                  <span class="text-mono"><i class="bi-calendar3 me-1"></i>
+                    {{ obj.date_from|default:"—" }} → {{ obj.date_to|default:"—" }}
+                  </span>
+                {% endif %}
+                {% if obj.created_at %}
+                  <span><i class="bi-clock me-1"></i>Создано: {{ obj.created_at }}</span>
+                {% endif %}
+                {% if obj.updated_at %}
+                  <span><i class="bi-clock-history me-1"></i>Обновлено: {{ obj.updated_at }}</span>
+                {% endif %}
+                {% if obj.decided_at %}
+                  <span><i class="bi-check2-square me-1"></i>Решение: {{ obj.decided_at }}</span>
+                {% endif %}
+              </div>
+            </div>
+            {% if obj.employee.id != user.id and can_process %}
+            <div class="ms-auto d-flex gap-1">
+              <!-- Одобрить -->
+              <button type="button" class="btn btn-ghost btn-sm text-success"
+                      data-bs-toggle="modal" data-bs-target="#reqApproveModal"
+                      data-id="{{ obj.id }}" title="Одобрить">
+                <i class="bi-hand-thumbs-up"></i>
+              </button>
+              <!-- Отклонить -->
+              <button type="button" class="btn btn-ghost btn-sm text-danger"
+                      data-bs-toggle="modal" data-bs-target="#reqRejectModal"
+                      data-id="{{ obj.id }}" title="Отклонить">
+                <i class="bi-hand-thumbs-down"></i>
+              </button>
+            </div>
+            {% endif %}
+            {% if obj.employee.id == user.id %}
+            <div class="ms-auto d-flex gap-1">
+              <button type="button" class="btn btn-ghost btn-sm text-primary"
+                      data-bs-toggle="modal" data-bs-target="#reqEditModal"
+                      data-id="{{ obj.id }}"
+                      data-title="{{ obj.title|default_if_none:'' }}"
+                      data-type="{{ obj.type|default_if_none:'' }}"
+                      data-date_from="{{ obj.date_from|default_if_none:'' }}"
+                      data-date_to="{{ obj.date_to|default_if_none:'' }}"
+                      data-comment="{{ obj.comment|default_if_none:'' }}"
+                      data-status="{{ obj.status|lower }}" title="Изменить">
+                <i class="bi-pencil"></i>
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm text-secondary"
+                      data-bs-toggle="modal" data-bs-target="#reqCancelModal"
+                      data-id="{{ obj.id }}" title="Отменить">
+                <i class="bi-slash-circle"></i>
+              </button>
+            </div>
+            {% endif %}
+          </header>
+
+          {% if obj.comment %}
+            <div class="mt-2 small text-body-secondary">{{ obj.comment }}</div>
+          {% endif %}
+
+          <footer class="feed-actions border-0 mt-2 d-flex align-items-center gap-2">
+            <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#rcoll-{{ obj.id }}"
+                    aria-controls="rcoll-{{ obj.id }}"
+                    aria-expanded="false">
+              <i class="bi-chat-dots"></i>
+              <span data-role="count">{{ obj.comments_count|default:0 }}</span>
+              <span class="txt-close">Скрыть</span>
+            </button>
+            {% if obj.attachment %}
+              <a href="{{ obj.attachment }}" class="btn btn-ghost d-inline-flex align-items-center gap-1" target="_blank">
+                <i class="bi-paperclip"></i><span>Вложение</span>
+              </a>
+            {% endif %}
+          </footer>
+
+          <div id="rcoll-{{ obj.id }}" class="collapse" data-request-id="{{ obj.id }}" data-comments-collapse>
+            <div class="comments-block p-3">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <strong class="small mb-0">Комментарии</strong>
+                <div class="spinner-border spinner-border-sm text-secondary" role="status" style="display:none;"></div>
+              </div>
+              <div class="comments-list" data-role="list"></div>
+              <form class="comment-new mt-3" data-role="form" autocomplete="off">
+                {% csrf_token %}
+                <div class="input-group input-group-sm">
+                  <textarea class="form-control" rows="3" placeholder="Написать…" data-role="text"></textarea>
+                  <button class="btn btn-outline-primary" type="submit" title="Отправить"><i class="bi-send"></i></button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </article>
+      {% endfor %}
+    {% else %}
+      <div class="p-4 text-center text-body-secondary">Нет заявлений.</div>
+    {% endif %}
+  </div>
+
+  {# Пагинация по next/prev ссылкам из API (если есть) #}
+  {% if next_url or prev_url %}
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <a class="btn btn-outline-secondary {% if not prev_url %}disabled{% endif %}" href="{{ prev_url|default:'#' }}">
+        <i class="bi-arrow-left"></i> Назад
+      </a>
+      <span class="text-body-secondary small">Всего: {{ count|default:'—' }}</span>
+      <a class="btn btn-outline-secondary {% if not next_url %}disabled{% endif %}" href="{{ next_url|default:'#' }}">
+        Вперёд <i class="bi-arrow-right"></i>
+      </a>
+    </div>
+  {% endif %}
+
+</div>
+
+{# ===== Modals ===== #}
+
+<!-- Create -->
+<div class="modal fade" id="reqCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'requests:request_list' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="create">
+      <div class="modal-header">
+        <h5 class="modal-title">Создать заявление</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Тип</label>
+          <select name="type" class="form-select" required>
+            <option value="" selected disabled>Выберите…</option>
+            <option value="vacation">Отпуск</option>
+            <option value="sick_leave">Больничный</option>
+            <option value="transfer">Перевод</option>
+            <option value="dismissal">Увольнение</option>
+            <option value="other">Другое</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Заголовок</label>
+          <input type="text" name="title" class="form-control" maxlength="255">
+        </div>
+
+        <div class="row g-2">
+          <div class="col">
+            <label class="form-label">С даты</label>
+            <input type="date" name="date_from" class="form-control">
+          </div>
+          <div class="col">
+            <label class="form-label">По дату</label>
+            <input type="date" name="date_to" class="form-control">
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">Комментарий</label>
+          <textarea name="comment" class="form-control" rows="3"></textarea>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">Вложение</label>
+          <input type="file" name="attachment" class="form-control">
+          <div class="form-text">Допустимые форматы и размер контролируются на сервере.</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+
+        <!-- Новая кнопка: сохранить как черновик -->
+        <!-- formnovalidate позволяет сохранить не заполняя обязательные поля -->
+        <button class="btn btn-outline-secondary" type="submit"
+                name="_save_as" value="draft" formnovalidate>
+          Сохранить как черновик
+        </button>
+
+        <!-- Обычное создание -->
+        <button class="btn btn-primary" type="submit" name="_save_as" value="submit">
+          Создать
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- Edit (PATCH) -->
+<div class="modal fade" id="reqEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'requests:request_list' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="update">
+      <input type="hidden" name="id" id="editId">
+      <div class="modal-header">
+        <h5 class="modal-title">Изменить заявление</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- ✅ значение по умолчанию — submit -->
+        <input type="hidden" name="_save_as" value="submit">
+
+        <div class="mb-3">
+          <label class="form-label">Тип</label>
+          <select name="type" id="editType" class="form-select">
+            <option value="">— Без изменения —</option>
+            <option value="vacation">Отпуск</option>
+            <option value="sick_leave">Больничный</option>
+            <option value="transfer">Перевод</option>
+            <option value="dismissal">Увольнение</option>
+            <option value="other">Другое</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Заголовок</label>
+          <input type="text" name="title" id="editTitle" class="form-control" maxlength="255">
+        </div>
+
+        <div class="row g-2">
+          <div class="col">
+            <label class="form-label">С даты</label>
+            <input type="date" name="date_from" id="editDateFrom" class="form-control">
+          </div>
+          <div class="col">
+            <label class="form-label">По дату</label>
+            <input type="date" name="date_to" id="editDateTo" class="form-control">
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">Комментарий</label>
+          <textarea name="comment" id="editComment" class="form-control" rows="3"></textarea>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">Новое вложение</label>
+          <input type="file" name="attachment" class="form-control">
+        </div>
+
+        <!-- ✅ чекбокс теперь внутри modal-body, после hidden -->
+        <div class="mt-3 form-check">
+          <input class="form-check-input" type="checkbox" id="editIsDraft" name="_save_as" value="draft">
+          <label class="form-check-label" for="editIsDraft">Сохранить как черновик</label>
+          <div class="form-text">Если отмечено, заявка будет переведена в статус черновика.</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-primary" type="submit">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- Delete -->
+<div class="modal fade" id="reqDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'requests:request_list' %}">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="delete">
+      <input type="hidden" name="id" id="deleteId">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger">Удалить заявление?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        Это действие необратимо.
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-danger" type="submit">Удалить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Approve -->
+<div class="modal fade" id="reqApproveModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'requests:request_list' %}">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="approve">
+      <input type="hidden" name="id" id="approveId">
+      <div class="modal-header">
+        <h5 class="modal-title text-success">Одобрить заявление?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-success" type="submit">Одобрить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reject -->
+<div class="modal fade" id="reqRejectModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'requests:request_list' %}">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="reject">
+      <input type="hidden" name="id" id="rejectId">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger">Отклонить заявление?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-danger" type="submit">Отклонить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Cancel -->
+<div class="modal fade" id="reqCancelModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'requests:request_list' %}">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="cancel">
+      <input type="hidden" name="id" id="cancelId">
+      <div class="modal-header">
+        <h5 class="modal-title">Отменить заявление?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-outline-secondary" type="submit">Отменить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add comment -->
+<div class="modal fade" id="reqCommentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'requests:request_list' %}">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="comment">
+      <input type="hidden" name="id" id="commentId">
+      <div class="modal-header">
+        <h5 class="modal-title">Добавить комментарий</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <textarea name="text" id="commentText" class="form-control" rows="4" required></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-primary" type="submit">Отправить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Comments viewer -->
+<div class="modal fade" id="reqCommentsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Комментарии к заявлению #{{ comments_for }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        {% if comments %}
+          <div class="list-group">
+            {% for c in comments %}
+              <div class="list-group-item">
+                <div class="small text-body-secondary d-flex justify-content-between">
+                  <span>{{ c.author.full_name|default:c.author|default:"—" }}</span>
+                  <span class="text-mono">{{ c.created_at }}</span>
+                </div>
+                <div class="mt-1">{{ c.text }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-body-secondary">Комментариев пока нет.</div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#reqCommentModal"
+                data-id="{{ comments_for }}">Добавить комментарий</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+  import { initRequestModalHandler } from "{% static 'js/components/requestModalHandler.js' %}";
+  import { initRequestCommentsHandler } from "{% static 'js/components/requestCommentsHandler.js' %}";
+
+  // Инициализация обработчиков модальных окон
+  initRequestModalHandler({
+    autoShowComments: {% if comments_for %}true{% else %}false{% endif %}
+  });
+
+  // Инициализация обработчика комментариев
+  initRequestCommentsHandler({
+    commentsUrlTemplate: "{% url 'requests:request_comments' 0 %}",
+    addCommentUrlTemplate: "{% url 'requests:request_comment_add' 0 %}",
+    autoloadCounts: true
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,480 @@
+// Enhanced Chat List with pinning, avatars, and real-time updates
+(function() {
+    'use strict';
+
+    let ws = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT = 5;
+
+    // ==================== WebSocket ====================
+    
+    function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/chats/`;
+        
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+            console.log('Chat List WebSocket connected');
+            reconnectAttempts = 0;
+        };
+        
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            handleWebSocketMessage(data);
+        };
+        
+        ws.onerror = (e) => {
+            console.error('WebSocket error:', e);
+        };
+        
+        ws.onclose = () => {
+            console.log('WebSocket closed');
+            if (reconnectAttempts < MAX_RECONNECT) {
+                reconnectAttempts++;
+                setTimeout(connectWebSocket, 2000 * reconnectAttempts);
+            }
+        };
+    }
+
+    function handleWebSocketMessage(data) {
+        switch(data.type) {
+            case 'list_update':
+                updateChatLastMessage(data.chat_id, data.message);
+                break;
+            case 'message_edited':
+                updateChatLastMessage(data.chat_id, data.message);
+                break;
+            case 'user_typing':
+                showChatTyping(data.chat_id, data.user_name);
+                break;
+        }
+    }
+
+    function updateChatLastMessage(chatId, message) {
+        const chatRow = document.querySelector(`[data-chat-id="${chatId}"]`);
+        if (!chatRow) return;
+
+        // Update timestamp
+        const lastTime = chatRow.querySelector('[data-last-time]');
+        if (lastTime) {
+            const date = new Date(message.created_ts);
+            lastTime.textContent = date.toLocaleString('ru', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Update author
+        const lastAuthor = chatRow.querySelector('[data-last-author]');
+        if (lastAuthor) {
+            lastAuthor.textContent = message.author_name;
+        }
+
+        // Update preview
+        const lastPreview = chatRow.querySelector('[data-last-preview]');
+        if (lastPreview) {
+            let preview = message.content;
+            if (message.is_deleted) {
+                preview = 'Сообщение удалено';
+            } else if (message.has_attachments) {
+                preview = '📎 Вложение';
+            }
+            lastPreview.textContent = preview.substring(0, 120);
+        }
+
+        // Update unread count (simplified - actual count needs server update)
+        const unreadBadge = chatRow.querySelector('[data-unread]');
+        if (unreadBadge && message.author_id !== getCurrentUserId()) {
+            unreadBadge.classList.remove('d-none');
+        }
+
+        // Move to top if not pinned
+        const isPinned = chatRow.classList.contains('pinned');
+        if (!isPinned) {
+            moveToTop(chatRow);
+        }
+
+        // Flash animation
+        chatRow.classList.add('updated');
+        setTimeout(() => chatRow.classList.remove('updated'), 1000);
+    }
+
+    function showChatTyping(chatId, userName) {
+        const chatRow = document.querySelector(`[data-chat-id="${chatId}"]`);
+        if (!chatRow) return;
+
+        const feedSub = chatRow.querySelector('.feed-sub');
+        if (!feedSub) return;
+
+        // Save original content
+        if (!feedSub.dataset.originalContent) {
+            feedSub.dataset.originalContent = feedSub.innerHTML;
+        }
+
+        // Show typing
+        feedSub.innerHTML = `<em class="text-primary">${userName} печатает...</em>`;
+
+        // Hide after 3s
+        clearTimeout(feedSub._typingTimeout);
+        feedSub._typingTimeout = setTimeout(() => {
+            if (feedSub.dataset.originalContent) {
+                feedSub.innerHTML = feedSub.dataset.originalContent;
+                delete feedSub.dataset.originalContent;
+            }
+        }, 3000);
+    }
+
+    function moveToTop(chatRow) {
+        const parent = chatRow.parentElement;
+        const firstChild = parent.firstElementChild;
+        
+        if (firstChild !== chatRow) {
+            parent.insertBefore(chatRow, firstChild);
+        }
+    }
+
+    function getCurrentUserId() {
+        // Try to get from data attribute or similar
+        return parseInt(document.body.dataset.userId || 0);
+    }
+
+    // ==================== Pin/Unpin ====================
+
+    window.togglePinChat = function(chatId, event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const chatRow = document.querySelector(`[data-chat-id="${chatId}"]`);
+        const isPinned = chatRow.classList.contains('pinned');
+
+        fetch(`/communications/api/chat/${chatId}/pin/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: `pinned=${!isPinned}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                if (data.pinned) {
+                    chatRow.classList.add('pinned');
+                    addPinBadge(chatRow);
+                    moveToPinnedSection(chatRow);
+                } else {
+                    chatRow.classList.remove('pinned');
+                    removePinBadge(chatRow);
+                    moveToUnpinnedSection(chatRow);
+                }
+            }
+        })
+        .catch(error => console.error('Pin error:', error));
+    };
+
+    function addPinBadge(chatRow) {
+        if (chatRow.querySelector('.chat-pinned-badge')) return;
+
+        const badge = document.createElement('div');
+        badge.className = 'chat-pinned-badge';
+        badge.innerHTML = '<i class="bi-pin-angle-fill"></i>';
+        badge.title = 'Закреплено';
+        
+        const feedMeta = chatRow.querySelector('.flex-grow-1');
+        feedMeta.style.position = 'relative';
+        feedMeta.appendChild(badge);
+    }
+
+    function removePinBadge(chatRow) {
+        const badge = chatRow.querySelector('.chat-pinned-badge');
+        if (badge) badge.remove();
+    }
+
+    function moveToPinnedSection(chatRow) {
+        const parent = chatRow.parentElement;
+        const firstUnpinned = Array.from(parent.children).find(row => 
+            !row.classList.contains('pinned')
+        );
+        
+        if (firstUnpinned) {
+            parent.insertBefore(chatRow, firstUnpinned);
+        } else {
+            parent.appendChild(chatRow);
+        }
+    }
+
+    function moveToUnpinnedSection(chatRow) {
+        const parent = chatRow.parentElement;
+        parent.appendChild(chatRow);
+    }
+
+    // ==================== Context Menu ====================
+
+    function initContextMenus() {
+        document.querySelectorAll('.chat-row').forEach(chatRow => {
+            chatRow.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                showContextMenu(e, this);
+            });
+        });
+    }
+
+    function showContextMenu(event, chatRow) {
+        const chatId = chatRow.dataset.chatId;
+        const isPinned = chatRow.classList.contains('pinned');
+
+        // Remove existing menu
+        document.getElementById('chat-context-menu')?.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'chat-context-menu';
+        menu.className = 'context-menu';
+        menu.style.left = `${event.pageX}px`;
+        menu.style.top = `${event.pageY}px`;
+
+        menu.innerHTML = `
+            <button onclick="togglePinChat(${chatId}, event)">
+                <i class="bi-pin-angle${isPinned ? '-fill' : ''}"></i>
+                ${isPinned ? 'Открепить' : 'Закрепить'}
+            </button>
+            <button onclick="toggleNotifications(${chatId}, event)">
+                <i class="bi-bell-slash"></i>
+                Выключить уведомления
+            </button>
+            <button onclick="hideChat(${chatId}, event)">
+                <i class="bi-eye-slash"></i>
+                Скрыть чат
+            </button>
+            <hr class="my-1">
+            <button onclick="markAsRead(${chatId}, event)">
+                <i class="bi-check-all"></i>
+                Отметить прочитанным
+            </button>
+        `;
+
+        document.body.appendChild(menu);
+
+        // Close on click outside
+        setTimeout(() => {
+            document.addEventListener('click', function closeMenu() {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            });
+        }, 10);
+    }
+
+    window.toggleNotifications = function(chatId, event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        fetch(`/communications/api/chat/${chatId}/notifications/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: 'enabled=false'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                console.log('Notifications toggled');
+            }
+        });
+    };
+
+    window.hideChat = function(chatId, event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!confirm('Скрыть этот чат из списка?')) return;
+
+        // TODO: Implement hide chat API
+        console.log('Hide chat:', chatId);
+    };
+
+    window.markAsRead = function(chatId, event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        fetch(`/communications/chats/${chatId}/mark-read/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCsrfToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                const chatRow = document.querySelector(`[data-chat-id="${chatId}"]`);
+                const unreadBadge = chatRow.querySelector('[data-unread]');
+                if (unreadBadge) {
+                    unreadBadge.classList.add('d-none');
+                }
+            }
+        });
+    };
+
+    // ==================== Search & Filter ====================
+
+    const searchInput = document.getElementById('chatSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase().trim();
+            
+            document.querySelectorAll('.chat-row').forEach(row => {
+                const haystack = row.dataset.haystack?.toLowerCase() || '';
+                const match = haystack.includes(query);
+                row.style.display = match ? '' : 'none';
+            });
+
+            updateEmptyNotes();
+        });
+    }
+
+    function updateEmptyNotes() {
+        document.querySelectorAll('.chat-section').forEach(section => {
+            const listContainer = section.querySelector('.list-chats');
+            const visibleChats = Array.from(listContainer.children).filter(
+                row => row.style.display !== 'none'
+            );
+            
+            const emptyNote = section.querySelector('[data-empty-note]');
+            if (emptyNote) {
+                emptyNote.style.display = visibleChats.length === 0 ? 'block' : 'none';
+            }
+        });
+    }
+
+    // ==================== Utilities ====================
+
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    }
+
+    // ==================== Init ====================
+
+    connectWebSocket();
+    initDropdownMenus();
+    updateEmptyNotes();
+
+    // Sort pinned chats to top on load
+    document.querySelectorAll('.list-chats').forEach(container => {
+        const pinned = Array.from(container.querySelectorAll('.chat-row.pinned'));
+        pinned.forEach(row => moveToPinnedSection(row));
+    });
+
+    // ==================== Dropdown Menu Handlers ====================
+
+    function initDropdownMenus() {
+        // Обновление текста "Закрепить"/"Открепить" при открытии dropdown
+        document.addEventListener('show.bs.dropdown', function(e) {
+            const dropdown = e.target;
+            const chatRow = dropdown.closest('.chat-row');
+            if (!chatRow) return;
+
+            const isPinned = chatRow.classList.contains('pinned');
+            const pinTextElement = dropdown.parentElement.querySelector('[data-pin-text]');
+            if (pinTextElement) {
+                pinTextElement.textContent = isPinned ? 'Открепить' : 'Закрепить';
+            }
+        });
+
+        // Обработка действий в выпадающем меню
+        document.addEventListener('click', function(e) {
+            const actionLink = e.target.closest('[data-action]');
+            if (!actionLink) return;
+
+            e.preventDefault();
+            const action = actionLink.dataset.action;
+            const chatRow = actionLink.closest('.chat-row');
+            if (!chatRow) return;
+
+            const chatId = chatRow.dataset.chatId;
+
+            switch(action) {
+                case 'pin':
+                    togglePinChat(chatId, chatRow);
+                    break;
+                case 'notifications':
+                    toggleNotifications(chatId, chatRow);
+                    break;
+                case 'edit':
+                    editChat(chatId);
+                    break;
+                case 'manage':
+                    manageChat(chatId);
+                    break;
+                case 'delete':
+                    deleteChat(chatId, chatRow);
+                    break;
+            }
+
+            // Закрываем dropdown
+            const dropdownBtn = actionLink.closest('.dropdown-menu')?.previousElementSibling;
+            if (dropdownBtn) {
+                const dropdown = bootstrap.Dropdown.getInstance(dropdownBtn);
+                if (dropdown) dropdown.hide();
+            }
+        });
+    }
+
+    function toggleNotifications(chatId, chatRow) {
+        // TODO: реализовать API запрос
+        console.log('Toggle notifications for chat', chatId);
+        alert('Управление уведомлениями будет доступно в следующей версии');
+    }
+
+    function editChat(chatId) {
+        // TODO: создать страницу редактирования чата
+        alert('Редактирование чатов будет доступно в следующей версии');
+        // window.location.href = `/communications/chat/${chatId}/edit/`;
+    }
+
+    function manageChat(chatId) {
+        // TODO: создать страницу управления чатом
+        alert('Управление чатом (участники, права) будет доступно в следующей версии');
+        // window.location.href = `/communications/chat/${chatId}/manage/`;
+    }
+
+    function deleteChat(chatId, chatRow) {
+        // TODO: реализовать API endpoint для удаления чата
+        alert('Удаление чатов будет доступно в следующей версии');
+        return;
+        
+        /* Закомментировано до реализации API
+        if (!confirm('Вы уверены, что хотите удалить этот чат? Это действие необратимо.')) {
+            return;
+        }
+
+        fetch(`/communications/api/chat/${chatId}/delete/`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCsrfToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                // Удаляем строку из списка
+                chatRow.style.transition = 'opacity 0.3s';
+                chatRow.style.opacity = '0';
+                setTimeout(() => chatRow.remove(), 300);
+            } else {
+                alert('Ошибка при удалении чата: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Delete error:', error);
+            alert('Ошибка при удалении чата');
+        });
+        */
+    }
+
+})();

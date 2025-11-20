@@ -1,0 +1,1391 @@
+{# templates/employees/_employee_edit.html #}
+<style>
+  /* модал всегда выше бэкдропа/локальных стэков */
+  .modal { z-index: 1080; }
+  .modal-backdrop { z-index: 1075; }
+  /* не даём «просвечивать» через бэкдроп */
+  .modal .modal-content { background-color: var(--bs-body-bg); }
+</style>
+
+<form id="apiEditForm" class="row g-3" data-endpoint="{{ endpoint }}"
+  action="{% if is_me %}{% url 'employees:employee_set_position_me' %}{% else %}{% url 'employees:employee_set_position' emp.id %}{% endif %}">
+  {% csrf_token %}
+
+  {# === ЛИЧНЫЕ ДАННЫЕ === #}
+  <div class="col-12">
+    <div class="ios-acc mb-3">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-person-badge"></i>
+        <div class="ios-section-title mb-0">Личные данные</div>
+      </div>
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+          <div class="col-sm-6">
+            <label class="form-label" for="f_first_name">Имя</label>
+            <input id="f_first_name" class="form-control" name="first_name"
+                   value="{{ emp.first_name|default:'' }}" autocomplete="given-name"
+                   data-init="{{ emp.first_name|default:'' }}">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="f_last_name">Фамилия</label>
+            <input id="f_last_name" class="form-control" name="last_name"
+                   value="{{ emp.last_name|default:'' }}" autocomplete="family-name"
+                   data-init="{{ emp.last_name|default:'' }}">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="f_patronymic">Отчество</label>
+            <input id="f_patronymic" class="form-control" name="patronymic"
+                   value="{{ emp.patronymic|default:'' }}"
+                   data-init="{{ emp.patronymic|default:'' }}">
+          </div>
+
+          <div class="col-sm-3">
+            <label class="form-label" for="f_gender">Пол</label>
+            <select id="f_gender" class="form-select" name="gender"
+                    data-init="{{ emp.gender|default_if_none:'' }}">
+              <option value="" {% if emp.gender is None %}selected{% endif %}>— Не указано —</option>
+              <option value="1" {% if emp.gender == 1 %}selected{% endif %}>Мужской</option>
+              <option value="2" {% if emp.gender == 2 %}selected{% endif %}>Женский</option>
+            </select>
+          </div>
+
+          <div class="col-sm-3">
+            <label class="form-label" for="f_birth">Дата рождения</label>
+            <input id="f_birth" class="form-control" type="date" name="birth_date"
+                   value="{{ emp.birth_date|default:'' }}"
+                   data-init="{{ emp.birth_date|default:'' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# === КОНТАКТЫ === #}
+  <div class="col-12">
+    <div class="ios-acc mb-3">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-person-lines-fill"></i>
+        <div class="ios-section-title mb-0">Контакты</div>
+      </div>
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+          <div class="col-sm-6">
+            <label class="form-label" for="f_phone">Телефон</label>
+            <input id="f_phone" class="form-control" name="phone_number"
+                   value="{{ emp.phone_number|default:'' }}" inputmode="tel"
+                   data-init="{{ emp.phone_number|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="f_email">Email</label>
+            <input id="f_email" class="form-control" type="email" name="email"
+                   value="{{ emp.email|default:'' }}" autocomplete="email"
+                   
+                   data-init="{{ emp.email|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+
+          <div class="col-sm-4">
+            <label class="form-label" for="f_telegram">Telegram</label>
+            <input id="f_telegram" class="form-control" name="telegram"
+                   value="{{ emp.telegram|default:'' }}" inputmode="text"
+                   data-init="{{ emp.telegram|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label" for="f_whatsapp">WhatsApp</label>
+            <input id="f_whatsapp" class="form-control" name="whatsapp"
+                   value="{{ emp.whatsapp|default:'' }}" inputmode="tel"
+                   data-init="{{ emp.whatsapp|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label" for="f_wechat">WeChat</label>
+            <input id="f_wechat" class="form-control" name="wechat"
+                   value="{{ emp.wechat|default:'' }}" inputmode="text"
+                   data-init="{{ emp.wechat|default:'' }}" data-contact="1">
+            <div class="invalid-feedback"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{# === ДОЛЖНОСТЬ === #}
+<div class="col-12">
+  {% if can_edit_position or request.user.is_staff or request.user.is_superuser %}
+    <div class="ios-acc mb-2" id="positionBlock"
+         data-update-url-tpl="{% url 'employees:position_update' 0 %}"
+         data-detail-url-tpl="{% url 'employees:position_detail' 0 %}"
+         data-create-url="{% url 'employees:position_create' %}"
+         data-assign-url="{% if is_me %}{% url 'employees:employee_set_position_me' %}{% else %}{% url 'employees:employee_set_position' emp.id %}{% endif %}"
+         data-can-assign="{% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}1{% else %}0{% endif %}">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-briefcase"></i>
+        <div class="ios-section-title mb-0">Должность</div>
+      </div>
+
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+
+          {# ТЕКУЩАЯ ДОЛЖНОСТЬ #}
+          <div class="col-md-6">
+            <label class="form-label" for="f_position">Текущая должность</label>
+            {% if all_positions %}
+              <select id="f_position" class="form-select" name="position_id"
+                      data-init="{{ emp.position.id|default:'' }}">
+                <option value="">— Не указано —</option>
+                {% for p in all_positions %}
+                  {% if p.id and p.name %}
+                    <option value="{{ p.id }}"
+                      {% if emp.position and emp.position.id == p.id %}selected{% endif %}>
+                      {{ p.name }}
+                    </option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            {% else %}
+              <input id="f_position" class="form-control" name="position_id"
+                     value="{{ emp.position.id|default:'' }}" placeholder="ID должности"
+                     data-init="{{ emp.position.id|default:'' }}">
+              <div class="form-text">Передайте в контекст <code>all_positions</code> для выпадающего списка.</div>
+            {% endif %}
+          </div>
+
+          {# СОЗДАТЬ НОВУЮ #}
+          {% if can_create_position or request.user.is_staff or request.user.is_superuser %}
+            <div class="col-md-6">
+              <label class="form-label d-block">Новая должность</label>
+              <button type="button" class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="collapse" data-bs-target="#newPositionPane" aria-expanded="false" aria-controls="newPositionPane">
+                Создать должность
+              </button>
+            </div>
+
+            <div class="col-12">
+              <div id="newPositionPane" class="collapse mt-2">
+                <div class="row g-2">
+                  <div class="col-sm-6">
+                    <label class="form-label" for="pos_name">Название</label>
+                    <input id="pos_name" class="form-control" placeholder="Напр. Руководитель отдела">
+                  </div>
+                  <div class="col-sm-6">
+                    <label class="form-label" for="pos_desc">Описание</label>
+                    <input id="pos_desc" class="form-control" placeholder="Опционально">
+                  </div>
+
+                  {% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}
+                    <div class="col-12">
+                      {% if all_groups %}
+                        <div class="col-12">
+                          <div id="pos_groups_chips" class="chips mb-2"></div>
+                          <input type="hidden" id="pos_groups_hidden" value="">
+                        </div>
+
+                        {# Модал выбора групп для новой должности #}
+                        <div class="modal fade" id="groupsPickerModal" tabindex="-1" aria-hidden="true">
+                          <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+                            <div class="modal-content">
+                              <div class="modal-header">
+                                <h5 class="modal-title">Группы прав</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                              </div>
+                              <div class="modal-body">
+                                <input type="search" class="form-control mb-3" id="groupsSearch" placeholder="Поиск по группам">
+                                <div id="groupsList" class="list-group">
+                                  {% for g in all_groups %}
+                                    {% if g.id and g.name %}
+                                      <label class="list-group-item d-flex align-items-center gap-2">
+                                        <input class="form-check-input me-2 group-check" type="checkbox" value="{{ g.id }}">
+                                        <span class="flex-grow-1">{{ g.name }}</span>
+                                        <span class="text-secondary small">#{{ g.id }}</span>
+                                      </label>
+                                    {% endif %}
+                                  {% endfor %}
+                                </div>
+                              </div>
+                              <div class="modal-footer">
+                                <button type="button" id="groupsClear" class="btn btn-ghost">Сбросить</button>
+                                <button type="button" id="groupsDone" class="btn btn-primary" data-bs-dismiss="modal">Готово</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      {% else %}
+                        <div class="col-12">
+                          <label class="form-label" for="pos_groups_csv">Группы прав (id через запятую)</label>
+                          <input id="pos_groups_csv" class="form-control" placeholder="Напр. 1,2,3">
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                  <div class="col-12 d-flex flex-wrap gap-2 mt-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            data-bs-toggle="modal" data-bs-target="#groupsPickerModal">
+                      Выбрать группы полномочий
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="posCreateBtn">
+                      <span class="lbl">Создать и назначить</span>
+                      <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-sm"
+                            data-bs-toggle="collapse" data-bs-target="#newPositionPane">Отмена</button>
+                  </div>
+
+                  <div class="col-12">
+                    <div class="small mt-1 d-none" id="posCreateMsg"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          {# РЕДАКТИРОВАТЬ ВЫБРАННУЮ #}
+          <div class="col-12">
+            <div class="mt-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="collapse" data-bs-target="#editPositionPane"
+                      id="toggleEditPositionBtn" aria-expanded="false" aria-controls="editPositionPane">
+                Редактировать должность
+              </button>
+            </div>
+
+            <div id="editPositionPane" class="collapse mt-2">
+              <div class="row g-2">
+                <div class="col-sm-6">
+                  <label class="form-label" for="pos_edit_name">Название должности</label>
+                  <input id="pos_edit_name" class="form-control" placeholder="Напр. Руководитель отдела">
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label" for="pos_edit_desc">Описание</label>
+                  <input id="pos_edit_desc" class="form-control" placeholder="Опционально">
+                </div>
+
+                {% if can_assign_position_groups or request.user.is_staff or request.user.is_superuser %}
+                  <div class="col-12">
+                    <label class="form-label d-block">Группы полномочий</label>
+                    <div id="pos_edit_groups_chips" class="chips mb-2"></div>
+                    <input type="hidden" id="pos_edit_groups_hidden" value="">
+                    <div class="d-flex flex-wrap gap-2">
+                      <button type="button" class="btn btn-outline-secondary btn-sm"
+                              data-bs-toggle="modal" data-bs-target="#posEditGroupsPickerModal">
+                        Выбрать группы
+                      </button>
+                      <button type="button" class="btn btn-ghost btn-sm" id="posEditClearGroups">Очистить</button>
+                    </div>
+                  </div>
+
+                  {# Модал выбора групп для редактирования должности #}
+                  <div class="modal fade" id="posEditGroupsPickerModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">Группы прав (должность)</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                        </div>
+                        <div class="modal-body">
+                          <input type="search" class="form-control mb-3" id="posEditGroupsSearch" placeholder="Поиск по группам">
+                          <div id="posEditGroupsList" class="list-group">
+                            {% for g in all_groups %}
+                              {% if g.id and g.name %}
+                                <label class="list-group-item d-flex align-items-center gap-2">
+                                  <input class="form-check-input me-2 pos-edit-group-check" type="checkbox" value="{{ g.id }}">
+                                  <span class="flex-grow-1">{{ g.name }}</span>
+                                  <span class="text-secondary small">#{{ g.id }}</span>
+                                </label>
+                              {% endif %}
+                            {% endfor %}
+                          </div>
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" id="posEditGroupsClear" class="btn btn-ghost">Сбросить</button>
+                          <button type="button" id="posEditGroupsDone" class="btn btn-primary" data-bs-dismiss="modal">Готово</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+
+                <div class="col-12 d-flex flex-wrap gap-2 mt-1">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="posEditLoadBtn">
+                    <span class="lbl">Загрузить из выбранной</span>
+                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="btn btn-primary btn-sm" id="posEditSaveBtn">
+                    <span class="lbl">Сохранить изменения</span>
+                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm"
+                          data-bs-toggle="collapse" data-bs-target="#editPositionPane">Отмена</button>
+                </div>
+
+                <div class="col-12">
+                  <div class="small mt-1 d-none" id="posEditMsg"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>{# /.row #}
+      </div>{# /.ios-acc-body #}
+    </div>
+  {% else %}
+    <div class="ios-acc mb-2">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-briefcase"></i>
+        <div class="ios-section-title mb-0">Должность</div>
+      </div>
+      <div class="ios-acc-body">
+        <input class="form-control" value="{% firstof emp.position.name emp.position_label '—' %}" disabled>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+
+{# === ПЕРСОНАЛЬНЫЕ ГРУППЫ ПОЛНОМОЧИЙ === #}
+<div class="col-12">
+  {% if request.user.is_staff or request.user.is_superuser %}
+    <div class="ios-acc mb-3" id="empGroupsBlock"
+        data-bulk-url="{% url 'employees:employee_groups_bulk' emp.id %}"
+        data-create-url="{% url 'employees:group_create' %}"
+        data-delete-url="{% url 'employees:group_delete' %}">
+      <div class="d-flex align-items-center gap-2 px-3 py-3">
+        <i class="bi-people"></i>
+        <div class="ios-section-title mb-0">Дополнительные полномочия</div>
+      </div>
+      <div class="ios-acc-body">
+        <div class="row g-3 px-2">
+
+          <div class="col-12">
+            <div class="small text-secondary mb-2">
+            </div>
+          </div>
+
+          {# <<< НОВОЕ: вывод уже назначенных групп сотруднику в виде «пилюль» >>> #}
+          <div class="col-12">
+            <label class="form-label mb-1">Назначено сотруднику</label>
+            <div id="empGroupsAssigned" class="d-flex flex-wrap gap-2">
+              {% for g in emp_personal_groups %}
+                {% if g.id and g.name %}
+                  <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border"
+                        data-gid="{{ g.id }}">{{ g.name }}</span>
+                {% endif %}
+              {% empty %}
+                <span class="text-secondary small">Нет персональных групп</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="modal"
+                      data-bs-target="#empGroupsPickerModal">
+                Выбрать группы
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" id="empGroupsAssignBtn">
+                <span class="lbl">Назначить выбранные</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+              <button type="button" class="btn btn-outline-danger btn-sm" id="empGroupsRemoveBtn">
+                <span class="lbl">Снять выбранные</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+            <input type="hidden" id="emp_groups_hidden" value="">
+            <div id="empGroupsMsg" class="small mt-2 d-none"></div>
+          </div>
+
+          <hr class="my-2">
+
+          <div class="col-12 col-md-6">
+            <label class="form-label">Создать новую группу</label>
+            <div class="input-group">
+              <input id="empGroupsCreateName" class="form-control" placeholder="CN (имя группы)">
+              <button type="button" class="btn btn-outline-secondary" id="empGroupsCreateBtn">
+                <span class="lbl">Создать</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div id="empGroupsCreateMsg" class="small mt-2 d-none"></div>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label">Удалить группу</label>
+            <div class="input-group">
+              <select id="empGroupsDeleteSelect" class="form-select">
+                <option value="">— Выберите группу —</option>
+                {% for g in all_groups %}
+                  {% if g.id and g.name %}
+                    <option value="{{ g.id }}">{{ g.name }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+              <button type="button" class="btn btn-outline-danger" id="empGroupsDeleteBtn">
+                <span class="lbl">Удалить</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div class="form-text">Удаляется и LDAP-группа, и объект в БД.</div>
+            <div id="empGroupsDeleteMsg" class="small mt-2 d-none"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Модал выбора групп для персонального назначения #}
+    <div class="modal fade" id="empGroupsPickerModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Выбор групп</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+          </div>
+          <div class="modal-body">
+            <input type="search" class="form-control mb-3" id="empGroupsSearch" placeholder="Поиск по группам">
+            <div id="empGroupsList" class="list-group">
+              {% for g in all_groups %}
+                {% if g.id and g.name %}
+                  <label class="list-group-item d-flex align-items-center gap-2">
+                    <input class="form-check-input me-2 emp-group-check" type="checkbox" value="{{ g.id }}" data-cn="{{ g.name }}">
+                    <span class="flex-grow-1">{{ g.name }}</span>
+                    <span class="text-secondary small">#{{ g.id }}</span>
+                  </label>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" id="empGroupsClear" class="btn btn-ghost">Сбросить</button>
+            <button type="button" id="empGroupsDone" class="btn btn-primary" data-bs-dismiss="modal">Готово</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+
+
+  {# === КНОПКИ === #}
+  <div class="col-12 d-flex gap-2 mt-2">
+    <button type="submit" class="btn btn-primary">
+      <span class="btn-label"><i class="bi-check2 me-1"></i>Сохранить</span>
+      <span class="btn-spinner d-none spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+    </button>
+    <button type="button" class="btn btn-ghost" data-bs-toggle="collapse" data-bs-target="#editFormWrap">Отмена</button>
+  </div>
+</form>
+
+
+
+<script>
+  (function(){
+    const form = document.getElementById('apiEditForm');
+    if (!form) return;
+
+    const endpoint = form.dataset.endpoint || '';
+    if (!endpoint) { console.error('Нет endpoint для формы редактирования'); return; }
+
+    const CONTACT_FIELDS = ['email','phone_number','telegram','whatsapp','wechat'];
+
+    const btn = form.querySelector('[type="submit"]');
+    const btnLabel = btn?.querySelector('.btn-label');
+    const btnSpin  = btn?.querySelector('.btn-spinner');
+
+    function setSubmitting(on){
+      if (!btn) return;
+      if (on){ btn.setAttribute('disabled',''); btnSpin?.classList.remove('d-none'); btnLabel?.classList.add('visually-hidden'); }
+      else   { btn.removeAttribute('disabled');  btnSpin?.classList.add('d-none');   btnLabel?.classList.remove('visually-hidden'); }
+    }
+    function clearErrors(){
+      form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+      form.querySelectorAll('.invalid-feedback').forEach(el => el.textContent = '');
+    }
+    function fieldError(name, message){
+      const el = form.querySelector(`[name="${CSS.escape(name)}"]`);
+      if (!el) return;
+      el.classList.add('is-invalid');
+      const container = el.closest('[class^="col-"]') || el.parentElement;
+      let fb = container?.querySelector('.invalid-feedback');
+      if (!fb) { fb = document.createElement('div'); fb.className = 'invalid-feedback'; el.after(fb); }
+      fb.textContent = message || 'Некорректное значение';
+    }
+
+    function ensureOneContact(){
+      const hasAny = CONTACT_FIELDS.some(n => (form.elements[n]?.value || '').trim().length > 0);
+      if (hasAny) return true;
+      CONTACT_FIELDS.forEach(n => fieldError(n, 'Укажите хотя бы один контакт'));
+      form.elements[CONTACT_FIELDS[0]]?.focus();
+      return false;
+    }
+
+    // Прочитать файл в Base64
+    function readFileAsDataURL(file){
+      return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsDataURL(file);
+      });
+    }
+
+    // собрать skills_ids (массив) и сравнить с init
+    function collectSkillsPayload(){
+      const sel = form.querySelector('select[name="skills_ids"]');
+      if (!sel) return null;
+      const selected = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
+      const initCsv = sel.dataset.init || '';
+      const initArr = initCsv ? initCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
+      // сравнение (без учёта порядка)
+      const norm = a => a.slice().sort().join(',');
+      if (norm(selected) === norm(initArr)) return null;
+      return selected;
+    }
+
+    // собрать общие поля (кроме skills_ids и avatar)
+    function buildScalarPayload(){
+      const payload = {};
+      const fields = form.querySelectorAll(
+        'input[name]:not([type="file"]):not([name="clear_avatar"]):not(:disabled), select[name]:not([name="skills_ids"]):not(:disabled)'
+      );
+
+      fields.forEach(el => {
+        const name = el.name;
+        const raw = (el.value ?? '').toString().trim();
+        const init = (el.dataset.init ?? el.defaultValue ?? '').toString();
+
+        // Ничего не менялось
+        if (raw === init) return;
+
+        // Пустое значение: для некоторых полей нужно слать null
+        const shouldNull = (raw === '' && ['gender','birth_date','position_id'].includes(name));
+
+        if (shouldNull) {
+          // меняем непустое init -> null (очистка)
+          if (init !== '') payload[name] = null;
+          return;
+        }
+
+        // Типизация gender в число
+        if (name === 'gender' && raw !== '') {
+          payload[name] = Number(raw);
+          return;
+        }
+
+        // Остальные — как есть (пустые строки допустимы для текстовых полей)
+        payload[name] = raw;
+      });
+
+      return payload;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearErrors();
+
+      if (!ensureOneContact()) return;
+
+      setSubmitting(true);
+      try{
+        const payload = buildScalarPayload();
+
+        // skills_ids (массив)
+        const skills = collectSkillsPayload();
+        if (skills) payload.skills_ids = skills;
+
+        // avatar (Base64) / clear
+        const avatarFile = document.getElementById('f_avatar')?.files?.[0] || null;
+        const clearAvatar = form.querySelector('input[name="clear_avatar"]')?.checked;
+        if (avatarFile){
+          try{
+            const dataUrl = await readFileAsDataURL(avatarFile);
+            payload.avatar = dataUrl; // Base64ImageField ожидает data URL
+          }catch(_){}
+        } else if (clearAvatar){
+          payload.avatar = ""; // очистка
+        }
+
+        // если нечего отправлять — просто обновим UI
+        if (Object.keys(payload).length === 0){
+          setSubmitting(false);
+          if (window.bootstrap) {
+            try { new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
+          }
+          location.reload();
+          return;
+        }
+
+        const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+        const resp = await fetch(endpoint, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrftoken
+          },
+          body: JSON.stringify(payload),
+          credentials: 'same-origin'
+        });
+
+        if (!resp.ok){
+          let body = null;
+          try { body = await resp.json(); } catch {}
+          if (body && typeof body === 'object'){
+            let shown = false;
+            for (const [k, v] of Object.entries(body)){
+              if (k === 'detail') continue;
+              const msg = Array.isArray(v) ? v.join(' ') : String(v);
+              fieldError(k, msg); shown = true;
+            }
+            if (body.detail) alert(body.detail);
+            else if (!shown)  alert('Не удалось сохранить изменения (ошибка валидации).');
+          } else {
+            const t = await resp.text();
+            alert('Не удалось сохранить изменения.\n' + (t || `HTTP ${resp.status}`));
+          }
+          setSubmitting(false);
+          return;
+        }
+
+        // успех
+        try { if (window.bootstrap) new bootstrap.Collapse(document.getElementById('editFormWrap'), {toggle:false}).hide(); } catch(_){}
+        location.reload();
+
+      }catch(err){
+        console.error(err);
+        alert('Не удалось сохранить изменения. Попробуйте ещё раз.');
+        setSubmitting(false);
+      }
+    });
+  })();
+</script>
+<script>
+(function(){
+  const form  = document.getElementById('apiEditForm');
+  const block = document.getElementById('positionBlock');
+  if (!form || !block) return;
+
+  const select     = document.getElementById('f_position');
+  const csrftoken  = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+  const createUrl  = block.dataset.createUrl || '{% url "employees:position_create" %}';
+  const assignUrl  = block.dataset.assignUrl || '';
+  const canAssign  = block.dataset.canAssign === '1';
+
+  function busy(btn, on){
+    const lbl = btn.querySelector('.lbl');
+    const sp  = btn.querySelector('.spinner-border');
+    if (on){ btn.setAttribute('disabled',''); sp?.classList.remove('d-none'); lbl?.classList.add('visually-hidden'); }
+    else    { btn.removeAttribute('disabled');  sp?.classList.add('d-none');   lbl?.classList.remove('visually-hidden'); }
+  }
+  function msg(el, text, ok){
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('d-none', !text);
+    el.classList.toggle('text-success', !!ok);
+    el.classList.toggle('text-danger', !ok);
+  }
+
+  document.getElementById('posCreateBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('posCreateBtn');
+    const m   = document.getElementById('posCreateMsg');
+    msg(m, '');
+
+    // ВАЛИДАЦИЯ URL'ов
+    if (!createUrl || !assignUrl){
+      msg(m, 'Не настроены URL создания/назначения.', false);
+      return;
+    }
+
+    // ДАННЫЕ ФОРМЫ
+    const name = (document.getElementById('pos_name')?.value || '').trim();
+    const description = (document.getElementById('pos_desc')?.value || '').trim();
+    if (!name){ msg(m, 'Укажите название должности.', false); return; }
+
+    // ГРУППЫ ПРАВ
+    let groupIds = [];
+    if (canAssign){
+      const msel = document.getElementById('pos_groups');        // если есть select[multiple]
+      const hid  = document.getElementById('pos_groups_hidden'); // из модального выбора
+      const csv  = document.getElementById('pos_groups_csv');    // fallback
+
+      if (msel)      groupIds = Array.from(msel.selectedOptions).map(o => o.value).filter(Boolean);
+      else if (hid)  groupIds = (hid.value || '').split(',').map(s => s.trim()).filter(Boolean);
+      else if (csv)  groupIds = (csv.value || '').split(',').map(s => s.trim()).filter(Boolean);
+
+      groupIds = groupIds.map(id => Number(id)).filter(n => !Number.isNaN(n));
+    }
+
+    // ОТПРАВКА
+    busy(btn, true);
+    try{
+      // 1) Создаём должность
+      const createPayload = { name, description };
+      if (canAssign && groupIds.length) createPayload.groups = groupIds;
+
+      const cResp = await fetch(createUrl, {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{
+          'Content-Type':'application/json',
+          'X-Requested-With':'XMLHttpRequest',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify(createPayload)
+      });
+      const cData = await (async()=>{ try{return await cResp.json()}catch{return null} })();
+      if (!cResp.ok){
+        msg(m, (cData?.detail || JSON.stringify(cData) || `HTTP ${cResp.status}`), false);
+        return;
+      }
+      const newId = cData?.id;
+      if (!newId){
+        msg(m, 'API не вернул id новой должности.', false);
+        return;
+      }
+
+      // 2) Назначаем сотруднику
+      const eResp = await fetch(assignUrl, {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{
+          'Content-Type':'application/json',
+          'X-Requested-With':'XMLHttpRequest',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify({ position_id: newId })
+      });
+      const eData = await (async()=>{ try{return await eResp.json()}catch{return null} })();
+      if (!eResp.ok){
+        msg(m, 'Создано, но не назначено: ' + (eData?.detail || JSON.stringify(eData) || `HTTP ${eResp.status}`), false);
+        return;
+      }
+
+      // 3) Обновляем селект и закрываем панель
+      if (select){
+        let opt = Array.from(select.options).find(o => o.value == String(newId));
+        if (!opt){
+          opt = document.createElement('option');
+          opt.value = String(newId);
+          opt.textContent = cData?.name || ('Должность #'+newId);
+          select.appendChild(opt);
+        }
+        select.value = String(newId);
+        select.dataset.init = String(newId);
+      }
+      msg(m, 'Должность создана и назначена.', true);
+      try{ if (window.bootstrap) new bootstrap.Collapse(document.getElementById('newPositionPane'), {toggle:false}).hide(); }catch(_){}
+    }catch(ex){
+      console.error(ex);
+      msg(m, 'Неожиданная ошибка при создании/назначении.', false);
+    }finally{
+      busy(btn, false);
+    }
+  });
+})();
+</script>
+
+<script>
+(function(){
+  const chipsBox  = document.getElementById('pos_groups_chips');
+  const hiddenInp = document.getElementById('pos_groups_hidden');
+  const listBox   = document.getElementById('groupsList');
+  const searchInp = document.getElementById('groupsSearch');
+  const clearBtn  = document.getElementById('groupsClear');
+  const doneBtn   = document.getElementById('groupsDone');
+
+  if (!listBox || !hiddenInp) return;
+
+  // Текущее множество выбранных id
+  const sel = new Set((hiddenInp.value || '').split(',').map(s => s.trim()).filter(Boolean));
+
+  // Рендер чипсов
+  function renderChips(){
+    if (!chipsBox) return;
+    chipsBox.innerHTML = '';
+    if (sel.size === 0){ return; }
+    // соберём карту id->название из списка (чтобы показывать имена)
+    const nameById = {};
+    listBox.querySelectorAll('.group-check').forEach(ch => {
+      nameById[ch.value] = ch.closest('.list-group-item').querySelector('span.flex-grow-1')?.textContent || ('#'+ch.value);
+    });
+    for (const id of sel){
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.dataset.id = id;
+      chip.innerHTML = `${nameById[id] || ('#'+id)} <button type="button" class="btn btn-sm p-0 ms-1" aria-label="Удалить" style="line-height:1;">×</button>`;
+      chipsBox.appendChild(chip);
+    }
+  }
+
+  // Синхронизация чекбоксов ↔ выбранные
+  function syncChecksFromSel(){
+    listBox.querySelectorAll('.group-check').forEach(ch => {
+      ch.checked = sel.has(ch.value);
+    });
+  }
+  function syncSelFromChecks(){
+    sel.clear();
+    listBox.querySelectorAll('.group-check:checked').forEach(ch => sel.add(ch.value));
+  }
+  function saveHidden(){
+    hiddenInp.value = Array.from(sel).join(',');
+  }
+
+  // Интерактив: клик по чекбоксу
+  listBox.addEventListener('change', (e) => {
+    const ch = e.target.closest('.group-check');
+    if (!ch) return;
+    if (ch.checked) sel.add(ch.value); else sel.delete(ch.value);
+  });
+
+  // Фильтр
+  searchInp?.addEventListener('input', () => {
+    const q = (searchInp.value || '').toLowerCase().trim();
+    listBox.querySelectorAll('.list-group-item').forEach(row => {
+      const name = row.querySelector('.flex-grow-1')?.textContent.toLowerCase() || '';
+      const id   = row.querySelector('.group-check')?.value || '';
+      row.classList.toggle('d-none', !(name.includes(q) || id.includes(q)));
+    });
+  });
+
+  // Сброс
+  clearBtn?.addEventListener('click', () => {
+    sel.clear();
+    syncChecksFromSel();
+    renderChips();
+    saveHidden();
+  });
+
+  // Готово
+  doneBtn?.addEventListener('click', () => {
+    // на случай если что-то поменяли напрямую в чекбоксах
+    syncSelFromChecks();
+    renderChips();
+    saveHidden();
+  });
+
+  // Удаление из чипса
+  chipsBox?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    const chip = btn?.closest('.chip');
+    if (!chip) return;
+    sel.delete(chip.dataset.id);
+    renderChips();
+    syncChecksFromSel();
+    saveHidden();
+  });
+
+  // Инициализация при первом открытии модала (если уже есть значения)
+  renderChips();
+  syncChecksFromSel();
+
+  // === ДОПОЛНЕНИЕ К ВАШЕЙ КНОПКЕ "Создать и назначить" ===
+  // в вашем коде уже есть место, где собираются groupIds:
+  //   if (msel) ... else if (csv) ...
+  // добавим чтение из скрытого поля:
+  const posCreateBtn = document.getElementById('posCreateBtn');
+  if (posCreateBtn){
+    posCreateBtn.addEventListener('click', () => {
+      // прокинем выбранные id в data-атрибут кнопки, чтобы ваш обработчик прочитал
+      if (hiddenInp) {
+        posCreateBtn.dataset.groupsSelected = hiddenInp.value; // "1,2,3"
+      }
+    }, {capture:true});
+  }
+
+  // А внутри вашего обработчика posCreateBtn используйте ещё один источник:
+  //   const msel = document.getElementById('pos_groups');
+  //   const csv  = document.getElementById('pos_groups_csv');
+  //   const hid  = document.getElementById('pos_groups_hidden');
+  //   if (msel)      groupIds = Array.from(msel.selectedOptions).map(o => o.value).filter(Boolean);
+  //   else if (hid)  groupIds = (hid.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  //   else if (csv)  groupIds = (csv.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  //
+  // и перед отправкой:
+  //   groupIds = groupIds.map(id => Number(id)).filter(n => !Number.isNaN(n));
+})();
+</script>
+<script>
+  (function(){
+    const m = document.getElementById('groupsPickerModal');
+    if (m && m.parentNode !== document.body) {
+      document.body.appendChild(m);
+    }
+  })();
+</script>
+
+<script>
+(function(){
+  'use strict';
+
+  const wrap = document.getElementById('empGroupsBlock');
+  if (!wrap) return;
+
+  const bulkUrl   = wrap.dataset.bulkUrl || '';    // /employees/<id>/groups/bulk/
+  const createUrl = wrap.dataset.createUrl || '';  // /groups/create/
+  const deleteUrl = wrap.dataset.deleteUrl || '';  // /groups/delete/
+  const csrftoken = document.querySelector('#apiEditForm input[name=csrfmiddlewaretoken]')?.value || '';
+
+  const hidden    = document.getElementById('emp_groups_hidden');
+  const listBox   = document.getElementById('empGroupsList');
+  const search    = document.getElementById('empGroupsSearch');
+  const clearBtn  = document.getElementById('empGroupsClear');
+  const doneBtn   = document.getElementById('empGroupsDone');
+  const msgBox    = document.getElementById('empGroupsMsg');
+
+  const assignBtn = document.getElementById('empGroupsAssignBtn');
+  const removeBtn = document.getElementById('empGroupsRemoveBtn');
+
+  const createName = document.getElementById('empGroupsCreateName');
+  const createBtn  = document.getElementById('empGroupsCreateBtn');
+  const createMsg  = document.getElementById('empGroupsCreateMsg');
+
+  const delSel   = document.getElementById('empGroupsDeleteSelect');
+  const delBtn   = document.getElementById('empGroupsDeleteBtn');
+  const delMsg   = document.getElementById('empGroupsDeleteMsg');
+
+  const assignedBox = document.getElementById('empGroupsAssigned');
+
+  // --- переносим модал в body и предзаполняем чекбоксы текущими группами ---
+  (function(){
+    const m = document.getElementById('empGroupsPickerModal');
+    if (m && m.parentNode !== document.body) document.body.appendChild(m);
+
+    // При открытии модала отметим чекбоксы, соответствующие уже назначенным группам
+    m?.addEventListener('show.bs.modal', () => {
+      const assigned = new Set(
+        Array.from(assignedBox?.querySelectorAll('[data-gid]') || [])
+          .map(x => x.dataset.gid)
+          .filter(Boolean)
+      );
+      const ids = [];
+      listBox?.querySelectorAll('.emp-group-check').forEach(ch => {
+        const on = assigned.has(ch.value);
+        ch.checked = on;
+        if (on) ids.push(ch.value);
+      });
+      if (hidden) hidden.value = ids.join(',');
+    });
+  })();
+
+  // --- helpers ---
+  function busy(btn, on){
+    if (!btn) return;
+    const lbl = btn.querySelector('.lbl');
+    const sp  = btn.querySelector('.spinner-border');
+    if (on){ btn.setAttribute('disabled',''); sp?.classList.remove('d-none'); lbl?.classList.add('visually-hidden'); }
+    else    { btn.removeAttribute('disabled');  sp?.classList.add('d-none');   lbl?.classList.remove('visually-hidden'); }
+  }
+
+  function showMsg(el, text, ok){
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('d-none', !text);
+    el.classList.toggle('text-success', !!ok);
+    el.classList.toggle('text-danger', !ok);
+  }
+
+  function selectedIds(){
+    if (!hidden) return [];
+    const csv = (hidden.value || '').trim();
+    return csv ? csv.split(',').map(s => s.trim()).filter(Boolean) : [];
+  }
+
+  function setSelected(ids){
+    if (hidden) hidden.value = (ids || []).join(',');
+  }
+
+  function ensureEmptyStub(){
+    if (!assignedBox) return;
+    if (!assignedBox.children.length){
+      const span = document.createElement('span');
+      span.className = 'text-secondary small';
+      span.textContent = 'Нет персональных групп';
+      assignedBox.appendChild(span);
+    }
+  }
+
+  function clearEmptyStub(){
+    const stub = assignedBox?.querySelector('.text-secondary.small');
+    if (stub) stub.remove();
+  }
+
+  function namesDict(){
+    const m = {};
+    listBox?.querySelectorAll('.emp-group-check').forEach(ch => {
+      const nm = ch.closest('.list-group-item')?.querySelector('.flex-grow-1')?.textContent || ('#'+ch.value);
+      m[ch.value] = nm;
+    });
+    return m;
+  }
+
+  function addAssignedPills(ids){
+    if (!assignedBox || !ids?.length) return;
+    clearEmptyStub();
+    const map = namesDict();
+    ids.forEach(id => {
+      const key = String(id);
+      if (assignedBox.querySelector(`[data-gid="${key}"]`)) return;
+      const pill = document.createElement('span');
+      pill.className = 'badge rounded-pill bg-primary-subtle text-primary-emphasis border';
+      pill.dataset.gid = key;
+      pill.textContent = map[key] || ('#' + key);
+      assignedBox.appendChild(pill);
+    });
+    ensureEmptyStub();
+  }
+
+  function removeAssignedPills(ids){
+    if (!assignedBox || !ids?.length) return;
+    ids.forEach(id => assignedBox.querySelector(`[data-gid="${String(id)}"]`)?.remove());
+    ensureEmptyStub();
+  }
+
+  // --- список/поиск/сохранение выбранных в модалке ---
+  listBox?.addEventListener('change', (e) => {
+    const ch = e.target.closest('.emp-group-check');
+    if (!ch) return;
+    const ids = new Set(selectedIds());
+    if (ch.checked) ids.add(ch.value); else ids.delete(ch.value);
+    setSelected(Array.from(ids));
+  });
+
+  search?.addEventListener('input', () => {
+    if (!listBox) return;
+    const q = (search.value || '').toLowerCase().trim();
+    listBox.querySelectorAll('.list-group-item').forEach(row => {
+      const name = row.querySelector('.flex-grow-1')?.textContent.toLowerCase() || '';
+      const id   = row.querySelector('.emp-group-check')?.value || '';
+      row.classList.toggle('d-none', !(name.includes(q) || id.includes(q)));
+    });
+  });
+
+  clearBtn?.addEventListener('click', () => {
+    setSelected([]);
+    listBox?.querySelectorAll('.emp-group-check').forEach(ch => ch.checked = false);
+  });
+
+  doneBtn?.addEventListener('click', () => {
+    // выбор уже сохранён в hidden по change
+  });
+
+  // --- сетевой helper ---
+  async function postJSON(url, body){
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type':'application/json',
+        'Accept':'application/json',
+        'X-Requested-With':'XMLHttpRequest',
+        'X-CSRFToken': csrftoken
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify(body || {})
+    });
+    let data = null;
+    try { data = await resp.json(); } catch {}
+    if (!resp.ok){
+      const detail = (data && (data.detail || data.error)) || resp.statusText || ('HTTP ' + resp.status);
+      throw new Error(detail);
+    }
+    return data || {};
+  }
+
+  // --- bulk add/remove с обновлением «пилюль» ---
+  async function bulkMembership(action){
+    const ids = selectedIds().map(id => Number(id)).filter(n => !Number.isNaN(n));
+    if (!ids.length){ showMsg(msgBox, 'Не выбраны группы.', false); return; }
+    if (!bulkUrl){ showMsg(msgBox, 'Не настроен endpoint bulkUrl.', false); return; }
+    const btn = (action === 'add') ? assignBtn : removeBtn;
+    busy(btn, true); showMsg(msgBox, '', true);
+    try{
+      const data = await postJSON(bulkUrl, { action, group_ids: ids });
+
+      // считаем реально успешные id (без требования ok_ids от API)
+      const failedMap = data.failed || {};
+      const successIds = ids.filter(id => !(String(id) in failedMap));
+
+      if (action === 'add') addAssignedPills(successIds);
+      else removeAssignedPills(successIds);
+
+      // синхронизируем чекбоксы и hidden сразу, чтоб при повторном открытии модалки всё было актуально
+      const selSet = new Set(selectedIds()); // строковые значения
+      successIds.forEach(id => {
+        const val = String(id);
+        const ch = listBox?.querySelector(`.emp-group-check[value="${val}"]`);
+        if (action === 'add'){
+          ch && (ch.checked = true);
+          selSet.add(val);
+        } else {
+          ch && (ch.checked = false);
+          selSet.delete(val);
+        }
+      });
+      setSelected(Array.from(selSet));
+
+      const failed = Object.keys(failedMap).length;
+      const ok = successIds.length;
+      showMsg(msgBox, failed ? `Успех: ${ok}, ошибок: ${failed}.` : `Готово: ${ok} групп обработано.`, !failed);
+    }catch(e){
+      showMsg(msgBox, 'Ошибка: ' + String(e.message || e), false);
+    }finally{
+      busy(btn, false);
+    }
+  }
+
+  assignBtn?.addEventListener('click', () => bulkMembership('add'));
+  removeBtn?.addEventListener('click', () => bulkMembership('remove'));
+
+  // --- Создание группы (через /groups/create/) ---
+  createBtn?.addEventListener('click', async () => {
+    const name = (createName.value || '').trim();
+    if (!name){ showMsg(createMsg, 'Укажите имя группы (CN).', false); return; }
+    if (!createUrl){ showMsg(createMsg, 'Не настроен endpoint createUrl.', false); return; }
+    busy(createBtn, true); showMsg(createMsg, '', true);
+    try{
+      const data = await postJSON(createUrl, { name });
+
+      // добавить в список в модалке
+      const row = document.createElement('label');
+      row.className = 'list-group-item d-flex align-items-center gap-2';
+      row.innerHTML = `
+        <input class="form-check-input me-2 emp-group-check" type="checkbox" value="${data.id}" data-cn="${data.name}">
+        <span class="flex-grow-1">${data.name}</span>
+        <span class="text-secondary small">#${data.id}</span>`;
+      listBox?.appendChild(row);
+
+      // добавить в select удаления
+      const opt = document.createElement('option');
+      opt.value = String(data.id); opt.textContent = data.name;
+      delSel?.appendChild(opt);
+
+      showMsg(createMsg, 'Группа создана.', true);
+      createName.value = '';
+    }catch(e){
+      showMsg(createMsg, 'Не удалось создать: ' + String(e.message || e), false);
+    }finally{
+      busy(createBtn, false);
+    }
+  });
+
+  // --- Удаление группы (через /groups/delete/) ---
+  delBtn?.addEventListener('click', async () => {
+    const gid = Number(delSel?.value || 0);
+    if (!gid){ showMsg(delMsg, 'Выберите группу.', false); return; }
+    if (!deleteUrl){ showMsg(delMsg, 'Не настроен endpoint deleteUrl.', false); return; }
+    if (!confirm('Удалить группу? Действие необратимо.')) return;
+    busy(delBtn, true); showMsg(delMsg, '', true);
+    try{
+      await postJSON(deleteUrl, { group_id: gid });
+
+      // убрать из UI
+      listBox?.querySelector(`.emp-group-check[value="${gid}"]`)?.closest('.list-group-item')?.remove();
+      delSel?.querySelector(`option[value="${gid}"]`)?.remove();
+
+      // убрать из выбранных
+      const ids = new Set(selectedIds());
+      ids.delete(String(gid));
+      setSelected(Array.from(ids));
+
+      // убрать «пилюлю», если была назначена
+      removeAssignedPills([gid]);
+
+      showMsg(delMsg, 'Группа удалена.', true);
+    }catch(e){
+      showMsg(delMsg, 'Не удалось удалить: ' + String(e.message || e), false);
+    }finally{
+      busy(delBtn, false);
+    }
+  });
+
+  // при загрузке гарантируем плейсхолдер «Нет персональных групп», если нужно
+  ensureEmptyStub();
+})();
+</script>
+<script>
+(function(){
+  const form  = document.getElementById('apiEditForm');
+  const block = document.getElementById('positionBlock');
+  const select = document.getElementById('f_position');
+  if (!form || !block || !select) return;
+
+  const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+  const updateTpl = block.dataset.updateUrlTpl || '';
+  const detailTpl = block.dataset.detailUrlTpl || '';   // ← фронтовая detail-вьюха
+  const canAssign = block.dataset.canAssign === '1';
+
+  const nameInp   = document.getElementById('pos_edit_name');
+  const descInp   = document.getElementById('pos_edit_desc');
+  const chipsBox  = document.getElementById('pos_edit_groups_chips');
+  const hidden    = document.getElementById('pos_edit_groups_hidden');
+  const msgBox    = document.getElementById('posEditMsg');
+  const loadBtn   = document.getElementById('posEditLoadBtn');
+  const saveBtn   = document.getElementById('posEditSaveBtn');
+
+  const modalEl   = document.getElementById('posEditGroupsPickerModal');
+  const listBox   = document.getElementById('posEditGroupsList');
+  const search    = document.getElementById('posEditGroupsSearch');
+  const clearBtn  = document.getElementById('posEditGroupsClear');
+  const doneBtn   = document.getElementById('posEditGroupsDone');
+  const clearGroupsBtn = document.getElementById('posEditClearGroups');
+
+  if (modalEl && modalEl.parentNode !== document.body) document.body.appendChild(modalEl);
+
+  function busy(btn, on){
+    if (!btn) return;
+    const lbl = btn.querySelector('.lbl');
+    const sp  = btn.querySelector('.spinner-border');
+    if (on){ btn.setAttribute('disabled',''); sp?.classList.remove('d-none'); lbl?.classList.add('visually-hidden'); }
+    else    { btn.removeAttribute('disabled');  sp?.classList.add('d-none');   lbl?.classList.remove('visually-hidden'); }
+  }
+  function showMsg(text, ok){
+    msgBox.textContent = text || '';
+    msgBox.classList.toggle('d-none', !text);
+    msgBox.classList.toggle('text-success', !!ok);
+    msgBox.classList.toggle('text-danger', !ok);
+  }
+
+  function currentIds(){ const v=(hidden?.value||'').trim(); return v? v.split(',').map(s=>s.trim()).filter(Boolean):[]; }
+  function setIds(ids){ if (hidden) hidden.value=(ids||[]).join(','); renderChips(); syncChecksFromHidden(); }
+  function renderChips(){
+    if (!chipsBox) return;
+    chipsBox.innerHTML = '';
+    const ids = currentIds(); if (!ids.length) return;
+    const nameById = {};
+    listBox?.querySelectorAll('.pos-edit-group-check').forEach(ch=>{
+      const nm = ch.closest('.list-group-item')?.querySelector('.flex-grow-1')?.textContent || ('#'+ch.value);
+      nameById[ch.value] = nm;
+    });
+    ids.forEach(id=>{
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.dataset.id = id;
+      chip.innerHTML = `${nameById[id] || ('#'+id)} <button type="button" class="btn btn-sm p-0 ms-1" aria-label="Удалить" style="line-height:1;">×</button>`;
+      chipsBox.appendChild(chip);
+    });
+  }
+  chipsBox?.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button'); const chip = btn?.closest('.chip'); if (!chip) return;
+    const ids = new Set(currentIds()); ids.delete(chip.dataset.id); setIds(Array.from(ids));
+  });
+  function syncChecksFromHidden(){
+    const ids = new Set(currentIds());
+    listBox?.querySelectorAll('.pos-edit-group-check').forEach(ch=> ch.checked = ids.has(ch.value));
+  }
+  function syncHiddenFromChecks(){
+    const ids=[]; listBox?.querySelectorAll('.pos-edit-group-check:checked').forEach(ch=>ids.push(ch.value));
+    setIds(ids);
+  }
+
+  search?.addEventListener('input', ()=>{
+    const q=(search.value||'').toLowerCase().trim();
+    listBox?.querySelectorAll('.list-group-item').forEach(row=>{
+      const name=row.querySelector('.flex-grow-1')?.textContent.toLowerCase()||'';
+      const id=row.querySelector('.pos-edit-group-check')?.value||'';
+      row.classList.toggle('d-none', !(name.includes(q)||id.includes(q)));
+    });
+  });
+  clearBtn?.addEventListener('click', ()=>{ listBox?.querySelectorAll('.pos-edit-group-check').forEach(ch=>ch.checked=false); setIds([]); });
+  doneBtn?.addEventListener('click', syncHiddenFromChecks);
+  clearGroupsBtn?.addEventListener('click', ()=> setIds([]));
+
+  function buildUrlFromTpl(tpl, id){
+    if (!tpl) return '';
+    if (tpl.includes('/0/')) return tpl.replace('/0/', `/${id}/`);
+    if (tpl.endsWith('0')) return tpl.slice(0,-1) + id;
+    return tpl.replace('0', String(id));
+  }
+  function buildUpdateUrl(posId){ return buildUrlFromTpl(updateTpl, posId); }
+  function buildDetailUrl(posId){ return buildUrlFromTpl(detailTpl, posId); } // ← используем фронт-вью
+
+  async function loadPositionDetail(posId){
+    if (!posId){ showMsg('Выберите должность в выпадающем списке.', false); return; }
+    const url = buildDetailUrl(posId);
+    if (!url){ showMsg('Не настроен URL detail-вьюхи должности.', false); return; }
+
+    showMsg('', true); busy(loadBtn, true);
+    try{
+      const resp = await fetch(url, {
+        credentials:'same-origin',
+        headers:{ 'Accept':'application/json', 'X-Requested-With':'XMLHttpRequest' }
+      });
+      const data = await (async()=>{ try{return await resp.json()}catch{return null} })();
+      if (!resp.ok){ showMsg(data?.detail || `Не удалось загрузить должность (HTTP ${resp.status})`, false); return; }
+
+      nameInp && (nameInp.value = data?.name || '');
+      descInp && (descInp.value = data?.description || '');
+
+      if (canAssign){
+        const groupsRaw = Array.isArray(data?.groups) ? data.groups
+                       : Array.isArray(data?.groups_ids) ? data.groups_ids : [];
+        const ids = groupsRaw.map(x => (typeof x==='number' ? String(x) : String(x?.id || x))).filter(Boolean);
+        setIds(ids);
+      }
+      showMsg('Данные должности загружены.', true);
+    }catch(_){
+      showMsg('Ошибка загрузки должности.', false);
+    }finally{
+      busy(loadBtn, false);
+    }
+  }
+
+  async function savePositionChanges(){
+    const posId = Number(select.value || 0);
+    if (!posId){ showMsg('Сначала выберите должность, которую хотите редактировать.', false); return; }
+    const updateUrl = buildUpdateUrl(posId);
+    if (!updateUrl){ showMsg('Не настроен URL обновления должности.', false); return; }
+
+    const payload = {};
+    const nm = (nameInp?.value || '').trim();
+    const ds = (descInp?.value || '').trim();
+    if (nm) payload.name = nm;
+    payload.description = ds;
+    if (canAssign){
+      const groups = currentIds().map(x=>Number(x)).filter(n=>!Number.isNaN(n));
+      payload.groups = groups;
+    }
+
+    showMsg('', true); busy(saveBtn, true);
+    try{
+      const resp = await fetch(updateUrl, {
+        method: 'POST', // фронт-прокси примет POST и внутри пошлёт PATCH
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With':'XMLHttpRequest',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await (async()=>{ try{return await resp.json()}catch{return null} })();
+      if (!resp.ok){ showMsg(data?.detail || `Не удалось сохранить (HTTP ${resp.status})`, false); return; }
+
+      if (payload.name){
+        const opt = Array.from(select.options).find(o => o.value == String(posId));
+        if (opt) opt.textContent = payload.name;
+      }
+
+      try{ if (window.bootstrap) new bootstrap.Collapse(document.getElementById('editPositionPane'), {toggle:false}).hide(); }catch(_){}
+      showMsg('Изменения сохранены.', true);
+    }catch(_){
+      showMsg('Ошибка сохранения изменений.', false);
+    }finally{
+      busy(saveBtn, false);
+    }
+  }
+
+  document.getElementById('toggleEditPositionBtn')?.addEventListener('click', ()=>{
+    const posId = Number(select.value || 0);
+    if (posId) setTimeout(()=> loadPositionDetail(posId), 150);
+    else showMsg('Выберите должность в выпадающем списке.', false);
+  });
+  document.getElementById('posEditLoadBtn')?.addEventListener('click', ()=> loadPositionDetail(Number(select.value || 0)));
+  document.getElementById('posEditSaveBtn')?.addEventListener('click', savePositionChanges);
+})();
+</script>

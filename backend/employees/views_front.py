@@ -61,6 +61,31 @@ def _extract_items(payload: Any):
     return [], 0, None, None
 
 
+def _convert_api_url_to_frontend(api_url: str | None, frontend_path: str) -> str | None:
+    """
+    Преобразует API URL пагинации в frontend URL.
+    
+    Пример:
+        http://localhost:9000/api/v1/employees/?page=2&search=test
+        -> /employees/list/?page=2&search=test
+    """
+    if not api_url:
+        return None
+    
+    from urllib.parse import urlparse, parse_qs, urlencode
+    
+    parsed = urlparse(api_url)
+    query_params = parse_qs(parsed.query)
+    
+    # Преобразуем query_params обратно в строку (parse_qs возвращает списки)
+    clean_params = {k: v[0] if isinstance(v, list) and len(v) == 1 else v 
+                    for k, v in query_params.items()}
+    query_string = urlencode(clean_params, doseq=True)
+    
+    return f"{frontend_path}?{query_string}" if query_string else frontend_path
+    return [], 0, None, None
+
+
 def _extract_results(payload):
     if isinstance(payload, dict):
         return payload.get("results", payload.get("items", [])) or []
@@ -151,12 +176,18 @@ def employee_list(request):
     ordering = request.GET.get("o") or "last_name"
     q = (request.GET.get("q") or "").strip()
     department = request.GET.get("department")
+    position = request.GET.get("position")
+    is_active = request.GET.get("is_active")
 
     params = {"page": page, "ordering": ordering}
     if q:
         params["search"] = q
     if department:
         params["department"] = department
+    if position:
+        params["position"] = position
+    if is_active:
+        params["is_active"] = is_active
 
     resp = api.get("v1/employees/", params=params)
     if not resp.ok:
@@ -171,6 +202,10 @@ def employee_list(request):
 
     payload = resp.json or {}
     items, count, next_url, prev_url = _extract_items(payload)
+    
+    # Преобразуем API URLs в frontend URLs
+    next_url = _convert_api_url_to_frontend(next_url, request.path)
+    prev_url = _convert_api_url_to_frontend(prev_url, request.path)
 
     # JSON-ветка для автокомплита
     if request.GET.get("format") == "json":
@@ -197,6 +232,40 @@ def employee_list(request):
         return JsonResponse({"results": items, "count": len(items)})
 
     # HTML-ветка (как было)
+    # Проверяем права на создание сотрудников
+    create_url = None
+    has_perm = (
+        request.user.has_perm('employees.add_employee')
+        or request.user.is_staff
+        or request.user.is_superuser
+    )
+    if has_perm:
+        from django.urls import reverse
+        create_url = reverse('employees:employee_create')
+    
+    # Если фильтрация по отделу, меняем label
+    count_label = "Всего:"
+    if department:
+        count_label = "В отделе:"
+    
+    # Получаем списки для фильтров
+    departments_list = []
+    positions_list = []
+    try:
+        # Получаем все отделы
+        dept_resp = api.get("v1/departments/", params={"page_size": 1000})
+        if dept_resp.ok:
+            dept_data = dept_resp.json or {}
+            departments_list = dept_data.get("results", [])
+        
+        # Получаем все должности
+        pos_resp = api.get("v1/positions/", params={"page_size": 1000})
+        if pos_resp.ok:
+            pos_data = pos_resp.json or {}
+            positions_list = pos_data.get("results", [])
+    except Exception:
+        pass
+    
     context = {
         "employees": items,
         "count": count,
@@ -205,20 +274,38 @@ def employee_list(request):
         "page": page,
         "next_url": next_url,
         "prev_url": prev_url,
+        "create_url": create_url,
+        "count_label": count_label,
+        "departments_list": departments_list,
+        "positions_list": positions_list,
     }
     return render(request, "employees/employees_list.html", context)
 
 
 # ---------- DETAIL / ME ----------
 @require_api_auth
-def employee_profile(request, pk="me"):
-    """
-    /employees/me/  и  /employees/<int:pk>/
-    Если pk == текущему пользователю — редиректим на /employees/me/
+def employee_profile(request, pk: str | int = "me"):
+    """Профиль сотрудника (/employees/me/ и /employees/<pk>/).
+
+    Поведение:
+      * Если pk совпадает с текущим пользователем — выполняется 302 редирект на /employees/me/?<query>.
+      * Подтягивает данные сотрудника, посты, справочники (навыки/должности/группы).
+      * Передаёт в шаблон персональные группы сотрудника для рендера «пилюль».
+      * Передаёт `endpoint` для PATCH-редактирования профиля через фронтовую вьюху.
+
+    Args:
+        request (HttpRequest): HTTP-запрос.
+        pk (str | int, optional): 'me'/'self' или числовой ID сотрудника. По умолчанию 'me'.
+
+    Returns:
+        HttpResponse: Отрисованный шаблон профиля либо редирект/сообщение об ошибке.
+
+    Raises:
+        None: Все ошибки бэкенд-API обрабатываются и отражаются через messages/redirect.
     """
     # --- редирект "свой id" -> /me ---
     try:
-        int_pk = int(pk)
+        int_pk = int(pk)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         int_pk = None
 
@@ -237,8 +324,8 @@ def employee_profile(request, pk="me"):
     api = get_api_client(request)
     is_me = str(pk) in {"me", "self"}
 
-    endpoint = "v1/employees/me/" if is_me else f"v1/employees/{pk}/"
-    resp = api.get(endpoint)
+    endpoint_api = "v1/employees/me/" if is_me else f"v1/employees/{pk}/"
+    resp = api.get(endpoint_api)
     if not resp.ok:
         messages.error(request, f"Сотрудник не найден ({resp.status})")
         return redirect("employees:employees_list")
@@ -247,28 +334,29 @@ def employee_profile(request, pk="me"):
     emp_id = emp.get("id") or (request.user.id if is_me else pk)
     posts = _fetch_employee_posts(api, emp_id)
 
+    # Справочники
     sresp = api.get("v1/skills/", params={"ordering": "name"})
     sdata = sresp.json if sresp.ok else []
     all_skills = sdata.get("results", sdata) if isinstance(sdata, dict) else sdata
-    gresp = None
-    for path in ("v1/groups/",):
-        r = api.get(path, params={"ordering": "name"})
-        if r.ok:
-            gresp = r
-            break
-    gdata = gresp.json if gresp and gresp.ok else []
-    all_groups = gdata.get("results", gdata) if isinstance(gdata, dict) else gdata
+
+    gresp_all = api.get("v1/groups/", params={"ordering": "name"})
+    gdata_all = gresp_all.json if gresp_all.ok else []
+    all_groups = (
+        gdata_all.get("results", gdata_all) if isinstance(gdata_all, dict) else gdata_all
+    ) or []
+
+    # Персональные группы сотрудника (для «пилюль»)
+    pg_resp = api.get("v1/groups/", params={"ordering": "name", "member": emp_id})
+    pg_data = pg_resp.json if pg_resp.ok else []
+    emp_personal_groups = (
+        pg_data.get("results", pg_data) if isinstance(pg_data, dict) else pg_data
+    ) or []
+
     presp = api.get("v1/positions/", params={"ordering": "name"})
     pdata = presp.json if presp.ok else []
     all_positions = pdata.get("results", pdata) if isinstance(pdata, dict) else pdata
 
-    can_edit = (
-        True
-        if is_me
-        else bool(
-            request.user and (request.user.is_staff or request.user.id == emp.get("id"))
-        )
-    )
+    # Отделы/роли
     emp_depts = []
     for d in emp.get("departments") or []:
         did = d.get("id")
@@ -309,12 +397,20 @@ def employee_profile(request, pk="me"):
         )
         emp_depts.append(d2)
 
+    # Права на редактирование профиля
     can_edit = (
         True
         if is_me
         else bool(
             request.user and (request.user.is_staff or request.user.id == emp.get("id"))
         )
+    )
+
+    # ВАЖНО: endpoint фронтовой вьюхи для PATCH профиля (а не прямой DRF-URL)
+    endpoint = (
+        reverse("employees:employee_edit_me")
+        if is_me
+        else reverse("employees:employee_edit", args=[emp_id])
     )
 
     ctx = {
@@ -324,8 +420,10 @@ def employee_profile(request, pk="me"):
         "all_skills": all_skills,
         "all_positions": all_positions,
         "all_groups": all_groups,
+        "emp_personal_groups": emp_personal_groups,
         "posts": posts,
         "is_me": True if is_me else False,
+        "endpoint": endpoint,  # для data-endpoint в _employee_edit.html
     }
     return render(request, "employees/employee_detail.html", ctx)
 
@@ -376,6 +474,7 @@ def employee_edit_me(request):
 @require_api_auth
 @require_http_methods(["GET", "POST"])
 def employee_create(request):
+    """Страница создания сотрудника (старый вариант)"""
     api = get_api_client(request)
 
     if request.method == "GET":
@@ -387,13 +486,32 @@ def employee_create(request):
         "last_name": request.POST.get("last_name", "").strip(),
         "first_name": request.POST.get("first_name", "").strip(),
         "patronymic": request.POST.get("patronymic", "").strip(),
-        "gender": request.POST.get("gender") or None,
-        "birth_date": request.POST.get("birth_date") or None,
-        "position": request.POST.get("position") or None,
         "telegram": request.POST.get("telegram", "").strip(),
         "whatsapp": request.POST.get("whatsapp", "").strip(),
         "wechat": request.POST.get("wechat", "").strip(),
     }
+    
+    # Обработка gender (должно быть числом)
+    gender = request.POST.get("gender", "").strip()
+    if gender:
+        try:
+            data["gender"] = int(gender)
+        except (ValueError, TypeError):
+            pass
+    
+    # Обработка birth_date
+    birth_date = request.POST.get("birth_date", "").strip()
+    if birth_date:
+        data["birth_date"] = birth_date
+    
+    # Обработка position
+    position = request.POST.get("position", "").strip()
+    if position:
+        try:
+            data["position"] = int(position)
+        except (ValueError, TypeError):
+            pass
+    
     if request.FILES.get("avatar"):
         data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
     skills = request.POST.getlist("skills")
@@ -405,12 +523,227 @@ def employee_create(request):
 
     resp = api.post("v1/employees/", json=data)
     if not resp.ok:
-        messages.error(request, f"Не удалось создать: {resp.status} — {resp.text}")
-        return render(request, "employees/employee_create.html", {"form": request.POST})
+        messages.error(
+            request, f"Не удалось создать: {resp.status} — {resp.text}"
+        )
+        return render(
+            request, "employees/employee_create.html", {"form": request.POST}
+        )
 
     new_emp = resp.json or {}
     messages.success(request, "Сотрудник создан.")
     return redirect("employees:employee_detail", pk=new_emp.get("id"))
+
+
+@login_required
+@require_http_methods(["POST"])
+def employee_create_modal(request):
+    """
+    Обработчик создания сотрудника через модальное окно.
+    Принимает AJAX запрос, обращается к API через фронтовую логику.
+    Возвращает JSON с результатом.
+    """
+    api = get_api_client(request)
+    
+    # Собираем данные из формы
+    data = {
+        "email": request.POST.get("email", "").strip(),
+        "phone_number": request.POST.get("phone_number", "").strip(),
+        "last_name": request.POST.get("last_name", "").strip(),
+        "first_name": request.POST.get("first_name", "").strip(),
+        "patronymic": request.POST.get("patronymic", "").strip(),
+        "telegram": request.POST.get("telegram", "").strip(),
+        "whatsapp": request.POST.get("whatsapp", "").strip(),
+        "wechat": request.POST.get("wechat", "").strip(),
+    }
+    
+    # Обработка gender (должно быть числом: 0, 1, 2)
+    gender = request.POST.get("gender", "").strip()
+    if gender:
+        try:
+            data["gender"] = int(gender)
+        except (ValueError, TypeError):
+            data["gender"] = None
+    
+    # Обработка остальных полей
+    birth_date = request.POST.get("birth_date", "").strip()
+    if birth_date:
+        data["birth_date"] = birth_date
+    
+    position = request.POST.get("position", "").strip()
+    if position:
+        try:
+            data["position"] = int(position)
+        except (ValueError, TypeError):
+            pass
+    
+    # Обработка аватара
+    if request.FILES.get("avatar"):
+        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
+    
+    # Обработка навыков (если будут добавлены в форму)
+    skills = request.POST.getlist("skills")
+    if skills:
+        data["skills"] = skills
+    
+    # Обработка пароля
+    password = request.POST.get("password", "").strip()
+    if password:
+        data["password"] = password
+    
+    # Отправляем запрос к API
+    resp = api.post("v1/employees/", json=data)
+    
+    if not resp.ok:
+        # Парсим ошибки от API
+        error_msg = "Не удалось создать сотрудника"
+        field_errors = {}
+        
+        try:
+            error_data = resp.json
+            if isinstance(error_data, dict):
+                # Логируем для отладки
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    f"API validation errors: {error_data}, "
+                    f"sent data: {data}"
+                )
+                
+                # Проверяем, есть ли детальные ошибки по полям
+                for field, messages_list in error_data.items():
+                    if isinstance(messages_list, list):
+                        field_errors[field] = messages_list
+                    else:
+                        field_errors[field] = [str(messages_list)]
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error parsing API response: {e}, resp.text: {resp.text}")
+            error_msg = f"Ошибка {resp.status}: {resp.text}"
+        
+        # Если есть детальные ошибки, возвращаем их
+        if field_errors:
+            return JsonResponse({
+                "success": False,
+                "error": "Проверьте правильность заполнения полей",
+                "errors": field_errors
+            }, status=400)
+        else:
+            return JsonResponse({
+                "success": False,
+                "error": error_msg
+            }, status=400)
+    
+    # Успешное создание
+    new_emp = resp.json or {}
+    emp_id = new_emp.get("id")
+    
+    redirect_url = None
+    if emp_id:
+        redirect_url = reverse(
+            "employees:employee_detail", kwargs={"pk": emp_id}
+        )
+    
+    return JsonResponse({
+        "success": True,
+        "message": "Сотрудник успешно создан",
+        "employee_id": emp_id,
+        "redirect_url": redirect_url
+    })
+
+
+# =========================
+# Группы
+# =========================
+
+
+@require_api_auth
+@require_http_methods(["POST"])
+def employee_groups_bulk(request, pk: int):
+    """
+    Назначить/снять персональные группы сотруднику.
+    Body: { "action": "add"|"remove", "group_ids": [1,2,3] }
+    """
+    api = get_api_client(request)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    action = (payload.get("action") or "").strip().lower()
+    group_ids = payload.get("group_ids") or []
+    if action not in {"add", "remove"}:
+        return JsonResponse({"detail": "action must be 'add' or 'remove'"}, status=400)
+    try:
+        gids = [int(x) for x in group_ids]
+    except Exception:
+        return JsonResponse({"detail": "group_ids must be a list of integers"}, status=400)
+    if not gids:
+        return JsonResponse({"detail": "group_ids is empty"}, status=400)
+
+    ok, errors = 0, {}
+    endpoint = "add-members" if action == "add" else "remove-members"
+    for gid in gids:
+        r = api.post(f"v1/groups/{gid}/{endpoint}/", json={"member_ids": [pk]})
+        if r.ok:
+            ok += 1
+        else:
+            try:
+                j = r.json or {}
+                msg = j.get("detail") or r.text or f"HTTP {r.status}"
+            except Exception:
+                msg = r.text or f"HTTP {r.status}"
+            errors[str(gid)] = msg
+    status_code = 200 if not errors else 207  # Multi-Status семантически уместен
+    return JsonResponse({"ok": True, "processed": ok, "failed": errors}, status=status_code)
+
+
+@require_api_auth
+@require_http_methods(["POST"])
+def group_create(request):
+    """
+    Создать группу (LDAP+БД) через DRF.
+    Body: { "name": "CN-Name" }
+    """
+    api = get_api_client(request)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"detail": "name is required"}, status=400)
+
+    resp = api.post("v1/groups/", json={"name": name})
+    try:
+        data = resp.json
+    except Exception:
+        data = {"detail": resp.text}
+    return JsonResponse(data or {}, status=resp.status)
+
+
+@require_api_auth
+@require_http_methods(["POST"])
+def group_delete(request):
+    """
+    Удалить группу (LDAP+БД) через DRF.
+    Body: { "group_id": 123 }
+    """
+    api = get_api_client(request)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        payload = {}
+    gid = payload.get("group_id")
+    try:
+        gid = int(gid)
+    except Exception:
+        return JsonResponse({"detail": "group_id must be int"}, status=400)
+
+    resp = api.delete(f"v1/groups/{gid}/")
+    if not resp.ok:
+        return JsonResponse({"detail": resp.text}, status=resp.status)
+    return JsonResponse({"ok": True, "id": gid}, status=200)
 
 
 # =========================
@@ -468,6 +801,10 @@ def department_list(request):
         items = []
         count = 0
         next_url = prev_url = None
+
+    # Преобразуем API URLs в frontend URLs
+    next_url = _convert_api_url_to_frontend(next_url, request.path)
+    prev_url = _convert_api_url_to_frontend(prev_url, request.path)
 
     context = {
         "departments": items,
@@ -664,7 +1001,7 @@ def department_create(request):
     except Exception:
         err = None
 
-    if r.status_code == 400 and isinstance(err, dict):
+    if getattr(r, "status", None) == 400 and isinstance(err, dict):
         # Пытаемся сопоставить ошибки полям формы
         attached = False
         for field in ("name", "description", "non_field_errors"):
@@ -681,11 +1018,11 @@ def department_create(request):
                 None, "Не удалось создать отдел. Проверьте введённые данные."
             )
         status_code = 400
-    elif r.status_code == 403:
+    elif getattr(r, "status", None) == 403:
         form.add_error(None, "Недостаточно прав для создания отдела.")
         status_code = 403
     else:
-        form.add_error(None, f"Ошибка API ({r.status_code}). Повторите попытку позже.")
+        form.add_error(None, f"Ошибка API ({getattr(r, "status", None)}). Повторите попытку позже.")
         status_code = 502
 
     return render(
@@ -1049,6 +1386,19 @@ def position_create_front(request: HttpRequest) -> JsonResponse:
             data or {"detail": "Не удалось создать должность"}, status=status
         )
     return _ok(data, status=201)
+
+@require_api_auth
+@require_http_methods(["GET"])
+def position_detail_front(request: HttpRequest, pos_id: int) -> JsonResponse:
+    """
+    Прокси к GET /api/v1/positions/{id}/ — возвращает JSON должности.
+    """
+    api = get_api_client(request)
+    resp = api.get(f"v1/positions/{pos_id}/")
+    ok, data, status = _api_ok_or_error(resp)
+    if not ok:
+        return JsonResponse(data or {"detail": "Не удалось получить должность"}, status=status)
+    return JsonResponse(data or {}, status=200)
 
 
 # ---------- UPDATE POSITION ----------

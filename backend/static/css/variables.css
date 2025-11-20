@@ -1,0 +1,209 @@
+/**
+ * CSS Variables
+ * 
+ * Глобальные CSS переменные для обеспечения единообразия дизайна.
+ * Использование: var(--variable-name)
+ * 
+ * Подключение в base.html:
+ * <link rel="stylesheet" href="{% static 'css/variables.css' %}">
+ */
+
+:root {
+  /* ========== Цветовая схема ========== */
+  
+  /* Основные цвета интерфейса (наследуются от Bootstrap) */
+  /* --bs-primary, --bs-secondary, --bs-success, --bs-danger, --bs-warning, --bs-info */
+  
+  /* Дополнительные цвета приложения */
+  --app-primary: #0d6efd;
+  --app-success: #198754;
+  --app-danger: #dc3545;
+  --app-warning: #ffc107;
+  --app-info: #0dcaf0;
+  
+  /* Фоновые цвета */
+  --bg-light: #f8f9fa;
+  --bg-dark: #212529;
+  --bg-card: #ffffff;
+  
+  /* Цвета текста */
+  --text-primary: #212529;
+  --text-secondary: #6c757d;
+  --text-muted: #adb5bd;
+  
+  /* ========== Размеры и отступы ========== */
+  
+  /* Высота компонентов */
+  --navbar-h: 60px;
+  --sidebar-w: 200px;
+  --rightbar-w: 350px;
+  
+  /* Радиусы скругления */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
+  --radius-full: 50%;
+  
+  /* Радиусы компонентов */
+  --feed-radius: var(--radius-xl);
+  --card-radius: var(--radius-lg);
+  --button-radius: var(--radius-md);
+  --input-radius: var(--radius-md);
+  --badge-radius: 999px;
+  
+  /* ========== Унифицированная система отступов (8px grid) ========== */
+  
+  /* Базовая шкала отступов */
+  --space-0: 0;           /* 0px */
+  --space-1: 0.25rem;     /* 4px  - минимальный отступ внутри компонента */
+  --space-2: 0.5rem;      /* 8px  - стандартный отступ между элементами */
+  --space-3: 0.75rem;     /* 12px - отступ между секциями */
+  --space-4: 1rem;        /* 16px - отступ между блоками */
+  --space-5: 1.5rem;      /* 24px - большой разделитель */
+  
+  /* Семантические названия (для лучшей читаемости) */
+  --space-xs: var(--space-1);   /* 8px */
+  --space-sm: var(--space-2);   /* 16px */
+  --space-md: var(--space-3);   /* 24px */
+  --space-lg: var(--space-4);   /* 32px */
+  --space-xl: var(--space-5);   /* 48px */
+  
+  /* Специфичные отступы для компонентов */
+  --gap-component: var(--space-3);    /* gap внутри flex-контейнеров (12px) */
+  --gap-section: var(--space-4);      /* gap между секциями (16px) */
+  
+  /* Padding карточек и контейнеров */
+  --card-padding: var(--space-2);     /* 16px - стандартный padding карточек */
+  --card-padding-sm: var(--space-1);  /* 8px - компактный padding */
+  --card-padding-lg: var(--space-3);  /* 24px - увеличенный padding */
+  
+  /* Margin между элементами */
+  --margin-section: var(--space-3);   /* 24px - между секциями */
+  --margin-block: var(--space-4);     /* 32px - между крупными блоками */
+  
+  /* ========== Layout отступы (app-layout grid) ========== */
+  /* Управление отступами основного layout'а приложения */
+  --layout-gap: var(--space-2);         /* 16px - расстояние между sidebar, main, rightbar */
+  --layout-padding-y: var(--space-3);   /* 24px - вертикальные отступы layout */
+  --layout-padding-x: 0;                /* 0px - горизонтальные отступы (управляются Bootstrap) */
+  
+  /* Старые переменные (deprecated, оставлены для обратной совместимости) */
+  --spacing-xs: var(--space-1);  /* 8px - использовать --space-1 */
+  --spacing-sm: var(--space-2);  /* 16px - использовать --space-2 */
+  --spacing-md: var(--space-3);  /* 24px - использовать --space-3 */
+  --spacing-lg: var(--space-4);  /* 32px - использовать --space-4 */
+  --spacing-xl: var(--space-5);  /* 48px - использовать --space-5 */
+  
+  /* ========== Тени ========== */
+  
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.16);
+  
+  /* Тени компонентов */
+  --feed-shadow: var(--shadow-md);
+  --feed-shadow-hover: var(--shadow-lg);
+  --card-shadow: var(--shadow-sm);
+  --dropdown-shadow: var(--shadow-lg);
+  --modal-shadow: var(--shadow-xl);
+  
+  /* ========== Компоненты Feed ========== */
+  
+  /* Унифицированные переменные */
+  --feed-gap: 0.75rem;
+  
+  /* ========== iOS Компоненты ========== */
+  
+  --ios-overlay-bg: rgba(0, 0, 0, 0.4);
+  --ios-sheet-radius: 24px 24px 0 0;
+  --ios-grip-w: 36px;
+  --ios-grip-h: 5px;
+  --ios-search-radius: var(--radius-md);
+  
+  /* ========== Аватары ========== */
+  
+  --avatar-xs: 28px;
+  --avatar-sm: 36px;
+  --avatar-md: 44px;
+  --avatar-lg: 64px;
+  --avatar-xl: 96px;
+  
+  /* ========== Календарь ========== */
+  
+  --calendar-day-size: 1.6rem;
+  --calendar-event-radius: 6px;
+  --calendar-wrap-radius: 10px;
+  
+  /* ========== Переходы и анимации ========== */
+  
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  
+  /* ========== Z-индексы ========== */
+  
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  
+  /* ========== Типографика ========== */
+  
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  
+  --font-size-xs: 0.75rem;   /* 12px */
+  --font-size-sm: 0.875rem;  /* 14px */
+  --font-size-base: 1rem;    /* 16px */
+  --font-size-lg: 1.125rem;  /* 18px */
+  --font-size-xl: 1.25rem;   /* 20px */
+  
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* ========== Границы ========== */
+  
+  --border-width: 1px;
+  --border-color: #dee2e6;
+  --border-radius: var(--radius-md);
+}
+
+/* ========== Тёмная тема (если потребуется) ========== */
+/*
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-card: #2d3748;
+    --text-primary: #f7fafc;
+    --text-secondary: #e2e8f0;
+    --border-color: #4a5568;
+  }
+}
+*/
+
+/* ========== Вспомогательные классы с переменными ========== */
+
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+
+.radius-sm { border-radius: var(--radius-sm); }
+.radius-md { border-radius: var(--radius-md); }
+.radius-lg { border-radius: var(--radius-lg); }
+.radius-xl { border-radius: var(--radius-xl); }
+.radius-full { border-radius: var(--radius-full); }
+
+.transition-fast { transition: all var(--transition-fast); }
+.transition-base { transition: all var(--transition-base); }
+.transition-slow { transition: all var(--transition-slow); }
