@@ -1,0 +1,42 @@
+{% comment %}
+Модальное окно для создания отдела
+Использование: {% include "employees/components/modal_create_department.html" %}
+{% endcomment %}
+
+<div class="modal fade" id="createDepartmentModal" tabindex="-1" aria-labelledby="createDepartmentModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="createDepartmentModalLabel">
+          <i class="bi-diagram-3 me-2"></i>Создать отдел
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <form id="createDepartmentForm" novalidate>
+        {% csrf_token %}
+        
+        <div class="modal-body">
+          <div id="createDepartmentErrors" class="alert alert-danger d-none mb-3"></div>
+          
+          <div class="mb-3">
+            <label for="dept_name" class="form-label">Название <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="dept_name" name="name" required maxlength="255">
+          </div>
+          
+          <div class="mb-3">
+            <label for="dept_description" class="form-label">Описание</label>
+            <textarea class="form-control" id="dept_description" name="description" rows="4"></textarea>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary" id="createDepartmentSubmit">
+            <i class="bi-check-lg me-1"></i>Создать
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

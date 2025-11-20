@@ -18,11 +18,10 @@
 
       {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
       {% if can_create_departments or perms.employees.add_department or request.user.is_staff or request.user.is_superuser %}
-        {% url 'employees:department_create' as dept_create_url %}
+        {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" create_as_card=True create_modal="createDepartmentModal" create_text="Создать отдел" %}
       {% else %}
-        {% with dept_create_url='' %}{% endwith %}
+        {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" %}
       {% endif %}
-      {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" create_as_card=True create_url=dept_create_url create_text="Создать отдел" %}
       
       <div class="feed-card">
         <div id="deptList" class="py-1">
@@ -72,8 +71,12 @@
   </div>
 </div>
 
+{# Модальное окно для создания отдела #}
+{% include "employees/components/modal_create_department.html" %}
+
 <script type="module">
   import { initDepartmentFilter } from "{% static 'js/components/departmentFilterHandler.js' %}";
+  import { initCreateDepartmentModal } from "{% static 'js/components/createDepartmentModal.js' %}";
   
   initDepartmentFilter({
     inputId: 'deptFilter',
@@ -83,6 +86,11 @@
     totalDeptSelector: '.title ~ .ms-2.small',
     emptyNoticeId: 'deptEmptyNotice',
     rowSelector: '.dept-row'
+  });
+  
+  // Инициализация модала создания отдела
+  initCreateDepartmentModal({
+    submitUrl: '{% url "api:v1:departments-list" %}'
   });
 </script>
 
