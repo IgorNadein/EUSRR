@@ -1,7 +1,7 @@
 /**
  * @module autoScrollerHandler
  * @description Автоматический горизонтальный скроллер для галереи элементов.
- * Поддерживает бесконечный цикл, паузу при наведении, центрирование элемента.
+ * Поддерживает плавную непрерывную прокрутку, паузу при наведении, центрирование элемента.
  * 
  * Пример HTML:
  * <div class="js-join-scroller overflow-hidden">
@@ -13,10 +13,10 @@
  * 
  * Использование:
  * import { initAutoScroller } from './autoScrollerHandler.js';
- * initAutoScroller({ selector: '.js-join-scroller' });
+ * initAutoScroller({ selector: '.js-join-scroller', speed: 0.5 });
  */
 
-const DEFAULT_STEP_MS = 3000;
+const DEFAULT_SPEED = 0.5; // пикселей за кадр (примерно 30px/сек при 60fps)
 const SCROLL_BEHAVIOR = 'smooth';
 
 /**
@@ -57,11 +57,13 @@ function computeScrollStep(rail) {
  * Инициализирует автоскроллер для одного контейнера.
  * @param {HTMLElement} wrapper - Обёртка со скроллом
  * @param {Object} options - Опции
- * @param {number} [options.stepMs=3000] - Интервал между прокрутками в миллисекундах
+ * @param {number} [options.speed=0.5] - Скорость прокрутки в пикселях за кадр
  * @returns {Object} API с методами start, stop, destroy
  */
 function initSingleScroller(wrapper, options = {}) {
-  const { stepMs = DEFAULT_STEP_MS } = options;
+  const { speed = DEFAULT_SPEED } = options;
+  
+  console.log('initSingleScroller: starting, speed =', speed);
   
   const rail = wrapper.querySelector('.join-rail');
   if (!rail) {
@@ -71,7 +73,10 @@ function initSingleScroller(wrapper, options = {}) {
 
   // Проверяем, нужен ли скролл (контент переполняет контейнер)
   const hasOverflow = rail.scrollWidth > wrapper.clientWidth + 4;
+  console.log('initSingleScroller: hasOverflow =', hasOverflow, 'scrollWidth =', rail.scrollWidth, 'clientWidth =', wrapper.clientWidth);
+  
   if (!hasOverflow) {
+    console.log('initSingleScroller: no overflow, skipping');
     return { start: () => {}, stop: () => {}, destroy: () => {} };
   }
 
@@ -79,39 +84,80 @@ function initSingleScroller(wrapper, options = {}) {
   const originalChildren = Array.from(rail.children);
   const clones = originalChildren.map(node => node.cloneNode(true));
   rail.append(...clones);
+  
+  console.log('initSingleScroller: cloned', originalChildren.length, 'items');
+
+  // Пересчитываем overflow после клонирования
+  const hasOverflowAfterClone = rail.scrollWidth > wrapper.clientWidth + 4;
+  console.log('initSingleScroller: hasOverflowAfterClone =', hasOverflowAfterClone);
+  
+  if (!hasOverflowAfterClone) {
+    // Удаляем клоны если даже с ними нет переполнения
+    clones.forEach(clone => clone.remove());
+    console.log('initSingleScroller: no overflow after clone, removing clones');
+    return { start: () => {}, stop: () => {}, destroy: () => {} };
+  }
 
   // Состояние
   let scrollStep = computeScrollStep(rail);
   const originalCount = originalChildren.length;
-  let timer = null;
+  let animationFrame = null;
   let paused = false;
   let resizeFrame = null;
+  
+  console.log('initSingleScroller: scrollStep =', scrollStep, 'originalCount =', originalCount);
 
   /**
-   * Один шаг скролла.
+   * Один кадр анимации - плавный скролл.
    */
-  function tick() {
-    if (paused) return;
+  let frameCount = 0;
+  let accumulatedScroll = 0; // Накопленные дробные пиксели
+  
+  function animate() {
+    if (paused) {
+      animationFrame = requestAnimationFrame(animate);
+      return;
+    }
+    
+    frameCount++;
     
     const maxScroll = scrollStep * originalCount;
     
     // Если достигли конца первой копии - прыгаем в начало
     if (wrapper.scrollLeft >= maxScroll - 2) {
       wrapper.scrollLeft = 0;
+      accumulatedScroll = 0;
+      console.log('animate: reset to start, maxScroll =', maxScroll);
     }
     
-    wrapper.scrollBy({
-      left: scrollStep,
-      behavior: SCROLL_BEHAVIOR
-    });
+    // Накапливаем дробные пиксели
+    accumulatedScroll += speed;
+    
+    // Скроллим только когда накопился хотя бы 1 пиксель
+    if (accumulatedScroll >= 1) {
+      const scrollAmount = Math.floor(accumulatedScroll);
+      accumulatedScroll -= scrollAmount; // Оставляем дробную часть
+      
+      wrapper.scrollBy({
+        left: scrollAmount,
+        behavior: 'auto'
+      });
+      
+      if (frameCount % 60 === 0) {
+        console.log('animate: frame', frameCount, 'scrollLeft =', wrapper.scrollLeft, 'scrollAmount =', scrollAmount);
+      }
+    }
+    
+    animationFrame = requestAnimationFrame(animate);
   }
 
   /**
    * Запускает автоматическую прокрутку.
    */
   function start() {
-    if (!timer) {
-      timer = setInterval(tick, stepMs);
+    console.log('start: starting animation');
+    if (!animationFrame) {
+      animationFrame = requestAnimationFrame(animate);
     }
   }
 
@@ -119,9 +165,9 @@ function initSingleScroller(wrapper, options = {}) {
    * Останавливает автоматическую прокрутку.
    */
   function stop() {
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
     }
   }
 
@@ -138,6 +184,29 @@ function initSingleScroller(wrapper, options = {}) {
    */
   function handleItemMouseLeave() {
     paused = false;
+  }
+
+  /**
+   * Обработчик нажатия кнопки мыши на элементе.
+   */
+  function handleItemMouseDown(event) {
+    // Отменяем поведение по умолчанию чтобы не начиналось перетаскивание
+    event.preventDefault();
+    
+    // Сразу снимаем паузу и убираем увеличение
+    const item = event.currentTarget;
+    paused = false;
+    
+    // Добавляем класс для отключения hover
+    item.classList.add('no-hover');
+    
+    // Добавляем глобальный обработчик отпускания кнопки
+    function handleGlobalMouseUp() {
+      item.classList.remove('no-hover');
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    }
+    
+    document.addEventListener('mouseup', handleGlobalMouseUp);
   }
 
   /**
@@ -181,6 +250,7 @@ function initSingleScroller(wrapper, options = {}) {
   items.forEach(item => {
     item.addEventListener('mouseenter', handleItemMouseEnter);
     item.addEventListener('mouseleave', handleItemMouseLeave);
+    item.addEventListener('mousedown', handleItemMouseDown);
     item.addEventListener('focusin', handleItemFocusIn);
     item.addEventListener('focusout', handleItemFocusOut);
   });
@@ -191,8 +261,12 @@ function initSingleScroller(wrapper, options = {}) {
 
   // Проверяем prefers-reduced-motion
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  console.log('initSingleScroller: prefersReducedMotion =', prefersReducedMotion);
+  
   if (!prefersReducedMotion) {
     start();
+  } else {
+    console.log('initSingleScroller: skipping animation due to prefers-reduced-motion');
   }
 
   /**
@@ -204,6 +278,7 @@ function initSingleScroller(wrapper, options = {}) {
     items.forEach(item => {
       item.removeEventListener('mouseenter', handleItemMouseEnter);
       item.removeEventListener('mouseleave', handleItemMouseLeave);
+      item.removeEventListener('mousedown', handleItemMouseDown);
       item.removeEventListener('focusin', handleItemFocusIn);
       item.removeEventListener('focusout', handleItemFocusOut);
     });
@@ -223,16 +298,16 @@ function initSingleScroller(wrapper, options = {}) {
  * Инициализирует автоскроллеры для всех элементов по селектору.
  * @param {Object} options - Опции
  * @param {string} [options.selector='.js-join-scroller'] - CSS-селектор контейнеров
- * @param {number} [options.stepMs=3000] - Интервал между прокрутками в миллисекундах
+ * @param {number} [options.speed=0.5] - Скорость прокрутки в пикселях за кадр (примерно 30px/сек при 60fps)
  * @returns {Object} API с методом destroy
  */
 export function initAutoScroller(options = {}) {
-  const { selector = '.js-join-scroller', stepMs = DEFAULT_STEP_MS } = options;
+  const { selector = '.js-join-scroller', speed = DEFAULT_SPEED } = options;
   
   const scrollers = [];
   
   document.querySelectorAll(selector).forEach(wrapper => {
-    const scroller = initSingleScroller(wrapper, { stepMs });
+    const scroller = initSingleScroller(wrapper, { speed });
     scrollers.push(scroller);
   });
 

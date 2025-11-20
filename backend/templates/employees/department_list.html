@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/department-list.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -23,45 +23,45 @@
         {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" %}
       {% endif %}
       
-      <div class="feed-card">
-        <div id="deptList" class="py-1">
-          {# поддержка обоих форматов: dict(results) или list #}
-          {% with rows=departments.results|default:departments %}
-            {% for dept in rows %}
+      <div id="deptList" class="list-view feed-stream">
+        {# поддержка обоих форматов: dict(results) или list #}
+        {% with rows=departments.results|default:departments %}
+          {% for dept in rows %}
               {% with h=dept.head emp=dept.employees_count|default:0 %}
                 {% url 'employees:department_detail' dept.id as dept_url %}
-                <div class="dept-row d-flex align-items-start gap-2"
+                <article class="dept-row list-row"
                      data-haystack="{{ dept.name }}{% if h %} {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}{% endif %}"
                      data-emp="{{ emp }}">
-                  <div class="flex-grow-1 position-relative">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                      {% if dept_url %}
-                        <a href="{{ dept_url }}" class="feed-author text-decoration-none stretched-link">
-                          {{ dept.name }}
-                        </a>
-                      {% else %}
-                        <span class="feed-author">{{ dept.name }}</span>
-                      {% endif %}
+                  <header class="feed-hd">
+                    <div class="feed-meta flex-grow-1">
+                      <div class="d-flex align-items-center gap-2 flex-wrap">
+                        {% if dept_url %}
+                          <a href="{{ dept_url }}" class="feed-author text-decoration-none">
+                            {{ dept.name }}
+                          </a>
+                        {% else %}
+                          <span class="feed-author">{{ dept.name }}</span>
+                        {% endif %}
+                      </div>
+                      <div class="feed-sub mt-1">
+                        {% if h %}
+                          Руководитель: {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}
+                        {% endif %}
+                        {% if h and emp %} · {% endif %}
+                        {% if emp %}{{ emp }} сотрудников{% endif %}
+                      </div>
                     </div>
-                    <div class="feed-sub mt-1">
-                      {% if h %}
-                        Руководитель: {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}
-                      {% endif %}
-                      {% if h and emp %} · {% endif %}
-                      {% if emp %}{{ emp }} сотрудников{% endif %}
-                    </div>
-                  </div>
-                  {% if dept_url %}
-                    <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
-                  {% endif %}
-                </div>
+                    {% if dept_url %}
+                      <i class="bi-chevron-right text-secondary"></i>
+                    {% endif %}
+                  </header>
+                </article>
               {% endwith %}
             {% empty %}
-              <div class="p-3 text-secondary">Отделов пока нет.</div>
+              <div class="alert alert-info shadow-sm">Отделов пока нет.</div>
             {% endfor %}
           {% endwith %}
         </div>
-      </div>
 
       <div class="mt-3 text-secondary small">
         Всего сотрудников: <span id="empTotal">0</span>

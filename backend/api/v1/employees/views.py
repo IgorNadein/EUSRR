@@ -1338,6 +1338,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
       ?active=true|false
       ?actually_active=true|false — реально активные: email_verified=True и не DISMISSED
                                     (или нет действий, но is_active=True)
+      ?created_at__gte=<iso_date> — зарегистрированные после указанной даты
 
     Сортировка:
       ?ordering=last_name|first_name|created_at|id  (+ '-' для DESC)
@@ -1458,6 +1459,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     | ~Q(last_action_code=ACTION_DISMISSED)
                 )
             )
+
+        # фильтр по дате создания
+        created_at_gte = qp.get("created_at__gte")
+        if created_at_gte:
+            qs = qs.filter(created_at__gte=created_at_gte)
 
         return qs
 

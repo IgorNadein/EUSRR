@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/employee-list.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
 {% endblock %}
 
 
@@ -19,12 +19,12 @@
     <div class="col-12">
 
       {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-      {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" create_as_card=True create_modal="#createEmployeeModal" create_text="Создать профиль" %}
+      {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" create_as_card=True create_modal="createEmployeeModal" create_text="Создать профиль" %}
       
-      <div id="empList" class="feed-stream">
+      <div id="empList" class="list-view feed-stream">
         {% if employees %}
           {% for emp in employees %}
-            <article class="emp-row"
+            <article class="emp-row list-row"
                      data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {% firstof emp.position.name emp.position_label '' %}"
                      data-depts="{% if emp.departments %}{% for d in emp.departments %}{% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}{% elif is_filtered_by_department and current_department %}{{ current_department.name }}{% endif %}">
               <header class="feed-hd">

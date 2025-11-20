@@ -130,8 +130,8 @@ def _api_list_new_employees(request, limit: int = 10) -> list[dict]:
     resp = _api(request).get(
         API_EMPLOYEES,
         params={
-            "is_active": "true",
-            "created_at__gte": since,  # или "created_at_after": since — см. ниже
+            "active": "true",
+            "created_at__gte": since,
             "ordering": "-created_at",
             "page_size": limit,
         },

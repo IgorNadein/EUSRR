@@ -22,15 +22,16 @@
   z-index: 10;
   padding: var(--space-2) 0;  /* 8px сверху/снизу */
   margin-bottom: var(--space-3); /* 12px отступ снизу */
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
   
-  /* Полупрозрачный фон с размытием */
-  backdrop-filter: saturate(180%) blur(12px);
-  -webkit-backdrop-filter: saturate(180%) blur(12px);
-  background: color-mix(in srgb, var(--bs-body-bg) 85%, transparent);
+  /* Полупрозрачный фон с градиентом */
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bs-body-bg) 90%, transparent) 0%,
+    color-mix(in srgb, var(--bs-body-bg) 85%, transparent) 30%,
+    color-mix(in srgb, var(--bs-body-bg) 70%, transparent) 50%,
+    color-mix(in srgb, var(--bs-body-bg) 40%, transparent) 70%,
+    transparent 100%
+  );
   
   /* Убрана border-bottom - линия не нужна */
   
@@ -38,9 +39,52 @@
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Псевдоэлемент для градиентного размытия */
+.page-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 30%,
+    rgba(0, 0, 0, 0.7) 50%,
+    rgba(0, 0, 0, 0.4) 70%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 30%,
+    rgba(0, 0, 0, 0.7) 50%,
+    rgba(0, 0, 0, 0.4) 70%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Контент должен быть выше псевдоэлемента */
+.page-header > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* При скролле - более выраженный фон */
 .page-header.scrolled {
-  background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bs-body-bg) 95%, transparent) 0%,
+    color-mix(in srgb, var(--bs-body-bg) 90%, transparent) 30%,
+    color-mix(in srgb, var(--bs-body-bg) 75%, transparent) 50%,
+    color-mix(in srgb, var(--bs-body-bg) 45%, transparent) 70%,
+    transparent 100%
+  );
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
@@ -151,7 +195,8 @@
 
 /* ===== БЛОК ФИЛЬТРОВ ===== */
 .page-filters-collapse {
-  margin-bottom: var(--space-3);
+  margin-top: var(--space-2);
+  width: 100%;
 }
 
 .page-filters {
@@ -222,7 +267,13 @@
 
 /* ===== КНОПКА СОЗДАНИЯ В ВИДЕ КАРТОЧКИ (для модала) ===== */
 /* Кнопка должна выглядеть как ссылка в feed-card */
-.feed-card button.dept-row {
+.page-header .feed-card {
+  margin-top: var(--space-2);
+  width: 100%;
+}
+
+.page-header .feed-card button.dept-row,
+.page-header .feed-card a.dept-row {
   cursor: pointer;
   transition: background-color 0.2s ease;
   width: 100%;
@@ -231,22 +282,26 @@
 }
 
 /* Текст кнопки должен быть как feed-author */
-.feed-card button.dept-row .feed-author {
+.page-header .feed-card button.dept-row .feed-author,
+.page-header .feed-card a.dept-row .feed-author {
   font-weight: 700;
   color: var(--bs-body-color);
 }
 
 /* Иконка должна быть синей как в оригинале */
-.feed-card button.dept-row i {
+.page-header .feed-card button.dept-row i,
+.page-header .feed-card a.dept-row i {
   color: var(--bs-primary);
 }
 
-.feed-card button.dept-row:hover {
+.page-header .feed-card button.dept-row:hover,
+.page-header .feed-card a.dept-row:hover {
   background-color: var(--bs-light);
 }
 
 @media (prefers-color-scheme: dark) {
-  .feed-card button.dept-row:hover {
+  .page-header .feed-card button.dept-row:hover,
+  .page-header .feed-card a.dept-row:hover {
     background-color: color-mix(in srgb, var(--bs-body-bg) 95%, white);
   }
 }
@@ -254,12 +309,26 @@
 /* ===== ТЕМНАЯ ТЕМА ===== */
 @media (prefers-color-scheme: dark) {
   .page-header {
-    background: color-mix(in srgb, var(--bs-body-bg) 80%, transparent);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--bs-body-bg) 85%, transparent) 0%,
+      color-mix(in srgb, var(--bs-body-bg) 80%, transparent) 45%,
+      color-mix(in srgb, var(--bs-body-bg) 65%, transparent) 50%,
+      color-mix(in srgb, var(--bs-body-bg) 35%, transparent) 70%,
+      transparent 100%
+    );
     border-bottom-color: color-mix(in srgb, var(--bs-border-color), transparent 60%);
   }
   
   .page-header.scrolled {
-    background: color-mix(in srgb, var(--bs-body-bg) 90%, transparent);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--bs-body-bg) 90%, transparent) 0%,
+      color-mix(in srgb, var(--bs-body-bg) 80%, transparent) 30%,
+      color-mix(in srgb, var(--bs-body-bg) 72%, transparent) 50%,
+      color-mix(in srgb, var(--bs-body-bg) 40%, transparent) 70%,
+      transparent 100%
+    );
   }
   
   .page-filters {

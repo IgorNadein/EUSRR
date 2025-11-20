@@ -1,7 +1,12 @@
 {% load static %}
 {% for post in items %}
   {% firstof post.id post.pk as post_id %}
-  <article data-post-card id="post-{{ post_id }}">
+  <article class="feed-post" 
+           id="post-{{ post_id }}"
+           data-post-card
+           data-searchtitle="{{ post.title|default:'Без названия'|escape }}"
+           data-searchauthor="{% with a=post.author %}{% if a %}{% firstof a.full_name a.get_full_name a.first_name a.last_name a.username a.email 'Автор' %}{% else %}Автор{% endif %}{% endwith %}"
+           data-searchbody="{{ post.body|striptags|truncatewords:50|default:'Без содержания'|escape }}">
     <header class="feed-hd">
       
       {# --- Аватар автора --- #}

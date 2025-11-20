@@ -1,131 +1,133 @@
 {# Универсальный компонент шапки страницы списка. См. документацию в PAGE_HEADER_SUMMARY.md #}
 
 {# ===== ШАПКА СТРАНИЦЫ ===== #}
-<div class="page-header d-flex align-items-center gap-2">
-  {# Иконка #}
-  {% if icon %}
-    <i class="{{ icon }} fs-2 text-primary flex-shrink-0"></i>
-  {% endif %}
-
-  {# Заголовок #}
-  <h2 class="page-title mb-0">{{ title }}</h2>
-
-  {# Счётчик (если есть) #}
-  {% if count is not None %}
-    <span class="page-count text-secondary">
-      {{ count_label|default:"Всего:" }} <span class="count-value">{{ count }}</span>
-    </span>
-  {% endif %}
-
-  {# Правая часть - кнопки и поиск #}
-  <div class="ms-auto d-flex align-items-center gap-2">
-    {# Переключатель области (Мои/Все) #}
-    {% if scope_urls %}
-      <div class="btn-group page-scope-switch" role="group" aria-label="Область">
-        <a href="{{ scope_urls.mine }}"
-           class="btn btn-outline-secondary btn-sm {% if scope == 'mine' %}active{% endif %}">
-          Мои
-        </a>
-        <a href="{{ scope_urls.all }}"
-           class="btn btn-outline-secondary btn-sm {% if scope == 'all' %}active{% endif %}">
-          Все
-        </a>
-      </div>
+<div class="page-header">
+  <div class="d-flex align-items-center gap-2">
+    {# Иконка #}
+    {% if icon %}
+      <i class="{{ icon }} fs-2 text-primary flex-shrink-0"></i>
     {% endif %}
 
-    {# Дополнительные кнопки (slot) #}
-    {% if extra_buttons %}
-      {{ extra_buttons }}
+    {# Заголовок #}
+    <h2 class="page-title mb-0">{{ title }}</h2>
+
+    {# Счётчик (если есть) #}
+    {% if count is not None %}
+      <span class="page-count text-secondary">
+        {{ count_label|default:"Всего:" }} <span class="count-value">{{ count }}</span>
+      </span>
     {% endif %}
 
-    {# Поиск iOS-стиль #}
-    {% if not no_search and search_id %}
-      <div class="page-search ios-search">
-        <i class="bi-search"></i>
-        <input type="search"
-               id="{{ search_id }}"
-               class="ios-search-input"
-               placeholder="{{ search_placeholder|default:'Поиск...' }}"
-               autocomplete="off">
-        <button type="button" class="ios-search-clear" aria-label="Очистить">
-          <i class="bi-x-lg"></i>
+    {# Правая часть - кнопки и поиск #}
+    <div class="ms-auto d-flex align-items-center gap-2">
+      {# Переключатель области (Мои/Все) #}
+      {% if scope_urls %}
+        <div class="btn-group page-scope-switch" role="group" aria-label="Область">
+          <a href="{{ scope_urls.mine }}"
+             class="btn btn-outline-secondary btn-sm {% if scope == 'mine' %}active{% endif %}">
+            Мои
+          </a>
+          <a href="{{ scope_urls.all }}"
+             class="btn btn-outline-secondary btn-sm {% if scope == 'all' %}active{% endif %}">
+            Все
+          </a>
+        </div>
+      {% endif %}
+
+      {# Дополнительные кнопки (slot) #}
+      {% if extra_buttons %}
+        {{ extra_buttons }}
+      {% endif %}
+
+      {# Поиск iOS-стиль #}
+      {% if not no_search and search_id %}
+        <div class="page-search ios-search">
+          <i class="bi-search"></i>
+          <input type="search"
+                 id="{{ search_id }}"
+                 class="ios-search-input"
+                 placeholder="{{ search_placeholder|default:'Поиск...' }}"
+                 autocomplete="off">
+          <button type="button" class="ios-search-clear" aria-label="Очистить">
+            <i class="bi-x-lg"></i>
+          </button>
+        </div>
+      {% endif %}
+
+      {# Кнопка раскрытия фильтров #}
+      {% if has_filters and filters_target %}
+        <button class="btn btn-outline-secondary btn-circle page-filter-toggle"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#{{ filters_target }}"
+                aria-expanded="false"
+                aria-controls="{{ filters_target }}"
+                aria-label="Показать фильтры">
+          <i class="bi-funnel"></i>
         </button>
+      {% endif %}
+
+      {# Кнопка создания (только если create_as_card не установлен) #}
+      {% if not no_create and not create_as_card %}
+        {% if create_modal %}
+          <button type="button"
+                  class="btn btn-primary btn-sm btn-pill btn-icon page-create-btn"
+                  data-bs-toggle="modal"
+                  data-bs-target="#{{ create_modal }}">
+            <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
+            <span class="btn-text">{{ create_text|default:"Создать" }}</span>
+          </button>
+        {% elif create_url %}
+          <a href="{{ create_url }}"
+             class="btn btn-primary btn-sm btn-pill btn-icon page-create-btn">
+            <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
+            <span class="btn-text">{{ create_text|default:"Создать" }}</span>
+          </a>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {# ===== БЛОК ФИЛЬТРОВ (скрываемый) ===== #}
+  {% if has_filters and filters_target %}
+    <div class="collapse page-filters-collapse" id="{{ filters_target }}">
+      <div class="page-filters">
+        {% if filters_template %}
+          {# Включаем внешний шаблон фильтров #}
+          {% include filters_template %}
+        {% else %}
+          {# Или используем переданный HTML #}
+          {{ filters_html|safe }}
+        {% endif %}
       </div>
-    {% endif %}
+    </div>
+  {% endif %}
 
-    {# Кнопка раскрытия фильтров #}
-    {% if has_filters and filters_target %}
-      <button class="btn btn-outline-secondary btn-circle page-filter-toggle"
-              type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#{{ filters_target }}"
-              aria-expanded="false"
-              aria-controls="{{ filters_target }}"
-              aria-label="Показать фильтры">
-        <i class="bi-funnel"></i>
-      </button>
-    {% endif %}
-
-    {# Кнопка создания (только если create_as_card не установлен) #}
-    {% if not no_create and not create_as_card %}
-      {% if create_modal %}
+  {# ===== КНОПКА СОЗДАНИЯ В ВИДЕ КАРТОЧКИ ===== #}
+  {% if not no_create and create_as_card %}
+    {% if create_modal %}
+      <div class="feed-card mb-2">
         <button type="button"
-                class="btn btn-primary btn-sm btn-pill btn-icon page-create-btn"
+                class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none border-0 bg-transparent"
                 data-bs-toggle="modal"
-                data-bs-target="#{{ create_modal }}">
+                data-bs-target="#{{ create_modal }}"
+                role="button" 
+                aria-label="{{ create_text|default:'Создать' }}">
+          <span class="feed-author">{{ create_text|default:"Создать" }}</span>
           <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
-          <span class="btn-text">{{ create_text|default:"Создать" }}</span>
         </button>
-      {% elif create_url %}
+      </div>
+    {% elif create_url %}
+      <div class="feed-card mb-2">
         <a href="{{ create_url }}"
-           class="btn btn-primary btn-sm btn-pill btn-icon page-create-btn">
+           class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none border-0 bg-transparent"
+           role="button" 
+           aria-label="{{ create_text|default:'Создать' }}">
+          <span class="feed-author">{{ create_text|default:"Создать" }}</span>
           <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
-          <span class="btn-text">{{ create_text|default:"Создать" }}</span>
         </a>
-      {% endif %}
+      </div>
     {% endif %}
-  </div>
-</div>
-
-{# ===== БЛОК ФИЛЬТРОВ (скрываемый) ===== #}
-{% if has_filters and filters_target %}
-  <div class="collapse page-filters-collapse" id="{{ filters_target }}">
-    <div class="page-filters">
-      {% if filters_template %}
-        {# Включаем внешний шаблон фильтров #}
-        {% include filters_template %}
-      {% else %}
-        {# Или используем переданный HTML #}
-        {{ filters_html|safe }}
-      {% endif %}
-    </div>
-  </div>
-{% endif %}
-
-{# ===== КНОПКА СОЗДАНИЯ В ВИДЕ КАРТОЧКИ ===== #}
-{% if not no_create and create_as_card %}
-  {% if create_modal %}
-    <div class="feed-card mb-2">
-      <button type="button"
-              class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none border-0 bg-transparent"
-              data-bs-toggle="modal"
-              data-bs-target="#{{ create_modal }}"
-              role="button" 
-              aria-label="{{ create_text|default:'Создать' }}">
-        <span class="feed-author">{{ create_text|default:"Создать" }}</span>
-        <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
-      </button>
-    </div>
-  {% elif create_url %}
-    <div class="feed-card mb-2">
-      <a href="{{ create_url }}"
-         class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none border-0 bg-transparent"
-         role="button" 
-         aria-label="{{ create_text|default:'Создать' }}">
-        <span class="feed-author">{{ create_text|default:"Создать" }}</span>
-        <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
-      </a>
-    </div>
   {% endif %}
-{% endif %}
+</div>
 

@@ -16,19 +16,15 @@
 
         {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
         {% if user.is_authenticated and user.is_staff %}
-          {% url 'feed:post_create' as post_create_url_base %}
-          {% with post_create_url=post_create_url_base|add:"?type=company" %}
-            {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" no_search=True create_url=post_create_url create_text="Новая публикация" create_icon="bi-plus-circle" %}
-          {% endwith %}
+          {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" search_id="feedFilter" search_placeholder="Поиск по названию, автору или содержанию" create_as_card=True create_modal="createPostModal" create_text="Создать публикацию" %}
         {% else %}
-          {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" no_search=True create_url='' create_text="Новая публикация" create_icon="bi-plus-circle" %}
+          {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" search_id="feedFilter" search_placeholder="Поиск по названию, автору или содержанию" %}
         {% endif %}
 
         {% if new_employees %}
-          <div class="feed-new mb-3">
+          <div>
             <div class="d-flex justify-content-between align-items-center mb-2">
-              <h6 class="mb-0 text-secondary">Присоединились недавно</h6>
-              <a href="{% url 'employees:employees_list' %}" class="small text-primary text-decoration-none">Все сотрудники</a>
+              <h6 class="mb-0 text-secondary"></h6>
             </div>
 
             <div class="join-scroller js-join-scroller" aria-label="Новые сотрудники">
@@ -68,13 +64,13 @@
                       {% endif %}
 
 
-                      <div class="text-center">
-                        <a class="link" href="{% url 'employees:employee_detail' emp_id %}">Профиль →</a>
-                      </div>
                     </div>
                   </div>
                 {% endfor %}
               </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0 text-secondary"></h6>
             </div>
           </div>
         {% endif %}
@@ -82,7 +78,7 @@
         <section class="feed-card mb-3">
           <div class="feed-hd">
           </div>
-          <div>
+          <div id="feedList">
             {% if page %}
               {% include "feed/_feed_cards.html" with items=page.object_list %}
             {% elif posts %}
@@ -102,15 +98,35 @@
       </div>
     </div>
   </div>
-{% endblock %}
+
+{# Модальное окно для создания публикации #}
+{% include "feed/components/modal_create_post.html" %}
 
 <script type="module">
   import { initAutoScroller } from "{% static 'js/components/autoScrollerHandler.js' %}";
+  import { initCreatePostModal } from "{% static 'js/components/createPostModal.js' %}";
+  import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
   
   document.addEventListener('DOMContentLoaded', () => {
     initAutoScroller({ 
       selector: '.js-join-scroller',
-      stepMs: 3000
+      speed: 0.5  // пикселей за кадр (примерно 30px/сек)
+    });
+    
+    // Инициализация модала создания публикации
+    initCreatePostModal({
+      submitUrl: '{% url "feed:post_create" %}?type=company'
+    });
+    
+    // Инициализация поиска по публикациям
+    new ListFilter({
+      listSelector: '#feedList',
+      itemSelector: '.feed-post',
+      searchInputSelector: '#feedFilter',
+      clearButtonSelector: '.ios-search-clear',
+      matchFn: createDataAttrMatcher(['searchtitle', 'searchauthor', 'searchbody']),
+      debounceMs: 300
     });
   });
 </script>
+{% endblock %}

@@ -21,6 +21,22 @@
   overflow-y: visible;       /* нужно для инфо-блока */
   scrollbar-width: none;     /* Firefox скрыть полосы */
   -ms-overflow-style: none;  /* IE/старый Edge */
+  
+  /* Градиентная маска по краям - фиксированная на контейнере */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 40px,
+    black calc(100% - 40px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 40px,
+    black calc(100% - 40px),
+    transparent 100%
+  );
 }
 
 .join-scroller::-webkit-scrollbar{ 
@@ -29,31 +45,12 @@
 
 .join-rail{
   display: flex; 
+  flex-wrap: nowrap;         /* не переносить элементы */
   align-items: flex-start; 
+  justify-content: center;   /* центрировать элементы */
   gap: .9rem; /* start: инфо-блоки снизу */
   padding: .25rem .25rem;
-}
-
-/* мягкие «маски» по краям */
-.join-scroller::before,
-.join-scroller::after{
-  content: ""; 
-  position: absolute; 
-  top: 0; 
-  bottom: 0; 
-  width: 32px; 
-  pointer-events: none;
-  background: linear-gradient(to right, var(--bs-body-bg), transparent);
-}
-
-.join-scroller::after{ 
-  right: 0; 
-  left: auto; 
-  transform: scaleX(-1); 
-}
-
-.join-scroller::before{ 
-  left: 0; 
+  min-width: 100%;           /* занять всю ширину контейнера */
 }
 
 @media (prefers-reduced-motion: reduce){
@@ -80,6 +77,13 @@
 .join-item:focus-within{
   --size: calc(var(--base) * var(--mult));
   z-index: 2; /* поверх соседей */
+}
+
+/* Отключение hover при перетаскивании */
+.join-item.no-hover:hover,
+.join-item.no-hover:focus-within{
+  --size: var(--base);
+  z-index: auto;
 }
 
 /* круг с фото */
@@ -130,6 +134,13 @@
   max-height: 320px; /* с запасом под длинный список навыков */
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Скрытие инфо при перетаскивании */
+.join-item.no-hover .join-info{
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .join-info .name{ 
