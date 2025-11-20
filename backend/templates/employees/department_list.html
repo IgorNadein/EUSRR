@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/department-list.css' %}">
 {% endblock %}
 
@@ -15,31 +16,9 @@
   <div class="row gx-0"> 
       <div class="col-12">
 
-      <div class="feed-header d-flex align-items-center">
-        <i class="bi-diagram-3 fs-2 text-primary"></i>
-        <h2 class="title mb-0">Отделы</h2>
-        <span class="ms-2 small text-secondary">Всего: {{ departments|length }}</span>
-        <div class="ms-auto ios-search">
-          <div class="ios-search">
-            <i class="bi-search"></i>
-            <input id="deptFilter" type="search" class="ios-search-input"
-                   placeholder="Поиск по названию или руководителю" autocomplete="off">
-            <button type="button" class="ios-search-clear" aria-label="Очистить">
-              <i class="bi-x-lg"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-      {% if can_create_departments or perms.employees.add_department or request.user.is_staff or request.user.is_superuser %}
-        <div class="feed-card mb-2">
-          <a href="{% url 'employees:department_create' %}"
-            class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none"
-            role="button" aria-label="Создать отдел">
-            <span class="feed-author">Создать отдел</span>
-            <i class="bi-plus-lg"></i>
-          </a>
-        </div>
-      {% endif %}
+      {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+      {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" create_as_card=True create_url=can_create_departments|yesno:"{% url 'employees:department_create' %}," create_text="Создать отдел" %}
+      
       <div class="feed-card">
         <div id="deptList" class="py-1">
           {# поддержка обоих форматов: dict(results) или list #}

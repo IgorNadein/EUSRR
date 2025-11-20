@@ -7,6 +7,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -14,28 +15,10 @@
   <div class="row gx-0">
     <div class="col-12">
 
-      {# Заголовок + ПОИСК (iOS-стиль) #}
-      <div class="feed-header d-flex align-items-center">
-        <i class="bi-chat-dots fs-2 text-primary"></i>
-        <h2 class="title mb-0">Мои чаты</h2>
+      {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+      {% include "includes/components/page_header.html" with icon="bi-chat-dots" title="Мои чаты" search_id="chatSearch" search_placeholder="Поиск по названию или участникам" no_create=True %}
 
-        <div class="ms-auto ios-search">
-          <div class="ios-search">
-            <i class="bi-search"></i>
-            <input
-              type="search"
-              id="chatSearch"
-              class="ios-search-input"
-              placeholder="Поиск по названию или участникам"
-              autocomplete="off">
-            <button type="button" class="ios-search-clear" aria-label="Очистить">
-              <i class="bi-x-lg"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {# Сегментированный фильтр + КНОПКА справа #}
+      {# Сегментированный фильтр #}
       <div class="feed-new mb-3">
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <div class="btn-group" role="group" aria-label="Фильтр чатов">

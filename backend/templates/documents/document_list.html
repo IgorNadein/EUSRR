@@ -7,44 +7,15 @@
 <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="container ios-page">
 
-  {# ===== Шапка страницы ===== #}
-  <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
-    <i class="bi-file-earmark-text fs-2 text-primary"></i>
-    <h2 class="title ios-title mb-0">Документы</h2>
-
-    {% if can_manage_documents or user.is_staff or user.is_superuser %}
-      <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-        <!-- Переключатель области (Мои / Все) -->
-        <div class="btn-group scope-switch" role="group" aria-label="Область">
-          <a href="{{ scope_urls.mine }}"
-             class="btn btn-outline-secondary {% if scope == 'mine' %}active{% endif %}">
-            Мои
-          </a>
-          <a href="{{ scope_urls.all }}"
-             class="btn btn-outline-secondary {% if scope == 'all' %}active{% endif %}">
-            Все
-          </a>
-        </div>
-
-        {% if perms.documents.add_document %}
-          <button type="button"
-                  class="btn btn-primary d-flex align-items-center gap-2"
-                  data-bs-toggle="modal"
-                  data-bs-target="#docCreateModal">
-            <i class="bi-plus-lg"></i><span>Создать документ</span>
-          </button>
-        {% endif %}
-      </div>
-    {% else %}
-      <span class="ms-2 small text-secondary">Показаны ваши документы</span>
-    {% endif %}
-  </div>
+  {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+  {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True scope_urls=scope_urls scope=scope create_modal=perms.documents.add_document|yesno:"#docCreateModal," create_text="Создать документ" create_icon="bi-plus-lg" %}
 
   {# ===== Карточка со списком ===== #}
   <div class="feed-card mb-3">

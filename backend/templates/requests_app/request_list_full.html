@@ -6,76 +6,15 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/request-list.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="container ios-page">
 
-  {# ===== Шапка страницы ===== #}
-  <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
-    <i class="bi-clipboard-check fs-2 text-primary"></i>
-    <h2 class="title ios-title mb-0">Заявления</h2>
-
-      <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-        {% if can_process or user.is_staff or user.is_superuser %}
-          <!-- Переключатель области (Мои / Все) -->
-          <div class="btn-group scope-switch" role="group" aria-label="Область">
-            <a href="?view=mine{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
-              class="btn btn-outline-secondary {% if scope == 'mine' %}active{% endif %}">
-              Мои
-            </a>
-            <a href="?view=all{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
-              class="btn btn-outline-secondary {% if scope == 'all' %}active{% endif %}">
-              Все
-            </a>
-          </div>
-        {% endif %}
-          <!-- Кнопка создания -->
-          <button type="button"
-                  class="btn btn-primary d-flex align-items-center gap-2"
-                  data-bs-toggle="modal"
-                  data-bs-target="#reqCreateModal">
-            <i class="bi-plus-lg"></i><span>Новое заявление</span>
-          </button>
-      </div>
-  </div>
-
-  {# ===== Фильтры ===== #}
-  <form class="feed-new mb-3" method="get">
-    <div class="row g-2 align-items-center">
-      <div class="col-12 col-sm-4">
-        <label class="form-label mb-1">Тип</label>
-        <select name="type" class="form-select">
-          <option value="">— Любой —</option>
-          <option value="vacation"    {% if filters.type == 'vacation' %}selected{% endif %}>Отпуск</option>
-          <option value="sick_leave"  {% if filters.type == 'sick_leave' %}selected{% endif %}>Больничный</option>
-          <option value="transfer"    {% if filters.type == 'transfer' %}selected{% endif %}>Перевод</option>
-          <option value="dismissal"   {% if filters.type == 'dismissal' %}selected{% endif %}>Увольнение</option>
-          <option value="other"       {% if filters.type == 'other' %}selected{% endif %}>Другое</option>
-        </select>
-      </div>
-      <div class="col-12 col-sm-4">
-        <label class="form-label mb-1">Статус</label>
-        <select name="status" class="form-select">
-          <option value="">— Любой —</option>
-          <option value="draft"     {% if filters.status == 'draft' %}selected{% endif %}>Черновик</option>
-          <option value="pending"   {% if filters.status == 'pending' %}selected{% endif %}>На рассмотрении</option>
-          <option value="approved"  {% if filters.status == 'approved' %}selected{% endif %}>Одобрено</option>
-          <option value="rejected"  {% if filters.status == 'rejected' %}selected{% endif %}>Отклонено</option>
-          <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>Отменено</option>
-        </select>
-      </div>
-      <div class="col-12 col-sm-4 d-flex justify-content-end gap-2">
-        <input type="hidden" name="view" value="{{ scope }}">
-        <button class="btn btn-outline-primary d-flex align-items-center justify-content-center" type="submit">
-          <i class="bi-funnel"></i>
-        </button>
-        <a class="btn btn-outline-secondary d-flex align-items-center justify-content-center" href="?view={{ scope }}">
-          <i class="bi-x-lg"></i>
-        </a>
-      </div>
-    </div>
-  </form>
+  {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+  {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True scope_urls=can_process|yesno:"{ 'mine': '?view=mine'|add:filters.type|yesno:'&type='|add:filters.type|add:filters.status|yesno:'&status='|add:filters.status, 'all': '?view=all'|add:filters.type|yesno:'&type='|add:filters.type|add:filters.status|yesno:'&status='|add:filters.status }," scope=scope has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_modal="#reqCreateModal" create_text="Новое заявление" create_icon="bi-plus-lg" %}
 
   {# ===== Список ===== #}
   <div id="reqList" class="feed-card mb-3">

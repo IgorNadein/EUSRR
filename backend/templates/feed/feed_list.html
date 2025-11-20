@@ -5,6 +5,8 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/join-scroller.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -12,16 +14,8 @@
     <div class="row gx-0"> 
       <div class="col-12">
 
-        <div class="feed-header d-flex align-items-center gap-3">
-          <i class="bi-megaphone fs-2 text-primary"></i>
-          <h2 class="title mb-0">Лента</h2>
-
-          {% if user.is_authenticated and user.is_staff %}
-            <a class="btn btn-primary ms-auto" href="{% url 'feed:post_create' %}?type=company">
-              <i class="bi-plus-circle me-1"></i> Новая публикация
-            </a>
-          {% endif %}
-        </div>
+        {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+        {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" no_search=True create_url=user.is_authenticated|yesno:"{% if user.is_staff %}{% url 'feed:post_create' %}?type=company{% endif %}," create_text="Новая публикация" create_icon="bi-plus-circle" %}
 
         {% if new_employees %}
           <div class="feed-new mb-3">
