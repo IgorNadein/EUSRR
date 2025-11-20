@@ -14,7 +14,25 @@
 <div class="container ios-page">
 
   {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-  {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True scope_urls=can_process|yesno:"{ 'mine': '?view=mine'|add:filters.type|yesno:'&type='|add:filters.type|add:filters.status|yesno:'&status='|add:filters.status, 'all': '?view=all'|add:filters.type|yesno:'&type='|add:filters.type|add:filters.status|yesno:'&status='|add:filters.status }," scope=scope has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_modal="#reqCreateModal" create_text="Новое заявление" create_icon="bi-plus-lg" %}
+  {% if can_process or user.is_staff or user.is_superuser %}
+    {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True scope=scope has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_modal="reqCreateModal" create_text="Новое заявление" create_icon="bi-plus-lg" %}
+    
+    {# Переключатель scope отдельно (вставляется через extra_buttons не работает) #}
+    <div class="mb-3 d-flex justify-content-end">
+      <div class="btn-group" role="group" aria-label="Область">
+        <a href="?view=mine{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+           class="btn btn-outline-secondary btn-sm {% if scope == 'mine' %}active{% endif %}">
+          Мои
+        </a>
+        <a href="?view=all{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+           class="btn btn-outline-secondary btn-sm {% if scope == 'all' %}active{% endif %}">
+          Все
+        </a>
+      </div>
+    </div>
+  {% else %}
+    {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_modal="reqCreateModal" create_text="Новое заявление" create_icon="bi-plus-lg" %}
+  {% endif %}
 
   {# ===== Список ===== #}
   <div id="reqList" class="feed-card mb-3">

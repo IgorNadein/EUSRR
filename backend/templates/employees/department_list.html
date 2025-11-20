@@ -17,7 +17,12 @@
       <div class="col-12">
 
       {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-      {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" create_as_card=True create_url=can_create_departments|yesno:"{% url 'employees:department_create' %}," create_text="Создать отдел" %}
+      {% if can_create_departments or perms.employees.add_department or request.user.is_staff or request.user.is_superuser %}
+        {% url 'employees:department_create' as dept_create_url %}
+      {% else %}
+        {% with dept_create_url='' %}{% endwith %}
+      {% endif %}
+      {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" create_as_card=True create_url=dept_create_url create_text="Создать отдел" %}
       
       <div class="feed-card">
         <div id="deptList" class="py-1">
