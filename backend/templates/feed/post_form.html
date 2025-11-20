@@ -92,64 +92,19 @@
   </form>
 </div>
 
-<script>
-  (function () {
-    const input = document.getElementById("id_image");
-    const preview = document.getElementById("newImagePreview");
-    if (!input || !preview) return;
-    input.addEventListener("change", function (e) {
-      const file = e.target.files && e.target.files[0];
-      if (!file) {
-        preview.classList.add("d-none");
-        preview.src = "";
-        return;
-      }
-      const url = URL.createObjectURL(file);
-      preview.src = url;
-      preview.classList.remove("d-none");
-    });
-  })();
-</script>
-<script>
-  (function(){
-    const form = document.querySelector('form.card');  // твоя форма публикации
-    if (!form) return;
+<script type="module">
+  import { initImagePreview } from "{% static 'js/components/imagePreviewHandler.js' %}";
+  import { initTextareaAutogrow } from "{% static 'js/components/textareaAutogrowHandler.js' %}";
 
-    // навешиваем класс и обработчики на все textarea внутри формы
-    const areas = Array.from(form.querySelectorAll('textarea'));
-    if (!areas.length) return;
+  // Превью изображения
+  initImagePreview({
+    inputId: 'id_image',
+    previewId: 'newImagePreview',
+    currentPreviewId: 'currentImagePreview'
+  });
 
-    areas.forEach(el => {
-      el.classList.add('autogrow');
-      autoSize(el);
-      el.addEventListener('input', () => autoSize(el));
-    });
-
-    // подгонка при смене размеров окна (перелом колонок и т.п.)
-    let raf;
-    window.addEventListener('resize', () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => areas.forEach(autoSize));
-    });
-
-    function autoSize(el){
-      // сброс высоты -> вычисление по контенту
-      el.classList.remove('is-max');
-      el.style.height = 'auto';
-      const borderBox = getComputedStyle(el).boxSizing === 'border-box';
-      const style = getComputedStyle(el);
-      const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
-      const desired = el.scrollHeight + (borderBox ? 0 : border);
-      el.style.height = desired + 'px';
-
-      // если упёрлись в max-height — включаем скролл
-      const maxH = parseFloat(style.maxHeight);
-      if (!Number.isNaN(maxH) && desired >= maxH) {
-        el.style.height = style.maxHeight;
-        el.classList.add('is-max');
-      }
-    }
-  })();
+  // Автоматическое изменение размера textarea
+  initTextareaAutogrow({ selector: 'form.card textarea' });
 </script>
 
 {% endblock %}

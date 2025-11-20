@@ -35,8 +35,8 @@
   
   /* Высота компонентов */
   --navbar-h: 60px;
-  --sidebar-w: 260px;
-  --rightbar-w: 280px;
+  --sidebar-w: 200px;
+  --rightbar-w: 350px;
   
   /* Радиусы скругления */
   --radius-xs: 4px;
@@ -54,12 +54,48 @@
   --input-radius: var(--radius-md);
   --badge-radius: 999px;
   
-  /* Отступы */
-  --spacing-xs: 0.25rem;  /* 4px */
-  --spacing-sm: 0.5rem;   /* 8px */
-  --spacing-md: 1rem;     /* 16px */
-  --spacing-lg: 1.5rem;   /* 24px */
-  --spacing-xl: 2rem;     /* 32px */
+  /* ========== Унифицированная система отступов (8px grid) ========== */
+  
+  /* Базовая шкала отступов */
+  --space-0: 0;           /* 0px */
+  --space-1: 0.25rem;     /* 4px  - минимальный отступ внутри компонента */
+  --space-2: 0.5rem;      /* 8px  - стандартный отступ между элементами */
+  --space-3: 0.75rem;     /* 12px - отступ между секциями */
+  --space-4: 1rem;        /* 16px - отступ между блоками */
+  --space-5: 1.5rem;      /* 24px - большой разделитель */
+  
+  /* Семантические названия (для лучшей читаемости) */
+  --space-xs: var(--space-1);   /* 8px */
+  --space-sm: var(--space-2);   /* 16px */
+  --space-md: var(--space-3);   /* 24px */
+  --space-lg: var(--space-4);   /* 32px */
+  --space-xl: var(--space-5);   /* 48px */
+  
+  /* Специфичные отступы для компонентов */
+  --gap-component: var(--space-3);    /* gap внутри flex-контейнеров (12px) */
+  --gap-section: var(--space-4);      /* gap между секциями (16px) */
+  
+  /* Padding карточек и контейнеров */
+  --card-padding: var(--space-2);     /* 16px - стандартный padding карточек */
+  --card-padding-sm: var(--space-1);  /* 8px - компактный padding */
+  --card-padding-lg: var(--space-3);  /* 24px - увеличенный padding */
+  
+  /* Margin между элементами */
+  --margin-section: var(--space-3);   /* 24px - между секциями */
+  --margin-block: var(--space-4);     /* 32px - между крупными блоками */
+  
+  /* ========== Layout отступы (app-layout grid) ========== */
+  /* Управление отступами основного layout'а приложения */
+  --layout-gap: var(--space-2);         /* 16px - расстояние между sidebar, main, rightbar */
+  --layout-padding-y: var(--space-3);   /* 24px - вертикальные отступы layout */
+  --layout-padding-x: 0;                /* 0px - горизонтальные отступы (управляются Bootstrap) */
+  
+  /* Старые переменные (deprecated, оставлены для обратной совместимости) */
+  --spacing-xs: var(--space-1);  /* 8px - использовать --space-1 */
+  --spacing-sm: var(--space-2);  /* 16px - использовать --space-2 */
+  --spacing-md: var(--space-3);  /* 24px - использовать --space-3 */
+  --spacing-lg: var(--space-4);  /* 32px - использовать --space-4 */
+  --spacing-xl: var(--space-5);  /* 48px - использовать --space-5 */
   
   /* ========== Тени ========== */
   

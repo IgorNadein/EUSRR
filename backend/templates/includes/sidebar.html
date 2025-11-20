@@ -62,6 +62,13 @@
         <span>Документы</span>
       </a>
       
+      <a href="{% url 'finance:dashboard' %}"
+        class="nav-link {% if request.resolver_match.app_name == 'finance' %}active{% endif %}"
+        {% if request.resolver_match.app_name == 'finance' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-cash-coin"></i></span>
+        <span>Финансы</span>
+      </a>
+      
     </nav>
 
     <div class="mt-auto pt-3 small">
@@ -76,88 +83,15 @@
 
 </div>
 
-<script>
-  // компактный апдейтер бейджа "Чаты" (форматирует 99+)
-  (function(){
-    const badge = document.getElementById('sidebarChatBadge');
-    if (!badge) return;
-    function render(n){
-      const v = Number(n)||0;
-      badge.dataset.count = String(v);
-      badge.textContent = v > 99 ? '99+' : String(v);
-      badge.classList.toggle('d-none', v <= 0);
-    }
-    render(badge.dataset.count);
+<script type="module">
+  import { initChatBadge } from "{% static 'js/components/chatBadgeHandler.js' %}";
+  import { initThemeToggle } from "{% static 'js/components/themeToggleHandler.js' %}";
 
-    // глобальное событие для real-time апдейта
-    window.addEventListener('chats:unread-total', (e)=> render(e?.detail?.total));
+  // Инициализация бейджа непрочитанных чатов
+  initChatBadge({ badgeId: 'sidebarChatBadge' });
 
-    // fallback: суммируем [data-unread-count] на страницах списка чатов
-    document.addEventListener('DOMContentLoaded', ()=>{
-      const rows = document.querySelectorAll('[data-unread-count]');
-      if (!rows.length) return;
-      const total = Array.from(rows).reduce((acc, el)=> acc + (Number(el.textContent)||0), 0);
-      render(total);
-    });
-  })();
-</script>
-
-<script>
-  (function(){
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const root  = document.documentElement;
-    const MODES = ['light','auto','dark'];
-    const ICONS = { light:'bi-sun-fill', auto:'bi-circle-half', dark:'bi-moon-stars' };
-    const LABEL = { light:'Светлая',     auto:'Авто',           dark:'Темная' };
-
-    // какие-то проекты любят хранить 'theme' в LS — используем тот же ключ
-    function getSavedMode(){ return localStorage.getItem('theme') || 'auto'; }
-    function setSavedMode(m){ try{ localStorage.setItem('theme', m); }catch(_){} }
-
-    function effective(mode){ return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode; }
-
-    function applyMode(mode, persist=true){
-      const eff = effective(mode);
-      root.setAttribute('data-bs-theme', eff);
-      if (persist) setSavedMode(mode);
-      updateButtons(mode);
-    }
-
-    function updateButtons(mode){
-      document.querySelectorAll('.js-theme-btn').forEach(btn=>{
-        const icon = btn.querySelector('.bi');
-        const lab  = btn.querySelector('.mode-label');
-        // сброс иконок
-        if (icon){
-          icon.className = 'bi ' + (ICONS[mode] || ICONS.auto);
-        }
-        if (lab){ lab.textContent = LABEL[mode] || LABEL.auto; }
-        btn.dataset.mode = mode;
-        btn.title = `Тема: ${LABEL[mode]}. Нажмите, чтобы переключить`;
-        btn.setAttribute('aria-label', `Тема: ${LABEL[mode]}. Нажмите, чтобы переключить`);
-      });
-    }
-
-    function nextMode(cur){
-      const i = MODES.indexOf(cur); return MODES[(i >= 0 ? i : 0) + 1 === MODES.length ? 0 : i + 1];
-    }
-
-    document.addEventListener('DOMContentLoaded', ()=>{
-      const start = getSavedMode();
-      applyMode(start, false);
-
-      document.body.addEventListener('click', (e)=>{
-        const btn = e.target.closest('.js-theme-btn'); if (!btn) return;
-        e.preventDefault();
-        const cur = btn.dataset.mode || getSavedMode() || 'auto';
-        const nxt = nextMode(cur);
-        applyMode(nxt, true);
-      });
-
-      // если системная тема поменялась и у нас «Авто», нужно обновить
-      media.addEventListener('change', ()=>{ if ((localStorage.getItem('theme') || 'auto') === 'auto'){ applyMode('auto', false); } });
-    });
-  })();
+  // Инициализация переключателя темы
+  initThemeToggle();
 </script>
 
 

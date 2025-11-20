@@ -8,11 +8,20 @@
 ────────────────────────────────────────────────────────────── */
 /* модал всегда выше бэкдропа/локальных стэков */
 .modal {
-  z-index: 1080;
+  z-index: 1080 !important;
 }
 
 .modal-backdrop {
-  z-index: 1075;
+  z-index: 1075 !important;
+}
+
+/* показанный модал должен быть точно выше backdrop */
+.modal.show {
+  z-index: 1080 !important;
+}
+
+.modal-backdrop.show {
+  z-index: 1075 !important;
 }
 
 /* не даём «просвечивать» через бэкдроп */

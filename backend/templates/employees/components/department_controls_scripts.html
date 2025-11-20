@@ -1,0 +1,19 @@
+{% load static %}
+{# === JavaScript для управления отделами === #}
+
+<script type="module">
+  import { initHeadPicker } from '{% static "js/components/headPicker.js" %}';
+  import { initRoleManager } from '{% static "js/components/roleManager.js" %}';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // 1. Autocomplete для выбора руководителя отдела
+    const headPicker = initHeadPicker();
+
+    // 2. Управление ролями и правами отдела
+    const roleManager = initRoleManager();
+
+    // Экспорт в window для отладки
+    if (headPicker) window.headPicker = headPicker;
+    if (roleManager) window.roleManager = roleManager;
+  });
+</script>

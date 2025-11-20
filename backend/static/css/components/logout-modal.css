@@ -50,19 +50,19 @@
   height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bs-body-color), transparent 70%);
-  margin: .5rem auto 0.25rem auto;
+  margin: var(--space-1) auto var(--space-1) auto;
 }
 
 /* ─────────────────────────────────────────────────────────────
    CONTENT
 ────────────────────────────────────────────────────────────── */
 .ios-body {
-  padding: 1rem 1.25rem 1.25rem 1.25rem;
+  padding: var(--space-2) var(--space-3) var(--space-3) var(--space-3);
 }
 
 @media (min-width: 992px) {
   .ios-body {
-    padding: 1.25rem 1.5rem 1.5rem 1.5rem;
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-3);
   }
 }
 

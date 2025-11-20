@@ -151,12 +151,18 @@ def employee_list(request):
     ordering = request.GET.get("o") or "last_name"
     q = (request.GET.get("q") or "").strip()
     department = request.GET.get("department")
+    position = request.GET.get("position")
+    is_active = request.GET.get("is_active")
 
     params = {"page": page, "ordering": ordering}
     if q:
         params["search"] = q
     if department:
         params["department"] = department
+    if position:
+        params["position"] = position
+    if is_active:
+        params["is_active"] = is_active
 
     resp = api.get("v1/employees/", params=params)
     if not resp.ok:
@@ -197,6 +203,40 @@ def employee_list(request):
         return JsonResponse({"results": items, "count": len(items)})
 
     # HTML-ветка (как было)
+    # Проверяем права на создание сотрудников
+    create_url = None
+    has_perm = (
+        request.user.has_perm('employees.add_employee')
+        or request.user.is_staff
+        or request.user.is_superuser
+    )
+    if has_perm:
+        from django.urls import reverse
+        create_url = reverse('employees:employee_create')
+    
+    # Если фильтрация по отделу, меняем label
+    count_label = "Всего:"
+    if department:
+        count_label = "В отделе:"
+    
+    # Получаем списки для фильтров
+    departments_list = []
+    positions_list = []
+    try:
+        # Получаем все отделы
+        dept_resp = api.get("v1/departments/", params={"page_size": 1000})
+        if dept_resp.ok:
+            dept_data = dept_resp.json or {}
+            departments_list = dept_data.get("results", [])
+        
+        # Получаем все должности
+        pos_resp = api.get("v1/positions/", params={"page_size": 1000})
+        if pos_resp.ok:
+            pos_data = pos_resp.json or {}
+            positions_list = pos_data.get("results", [])
+    except Exception:
+        pass
+    
     context = {
         "employees": items,
         "count": count,
@@ -205,6 +245,10 @@ def employee_list(request):
         "page": page,
         "next_url": next_url,
         "prev_url": prev_url,
+        "create_url": create_url,
+        "count_label": count_label,
+        "departments_list": departments_list,
+        "positions_list": positions_list,
     }
     return render(request, "employees/employees_list.html", context)
 
@@ -401,6 +445,7 @@ def employee_edit_me(request):
 @require_api_auth
 @require_http_methods(["GET", "POST"])
 def employee_create(request):
+    """Страница создания сотрудника (старый вариант)"""
     api = get_api_client(request)
 
     if request.method == "GET":
@@ -412,13 +457,32 @@ def employee_create(request):
         "last_name": request.POST.get("last_name", "").strip(),
         "first_name": request.POST.get("first_name", "").strip(),
         "patronymic": request.POST.get("patronymic", "").strip(),
-        "gender": request.POST.get("gender") or None,
-        "birth_date": request.POST.get("birth_date") or None,
-        "position": request.POST.get("position") or None,
         "telegram": request.POST.get("telegram", "").strip(),
         "whatsapp": request.POST.get("whatsapp", "").strip(),
         "wechat": request.POST.get("wechat", "").strip(),
     }
+    
+    # Обработка gender (должно быть числом)
+    gender = request.POST.get("gender", "").strip()
+    if gender:
+        try:
+            data["gender"] = int(gender)
+        except (ValueError, TypeError):
+            pass
+    
+    # Обработка birth_date
+    birth_date = request.POST.get("birth_date", "").strip()
+    if birth_date:
+        data["birth_date"] = birth_date
+    
+    # Обработка position
+    position = request.POST.get("position", "").strip()
+    if position:
+        try:
+            data["position"] = int(position)
+        except (ValueError, TypeError):
+            pass
+    
     if request.FILES.get("avatar"):
         data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
     skills = request.POST.getlist("skills")
@@ -430,26 +494,140 @@ def employee_create(request):
 
     resp = api.post("v1/employees/", json=data)
     if not resp.ok:
-        messages.error(request, f"Не удалось создать: {resp.status} — {resp.text}")
-        return render(request, "employees/employee_create.html", {"form": request.POST})
+        messages.error(
+            request, f"Не удалось создать: {resp.status} — {resp.text}"
+        )
+        return render(
+            request, "employees/employee_create.html", {"form": request.POST}
+        )
 
     new_emp = resp.json or {}
     messages.success(request, "Сотрудник создан.")
     return redirect("employees:employee_detail", pk=new_emp.get("id"))
 
 
+@login_required
+@require_http_methods(["POST"])
+def employee_create_modal(request):
+    """
+    Обработчик создания сотрудника через модальное окно.
+    Принимает AJAX запрос, обращается к API через фронтовую логику.
+    Возвращает JSON с результатом.
+    """
+    api = get_api_client(request)
+    
+    # Собираем данные из формы
+    data = {
+        "email": request.POST.get("email", "").strip(),
+        "phone_number": request.POST.get("phone_number", "").strip(),
+        "last_name": request.POST.get("last_name", "").strip(),
+        "first_name": request.POST.get("first_name", "").strip(),
+        "patronymic": request.POST.get("patronymic", "").strip(),
+        "telegram": request.POST.get("telegram", "").strip(),
+        "whatsapp": request.POST.get("whatsapp", "").strip(),
+        "wechat": request.POST.get("wechat", "").strip(),
+    }
+    
+    # Обработка gender (должно быть числом: 0, 1, 2)
+    gender = request.POST.get("gender", "").strip()
+    if gender:
+        try:
+            data["gender"] = int(gender)
+        except (ValueError, TypeError):
+            data["gender"] = None
+    
+    # Обработка остальных полей
+    birth_date = request.POST.get("birth_date", "").strip()
+    if birth_date:
+        data["birth_date"] = birth_date
+    
+    position = request.POST.get("position", "").strip()
+    if position:
+        try:
+            data["position"] = int(position)
+        except (ValueError, TypeError):
+            pass
+    
+    # Обработка аватара
+    if request.FILES.get("avatar"):
+        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
+    
+    # Обработка навыков (если будут добавлены в форму)
+    skills = request.POST.getlist("skills")
+    if skills:
+        data["skills"] = skills
+    
+    # Обработка пароля
+    password = request.POST.get("password", "").strip()
+    if password:
+        data["password"] = password
+    
+    # Отправляем запрос к API
+    resp = api.post("v1/employees/", json=data)
+    
+    if not resp.ok:
+        # Парсим ошибки от API
+        error_msg = "Не удалось создать сотрудника"
+        field_errors = {}
+        
+        try:
+            error_data = resp.json
+            if isinstance(error_data, dict):
+                # Логируем для отладки
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    f"API validation errors: {error_data}, "
+                    f"sent data: {data}"
+                )
+                
+                # Проверяем, есть ли детальные ошибки по полям
+                for field, messages_list in error_data.items():
+                    if isinstance(messages_list, list):
+                        field_errors[field] = messages_list
+                    else:
+                        field_errors[field] = [str(messages_list)]
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error parsing API response: {e}, resp.text: {resp.text}")
+            error_msg = f"Ошибка {resp.status}: {resp.text}"
+        
+        # Если есть детальные ошибки, возвращаем их
+        if field_errors:
+            return JsonResponse({
+                "success": False,
+                "error": "Проверьте правильность заполнения полей",
+                "errors": field_errors
+            }, status=400)
+        else:
+            return JsonResponse({
+                "success": False,
+                "error": error_msg
+            }, status=400)
+    
+    # Успешное создание
+    new_emp = resp.json or {}
+    emp_id = new_emp.get("id")
+    
+    redirect_url = None
+    if emp_id:
+        redirect_url = reverse(
+            "employees:employee_detail", kwargs={"pk": emp_id}
+        )
+    
+    return JsonResponse({
+        "success": True,
+        "message": "Сотрудник успешно создан",
+        "employee_id": emp_id,
+        "redirect_url": redirect_url
+    })
+
 
 # =========================
 # Группы
 # =========================
 
-
-from django.views.decorators.http import require_http_methods
-from django.http import JsonResponse
-from django.contrib import messages
-import json
-
-# ... уже есть: require_api_auth, get_api_client
 
 @require_api_auth
 @require_http_methods(["POST"])

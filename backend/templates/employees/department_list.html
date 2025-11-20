@@ -88,75 +88,18 @@
   </div>
 </div>
 
-<script>
-  (function(){
-    const input    = document.getElementById('deptFilter');
-    const clearBtn = document.querySelector('.ios-search-clear');
-    const list     = document.getElementById('deptList');
-    const totalEmpEl  = document.getElementById('empTotal');
-
-    // (опционально) счётчик отделов
-    const totalDeptBadge = document.querySelector('.title ~ .ms-2.small span'); // "Всего: {{ departments|length }}"
-    const allRows = Array.from(list.querySelectorAll('.dept-row'));
-
-    // сообщение "нет результатов"
-    let emptyNotice = document.getElementById('deptEmptyNotice');
-    if (!emptyNotice){
-      emptyNotice = document.createElement('div');
-      emptyNotice.id = 'deptEmptyNotice';
-      emptyNotice.className = 'p-3 text-secondary d-none';
-      emptyNotice.textContent = 'Ничего не найдено.';
-      list.appendChild(emptyNotice);
-    }
-
-    function showRow(row){
-      // вернём normal display и d-flex
-      row.style.removeProperty('display');
-      if (!row.classList.contains('d-flex')) row.classList.add('d-flex');
-    }
-    function hideRow(row){
-      // снимем d-flex (чтобы не конкурировал) и зададим inline !important
-      row.classList.remove('d-flex');
-      row.style.setProperty('display', 'none', 'important');
-    }
-
-    function normalize(s){
-      return (s || '').toLowerCase().trim();
-    }
-
-    function apply(){
-      const q = normalize(input?.value);
-      let totalEmp = 0;
-      let shown = 0;
-
-      for (const r of allRows){
-        const hay = normalize(r.getAttribute('data-haystack'));
-        const match = !q || hay.includes(q);
-
-        if (match){
-          showRow(r);
-          shown += 1;
-          totalEmp += (parseInt(r.getAttribute('data-emp')) || 0);
-        } else {
-          hideRow(r);
-        }
-      }
-
-      // переключаем "нет результатов"
-      emptyNotice.classList.toggle('d-none', shown > 0);
-
-      // обновляем счетчики
-      if (totalEmpEl) totalEmpEl.textContent = String(totalEmp);
-      if (totalDeptBadge) totalDeptBadge.textContent = String(shown);
-    }
-
-    // первичная инициализация
-    apply();
-
-    // события
-    input?.addEventListener('input', apply);
-    clearBtn?.addEventListener('click', () => { input.value=''; input.focus(); apply(); });
-  })();
+<script type="module">
+  import { initDepartmentFilter } from "{% static 'js/components/departmentFilterHandler.js' %}";
+  
+  initDepartmentFilter({
+    inputId: 'deptFilter',
+    clearSelector: '.ios-search-clear',
+    listId: 'deptList',
+    totalEmpId: 'empTotal',
+    totalDeptSelector: '.title ~ .ms-2.small',
+    emptyNoticeId: 'deptEmptyNotice',
+    rowSelector: '.dept-row'
+  });
 </script>
 
 {% endblock %}

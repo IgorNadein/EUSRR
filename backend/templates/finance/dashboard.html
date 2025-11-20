@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Финансы{% endblock %}
+
+{% block extra_css %}
+<style>
+  .finance-container {
+    height: calc(100vh - var(--navbar-h) - 2rem);
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .finance-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    border-radius: 18px 18px 0 0;
+  }
+  
+  .finance-iframe-wrapper {
+    flex: 1;
+    min-height: 0;
+    border-radius: 0 0 18px 18px;
+    overflow: hidden;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-top: 0;
+  }
+  
+  .finance-iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+  
+  .finance-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bs-primary) 10%, transparent);
+    color: var(--bs-primary);
+    border-radius: 12px;
+    font-size: 1.5rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-2 px-lg-3">
+  <div class="finance-container">
+    <div class="finance-header">
+      <div class="finance-icon">
+        <i class="bi-cash-coin"></i>
+      </div>
+      <div>
+        <h2 class="mb-0 h4 fw-bold">Финансы</h2>
+        <p class="mb-0 text-muted small">Интеграция с 1С и учетные документы</p>
+      </div>
+    </div>
+    
+    <div class="finance-iframe-wrapper d-flex align-items-center justify-content-center">
+      <div class="text-center">
+        <div class="mb-4">
+          <i class="bi-file-earmark-excel text-success" style="font-size: 4rem;"></i>
+        </div>
+        <h4 class="mb-3">Финансовые документы</h4>
+        <p class="text-muted mb-4">
+          Для работы с финансовыми документами используйте Excel Online
+        </p>
+        <a href="{{ yandex_disk_url }}" 
+           target="_blank" 
+           rel="noopener noreferrer"
+           class="btn btn-primary btn-lg rounded-pill px-4">
+          <i class="bi-box-arrow-up-right me-2"></i>
+          Открыть документ в новой вкладке
+        </a>
+        <div class="mt-3">
+          <small class="text-muted">
+            Документ откроется в Яндекс.Диске
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

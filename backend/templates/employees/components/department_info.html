@@ -1,7 +1,7 @@
       {# --- Инфо-блок отдела (под командой) --- #}
       {% if dept.description or dept.head %}
         <section class="feed-card mb-3">
-          <div class="feed-body position-relative pb-4 pe-3 pt-0">
+          <div class="feed-body position-relative pb-3 pe-3 pt-0">
             {% if dept.description %}
               <div class="text-break" style="white-space: pre-line; overflow-wrap:anywhere;">
                 {{ dept.description }}
@@ -9,7 +9,7 @@
             {% endif %}
 
             {% if dept.head %}
-              <div class="small mt-2">
+              <div class="small mt-3">
                 <span class="text-secondary">Руководитель:</span>
                 {% url 'employees:employee_detail' dept.head.id as head_url %}
                 {% if head_url %}

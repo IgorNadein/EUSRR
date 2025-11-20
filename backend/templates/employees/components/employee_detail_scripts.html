@@ -1,0 +1,47 @@
+{% load static %}
+{# === JavaScript для страницы детального просмотра сотрудника === #}
+
+<script type="module">
+  import { initSkillsManager } from '{% static "js/components/skillsManager.js" %}';
+  import { initDeptRoleEditor } from '{% static "js/components/deptRoleEditor.js" %}';
+  import { smoothScrollTo } from '{% static "js/utils/scroll.js" %}';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // 1. Менеджер навыков
+    const skillsManager = initSkillsManager({
+      blockId: 'skillsBlock',
+      formId: 'skillAddForm',
+      collapseId: 'skillsForm',
+      removeUrl: "{% url 'employees:skill_remove' emp.id %}"
+    });
+
+    // 2. Редакторы ролей в отделах
+    const deptRoleEditor = initDeptRoleEditor();
+
+    // 3. Smooth scroll к форме редактирования на мобильных
+    const editWrap = document.getElementById('editFormWrap');
+    if (editWrap) {
+      const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
+      
+      function getHeaderOffset() {
+        const sticky = document.querySelector('.ios-header');
+        return (sticky?.offsetHeight || 0) + 8;
+      }
+
+      editWrap.addEventListener('shown.bs.collapse', () => {
+        if (isMobile()) {
+          smoothScrollTo(editWrap, { offset: getHeaderOffset() });
+        }
+      });
+
+      // Если форма уже открыта при загрузке
+      if (editWrap.classList.contains('show') && isMobile()) {
+        setTimeout(() => smoothScrollTo(editWrap, { offset: getHeaderOffset() }), 50);
+      }
+    }
+
+    // Экспорт в window для отладки
+    if (skillsManager) window.skillsManager = skillsManager;
+    if (deptRoleEditor) window.deptRoleEditor = deptRoleEditor;
+  });
+</script>

@@ -31,7 +31,7 @@
   position: sticky;
   top: var(--navbar-h, 0px);
   z-index: 5;
-  padding: .75rem 0;
+  padding: var(--space-2) 0;  /* 16px сверху/снизу - унифицировано */
   backdrop-filter: saturate(180%) blur(12px);
   background: color-mix(in srgb, var(--bs-body-bg) 85%, transparent);
   border-bottom: none !important;
@@ -67,7 +67,7 @@
   position: relative;
   width: 132px;
   height: 132px;
-  margin: 0 auto 12px;
+  margin: 0 auto var(--space-2);
   display: block;
 }
 
@@ -91,7 +91,7 @@
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: .5rem;
+  gap: var(--space-1);  /* 8px между chips - унифицировано */
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -102,8 +102,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .75rem;
-  padding: .6rem .9rem;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
@@ -208,8 +208,8 @@
 .badge-head {
   display: inline-flex;
   align-items: center;
-  gap: .35rem;
-  padding: .2rem .55rem;
+  gap: var(--space-1);
+  padding: var(--space-1);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bs-warning) 15%, var(--bs-body-bg));
   color: color-mix(in srgb, var(--bs-warning) 60%, black 0%);
@@ -228,8 +228,8 @@
 .badge-gear {
   display: inline-flex;
   align-items: center;
-  gap: .35rem;
-  padding: .2rem .55rem;
+  gap: var(--space-1);
+  padding: var(--space-1);
   border-radius: 999px;
   cursor: pointer;
   background: color-mix(in srgb, var(--bs-primary) 15%, var(--bs-body-bg));
@@ -268,7 +268,7 @@
 }
 
 .ios-acc + .ios-acc {
-  margin-top: .75rem;
+  margin-top: var(--space-2);  /* 16px между аккордеонами - унифицировано */
 }
 
 .ios-acc .ios-collapse-trigger {
@@ -276,7 +276,7 @@
   border-radius: 0;
   background: transparent;
   width: 100%;
-  padding: .6rem .9rem;
+  padding: var(--space-2);  /* 16px - унифицировано */
 }
 
 .ios-acc .ios-collapse-trigger:focus {
@@ -297,7 +297,7 @@
 }
 
 .ios-acc .ios-acc-body {
-  padding: .5rem .25rem .75rem;
+  padding: var(--space-2);  /* 16px - унифицировано */
   border-top: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
 }
 
@@ -317,7 +317,7 @@
 }
 
 #activity .ios-section-title {
-  padding: 1rem 1rem .5rem !important;
+  padding: var(--space-2) var(--space-2) var(--space-1) !important;
   margin: 0 !important;
 }
 
@@ -500,5 +500,5 @@
 ────────────────────────────────────────────────────────────── */
 .container-xxl {
   max-width: 1820px;
-  padding-inline: var(--bs-gutter-x, .75rem);
+  padding-inline: var(--bs-gutter-x, var(--space-2));
 }

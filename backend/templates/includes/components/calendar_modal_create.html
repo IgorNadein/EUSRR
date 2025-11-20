@@ -1,0 +1,132 @@
+{# Модальное окно создания события #}
+<div class="modal fade" id="eventCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="eventForm">
+      <div class="modal-header">
+        <h5 class="modal-title">Новое событие</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Заголовок</label>
+          <input type="text" class="form-control" name="title" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="eventDescription">Описание</label>
+          <textarea class="form-control" id="eventDescription" name="description" rows="3" ></textarea>
+        </div>
+
+        <div class="row g-2 align-items-end">
+          <div class="col-6">
+            <label class="form-label">Начало</label>
+            <input type="datetime-local" class="form-control" name="start">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Окончание</label>
+            <input type="datetime-local" class="form-control" name="end">
+          </div>
+        </div>
+
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" value="1" id="allDayChk" name="all_day" checked>
+          <label class="form-check-label" for="allDayChk">Весь день</label>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">Повторение</label>
+            <select class="form-select" name="recurrence" id="recurrenceSelect">
+              <option value="one_time" selected>Одноразовое</option>
+              <option value="hourly">Ежечасно</option>
+              <option value="daily">Ежедневно</option>
+              <option value="weekly">Еженедельно</option>
+              <option value="monthly">Ежемесячно</option>
+              <option value="annual">Ежегодно</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Интервал</label>
+            <input type="number" class="form-control" name="recurrence_interval" id="recurrenceInterval" value="1" min="1" step="1">
+            <div class="form-text">Каждые N часов/дней/недель/месяцев</div>
+          </div>
+        </div>
+
+        <div class="mt-2 d-none" id="weeklyBlock">
+          <label class="form-label d-block mb-1">Дни недели</label>
+          <div class="d-flex flex-wrap gap-2">
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="0"> Пн
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="1"> Вт
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="2"> Ср
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="3"> Чт
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="4"> Пт
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="5"> Сб
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekdays" value="6"> Вс
+            </label>
+          </div>
+          <div class="form-text">Если пусто — возьмём день недели даты начала.</div>
+        </div>
+
+        <div class="row g-2 mt-2">
+          <div class="col-6">
+            <label class="form-label">Повторять до</label>
+            <input type="date" class="form-control" name="recurrence_until" id="recurrenceUntil">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Кол-во повторов</label>
+            <input type="number" class="form-control" name="recurrence_count" id="recurrenceCount" min="1" step="1">
+            <div class="form-text">Нельзя вместе с «Повторять до»</div>
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">Цвет</label>
+            <div class="d-flex align-items-center gap-2">
+              <input type="color" class="form-control form-control-color" name="color" id="eventColorInput" value="#0d6efd" title="Выберите цвет">
+              <div class="d-flex flex-wrap gap-1" id="colorPalette" aria-label="Быстрый выбор цвета">
+                <button type="button" class="color-swatch" data-color="#0d6efd" style="background-color:#0d6efd" title="Синий"></button>
+                <button type="button" class="color-swatch" data-color="#198754" style="background-color:#198754" title="Зелёный"></button>
+                <button type="button" class="color-swatch" data-color="#dc3545" style="background-color:#dc3545" title="Красный"></button>
+                <button type="button" class="color-swatch" data-color="#fd7e14" style="background-color:#fd7e14" title="Оранжевый"></button>
+                <button type="button" class="color-swatch" data-color="#ffc107" style="background-color:#ffc107" title="Жёлтый"></button>
+                <button type="button" class="color-swatch" data-color="#0dcaf0" style="background-color:#0dcaf0" title="Голубой"></button>
+                <button type="button" class="color-swatch" data-color="#6f42c1" style="background-color:#6f42c1" title="Фиолетовый"></button>
+                <button type="button" class="color-swatch" data-color="#212529" style="background-color:#212529" title="Чёрный"></button>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Локация</label>
+            <input type="text" class="form-control" name="location" placeholder="Переговорка, адрес…">
+          </div>
+        </div>
+
+        <small class="text-secondary d-block mt-2">
+          Календарь: <span id="eventTargetLabel">Компания</span>
+        </small>
+      </div>
+
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>

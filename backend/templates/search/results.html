@@ -291,44 +291,15 @@
   </div>
 </div>
 
-<script>
-(function(){
-  const input = document.getElementById('globalSearch');
-  const clearBtn = document.querySelector('.ios-search-clear');
-  const labels = document.querySelectorAll('[data-filter]');
-  const radios = document.querySelectorAll('input[name="srchFilter"]');
-  const sections = document.querySelectorAll('.section');
-  const norm = s => (s||'').toString().toLowerCase().trim();
-
-  function applyFilter(){
-    const text = norm(input?.value || '');
-    const activeLabel = document.querySelector('input[name="srchFilter"]:checked + label');
-    const active = activeLabel ? activeLabel.dataset.filter : 'all';
-
-    sections.forEach(sec => {
-      const type = sec.dataset.sec;
-      const typeAllowed = (active === 'all' || active === type);
-      if (!typeAllowed) { sec.style.display = 'none'; return; }
-
-      const rows = sec.querySelectorAll('.result-row');
-      let visible = 0;
-      rows.forEach(row => {
-        const hay = norm(row.dataset.haystack);
-        const show = (text === '' || hay.includes(text));
-        row.style.display = show ? '' : 'none';
-        if (show) visible++;
-      });
-      sec.style.display = (text === '' || visible > 0) ? '' : 'none';
-    });
-  }
-
-  labels.forEach(l => l.addEventListener('click', () => setTimeout(applyFilter, 0)));
-  radios.forEach(r => r.addEventListener('change', applyFilter));
-  if (input){ input.addEventListener('input', applyFilter); }
-  if (clearBtn && input){
-    clearBtn.addEventListener('click', () => { input.value=''; input.focus(); input.dispatchEvent(new Event('input')); });
-  }
-  applyFilter();
-})();
+<script type="module">
+  import { initSearchFilter } from "{% static 'js/components/searchFilterHandler.js' %}";
+  
+  initSearchFilter({
+    inputId: 'globalSearch',
+    clearSelector: '.ios-search-clear',
+    filterRadioName: 'srchFilter',
+    sectionSelector: '.section',
+    rowSelector: '.result-row'
+  });
 </script>
 {% endblock %}

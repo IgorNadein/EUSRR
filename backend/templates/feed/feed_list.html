@@ -103,86 +103,13 @@
   </div>
 {% endblock %}
 
-<script>
-(function(){
-  const STEP_MS = 3000;
-  const SCROLL_BEHAVIOR = 'smooth';
-
-  function centerItemInView(wrap, item){
-    const r = item.getBoundingClientRect();
-    const w = wrap.getBoundingClientRect();
-    const delta = (r.left + r.width/2) - (w.left + w.width/2);
-    wrap.scrollTo({ left: wrap.scrollLeft + delta, behavior: SCROLL_BEHAVIOR });
-  }
-
-  function initAutoScroller(wrap){
-    const rail = wrap.querySelector('.join-rail');
-    if (!rail) return;
-
-    // если контент не переполняет — автоскролл не нужен
-    const overflowX = rail.scrollWidth > wrap.clientWidth + 4;
-    if (!overflowX) return;
-
-    // удвоим содержимое для бесшовного цикла
-    const children = Array.from(rail.children);
-    rail.append(...children.map(n => n.cloneNode(true)));
-
-    // шаг = ширина первой ячейки + gap
-    function computeStep(){
-      const first = rail.firstElementChild;
-      if (!first) return 0;
-      const rect = first.getBoundingClientRect();
-      const gap = parseFloat(getComputedStyle(rail).gap || '0') || 0;
-      return Math.round(rect.width + gap);
-    }
-    let step = computeStep();
-    const origCount = children.length;
-    let timer = null, paused = false;
-
-    function tick(){
-      if (paused) return;
-      const maxLeft = (step * origCount);
-      if (wrap.scrollLeft >= maxLeft - 2){ wrap.scrollLeft = 0; }
-      wrap.scrollBy({ left: step, behavior: SCROLL_BEHAVIOR });
-    }
-
-    function start(){ if (!timer) timer = setInterval(tick, STEP_MS); }
-    function stop(){ if (timer){ clearInterval(timer); timer = null; } }
-
-    // Пауза при наведении/фокусе на конкретной ячейке + центрирование
-    rail.querySelectorAll('.join-item').forEach(item=>{
-      item.addEventListener('mouseenter', ()=>{
-        paused = true;
-        centerItemInView(wrap, item);
-      });
-      item.addEventListener('mouseleave', ()=>{ paused = false; });
-      item.addEventListener('focusin', ()=>{
-        paused = true;
-        centerItemInView(wrap, item);
-      });
-      item.addEventListener('focusout', ()=>{ paused = false; });
+<script type="module">
+  import { initAutoScroller } from "{% static 'js/components/autoScrollerHandler.js' %}";
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    initAutoScroller({ 
+      selector: '.js-join-scroller',
+      stepMs: 3000
     });
-
-    // Пересчёт шага на ресайз
-    let rAF = null;
-    window.addEventListener('resize', ()=>{
-      cancelAnimationFrame(rAF);
-      rAF = requestAnimationFrame(()=>{ step = computeStep(); });
-    });
-
-    // Остановка при свёрнутой вкладке
-    document.addEventListener('visibilitychange', ()=>{
-      if (document.hidden) stop(); else start();
-    });
-
-    // Уважим reduced-motion
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    start();
-  }
-
-  document.addEventListener('DOMContentLoaded', ()=>{
-    document.querySelectorAll('.js-join-scroller').forEach(initAutoScroller);
   });
-})();
 </script>

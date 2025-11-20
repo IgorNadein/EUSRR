@@ -18,15 +18,20 @@
 
 
   <!-- Bootstrap / Icons / FullCalendar -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+  <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-        crossorigin="anonymous">
+        crossorigin="anonymous"> -->
+  <!-- Кастомный Bootstrap с нашей системой отступов -->
+  <link rel="stylesheet" href="{% static 'css/bootstrap-custom.css' %}">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 
   <!-- CSS Components -->
   <link rel="stylesheet" href="{% static 'css/variables.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/spacing-utils.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/layout-spacing.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/buttons.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/base-app.css' %}">
@@ -38,13 +43,13 @@
 
   {% include "includes/navbar.html" %}
 
-  <div class="container-xxl px-2 px-lg-3">
+  <div class="container-xxl">
     <div class="app-layout {% if user.is_authenticated %}with-sidebar with-rightbar{% endif %}">
       {% if user.is_authenticated %}
         {% include "includes/sidebar.html" %}
       {% endif %}
 
-      <main class="main py-3">
+      <main class="main">
         {% block content %}{% endblock %}
       </main>
 
@@ -66,6 +71,9 @@
     import { esc, norm, escAttr, truncate, getInitials } from '{% static "js/utils/stringUtils.js" %}';
     import { debounce, throttle, delay } from '{% static "js/utils/timing.js" %}';
     import { smoothScrollTo, scrollToTop, isElementInViewport } from '{% static "js/utils/scroll.js" %}';
+    import { initNavbarHeight } from '{% static "js/components/navbarHeight.js" %}';
+    import { initLikeHandler } from '{% static "js/components/likeHandler.js" %}';
+    import { initTextareaAutogrow } from '{% static "js/components/textareaAutogrow.js" %}';
     
     // Экспортируем в window для обратной совместимости с существующим кодом
     window.esc = esc;
@@ -79,613 +87,130 @@
     window.smoothScrollTo = smoothScrollTo;
     window.scrollToTop = scrollToTop;
     window.isElementInViewport = isElementInViewport;
-  </script>
 
-  <script>
-    // реальная высота navbar -> CSS var
+    // Инициализация компонентов
     document.addEventListener('DOMContentLoaded', () => {
-      const nav = document.querySelector('.app-navbar');
-      const setH = () => nav && document.documentElement.style.setProperty('--navbar-h', nav.offsetHeight + 'px');
-      setH(); addEventListener('resize', setH);
+      const navbarHeight = initNavbarHeight();
+      const likeHandler = initLikeHandler();
+      const textareaAutogrow = initTextareaAutogrow();
+      
+      if (navbarHeight) window.navbarHeight = navbarHeight;
+      if (likeHandler) window.likeHandler = likeHandler;
+      if (textareaAutogrow) window.textareaAutogrow = textareaAutogrow;
     });
   </script>
 
-  <script>
-    // Глобальный обработчик лайков (использует стили/классы базового шаблона)
-    (function(){
-      function getCookie(name){
-        const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-        return m ? m.pop() : '';
-      }
-
-      document.addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-like-post]');
-        if (!btn) return;
-        e.preventDefault();
-
-        const url = btn.getAttribute('data-like-url');
-        if (!url || btn.disabled) return;
-
-        // текущее состояние -> какая операция нужна
-        const currentlyLiked =
-          btn.classList.contains('is-liked') ||
-          btn.getAttribute('aria-pressed') === 'true';
-        const op = currentlyLiked ? 'unlike' : 'like';
-
-        btn.disabled = true;
-        try{
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'X-CSRFToken': getCookie('csrftoken'),
-              'Accept': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: new URLSearchParams({ op })
-          });
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-
-          const data = await resp.json().catch(() => ({}));
-          // совместимость с разными ключами
-          const liked = (data.liked !== undefined) ? !!data.liked
-                      : (data.is_liked !== undefined) ? !!data.is_liked
-                      : !currentlyLiked; // если что-то пошло не так — просто инвертируем
-
-          const count = (data.likes !== undefined) ? data.likes
-                      : (data.likes_count !== undefined) ? data.likes_count
-                      : null;
-
-          // обновляем кнопку/иконку/aria
-          btn.classList.toggle('is-liked', liked);
-          btn.setAttribute('aria-pressed', liked ? 'true' : 'false');
-
-          const icon = btn.querySelector('.bi');
-          if (icon){
-            icon.classList.toggle('bi-heart', !liked);
-            icon.classList.toggle('bi-heart-fill', liked);
-          }
-
-          // счётчик (в пределах карточки)
-          const card = btn.closest('[data-post-card]');
-          const cnt  = card && card.querySelector('[data-like-count]');
-          if (cnt && count !== null) cnt.textContent = String(count);
-
-          // если есть скрытый input name="op", поддержим и серверный постбэк
-          const opInput = btn.closest('form')?.querySelector('input[name="op"]');
-          if (opInput) opInput.value = liked ? 'unlike' : 'like';
-
-        }catch(err){
-          console.error(err);
-        }finally{
-          btn.disabled = false;
-        }
-      }, { passive:false });
-    })();
-  </script>
-
+  {# ========== CHAT MODULES ========== #}
   {% if user.is_authenticated %}
-  <script>
-    // Базовая карта аватаров (только текущий пользователь; остальные подтянутся из ws)
-    window.__CHAT_AVATARS__ = {
+  <script type="module">
+    import { initChatAvatarMap } from "{% static 'js/components/chatAvatarMap.js' %}";
+    import { initChatMarkRead } from "{% static 'js/components/chatMarkRead.js' %}";
+    import { initChatWebSocket } from "{% static 'js/components/chatWebSocket.js' %}";
+    import { initChatListFilter } from "{% static 'js/components/chatListFilter.js' %}";
+    import { initChatBadgeManager } from "{% static 'js/components/chatBadgeManager.js' %}";
+    import { initChatListRealtime } from "{% static 'js/components/chatListRealtime.js' %}";
+
+    // Инициализация карты аватаров
+    const avatarMap = initChatAvatarMap({
       "{{ user.id }}": {% if user.avatar %}"{{ user.avatar.url }}"{% else %}""{% endif %}
-    };
-  </script>
-  {% endif %}
+    });
 
-  <script>
-    // автоскролл / авто-рост textarea / кнопка «вниз» / разделитель «Новые сообщения» / отметка прочитанного
-    (function(){
-      const box  = document.getElementById('chatScroll');
-      if (!box) return;
-      const ta   = document.getElementById('id_content');
-      const form = document.getElementById('chatForm');
-      const btn  = document.getElementById('scrollBtn');
+    // Инициализация badge менеджера (слушает события chat:read)
+    const badgeManager = initChatBadgeManager();
 
-      const chatId = Number(box?.dataset.chatId || 0);
-      const meId   = Number(box?.dataset.meId || 0);
+    // Инициализация фильтрации списка чатов
+    const chatListFilter = initChatListFilter();
 
-      function getCookie(name){
-        const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-        return m ? m.pop() : '';
-      }
-      const csrf = getCookie('csrftoken');
+    // Инициализация realtime-обновлений списка чатов
+    const chatListRealtime = initChatListRealtime({
+      meId: {{ user.id|default:"0" }},
+      badgeManager: badgeManager
+    });
 
-      const LS_KEY = `chat:lastRead:${chatId}`;
-      function getLocalLastReadTs(){
-        const v = localStorage.getItem(LS_KEY);
-        return v ? Number(v) : NaN;
-      }
-      function setLocalLastReadTs(ts){
-        localStorage.setItem(LS_KEY, String(ts));
-      }
+    // Инициализация отметки прочитанного (если открыт конкретный чат)
+    {% if chat %}
+    const markReadApi = initChatMarkRead({
+      chatId: {{ chat.id }},
+      meId: {{ user.id|default:"0" }},
+      scrollContainerId: 'chatScroll',
+      textareaId: 'id_content',
+      formId: 'chatForm',
+      scrollBtnId: 'scrollBtn',
+      markReadUrl: "{% url 'communications:chat_mark_read' chat.pk %}",
+      initialLastReadTs: {{ chat.last_read_timestamp|default:"null" }}
+    });
 
-      (function initLastRead(){
-        let lastRead = Number(box.dataset.lastReadTs || NaN);
-        if (!Number.isFinite(lastRead)){
-          const ls = getLocalLastReadTs();
-          if (Number.isFinite(ls)) lastRead = ls;
-        }
-        if (Number.isFinite(lastRead)) box.dataset.lastReadTs = String(lastRead);
-      })();
+    // Инициализация WebSocket для чата
+    const chatWebSocket = initChatWebSocket({
+      chatId: {{ chat.id }},
+      meId: {{ user.id|default:"0" }},
+      scrollContainerId: 'chatScroll',
+      formId: 'chatForm',
+      textareaId: 'id_content',
+      typingIndicatorId: 'typing',
+      profileUrl: "{% url 'employees:profile' %}",
+      detailUrlTemplate: "{% url 'employees:employee_detail' 0 %}",
+      avatarMap: avatarMap.getAll(),
+      markReadApi: markReadApi
+    });
+    {% endif %}
 
-      let lastMarkedTs = Number(box.dataset.lastReadTs || 0);
-
-      function atBottom(){ return (box.scrollHeight - box.scrollTop - box.clientHeight) < 60; }
-
-      function autoscroll(){
-        const prev = box.style.scrollBehavior;
-        box.style.scrollBehavior = 'auto';
-        box.scrollTop = box.scrollHeight;
-        if (prev) { box.style.scrollBehavior = prev; } else { box.style.removeProperty('scroll-behavior'); }
-      }
-
-      function toggleBtn(){ btn?.classList.toggle('show', !atBottom()); }
-
-      function makeDivider(cls, text){
-        const div = document.createElement('div');
-        div.className = cls;
-        div.setAttribute('role','separator');
-        div.setAttribute('aria-label', text);
-        div.innerHTML = `<span>${text}</span>`;
-        return div;
-      }
-
-      function findUnreadTarget(){
-        const id = window.__FIRST_UNREAD_ID__;
-        const ts = window.__UNREAD_FROM_TS__;
-        const lastReadTs = Number(box.dataset.lastReadTs || NaN);
-
-        if (id != null){
-          const el = box.querySelector(`.msg[data-id="${id}"]`);
-          if (el) return el;
-        }
-        if (Number.isFinite(ts)){
-          const items = Array.from(box.querySelectorAll('.msg[data-ts]'));
-          const el = items.find(e => Number(e.dataset.ts) >= Number(ts));
-          if (el) return el;
-        }
-        if (Number.isFinite(lastReadTs)){
-          const items = Array.from(box.querySelectorAll(`.msg[data-ts][data-author-id]`));
-          return items.find(e => Number(e.dataset.ts) > lastReadTs && Number(e.dataset.authorId) !== meId) || null;
-        }
-        return null;
-      }
-
-      function insertUnreadDivider(){
-        if (!box || box.querySelector('.unread-divider')) return null;
-        const target = findUnreadTarget();
-        if (target){
-          const div = makeDivider('unread-divider', 'Новые сообщения');
-          target.parentNode.insertBefore(div, target);
-          return div;
-        }
-        return null;
-      }
-
-      function removeUnreadDivider(){
-        const d = box.querySelector('.unread-divider');
-        if (d) d.remove();
-      }
-
-      async function markRead(ts){
-        ts = Number(ts);
-        if (!Number.isFinite(ts) || ts <= lastMarkedTs) return;
-        lastMarkedTs = ts;
-        setLocalLastReadTs(ts);
-        box.dataset.lastReadTs = String(ts);
-        removeUnreadDivider();
-
-        // URL: только если есть chat в контексте — иначе fallback на suffix
-        {% if chat %}
-          let markUrl = "{% url 'communications:chat_mark_read' chat.pk %}";
-        {% else %}
-          let markUrl = "";
-        {% endif %}
-        if (!markUrl){
-          const base = location.pathname.endsWith("/") ? location.pathname : (location.pathname + "/");
-          markUrl = base + "mark-read/";
-        }
-        try{
-          await fetch(markUrl, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': csrf, 'Accept':'application/json' },
-            body: new URLSearchParams({ upto_ts: String(ts) }),
-            credentials: 'same-origin'
-          });
-          // 👉 сообщаем глобальному апдейтеру бейджа
-          const chatId = Number(document.getElementById('chatScroll')?.dataset.chatId || 0);
-          if (chatId){
-            window.dispatchEvent(new CustomEvent('chat:read', { detail: { chatId: String(chatId) } }));
-          }
-        }catch(_){}
-      }
-
-      function autosize(){
-        if (!ta) return;
-        ta.style.height='auto';
-        ta.style.height=Math.min(ta.scrollHeight, 6*24)+'px';
-        if (atBottom()) autoscroll();
-      }
-
-      const mark = insertUnreadDivider();
-      requestAnimationFrame(()=>{
-        if (mark) { mark.scrollIntoView({ block:'center' }); } else { autoscroll(); }
-        autosize();
-        toggleBtn();
-        window.__SCROLLED_ON_INIT__ = true;
-      });
-
-      ta?.addEventListener('input', autosize);
-      ta?.addEventListener('keydown', e=>{
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); form?.requestSubmit(); }
-      });
-      box?.addEventListener('scroll', toggleBtn);
-      btn?.addEventListener('click', autoscroll);
-
-      const io = new IntersectionObserver((entries)=>{
-        entries.forEach(en=>{
-          if (en.isIntersecting){
-            const el = en.target.closest('.msg');
-            if (!el) return;
-            const ts = Number(el.dataset.ts || 0);
-            markRead(ts);
-          }
-        });
-      }, { root: box, threshold: 1.0 });
-
-      function observeLastForeign(){
-        io.disconnect();
-        const msgs = Array.from(box.querySelectorAll(`.msg[data-ts][data-author-id]`));
-        const lastForeign = [...msgs].reverse().find(e => Number(e.dataset.authorId) !== meId);
-        if (lastForeign){
-          const bubble = lastForeign.querySelector('.bubble') || lastForeign;
-          io.observe(bubble);
-        }
-      }
-      observeLastForeign();
-
-      let bottomTimer=null;
-      box.addEventListener('scroll', ()=>{
-        clearTimeout(bottomTimer);
-        if (atBottom()){
-          bottomTimer = setTimeout(()=>{
-            const lastMsg = box.querySelector('.msg:last-of-type');
-            const ts = lastMsg ? Number(lastMsg.dataset.ts || 0) : 0;
-            markRead(ts);
-          }, 300);
-        }
-      });
-
-      window.__CHAT_MARK_READ__ = { markRead, observeLastForeign, autoscroll, atBottom };
-    })();
-  </script>
-
-  <script>
-    (function(){
-      const chatId = {{ chat.id|default_if_none:"null"|default:"null" }};
-      const meId   = {{ user.id|default_if_none:"null"|default:"null" }};
-      if (chatId === null) return;
-
-      const scrollEl = document.getElementById('chatScroll');
-      const form     = document.getElementById('chatForm');
-      const ta       = document.getElementById('id_content');
-      const AVA      = window.__CHAT_AVATARS__ || {};
-      const typingEl = document.getElementById('typing');
-
-      const { markRead, observeLastForeign, autoscroll, atBottom } = window.__CHAT_MARK_READ__ || {};
-
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws    = new WebSocket(`${proto}://${location.host}/ws/chat/${chatId}/`);
-
-      const z2 = n => (n < 10 ? '0' : '') + n;
-      function toTS(msg){
-        if (msg && msg.created_ts != null && !isNaN(Number(msg.created_ts))) return Number(msg.created_ts);
-        if (msg && msg.created){
-          const t = Date.parse(msg.created); if (!isNaN(t)) return t;
-        }
-        return Date.now();
-      }
-      function fmtHHMM(ts){
-        const d = new Date(ts);
-        return `${z2(d.getHours())}:${z2(d.getMinutes())}`;
-      }
-      function fmtDay(ts){
-        const d = new Date(ts);
-        return `${z2(d.getDate())}.${z2(d.getMonth()+1)}.${d.getFullYear()}`;
-      }
-
-      // HTML экранирование и утилиты импортированы из модулей
-      // См. блок импорта утилит ниже
-      
-      function avatarHTML(url){
-        return url
-          ? `<span class="mini-ava border"><img src="${url}" alt="" loading="lazy"></span>`
-          : `<span class="mini-ava border d-inline-grid"><i class="bi-person"></i></span>`;
-      }
-      function nameHTML(id, name, url){
-        if (Number(id) === Number(meId)){
-          return `<a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>`;
-        }
-        if (url){
-          return `<a href="${url}" class="text-decoration-none fw-semibold">${esc(name || 'Сотрудник')}</a>`;
-        }
-        return `<a href="{% url 'employees:employee_detail' 0 %}`.replace('/0/', `/${id}/`) +
-              `" class="text-decoration-none fw-semibold">${esc(name || 'Сотрудник')}</a>`;
-      }
-
-      function renderDayDivider(dateStr){
-        const div = document.createElement('div');
-        div.className = 'day-divider';
-        div.innerHTML = `<span>${esc(dateStr)}</span>`;
-        scrollEl.appendChild(div);
-      }
-
-      (function ensureLastDayFromDom(){
-        const dl = scrollEl.querySelector('.day-divider:last-of-type span');
-        if (dl) {
-          scrollEl.dataset.lastDay = dl.textContent.trim();
-        } else {
-          const lastMsg = scrollEl.querySelector('.msg:last-of-type');
-          if (lastMsg){
-            const ts = Number(lastMsg.dataset.ts || Date.now());
-            scrollEl.dataset.lastDay = fmtDay(ts);
-          }
-        }
-      })();
-
-      function renderMessage(msg){
-        const mine = Number(msg.author_id) === Number(meId);
-        if (msg.author_id && msg.avatar && !AVA[msg.author_id]) AVA[msg.author_id] = msg.avatar;
-
-        const ts = toTS(msg);
-        const dayStr = msg.day || fmtDay(ts);
-        if (dayStr && scrollEl.dataset.lastDay !== dayStr){
-          renderDayDivider(dayStr);
-          scrollEl.dataset.lastDay = dayStr;
-        }
-
-        const wrap = document.createElement('div');
-        wrap.className = `d-flex mb-3 msg ${mine ? 'justify-content-end' : 'justify-content-start'}`;
-        if (msg.id != null) wrap.setAttribute('data-id', String(msg.id));
-        wrap.setAttribute('data-ts', String(ts));
-        wrap.setAttribute('data-author-id', String(msg.author_id || ''));
-
-        const who   = nameHTML(msg.author_id, msg.author_name || msg.author, msg.author_url);
-        const time  = fmtHHMM(ts);
-        const text  = esc(msg.content || '').replace(/\n/g,'<br>');
-        const bubble = `
-          <div class="d-flex flex-column" style="max-width:80%;">
-            <div class="small text-secondary ${mine ? 'text-end' : ''}">
-              ${who} · ${time}
-            </div>
-            <div class="mt-1 bubble ${mine ? 'bubble-me' : 'bubble-other'}">
-              ${text}
-            </div>
-          </div>`;
-
-        const avaUrl = msg.avatar || AVA[msg.author_id] || "";
-        const ava = avatarHTML(avaUrl);
-
-        if (!mine){
-          const link = msg.author_url || `{% url 'employees:employee_detail' 0 %}`.replace('/0/', `/${msg.author_id}/`);
-          wrap.innerHTML = `<a class="me-2 text-decoration-none" href="${link}">${ava}</a>${bubble}`;
-        }else{
-          wrap.innerHTML = `${bubble}<a class="ms-2 text-decoration-none" href="{% url 'employees:profile' %}">${ava}</a>`;
-        }
-
-        const keep = atBottom && atBottom();
-        scrollEl.appendChild(wrap);
-        if (keep && autoscroll) autoscroll();
-
-        if (observeLastForeign) observeLastForeign();
-        if (keep && window.__CHAT_MARK_READ__?.markRead){
-          window.__CHAT_MARK_READ__.markRead(ts);
-        }
-      }
-
-      let typingTimer = null;
-      function showTyping(){
-        if (!typingEl) return;
-        typingEl.classList.remove('d-none');
-        clearTimeout(typingTimer);
-        typingTimer = setTimeout(()=> typingEl.classList.add('d-none'), 2000);
-      }
-
-      ws.addEventListener('message', (e)=>{
-        try{
-          const data = JSON.parse(e.data);
-          if (data.type === 'typing' && Number(data.user_id) !== Number(meId)){ showTyping(); return; }
-          const msg = data.payload || data.message || data;
-          renderMessage(msg);
-        }catch(_){}
-      });
-
-      ws.addEventListener('close', ()=>{ setTimeout(()=>location.reload(), 2000); });
-
-      form?.addEventListener('submit', (e)=>{
-        e.preventDefault();
-        const text = (ta?.value || '').trim();
-        if (!text || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ content: text }));
-        ta.value=''; ta.dispatchEvent(new Event('input'));
-      });
-
-      let lastTyping = 0;
-      ta?.addEventListener('input', ()=>{
-        const now = Date.now();
-        if (ws.readyState === WebSocket.OPEN && now - lastTyping > 1500){
-          ws.send(JSON.stringify({ type:'typing' }));
-          lastTyping = now;
-        }
-      });
-
-      if (!window.__SCROLLED_ON_INIT__ && window.__CHAT_MARK_READ__?.autoscroll) window.__CHAT_MARK_READ__.autoscroll();
-    })();
-  </script>
-
-  {# Поиск/фильтр + скрытие пустых секций #}
-  <script>
-    (function(){
-      const search = document.getElementById('chatSearch');
-      const labels = document.querySelectorAll('[data-filter]');
-      const sections = {
-        global: document.querySelector('.chat-section[data-sec="global"]'),
-        department: document.querySelector('.chat-section[data-sec="department"]'),
-        private: document.querySelector('.chat-section[data-sec="private"]')
-      };
-      let active = 'all';
-      // norm() импортирован из утилит, доступен через window.norm
-
-      function apply(){
-        const q = norm(search?.value || '');
-        document.querySelectorAll('.chat-row').forEach(el=>{
-          const type = el.getAttribute('data-type');
-          const hay  = norm(el.getAttribute('data-haystack'));
-          const okType = (active === 'all') || (type === active);
-          const okText = !q || hay.includes(q);
-          el.style.display = (okType && okText) ? '' : 'none';
-        });
-
-        Object.entries(sections).forEach(([key, wrap])=>{
-          if (!wrap) return;
-          const list = wrap.querySelector('.list-chats');
-          const visible = list && list.querySelector('.chat-row:not([style*="display: none"])');
-          const note = wrap.querySelector('[data-empty-note]');
-          wrap.style.display = visible ? '' : 'none';
-          if (note) note.style.display = visible ? 'none' : '';
-        });
-      }
-
-      labels.forEach(l=>{
-        l.addEventListener('click', ()=>{
-          labels.forEach(x=>x.classList.toggle('active', x===l));
-          active = l.getAttribute('data-filter');
-          apply();
-        });
-      });
-      search && search.addEventListener('input', apply);
-      apply();
-    })();
-  </script>
-
-  {# Realtime-обновления списка через /ws/chats/ — только если есть список #}
-  <script>
-    (function(){
-      const listAny = document.querySelector('.chat-row');
-      if (!listAny) return;
-      const meId = {{ user.id|default_if_none:"null"|default:"null" }};
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${proto}://${location.host}/ws/chats/`);
-
-      function resortSection(sectionListEl){
-        const rows = Array.from(sectionListEl.querySelectorAll('.chat-row'));
-        rows.sort((a,b)=>{
-          const ta = Number(a.getAttribute('data-last-ts') || 0);
-          const tb = Number(b.getAttribute('data-last-ts') || 0);
-          return tb - ta;
-        });
-        rows.forEach(r => sectionListEl.appendChild(r));
-      }
-
-      function containerForType(t){
-        if (t === 'global') return document.getElementById('sec-global');
-        if (t === 'department') return document.getElementById('sec-department');
-        return document.getElementById('sec-private');
-      }
-
-      ws.addEventListener('message', (e)=>{
-        try{
-          const data = JSON.parse(e.data);
-          if (data.type !== 'list_update') return;
-
-          const chatId = String(data.chat_id);
-          const msg = data.message || {};
-          const row = document.querySelector(`.chat-row[data-chat-id="${chatId}"]`);
-          if (!row) return;
-
-          const ts = Number(msg.created_ts || Date.now());
-          row.setAttribute('data-last-ts', String(ts));
-          const timeEl = row.querySelector('[data-last-time]');
-          const authEl = row.querySelector('[data-last-author]');
-          const prevEl = row.querySelector('[data-last-preview]');
-          if (timeEl) timeEl.textContent = msg.created || '';
-          if (authEl) authEl.textContent = msg.author_name || 'Сотрудник';
-          if (prevEl) prevEl.textContent = (msg.content || '').slice(0, 120);
-
-          const badge = row.querySelector('[data-unread]');
-          const cntEl = row.querySelector('[data-unread-count]');
-          if (Number(msg.author_id) === Number(meId)){
-            if (cntEl) cntEl.textContent = '0';
-            if (badge) badge.classList.add('d-none');
-          }else{
-            const cur = Number((cntEl && cntEl.textContent) || 0) + 1;
-            if (cntEl) cntEl.textContent = String(cur);
-            if (badge && cur > 0) badge.classList.remove('d-none');
-          }
-
-          const type = row.getAttribute('data-type');
-          const list = containerForType(type);
-          if (list){ resortSection(list); }
-        }catch(_){}
-      });
-
-      ws.addEventListener('close', ()=>{ setTimeout(()=>location.reload(), 2000); });
-    })();
-  </script>
-  <script>
-    (function(){
-      const meId  = {{ user.id|default:"0" }};
+    // Глобальный обновлятель бейджа в сайдбаре
+    (function initSidebarBadge() {
+      const meId = {{ user.id|default:"0" }};
       const badge = document.getElementById('sidebarChatBadge');
 
-      function setBadge(n){
+      function setBadge(n) {
         if (!badge) return;
-        const v = Math.max(0, Number(n)||0);
+        const v = Math.max(0, Number(n) || 0);
         badge.dataset.count = String(v);
         badge.textContent = v > 99 ? '99+' : String(v);
         badge.classList.toggle('d-none', v <= 0);
       }
 
-      // стартовое значение (из шаблона сайдбара)
+      // Стартовое значение
       setBadge(badge?.dataset.count || 0);
 
-      // карта непрочитанных по чатам (если мы на списке чатов — проинициализируем из DOM)
+      // Карта непрочитанных по чатам
       const chatUnread = Object.create(null);
-      document.querySelectorAll('.chat-row[data-chat-id]').forEach(row=>{
-        const id  = String(row.getAttribute('data-chat-id'));
+      document.querySelectorAll('.chat-row[data-chat-id]').forEach(row => {
+        const id = String(row.getAttribute('data-chat-id'));
         const cnt = Number(row.querySelector('[data-unread-count]')?.textContent || 0);
         chatUnread[id] = cnt;
       });
-      function recompute(){
+
+      function recompute() {
         let total = 0;
-        for (const k in chatUnread){ total += Number(chatUnread[k]||0); }
+        for (const k in chatUnread) {
+          total += Number(chatUnread[k] || 0);
+        }
         setBadge(total);
       }
+
       if (Object.keys(chatUnread).length) recompute();
 
-      // глобальный канал обновлений списка чатов
-      try{
+      // Глобальный WebSocket для обновления бейджа
+      try {
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const ws = new WebSocket(`${proto}://${location.host}/ws/chats/`);
 
-        ws.addEventListener('message', (e)=>{
-          try{
+        ws.addEventListener('message', (e) => {
+          try {
             const data = JSON.parse(e.data);
             if (data.type !== 'list_update') return;
 
             const chatId = String(data.chat_id);
-            const msg    = data.message || {};
+            const msg = data.message || {};
             const isMine = Number(msg.author_id) === Number(meId);
 
-            // если сообщение моё — обнуляем счётчик для этого чата, иначе +1
-            chatUnread[chatId] = isMine ? 0 : (Number(chatUnread[chatId]||0) + 1);
+            chatUnread[chatId] = isMine ? 0 : (Number(chatUnread[chatId] || 0) + 1);
             recompute();
-          }catch(_){}
+          } catch (_) {}
         });
-        ws.addEventListener('close', ()=>{ /* молча, без перезапуска */ });
-      }catch(_){}
+      } catch (_) {}
 
-      // Обнуляем конкретный чат, когда где-то на сайте он помечен прочитанным
-      window.addEventListener('chat:read', (e)=>{
+      // Обработка события chat:read
+      window.addEventListener('chat:read', (e) => {
         const chatId = String(e?.detail?.chatId || '');
         if (!chatId) return;
         chatUnread[chatId] = 0;
@@ -693,6 +218,7 @@
       });
     })();
   </script>
+  {% endif %}
 
   {% block extra_js %}{% endblock %}
 </body>

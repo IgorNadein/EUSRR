@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # OpenLDAP сервер для тестирования
+  test-ldap:
+    image: osixia/openldap:1.5.0
+    container_name: eusrr-test-ldap
+    hostname: ldap.test.local
+    environment:
+      # Базовая конфигурация
+      LDAP_ORGANISATION: "EUSRR Test"
+      LDAP_DOMAIN: "test.local"
+      LDAP_BASE_DN: "dc=test,dc=local"
+      LDAP_ADMIN_PASSWORD: "test_change-me-redacted-secret"
+      LDAP_CONFIG_PASSWORD: "test_config_password"
+      LDAP_READONLY_USER: "false"
+      
+      # Настройки для совместимости с вашим кодом
+      LDAP_RFC2307BIS_SCHEMA: "true"
+      LDAP_BACKEND: "mdb"
+      LDAP_TLS: "false"
+      LDAP_TLS_VERIFY_CLIENT: "never"
+      
+      # Логирование для отладки
+      LDAP_LOG_LEVEL: "256"
+    ports:
+      - "10389:389"  # Используем порт 10389 чтобы не конфликтовать с prod
+      - "10636:636"  # SSL порт (если понадобится)
+    volumes:
+      - ./ldap_test_data:/var/lib/ldap
+      - ./ldap_test_config:/etc/ldap/slapd.d
+      - ./tests/ldap_fixtures:/container/service/slapd/assets/config/bootstrap/ldif/custom
+    networks:
+      - test-network
+    command: --copy-service --loglevel debug
+
+  # phpLDAPadmin - веб-интерфейс для управления (опционально)
+  ldap-admin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: eusrr-ldap-admin
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "test-ldap"
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "8090:80"
+    depends_on:
+      - test-ldap
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  ldap_test_data:
+  ldap_test_config:

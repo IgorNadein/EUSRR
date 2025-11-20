@@ -1,0 +1,39 @@
+<form method="get" class="row g-3">
+  <div class="col-12 col-md-6 col-lg-3">
+    <label class="form-label">Отдел</label>
+    <select name="department" class="form-select">
+      <option value="">Все отделы</option>
+      {% for dept in departments_list %}
+        <option value="{{ dept.id }}" {% if request.GET.department|stringformat:"s" == dept.id|stringformat:"s" %}selected{% endif %}>
+          {{ dept.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-3">
+    <label class="form-label">Должность</label>
+    <select name="position" class="form-select">
+      <option value="">Все должности</option>
+      {% for pos in positions_list %}
+        <option value="{{ pos.id }}" {% if request.GET.position|stringformat:"s" == pos.id|stringformat:"s" %}selected{% endif %}>
+          {{ pos.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-3">
+    <label class="form-label">Статус</label>
+    <select name="is_active" class="form-select">
+      <option value="">Все</option>
+      <option value="true" {% if request.GET.is_active == "true" %}selected{% endif %}>Активные</option>
+      <option value="false" {% if request.GET.is_active == "false" %}selected{% endif %}>Неактивные</option>
+    </select>
+  </div>
+
+  <div class="col-12 col-lg-3 d-flex align-items-end gap-2">
+    <button type="submit" class="btn btn-primary">Применить</button>
+    <a href="{% url 'employees:employees_list' %}" class="btn btn-outline-secondary">Сбросить</a>
+  </div>
+</form>

@@ -7,7 +7,7 @@
 
 /* ===== секция «новички» (контейнер) ===== */
 .join-wrap{
-  padding: .9rem 1rem;
+  padding: var(--space-2);
   border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
   border-radius: var(--feed-radius);
   background: var(--bs-body-bg);

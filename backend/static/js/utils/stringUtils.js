@@ -1,11 +1,29 @@
 /**
  * String Utilities
  * 
- * Утилиты для работы со строками: экранирование, нормализация и т.д.
+ * Утилиты для работы со строками: экранирование, нормализация, работа с cookies и т.д.
  * 
  * Использование:
- * import { esc, norm } from '{% static "js/utils/stringUtils.js" %}';
+ * import { esc, norm, getCookie } from '{% static "js/utils/stringUtils.js" %}';
  */
+
+/**
+ * Получение значения cookie по имени
+ * 
+ * @param {string} name - имя cookie
+ * @returns {string} - значение cookie или пустая строка
+ * 
+ * @example
+ * getCookie('csrftoken')
+ * // => 'abc123xyz...'
+ * 
+ * getCookie('nonexistent')
+ * // => ''
+ */
+export function getCookie(name) {
+  const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return m ? m.pop() : '';
+}
 
 /**
  * Экранирование HTML символов для безопасного отображения

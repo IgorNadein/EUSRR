@@ -1,0 +1,213 @@
+"""
+Интеграционные тесты для LDAP функциональности.
+
+Требования:
+1. Запущенный LDAP сервер: docker-compose -f docker-compose.test.yml up -d
+2. Установленная библиотека: pip install python-ldap
+
+Запуск:
+    pytest -m integration tests/integration/test_ldap_integration.py -v
+    
+Запуск с остановкой на первой ошибке:
+    pytest -m integration tests/integration/test_ldap_integration.py -v -x
+"""
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.urls import reverse
+from rest_framework import status
+from employees.models import Group, Department
+
+Employee = get_user_model()
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.mark.django_db
+def test_ldap_server_is_accessible(ldap_server):
+    """Проверяет что LDAP сервер доступен"""
+    import ldap
+    
+    conn = ldap.initialize(
+        f"ldap://{ldap_server['host']}:{ldap_server['port']}"
+    )
+    conn.simple_bind_s(
+        ldap_server['admin_dn'],
+        ldap_server['change-me-redacted-secret']
+    )
+    
+    # Проверяем базовую структуру
+    results = conn.search_s(
+        ldap_server['base_dn'],
+        ldap.SCOPE_BASE,
+        "(objectClass=*)"
+    )
+    
+    assert len(results) > 0
+    conn.unbind_s()
+
+
+@pytest.mark.django_db
+def test_register_user_creates_in_ldap(
+    api_client, ldap_test_settings, clean_ldap_users
+):
+    """INT-1: Регистрация пользователя создаёт запись в LDAP"""
+    url = reverse("api:v1:register")
+    data = {
+        "email": "ldap.test@test.local",
+        "first_name": "LDAP",
+        "last_name": "Test",
+        "phone_number": "+79990005555",
+        "password": "SecurePass123!",
+        "whatsapp": "+79990005555",
+        "birth_date": "1990-01-01",
+    }
+    
+    response = api_client.post(url, data, format="json")
+    
+    assert response.status_code == status.HTTP_201_CREATED
+    
+    # Проверяем что пользователь создан в БД
+    user = Employee.objects.get(email="ldap.test@test.local")
+    assert user is not None
+    assert user.is_active is False  # Не активен до верификации
+    
+    # TODO: Проверить что запись создана в LDAP
+    # Требует настройку DirectoryService с тестовым LDAP
+
+
+@pytest.mark.django_db
+def test_verify_email_activates_in_ldap(
+    api_client, ldap_test_settings, clean_ldap_users
+):
+    """INT-2: Верификация email активирует пользователя в LDAP"""
+    # Сначала регистрируем
+    url = reverse("api:v1:register")
+    data = {
+        "email": "verify.test@test.local",
+        "first_name": "Verify",
+        "last_name": "Test",
+        "phone_number": "+79990006666",
+        "password": "SecurePass123!",
+        "whatsapp": "+79990006666",
+        "birth_date": "1990-01-01",
+    }
+    
+    reg_response = api_client.post(url, data, format="json")
+    assert reg_response.status_code == status.HTTP_201_CREATED
+    
+    # Получаем код верификации из БД
+    user = Employee.objects.get(email="verify.test@test.local")
+    verification_code = user.email_activation_code
+    
+    # Верифицируем email
+    verify_url = reverse("api:v1:verify-email")
+    verify_data = {
+        "email": "verify.test@test.local",
+        "code": verification_code,
+    }
+    
+    verify_response = api_client.post(verify_url, verify_data, format="json")
+    
+    assert verify_response.status_code == status.HTTP_200_OK
+    
+    # Проверяем активацию в БД
+    user.refresh_from_db()
+    assert user.is_active is True
+    assert user.email_verified is True
+    
+    # TODO: Проверить активацию в LDAP
+
+
+@pytest.mark.django_db
+def test_create_group_syncs_to_ldap(
+    authenticated_client, ldap_test_settings, clean_ldap_users
+):
+    """INT-3: Создание группы синхронизируется в LDAP"""
+    url = reverse("api:v1:groups-list")
+    data = {
+        "name": "LDAP Test Group",
+        "cn": "ldap-test-group",
+    }
+    
+    response = authenticated_client.post(url, data, format="json")
+    
+    # Может быть 201 (успех) или 502 (LDAP ошибка)
+    assert response.status_code in [
+        status.HTTP_201_CREATED,
+        status.HTTP_502_BAD_GATEWAY
+    ]
+    
+    if response.status_code == status.HTTP_201_CREATED:
+        # Проверяем что группа создана в БД
+        group = Group.objects.get(cn="ldap-test-group")
+        assert group is not None
+        
+        # TODO: Проверить что группа создана в LDAP
+
+
+@pytest.mark.django_db
+def test_full_user_lifecycle_with_ldap(
+    api_client, ldap_test_settings, clean_ldap_users
+):
+    """INT-4: Полный жизненный цикл пользователя с LDAP"""
+    
+    # 1. Регистрация
+    reg_data = {
+        "email": "lifecycle.test@test.local",
+        "first_name": "Lifecycle",
+        "last_name": "Test",
+        "phone_number": "+79990007777",
+        "password": "SecurePass123!",
+        "whatsapp": "+79990007777",
+        "birth_date": "1990-01-01",
+    }
+    
+    reg_response = api_client.post(
+        reverse("api:v1:register"),
+        reg_data,
+        format="json"
+    )
+    assert reg_response.status_code == status.HTTP_201_CREATED
+    
+    # 2. Верификация email
+    user = Employee.objects.get(email="lifecycle.test@test.local")
+    verify_response = api_client.post(
+        reverse("api:v1:verify-email"),
+        {
+            "email": "lifecycle.test@test.local",
+            "code": user.email_activation_code,
+        },
+        format="json"
+    )
+    assert verify_response.status_code == status.HTTP_200_OK
+    
+    # 3. Проверяем финальное состояние
+    user.refresh_from_db()
+    assert user.is_active is True
+    assert user.email_verified is True
+    
+    # TODO: Проверить состояние в LDAP
+    # - Пользователь существует
+    # - Пользователь активен
+    # - Пароль установлен корректно
+
+
+@pytest.fixture
+def authenticated_client(api_client, db):
+    """API клиент с аутентификацией для интеграционных тестов"""
+    user = Employee.objects.create(
+        email="admin@test.local",
+        first_name="Admin",
+        last_name="User",
+        phone_number="+79990009999",
+        is_active=True,
+        email_verified=True,
+        is_staff=True,
+        is_superuser=True,
+    )
+    user.set_password("admin123")
+    user.save()
+    
+    api_client.force_authenticate(user=user)
+    return api_client

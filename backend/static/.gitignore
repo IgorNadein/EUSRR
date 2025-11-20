@@ -1,0 +1,14 @@
+# Node modules
+node_modules/
+
+# Compiled CSS (генерируется автоматически)
+# css/bootstrap-custom.css
+
+# npm logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db

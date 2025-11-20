@@ -19,8 +19,7 @@
  */
 export function initCalendarWidget(options = {}) {
   if (!window.FullCalendar) {
-    console.warn('FullCalendar not loaded, calendar widget disabled');
-    return null;
+    return null; // Тихий выход, если FullCalendar не загружен
   }
 
   // Инициализация цветовой палитры
@@ -38,7 +37,7 @@ export function initCalendarWidget(options = {}) {
   const API_EVENTS = config.apiEventsUrl;
   const API_MY_DEPTS = config.apiMyDeptsUrl;
   const DEFAULT_EVENT_COLOR = config.defaultColor;
-  const holder = document.querySelector('.rightbar-card');
+  const holder = document.querySelector('.rightbar-card') || document.querySelector('#rightbarOffcanvas');
 
   /* ===== Регулярки и константы ===== */
   const DIGITS_RE = /^\d+$/;
@@ -106,6 +105,8 @@ export function initCalendarWidget(options = {}) {
   /* ===== Элементы UI ===== */
   const chooserBtn = document.getElementById('calendarChooserBtn');
   const chooserMenu = document.getElementById('calendarChooserMenu');
+  const chooserBtnMobile = document.getElementById('calendarChooserBtnMobile');
+  const chooserMenuMobile = document.getElementById('calendarChooserMenuMobile');
   const eventTargetLabel = document.getElementById('eventTargetLabel');
 
   // Поля модала для переключений
@@ -339,30 +340,37 @@ export function initCalendarWidget(options = {}) {
 
     departments = nextDepartments;
 
-    // Очистка пунктов отделов (только сейчас, после защиты от гонки)
-    chooserMenu.querySelectorAll('[data-cal="dept"]').forEach((n) => n.closest('li')?.remove());
+    // Очистка пунктов отделов в обоих dropdown (десктоп и мобильный)
+    [chooserMenu, chooserMenuMobile].forEach((menu) => {
+      if (menu) menu.querySelectorAll('[data-cal="dept"]').forEach((n) => n.closest('li')?.remove());
+    });
 
     if (!departments.length) {
       setChooserLabel();
       return departments;
     }
 
-    // Убедимся, что есть разделитель
-    chooserMenu.querySelector('.dropdown-divider') ||
-      (() => {
-        const li = document.createElement('li');
-        li.innerHTML = '<hr class="dropdown-divider">';
-        chooserMenu.appendChild(li);
-      })();
+    // Заполнение dropdown отделами (десктоп и мобильный)
+    [chooserMenu, chooserMenuMobile].forEach((menu) => {
+      if (!menu) return;
 
-    // Вставка пунктов
-    const frag = document.createDocumentFragment();
-    departments.forEach((d) => {
-      const li = document.createElement('li');
-      li.innerHTML = `<button class="dropdown-item" type="button" data-cal="dept" data-id="${d.id}">${d.name}</button>`;
-      frag.appendChild(li);
+      // Убедимся, что есть разделитель
+      menu.querySelector('.dropdown-divider') ||
+        (() => {
+          const li = document.createElement('li');
+          li.innerHTML = '<hr class="dropdown-divider">';
+          menu.appendChild(li);
+        })();
+
+      // Вставка пунктов
+      const frag = document.createDocumentFragment();
+      departments.forEach((d) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<button class="dropdown-item" type="button" data-cal="dept" data-id="${d.id}">${d.name}</button>`;
+        frag.appendChild(li);
+      });
+      menu.appendChild(frag);
     });
-    chooserMenu.appendChild(frag);
 
     // Валидация текущего выбора
     if (state.type === 'dept' && !departments.some((d) => String(d.id) === String(state.deptId))) {
@@ -381,12 +389,13 @@ export function initCalendarWidget(options = {}) {
 
   function setChooserLabel() {
     const label = state.type === 'company' ? 'Компания' : currentDeptLabel();
-    chooserBtn.textContent = label;
+    if (chooserBtn) chooserBtn.textContent = label;
+    if (chooserBtnMobile) chooserBtnMobile.textContent = label;
     if (eventTargetLabel) eventTargetLabel.textContent = label;
   }
 
-  /* ===== Обработчик выбора из дропдауна ===== */
-  chooserMenu.addEventListener('click', (e) => {
+  /* ===== Обработчик выбора из дропдауна (десктоп и мобильный) ===== */
+  function handleChooserClick(e) {
     const btn = e.target.closest('[data-cal]');
     if (!btn) return;
     const type = btn.dataset.cal;
@@ -405,7 +414,10 @@ export function initCalendarWidget(options = {}) {
     setChooserLabel();
     [deskCalendar, mobCalendar].forEach((cal) => cal?.refetchEvents());
     updateWeekLists();
-  });
+  }
+
+  if (chooserMenu) chooserMenu.addEventListener('click', handleChooserClick);
+  if (chooserMenuMobile) chooserMenuMobile.addEventListener('click', handleChooserClick);
 
   /* ===== Комбинированная загрузка событий (occurrences) ===== */
   // События для текущего контекста (используется календарём)

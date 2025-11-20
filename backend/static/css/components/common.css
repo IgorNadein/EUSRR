@@ -67,7 +67,7 @@
 
 /* Бейдж статуса */
 .badge-status {
-  padding: 0.25rem 0.6rem;
+  padding: var(--space-1);
   border-radius: var(--badge-radius, 999px);
   font-size: 0.75rem;
   font-weight: 600;
@@ -182,8 +182,8 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.6rem;
+  gap: var(--space-1);
+  padding: var(--space-1);
   border-radius: var(--badge-radius, 999px);
   background: var(--bs-tertiary-bg);
   border: 1px solid var(--bs-border-color);

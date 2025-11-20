@@ -29,12 +29,12 @@
         <!-- Поиск компактный рядом с логотипом -->
         <form class="d-flex align-items-center me-3" role="search"
               action="{% url 'search:search' %}" method="get" autocomplete="off">
-          <div class="position-relative">
-            <i class="bi-search position-absolute top-50 start-0 translate-middle-y ms-2 opacity-75"></i>
+          <div class="position-relative ios-search" style="max-width: clamp(160px, 28vw, 300px);">
+            <i class="bi-search"></i>
             <input
-              class="form-control form-control-sm rounded-pill ps-5 pe-4 bg-white bg-opacity-10 border-0 text-white shadow-sm"
+              class="form-control form-control-sm rounded-pill ios-search-input bg-white bg-opacity-10 border-0 text-white shadow-sm"
               type="search" name="q" placeholder="Поиск…" aria-label="Поиск"
-              style="width: clamp(160px, 28vw, 300px);">
+              style="width: 100%; height: 36px;">
           </div>
         </form>
 

@@ -1,3 +1,4 @@
+{% load static %}
 {% for post in items %}
   {% firstof post.id post.pk as post_id %}
   <article data-post-card id="post-{{ post_id }}">
@@ -249,33 +250,7 @@
   <div class="alert alert-info shadow-sm">Пока нет новостей.</div>
 {% endfor %}
 
-
-<script>
-  (function(){
-    // когда открываем «Полный текст» — прячем краткий, меняем подпись кнопки
-    document.addEventListener('show.bs.collapse', function(e){
-      const exSel = e.target.dataset.excerpt;
-      const btnSel = e.target.dataset.btn;
-      if (exSel) document.querySelector(exSel)?.classList.add('d-none');
-      const btn = btnSel ? document.querySelector(btnSel) : null;
-      if (btn){
-        btn.querySelector('.txt-more')?.classList.add('d-none');
-        btn.querySelector('.txt-less')?.classList.remove('d-none');
-        btn.setAttribute('aria-expanded', 'true');
-      }
-    });
-
-    // при сворачивании — показываем краткий, меняем подпись обратно
-    document.addEventListener('hide.bs.collapse', function(e){
-      const exSel = e.target.dataset.excerpt;
-      const btnSel = e.target.dataset.btn;
-      if (exSel) document.querySelector(exSel)?.classList.remove('d-none');
-      const btn = btnSel ? document.querySelector(btnSel) : null;
-      if (btn){
-        btn.querySelector('.txt-more')?.classList.remove('d-none');
-        btn.querySelector('.txt-less')?.classList.add('d-none');
-        btn.setAttribute('aria-expanded', 'false');
-      }
-    });
-  })();
+<script type="module">
+  import { initCollapseToggle } from "{% static 'js/components/collapseToggleHandler.js' %}";
+  initCollapseToggle();
 </script>

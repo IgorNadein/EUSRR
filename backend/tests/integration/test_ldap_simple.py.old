@@ -1,0 +1,200 @@
+"""
+Простые интеграционные тесты с реальным LDAP сервером.
+
+ВАЖНО: Перед запуском запустите LDAP сервер:
+    cd backend
+    ./ldap-test.sh start
+
+Запуск тестов:
+    pytest tests/integration/test_ldap_simple.py -v
+"""
+
+import pytest
+from rest_framework.test import APIClient
+
+from employees.models import Employee
+from tests.integration.conftest import ldap_search_user
+
+
+@pytest.mark.django_db
+def test_register_user_creates_in_ldap(ldap_test_settings, ldap_connection):
+    """Регистрация пользователя создает запись в LDAP"""
+    client = APIClient()
+    
+    # Arrange
+    username = "test_newuser"
+    user_data = {
+        "username": username,
+        "email": "test_newuser@test.local",
+        "password": "TestPassword123!",
+        "password_confirmation": "TestPassword123!",
+        "first_name": "Test",
+        "last_name": "User",
+        "telegram": "@test_newuser",
+        "birth_date": "1990-01-01",
+        "phone_number": "+79001234567",
+    }
+    
+    # Act - регистрируем пользователя
+    response = client.post("/api/v1/auth/register/", user_data)
+    
+    # Отладка - посмотрим что пришло
+    print(f"\n Response status: {response.status_code}")
+    print(f"Response data: {response.data}")
+    
+    # Assert - проверяем что пользователь создался
+    assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.data}"
+    assert Employee.objects.filter(username=username).exists()
+    
+    # Assert - проверяем что пользователь появился в LDAP
+    ldap_user = ldap_search_user(ldap_connection, username)
+    assert ldap_user is not None, "Пользователь должен быть создан в LDAP"
+    
+    dn, attrs = ldap_user
+    assert b"test_newuser@test.local" in attrs.get("mail", [])
+
+
+@pytest.mark.django_db
+def test_verify_email_activates_in_ldap(ldap_test_settings, ldap_connection):
+    """Верификация email активирует пользователя в LDAP"""
+    client = APIClient()
+    
+    # Arrange - создаем пользователя
+    username = "test_verify"
+    user_data = {
+        "username": username,
+        "email": "test_verify@test.local",
+        "password": "TestPassword123!",
+        "password_confirmation": "TestPassword123!",
+        "first_name": "Test",
+        "last_name": "Verify",
+    }
+    
+    response = client.post("/api/v1/auth/register/", user_data)
+    assert response.status_code == 201
+    
+    # Получаем токен верификации
+    employee = Employee.objects.get(username=username)
+    token = employee.email_verification_token
+    
+    # Act - верифицируем email
+    verify_response = client.post(
+        "/api/v1/employees/verify-email/",
+        {"token": token}
+    )
+    
+    # Assert
+    assert verify_response.status_code == 200
+    
+    # Проверяем что в LDAP пользователь активен
+    ldap_user = ldap_search_user(ldap_connection, username)
+    assert ldap_user is not None
+    
+    dn, attrs = ldap_user
+    # TODO: Проверяем что accountStatus = active или аналогичное поле
+
+
+@pytest.mark.django_db
+def test_delete_user_removes_from_ldap(ldap_test_settings, ldap_connection):
+    """Удаление пользователя удаляет его из LDAP"""
+    client = APIClient()
+    
+    # Arrange - создаем пользователя
+    username = "test_delete"
+    user_data = {
+        "username": username,
+        "email": "test_delete@test.local",
+        "password": "TestPassword123!",
+        "password_confirmation": "TestPassword123!",
+        "first_name": "Test",
+        "last_name": "Delete",
+    }
+    
+    response = client.post("/api/v1/auth/register/", user_data)
+    assert response.status_code == 201
+    
+    # Проверяем что пользователь есть в LDAP
+    assert ldap_search_user(ldap_connection, username) is not None
+    
+    # Act - удаляем пользователя
+    employee = Employee.objects.get(username=username)
+    employee.delete()
+    
+    # Assert - проверяем что пользователя нет в LDAP
+    ldap_user = ldap_search_user(ldap_connection, username)
+    assert ldap_user is None, "Пользователь должен быть удален из LDAP"
+
+
+@pytest.mark.django_db
+def test_update_user_syncs_to_ldap(ldap_test_settings, ldap_connection):
+    """Обновление данных пользователя синхронизируется в LDAP"""
+    client = APIClient()
+    
+    # Arrange - создаем пользователя
+    username = "test_update"
+    user_data = {
+        "username": username,
+        "email": "test_update@test.local",
+        "password": "TestPassword123!",
+        "password_confirmation": "TestPassword123!",
+        "first_name": "Test",
+        "last_name": "Update",
+    }
+    
+    response = client.post("/api/v1/auth/register/", user_data)
+    assert response.status_code == 201
+    
+    # Act - обновляем email
+    employee = Employee.objects.get(username=username)
+    new_email = "new_email@test.local"
+    employee.email = new_email
+    employee.save()
+    
+    # Assert - проверяем что email обновился в LDAP
+    ldap_user = ldap_search_user(ldap_connection, username)
+    assert ldap_user is not None
+    
+    dn, attrs = ldap_user
+    assert new_email.encode() in attrs.get("mail", [])
+
+
+@pytest.mark.django_db
+def test_full_user_lifecycle_with_ldap(ldap_test_settings, ldap_connection):
+    """Полный жизненный цикл пользователя: создание → верификация → обновление → удаление"""
+    client = APIClient()
+    username = "test_lifecycle"
+    
+    # 1. Создание
+    user_data = {
+        "username": username,
+        "email": "lifecycle@test.local",
+        "password": "TestPassword123!",
+        "password_confirmation": "TestPassword123!",
+        "first_name": "Lifecycle",
+        "last_name": "Test",
+    }
+    
+    response = client.post("/api/v1/auth/register/", user_data)
+    assert response.status_code == 201
+    assert ldap_search_user(ldap_connection, username) is not None
+    
+    # 2. Верификация
+    employee = Employee.objects.get(username=username)
+    token = employee.email_verification_token
+    verify_response = client.post(
+        "/api/v1/employees/verify-email/",
+        {"token": token}
+    )
+    assert verify_response.status_code == 200
+    
+    # 3. Обновление
+    employee.refresh_from_db()
+    employee.first_name = "Updated"
+    employee.save()
+    
+    ldap_user = ldap_search_user(ldap_connection, username)
+    assert ldap_user is not None
+    
+    # 4. Удаление
+    employee.delete()
+    assert ldap_search_user(ldap_connection, username) is None

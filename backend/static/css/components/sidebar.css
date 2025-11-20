@@ -34,7 +34,7 @@
    NAVIGATION SECTIONS
 ────────────────────────────────────────────────────────────── */
 .side-section {
-  margin: .6rem 0 1rem;
+  margin: var(--space-1) 0 var(--space-2);
 }
 
 .side-hd {
@@ -43,8 +43,8 @@
   letter-spacing: .03em;
   text-transform: uppercase;
   color: var(--bs-secondary-color);
-  padding: .25rem .5rem;
-  margin: 0 0 .35rem .25rem;
+  padding: var(--space-1);
+  margin: 0 0 var(--space-1) var(--space-1);
 }
 
 .side-nav {
@@ -135,7 +135,7 @@
   right: -8px;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border-radius: 9999px;
   font-size: 10px;
   line-height: 16px;

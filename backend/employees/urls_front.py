@@ -13,6 +13,11 @@ urlpatterns = [
     path("<int:pk>/", views_front.employee_profile, name="employee_detail"),
     path("<int:pk>/edit/", views_front.employee_edit, name="employee_edit"),
     path("create/", views_front.employee_create, name="employee_create"),
+    path(
+        "create/modal/",
+        views_front.employee_create_modal,
+        name="employee_create_modal"
+    ),
 
     # --- Группы ---
     path("employees/<int:pk>/groups/bulk/", views_front.employee_groups_bulk, name="employee_groups_bulk"),

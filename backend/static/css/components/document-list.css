@@ -17,7 +17,7 @@
 }
 
 #docList .doc-row {
-  padding: .9rem 1rem !important;
+  padding: var(--space-2) !important;
   margin: 0 !important;
   border-bottom: 1px solid var(--bs-border-color);
 }
@@ -63,31 +63,31 @@
 .recipient-picker {
   border: 1px solid var(--bs-border-color);
   border-radius: 12px;
-  padding: .75rem;
+  padding: var(--space-2);
   background: var(--bs-body-bg);
 }
 
 .recipient-picker .rp-selected {
   display: flex;
   flex-wrap: wrap;
-  gap: .4rem;
-  margin-bottom: .5rem;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
 }
 
 .recipient-picker .rp-chip {
   display: inline-flex;
   align-items: center;
-  gap: .35rem;
+  gap: var(--space-1);
   border: 1px solid var(--bs-border-color);
   border-radius: 999px;
-  padding: .2rem .55rem;
+  padding: var(--space-1);
   font-size: .85rem;
 }
 
 .recipient-picker .rp-chip button {
   border: 0;
   background: transparent;
-  padding: 0 .2rem;
+  padding: 0 var(--space-1);
   line-height: 1;
 }
 
@@ -110,8 +110,8 @@
 .recipient-picker .rp-item {
   display: flex;
   align-items: center;
-  gap: .5rem;
-  padding: .45rem .6rem;
+  gap: var(--space-1);
+  padding: var(--space-1);
   border-bottom: 1px solid var(--bs-border-color);
 }
 
@@ -124,7 +124,7 @@
 }
 
 .recipient-picker .rp-empty {
-  padding: .6rem;
+  padding: var(--space-1);
   text-align: center;
   color: var(--bs-secondary-color);
 }

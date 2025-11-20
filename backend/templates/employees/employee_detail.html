@@ -21,11 +21,11 @@
       <div class="ms-auto"></div>
     </div>
 
-    <div class="row g-4 align-items-start">
+    <div class="row g-3 align-items-start">
       <!-- LEFT -->
       <div class="col-md-4">
         <article class="ios-card">
-          <div class="p-4 text-center">
+          <div class="p-3 text-center">
 
             <!-- Avatar -->
             <div class="ava-wrap mb-3">
@@ -73,7 +73,7 @@
             </div>
 
             <!-- Contacts -->
-            <div class="mt-4 text-start">
+            <div class="mt-3 text-start">
               <div class="ios-acc">
                 <button class="ios-collapse-trigger"
                         type="button"
@@ -382,9 +382,9 @@
       <!-- RIGHT -->
       <div class="col-md-8">
         {% if can_edit %}
-          <div id="editFormWrap" class="collapse mb-4">
+          <div id="editFormWrap" class="collapse mb-3">
             <article class="ios-card">
-              <div class="p-4">
+              <div class="p-3">
                 <div class="d-flex align-items-center gap-2">
                   <i class="bi-pencil-square"></i>
                   <div class="ios-section-title mb-0">Редактирование профиля</div>
@@ -427,174 +427,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  /* SKILLS: add/remove via AJAX form endpoints */
-  const block = document.getElementById('skillsBlock');
-  if (!block || block.dataset.editable !== '1') return;
-
-  const form       = document.getElementById('skillAddForm');
-  const chipsWrap  = block.querySelector('.chips');
-  const addBtn     = block.querySelector('.chip-add');
-  const collapseEl = document.getElementById('skillsForm');
-  const removeUrl  = "{% url 'employees:skill_remove' emp.id %}";
-  const csrf       = form?.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
-
-  let bsCollapse = null;
-  if (window.bootstrap && collapseEl) {
-    bsCollapse = new bootstrap.Collapse(collapseEl, { toggle:false });
-  }
-
-  if (form){
-    const input = form.querySelector('input[name="skill_name"]');
-    const submitBtn = form.querySelector('[type="submit"]');
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = (input.value || '').trim();
-      if (!name) { input.focus(); return; }
-      submitBtn?.setAttribute('disabled','');
-
-      try{
-        const resp = await fetch(form.action, {
-          method:'POST', credentials:'same-origin',
-          headers:{
-            'X-CSRFToken': csrf,
-            'X-Requested-With':'XMLHttpRequest',
-            'Accept':'application/json',
-            'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'
-          },
-          body:new URLSearchParams({ skill_name:name })
-        });
-        if(!resp.ok) throw new Error('HTTP '+resp.status);
-        let data=null; try{ data=await resp.json(); }catch(_){}
-        const displayName=(data && (data.name || data?.skill?.name || data?.title)) || name;
-        const skillId=(data && (data.id || data?.skill?.id)) || '';
-
-        chipsWrap.querySelector('.skills-empty')?.remove();
-        const exists=[...chipsWrap.querySelectorAll('.chip-skill')].some(
-          el => (el.dataset.skillName || el.textContent).trim().toLowerCase() === displayName.toLowerCase()
-        );
-        if(!exists){
-          const chip=document.createElement('span');
-          chip.className='chip chip-skill';
-          chip.dataset.skillId=String(skillId || '');
-          chip.dataset.skillName=displayName;
-          chip.innerHTML=`
-            <span class="lbl">${displayName}</span>
-            <button type="button" class="chip-del-btn" title="Убрать навык" aria-label="Убрать навык">
-              <i class="bi bi-dash-lg"></i>
-            </button>`;
-          chipsWrap.insertBefore(chip, addBtn);
-        }
-
-        input.value='';
-        bsCollapse ? bsCollapse.hide() : collapseEl?.classList.remove('show');
-        addBtn?.classList.add('pulse'); setTimeout(()=>addBtn?.classList.remove('pulse'),180);
-      }catch(e){
-        console.error(e); location.reload();
-      }finally{
-        submitBtn?.removeAttribute('disabled');
-      }
-    });
-  }
-
-  chipsWrap.addEventListener('click', async (e) => {
-    const del = e.target.closest('.chip-del-btn');
-    if (!del) return;
-    const chip = del.closest('.chip-skill');
-    if (!chip) return;
-
-    const skillId   = chip.dataset.skillId || '';
-    const skillName = chip.dataset.skillName || chip.textContent.trim();
-
-    del.disabled = true;
-    try{
-      const resp = await fetch(removeUrl, {
-        method:'POST', credentials:'same-origin',
-        headers:{
-          'X-CSRFToken': csrf,
-          'X-Requested-With':'XMLHttpRequest',
-          'Accept':'application/json',
-          'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'
-        },
-        body:new URLSearchParams({ skill_id:skillId, skill_name:skillName })
-      });
-      if(!resp.ok) throw new Error('HTTP '+resp.status);
-
-      chip.remove();
-      if (!chipsWrap.querySelector('.chip-skill')){
-        const note=document.createElement('span');
-        note.className='skills-empty';
-        note.textContent='';
-        chipsWrap.insertBefore(note, addBtn);
-      }
-    }catch(e){
-      console.error(e); location.reload();
-    }finally{
-      del.disabled=false;
-    }
-  });
-});
-</script>
-
-<script>
-/* Smooth-scroll to profile edit on mobile */
-document.addEventListener('DOMContentLoaded', () => {
-  const wrap   = document.getElementById('editFormWrap');
-  if (!wrap) return;
-
-  const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
-
-  function getTopOffset(){
-    const sticky = document.querySelector('.ios-header');
-    return (sticky?.offsetHeight || 0) + 8;
-  }
-
-  function smoothScrollTo(el){
-    const top = el.getBoundingClientRect().top + window.pageYOffset - getTopOffset();
-    try { window.scrollTo({ top, behavior: 'smooth' }); }
-    catch { window.scrollTo(0, top); }
-  }
-
-  wrap.addEventListener('shown.bs.collapse', () => {
-    if (isMobile()) smoothScrollTo(wrap);
-  });
-
-  if (wrap.classList.contains('show') && isMobile()) {
-    setTimeout(() => smoothScrollTo(wrap), 50);
-  }
-});
-</script>
-
-<script>
-/* Enable OK button in dept role editor only when value changed + init tooltips */
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.dept-editor form').forEach(form => {
-    const select = form.querySelector('select[name="role_id"]');
-    const okBtn  = form.querySelector('.dept-role-save');
-    const initial = (select?.value ?? '');
-    const toggle = () => { if(okBtn) okBtn.disabled = (select.value === initial); };
-    if(select && okBtn){ toggle(); select.addEventListener('change', toggle); }
-  });
-  document.querySelectorAll('.dept-editor-wrap.collapse').forEach(col => {
-    const row = col.closest('.dept-item');
-    if (!row) return;
-
-    // прячем роль ещё ДО анимации
-    col.addEventListener('show.bs.collapse', () => row.classList.add('is-editing'));
-    // возвращаем роль после закрытия
-    col.addEventListener('hidden.bs.collapse', () => row.classList.remove('is-editing'));
-
-    // если по каким-то причинам коллапс уже открыт при загрузке
-    if (col.classList.contains('show')) row.classList.add('is-editing');
-  });
-
-  if (window.bootstrap){
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-      new bootstrap.Tooltip(el);
-    });
-  }
-});
-</script>
+{# === JavaScript логика === #}
+{% include "employees/components/employee_detail_scripts.html" %}
 {% endblock %}

@@ -601,7 +601,7 @@ class UserService:
         return dn
 
     def _get_employee_dn(self, employee: Employee) -> str:
-        """Возвращает DN сотрудника из LdapSyncState.
+        """Возвращает DN сотрудника из LdapSyncState или модели.
         
         Args:
             employee: Экземпляр Employee.
@@ -610,13 +610,22 @@ class UserService:
             str: Полный DN пользователя в LDAP.
             
         Raises:
-            DirectoryServiceError: Если DN не найден в sync state.
+            DirectoryServiceError: Если DN не найден.
         """
+        # Сначала проверяем LdapSyncState
         dn = (
-            LdapSyncState.objects.filter(model="employee", object_pk=str(employee.pk))
+            LdapSyncState.objects.filter(
+                model="employee", 
+                object_pk=str(employee.pk)
+            )
             .values_list("ldap_dn", flat=True)
             .first()
         )
+        
+        # Если не найден в LdapSyncState, проверяем поле модели
+        if not dn and hasattr(employee, 'ldap_dn'):
+            dn = employee.ldap_dn
+        
         if not dn:
             raise DirectoryServiceError("Employee has no ldap_dn")
         return dn

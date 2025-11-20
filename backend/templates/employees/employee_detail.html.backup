@@ -1,0 +1,600 @@
+{# templates/employees/employee_detail.html #}
+{% extends "base.html" %}
+{% load static django_bootstrap5 %}
+
+{% block title %}
+  {% if is_me %}Мой профиль{% else %}Профиль сотрудника{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+
+{% endblock %}
+
+
+{% block content %}
+  <div class="container ios-page">
+    <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
+      <i class="bi-person-badge fs-2 text-primary"></i>
+      <h2 class="title ios-title mb-0">
+        {% if is_me %}Мой профиль{% else %}Профиль сотрудника{% endif %}
+      </h2>
+      <div class="ms-auto"></div>
+    </div>
+
+    <div class="row g-4 align-items-start">
+      <!-- LEFT -->
+      <div class="col-md-4">
+        <article class="ios-card">
+          <div class="p-4 text-center">
+
+            <!-- Avatar -->
+            <div class="ava-wrap mb-3">
+              {% if emp.avatar %}
+                <img src="{{ emp.avatar }}"
+                     alt="Аватар {{ emp.last_name }} {{ emp.first_name }}"
+                     class="ios-ava" style="object-fit:cover;">
+              {% else %}
+                <div class="ios-ava--ph">
+                  {% firstof emp.first_name emp.last_name "?" as initial %}
+                  {{ initial|slice:":1"|upper }}
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Name + edit button -->
+            <div class="d-flex align-items-center justify-content-center gap-2 mb-1">
+              <div class="ios-name">
+                {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
+              </div>
+              {% if can_edit %}
+                <button class="btn-icon"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#editFormWrap"
+                        aria-expanded="false"
+                        aria-controls="editFormWrap"
+                        title="Редактировать профиль" aria-label="Редактировать профиль">
+                  <i class="bi-pencil-square"></i>
+                </button>
+                <noscript>
+                  <a class="btn btn-link p-0" href="{% url 'employees:employee_edit' emp.id %}">Редактировать</a>
+                </noscript>
+              {% endif %}
+            </div>
+
+            <div class="ios-role">
+              {% if emp.position.name %}
+                {{ emp.position.name }}
+              {% elif emp.position_label %}
+                {{ emp.position_label }}
+              {% elif emp.position %}
+                Должность #{{ emp.position }}
+              {% endif %}
+            </div>
+
+            <!-- Contacts -->
+            <div class="mt-4 text-start">
+              <div class="ios-acc">
+                <button class="ios-collapse-trigger"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#contactsCollapse"
+                        aria-expanded="false"
+                        aria-controls="contactsCollapse">
+                  <span class="title"><i class="bi-person-lines-fill me-1"></i>Контакты</span>
+                  <i class="bi-chevron-down ios-collapse-caret"></i>
+                </button>
+
+                <div id="contactsCollapse" class="collapse">
+                  <div class="ios-acc-body">
+                    <div class="ios-list">
+                      {% if emp.email %}
+                        <div class="ios-cell">
+                          <i class="bi-envelope"></i>
+                          <a href="mailto:{{ emp.email }}">{{ emp.email }}</a>
+                        </div>
+                      {% endif %}
+                      {% if emp.phone_number %}
+                        <div class="ios-cell">
+                          <i class="bi-telephone"></i>
+                          <a href="tel:{{ emp.phone_number }}">{{ emp.phone_number }}</a>
+                        </div>
+                      {% endif %}
+                      {% if emp.telegram %}<div class="ios-cell"><i class="bi-telegram"></i><span>Telegram: {{ emp.telegram }}</span></div>{% endif %}
+                      {% if emp.whatsapp %}<div class="ios-cell"><i class="bi-whatsapp"></i><span>WhatsApp: {{ emp.whatsapp }}</span></div>{% endif %}
+                      {% if emp.wechat %}<div class="ios-cell"><i class="bi-wechat"></i><span>WeChat: {{ emp.wechat }}</span></div>{% endif %}
+                      {% if not emp.email and not emp.phone_number and not emp.telegram and not emp.whatsapp and not emp.wechat %}
+                        <div class="ios-cell"><span class="text-secondary">Контакты не указаны</span></div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# === ОТДЕЛЫ: роль скрыта; редактор по кнопке-карандашу (только для начальников) === #}
+            <div class="mt-3 text-start">
+              <div class="ios-acc">
+                <button class="ios-collapse-trigger"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#departmentsCollapse"
+                        aria-expanded="false"
+                        aria-controls="departmentsCollapse">
+                  <span class="title"><i class="bi-diagram-3 me-1"></i>Отделы</span>
+                  <i class="bi-chevron-down ios-collapse-caret"></i>
+                </button>
+
+                <div id="departmentsCollapse" class="collapse">
+                  <div class="ios-acc-body">
+                    <div class="ios-list">
+                      {% if emp_depts and emp_depts|length %}
+                        {% for d in emp_depts %}
+                          {% if d.name %}
+                            <div class="ios-cell dept-item"
+                                 data-dept-id="{{ d.id|default:'' }}"
+                                 data-role-id="{{ d.role_id|default:'' }}"
+                                 data-is-head="{{ d.is_head|yesno:'1,0' }}">
+                              <div class="dept-line">
+                                {% if d.id %}
+                                  <a class="text-decoration-none dept-name" href="{% url 'employees:department_detail' d.id %}">{{ d.name }}</a>
+                                {% else %}
+                                  <span class="dept-name">{{ d.name }}</span>
+                                {% endif %}
+                                <span class="dept-role">
+                                  {% if d.role_name %}— {{ d.role_name }}{% endif %}
+                                </span>
+                              </div>
+
+                              <div class="d-flex align-items-center gap-2">
+                                {% if d.is_head %}
+                                  <span class="badge-head" data-bs-toggle="tooltip" data-bs-title="Руководитель отдела">
+                                    <i class="bi-award-fill" aria-hidden="true"></i><span class="lbl">Руководитель</span>
+                                  </span>
+                                {% endif %}
+
+                                {% if d.can_edit_role %}
+                                  <button class="badge-gear" type="button"
+                                          data-bs-toggle="collapse" data-bs-target="#roleEditor-{{ d.id }}"
+                                          aria-expanded="false" aria-controls="roleEditor-{{ d.id }}"
+                                          title="Изменить роль сотрудника в этом отделе" aria-label="Изменить роль">
+                                    <i class="bi-gear-fill"></i><span class="lbl">Роль</span>
+                                  </button>
+                                {% endif %}
+                              </div>
+
+                              {% if d.can_edit_role %}
+                                <div id="roleEditor-{{ d.id }}" class="collapse dept-editor-wrap">
+                                  <div class="dept-editor">
+                                    <form method="post"
+                                          action="{% url 'employees:set_member_role' emp_id=emp.id dept_id=d.id %}">
+                                      {% csrf_token %}
+                                      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                      <select name="role_id" class="form-select form-select-sm dept-role-select">
+                                        <option value="" {% if not d.role_id %}selected{% endif %}>Без роли</option>
+                                        {% for r in d.roles_choices %}
+                                          {% if r.name %}
+                                            <option value="{{ r.id }}" {% if d.role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
+                                          {% endif %}
+                                        {% endfor %}
+                                      </select>
+                                      <button type="submit" class="btn btn-sm btn-primary dept-role-save" disabled>OK</button>
+                                      <button type="button" class="btn btn-sm btn-ghost"
+                                              data-bs-toggle="collapse" data-bs-target="#roleEditor-{{ d.id }}">Отмена</button>
+                                    </form>
+                                  </div>
+                                </div>
+                              {% endif %}
+                            </div>
+                          {% endif %}
+                        {% endfor %}
+                      {% else %}
+                        <div class="ios-cell"><span class="text-secondary">Отделы не указаны</span></div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {# === КАДРОВЫЕ СОБЫТИЯ (для аутентифицированных) === #}
+            {% if request.user.is_authenticated %}
+              {% with acts_src=employee_actions|default:emp.actions %}
+                {% with acts=acts_src.results|default:acts_src %}
+                  {% if acts %}
+                    <div class="mt-3 text-start">
+                      <div class="ios-acc">
+                        <button class="ios-collapse-trigger" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#actionsCollapse"
+                                aria-expanded="false" aria-controls="actionsCollapse">
+                          <span class="title"><i class="bi-journal-text me-1"></i>Кадровые события</span>
+                          <i class="bi-chevron-down ios-collapse-caret"></i>
+                        </button>
+
+                        <div id="actionsCollapse" class="collapse">
+                          <div class="ios-acc-body">
+                            <div class="ios-list">
+                              {% for a in acts %}
+                                <div class="ios-cell">
+                                  <i class="bi-clipboard-check" style="width:1.25rem;text-align:center;opacity:.9;"></i>
+                                  <div class="flex-grow-1">
+                                    <div class="fw-bold">{% firstof a.action_display a.action %}</div>
+                                    {% if a.comment %}<div class="text-secondary">{{ a.comment }}</div>{% endif %}
+                                    <div class="small text-secondary">
+                                      <time>{% firstof a.date_display a.date|date:"d.m.Y H:i" %}</time>
+                                    </div>
+                                    {% if a.extra %}
+                                      <div class="small text-secondary mt-1">
+                                        {% for k, v in a.extra.items %}
+                                          <div>{{ k }}: {{ v }}</div>
+                                        {% endfor %}
+                                      </div>
+                                    {% endif %}
+
+                                    {% if a.history and a.history|length %}
+                                      <details class="mt-2 small">
+                                        <summary class="text-secondary">История</summary>
+                                        <div class="mt-2">
+                                          {% for h in a.history %}
+                                            {% with new_action=h.changes.action.new|default:a.action %}
+                                            <div class="py-2 border-top">
+                                              <div class="d-flex align-items-baseline gap-2">
+                                                <span class="fw-semibold">
+                                                  {% if new_action == 'hired' %}Принят
+                                                  {% elif new_action == 'dismissed' %}Уволен
+                                                  {% elif new_action == 'on_leave' %}В отпуске
+                                                  {% elif new_action == 'returned_from_leave' %}Вернулся из отпуска
+                                                  {% elif new_action == 'on_maternity' %}В декрете
+                                                  {% elif new_action == 'returned_from_maternity' %}Вернулся из декрета
+                                                  {% elif new_action == 'transferred' %}Переведен
+                                                  {% elif new_action == 'rehired' %}Восстановлен
+                                                  {% else %}{% firstof a.action_display a.action %}{% endif %}
+                                                </span>
+                                                <span class="text-secondary">
+                                                  {% firstof h.history_date_display h.history_date %}{% if h.history_user %} • {{ h.history_user }}{% endif %}
+                                                </span>
+                                              </div>
+
+                                              {% if h.changes %}
+                                                <div class="ms-3 mt-1">
+                                                  {% for field, diff in h.changes.items %}
+                                                    {% if field != 'action' %}
+                                                      <div>
+                                                        <span class="text-secondary">
+                                                          {% if field == 'date' %}Дата события
+                                                          {% elif field == 'comment' %}Комментарий
+                                                          {% elif field == 'extra' %}Дополнительно
+                                                          {% elif field == 'employee_id' %}Сотрудник
+                                                          {% else %}{{ field }}{% endif %}
+                                                          :
+                                                        </span>
+                                                        {% if field == 'extra' and diff.new %}
+                                                          {% if diff.new.items %}
+                                                            {% for ek, ev in diff.new.items %}
+                                                              {% if not forloop.first %}, {% endif %}{{ ek }}: {{ ev }}
+                                                            {% endfor %}
+                                                          {% else %}
+                                                            {{ diff.new }}
+                                                          {% endif %}
+                                                        {% else %}
+                                                          {{ diff.new }}
+                                                        {% endif %}
+                                                      </div>
+                                                    {% endif %}
+                                                  {% endfor %}
+                                                </div>
+                                              {% endif %}
+                                            </div>
+                                            {% endwith %}
+                                          {% endfor %}
+                                        </div>
+                                      </details>
+                                    {% endif %}
+                                  </div>
+                                </div>
+                              {% empty %}
+                                <div class="ios-cell"><span class="text-secondary">Событий нет.</span></div>
+                              {% endfor %}
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  {% endif %}
+                {% endwith %}
+              {% endwith %}
+            {% endif %}
+
+            {# ====== НАВЫКИ ====== #}
+            <div class="mt-3 text-start" id="skillsBlock"
+                 {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                   data-editable="1"
+                 {% endif %}>
+              <div class="ios-section-title mb-2"><i class="bi bi-stars me-1"></i>Навыки</div>
+
+              <div class="chips align-items-center">
+                {% with skills=emp.skills %}
+                  {% if skills %}
+                    {% for s in skills %}
+                      {% firstof s.name s as sk_name %}
+                      {% if sk_name %}
+                        <span class="chip chip-skill"
+                              data-skill-id="{{ s.id|default:'' }}"
+                              data-skill-name="{{ sk_name }}">
+                          <span class="lbl">{{ sk_name }}</span>
+                          {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                            <button type="button" class="chip-del-btn" title="Убрать навык" aria-label="Убрать навык">
+                              <i class="bi bi-dash-lg"></i>
+                            </button>
+                          {% endif %}
+                        </span>
+                      {% endif %}
+                    {% endfor %}
+                  {% else %}
+                    <span class="skills-empty"></span>
+                  {% endif %}
+                {% endwith %}
+
+                {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                  <button type="button" class="chip chip-add"
+                          data-bs-toggle="collapse" data-bs-target="#skillsForm"
+                          aria-expanded="false" aria-controls="skillsForm" title="Добавить навык">
+                    <i class="bi bi-plus-lg"></i><span class="d-none d-sm-inline"></span>
+                  </button>
+                {% endif %}
+              </div>
+
+              {% if perms.employees.manage_employee_skills or request.user.is_staff or request.user.is_superuser or is_me %}
+                <div id="skillsForm" class="collapse mt-2">
+                  <form id="skillAddForm" class="skill-form"
+                        action="{% url 'employees:skill_add' emp.id %}" method="post">
+                    {% csrf_token %}
+                    <div class="row g-2">
+                      <div class="col-12">
+                        <input class="form-control" name="skill_name" list="skillsAll"
+                               placeholder="Выберите или введите новый навык" required>
+                        <datalist id="skillsAll">
+                          {% for sk in all_skills %}
+                            {% if sk.name %}<option value="{{ sk.name }}"></option>{% endif %}
+                          {% endfor %}
+                        </datalist>
+                      </div>
+                      <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                          <i class="bi bi-plus-lg me-1"></i>Добавить
+                        </button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-bs-toggle="collapse" data-bs-target="#skillsForm">
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              {% endif %}
+            </div>
+
+          </div>
+        </article>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="col-md-8">
+        {% if can_edit %}
+          <div id="editFormWrap" class="collapse mb-4">
+            <article class="ios-card">
+              <div class="p-4">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="bi-pencil-square"></i>
+                  <div class="ios-section-title mb-0">Редактирование профиля</div>
+                  <div class="ms-auto">
+                    <button type="button" class="btn btn-sm btn-ghost"
+                            data-bs-toggle="collapse" data-bs-target="#editFormWrap">Скрыть</button>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  {% if is_me %}
+                    {% url 'employees:employee_edit_me' as edit_endpoint %}
+                  {% else %}
+                    {% url 'employees:employee_edit' emp.id as edit_endpoint %}
+                  {% endif %}
+                  {% include "employees/_employee_edit.html" with emp=emp endpoint=edit_endpoint %}
+                </div>
+              </div>
+            </article>
+          </div>
+        {% endif %}
+
+        <section class="feed-card mb-3">
+          <div class="feed-hd">
+            <i class="bi-activity me-1"></i>
+            <div class="feed-meta">
+              <div class="feed-author">Активность</div>
+            </div>
+          </div>
+          <div>
+            {% if posts %}
+              {% include "feed/_feed_cards.html" with items=posts  %}
+            {% else %}
+              <div class="text-secondary small">Публикаций пока нет.</div>
+            {% endif %}
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  /* SKILLS: add/remove via AJAX form endpoints */
+  const block = document.getElementById('skillsBlock');
+  if (!block || block.dataset.editable !== '1') return;
+
+  const form       = document.getElementById('skillAddForm');
+  const chipsWrap  = block.querySelector('.chips');
+  const addBtn     = block.querySelector('.chip-add');
+  const collapseEl = document.getElementById('skillsForm');
+  const removeUrl  = "{% url 'employees:skill_remove' emp.id %}";
+  const csrf       = form?.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+
+  let bsCollapse = null;
+  if (window.bootstrap && collapseEl) {
+    bsCollapse = new bootstrap.Collapse(collapseEl, { toggle:false });
+  }
+
+  if (form){
+    const input = form.querySelector('input[name="skill_name"]');
+    const submitBtn = form.querySelector('[type="submit"]');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = (input.value || '').trim();
+      if (!name) { input.focus(); return; }
+      submitBtn?.setAttribute('disabled','');
+
+      try{
+        const resp = await fetch(form.action, {
+          method:'POST', credentials:'same-origin',
+          headers:{
+            'X-CSRFToken': csrf,
+            'X-Requested-With':'XMLHttpRequest',
+            'Accept':'application/json',
+            'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'
+          },
+          body:new URLSearchParams({ skill_name:name })
+        });
+        if(!resp.ok) throw new Error('HTTP '+resp.status);
+        let data=null; try{ data=await resp.json(); }catch(_){}
+        const displayName=(data && (data.name || data?.skill?.name || data?.title)) || name;
+        const skillId=(data && (data.id || data?.skill?.id)) || '';
+
+        chipsWrap.querySelector('.skills-empty')?.remove();
+        const exists=[...chipsWrap.querySelectorAll('.chip-skill')].some(
+          el => (el.dataset.skillName || el.textContent).trim().toLowerCase() === displayName.toLowerCase()
+        );
+        if(!exists){
+          const chip=document.createElement('span');
+          chip.className='chip chip-skill';
+          chip.dataset.skillId=String(skillId || '');
+          chip.dataset.skillName=displayName;
+          chip.innerHTML=`
+            <span class="lbl">${displayName}</span>
+            <button type="button" class="chip-del-btn" title="Убрать навык" aria-label="Убрать навык">
+              <i class="bi bi-dash-lg"></i>
+            </button>`;
+          chipsWrap.insertBefore(chip, addBtn);
+        }
+
+        input.value='';
+        bsCollapse ? bsCollapse.hide() : collapseEl?.classList.remove('show');
+        addBtn?.classList.add('pulse'); setTimeout(()=>addBtn?.classList.remove('pulse'),180);
+      }catch(e){
+        console.error(e); location.reload();
+      }finally{
+        submitBtn?.removeAttribute('disabled');
+      }
+    });
+  }
+
+  chipsWrap.addEventListener('click', async (e) => {
+    const del = e.target.closest('.chip-del-btn');
+    if (!del) return;
+    const chip = del.closest('.chip-skill');
+    if (!chip) return;
+
+    const skillId   = chip.dataset.skillId || '';
+    const skillName = chip.dataset.skillName || chip.textContent.trim();
+
+    del.disabled = true;
+    try{
+      const resp = await fetch(removeUrl, {
+        method:'POST', credentials:'same-origin',
+        headers:{
+          'X-CSRFToken': csrf,
+          'X-Requested-With':'XMLHttpRequest',
+          'Accept':'application/json',
+          'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body:new URLSearchParams({ skill_id:skillId, skill_name:skillName })
+      });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+
+      chip.remove();
+      if (!chipsWrap.querySelector('.chip-skill')){
+        const note=document.createElement('span');
+        note.className='skills-empty';
+        note.textContent='';
+        chipsWrap.insertBefore(note, addBtn);
+      }
+    }catch(e){
+      console.error(e); location.reload();
+    }finally{
+      del.disabled=false;
+    }
+  });
+});
+</script>
+
+<script>
+/* Smooth-scroll to profile edit on mobile */
+document.addEventListener('DOMContentLoaded', () => {
+  const wrap   = document.getElementById('editFormWrap');
+  if (!wrap) return;
+
+  const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
+
+  function getTopOffset(){
+    const sticky = document.querySelector('.ios-header');
+    return (sticky?.offsetHeight || 0) + 8;
+  }
+
+  function smoothScrollTo(el){
+    const top = el.getBoundingClientRect().top + window.pageYOffset - getTopOffset();
+    try { window.scrollTo({ top, behavior: 'smooth' }); }
+    catch { window.scrollTo(0, top); }
+  }
+
+  wrap.addEventListener('shown.bs.collapse', () => {
+    if (isMobile()) smoothScrollTo(wrap);
+  });
+
+  if (wrap.classList.contains('show') && isMobile()) {
+    setTimeout(() => smoothScrollTo(wrap), 50);
+  }
+});
+</script>
+
+<script>
+/* Enable OK button in dept role editor only when value changed + init tooltips */
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.dept-editor form').forEach(form => {
+    const select = form.querySelector('select[name="role_id"]');
+    const okBtn  = form.querySelector('.dept-role-save');
+    const initial = (select?.value ?? '');
+    const toggle = () => { if(okBtn) okBtn.disabled = (select.value === initial); };
+    if(select && okBtn){ toggle(); select.addEventListener('change', toggle); }
+  });
+  document.querySelectorAll('.dept-editor-wrap.collapse').forEach(col => {
+    const row = col.closest('.dept-item');
+    if (!row) return;
+
+    // прячем роль ещё ДО анимации
+    col.addEventListener('show.bs.collapse', () => row.classList.add('is-editing'));
+    // возвращаем роль после закрытия
+    col.addEventListener('hidden.bs.collapse', () => row.classList.remove('is-editing'));
+
+    // если по каким-то причинам коллапс уже открыт при загрузке
+    if (col.classList.contains('show')) row.classList.add('is-editing');
+  });
+
+  if (window.bootstrap){
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+      new bootstrap.Tooltip(el);
+    });
+  }
+});
+</script>
+{% endblock %}

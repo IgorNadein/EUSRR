@@ -50,38 +50,14 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-  // UX: ESC = отмена, Enter на «Выйти», тап по фону = отмена
-  (function(){
-    const cancel = document.getElementById('cancelBtn');
-    const confirm = document.getElementById('confirmBtn');
-    const overlay = document.querySelector('.ios-overlay');
-
-    function goBack(){
-      // если есть referer/next — туда, иначе на главную
-      const params = new URLSearchParams(location.search);
-      const next = (params.get('next') || '').trim();
-      if (next) { location.href = next; return; }
-      if (document.referrer) { history.back(); return; }
-      location.href = "{% url 'auth_front:login' %}";
-    }
-
-    cancel?.addEventListener('click', goBack);
-
-    // клик по фону закрывает (но не по самой карточке)
-    overlay?.addEventListener('click', (e)=>{
-      if (e.target === overlay) goBack();
-    });
-
-    addEventListener('keydown', (e)=>{
-      if (e.key === 'Escape'){ e.preventDefault(); goBack(); }
-      if (e.key === 'Enter' && document.activeElement !== cancel){ 
-        // даём нативной форме отправиться
-      }
-    });
-
-    // автофокус на «Выйти»
-    setTimeout(()=> confirm?.focus(), 10);
-  })();
+<script type="module">
+  import { initLogoutModal } from "{% static 'js/components/logoutModalHandler.js' %}";
+  
+  initLogoutModal({
+    cancelButtonId: 'cancelBtn',
+    confirmButtonId: 'confirmBtn',
+    overlaySelector: '.ios-overlay',
+    loginUrl: "{% url 'auth_front:login' %}"
+  });
 </script>
 {% endblock %}

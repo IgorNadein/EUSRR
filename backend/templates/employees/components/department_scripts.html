@@ -294,11 +294,8 @@ import { norm } from '{% static "js/utils/stringUtils.js" %}';
   });
 })();
 </script>
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    if (!window.bootstrap) return;
-    document.querySelectorAll('[data-tooltip="1"]').forEach(el => {
-      try { new bootstrap.Tooltip(el); } catch(_) {}
-    });
-  });
+
+<script type="module">
+  import { initTooltips } from "{% static 'js/utils/tooltipInitializer.js' %}";
+  initTooltips();
 </script>

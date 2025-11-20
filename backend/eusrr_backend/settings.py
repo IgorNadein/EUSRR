@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "communications.apps.CommunicationsConfig",
     "search.apps.SearchConfig",
     "bots",
+    "finance.apps.FinanceConfig",
 ]
 
 MIDDLEWARE = [
@@ -57,6 +58,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "eusrr_backend.middleware.AuthRequiredMiddleware",
+    "eusrr_backend.middleware.EmailVerificationMiddleware",
 ]
 
 ROOT_URLCONF = "eusrr_backend.urls"
@@ -253,12 +255,16 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
 # -----------------------------------------------------------------------------
 # АУТЕНТИФИКАЦИОННЫЕ БЭКЕНДЫ
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# AUTHENTICATION_BACKENDS
+# -----------------------------------------------------------------------------
+# Порядок важен: первый успешный бэкенд останавливает цепочку
 AUTHENTICATION_BACKENDS = [
-    "eusrr_backend.auth_backends.LDAP3Backend",
-    # "eusrr_backend.auth_backends.EmailOrPhoneBackend",
-    "eusrr_backend.auth_backends.SuperuserOnlyBackend",
-    "eusrr_backend.auth_backends.PositionRoleBackend",
-    "django.contrib.auth.backends.ModelBackend",
+    "eusrr_backend.auth_backends.LDAP3Backend",  # работает только если LDAP_ENABLED=True
+    "eusrr_backend.auth_backends.EmailOrPhoneBackend",  # фоллбэк для режима без LDAP
+    "eusrr_backend.auth_backends.SuperuserOnlyBackend",  # экстренный доступ для админа
+    "eusrr_backend.auth_backends.PositionRoleBackend",  # расчёт прав на основе должностей
+    "django.contrib.auth.backends.ModelBackend",  # стандартный Django бэкенд
 ]
 
 # -----------------------------------------------------------------------------
@@ -277,6 +283,12 @@ LDAP_TLS_REQUIRED = os.getenv("LDAP_TLS_REQUIRED", "true").lower() == "true"
 
 # Где искать пользователей
 LDAP_USER_BASE = os.getenv("LDAP_USER_BASE", "OU=company,DC=robotail,DC=local")
+# Где создавать новых пользователей (может отличаться от базы поиска)
+LDAP_USERS_BASE = os.getenv("LDAP_USERS_BASE", LDAP_USER_BASE)
+# Базовый DN для операций создания (если не указан department_dn)
+LDAP_BASE_DN = os.getenv("LDAP_BASE_DN", LDAP_USERS_BASE)
+# UPN-суффикс для создания пользователей (userPrincipalName)
+LDAP_UPN_SUFFIX = os.getenv("LDAP_USER_UPN_SUFFIX", "@robotail.local")
 
 LDAP_USER_FILTER = os.getenv(
     "LDAP_USER_FILTER", "(&(objectCategory=person)(objectClass=user))"
@@ -308,6 +320,9 @@ LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
 LDAP_WRITE_DN = os.getenv("LDAP_WRITE_DN", LDAP_BIND_DN)
 LDAP_WRITE_PASSWORD = os.getenv("LDAP_WRITE_PASSWORD", LDAP_BIND_PASSWORD)
 LDAP_WRITE_TIMEOUT = int(os.getenv("LDAP_WRITE_TIMEOUT", "5"))
+
+# UPN суффикс для создания пользователей (например, @robotail.local)
+LDAP_UPN_SUFFIX = os.getenv("LDAP_USER_UPN_SUFFIX", "@robotail.local")
 
 # Белый список: локальные поля -> LDAP-атрибуты
 LDAP_WRITE_ATTRS = {

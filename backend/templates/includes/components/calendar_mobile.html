@@ -1,0 +1,45 @@
+{# Мобильная версия календаря - offcanvas + плавающая кнопка #}
+<button class="btn btn-primary calendar-fab d-lg-none" type="button"
+        data-bs-toggle="offcanvas" data-bs-target="#rightbarOffcanvas"
+        aria-controls="rightbarOffcanvas" aria-label="Календарь">
+  <i class="bi-calendar-event"></i>
+</button>
+
+<div class="offcanvas offcanvas-end d-lg-none" id="rightbarOffcanvas" tabindex="-1"
+     data-bs-scroll="true" data-dept-id="{{ dept_ids|default:'' }}"
+     style="--bs-offcanvas-width: min(92vw, 420px);">
+  <div class="offcanvas-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-2 flex-shrink-1 min-w-0">
+      <h5 class="offcanvas-title mb-0" id="rightbarOffcanvasLabel">Календарь</h5>
+      
+      {# Выпадающий выбор: Компания / Отделы #}
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle text-truncate" type="button"
+                id="calendarChooserBtnMobile" data-bs-toggle="dropdown" aria-expanded="false"
+                style="max-width: 120px;">
+          Компания
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="calendarChooserBtnMobile" id="calendarChooserMenuMobile">
+          <li><button class="dropdown-item" type="button" data-cal="company">Компания</button></li>
+          <li><hr class="dropdown-divider"></li>
+          {# пункты отделов добавим из JS по data-dept-id #}
+        </ul>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#eventCreateModal"
+              aria-label="Создать событие"><i class="bi-plus-lg"></i></button>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Закрыть"></button>
+    </div>
+  </div>
+  <div class="offcanvas-body">
+    <div id="calendarRightMobile" class="calendar-wrap"></div>
+
+    <div class="week-strip-header">
+      <span><i class="bi-calendar-week me-1"></i> На этой неделе</span>
+      <span id="weekRangeMobile" class="text-muted"></span>
+    </div>
+    <div id="weekListMobile" class="week-vertical" aria-live="polite"></div>
+  </div>
+</div>

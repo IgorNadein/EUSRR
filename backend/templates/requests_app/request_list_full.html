@@ -523,151 +523,20 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-  // Автоподстановка данных из data-* атрибутов в модальные формы
-  const bindIdOnly = (modalId, inputId) => {
-    const modal = document.getElementById(modalId);
-    modal?.addEventListener('show.bs.modal', e => {
-      const btn = e.relatedTarget;
-      const id = btn?.getAttribute('data-id') || '';
-      const input = modal.querySelector('#' + inputId);
-      if (input) input.value = id;
-    });
-  };
-  bindIdOnly('reqApproveModal', 'approveId');
-  bindIdOnly('reqRejectModal',  'rejectId');
-  bindIdOnly('reqCancelModal',  'cancelId');
-  bindIdOnly('reqDeleteModal',  'deleteId');
-  bindIdOnly('reqCommentModal', 'commentId');
+<script type="module">
+  import { initRequestModalHandler } from "{% static 'js/components/requestModalHandler.js' %}";
+  import { initRequestCommentsHandler } from "{% static 'js/components/requestCommentsHandler.js' %}";
 
-  // Редактирование — заполняем все поля
-  document.getElementById('reqEditModal')?.addEventListener('show.bs.modal', e => {
-    const btn = e.relatedTarget;
-    const isDraft = btn?.dataset?.status === 'draft';
-    if(!btn) return;
-    const get = (name) => btn.getAttribute('data-'+name) || '';
-    document.getElementById('editId').value         = get('id');
-    document.getElementById('editTitle').value      = get('title');
-    document.getElementById('editType').value       = get('type');
-    document.getElementById('editDateFrom').value   = get('date_from');
-    document.getElementById('editDateTo').value     = get('date_to');
-    document.getElementById('editComment').value    = get('comment');
-    document.getElementById('editIsDraft').checked = !!isDraft;
+  // Инициализация обработчиков модальных окон
+  initRequestModalHandler({
+    autoShowComments: {% if comments_for %}true{% else %}false{% endif %}
   });
 
-  // Если сервер отдал comments_for — откроем модал с комментариями
-  {% if comments_for %}
-    document.addEventListener('DOMContentLoaded', () => {
-      const modal = new bootstrap.Modal(document.getElementById('reqCommentsModal'));
-      modal.show();
-    });
-  {% endif %}
-</script>
-
-<script>
-(function(){
-  const renderComment = (c) => {
-    const author = (c.author && (c.author.full_name || c.author.display_name || c.author.username)) || '—';
-    return `<div class="comment-item">`+
-           `<div class="comment-meta"><span class="comment-author">${author}</span>`+
-           `<span class="text-mono">${c.created_at || ''}</span></div>`+
-           `<div class="comment-text">${escapeHtml(c.text || '')}</div>`+
-           `</div>`;
-  };
-  const escapeHtml = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-  const updateCount = (reqId, count) => {
-    const btn = document.querySelector(`[data-bs-target="#rcoll-${reqId}"] [data-role="count"]`)
-              || document.querySelector(`#req-${reqId} [data-role="count"]`);
-    if(btn) btn.textContent = count;
-  };
-
-  const loadComments = async (collapseEl) => {
-    const reqId = collapseEl.getAttribute('data-request-id');
-    const block = collapseEl.querySelector('.comments-block');
-    const listEl = block.querySelector('[data-role=list]');
-    const spinner = block.querySelector('.spinner-border');
-    if(collapseEl.dataset.loaded === '1') return;
-    spinner.style.display = 'inline-block';
-    try {
-      const resp = await fetch(`{% url 'requests:request_comments' 0 %}`.replace('/0/', `/${reqId}/`), { headers:{ 'Accept':'application/json' } });
-      if(!resp.ok) throw new Error('HTTP '+resp.status);
-      const data = await resp.json();
-      listEl.innerHTML = data.length ? data.map(renderComment).join('') : '<div class="small text-body-secondary">Комментариев нет.</div>';
-      collapseEl.dataset.loaded = '1';
-      updateCount(reqId, data.length);
-    } catch(e){
-      listEl.innerHTML = '<div class="small text-danger">Не удалось загрузить.</div>';
-    } finally { spinner.style.display = 'none'; }
-  };
-
-  const postComment = async (block, text) => {
-    const reqId = block.closest('[data-comments-collapse]').getAttribute('data-request-id');
-    const form = block.querySelector('form[data-role="form"]');
-    const formData = new FormData(form);
-    formData.set('text', text);
-    const csrfToken = form.querySelector('input[name="csrfmiddlewaretoken"]').value;
-    const url = `{% url 'requests:request_comment_add' 0 %}`.replace('/0/', `/${reqId}/`);
-    const resp = await fetch(url, { method: 'POST', body: formData, headers:{ 'X-CSRFToken': csrfToken }, credentials:'same-origin' });
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    return resp.json();
-  };
-
-  document.addEventListener('show.bs.collapse', (e) => {
-    if(!e.target.matches('[data-comments-collapse]')) return;
-    loadComments(e.target);
-  });
-
-  document.addEventListener('submit', async (e) => {
-    const form = e.target.closest('[data-comments-collapse] form[data-role=form]');
-    if(!form) return;
-    e.preventDefault();
-    const block = form.closest('.comments-block');
-    const textarea = form.querySelector('[data-role=text]');
-    const txt = (textarea.value || '').trim();
-    if(!txt) return;
-    form.querySelector('button').disabled = true;
-    try {
-      const saved = await postComment(block, txt);
-      const listEl = block.querySelector('[data-role=list]');
-      if(listEl.querySelector('.text-body-secondary')) listEl.innerHTML = '';
-      listEl.insertAdjacentHTML('beforeend', renderComment(saved));
-      textarea.value='';
-      const reqId = block.closest('[data-comments-collapse]').getAttribute('data-request-id');
-      updateCount(reqId, listEl.querySelectorAll('.comment-item').length);
-    } catch(err){
-      alert('Ошибка отправки комментария');
-    } finally { form.querySelector('button').disabled = false; }
-  });
-})();
-
-// Предзагрузка количества комментариев, чтобы заменить 0 фактическим числом
-document.addEventListener('DOMContentLoaded', () => {
-  const fetchCount = async (reqId, span) => {
-    try {
-      const resp = await fetch(`{% url 'requests:request_comments' 0 %}`.replace('/0/', `/${reqId}/`), { headers:{ 'Accept':'application/json' } });
-      if(!resp.ok) return;
-      const data = await resp.json();
-      span.textContent = Array.isArray(data) ? data.length : 0;
-    } catch(e){ /* ignore */ }
-  };
-  document.querySelectorAll('[data-comments-collapse]').forEach(el => {
-    const reqId = el.getAttribute('data-request-id');
-    const span = document.querySelector(`[data-bs-target="#rcoll-${reqId}"] [data-role="count"]`);
-    if(span && span.textContent.trim() === '0') fetchCount(reqId, span);
-  });
-});
-</script>
-
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const textareas = document.querySelectorAll('.comment-new textarea');
-    textareas.forEach(textarea => {
-      textarea.addEventListener('input', () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = `${textarea.scrollHeight}px`;
-      });
-    });
+  // Инициализация обработчика комментариев
+  initRequestCommentsHandler({
+    commentsUrlTemplate: "{% url 'requests:request_comments' 0 %}",
+    addCommentUrlTemplate: "{% url 'requests:request_comment_add' 0 %}",
+    autoloadCounts: true
   });
 </script>
 {% endblock %}

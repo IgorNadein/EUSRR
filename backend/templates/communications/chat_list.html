@@ -238,18 +238,14 @@
   </div>
 </div>
 
-<script>
-  // Очистка поиска
-  (function(){
-    const input = document.getElementById('chatSearch');
-    const clearBtn = document.querySelector('.ios-search-clear');
-    if (clearBtn && input){
-      clearBtn.addEventListener('click', () => {
-        input.value = '';
-        input.focus();
-        input.dispatchEvent(new Event('input'));
-      });
-    }
-  })();
+<script type="module">
+  import { initSearchFilter } from "{% static 'js/components/searchFilterHandler.js' %}";
+  
+  initSearchFilter({
+    inputId: 'chatSearch',
+    clearSelector: '.ios-search-clear',
+    sectionSelector: '.chat-section',
+    rowSelector: '.chat-row'
+  });
 </script>
 {% endblock %}

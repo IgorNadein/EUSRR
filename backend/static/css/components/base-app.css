@@ -82,12 +82,14 @@ body {
   .app-layout.with-sidebar.with-rightbar {
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr var(--rightbar-w);
+    gap: var(--layout-gap);
     align-items: start;
   }
 
   .app-layout.with-sidebar:not(.with-rightbar) {
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr;
+    gap: var(--layout-gap);
     align-items: start;
   }
 }
@@ -161,7 +163,7 @@ body {
 .btn-ghost {
   background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
   color: var(--bs-body-color);
-  padding: .35rem .6rem;
+  padding: var(--space-1);
   border-radius: 999px;
   font-size: .9rem;
 }
@@ -179,13 +181,13 @@ body {
 /* ─────────────────────────────────────────────────────────────
    FEED ELEMENTS
 ────────────────────────────────────────────────────────────── */
-/* «Новые сотрудники» */
+/* «Новые сотрудники» и другие информационные блоки */
 .feed-new {
   border-radius: var(--feed-radius);
   border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
   background: var(--bs-body-bg);
   box-shadow: var(--feed-shadow);
-  padding: .9rem 1rem;
+  padding: var(--card-padding);  /* 16px со всех сторон - унифицировано */
 }
 
 /* stretched-link не перекрывает футер/формы */
@@ -217,7 +219,7 @@ body {
 ────────────────────────────────────────────────────────────── */
 .alpha-header {
   position: sticky;
-  top: calc(var(--navbar-h) + 8px);
+  top: calc(var(--navbar-h) + var(--space-1));  /* +8px - унифицировано */
   z-index: 1;
   background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
   backdrop-filter: blur(6px);
@@ -225,12 +227,12 @@ body {
   color: var(--bs-secondary-color);
   display: inline-flex;
   align-items: center;
-  gap: .5rem;
-  padding: .2rem .6rem;
+  gap: var(--space-1);          /* 8px - унифицировано */
+  padding: var(--space-1);      /* 8px - унифицировано */
   border-radius: 999px;
   font-weight: 700;
   font-size: .85rem;
-  margin: .25rem 0 .5rem .25rem;
+  margin: var(--space-1) 0 var(--space-1) var(--space-1);  /* 8px отступы */
 }
 
 .alpha-dot {
@@ -246,7 +248,7 @@ body {
 ────────────────────────────────────────────────────────────── */
 .action-btn {
   min-height: unset;
-  padding: .35rem .6rem;
+  padding: var(--space-1);  /* 8px - унифицировано */
 }
 
 .action-btn .bi {

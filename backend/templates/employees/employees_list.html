@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/employee-list.css' %}">
 {% endblock %}
 
@@ -17,37 +18,9 @@
   <div class="row gx-0"> 
     <div class="col-12">
 
-      <div class="feed-header d-flex align-items-center">
-        <i class="bi-people fs-2 text-primary"></i>
-        <h2 class="title mb-0">Сотрудники</h2>
-
-        {% if is_filtered_by_department and current_department %}
-          <span class="ms-2 small text-secondary">
-            Отдел: {{ current_department.name }} • {{ employees|length }}
-          </span>
-        {% else %}
-          <span class="ms-2 small text-secondary">Всего: {{ employees|length }}</span>
-        {% endif %}
-
-        <div class="ms-auto ios-search">
-          <i class="bi-search"></i>
-          <input id="empFilter" type="search" class="ios-search-input"
-                 placeholder="Поиск по ФИО, должности или отделу" autocomplete="off">
-          <button type="button" class="ios-search-clear" aria-label="Очистить">
-            <i class="bi-x-lg"></i>
-          </button>
-        </div>
-      </div>
-      {% if perms.employees.add_employee or request.user.is_staff or request.user.is_superuser %}
-        <div class="feed-card mb-2">
-          <a href="{% url 'employees:employee_create' %}"
-            class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none"
-            role="button" aria-label="Создать отдел">
-            <span class="feed-author">Создать профиль</span>
-            <i class="bi-plus-lg"></i>
-          </a>
-        </div>
-      {% endif %}
+      {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
+      {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" create_as_card=True create_modal="#createEmployeeModal" create_text="Создать профиль" %}
+      
       <div id="empList" class="feed-stream">
         {% if employees %}
           {% for emp in employees %}
@@ -143,10 +116,14 @@
   </div>
 </div>
 
+{# Модальное окно для создания сотрудника #}
+{% include "employees/modals/_create_employee.html" %}
+
 <script type="module">
   import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
+  import { initCreateEmployeeModal } from '{% static "js/components/createEmployeeModal.js" %}';
   
-  // Используем ListFilter вместо кастомной функции applyFilter()
+  // Инициализация фильтра списка
   new ListFilter({
     listSelector: '#empList',
     itemSelector: '.emp-row',
@@ -154,6 +131,11 @@
     clearButtonSelector: '.ios-search-clear',
     matchFn: createDataAttrMatcher(['name', 'depts']),
     debounceMs: 300
+  });
+  
+  // Инициализация модала создания сотрудника
+  initCreateEmployeeModal({
+    submitUrl: '{% url "employees:employee_create_modal" %}'
   });
 </script>
 {% endblock %}
