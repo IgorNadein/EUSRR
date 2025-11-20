@@ -61,6 +61,31 @@ def _extract_items(payload: Any):
     return [], 0, None, None
 
 
+def _convert_api_url_to_frontend(api_url: str | None, frontend_path: str) -> str | None:
+    """
+    Преобразует API URL пагинации в frontend URL.
+    
+    Пример:
+        http://localhost:9000/api/v1/employees/?page=2&search=test
+        -> /employees/list/?page=2&search=test
+    """
+    if not api_url:
+        return None
+    
+    from urllib.parse import urlparse, parse_qs, urlencode
+    
+    parsed = urlparse(api_url)
+    query_params = parse_qs(parsed.query)
+    
+    # Преобразуем query_params обратно в строку (parse_qs возвращает списки)
+    clean_params = {k: v[0] if isinstance(v, list) and len(v) == 1 else v 
+                    for k, v in query_params.items()}
+    query_string = urlencode(clean_params, doseq=True)
+    
+    return f"{frontend_path}?{query_string}" if query_string else frontend_path
+    return [], 0, None, None
+
+
 def _extract_results(payload):
     if isinstance(payload, dict):
         return payload.get("results", payload.get("items", [])) or []
@@ -177,6 +202,10 @@ def employee_list(request):
 
     payload = resp.json or {}
     items, count, next_url, prev_url = _extract_items(payload)
+    
+    # Преобразуем API URLs в frontend URLs
+    next_url = _convert_api_url_to_frontend(next_url, request.path)
+    prev_url = _convert_api_url_to_frontend(prev_url, request.path)
 
     # JSON-ветка для автокомплита
     if request.GET.get("format") == "json":
@@ -772,6 +801,10 @@ def department_list(request):
         items = []
         count = 0
         next_url = prev_url = None
+
+    # Преобразуем API URLs в frontend URLs
+    next_url = _convert_api_url_to_frontend(next_url, request.path)
+    prev_url = _convert_api_url_to_frontend(prev_url, request.path)
 
     context = {
         "departments": items,

@@ -20,20 +20,6 @@
 
     {# Правая часть - кнопки и поиск #}
     <div class="ms-auto d-flex align-items-center gap-2">
-      {# Переключатель области (Мои/Все) #}
-      {% if scope_urls %}
-        <div class="btn-group page-scope-switch" role="group" aria-label="Область">
-          <a href="{{ scope_urls.mine }}"
-             class="btn btn-outline-secondary btn-sm {% if scope == 'mine' %}active{% endif %}">
-            Мои
-          </a>
-          <a href="{{ scope_urls.all }}"
-             class="btn btn-outline-secondary btn-sm {% if scope == 'all' %}active{% endif %}">
-            Все
-          </a>
-        </div>
-      {% endif %}
-
       {# Дополнительные кнопки (slot) #}
       {% if extra_buttons %}
         {{ extra_buttons }}

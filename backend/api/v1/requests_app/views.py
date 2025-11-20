@@ -61,7 +61,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         "employee", "approver", "department"
     ).all()
     parser_classes = (MultiPartParser, FormParser, JSONParser)
-    pagination_class = None
+    # Используем глобальную пагинацию из settings (PageNumberPagination, PAGE_SIZE=20)
 
     required_perms_by_action = {
         "comments": {
@@ -131,52 +131,53 @@ class RequestViewSet(viewsets.ModelViewSet):
 
         if user.is_staff or self._can_view_all(user):
             if want_mine:
-                return qs.filter(employee_id=user.id)
-            return qs
-
-        view_dept_ids = (
-            EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                is_active=True,
-                role__scoped_permissions__code="view_request",
-            )
-            .values_list("department_id", flat=True)
-            .distinct()
-        )
-        proc_dept_ids = (
-            EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                is_active=True,
-                role__scoped_permissions__code="can_process_requests",
-            )
-            .values_list("department_id", flat=True)
-            .distinct()
-        )
-        head_dept_ids = Department.objects.filter(head_id=user.id).values_list(
-            "id", flat=True
-        )
-        combined_ids = set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
-
-        # сотрудники этих отделов (активные)
-        dept_emp_ids = (
-            EmployeeDepartment.objects.filter(
-                department_id__in=list(combined_ids) if combined_ids else [],
-                is_active=True,
-            )
-            .values_list("employee_id", flat=True)
-            .distinct()
-        ) if combined_ids else []
-
-        if want_mine:
-            qs = qs.filter(employee_id=user.id)
+                qs = qs.filter(employee_id=user.id)
+            # Для staff: не возвращаем сразу, применяем фильтры ниже
         else:
-            scope = Q(employee_id=user.id)
-            if combined_ids:
-                scope |= Q(department_id__in=list(combined_ids))
-            if dept_emp_ids:
-                scope |= Q(employee_id__in=list(dept_emp_ids))
-            qs = qs.filter(scope)
+            view_dept_ids = (
+                EmployeeDepartment.objects.filter(
+                    employee_id=user.id,
+                    is_active=True,
+                    role__scoped_permissions__code="view_request",
+                )
+                .values_list("department_id", flat=True)
+                .distinct()
+            )
+            proc_dept_ids = (
+                EmployeeDepartment.objects.filter(
+                    employee_id=user.id,
+                    is_active=True,
+                    role__scoped_permissions__code="can_process_requests",
+                )
+                .values_list("department_id", flat=True)
+                .distinct()
+            )
+            head_dept_ids = Department.objects.filter(head_id=user.id).values_list(
+                "id", flat=True
+            )
+            combined_ids = set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
 
+            # сотрудники этих отделов (активные)
+            dept_emp_ids = (
+                EmployeeDepartment.objects.filter(
+                    department_id__in=list(combined_ids) if combined_ids else [],
+                    is_active=True,
+                )
+                .values_list("employee_id", flat=True)
+                .distinct()
+            ) if combined_ids else []
+
+            if want_mine:
+                qs = qs.filter(employee_id=user.id)
+            else:
+                scope = Q(employee_id=user.id)
+                if combined_ids:
+                    scope |= Q(department_id__in=list(combined_ids))
+                if dept_emp_ids:
+                    scope |= Q(employee_id__in=list(dept_emp_ids))
+                qs = qs.filter(scope)
+
+        # Применяем фильтры type/status для всех пользователей
         t = (params.get("type") or "").strip()
         s = (params.get("status") or "").strip()
         if t:

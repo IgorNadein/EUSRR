@@ -253,6 +253,7 @@ class DocumentView(LoginRequiredMixin, TemplateView):
         QueryParams:
             page (int, optional): Номер страницы (проксируется в API).
             scope ('mine'|'all'): Область показа. Обычным пользователям всегда 'mine'.
+            ack_status ('acked'|'not_acked', optional): Фильтр по статусу ознакомления.
 
         Returns:
             dict: Контекст для шаблона.
@@ -270,6 +271,7 @@ class DocumentView(LoginRequiredMixin, TemplateView):
         raw_scope = (request.GET.get("scope") or "mine").lower()
         scope = raw_scope if (raw_scope in {"mine", "all"} and can_manage) else "mine"
         page = request.GET.get("page") or 1
+        ack_status = (request.GET.get("ack_status") or "").lower().strip()
 
         # Загружаем список документов через API
         resp = api.get("v1/documents/", params={"page": page})
@@ -295,6 +297,12 @@ class DocumentView(LoginRequiredMixin, TemplateView):
         else:
             items = page_data.items
 
+        # Фильтруем по статусу ознакомления
+        if ack_status == "acked":
+            items = [it for it in items if it.get("is_acknowledged")]
+        elif ack_status == "not_acked":
+            items = [it for it in items if not it.get("is_acknowledged")]
+
         # Множество ID ознакомленных документов
         acked_ids: Set[int] = {
             int(it.get("id"))
@@ -311,6 +319,11 @@ class DocumentView(LoginRequiredMixin, TemplateView):
         # API URL для фронта (если нужен JS) — сохраняем совместимость с шаблоном
         api_document_list_url = reverse("api:v1:documents-list")
 
+        # Фильтры для передачи в шаблон
+        filters = {
+            "ack_status": ack_status if ack_status in {"acked", "not_acked"} else "",
+        }
+
         ctx.update(
             {
                 "documents": items,
@@ -320,6 +333,7 @@ class DocumentView(LoginRequiredMixin, TemplateView):
                 "prev_url": page_data.prev_url,
                 "page": int(page) if str(page).isdigit() else page,
                 "scope": scope,
+                "filters": filters,
                 "can_manage_documents": can_manage,
                 "show_admin_controls": bool(can_manage and scope == "all"),
                 "scope_urls": scope_urls,

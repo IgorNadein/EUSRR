@@ -1,12 +1,13 @@
 {% load static %}
 <link rel="stylesheet" href="{% static 'css/components/navbar.css' %}">
+<script src="{% static 'js/navbar-mobile-search.js' %}" defer></script>
 
 <nav class="navbar navbar-expand bg-primary app-navbar" data-bs-theme="dark">
   <div class="container-fluid align-items-center">
 
     {% if user.is_authenticated %}
       <!-- Моб. меню (иконка без подложки) -->
-      <button class="menu-toggle d-lg-none me-2" type="button"
+      <button class="menu-toggle d-lg-none me-2 navbar-icon" type="button"
               data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar"
               aria-label="Открыть меню">
         <i class="bi-list fs-4"></i>
@@ -14,7 +15,7 @@
     {% endif %}
 
     {% load static %}
-    <a class="navbar-brand d-flex align-items-center gap-2 me-3" href="/">
+    <a class="navbar-brand d-flex align-items-center gap-2 me-3 navbar-brand-item" href="/">
       <img src="{% static BRAND_LOGO %}"
           alt="{{ BRAND_NAME }}"
           width="28" height="28"
@@ -25,67 +26,53 @@
 
     {% if user.is_authenticated %}
       <!-- Группа: поиск + колокол -->
-      <div class="d-flex align-items-center ms-4">
-        <!-- Поиск компактный рядом с логотипом -->
-        <form class="d-flex align-items-center me-3" role="search"
+      <div class="d-flex align-items-center ms-4 gap-3">
+        <!-- Поиск: иконка на мобильном, поле на десктопе -->
+        <form class="d-flex align-items-center mobile-search-form" role="search"
               action="{% url 'search:search' %}" method="get" autocomplete="off">
-          <div class="position-relative ios-search" style="max-width: clamp(160px, 28vw, 300px);">
+          <!-- Мобильная версия: иконка или поле -->
+          <button type="button" class="btn btn-link text-white p-0 d-md-none mobile-search-toggle" aria-label="Поиск">
+            <i class="bi-search fs-5"></i>
+          </button>
+          <div class="mobile-search-input d-none align-items-center gap-2">
+            <input
+              class="form-control form-control-sm rounded-pill bg-white bg-opacity-10 border-0 text-white shadow-sm"
+              type="search" name="q" placeholder="Поиск…" aria-label="Поиск" id="mobileSearchInput"
+              style="width: 200px; height: 36px; padding-left: 12px;">
+            <button type="submit" class="btn btn-link text-white p-0" aria-label="Найти">
+              <i class="bi-arrow-right-circle fs-5"></i>
+            </button>
+          </div>
+          <!-- Десктопная версия: поле -->
+          <div class="position-relative ios-search d-none d-md-block" style="max-width: clamp(160px, 28vw, 300px);">
             <i class="bi-search"></i>
             <input
               class="form-control form-control-sm rounded-pill ios-search-input bg-white bg-opacity-10 border-0 text-white shadow-sm"
-              type="search" name="q" placeholder="Поиск…" aria-label="Поиск"
+              type="search" name="q" placeholder="Поиск…" aria-label="Поиск" id="desktopSearchInput"
               style="width: 100%; height: 36px;">
           </div>
         </form>
 
         <!-- Уведомления: только иконка + плотный бейдж -->
-        <div class="dropdown">
-          <button class="btn btn-link text-white p-0" data-bs-toggle="dropdown"
-                  aria-expanded="false" title="Уведомления" aria-label="Уведомления">
+        <div class="position-relative navbar-icon" id="notificationBell">
+          <button class="btn btn-link text-white p-0" 
+                  id="notificationToggle"
+                  type="button"
+                  title="Уведомления" 
+                  aria-label="Уведомления">
             <span class="bell-wrapper">
               <i class="bi-bell fs-5"></i>
-              {% if not user.telegram or not user.whatsapp or not user.wechat %}
-                <span class="bell-dot">!</span>
-              {% endif %}
+              <span class="bell-dot d-none" id="notificationBadge">0</span>
             </span>
           </button>
-          <ul class="dropdown-menu dropdown-menu-end rounded-3 shadow-sm" style="min-width:260px;">
-            <li class="small text-muted px-3 py-2">Мессенджеры</li>
-            <li class="px-3 py-1">
-              {% if user.telegram %}
-                <span class="text-success"><i class="bi-telegram"></i> Telegram привязан</span>
-              {% else %}
-                <a href="{{ tg_link|default:'#' }}" class="text-danger d-block" rel="noopener">
-                  <i class="bi-telegram"></i> Привязать Telegram
-                </a>
-              {% endif %}
-            </li>
-            <li class="px-3 py-1">
-              {% if user.whatsapp %}
-                <span class="text-success"><i class="bi-whatsapp"></i> WhatsApp привязан</span>
-              {% else %}
-                <a href="https://wa.me/?text=Привязка+WhatsApp" class="text-danger d-block" rel="noopener">
-                  <i class="bi-whatsapp"></i> Привязать WhatsApp
-                </a>
-              {% endif %}
-            </li>
-            <li class="px-3 py-1">
-              {% if user.wechat %}
-                <span class="text-success"><i class="bi-wechat"></i> WeChat привязан</span>
-              {% else %}
-                <span class="text-danger d-block"><i class="bi-wechat"></i> Привязать WeChat (вручную)</span>
-              {% endif %}
-            </li>
-            <li><hr class="dropdown-divider"></li>
-            <li class="small text-muted px-3 py-2">Уведомления (скоро)</li>
-          </ul>
         </div>
+
       </div>
     {% endif %}
 
-    <div class="ms-auto d-flex align-items-center">
+    <div class="ms-auto d-flex align-items-center navbar-right">
       {% if user.is_authenticated %}
-        <div class="dropdown">
+        <div class="dropdown navbar-icon">
           <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle no-caret"
              id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="min-width:40px;">
             {% if user.avatar %}
@@ -121,3 +108,28 @@
 
   </div>
 </nav>
+
+<!-- Dropdown меню уведомлений (вне navbar для правильного z-index) -->
+{% if user.is_authenticated %}
+<div class="notification-dropdown-menu" id="notificationDropdown" style="display: none;">
+  <div class="notification-dropdown-header">
+    <span class="fw-semibold">Уведомления</span>
+    <a href="{% url 'notifications:list' %}" class="btn btn-sm btn-link">Все</a>
+  </div>
+  
+  <div class="notification-dropdown-body" id="notificationList">
+    <div class="text-center py-3 text-muted">
+      <i class="bi-bell-slash"></i>
+      <div class="small">Нет новых уведомлений</div>
+    </div>
+  </div>
+  
+  <div class="notification-dropdown-divider"></div>
+  
+  <div class="px-3 py-2">
+    <a href="{% url 'notifications:settings' %}" class="btn btn-sm btn-outline-primary w-100">
+      <i class="bi-gear me-1"></i>Настройки уведомлений
+    </a>
+  </div>
+</div>
+{% endif %}

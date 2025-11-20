@@ -36,6 +36,7 @@
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/base-app.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-components.css' %}">
+  <link rel="stylesheet" href="{% static 'css/notifications/notifications.css' %}">
 
   {% block extra_css %}{% endblock %}
 </head>
@@ -218,6 +219,9 @@
       });
     })();
   </script>
+
+  <!-- Notification Manager -->
+  <script src="{% static 'js/notifications/notification-manager.js' %}" defer></script>
   {% endif %}
 
   {% block extra_js %}{% endblock %}

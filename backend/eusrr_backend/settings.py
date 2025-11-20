@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
     "communications.apps.CommunicationsConfig",
+    "notifications.apps.NotificationsConfig",
     "search.apps.SearchConfig",
     "bots",
     "finance.apps.FinanceConfig",
@@ -57,6 +58,7 @@ MIDDLEWARE = [
     "simple_history.middleware.HistoryRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
     "eusrr_backend.middleware.AuthRequiredMiddleware",
     "eusrr_backend.middleware.EmailVerificationMiddleware",
 ]
@@ -230,6 +232,7 @@ CHANNEL_LAYERS = {
 # -----------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication"
     ],
     "DEFAULT_PERMISSION_CLASSES": [
@@ -249,6 +252,9 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "LEEWAY": 30,
 }
+
+# Автообновление JWT токенов: за сколько минут до истечения обновлять
+JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
 

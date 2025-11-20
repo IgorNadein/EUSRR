@@ -10,6 +10,7 @@ urlpatterns = [
     path("requests/", include("requests_app.urls_front", namespace="requests")),
     path("employees/", include("employees.urls_front", namespace="employees")),
     path("communications/", include("communications.urls", namespace="communications")),
+    path("notifications/", include("notifications.urls", namespace="notifications")),
     path("search/", include("search.urls", namespace="search")),
     path("finance/", include("finance.urls", namespace="finance")),
     path("api/", include(("api.urls", "api"), namespace="api")),

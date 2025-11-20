@@ -79,9 +79,7 @@
           <div class="feed-hd">
           </div>
           <div id="feedList">
-            {% if page %}
-              {% include "feed/_feed_cards.html" with items=page.object_list %}
-            {% elif posts %}
+            {% if posts %}
               {% include "feed/_feed_cards.html" with items=posts %}
             {% else %}
               <div class="alert alert-info shadow-sm mt-2">Пока нет новостей.</div>
@@ -89,9 +87,22 @@
           </div>
         </section>
 
-        {% if page %}
-          <div class="mt-4">
-            {% bootstrap_pagination page %}
+        {# Пагинация #}
+        {% if next_url or prev_url %}
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <a class="btn btn-outline-secondary {% if not prev_url %}disabled{% endif %}" 
+               href="{{ prev_url|default:'#' }}"
+               {% if not prev_url %}aria-disabled="true"{% endif %}>
+              <i class="bi-arrow-left"></i> Назад
+            </a>
+            {% if count %}
+              <span class="text-body-secondary small">Всего: {{ count }}</span>
+            {% endif %}
+            <a class="btn btn-outline-secondary {% if not next_url %}disabled{% endif %}" 
+               href="{{ next_url|default:'#' }}"
+               {% if not next_url %}aria-disabled="true"{% endif %}>
+              Вперёд <i class="bi-arrow-right"></i>
+            </a>
           </div>
         {% endif %}
 

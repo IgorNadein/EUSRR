@@ -16,9 +16,9 @@
 
   {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
   {% if perms.documents.add_document %}
-    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True scope_urls=scope_urls scope=scope create_modal="docCreateModal" create_text="Создать документ" create_icon="bi-plus-lg" %}
+    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal="docCreateModal" create_text="Создать документ" %}
   {% else %}
-    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True scope_urls=scope_urls scope=scope create_modal='' create_text="Создать документ" create_icon="bi-plus-lg" %}
+    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal='' create_text="Создать документ" %}
   {% endif %}
 
   {# ===== Карточка со списком ===== #}

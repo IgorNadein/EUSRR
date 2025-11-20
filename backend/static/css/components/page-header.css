@@ -191,6 +191,19 @@
     margin-top: var(--space-2);
     order: 10;
   }
+  
+  /* Кнопка фильтров переносится под поиск и прижимается к правому краю */
+  .page-filter-toggle {
+    order: 11;
+    margin-top: var(--space-2);
+    margin-left: auto;
+    margin-right: 0 !important;
+  }
+  
+  /* Родительский контейнер должен переносить элементы */
+  .page-header .d-flex.align-items-center {
+    flex-wrap: wrap;
+  }
 }
 
 /* ===== БЛОК ФИЛЬТРОВ ===== */

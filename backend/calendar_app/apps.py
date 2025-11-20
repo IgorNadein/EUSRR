@@ -17,6 +17,7 @@ class CalendarAppConfig(AppConfig):
             LookupError: Если приложение 'employees' или модель 'Employee' не найдены.
         """
         from calendar_app import signals  # noqa: F401 (гарантирует импорт модулей с хендлерами)
+        import calendar_app.notification_signals  # noqa: F401
 
         try:
             Employee = django_apps.get_model("employees", "Employee")

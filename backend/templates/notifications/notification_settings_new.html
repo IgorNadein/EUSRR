@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Настройки уведомлений{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/notifications/notifications.css' %}">
+<style>
+    .settings-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-info) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+    }
+    .form-check-input:disabled ~ .form-check-label {
+        opacity: 0.5;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi-gear"></i> Настройки уведомлений</h2>
+                <a href="{% url 'notifications:list' %}" class="btn btn-outline-secondary">
+                    <i class="bi-arrow-left"></i> К уведомлениям
+                </a>
+            </div>
+            
+            <!-- Общие настройки -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi-sliders"></i> Общие настройки</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="soundToggle" checked>
+                                <label class="form-check-label" for="soundToggle">
+                                    <i class="bi-volume-up"></i> <strong>Звуковые уведомления</strong>
+                                    <small class="d-block text-muted">Воспроизводить звук при получении уведомления</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="alert alert-info mb-0">
+                                <i class="bi-info-circle"></i> 
+                                <strong>Браузерные уведомления</strong> уже включены для вашего браузера.
+                                Разрешите уведомления в настройках браузера, если они не работают.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Настройки по категориям -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi-list-check"></i> Настройки по категориям</h5>
+                </div>
+                <div class="card-body">
+                    <div id="settingsContainer">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Информация -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h6 class="mb-3"><i class="bi-question-circle"></i> Справка</h6>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">Веб-уведомления</dt>
+                        <dd class="col-sm-9">Отображаются в интерфейсе системы, в колокольчике и списке уведомлений</dd>
+                        
+                        <dt class="col-sm-3">Email</dt>
+                        <dd class="col-sm-9">Отправка уведомлений на вашу почту (будет доступно в следующих версиях)</dd>
+                        
+                        <dt class="col-sm-3">Telegram</dt>
+                        <dd class="col-sm-9">Отправка в Telegram бот (будет доступно в следующих версиях)</dd>
+                        
+                        <dt class="col-sm-3">Браузерные уведомления</dt>
+                        <dd class="col-sm-9 mb-0">Всплывающие уведомления операционной системы. Управляются в настройках вашего браузера.</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% csrf_token %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/notifications/notification-settings.js' %}"></script>
+{% endblock %}

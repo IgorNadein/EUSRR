@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Уведомления{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row">
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <h4 class="mb-0"><i class="bi-bell me-2"></i>Уведомления</h4>
+          <button class="btn btn-sm btn-light" id="markAllRead">
+            <i class="bi-check-all me-1"></i>Отметить все прочитанными
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="d-flex gap-2 mb-3 flex-wrap">
+            <button class="btn btn-sm btn-outline-secondary category-filter active" data-category="all">
+              Все
+            </button>
+            <button class="btn btn-sm btn-outline-primary category-filter" data-category="communications">
+              <i class="bi-chat-dots me-1"></i>Коммуникации
+            </button>
+            <button class="btn btn-sm btn-outline-info category-filter" data-category="documents">
+              <i class="bi-file-earmark-text me-1"></i>Документы
+            </button>
+            <button class="btn btn-sm btn-outline-success category-filter" data-category="requests">
+              <i class="bi-clipboard-check me-1"></i>Заявления
+            </button>
+            <button class="btn btn-sm btn-outline-warning category-filter" data-category="calendar">
+              <i class="bi-calendar-event me-1"></i>Календарь
+            </button>
+          </div>
+
+          <div id="notificationsList">
+            <div class="text-center py-5 text-muted">
+              <i class="bi-bell-slash fs-1"></i>
+              <p class="mt-2">Уведомлений пока нет</p>
+            </div>
+          </div>
+
+          <div id="loadingSpinner" class="text-center py-3 d-none">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Загрузка...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Базовая демонстрационная страница
+// Полный функционал будет реализован в следующих этапах
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Notification page initialized');
+  console.log('WebSocket URL: ws://' + window.location.host + '/ws/notifications/');
+  
+  const categoryFilters = document.querySelectorAll('.category-filter');
+  categoryFilters.forEach(btn => {
+    btn.addEventListener('click', function() {
+      categoryFilters.forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      console.log('Filter changed to:', this.dataset.category);
+    });
+  });
+  
+  document.getElementById('markAllRead').addEventListener('click', function() {
+    console.log('Mark all as read clicked');
+    alert('Функция "Отметить все прочитанными" будет реализована в следующем этапе');
+  });
+});
+</script>
+{% endblock %}

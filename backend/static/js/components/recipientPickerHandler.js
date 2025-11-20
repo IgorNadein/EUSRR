@@ -52,6 +52,7 @@ export class RecipientPicker {
     this.apiUrl = options.apiUrl;
     this.searchQuery = '';
     this.selected = new Map(); // id -> {id, display_name, email}
+    this.maxSelections = options.maxSelections || null; // null = без ограничений
     
     // Получаем элементы
     this.elSelected = root.querySelector('.rp-selected');
@@ -87,6 +88,12 @@ export class RecipientPicker {
       const payload = JSON.parse(checkbox.dataset.payload || '{}');
 
       if (checkbox.checked) {
+        // Проверка лимита выбора
+        if (this.maxSelections && this.selected.size >= this.maxSelections) {
+          checkbox.checked = false;
+          alert(`Можно выбрать не более ${this.maxSelections} получателей`);
+          return;
+        }
         this.selected.set(id, payload);
       } else {
         this.selected.delete(id);
@@ -226,6 +233,34 @@ export class RecipientPicker {
    */
   getIds() {
     return Array.from(this.selected.keys());
+  }
+
+  /**
+   * Получить массив выбранных сотрудников с полными данными.
+   * @returns {Array<Object>} Массив объектов {id, display_name, email, ...}
+   */
+  getSelected() {
+    return Array.from(this.selected.values());
+  }
+
+  /**
+   * Установить максимальное количество выбираемых получателей.
+   * @param {number|null} max - Максимум (null = без ограничений)
+   */
+  setMaxSelections(max) {
+    this.maxSelections = max;
+    // Если превышен лимит, сбрасываем лишние выборы
+    if (max && this.selected.size > max) {
+      const toKeep = Array.from(this.selected.entries()).slice(0, max);
+      this.selected.clear();
+      toKeep.forEach(([id, data]) => this.selected.set(id, data));
+      this._renderSelected();
+      // Обновляем чекбоксы
+      this.elResults.querySelectorAll('input[type=checkbox][data-id]').forEach(checkbox => {
+        const id = Number(checkbox.dataset.id);
+        checkbox.checked = this.selected.has(id);
+      });
+    }
   }
 
   /**

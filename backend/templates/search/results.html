@@ -4,6 +4,7 @@
 {% block title %}Поиск{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 {% endblock %}
@@ -13,48 +14,8 @@
   <div class="row gx-0">
     <div class="col-12">
 
-      <!-- Заголовок + iOS-поиск -->
-      <div class="feed-header d-flex align-items-center">
-        <i class="bi-search fs-2 text-primary"></i>
-        <h2 class="title mb-0">Поиск</h2>
-
-        <div class="ms-auto ios-search">
-          <i class="bi-search"></i>
-          <input type="search" id="globalSearch" class="ios-search-input" placeholder="Фильтр по заголовкам" autocomplete="off">
-          <button type="button" class="ios-search-clear" aria-label="Очистить"><i class="bi-x-lg"></i></button>
-        </div>
-      </div>
-
-      <!-- Сегментированный фильтр типов -->
-      <div class="feed-new mb-3">
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          <div class="btn-group" role="group" aria-label="Фильтр результатов">
-            <input type="radio" class="btn-check" name="srchFilter" id="fltAll" autocomplete="off" checked>
-            <label class="btn btn-ghost" for="fltAll" data-filter="all">Все ({{ total }})</label>
-
-            <input type="radio" class="btn-check" name="srchFilter" id="fltPosts" autocomplete="off">
-            <label class="btn btn-ghost" for="fltPosts" data-filter="post">Публикации ({{ counts.post }})</label>
-
-            <input type="radio" class="btn-check" name="srchFilter" id="fltEmployees" autocomplete="off">
-            <label class="btn btn-ghost" for="fltEmployees" data-filter="employee">Сотрудники ({{ counts.employee }})</label>
-
-            <input type="radio" class="btn-check" name="srchFilter" id="fltDepartments" autocomplete="off">
-            <label class="btn btn-ghost" for="fltDepartments" data-filter="department">Отделы ({{ counts.department }})</label>
-
-            <input type="radio" class="btn-check" name="srchFilter" id="fltRequests" autocomplete="off">
-            <label class="btn btn-ghost" for="fltRequests" data-filter="request">Заявления ({{ counts.request }})</label>
-
-            <input type="radio" class="btn-check" name="srchFilter" id="fltChats" autocomplete="off">
-            <label class="btn btn-ghost" for="fltChats" data-filter="chat">Чаты ({{ counts.chat }})</label>
-
-            <input type="radio" class="btn-check" name="srchFilter" id="fltMessages" autocomplete="off">
-            <label class="btn btn-ghost" for="fltMessages" data-filter="message">Сообщения ({{ counts.message }})</label>
-
-            <input type="radio" class="btn-check" name="srchFilter" id="fltEvents" autocomplete="off">
-            <label class="btn btn-ghost" for="fltEvents" data-filter="event">События ({{ counts.event }})</label>
-          </div>
-        </div>
-      </div>
+      <!-- Шапка страницы -->
+      {% include "includes/components/page_header.html" with icon="bi-search" title="Поиск" count=total count_label="Найдено:" search_id="globalSearch" search_placeholder="Фильтр по заголовкам" no_create=True has_filters=True filters_target="searchFilters" filters_template="search/_filters.html" %}
 
       {% if total > 0 %}
 
@@ -76,7 +37,6 @@
                     <div class="feed-sub mt-1 text-secondary">{{ post.created_at|date:"d.m.Y H:i" }}</div>
                     {% if post.body %}<div class="small mt-1 text-body">{{ post.body|truncatewords:35 }}</div>{% endif %}
                   </div>
-                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
                 </div>
                 {% endwith %}
               {% endif %}
@@ -109,7 +69,6 @@
                       {{ emp.email }}{% if emp.phone_number %} · {{ emp.phone_number }}{% endif %}
                     </div>
                   </div>
-                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
                 </div>
                 {% endwith %}
               {% endif %}
@@ -138,7 +97,6 @@
                     </div>
                     {% if dept.description %}<div class="small mt-1 text-body">{{ dept.description|truncatewords:35 }}</div>{% endif %}
                   </div>
-                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
                 </div>
                 {% endwith %}
               {% endif %}
@@ -161,9 +119,9 @@
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="request" data-haystack="{% firstof req.title req.get_type_display '' %}">
                   <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-file-earmark-text"></i></div>
                   <div class="flex-grow-1 position-relative">
-                    <a href="{% url 'requests_app:request_detail' req.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <div class="feed-author">
                       {% firstof req.title req.get_type_display "Заявление" %}
-                    </a>
+                    </div>
                     <div class="feed-sub mt-1 text-secondary">
                       Автор: {{ req.employee }}{% if req.department %} · Отдел: {{ req.department }}{% endif %} · {{ req.created_at|date:"d.m.Y H:i" }}
                     </div>
@@ -212,7 +170,6 @@
                       {% endif %}
                     </a>
                   </div>
-                  <i class="bi-chevron-right text-secondary ms-2 mt-1"></i>
                 </div>
                 {% endwith %}
               {% endif %}
@@ -294,12 +251,49 @@
 <script type="module">
   import { initSearchFilter } from "{% static 'js/components/searchFilterHandler.js' %}";
   
+  // Инициализация поиска по заголовкам
   initSearchFilter({
     inputId: 'globalSearch',
     clearSelector: '.ios-search-clear',
-    filterRadioName: 'srchFilter',
     sectionSelector: '.section',
     rowSelector: '.result-row'
   });
+
+  // Фильтрация по типу через селект
+  const typeFilter = document.getElementById('searchTypeFilter');
+  const applyBtn = document.getElementById('applySearchFilter');
+  const resetBtn = document.getElementById('resetSearchFilter');
+  const sections = document.querySelectorAll('.section');
+
+  function applyTypeFilter() {
+    const selectedType = typeFilter.value;
+    
+    sections.forEach(section => {
+      const sectionType = section.dataset.sec;
+      if (selectedType === 'all' || sectionType === selectedType) {
+        section.style.display = '';
+      } else {
+        section.style.display = 'none';
+      }
+    });
+  }
+
+  function resetFilter() {
+    typeFilter.value = 'all';
+    applyTypeFilter();
+  }
+
+  if (applyBtn) {
+    applyBtn.addEventListener('click', applyTypeFilter);
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', resetFilter);
+  }
+
+  // Применение при изменении селекта
+  if (typeFilter) {
+    typeFilter.addEventListener('change', applyTypeFilter);
+  }
 </script>
 {% endblock %}

@@ -17,57 +17,10 @@
   --list-avatar: 56px;                    /* размер аватара */
 }
 
-/* Контейнер списков (скролл в колонке) */
+/* Контейнер списков */
 .list-view{
-  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 12%);
-  border-radius: var(--feed-radius, 16px);
-  background: var(--bs-body-bg);
-  padding: 0;
-  max-height: calc(100dvh - var(--navbar-h, 0px) - 160px);
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Важно: убираем межстрочный gap от .feed-stream */
-.list-view.feed-stream{ 
-  display: block; 
-  gap: 0 !important; 
-}
-
-/* Кастомный скроллбар - тонкий и незаметный */
-.list-view::-webkit-scrollbar {
-  width: 8px;
-}
-
-.list-view::-webkit-scrollbar-track {
   background: transparent;
-  margin: 16px 4px;  /* большой отступ сверху/снизу чтобы не попадать на скругленные углы */
-}
-
-.list-view::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--bs-border-color) 40%, transparent);
-  border-radius: 4px;
-  border: 2px solid var(--bs-body-bg);  /* визуальный отступ от края */
-  background-clip: padding-box;
-}
-
-.list-view::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--bs-border-color) 60%, transparent);
-  border: 2px solid var(--bs-body-bg);
-  background-clip: padding-box;
-}
-
-/* Убираем стрелки полностью */
-.list-view::-webkit-scrollbar-button {
-  display: none;
-  height: 0;
-  width: 0;
-}
-
-/* Для Firefox */
-.list-view {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--bs-border-color) 40%, transparent) transparent;
+  padding: 0;
 }
 
 /* Важно: убираем межстрочный gap от .feed-stream */
