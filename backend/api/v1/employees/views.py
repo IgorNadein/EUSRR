@@ -253,7 +253,10 @@ class VerifyEmailAPIView(APIView):
                 else:
                     # Запись отсутствует - создаём и активируем
                     try:
-                        user = svc.create_user(user, activate=True)
+                        # Создаём пользователя в LDAP
+                        user = svc.create_user(user)
+                        # Активируем его
+                        user = svc.update_user(user, {"is_active": True})
                     except Exception as create_err:
                         # Если не удалось создать в LDAP, активируем в БД
                         user.is_active = True
