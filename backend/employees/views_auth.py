@@ -89,10 +89,11 @@ def register_view(request):
     logger.warning(f"[REGISTER_VIEW] API payload keys: {list(payload.keys())}")
     payload_debug = {k: v for k, v in payload.items() if k != 'avatar'}
     logger.warning(f"[REGISTER_VIEW] API payload (без avatar): {payload_debug}")
+    logger.warning(f"[REGISTER_VIEW] API base URL: {api.cfg.base_url}")
     
     resp = api.post("v1/auth/register/", json=payload)
     logger.warning(f"[REGISTER_VIEW] API response status: {resp.status}")
-    resp_data = resp.json if resp.json else resp.content
+    resp_data = resp.json if resp.json else resp.text
     logger.warning(f"[REGISTER_VIEW] API response: {resp_data}")
 
     if resp.status == 201:
