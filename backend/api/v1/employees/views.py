@@ -300,12 +300,20 @@ class RegisterAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Логируем входящие данные для диагностики
+        logger.warning(f"[REGISTER] Received data: {request.data}")
+        logger.warning(f"[REGISTER] Content-Type: {request.content_type}")
+        
         # 0) хотя бы один контакт
         if not (
             request.data.get("telegram")
             or request.data.get("whatsapp")
             or request.data.get("wechat")
         ):
+            logger.warning("[REGISTER] No contact provided")
             return Response(
                 {
                     "detail": "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram"
@@ -314,6 +322,8 @@ class RegisterAPIView(APIView):
             )
 
         ser = RegisterSerializer(data=request.data)
+        if not ser.is_valid():
+            logger.warning(f"[REGISTER] Validation errors: {ser.errors}")
         ser.is_valid(raise_exception=True)
         v = ser.validated_data
 

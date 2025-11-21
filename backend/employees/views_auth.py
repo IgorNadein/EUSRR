@@ -65,6 +65,9 @@ def register_view(request):
     Страница регистрации: показываем Django-форму и шлём валидные данные в /api/v1/auth/register/
     (аватар пока локально, в API не отправляем — загрузим после верификации).
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     api = get_api_client(request)
 
     if request.method == "GET":
@@ -73,11 +76,24 @@ def register_view(request):
 
     # ВАЖНО: учитывать файлы (чтобы form.avatar был BoundField)
     form = RegistrationForm(request.POST, request.FILES)
+    
+    # Логируем полученные данные
+    logger.warning(f"[REGISTER_VIEW] POST data: {request.POST.dict()}")
+    logger.warning(f"[REGISTER_VIEW] FILES: {list(request.FILES.keys())}")
+    
     if not form.is_valid():
+        logger.warning(f"[REGISTER_VIEW] Form errors: {form.errors}")
         return render(request, "auth/register.html", {"form": form}, status=400)
 
     payload = form.to_api_payload()  # формирует json для API, включая password
+    logger.warning(f"[REGISTER_VIEW] API payload keys: {list(payload.keys())}")
+    payload_debug = {k: v for k, v in payload.items() if k != 'avatar'}
+    logger.warning(f"[REGISTER_VIEW] API payload (без avatar): {payload_debug}")
+    
     resp = api.post("v1/auth/register/", json=payload)
+    logger.warning(f"[REGISTER_VIEW] API response status: {resp.status}")
+    resp_data = resp.json if resp.json else resp.content
+    logger.warning(f"[REGISTER_VIEW] API response: {resp_data}")
 
     if resp.status == 201:
         messages.success(
