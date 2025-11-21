@@ -1,33 +1,69 @@
+# Core Django
 Django==5.2.4
 djangorestframework==3.16.0
+djangorestframework_simplejwt==5.5.1
+
+# Django Extensions
 django-extensions==4.1
 django-phonenumber-field==8.1.0
 django-bootstrap5==25.1
+django-widget-tweaks==1.5.0
+django-simple-history==3.10.1
 dj-database-url==3.0.1
+
+# Authentication & Registration
 django-registration==5.2.1
 django-allauth==65.10.0
-django-simple-history==3.10.1
 djoser==2.3.3
-dotenv==0.9.9
+social-auth-app-django==5.5.1
+social-auth-core==4.7.0
+
+# Environment & Config
+python-dotenv==1.1.1
+
+# Phone Numbers
 phonenumbers==9.0.10
+
+# Images
 pillow==11.3.0
+
+# Database
 psycopg2-binary==2.9.10
+
+# Telegram Bots
 python-telegram-bot==22.3
 aiogram==3.21.0
-APScheduler==3.11.0
+
+# Task Queue & Scheduling
 celery==5.5.3
-django-widget-tweaks==1.5.0
+APScheduler==3.11.0
+redis==6.4.0
 
-
-pytest==8.4.1
-pytest-django==4.11.1
-model-bakery==1.20.5
-gunicorn==23.0.0
-
-
+# WebSocket & Async
 channels==4.3.1
 channels_redis==4.3.0
 daphne==4.2.1
 
+# LDAP Integration
 ldap3==2.9.1
+
+# Security & Crypto
 pycryptodome==3.23.0
+cryptography==45.0.6
+PyJWT==2.10.1
+
+# HTTP & Requests
+requests==2.32.4
+httpx==0.28.1
+
+# Testing
+pytest==8.4.1
+pytest-django==4.11.1
+model-bakery==1.20.5
+
+# Production Server
+gunicorn==23.0.0
+
+# Utilities
+beautifulsoup4==4.13.4
+python-dateutil==2.9.0.post0
