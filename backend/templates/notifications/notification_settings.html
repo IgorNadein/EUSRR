@@ -3,92 +3,143 @@
 
 {% block title %}Настройки уведомлений{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/notifications/notifications.css' %}">
+<style>
+    .settings-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-info) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+    }
+    .form-check-input:disabled ~ .form-check-label {
+        opacity: 0.5;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid py-4">
-  <div class="row">
-    <div class="col-12">
-      <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">
-          <h4 class="mb-0"><i class="bi-gear me-2"></i>Настройки уведомлений</h4>
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi-gear"></i> Настройки уведомлений</h2>
+                <a href="{% url 'notifications:list' %}" class="btn btn-outline-secondary">
+                    <i class="bi-arrow-left"></i> К уведомлениям
+                </a>
+            </div>
+            
+            <!-- Общие настройки -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi-sliders"></i> Общие настройки</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="soundToggle" checked>
+                                <label class="form-check-label" for="soundToggle">
+                                    <i class="bi-volume-up"></i> <strong>Звуковые уведомления</strong>
+                                    <small class="d-block text-muted">Воспроизводить звук при получении уведомления</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="alert alert-info mb-0">
+                                <i class="bi-info-circle"></i> 
+                                <strong>Браузерные уведомления</strong> уже включены для вашего браузера.
+                                Разрешите уведомления в настройках браузера, если они не работают.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Telegram привязка -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi-telegram"></i> Telegram бот</h5>
+                </div>
+                <div class="card-body">
+                    <div id="telegramLinkContainer">
+                        <div class="text-center py-3">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Настройки по категориям -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi-list-check"></i> Настройки по категориям</h5>
+                </div>
+                <div class="card-body">
+                    <div id="settingsContainer">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Информация -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h6 class="mb-3"><i class="bi-question-circle"></i> Справка</h6>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">Веб-уведомления</dt>
+                        <dd class="col-sm-9">Отображаются в интерфейсе системы, в колокольчике и списке уведомлений</dd>
+                        
+                        <dt class="col-sm-3">Email</dt>
+                        <dd class="col-sm-9">
+                            Отправка уведомлений на вашу почту. Для включения отметьте чекбокс, затем выберите режим:
+                            <ul class="mb-0 mt-1">
+                                <li><strong>Мгновенно</strong> - каждое уведомление отправляется сразу</li>
+                                <li><strong>Ежедневный дайджест</strong> - все уведомления за день в одном письме</li>
+                                <li><strong>Еженедельный дайджест</strong> - все уведомления за неделю в одном письме</li>
+                            </ul>
+                            <small class="text-muted">Чтобы отключить email, снимите галочку с "Email уведомления"</small>
+                        </dd>
+                        
+                        <dt class="col-sm-3">Telegram</dt>
+                        <dd class="col-sm-9">
+                            Мгновенные уведомления в Telegram бот. Для настройки:
+                            <ol class="mb-0 mt-1">
+                                <li>Узнайте ваш Chat ID через бота <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a></li>
+                                <li>Добавьте Chat ID в поле "Telegram Chat ID" в вашем профиле</li>
+                                <li>Отправьте <code>/start</code> нашему боту <code>@{{ telegram_bot_username|default:"eusrr_bot" }}</code></li>
+                                <li>Включите галочку "Telegram" для нужных категорий</li>
+                            </ol>
+                            <small class="text-muted">Подробная инструкция в разделе "Telegram бот" выше</small>
+                        </dd>
+                        
+                        <dt class="col-sm-3">Браузерные уведомления</dt>
+                        <dd class="col-sm-9 mb-0">Всплывающие уведомления операционной системы. Управляются в настройках вашего браузера.</dd>
+                    </dl>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-          <p class="text-muted">
-            Настройте, какие уведомления вы хотите получать и по каким каналам.
-          </p>
-
-          <div class="alert alert-info">
-            <i class="bi-info-circle me-2"></i>
-            <strong>Этап 1 завершен!</strong> Интерфейс настроек будет реализован в этапе 4.
-          </div>
-
-          <h5 class="mt-4">Доступные категории уведомлений:</h5>
-          <ul class="list-group">
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-chat-dots text-primary me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Коммуникации</strong>
-                <div class="small text-muted">Сообщения в чатах, упоминания, ответы</div>
-              </div>
-            </li>
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-file-earmark-text text-info me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Документы</strong>
-                <div class="small text-muted">Документы на ознакомление, комментарии</div>
-              </div>
-            </li>
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-clipboard-check text-success me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Заявления</strong>
-                <div class="small text-muted">Новые заявки, изменения статусов</div>
-              </div>
-            </li>
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-calendar-event text-warning me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Календарь</strong>
-                <div class="small text-muted">Новые события, напоминания</div>
-              </div>
-            </li>
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-people text-secondary me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Отдел</strong>
-                <div class="small text-muted">Изменения в отделе, объявления</div>
-              </div>
-            </li>
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-person-circle text-dark me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Профиль</strong>
-                <div class="small text-muted">Изменения профиля, безопасность</div>
-              </div>
-            </li>
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-newspaper text-danger me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Новости</strong>
-                <div class="small text-muted">Новые посты, комментарии, реакции</div>
-              </div>
-            </li>
-            <li class="list-group-item d-flex align-items-center">
-              <i class="bi-gear text-muted me-3 fs-4"></i>
-              <div class="flex-grow-1">
-                <strong>Система</strong>
-                <div class="small text-muted">Технические работы, важные объявления</div>
-              </div>
-            </li>
-          </ul>
-
-          <div class="mt-4">
-            <a href="{% url 'notifications:list' %}" class="btn btn-secondary">
-              <i class="bi-arrow-left me-1"></i>Назад к уведомлениям
-            </a>
-          </div>
-        </div>
-      </div>
     </div>
-  </div>
 </div>
+
+{% csrf_token %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Передаем имя бота в JavaScript
+    window.TELEGRAM_BOT_USERNAME = '{{ telegram_bot_username|default:"eusrr_bot" }}';
+</script>
+<script src="{% static 'js/notifications/notification-settings.js' %}"></script>
 {% endblock %}

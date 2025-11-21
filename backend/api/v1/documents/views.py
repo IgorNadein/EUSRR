@@ -139,8 +139,17 @@ class DocumentViewSet(ModelViewSet):
         doc = self.get_object()
         q = (request.query_params.get("search") or "").strip()
         base = User.objects.filter(is_active=True)
+        
         if not doc.sent_to_all:
-            base = base.filter(pk__in=doc.recipients.values_list("pk", flat=True))
+            # Собираем ID получателей из recipients и departments
+            recipient_ids = set(doc.recipients.values_list("pk", flat=True))
+            
+            # Добавляем активных сотрудников из отделов
+            for department in doc.departments.all():
+                recipient_ids.update(emp.id for emp in department.active_employees)
+            
+            base = base.filter(pk__in=recipient_ids)
+        
         if q:
             base = base.filter(
                 Q(email__icontains=q)

@@ -175,7 +175,12 @@ class Employee(AbstractUser):
         verbose_name="Должность",
     )
     email = models.EmailField("email address", unique=True)
-    telegram = models.CharField("Telegram", max_length=100, blank=True)
+    telegram = models.CharField(
+        "Telegram Chat ID",
+        max_length=100,
+        blank=True,
+        help_text="Ваш Telegram Chat ID для получения уведомлений (найдите через @userinfobot)"
+    )
     whatsapp = PhoneNumberField("WhatsApp", blank=True)
     wechat = models.CharField("WeChat", max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

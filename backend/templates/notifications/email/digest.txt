@@ -1,0 +1,23 @@
+{{ site_name }} - {{ digest_name }} дайджест
+{{ '=' * 60 }}
+
+У вас {{ total_count }} {% if total_count == 1 %}новое уведомление{% elif total_count < 5 %}новых уведомления{% else %}новых уведомлений{% endif %}
+
+{% for category_code, notifs in grouped_notifications.items %}
+{{ category_icons|get_item:category_code }} {{ notifs.0.notification_type.category.name }} ({{ notifs|length }})
+{{ '-' * 60 }}
+
+{% for notification in notifs %}
+• {{ notification.title }}
+  {{ notification.message|truncatewords:30 }}
+  {{ notification.created_at|date:"d.m.Y H:i" }}
+  {% if notification.action_url %}→ {{ site_url }}{{ notification.action_url }}{% endif %}
+
+{% endfor %}
+{% endfor %}
+
+---
+Посмотреть все уведомления: {{ site_url }}/notifications/
+
+Управление уведомлениями: {{ site_url }}/notifications/settings/
+{{ site_url }}

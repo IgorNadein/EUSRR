@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ digest_name }} дайджест</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .email-wrapper {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .email-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .email-header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .digest-badge {
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 5px 15px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .email-body {
+            padding: 30px 20px;
+        }
+        .digest-intro {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #495057;
+        }
+        .category-section {
+            margin-bottom: 30px;
+        }
+        .category-header {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .category-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        .category-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #212529;
+        }
+        .notification-item {
+            padding: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            background-color: #ffffff;
+        }
+        .notification-item-title {
+            font-weight: 600;
+            color: #212529;
+            margin-bottom: 5px;
+        }
+        .notification-item-message {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+        .notification-item-time {
+            font-size: 12px;
+            color: #adb5bd;
+        }
+        .notification-item-action {
+            margin-top: 10px;
+        }
+        .notification-item-action a {
+            color: #0d6efd;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .view-all-button {
+            display: block;
+            width: fit-content;
+            margin: 30px auto 0;
+            padding: 12px 30px;
+            background-color: #667eea;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            text-align: center;
+        }
+        .email-footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .email-footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <!-- Header -->
+        <div class="email-header">
+            <h1>📬 {{ site_name }}</h1>
+            <div class="digest-badge">
+                {{ digest_name }} дайджест
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="email-body">
+            <div class="digest-intro">
+                <p>У вас <strong>{{ total_count }}</strong> {% if total_count == 1 %}новое уведомление{% elif total_count < 5 %}новых уведомления{% else %}новых уведомлений{% endif %}</p>
+            </div>
+
+            {% for category_code, notifs in grouped_notifications.items %}
+            <div class="category-section">
+                <div class="category-header" style="border-left-color: {{ category_colors|get_item:category_code }};">
+                    <div class="category-icon">{{ category_icons|get_item:category_code }}</div>
+                    <div class="category-title">{{ notifs.0.notification_type.category.name }} ({{ notifs|length }})</div>
+                </div>
+
+                {% for notification in notifs %}
+                <div class="notification-item">
+                    <div class="notification-item-title">
+                        {{ notification.title }}
+                    </div>
+                    <div class="notification-item-message">
+                        {{ notification.message|truncatewords:20 }}
+                    </div>
+                    <div class="notification-item-time">
+                        {{ notification.created_at|date:"d.m.Y H:i" }}
+                    </div>
+                    {% if notification.action_url %}
+                    <div class="notification-item-action">
+                        <a href="{{ site_url }}{{ notification.action_url }}">{{ notification.action_text|default:"Посмотреть" }} →</a>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+
+            <a href="{{ site_url }}/notifications/" class="view-all-button">
+                Посмотреть все уведомления
+            </a>
+        </div>
+
+        <!-- Footer -->
+        <div class="email-footer">
+            <p>
+                Это автоматический дайджест от системы {{ site_name }}.<br>
+                <a href="{{ site_url }}/notifications/settings/">Управление уведомлениями</a> • 
+                <a href="{{ site_url }}/notifications/settings/">Изменить частоту рассылки</a>
+            </p>
+            <p style="margin-top: 10px;">
+                <a href="{{ site_url }}">{{ site_url }}</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

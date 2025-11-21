@@ -2,6 +2,7 @@
 Сервисный слой для работы с уведомлениями
 """
 import json
+import logging
 from typing import Any, Dict, Optional
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -12,6 +13,10 @@ from .models import (
     NotificationType,
     UserNotificationSettings,
 )
+from .email_sender import EmailNotificationSender
+from .telegram_sender import TelegramNotificationSender
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -48,12 +53,20 @@ class NotificationService:
         Returns:
             Созданное уведомление или None если тип не найден
         """
+        logger.info(
+            f"[create_notification] Starting for recipient={recipient.id} "
+            f"type={notification_type_code} send_immediately={send_immediately}"
+        )
+        
         try:
             notification_type = NotificationType.objects.get(
                 code=notification_type_code,
                 is_active=True
             )
         except NotificationType.DoesNotExist:
+            logger.warning(
+                f"[create_notification] Type {notification_type_code} not found"
+            )
             return None
 
         # Проверить настройки пользователя
@@ -62,6 +75,9 @@ class NotificationService:
         )
 
         if not settings.is_enabled:
+            logger.info(
+                f"[create_notification] Skipped - disabled for user {recipient.id}"
+            )
             return None
 
         # Создать краткое сообщение
@@ -92,26 +108,117 @@ class NotificationService:
         settings: Optional[UserNotificationSettings] = None
     ):
         """Отправить уведомление по всем каналам"""
+        logger.info(
+            f"[send_notification] Starting for notification={notification.id}"
+        )
+        
         if settings is None:
             settings = NotificationService.get_user_settings(
                 notification.recipient,
                 notification.notification_type
             )
 
+        logger.info(
+            f"[send_notification] Channels: web={settings.send_web} "
+            f"email={settings.send_email} telegram={settings.send_telegram}"
+        )
+
         # Отправить на веб (WebSocket)
         if settings.send_web:
             NotificationService.send_web_notification(notification)
             notification.sent_web = True
 
-        # Отправить на email (будет реализовано позже)
+        # Отправить на email
         if settings.send_email:
-            # TODO: Реализовать email отправку
-            notification.sent_email = False
+            try:
+                recipient_email = notification.recipient.email
+                if recipient_email:
+                    success = EmailNotificationSender.send_notification_email(
+                        notification=notification,
+                        recipient_email=recipient_email,
+                    )
+                    notification.sent_email = success
+                    if success:
+                        logger.info(
+                            f"Email отправлен для уведомления {notification.id}"
+                        )
+                else:
+                    notification.sent_email = False
+                    logger.warning(
+                        f"У пользователя {notification.recipient} нет email"
+                    )
+            except Exception as e:
+                notification.sent_email = False
+                logger.error(
+                    f"Ошибка отправки email для {notification.id}: {e}",
+                    exc_info=True
+                )
 
-        # Отправить в Telegram (будет реализовано позже)
+        # Отправить в Telegram
         if settings.send_telegram:
-            # TODO: Реализовать Telegram отправку
-            notification.sent_telegram = False
+            logger.info(
+                f"[Telegram] Attempting to send for notification {notification.id} "
+                f"to user {notification.recipient.id}"
+            )
+            try:
+                # Проверяем наличие Telegram Chat ID в профиле
+                telegram_chat_id = getattr(
+                    notification.recipient, 'telegram', ''
+                )
+                if telegram_chat_id:
+                    telegram_chat_id = telegram_chat_id.strip()
+                
+                logger.info(
+                    f"[Telegram] Chat ID for user {notification.recipient.id}: "
+                    f"'{telegram_chat_id}'"
+                )
+                
+                if telegram_chat_id:
+                    # Получаем site_url для формирования полных ссылок
+                    from django.conf import settings as django_settings
+                    site_url = getattr(
+                        django_settings,
+                        'SITE_URL',
+                        'http://localhost:9000'
+                    )
+                    
+                    logger.info(
+                        f"[Telegram] Sending via TelegramNotificationSender "
+                        f"to chat_id={telegram_chat_id}"
+                    )
+                    
+                    # Отправляем через Bot API по chat_id
+                    from .telegram_sender import TelegramNotificationSender
+                    success = TelegramNotificationSender.send_notification(
+                        notification=notification,
+                        chat_id=telegram_chat_id,
+                        site_url=site_url
+                    )
+                    notification.sent_telegram = success
+                    
+                    if success:
+                        logger.info(
+                            f"[Telegram] Successfully sent notification "
+                            f"{notification.id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[Telegram] Failed to send notification "
+                            f"{notification.id}"
+                        )
+                else:
+                    notification.sent_telegram = False
+                    logger.debug(
+                        f"[Telegram] Chat ID empty for user "
+                        f"{notification.recipient.id}"
+                    )
+                    
+            except Exception as e:
+                notification.sent_telegram = False
+                logger.error(
+                    f"[Telegram] Error sending notification {notification.id}: {e}",
+                    exc_info=True
+                )
 
         # Обновить время отправки
         notification.sent_at = timezone.now()
@@ -193,6 +300,14 @@ class NotificationService:
                 ),
             }
         )
+        
+        logger.debug(
+            f"[Settings] User {user.id} type={notification_type.code} "
+            f"created={created} enabled={settings.is_enabled} "
+            f"web={settings.send_web} email={settings.send_email} "
+            f"telegram={settings.send_telegram}"
+        )
+        
         return settings
 
     @staticmethod

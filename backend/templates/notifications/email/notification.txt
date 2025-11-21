@@ -1,0 +1,23 @@
+{{ site_name }} - {{ category_name }}
+
+{{ notification.title }}
+{{ '=' * 60 }}
+
+{{ notification.message }}
+
+{% if notification.metadata %}
+---
+{% for key, value in notification.metadata.items %}
+{{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+
+{% if action_url %}
+{{ action_text }}: {{ action_url }}
+{% endif %}
+
+---
+Это автоматическое уведомление от системы {{ site_name }}.
+Управление уведомлениями: {{ site_url }}/notifications/settings/
+
+{{ site_url }}

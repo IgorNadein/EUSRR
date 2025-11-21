@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, Sequence, Iterable
 
 from django.conf import settings
@@ -13,6 +14,7 @@ from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -100,6 +102,12 @@ class RecipientIDsField(serializers.Field):
         return list(value)
 
 
+class DepartmentBriefSerializer(serializers.Serializer):
+    """Краткий сериализатор отдела."""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
 class DocumentReadSerializer(serializers.ModelSerializer):
     """Сериализатор для чтения документа.
 
@@ -108,6 +116,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
 
     uploaded_by = EmployeeBriefSerializer(read_only=True)
     recipients = EmployeeBriefSerializer(many=True, read_only=True)
+    departments = DepartmentBriefSerializer(many=True, read_only=True)
     file_url = serializers.FileField(source="file", read_only=True)
     is_acknowledged = serializers.SerializerMethodField()
 
@@ -120,6 +129,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "uploaded_by",
             "uploaded_at",
             "sent_to_all",
+            "departments",
             "recipients",
             "file_url",
             "is_acknowledged",
@@ -152,6 +162,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
     Поддерживает:
         - загрузку файла (multipart)
         - sent_to_all
+        - department_ids (отделы-получатели)
         - recipient_ids (repeat/JSON/CSV) при sent_to_all=false
     """
 
@@ -159,6 +170,12 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
         help_text="Список ID сотрудников (repeat/JSON/CSV) при sent_to_all=false.",
+    )
+    
+    department_ids = RecipientIDsField(
+        write_only=True,
+        required=False,
+        help_text="Список ID отделов-получателей.",
     )
 
     class Meta:
@@ -169,6 +186,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "description",
             "file",
             "sent_to_all",
+            "department_ids",
             "recipient_ids",
         )
         extra_kwargs = {
@@ -185,20 +203,58 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             dict: Те же данные.
 
         Raises:
-            serializers.ValidationError: Если sent_to_all=false и нет recipient_ids.
+            serializers.ValidationError: Если sent_to_all=false 
+                и нет recipient_ids или department_ids.
         """
         if self.instance is None and not attrs.get("file"):
             raise serializers.ValidationError({"file": "Обязательное поле."})
 
         sent_to_all = attrs.get("sent_to_all", True)
         recipient_ids = attrs.get("recipient_ids", [])
-        if sent_to_all is False and not recipient_ids:
+        department_ids = attrs.get("department_ids", [])
+        
+        if sent_to_all is False and not recipient_ids and not department_ids:
             raise serializers.ValidationError(
                 {
-                    "recipient_ids": "Укажите получателей или установите sent_to_all=true."
+                    "recipient_ids": "Укажите получателей, отделы или установите sent_to_all=true."
                 }
             )
         return attrs
+    
+    def _set_departments(self, doc: Document, department_ids: Sequence[int]) -> int:
+        """Привязывает отделы-получатели по списку ID.
+
+        Args:
+            doc (Document): Документ.
+            department_ids (Sequence[int]): Идентификаторы отделов.
+
+        Returns:
+            int: Количество привязанных отделов.
+        """
+        from employees.models import Department
+        
+        logger.info(
+            f"[serializers] _set_departments doc={doc.id} "
+            f"department_ids={list(department_ids)}"
+        )
+        
+        if not department_ids:
+            doc.departments.clear()
+            logger.info(f"[serializers] Cleared departments for doc={doc.id}")
+            return 0
+            
+        departments = Department.objects.filter(id__in=set(department_ids))
+        count = departments.count()
+        logger.info(
+            f"[serializers] Found {count} departments from "
+            f"{len(department_ids)} requested IDs"
+        )
+        
+        doc.departments.set(departments)
+        logger.info(
+            f"[serializers] Set {count} departments for doc={doc.id}"
+        )
+        return count
 
     def _set_recipients(self, doc: Document, recipient_ids: Sequence[int]) -> int:
         """Привязывает получателей по списку ID (только активные).
@@ -210,12 +266,28 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         Returns:
             int: Количество привязанных получателей.
         """
+        logger.info(
+            f"[serializers] _set_recipients doc={doc.id} "
+            f"recipient_ids={list(recipient_ids)}"
+        )
+        
         if not recipient_ids:
             doc.recipients.clear()
+            logger.info(f"[serializers] Cleared recipients for doc={doc.id}")
             return 0
+            
         users = User.objects.filter(is_active=True, id__in=set(recipient_ids))
+        count = users.count()
+        logger.info(
+            f"[serializers] Found {count} active users from "
+            f"{len(recipient_ids)} requested IDs"
+        )
+        
         doc.recipients.set(users)
-        return users.count()
+        logger.info(
+            f"[serializers] Set {count} recipients for doc={doc.id}"
+        )
+        return count
 
     def create(self, validated_data: Dict[str, Any]) -> Document:
         """Создание документа с корректной установкой получателей и уведомлением.
@@ -227,36 +299,40 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             Document: Созданный документ.
         """
         recipient_ids = validated_data.pop("recipient_ids", [])
+        department_ids = validated_data.pop("department_ids", [])
         request = self.context.get("request")
         uploader = getattr(request, "user", None)
+        sent_to_all = validated_data.get("sent_to_all", True)
 
-        # временно отключаем сигнал, чтобы M2M успели установиться
-        from django.db.models.signals import post_save
+        logger.info(
+            f"[serializers] Creating document sent_to_all={sent_to_all} "
+            f"department_ids={list(department_ids)} "
+            f"recipient_ids={list(recipient_ids)}"
+        )
 
-        try:
-            from documents.signals import on_document_saved  # type: ignore
-        except Exception:
-            on_document_saved = None
-
-        if on_document_saved:
-            post_save.disconnect(on_document_saved, sender=Document)
-
-        try:
-            doc = Document.objects.create(uploaded_by=uploader, **validated_data)  # type: ignore[arg-type]
-            if validated_data.get("sent_to_all") is False:
+        # Создаём документ - сигналы из notification_signals.py сработают автоматически
+        doc = Document.objects.create(uploaded_by=uploader, **validated_data)  # type: ignore[arg-type]
+        logger.info(
+            f"[serializers] Document created id={doc.id} "
+            f"sent_to_all={doc.sent_to_all}"
+        )
+        
+        # Для индивидуальной рассылки устанавливаем получателей
+        # Это вызовет m2m_changed сигнал
+        if validated_data.get("sent_to_all") is False:
+            if department_ids:
+                logger.info(
+                    f"[serializers] Setting departments for doc={doc.id}"
+                )
+                self._set_departments(doc, department_ids)
+            
+            if recipient_ids:
+                logger.info(
+                    f"[serializers] Setting recipients for doc={doc.id}"
+                )
                 self._set_recipients(doc, recipient_ids)
-        finally:
-            if on_document_saved:
-                post_save.connect(on_document_saved, sender=Document)
 
-        # уведомление после полной подготовки
-        try:
-            from documents.notification import notify_users_about_document  # type: ignore
-
-            notify_users_about_document(doc)
-        except Exception:
-            pass
-
+        logger.info(f"[serializers] Document creation complete id={doc.id}")
         return doc
 
     def update(self, instance: Document, validated_data: Dict[str, Any]) -> Document:
@@ -270,16 +346,22 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             Document: Обновлённый документ.
         """
         recipient_ids = validated_data.pop("recipient_ids", None)
+        department_ids = validated_data.pop("department_ids", None)
+        
         for f in ("title", "description", "sent_to_all", "file"):
             if f in validated_data:
                 setattr(instance, f, validated_data[f])
         instance.save()
 
-        # очищаем получателей при sent_to_all=true
+        # очищаем получателей и отделы при sent_to_all=true
         if "sent_to_all" in validated_data and instance.sent_to_all:
             instance.recipients.clear()
-        elif recipient_ids is not None:
-            self._set_recipients(instance, recipient_ids)
+            instance.departments.clear()
+        else:
+            if department_ids is not None:
+                self._set_departments(instance, department_ids)
+            if recipient_ids is not None:
+                self._set_recipients(instance, recipient_ids)
 
         return instance
 

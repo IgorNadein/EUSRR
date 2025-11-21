@@ -26,16 +26,31 @@
     {% if documents %}
       <div id="docList" class="feed-stream">
         {% for doc in documents %}
-          <div class="doc-row" data-doc-id="{{ doc.id }}">
+          <div class="doc-row {% if doc.id not in acked_ids %}doc-unacked{% endif %}" 
+               data-doc-id="{{ doc.id }}"
+               data-is-acked="{% if doc.id in acked_ids %}1{% else %}0{% endif %}">
             <div class="feed-hd">
               <div class="feed-ico" aria-hidden="true"><i class="bi-file-earmark-text"></i></div>
 
               <div class="feed-main">
                 <div class="feed-author">
                   {% if doc.file_url %}
-                    <a href="{{ doc.file_url }}" class="text-decoration-none" target="_blank" rel="noopener">
-                      {{ doc.title|default:"Без названия" }}
-                    </a>
+                    {# Для неознакомленных - через acknowledge URL, для ознакомленных - прямо на файл #}
+                    {% if doc.id not in acked_ids and scope == 'mine' %}
+                      <a href="{% url 'documents:acknowledge' doc.id %}" 
+                         class="text-decoration-none doc-link" 
+                         target="_blank" 
+                         rel="noopener">
+                        {{ doc.title|default:"Без названия" }}
+                      </a>
+                    {% else %}
+                      <a href="{{ doc.file_url }}" 
+                         class="text-decoration-none doc-link" 
+                         target="_blank" 
+                         rel="noopener">
+                        {{ doc.title|default:"Без названия" }}
+                      </a>
+                    {% endif %}
                   {% else %}
                     {{ doc.title|default:"Без названия" }}
                   {% endif %}
@@ -48,12 +63,10 @@
               </div>
 
               <div class="doc-actions">
-                {# Вкладка "Мои" — как раньше #}
+                {# Вкладка "Мои" — просто бейдж для ознакомленных #}
                 {% if scope == 'mine' %}
                   {% if doc.id in acked_ids %}
-                    <span class="badge-acked">Ознакомлен</span>
-                  {% else %}
-                    <a href="{% url 'documents:acknowledge' doc.id %}" class="btn btn-outline-primary">Ознакомиться</a>
+                    <span class="badge-acked">✓ Ознакомлен</span>
                   {% endif %}
 
                 {# Вкладка "Все" — кнопка модалки #}
@@ -104,11 +117,28 @@
     {% endif %}
   </div>
 
-  {# ===== Пагинация (если понадобится — через next_url/prev_url) ===== #}
-  {% if prev_url or next_url %}
-    <div class="d-flex justify-content-between">
-      <a class="btn btn-outline-secondary {% if not prev_url %}disabled{% endif %}" href="{{ prev_url|default:'#' }}">Назад</a>
-      <a class="btn btn-outline-secondary {% if not next_url %}disabled{% endif %}" href="{{ next_url|default:'#' }}">Вперёд</a>
+  {# ===== Пагинация ===== #}
+  {% if prev_url or next_url or page > 1 %}
+    <div class="d-flex justify-content-between mb-3">
+      {% if prev_url %}
+        <a class="btn btn-outline-secondary" href="{{ prev_url }}">
+          <i class="bi-chevron-left"></i> Назад
+        </a>
+      {% else %}
+        <span class="btn btn-outline-secondary disabled">
+          <i class="bi-chevron-left"></i> Назад
+        </span>
+      {% endif %}
+      
+      {% if next_url %}
+        <a class="btn btn-outline-secondary" href="{{ next_url }}">
+          Вперёд <i class="bi-chevron-right"></i>
+        </a>
+      {% else %}
+        <span class="btn btn-outline-secondary disabled">
+          Вперёд <i class="bi-chevron-right"></i>
+        </span>
+      {% endif %}
     </div>
   {% endif %}
 
@@ -143,9 +173,18 @@
           <label class="form-check-label" for="createSentToAll">Отправить всем</label>
         </div>
 
+        <!-- Виджет отделов -->
+        <div class="recipient-block" id="createDepartmentsBlock" hidden>
+          <label class="form-label">Отделы-получатели</label>
+          <select name="department_ids" id="createDepartments" class="form-select" multiple size="5">
+            <!-- Заполняется динамически -->
+          </select>
+          <small class="text-muted">Удерживайте Ctrl/Cmd для выбора нескольких</small>
+        </div>
+
         <!-- Виджет получателей -->
         <div class="recipient-block" id="createRecipientsBlock" hidden>
-          <label class="form-label">Получатели</label>
+          <label class="form-label">Получатели (сотрудники)</label>
           <div id="createRecipients" class="recipient-picker" data-api-employees="{% url 'api:v1:employees-list' %}">
             <div class="rp-selected" aria-live="polite"></div>
             <div class="rp-search mb-2">
@@ -192,9 +231,18 @@
           <label class="form-check-label" for="editSentToAll">Отправить всем</label>
         </div>
 
+        <!-- Виджет отделов -->
+        <div class="recipient-block" id="editDepartmentsBlock" hidden>
+          <label class="form-label">Отделы-получатели</label>
+          <select name="department_ids" id="editDepartments" class="form-select" multiple size="5">
+            <!-- Заполняется динамически -->
+          </select>
+          <small class="text-muted">Удерживайте Ctrl/Cmd для выбора нескольких</small>
+        </div>
+
         <!-- Виджет получателей -->
         <div class="recipient-block" id="editRecipientsBlock" hidden>
-          <label class="form-label">Получатели</label>
+          <label class="form-label">Получатели (сотрудники)</label>
           <div id="editRecipients" class="recipient-picker" data-api-employees="{% url 'api:v1:employees-list' %}">
             <div class="rp-selected" aria-live="polite"></div>
             <div class="rp-search mb-2">
@@ -270,6 +318,7 @@
   const apiListUrl = "{{ api_document_list_url|default:'' }}";
   const apiDetailBase = "{{ api_document_detail_base|default:'' }}";
   const employeesApi = "{% url 'api:v1:employees-list' %}";
+  const departmentsApi = "{% url 'api:v1:departments-list' %}";
 
   // Инициализация RecipientPicker для формы создания
   const createPicker = new RecipientPicker(
@@ -289,7 +338,8 @@
     apiDetailBase: apiDetailBase,
     headers: headersAuth,
     createPicker: createPicker,
-    editPicker: editPicker
+    editPicker: editPicker,
+    departmentsApi: departmentsApi
   });
 
   // Инициализация модалки ознакомлений

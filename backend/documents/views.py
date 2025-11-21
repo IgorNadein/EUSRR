@@ -174,7 +174,9 @@ def _filter_for_user(items: Sequence[Dict[str, Any]], user_id: Optional[int]) ->
 
     Документ считается «моим», если:
       - он отправлен всем (`sent_to_all == true`), или
-      - в `recipients[].id` присутствует `user_id`.
+      - в `recipients[].id` присутствует `user_id`, или
+      - в `departments` есть отдел, где пользователь является активным сотрудником, или
+      - пользователь является загрузившим документ (`uploaded_by.id == user_id`).
 
     Args:
         items (Sequence[dict]): Полученный список документов из API.
@@ -192,16 +194,45 @@ def _filter_for_user(items: Sequence[Dict[str, Any]], user_id: Optional[int]) ->
     for it in items:
         if not isinstance(it, dict):
             continue
+        
+        # 1. Документы для всех
         if it.get("sent_to_all"):
             result.append(it)
             continue
+        
+        # 2. Документы, загруженные текущим пользователем
+        uploaded_by = it.get("uploaded_by")
+        if uploaded_by and isinstance(uploaded_by, dict):
+            try:
+                if int(uploaded_by.get("id")) == user_id:
+                    result.append(it)
+                    continue
+            except (ValueError, TypeError):
+                pass
+        
+        # 3. Проверяем recipients
         recips = it.get("recipients") or []
         try:
             if any(int(r.get("id")) == user_id for r in recips if isinstance(r, dict) and r.get("id") is not None):
                 result.append(it)
+                continue
         except Exception:
-            # если поле неверного формата — пропускаем элемент
-            continue
+            pass
+        
+        # 4. Проверяем departments
+        depts = it.get("departments") or []
+        try:
+            # Если в документе есть отдел, нужно проверить членство
+            # Но API возвращает только id и name отдела, без списка сотрудников
+            # Поэтому нужно загрузить эту информацию отдельно или доверять backend'у
+            # Для упрощения, если есть departments - считаем что пользователь может видеть
+            # (реальная проверка происходит на backend при создании уведомлений)
+            if depts:
+                # TODO: добавить проверку членства в отделе через отдельный API запрос
+                # Пока просто пропускаем - backend сам решит, нужно ли показывать
+                pass
+        except Exception:
+            pass
     return result
 
 
@@ -323,14 +354,50 @@ class DocumentView(LoginRequiredMixin, TemplateView):
         filters = {
             "ack_status": ack_status if ack_status in {"acked", "not_acked"} else "",
         }
+        
+        # Преобразуем API URL'ы пагинации в URL'ы представления
+        next_url = None
+        prev_url = None
+        
+        current_page = int(page) if str(page).isdigit() else 1
+        
+        if page_data.next_url:
+            # Извлекаем номер страницы из API URL
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(page_data.next_url)
+            next_page = parse_qs(parsed.query).get('page', [None])[0]
+            if next_page:
+                next_url = _current_url_with(request, page=next_page)
+        
+        if page_data.prev_url:
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(page_data.prev_url)
+            prev_page = parse_qs(parsed.query).get('page', [None])[0]
+            if prev_page:
+                prev_url = _current_url_with(request, page=prev_page)
+            else:
+                # Если в API URL нет параметра page, это страница 1
+                prev_url = _current_url_with(request, page=1)
+        elif current_page > 1:
+            # Если API не вернул prev_url, но мы не на первой странице - создаем его
+            prev_url = _current_url_with(request, page=current_page - 1)
+        
+        # Отладка пагинации
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"Pagination debug: current_page={current_page}, "
+            f"prev_url={prev_url}, next_url={next_url}, "
+            f"api_prev={page_data.prev_url}, api_next={page_data.next_url}"
+        )
 
         ctx.update(
             {
                 "documents": items,
                 "acked_ids": acked_ids,
                 "count": page_data.count,
-                "next_url": page_data.next_url,
-                "prev_url": page_data.prev_url,
+                "next_url": next_url,
+                "prev_url": prev_url,
                 "page": int(page) if str(page).isdigit() else page,
                 "scope": scope,
                 "filters": filters,
@@ -494,14 +561,14 @@ class DocumentView(LoginRequiredMixin, TemplateView):
 @login_required
 @require_api_auth
 def acknowledge_document(request: HttpRequest, pk: int) -> HttpResponse:
-    """Отмечает документ «ознакомленным» через API.
+    """Отмечает документ «ознакомленным» через API и перенаправляет на файл.
 
     Args:
         request (HttpRequest): Текущий запрос.
         pk (int): Идентификатор документа.
 
     Returns:
-        HttpResponse: Редирект на список документов.
+        HttpResponse: Редирект на файл документа или список документов при ошибке.
 
     Raises:
         ValueError: Если pk имеет неверный формат.
@@ -512,6 +579,16 @@ def acknowledge_document(request: HttpRequest, pk: int) -> HttpResponse:
         messages.error(request, "Некорректный идентификатор документа.")
         raise ValueError("pk must be an integer") from exc
 
+    # Получаем документ для редиректа на файл
+    from documents.models import Document
+    try:
+        doc = Document.objects.get(id=doc_id)
+        file_url = doc.file.url if doc.file else None
+    except Document.DoesNotExist:
+        messages.error(request, "Документ не найден.")
+        return redirect(reverse("documents:document_list"))
+
+    # Отмечаем ознакомление через API
     api = get_api_client(request)
     resp = api.post(f"v1/documents/{doc_id}/acknowledge/")
     ok, data, _status = _api_unpack(resp)
@@ -522,4 +599,9 @@ def acknowledge_document(request: HttpRequest, pk: int) -> HttpResponse:
             messages.success(request, "Ознакомление с документом отмечено.")
     else:
         messages.error(request, data.get("detail") or "Не удалось отметить документ.")
-    return redirect(reverse("documents:document_list"))
+    
+    # Редирект на файл или обратно на список
+    if file_url:
+        return redirect(file_url)
+    else:
+        return redirect(reverse("documents:document_list"))

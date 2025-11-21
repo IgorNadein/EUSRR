@@ -39,12 +39,15 @@ class DocumentAdmin(admin.ModelAdmin):
     )
     list_filter = ('sent_to_all', 'uploaded_at')
     search_fields = ('title', 'description')
-    filter_horizontal = ('recipients',)
+    filter_horizontal = ('recipients', 'departments')
     actions = ['send_document']
 
     fieldsets = (
         (None, {
-            'fields': ('title', 'file', 'description', 'recipients', 'sent_to_all'),
+            'fields': (
+                'title', 'file', 'description',
+                'sent_to_all', 'departments', 'recipients'
+            ),
         }),
         (_('Meta'), {
             'fields': ('uploaded_by', 'uploaded_at'),
@@ -72,7 +75,18 @@ class DocumentAdmin(admin.ModelAdmin):
     send_document.short_description = _('Отправить документ')
 
     def get_recipients_qs(self, obj):
-        return User.objects.filter(is_active=True) if obj.sent_to_all else obj.recipients.all()
+        """Возвращает всех получателей документа."""
+        if obj.sent_to_all:
+            return User.objects.filter(is_active=True)
+        
+        # Собираем получателей из recipients и departments
+        recipients_set = set(obj.recipients.all())
+        
+        # Добавляем сотрудников из отделов
+        for department in obj.departments.all():
+            recipients_set.update(department.active_employees)
+        
+        return list(recipients_set)
 
     def recipients_summary(self, obj):
         qs = self.get_recipients_qs(obj)

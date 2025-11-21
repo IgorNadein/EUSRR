@@ -20,6 +20,22 @@
   padding: var(--space-2) !important;
   margin: 0 !important;
   border-bottom: 1px solid var(--bs-border-color);
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+}
+
+#docList .doc-row:hover {
+  background-color: color-mix(in srgb, var(--bs-primary) 4%, transparent);
+}
+
+#docList .doc-row.doc-unacked {
+  background-color: color-mix(in srgb, var(--bs-warning) 8%, transparent);
+  border-left: 3px solid var(--bs-warning);
+  padding-left: calc(var(--space-2) - 3px) !important;
+}
+
+#docList .doc-row.doc-unacked:hover {
+  background-color: color-mix(in srgb, var(--bs-warning) 15%, transparent);
 }
 
 #docList .doc-row:last-child {
@@ -50,6 +66,26 @@
   display: flex;
   align-items: center;
   gap: .4rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 576px) {
+  #docList .feed-hd {
+    grid-template-columns: 28px 1fr;
+    gap: .5rem;
+  }
+  
+  .doc-actions {
+    grid-column: 2;
+    margin-top: .5rem;
+    justify-content: flex-start;
+  }
+  
+  .doc-actions .btn,
+  .doc-actions .btn-icon {
+    font-size: .85rem;
+    padding: .35rem .65rem;
+  }
 }
 
 .scope-switch .btn {

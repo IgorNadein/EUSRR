@@ -31,6 +31,13 @@ class Document(models.Model):
         default=False,
         help_text=_('Если включено — уведомление получат все активные сотрудники')
     )
+    departments = models.ManyToManyField(
+        'employees.Department',
+        verbose_name=_('Отделы-получатели'),
+        blank=True,
+        help_text=_('Документ будет доступен всем сотрудникам выбранных отделов (включая будущих)'),
+        related_name='documents'
+    )
     recipients = models.ManyToManyField(
         User,
         verbose_name=_('Получатели'),

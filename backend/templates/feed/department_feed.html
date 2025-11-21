@@ -46,7 +46,7 @@
               <h5 class="card-title mb-2 d-flex align-items-center gap-2">
                 {{ post.title }}
                 {% if post.pinned %}
-                  <span class="badge bg-warning text-dark">Закреплено</span>
+                  <span class="badge bg-warning text-dark"></span>
                 {% endif %}
                 {% if department.head == user %}
                   <a href="{% url 'feed:pin_post' post.pk %}" class="btn btn-sm btn-outline-warning ms-2">

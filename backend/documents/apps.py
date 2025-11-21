@@ -7,5 +7,4 @@ class DocumentsConfig(AppConfig):
 
     def ready(self):
         # импортируем сигналы, чтобы они подхватились
-        import documents.signals  # noqa
         import documents.notification_signals  # noqa

@@ -14,7 +14,8 @@ def create_test_notification(request):
         notification_type_code='system_announcement',
         title='🎉 Тестовое уведомление',
         message='Это тестовое сообщение отправлено через API. Вы должны увидеть toast!',
-        action_url='/',
+        action_url='/notifications/',
+        action_text='Открыть уведомления'
     )
     
     if notification:

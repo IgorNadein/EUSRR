@@ -7,6 +7,7 @@ from .models import Notification, NotificationCategory, NotificationType
 from .services import NotificationService
 
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_notifications(request):
@@ -181,6 +182,7 @@ def get_user_settings(request):
             'is_enabled': settings.is_enabled,
             'web_enabled': settings.send_web,
             'email_enabled': settings.send_email,
+            'email_frequency': settings.email_frequency,
             'telegram_enabled': settings.send_telegram,
         }
     
@@ -287,6 +289,9 @@ def update_category_settings(request):
         if 'email_enabled' in request.data:
             settings.send_email = request.data['email_enabled']
         
+        if 'email_frequency' in request.data:
+            settings.email_frequency = request.data['email_frequency']
+        
         if 'telegram_enabled' in request.data:
             settings.send_telegram = request.data['telegram_enabled']
         
@@ -297,4 +302,111 @@ def update_category_settings(request):
         'status': 'success',
         'updated_count': updated_count
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_telegram_link_status(request):
+    """Получить статус привязки Telegram аккаунта"""
+    from .telegram_models import TelegramUser
+    
+    try:
+        tg_user = TelegramUser.objects.get(
+            user=request.user,
+            is_active=True,
+            telegram_id__isnull=False
+        )
+        
+        return Response({
+            'is_linked': True,
+            'telegram_username': tg_user.telegram_username,
+            'first_name': tg_user.first_name,
+            'last_name': tg_user.last_name,
+            'linked_at': tg_user.linked_at,
+            'is_blocked': tg_user.is_blocked,
+        })
+    except TelegramUser.DoesNotExist:
+        # Проверяем, может быть есть незавершенная привязка с кодом
+        pending = TelegramUser.objects.filter(
+            user=request.user,
+            link_code__isnull=False
+        ).first()
+        
+        response_data = {'is_linked': False}
+        
+        if pending and pending.is_link_code_valid():
+            response_data['link_code'] = pending.link_code
+        
+        return Response(response_data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_telegram_link_code(request):
+    """Сгенерировать код для привязки Telegram аккаунта"""
+    from .telegram_models import TelegramUser
+    
+    # Проверяем что аккаунт еще не привязан
+    existing = TelegramUser.objects.filter(
+        user=request.user,
+        is_active=True,
+        telegram_id__isnull=False
+    ).first()
+    
+    if existing:
+        return Response({
+            'status': 'error',
+            'message': 'Telegram аккаунт уже привязан'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Получаем или создаем запись БЕЗ telegram_id (он будет установлен при привязке)
+    tg_user = TelegramUser.objects.filter(
+        user=request.user
+    ).first()
+    
+    if not tg_user:
+        tg_user = TelegramUser.objects.create(
+            user=request.user,
+            is_active=False
+        )
+    
+    # Генерируем новый код (даже если уже был старый)
+    link_code = tg_user.generate_link_code()
+    
+    from django.conf import settings
+    bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'eusrr_bot')
+    
+    return Response({
+        'status': 'success',
+        'link_code': link_code,
+        'bot_username': bot_username,
+        'bot_link': f'https://t.me/{bot_username}',
+        'expires_in_seconds': 900,  # 15 минут
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def unlink_telegram(request):
+    """Отвязать Telegram аккаунт"""
+    from .telegram_models import TelegramUser
+    
+    try:
+        tg_user = TelegramUser.objects.get(
+            user=request.user,
+            is_active=True
+        )
+        
+        tg_user.is_active = False
+        tg_user.save()
+        
+        return Response({
+            'status': 'success',
+            'message': 'Telegram аккаунт отвязан'
+        })
+    except TelegramUser.DoesNotExist:
+        return Response({
+            'status': 'error',
+            'message': 'Telegram аккаунт не привязан'
+        }, status=status.HTTP_404_NOT_FOUND)
 

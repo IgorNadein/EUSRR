@@ -4,6 +4,9 @@ from django.utils import timezone
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 
+# Импортируем Telegram модель
+from .telegram_models import TelegramUser  # noqa: F401
+
 
 class NotificationCategory(models.Model):
     """Категории уведомлений для группировки"""
@@ -308,6 +311,21 @@ class UserNotificationSettings(models.Model):
         default=False,
         verbose_name='Отправлять на email'
     )
+    
+    # Частота email рассылки
+    EMAIL_FREQUENCY_CHOICES = [
+        ('instant', 'Мгновенно'),
+        ('daily', 'Ежедневный дайджест'),
+        ('weekly', 'Еженедельный дайджест'),
+    ]
+    email_frequency = models.CharField(
+        max_length=20,
+        choices=EMAIL_FREQUENCY_CHOICES,
+        default='instant',
+        verbose_name='Частота email рассылки',
+        help_text='Как часто отправлять уведомления на email (только если email включен)'
+    )
+    
     send_telegram = models.BooleanField(
         default=False,
         verbose_name='Отправлять в Telegram'

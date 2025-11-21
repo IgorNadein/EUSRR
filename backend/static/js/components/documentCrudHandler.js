@@ -17,12 +17,15 @@
  */
 
 /**
- * Переключает видимость блока получателей в зависимости от чекбокса "Отправить всем".
+ * Переключает видимость блоков получателей в зависимости от чекбокса "Отправить всем".
  * @param {HTMLInputElement} checkbox - Чекбокс "sent_to_all"
- * @param {HTMLElement} block - Блок с виджетом получателей
+ * @param {HTMLElement} deptBlock - Блок с виджетом отделов
+ * @param {HTMLElement} recipBlock - Блок с виджетом получателей
  */
-function toggleRecipientsBlock(checkbox, block) {
-  block.hidden = checkbox.checked; // Скрыть, если "всем"
+function toggleRecipientsBlocks(checkbox, deptBlock, recipBlock) {
+  const hidden = checkbox.checked;
+  if (deptBlock) deptBlock.hidden = hidden;
+  if (recipBlock) recipBlock.hidden = hidden;
 }
 
 /**
@@ -38,6 +41,64 @@ function appendRecipientIds(formData, ids) {
 }
 
 /**
+ * Добавляет ID отделов в FormData.
+ * @param {FormData} formData - Объект FormData
+ * @param {Array<number>} ids - Массив ID отделов
+ */
+function appendDepartmentIds(formData, ids) {
+  // API ожидает повторяемые department_ids
+  for (const id of ids) {
+    formData.append('department_ids', String(id));
+  }
+}
+
+/**
+ * Загружает список отделов из API и заполняет select элементы.
+ * @param {string} departmentsApi - URL API для получения списка отделов
+ * @param {Object} headers - HTTP заголовки для запросов
+ * @param {HTMLSelectElement} createSelect - Select для формы создания
+ * @param {HTMLSelectElement} editSelect - Select для формы редактирования
+ */
+async function loadDepartments(departmentsApi, headers, createSelect, editSelect) {
+  if (!departmentsApi || (!createSelect && !editSelect)) {
+    console.warn('loadDepartments: отсутствует URL API или select элементы');
+    return;
+  }
+
+  try {
+    const response = await fetch(departmentsApi, { headers });
+    if (!response.ok) {
+      throw new Error('HTTP ' + response.status);
+    }
+
+    const data = await response.json();
+    const departments = data.results || data || [];
+
+    // Заполняем оба select'а
+    [createSelect, editSelect].forEach(select => {
+      if (!select) return;
+      
+      select.innerHTML = '';
+      departments.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept.id;
+        option.textContent = dept.name;
+        select.appendChild(option);
+      });
+    });
+
+    console.log(`Загружено отделов: ${departments.length}`);
+  } catch (error) {
+    console.error('Ошибка загрузки отделов:', error);
+    // Показываем сообщение в select'ах
+    [createSelect, editSelect].forEach(select => {
+      if (!select) return;
+      select.innerHTML = '<option disabled>Ошибка загрузки отделов</option>';
+    });
+  }
+}
+
+/**
  * Инициализирует обработчики CRUD операций для документов.
  * @param {Object} options - Опции инициализации
  * @param {string} options.apiListUrl - URL API для списка документов
@@ -45,6 +106,7 @@ function appendRecipientIds(formData, ids) {
  * @param {Object} [options.headers={}] - HTTP заголовки для запросов
  * @param {Object} options.createPicker - Экземпляр RecipientPicker для формы создания
  * @param {Object} options.editPicker - Экземпляр RecipientPicker для формы редактирования
+ * @param {string} [options.departmentsApi] - URL API для получения списка отделов
  * @returns {Object} API с методом destroy
  */
 export function initDocumentCrud(options) {
@@ -53,19 +115,24 @@ export function initDocumentCrud(options) {
     apiDetailBase,
     headers = {},
     createPicker,
-    editPicker
+    editPicker,
+    departmentsApi
   } = options;
 
   // Элементы формы создания
   const createForm = document.getElementById('docCreateForm');
   const createAllCheckbox = document.getElementById('createSentToAll');
-  const createBlock = document.getElementById('createRecipientsBlock');
+  const createDeptBlock = document.getElementById('createDepartmentsBlock');
+  const createRecipBlock = document.getElementById('createRecipientsBlock');
+  const createDeptSelect = document.getElementById('createDepartments');
 
   // Элементы формы редактирования
   const editModal = document.getElementById('docEditModal');
   const editForm = document.getElementById('docEditForm');
   const editAllCheckbox = document.getElementById('editSentToAll');
-  const editBlock = document.getElementById('editRecipientsBlock');
+  const editDeptBlock = document.getElementById('editDepartmentsBlock');
+  const editRecipBlock = document.getElementById('editRecipientsBlock');
+  const editDeptSelect = document.getElementById('editDepartments');
 
   // Список документов
   const listElement = document.getElementById('docList');
@@ -75,18 +142,23 @@ export function initDocumentCrud(options) {
     return { destroy: () => {} };
   }
 
+  // Загружаем список отделов
+  if (departmentsApi) {
+    loadDepartments(departmentsApi, headers, createDeptSelect, editDeptSelect);
+  }
+
   // Инициализация переключения блоков получателей
-  if (createAllCheckbox && createBlock) {
-    toggleRecipientsBlock(createAllCheckbox, createBlock);
+  if (createAllCheckbox) {
+    toggleRecipientsBlocks(createAllCheckbox, createDeptBlock, createRecipBlock);
     createAllCheckbox.addEventListener('change', () => {
-      toggleRecipientsBlock(createAllCheckbox, createBlock);
+      toggleRecipientsBlocks(createAllCheckbox, createDeptBlock, createRecipBlock);
     });
   }
 
-  if (editAllCheckbox && editBlock) {
-    toggleRecipientsBlock(editAllCheckbox, editBlock);
+  if (editAllCheckbox) {
+    toggleRecipientsBlocks(editAllCheckbox, editDeptBlock, editRecipBlock);
     editAllCheckbox.addEventListener('change', () => {
-      toggleRecipientsBlock(editAllCheckbox, editBlock);
+      toggleRecipientsBlocks(editAllCheckbox, editDeptBlock, editRecipBlock);
     });
   }
 
@@ -100,14 +172,31 @@ export function initDocumentCrud(options) {
     formData.set('sent_to_all', createAllCheckbox.checked ? 'true' : 'false');
 
     if (!createAllCheckbox.checked) {
-      const ids = createPicker.getIds();
-      if (ids.length === 0) {
-        alert('Выберите получателей или включите «Отправить всем».');
+      // Собираем выбранные ID отделов
+      const deptIds = createDeptSelect 
+        ? Array.from(createDeptSelect.selectedOptions).map(opt => opt.value)
+        : [];
+      
+      // Собираем выбранные ID получателей
+      const recipientIds = createPicker.getIds();
+      
+      if (deptIds.length === 0 && recipientIds.length === 0) {
+        alert('Выберите отделы, получателей или включите «Отправить всем».');
         return;
       }
-      appendRecipientIds(formData, ids);
+      
+      // Добавляем отделы
+      if (deptIds.length > 0) {
+        appendDepartmentIds(formData, deptIds);
+      }
+      
+      // Добавляем получателей
+      if (recipientIds.length > 0) {
+        appendRecipientIds(formData, recipientIds);
+      }
     } else {
       formData.delete('recipient_ids');
+      formData.delete('department_ids');
     }
 
     try {
@@ -141,26 +230,42 @@ export function initDocumentCrud(options) {
     
     const sentToAll = button.getAttribute('data-doc-sent_to_all') === '1';
     editAllCheckbox.checked = sentToAll;
-    toggleRecipientsBlock(editAllCheckbox, editBlock);
+    toggleRecipientsBlocks(editAllCheckbox, editDeptBlock, editRecipBlock);
 
-    // Загружаем текущих получателей документа
+    // Загружаем текущие данные документа (получатели и отделы)
     try {
       const response = await fetch(apiDetailBase + docId + '/', { headers });
       
       if (response.ok) {
         const data = await response.json();
+        
+        // Заполняем получателей
         const recipients = (data && data.recipients) ? data.recipients.map(r => ({
           id: r.id,
           display_name: r.display_name || r.full_name || r.email || ('#' + r.id),
           email: r.email || ''
         })) : [];
         editPicker.setSelected(recipients);
+        
+        // Заполняем отделы
+        if (editDeptSelect && data.departments) {
+          const deptIds = data.departments.map(d => String(d.id));
+          Array.from(editDeptSelect.options).forEach(option => {
+            option.selected = deptIds.includes(option.value);
+          });
+        }
       } else {
         editPicker.setSelected([]);
+        if (editDeptSelect) {
+          Array.from(editDeptSelect.options).forEach(opt => opt.selected = false);
+        }
       }
     } catch (error) {
-      console.error('Ошибка загрузки получателей:', error);
+      console.error('Ошибка загрузки данных документа:', error);
       editPicker.setSelected([]);
+      if (editDeptSelect) {
+        Array.from(editDeptSelect.options).forEach(opt => opt.selected = false);
+      }
     }
 
     bootstrap.Modal.getOrCreateInstance(editModal).show();
@@ -177,14 +282,31 @@ export function initDocumentCrud(options) {
     formData.set('sent_to_all', editAllCheckbox.checked ? 'true' : 'false');
 
     if (!editAllCheckbox.checked) {
-      const ids = editPicker.getIds();
-      if (ids.length === 0) {
-        alert('Выберите получателей или включите «Отправить всем».');
+      // Собираем выбранные ID отделов
+      const deptIds = editDeptSelect 
+        ? Array.from(editDeptSelect.selectedOptions).map(opt => opt.value)
+        : [];
+      
+      // Собираем выбранные ID получателей
+      const recipientIds = editPicker.getIds();
+      
+      if (deptIds.length === 0 && recipientIds.length === 0) {
+        alert('Выберите отделы, получателей или включите «Отправить всем».');
         return;
       }
-      appendRecipientIds(formData, ids);
+      
+      // Добавляем отделы
+      if (deptIds.length > 0) {
+        appendDepartmentIds(formData, deptIds);
+      }
+      
+      // Добавляем получателей
+      if (recipientIds.length > 0) {
+        appendRecipientIds(formData, recipientIds);
+      }
     } else {
       formData.delete('recipient_ids');
+      formData.delete('department_ids');
     }
 
     // Если файл не выбран — не отправляем ключ

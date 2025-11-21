@@ -7,6 +7,7 @@ from .models import (
     UserNotificationSettings,
     NotificationTemplate,
 )
+from .telegram_models import TelegramUser
 
 
 @admin.register(NotificationCategory)
@@ -276,3 +277,75 @@ class NotificationTemplateAdmin(admin.ModelAdmin):
         }),
     )
 
+
+@admin.register(TelegramUser)
+class TelegramUserAdmin(admin.ModelAdmin):
+    list_display = [
+        'user_name',
+        'telegram_username',
+        'telegram_id',
+        'is_active',
+        'is_blocked',
+        'linked_at',
+    ]
+    list_filter = [
+        'is_active',
+        'is_blocked',
+        'linked_at',
+    ]
+    search_fields = [
+        'user__first_name',
+        'user__last_name',
+        'user__email',
+        'telegram_username',
+        'telegram_id',
+    ]
+    readonly_fields = [
+        'telegram_id',
+        'link_code',
+        'link_code_created_at',
+        'linked_at',
+        'last_interaction_at',
+        'updated_at',
+    ]
+    ordering = ['-linked_at']
+    
+    fieldsets = (
+        ('Пользователь', {
+            'fields': ('user', 'is_active')
+        }),
+        ('Telegram информация', {
+            'fields': (
+                'telegram_id',
+                'telegram_username',
+                'first_name',
+                'last_name',
+                'is_blocked',
+            )
+        }),
+        ('Код привязки', {
+            'fields': ('link_code', 'link_code_created_at'),
+            'classes': ('collapse',)
+        }),
+        ('Временные метки', {
+            'fields': ('linked_at', 'last_interaction_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def user_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+    user_name.short_description = 'Пользователь'
+    user_name.admin_order_field = 'user__last_name'
+    
+    actions = ['unlink_accounts', 'reactivate_accounts']
+    
+    def unlink_accounts(self, request, queryset):
+        count = queryset.filter(is_active=True).update(is_active=False)
+        self.message_user(request, f'Отвязано аккаунтов: {count}')
+    unlink_accounts.short_description = 'Отвязать аккаунты'
+    
+    def reactivate_accounts(self, request, queryset):
+        count = queryset.update(is_active=True, is_blocked=False)
+        self.message_user(request, f'Реактивировано аккаунтов: {count}')
+    reactivate_accounts.short_description = 'Реактивировать'

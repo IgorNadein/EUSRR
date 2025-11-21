@@ -8,3 +8,4 @@ class NotificationsConfig(AppConfig):
     
     def ready(self):
         import notifications.signals  # noqa
+        import notifications.signals_telegram  # noqa

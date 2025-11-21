@@ -100,9 +100,9 @@
                           <a href="tel:{{ emp.phone_number }}">{{ emp.phone_number }}</a>
                         </div>
                       {% endif %}
-                      {% if emp.telegram %}<div class="ios-cell"><i class="bi-telegram"></i><span>Telegram: {{ emp.telegram }}</span></div>{% endif %}
-                      {% if emp.whatsapp %}<div class="ios-cell"><i class="bi-whatsapp"></i><span>WhatsApp: {{ emp.whatsapp }}</span></div>{% endif %}
-                      {% if emp.wechat %}<div class="ios-cell"><i class="bi-wechat"></i><span>WeChat: {{ emp.wechat }}</span></div>{% endif %}
+                      {% if emp.telegram %}<div class="ios-cell"><i class="bi-telegram"></i><span>{{ emp.telegram }}</span></div>{% endif %}
+                      {% if emp.whatsapp %}<div class="ios-cell"><i class="bi-whatsapp"></i><span>{{ emp.whatsapp }}</span></div>{% endif %}
+                      {% if emp.wechat %}<div class="ios-cell"><i class="bi-wechat"></i><span>{{ emp.wechat }}</span></div>{% endif %}
                       {% if not emp.email and not emp.phone_number and not emp.telegram and not emp.whatsapp and not emp.wechat %}
                         <div class="ios-cell"><span class="text-secondary">Контакты не указаны</span></div>
                       {% endif %}

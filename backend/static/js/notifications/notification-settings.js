@@ -64,6 +64,7 @@ class NotificationSettingsManager {
                 is_enabled: true,
                 web_enabled: true,
                 email_enabled: false,
+                email_frequency: 'instant',
                 telegram_enabled: false
             };
             
@@ -112,12 +113,24 @@ class NotificationSettingsManager {
                                                    id="email_${cat.code}"
                                                    data-category="${cat.code}"
                                                    data-field="email_enabled"
-                                                   ${setting.email_enabled ? 'checked' : ''}
-                                                   disabled>
-                                            <label class="form-check-label text-muted" for="email_${cat.code}">
-                                                <i class="bi-envelope"></i> Email (скоро)
+                                                   ${setting.email_enabled ? 'checked' : ''}>
+                                            <label class="form-check-label" for="email_${cat.code}">
+                                                <i class="bi-envelope"></i> Email уведомления
                                             </label>
                                         </div>
+                                        
+                                        ${setting.email_enabled ? `
+                                        <div class="ps-4 mb-2">
+                                            <label class="form-label small text-muted mb-1">Частота отправки:</label>
+                                            <select class="form-select form-select-sm email-frequency-select" 
+                                                    data-category="${cat.code}"
+                                                    id="email_freq_${cat.code}">
+                                                <option value="instant" ${setting.email_frequency === 'instant' ? 'selected' : ''}>Мгновенно</option>
+                                                <option value="daily" ${setting.email_frequency === 'daily' ? 'selected' : ''}>Ежедневный дайджест</option>
+                                                <option value="weekly" ${setting.email_frequency === 'weekly' ? 'selected' : ''}>Еженедельный дайджест</option>
+                                            </select>
+                                        </div>
+                                        ` : ''}
                                         
                                         <div class="form-check mb-2">
                                             <input class="form-check-input channel-toggle" 
@@ -125,10 +138,9 @@ class NotificationSettingsManager {
                                                    id="telegram_${cat.code}"
                                                    data-category="${cat.code}"
                                                    data-field="telegram_enabled"
-                                                   ${setting.telegram_enabled ? 'checked' : ''}
-                                                   disabled>
-                                            <label class="form-check-label text-muted" for="telegram_${cat.code}">
-                                                <i class="bi-telegram"></i> Telegram (скоро)
+                                                   ${setting.telegram_enabled ? 'checked' : ''}>
+                                            <label class="form-check-label" for="telegram_${cat.code}">
+                                                <i class="bi-telegram"></i> Telegram
                                             </label>
                                         </div>
                                     </div>
@@ -176,7 +188,23 @@ class NotificationSettingsManager {
                 const field = toggle.dataset.field;
                 const value = toggle.checked;
                 
-                await this.updateSetting(category, field, value);
+                // Если включили email, перерисовать карточку для показа частоты
+                if (field === 'email_enabled') {
+                    await this.updateSetting(category, field, value);
+                    this.renderSettings(); // Перерисовать для показа select
+                } else {
+                    await this.updateSetting(category, field, value);
+                }
+            });
+        });
+        
+        // Обработчики для частоты email
+        document.querySelectorAll('.email-frequency-select').forEach(select => {
+            select.addEventListener('change', async (e) => {
+                const category = select.dataset.category;
+                const value = select.value;
+                
+                await this.updateSetting(category, 'email_frequency', value);
             });
         });
     }
@@ -266,9 +294,75 @@ class NotificationSettingsManager {
     }
 }
 
+/**
+ * Управление привязкой Telegram (упрощенная версия)
+ */
+class TelegramLinkManager {
+    constructor() {
+        this.container = document.getElementById('telegramLinkContainer');
+        if (!this.container) return;
+        
+        this.init();
+    }
+    
+    async init() {
+        this.renderInstructions();
+    }
+    
+    renderInstructions() {
+        const botUsername = window.TELEGRAM_BOT_USERNAME || 'eusrr_bot';
+        
+        this.container.innerHTML = `
+            <div class="row">
+                <div class="col-md-10">
+                    <h6 class="mb-3">
+                        <i class="bi-telegram text-primary"></i>
+                        Настройка Telegram уведомлений
+                    </h6>
+                    
+                    <div class="alert alert-info">
+                        <strong>📱 Как получать уведомления в Telegram:</strong>
+                        <ol class="mb-0 mt-3">
+                            <li class="mb-2">
+                                <strong>Откройте бота <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> в Telegram</strong><br>
+                                <small class="text-muted">Это официальный бот для получения информации о вашем аккаунте</small>
+                            </li>
+                            <li class="mb-2">
+                                <strong>Отправьте любое сообщение боту</strong><br>
+                                <small class="text-muted">Бот ответит вам информацией, включая ваш Chat ID (число)</small>
+                            </li>
+                            <li class="mb-2">
+                                <strong>Скопируйте ваш Chat ID</strong><br>
+                                <small class="text-muted">Например: <code>123456789</code></small>
+                            </li>
+                            <li class="mb-2">
+                                <strong>Добавьте Chat ID в <a href="/employees/me/" target="_blank">ваш профиль</a></strong><br>
+                                <small class="text-muted">Откройте профиль → Редактировать → вставьте Chat ID в поле "Telegram Chat ID"</small>
+                            </li>
+                            <li class="mb-2">
+                                <strong>Включите галочки "Telegram" для нужных категорий ниже</strong><br>
+                                <small class="text-muted">Выберите категории уведомлений, которые хотите получать в Telegram</small>
+                            </li>
+                            <li class="mb-2">
+                                <strong>⚠️ ВАЖНО: Отправьте <code>/start</code> нашему боту <code><a href="https://t.me/${botUsername}" target="_blank">@${botUsername}</a></code></strong><br>
+                                <small class="text-muted">Иначе бот не сможет отправлять вам сообщения из-за ограничений Telegram API</small>
+                            </li>
+                        </ol>
+                    </div>
+                                
+
+                </div>
+            </div>
+        `;
+    }
+}
+
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('settingsContainer')) {
         window.notificationSettingsManager = new NotificationSettingsManager();
+    }
+    if (document.getElementById('telegramLinkContainer')) {
+        window.telegramLinkManager = new TelegramLinkManager();
     }
 });

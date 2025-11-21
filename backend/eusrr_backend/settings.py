@@ -211,6 +211,13 @@ DEFAULT_FROM_EMAIL = os.getenv(
 )
 
 # -----------------------------------------------------------------------------
+# NOTIFICATIONS
+# -----------------------------------------------------------------------------
+# Порог для определения массовой рассылки (количество получателей)
+# При массовой рассылке уведомления создаются быстро, а отправка идёт в фоне
+NOTIFICATION_BULK_THRESHOLD = int(os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
+
+# -----------------------------------------------------------------------------
 # CHANNELS
 # -----------------------------------------------------------------------------
 CHANNEL_LAYERS = {
@@ -380,3 +387,6 @@ LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE")
 
 BRAND_NAME = os.getenv("BRAND_NAME", "HiRo")
 BRAND_LOGO = "img/logo.png"
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "eusrr_bot")
