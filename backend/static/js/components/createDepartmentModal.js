@@ -131,6 +131,23 @@ export function initCreateDepartmentModal(options = {}) {
     return meta ? meta.content : '';
   }
   
+  /**
+   * Получить CSRF токен из формы или cookie
+   */
+  function getCSRFToken() {
+    // Сначала пробуем получить из формы
+    const tokenInput = form.querySelector('[name="csrfmiddlewaretoken"]');
+    if (tokenInput && tokenInput.value) {
+      return tokenInput.value;
+    }
+    
+    // Если нет в форме, пробуем получить из cookie
+    const cookieValue = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('csrftoken='));
+    return cookieValue ? cookieValue.split('=')[1] : '';
+  }
+  
   // Очистка формы при открытии модала
   modal.addEventListener('show.bs.modal', function() {
     form.reset();
@@ -163,6 +180,7 @@ export function initCreateDepartmentModal(options = {}) {
     };
     
     const token = getJWTToken();
+    const csrfToken = getCSRFToken();
     const headers = {
       'Content-Type': 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
@@ -170,6 +188,10 @@ export function initCreateDepartmentModal(options = {}) {
     
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    if (csrfToken) {
+      headers['X-CSRFToken'] = csrfToken;
     }
     
     try {
