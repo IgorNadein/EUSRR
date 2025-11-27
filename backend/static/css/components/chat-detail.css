@@ -159,6 +159,12 @@ main.main {
   border: 1px solid var(--bs-border-color);
   background: var(--bs-body-bg);
   transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  overflow-y: hidden; /* Убираем полоску прокрутки */
+  scrollbar-width: none; /* Firefox */
+}
+
+.composer-textarea::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
 }
 
 .composer-textarea:focus {

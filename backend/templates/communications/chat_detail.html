@@ -194,6 +194,10 @@ document.addEventListener('DOMContentLoaded', function() {
   const audioInput = document.getElementById('audioInput');
   
   const attachmentPreview = document.getElementById('attachmentPreview');
+  const chatForm = document.getElementById('chatForm');
+  
+  // Массив для хранения выбранных файлов
+  let selectedFiles = [];
   
   // Обработчики кликов на пункты меню
   attachDocument?.addEventListener('click', (e) => {
@@ -220,10 +224,23 @@ document.addEventListener('DOMContentLoaded', function() {
   function handleFileSelect(files) {
     if (!files || files.length === 0) return;
     
+    // Добавляем новые файлы к существующим
+    selectedFiles = [...selectedFiles, ...Array.from(files)];
+    
+    updatePreview();
+  }
+  
+  function updatePreview() {
+    if (selectedFiles.length === 0) {
+      attachmentPreview.classList.add('d-none');
+      attachmentPreview.innerHTML = '';
+      return;
+    }
+    
     attachmentPreview.classList.remove('d-none');
     attachmentPreview.innerHTML = '';
     
-    Array.from(files).forEach((file, index) => {
+    selectedFiles.forEach((file, index) => {
       const fileItem = document.createElement('div');
       fileItem.className = 'attachment-item d-flex align-items-center gap-2 p-2 border rounded mb-2';
       
@@ -240,10 +257,14 @@ document.addEventListener('DOMContentLoaded', function() {
           <div class="fw-semibold">${file.name}</div>
           <div class="small text-secondary">${formatFileSize(file.size)}</div>
         </div>
-        <button type="button" class="btn btn-sm btn-ghost" onclick="removeAttachment(${index})">
+        <button type="button" class="btn btn-sm btn-ghost" data-remove-index="${index}">
           <i class="bi-x-lg"></i>
         </button>
       `;
+      
+      // Обработчик удаления конкретного файла
+      const removeBtn = fileItem.querySelector('[data-remove-index]');
+      removeBtn.addEventListener('click', () => removeAttachment(index));
       
       attachmentPreview.appendChild(fileItem);
     });
@@ -255,21 +276,61 @@ document.addEventListener('DOMContentLoaded', function() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
   
+  function removeAttachment(index) {
+    selectedFiles.splice(index, 1);
+    updatePreview();
+  }
+  
   documentInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
   imageInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
   cameraInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
   audioInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
   
-  // Глобальная функция для удаления вложения
-  window.removeAttachment = function(index) {
-    // TODO: Реализовать удаление конкретного файла
-    attachmentPreview.classList.add('d-none');
-    attachmentPreview.innerHTML = '';
-    documentInput.value = '';
-    imageInput.value = '';
-    cameraInput.value = '';
-    audioInput.value = '';
-  };
+  // Обработка отправки формы с файлами
+  chatForm?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const textarea = document.getElementById('id_content');
+    const content = textarea.value.trim();
+    
+    // Если есть вложения, отправляем через API
+    if (selectedFiles.length > 0) {
+      const formData = new FormData();
+      formData.append('content', content || 'Вложение');
+      
+      selectedFiles.forEach((file, index) => {
+        formData.append(`file_${index}`, file);
+      });
+      
+      try {
+        // TODO: Реализовать API endpoint для загрузки файлов
+        // const response = await fetch('/communications/api/upload-message/', {
+        //   method: 'POST',
+        //   body: formData,
+        //   headers: {
+        //     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        //   }
+        // });
+        
+        console.log('Отправка файлов пока не реализована на бэкенде');
+        alert('Отправка файлов будет реализована в следующем обновлении');
+        
+        // Очищаем форму
+        textarea.value = '';
+        selectedFiles = [];
+        updatePreview();
+        documentInput.value = '';
+        imageInput.value = '';
+        cameraInput.value = '';
+        audioInput.value = '';
+      } catch (error) {
+        console.error('Ошибка отправки файлов:', error);
+      }
+    } else if (content) {
+      // Отправляем только текст (стандартное поведение формы)
+      chatForm.submit();
+    }
+  });
 });
 </script>
 
