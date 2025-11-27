@@ -561,10 +561,34 @@
     }
   });
 
+  // Функция получения CSRF токена
+  function getCSRFToken() {
+    // Сначала пробуем найти в скрытом поле формы
+    const tokenInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (tokenInput) {
+      return tokenInput.value;
+    }
+    
+    // Иначе берем из cookie
+    const name = 'csrftoken';
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+
   // Обработка создания чата
   document.getElementById('createChatBtn')?.addEventListener('click', async () => {
     const type = chatTypeSelect.value;
-    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const csrftoken = getCSRFToken();
 
     if(type === 'private') {
       // Создание личного чата
@@ -611,7 +635,7 @@
 
       if(res.ok) {
         const data = await res.json();
-        window.location.href = `/communications/chat/${data.chat_id}/`;
+        window.location.href = `/communications/chats/${data.chat_id}/`;
       } else {
         const err = await res.json();
         alert('Ошибка: ' + (err.error || 'Неизвестная ошибка'));

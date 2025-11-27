@@ -25,15 +25,28 @@ from .models import (
 @require_POST
 def create_chat(request):
     """Создание нового чата (group, channel, announcement)"""
-    chat_type = request.POST.get('type', 'group')
-    name = request.POST.get('name', '').strip()
-    description = request.POST.get('description', '').strip()
+    import json
+    
+    # Читаем JSON из тела запроса
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+    
+    chat_type = data.get('type', 'group')
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    participant_ids = data.get('participant_ids', [])
     
     if chat_type not in ['group', 'channel', 'announcement']:
-        return JsonResponse({'ok': False, 'error': 'Invalid chat type'}, status=400)
+        return JsonResponse(
+            {'ok': False, 'error': 'Invalid chat type'}, status=400
+        )
     
     if not name:
-        return JsonResponse({'ok': False, 'error': 'Name is required'}, status=400)
+        return JsonResponse(
+            {'ok': False, 'error': 'Name is required'}, status=400
+        )
     
     chat = Chat.objects.create(
         type=chat_type,
@@ -52,6 +65,22 @@ def create_chat(request):
         can_remove_members=True,
         can_pin_messages=True
     )
+    
+    # Добавляем участников для группового чата
+    if chat_type == 'group' and participant_ids:
+        from employees.models import Employee
+        for emp_id in participant_ids:
+            try:
+                employee = Employee.objects.get(id=emp_id)
+                if employee != request.user:  # Создателя уже добавили
+                    ChatMembership.objects.create(
+                        chat=chat,
+                        user=employee,
+                        role='member',
+                        can_send_messages=True
+                    )
+            except Employee.DoesNotExist:
+                pass
     
     return JsonResponse({
         'ok': True,

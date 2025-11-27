@@ -195,13 +195,21 @@ export function initCreateDepartmentModal(options = {}) {
     }
     
     try {
+      console.log('Sending request to:', submitUrl);
+      console.log('Headers:', headers);
+      console.log('Data:', formData);
+      
       const response = await fetch(submitUrl, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(formData)
       });
       
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
       const data = await response.json();
+      console.log('Response data:', data);
       
       if (response.ok) {
         // Успех - закрываем модал

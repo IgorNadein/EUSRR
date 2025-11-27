@@ -328,7 +328,15 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 or dept.head_id == user.id
                 or dept.active_employees.filter(id=user.id).exists()
             )
-        return chat.participants.filter(id=user.id).exists()
+        if chat.type == "private":
+            return chat.participants.filter(id=user.id).exists()
+        if chat.type in ["group", "channel", "announcement"]:
+            # Проверка через ChatMembership
+            from communications.models import ChatMembership
+            return ChatMembership.objects.filter(
+                chat=chat, user=user
+            ).exists()
+        return False
 
     @database_sync_to_async
     def _create_message(self, chat: Chat, user, text: str, reply_to_id=None) -> Message:

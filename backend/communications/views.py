@@ -70,11 +70,19 @@ class ChatListView(LoginRequiredMixin, ListView):
             datetime.datetime(1970, 1, 1), timezone.get_current_timezone()
         ).astimezone(dt_tz.utc)
 
+        # Получаем ID чатов, где пользователь является участником
+        # через membership
+        from communications.models import ChatMembership
+        membership_chat_ids = ChatMembership.objects.filter(
+            user=user
+        ).values_list('chat_id', flat=True)
+
         qs = (
             Chat.objects.filter(
                 Q(type="global")
                 | Q(type="department", department__in=departments)
                 | Q(type="private", participants=user)
+                | Q(id__in=membership_chat_ids)  # group/channel/announcement
             )
             .distinct()
             .select_related("department")
@@ -126,6 +134,12 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
             return chat.participants.filter(pk=user.pk).exists()
         if chat.type == "department" and chat.department_id:
             return chat.get_participants.filter(pk=user.pk).exists()
+        if chat.type in ["group", "channel", "announcement"]:
+            # Проверяем membership для групповых чатов, каналов и объявлений
+            from communications.models import ChatMembership
+            return ChatMembership.objects.filter(
+                chat=chat, user=user
+            ).exists()
         return False
 
     def get_context_data(self, **kwargs):

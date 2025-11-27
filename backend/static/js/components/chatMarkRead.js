@@ -278,10 +278,12 @@ export function initChatMarkRead(options = {}) {
   // События textarea
   ta?.addEventListener('input', autosize);
   ta?.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter без Shift - отправка сообщения
       e.preventDefault();
       form?.requestSubmit();
     }
+    // Shift+Enter - перенос строки (стандартное поведение)
   });
 
   // События скролла
