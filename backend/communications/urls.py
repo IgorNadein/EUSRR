@@ -70,6 +70,11 @@ urlpatterns = [
     
     # Attachments
     path(
+        "api/upload-message/",
+        api_views.upload_message_with_attachments,
+        name="api_upload_message"
+    ),
+    path(
         "api/attachment/upload/",
         api_views.upload_attachment,
         name="api_upload_attachment"

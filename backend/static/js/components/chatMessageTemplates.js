@@ -81,6 +81,17 @@ export function nameHTML(userId, name, url, meId, profileUrl, detailUrlTemplate)
 }
 
 /**
+ * Форматирует размер файла
+ * @param {number} bytes - Размер в байтах
+ * @returns {string} Размер в человекочитаемом формате
+ */
+export function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/**
  * Создаёт разделитель дня
  * @param {string} dateStr - Дата в текстовом формате
  * @returns {HTMLElement} DOM элемент разделителя
@@ -141,6 +152,52 @@ export function createMessageElement(msg, options = {}) {
   );
   const time = formatTime(ts);
   const text = esc(msg.content || '').replace(/\n/g, '<br>');
+  
+  // Формирование вложений
+  let attachmentsHTML = '';
+  if (msg.has_attachments && msg.attachments && msg.attachments.length > 0) {
+    attachmentsHTML = '<div class="message-attachments mt-2">';
+    msg.attachments.forEach(att => {
+      attachmentsHTML += '<div class="attachment-item mb-2">';
+      
+      if (att.file_type === 'image') {
+        attachmentsHTML += `
+          <a href="${att.file_url}" target="_blank">
+            <img src="${att.file_url}" 
+                 alt="${esc(att.file_name)}"
+                 class="img-fluid rounded"
+                 style="max-width: 300px; max-height: 300px;">
+          </a>`;
+      } else if (att.file_type === 'audio') {
+        attachmentsHTML += `
+          <audio controls class="w-100">
+            <source src="${att.file_url}" type="${att.mime_type}">
+          </audio>
+          <div class="small text-secondary">${esc(att.file_name)}</div>`;
+      } else if (att.file_type === 'video') {
+        attachmentsHTML += `
+          <video controls class="w-100" style="max-width: 400px;">
+            <source src="${att.file_url}" type="${att.mime_type}">
+          </video>
+          <div class="small text-secondary">${esc(att.file_name)}</div>`;
+      } else {
+        const fileSize = att.file_size ? formatFileSize(att.file_size) : '';
+        attachmentsHTML += `
+          <a href="${att.file_url}" 
+             class="d-flex align-items-center text-decoration-none p-2 border rounded bg-light"
+             download="${esc(att.file_name)}">
+            <i class="bi-file-earmark fs-3 text-primary me-2"></i>
+            <div>
+              <div class="fw-semibold">${esc(att.file_name)}</div>
+              <div class="small text-secondary">${fileSize}</div>
+            </div>
+          </a>`;
+      }
+      
+      attachmentsHTML += '</div>';
+    });
+    attachmentsHTML += '</div>';
+  }
 
   const bubble = `
     <div class="d-flex flex-column" style="max-width:80%;">
@@ -148,7 +205,8 @@ export function createMessageElement(msg, options = {}) {
         ${who} · ${time}
       </div>
       <div class="mt-1 bubble ${mine ? 'bubble-me' : 'bubble-other'}">
-        ${text}
+        ${text ? text : ''}
+        ${attachmentsHTML}
       </div>
     </div>`;
 

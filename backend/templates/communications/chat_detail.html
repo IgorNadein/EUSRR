@@ -86,7 +86,46 @@
                     · <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"H:i" }}</time>
                   </div>
                   <div class="mt-1 bubble {% if message.author_id == user.id %}bubble-me{% else %}bubble-other{% endif %}">
-                    {{ message.content|linebreaksbr }}
+                    {% if message.content %}
+                      {{ message.content|linebreaksbr }}
+                    {% endif %}
+                    
+                    {% if message.has_attachments %}
+                      <div class="message-attachments mt-2">
+                        {% for attachment in message.attachments.all %}
+                          <div class="attachment-item mb-2">
+                            {% if attachment.file_type == 'image' %}
+                              <a href="{{ attachment.file.url }}" target="_blank">
+                                <img src="{{ attachment.file.url }}" 
+                                     alt="{{ attachment.file_name }}"
+                                     class="img-fluid rounded"
+                                     style="max-width: 300px; max-height: 300px;">
+                              </a>
+                            {% elif attachment.file_type == 'audio' %}
+                              <audio controls class="w-100">
+                                <source src="{{ attachment.file.url }}" type="{{ attachment.mime_type }}">
+                              </audio>
+                              <div class="small text-secondary">{{ attachment.file_name }}</div>
+                            {% elif attachment.file_type == 'video' %}
+                              <video controls class="w-100" style="max-width: 400px;">
+                                <source src="{{ attachment.file.url }}" type="{{ attachment.mime_type }}">
+                              </video>
+                              <div class="small text-secondary">{{ attachment.file_name }}</div>
+                            {% else %}
+                              <a href="{{ attachment.file.url }}" 
+                                 class="d-flex align-items-center text-decoration-none p-2 border rounded bg-light"
+                                 download="{{ attachment.file_name }}">
+                                <i class="bi-file-earmark fs-3 text-primary me-2"></i>
+                                <div>
+                                  <div class="fw-semibold">{{ attachment.file_name }}</div>
+                                  <div class="small text-secondary">{{ attachment.file_size|filesizeformat }}</div>
+                                </div>
+                              </a>
+                            {% endif %}
+                          </div>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
                   </div>
                 </div>
 
@@ -302,29 +341,39 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append(`file_${index}`, file);
       });
       
+      formData.append('chat_id', '{{ chat.id }}');
+      
       try {
-        // TODO: Реализовать API endpoint для загрузки файлов
-        // const response = await fetch('/communications/api/upload-message/', {
-        //   method: 'POST',
-        //   body: formData,
-        //   headers: {
-        //     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        //   }
-        // });
+        const response = await fetch('/communications/api/upload-message/', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          }
+        });
         
-        console.log('Отправка файлов пока не реализована на бэкенде');
-        alert('Отправка файлов будет реализована в следующем обновлении');
+        const result = await response.json();
         
-        // Очищаем форму
-        textarea.value = '';
-        selectedFiles = [];
-        updatePreview();
-        documentInput.value = '';
-        imageInput.value = '';
-        cameraInput.value = '';
-        audioInput.value = '';
+        if (result.ok) {
+          console.log('Сообщение с файлами отправлено:', result);
+          
+          // Очищаем форму
+          textarea.value = '';
+          selectedFiles = [];
+          updatePreview();
+          documentInput.value = '';
+          imageInput.value = '';
+          cameraInput.value = '';
+          audioInput.value = '';
+          
+          // Отображаем сообщение через WebSocket будет автоматически
+        } else {
+          console.error('Ошибка отправки:', result.error);
+          alert('Ошибка при отправке файлов: ' + result.error);
+        }
       } catch (error) {
         console.error('Ошибка отправки файлов:', error);
+        alert('Ошибка сети при отправке файлов');
       }
     } else if (content) {
       // Отправляем только текст (стандартное поведение формы)

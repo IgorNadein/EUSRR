@@ -42,6 +42,20 @@ def serialize_message(m: Message) -> dict:
         "has_attachments": m.has_attachments,
     }
     
+    # Вложения
+    if m.has_attachments:
+        attachments = []
+        for att in m.attachments.all():
+            attachments.append({
+                "id": att.id,
+                "file_name": att.file_name,
+                "file_type": att.file_type,
+                "file_url": att.file.url,
+                "file_size": att.file_size,
+                "mime_type": att.mime_type,
+            })
+        data["attachments"] = attachments
+    
     # Ответ на сообщение
     if m.reply_to_id:
         data["reply_to"] = {
