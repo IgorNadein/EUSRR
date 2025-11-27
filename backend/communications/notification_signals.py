@@ -56,7 +56,7 @@ def create_message_notifications(sender, instance, created, **kwargs):
                         title=f'Вас упомянул {author.get_full_name() or author.username}',
                         message=truncate_message(content, 100),
                         content_object=instance,
-                        action_url=f'/communications/chat/{chat.id}/?message={instance.id}',
+                        action_url=f'/communications/chats/{chat.id}/?message={instance.id}',
                         metadata={
                             'chat_id': chat.id,
                             'chat_name': get_chat_name(chat),
@@ -80,7 +80,7 @@ def create_message_notifications(sender, instance, created, **kwargs):
                 title=f'{author.get_full_name() or author.username} ответил на ваше сообщение',
                 message=truncate_message(content, 100),
                 content_object=instance,
-                action_url=f'/communications/chat/{chat.id}/?message={instance.id}',
+                action_url=f'/communications/chats/{chat.id}/?message={instance.id}',
                 metadata={
                     'chat_id': chat.id,
                     'chat_name': get_chat_name(chat),
@@ -109,7 +109,7 @@ def create_message_notifications(sender, instance, created, **kwargs):
                 title=f'Новое сообщение от {author.get_full_name() or author.username}',
                 message=truncate_message(content, 100),
                 content_object=instance,
-                action_url=f'/communications/chat/{chat.id}/',
+                action_url=f'/communications/chats/{chat.id}/',
                 metadata={
                     'chat_id': chat.id,
                     'chat_name': get_chat_name(chat),
@@ -152,7 +152,7 @@ def create_chat_added_notifications(sender, instance, action, pk_set, **kwargs):
                 title=f'Вас добавили в чат',
                 message=f'Вы были добавлены в чат "{get_chat_name(chat)}"',
                 content_object=chat,
-                action_url=f'/communications/chat/{chat.id}/',
+                action_url=f'/communications/chats/{chat.id}/',
                 metadata={
                     'chat_id': chat.id,
                     'chat_type': chat.type,

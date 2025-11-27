@@ -187,12 +187,8 @@
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
                     <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
-                      {% for u in chat.participants.all %}
-                        {% if u != user %}
-                          {% if not forloop.first %}, {% endif %}
-                          {{ u.get_full_name|default:u.username }}
-                        {% endif %}
-                      {% endfor %}
+                      {% comment %}Показываем имена участников (кроме текущего){% endcomment %}
+                      {% for u in chat.participants.all %}{% if u.id != user.id %}{% cycle '' ', ' %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}
                     </a>
                     <span class="badge bg-light text-dark border">
                       <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
