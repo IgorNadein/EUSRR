@@ -115,7 +115,7 @@ main.main {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   COMPOSER
+   COMPOSER (Modern Messenger Style)
 ────────────────────────────────────────────────────────────── */
 .chat-composer {
   position: sticky;
@@ -133,9 +133,118 @@ main.main {
 
 .composer-wrap {
   display: flex;
-  align-items: end;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.composer-input-group {
+  display: flex;
+  align-items: flex-end;
   gap: var(--space-1);
   flex-wrap: nowrap;
+}
+
+.composer-textarea-wrapper {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+}
+
+.composer-textarea {
+  resize: none;
+  max-height: 120px;
+  border-radius: 20px;
+  padding: 10px 16px;
+  line-height: 1.4;
+  border: 1px solid var(--bs-border-color);
+  background: var(--bs-body-bg);
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.composer-textarea:focus {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.15);
+}
+
+.btn-attachment {
+  padding: 8px 12px;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-attachment:hover {
+  background: var(--bs-secondary-bg);
+  transform: scale(1.05);
+}
+
+.btn-send {
+  padding: 10px 16px;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-send:hover {
+  transform: scale(1.05);
+}
+
+.btn-send i {
+  font-size: 1.1rem;
+}
+
+/* Превью вложений */
+.attachment-preview {
+  padding: var(--space-1) 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.attachment-item {
+  background: var(--bs-secondary-bg);
+  transition: background-color 0.15s ease;
+}
+
+.attachment-item:hover {
+  background: var(--bs-tertiary-bg);
+}
+
+.attachment-item .btn-ghost {
+  opacity: 0.6;
+}
+
+.attachment-item .btn-ghost:hover {
+  opacity: 1;
+}
+
+/* Выпадающее меню вложений */
+.dropdown-menu {
+  min-width: 200px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+}
+
+.dropdown-item {
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: background-color 0.15s ease;
+}
+
+.dropdown-item:hover {
+  background: var(--bs-secondary-bg);
+}
+
+.dropdown-item i {
+  width: 24px;
 }
 
 .composer-tools {

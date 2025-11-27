@@ -110,12 +110,68 @@
           <div id="typing" class="small text-secondary ps-1 pt-1 d-none">Собеседник печатает…</div>
           <form method="post" id="chatForm" class="composer-wrap">
             {% csrf_token %}
-            <div class="composer-tools">
-              <button type="button" class="btn btn-ghost" title="Вложить файл"><i class="bi-paperclip"></i></button>
-              <button type="button" class="btn btn-ghost" title="Камера"><i class="bi-camera"></i></button>
+            <div class="composer-input-group">
+              <!-- Кнопка вложений с выпадающим меню -->
+              <div class="dropdown">
+                <button type="button" class="btn btn-ghost btn-attachment" 
+                        id="attachmentDropdown" 
+                        data-bs-toggle="dropdown" 
+                        aria-expanded="false"
+                        title="Прикрепить файл">
+                  <i class="bi-paperclip"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="attachmentDropdown">
+                  <li>
+                    <a class="dropdown-item" href="#" id="attachDocument">
+                      <i class="bi-file-earmark text-primary me-2"></i>
+                      Документ
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="#" id="attachImage">
+                      <i class="bi-image text-success me-2"></i>
+                      Фото или видео
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="#" id="attachCamera">
+                      <i class="bi-camera text-info me-2"></i>
+                      Камера
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="#" id="attachAudio">
+                      <i class="bi-mic text-danger me-2"></i>
+                      Аудио
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              
+              <!-- Скрытые input для файлов -->
+              <input type="file" id="documentInput" class="d-none" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar">
+              <input type="file" id="imageInput" class="d-none" accept="image/*,video/*" multiple>
+              <input type="file" id="cameraInput" class="d-none" accept="image/*" capture="environment">
+              <input type="file" id="audioInput" class="d-none" accept="audio/*">
+              
+              <!-- Поле ввода текста -->
+              <div class="composer-textarea-wrapper">
+                <textarea name="content" 
+                          id="id_content" 
+                          class="form-control composer-textarea" 
+                          rows="1" 
+                          placeholder="Напишите сообщение…" 
+                          required></textarea>
+              </div>
+              
+              <!-- Кнопка отправки -->
+              <button type="submit" class="btn btn-primary btn-send" title="Отправить">
+                <i class="bi-send-fill"></i>
+              </button>
             </div>
-            <textarea name="content" id="id_content" class="form-control flex-grow-1" rows="1" placeholder="Напишите сообщение…" required></textarea>
-            <button type="submit" class="btn btn-primary"><i class="bi-send"></i></button>
+            
+            <!-- Превью прикрепленных файлов -->
+            <div id="attachmentPreview" class="attachment-preview d-none"></div>
           </form>
         </div>
       </article>
@@ -124,5 +180,97 @@
   </div>
 </div>
 
+<script>
+// Обработка вложений
+document.addEventListener('DOMContentLoaded', function() {
+  const attachDocument = document.getElementById('attachDocument');
+  const attachImage = document.getElementById('attachImage');
+  const attachCamera = document.getElementById('attachCamera');
+  const attachAudio = document.getElementById('attachAudio');
+  
+  const documentInput = document.getElementById('documentInput');
+  const imageInput = document.getElementById('imageInput');
+  const cameraInput = document.getElementById('cameraInput');
+  const audioInput = document.getElementById('audioInput');
+  
+  const attachmentPreview = document.getElementById('attachmentPreview');
+  
+  // Обработчики кликов на пункты меню
+  attachDocument?.addEventListener('click', (e) => {
+    e.preventDefault();
+    documentInput.click();
+  });
+  
+  attachImage?.addEventListener('click', (e) => {
+    e.preventDefault();
+    imageInput.click();
+  });
+  
+  attachCamera?.addEventListener('click', (e) => {
+    e.preventDefault();
+    cameraInput.click();
+  });
+  
+  attachAudio?.addEventListener('click', (e) => {
+    e.preventDefault();
+    audioInput.click();
+  });
+  
+  // Обработка выбора файлов
+  function handleFileSelect(files) {
+    if (!files || files.length === 0) return;
+    
+    attachmentPreview.classList.remove('d-none');
+    attachmentPreview.innerHTML = '';
+    
+    Array.from(files).forEach((file, index) => {
+      const fileItem = document.createElement('div');
+      fileItem.className = 'attachment-item d-flex align-items-center gap-2 p-2 border rounded mb-2';
+      
+      // Иконка в зависимости от типа файла
+      let icon = 'bi-file-earmark';
+      if (file.type.startsWith('image/')) icon = 'bi-image';
+      else if (file.type.startsWith('video/')) icon = 'bi-camera-video';
+      else if (file.type.startsWith('audio/')) icon = 'bi-music-note';
+      else if (file.type.includes('pdf')) icon = 'bi-file-pdf';
+      
+      fileItem.innerHTML = `
+        <i class="${icon} fs-4 text-primary"></i>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">${file.name}</div>
+          <div class="small text-secondary">${formatFileSize(file.size)}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="removeAttachment(${index})">
+          <i class="bi-x-lg"></i>
+        </button>
+      `;
+      
+      attachmentPreview.appendChild(fileItem);
+    });
+  }
+  
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+  
+  documentInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
+  imageInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
+  cameraInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
+  audioInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
+  
+  // Глобальная функция для удаления вложения
+  window.removeAttachment = function(index) {
+    // TODO: Реализовать удаление конкретного файла
+    attachmentPreview.classList.add('d-none');
+    attachmentPreview.innerHTML = '';
+    documentInput.value = '';
+    imageInput.value = '';
+    cameraInput.value = '';
+    audioInput.value = '';
+  };
+});
+</script>
 
 {% endblock %}
