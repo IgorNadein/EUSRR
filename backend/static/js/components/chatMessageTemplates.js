@@ -176,8 +176,9 @@ export function createMessageElement(msg, options = {}) {
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
       } else if (att.file_type === 'video') {
         attachmentsHTML += `
-          <video controls class="w-100" style="max-width: 400px;">
+          <video controls preload="metadata" class="w-100" style="max-width: 400px;">
             <source src="${att.file_url}" type="${att.mime_type}">
+            Ваш браузер не поддерживает видео.
           </video>
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
       } else {
@@ -220,6 +221,16 @@ export function createMessageElement(msg, options = {}) {
     wrap.innerHTML = `<a class="me-2 text-decoration-none" href="${link}">${ava}</a>${bubble}`;
   } else {
     wrap.innerHTML = `${bubble}<a class="ms-2 text-decoration-none" href="${profileUrl}">${ava}</a>`;
+  }
+
+  // Принудительно загружаем видео после добавления в DOM
+  if (msg.has_attachments && msg.attachments && msg.attachments.length > 0) {
+    setTimeout(() => {
+      const videos = wrap.querySelectorAll('video');
+      videos.forEach(video => {
+        video.load();
+      });
+    }, 100);
   }
 
   return wrap;

@@ -107,8 +107,9 @@
                               </audio>
                               <div class="small text-secondary">{{ attachment.file_name }}</div>
                             {% elif attachment.file_type == 'video' %}
-                              <video controls class="w-100" style="max-width: 400px;">
+                              <video controls preload="metadata" class="w-100" style="max-width: 400px;">
                                 <source src="{{ attachment.file.url }}" type="{{ attachment.mime_type }}">
+                                Ваш браузер не поддерживает видео.
                               </video>
                               <div class="small text-secondary">{{ attachment.file_name }}</div>
                             {% else %}
