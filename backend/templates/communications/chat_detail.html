@@ -220,6 +220,22 @@
 </div>
 
 <script>
+// Функция для получения CSRF токена из cookie
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
 // Обработка вложений
 document.addEventListener('DOMContentLoaded', function() {
   const attachDocument = document.getElementById('attachDocument');
@@ -343,12 +359,14 @@ document.addEventListener('DOMContentLoaded', function() {
       
       formData.append('chat_id', '{{ chat.id }}');
       
+      const csrftoken = getCookie('csrftoken');
+      
       try {
         const response = await fetch('/api/v1/communications/upload-message/', {
           method: 'POST',
           body: formData,
           headers: {
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            'X-CSRFToken': csrftoken
           }
         });
         

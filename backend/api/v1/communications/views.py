@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from communications.models import (
@@ -17,6 +18,7 @@ from communications.models import (
 
 @login_required
 @require_POST
+@ensure_csrf_cookie
 def upload_message_with_attachments(request):
     """Отправка сообщения с вложениями"""
     chat_id = request.POST.get('chat_id')
