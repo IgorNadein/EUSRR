@@ -55,12 +55,19 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         return False
     if chat.type == "global":
         return True
-    if chat.type == "private":
+    if chat.type in ("private", "group"):  # Личные и групповые чаты через participants
         return chat.participants.filter(pk=user.pk).exists()
     if chat.type == "department" and chat.department_id:
         return chat.get_participants.filter(pk=user.pk).exists()
-    if chat.type in ["group", "channel", "announcement"]:
-        return ChatMembership.objects.filter(chat=chat, user=user).exists()
+    if chat.type in ("channel", "announcement"):
+        # Для каналов и объявлений может быть include_all или membership
+        if chat.include_all_employees:
+            return user.is_active
+        # Проверяем и participants и membership для гибкости
+        return (
+            chat.participants.filter(pk=user.pk).exists()
+            or ChatMembership.objects.filter(chat=chat, user=user).exists()
+        )
     return False
 
 
@@ -306,19 +313,15 @@ def chat_mark_read(request, pk: int):
     def has_access(c: Chat, u) -> bool:
         if c.type == "global":
             return True
-        if c.type == "private":
+        if c.type in ("private", "group"):  # Групповые и личные чаты
             return c.participants.filter(pk=u.pk).exists()
         if c.type == "department" and c.department_id:
-            has = c.get_participants.filter(pk=u.pk).exists()
-            # Временное логирование для отладки
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"chat_mark_read access check: chat_id={c.id}, "
-                f"type={c.type}, dept_id={c.department_id}, "
-                f"user_id={u.id}, has_access={has}"
-            )
-            return has
+            return c.get_participants.filter(pk=u.pk).exists()
+        if c.type in ("channel", "announcement"):
+            # Для каналов и объявлений проверяем participants или include_all
+            if c.include_all_employees:
+                return u.is_active
+            return c.participants.filter(pk=u.pk).exists()
         return False
 
     if not has_access(chat, user):
