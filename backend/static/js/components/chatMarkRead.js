@@ -207,6 +207,7 @@ export function initChatMarkRead(options = {}) {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrf,
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'
         },
         body: new URLSearchParams({ upto_ts: String(ts) }),

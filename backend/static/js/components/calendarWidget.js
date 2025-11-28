@@ -4,8 +4,11 @@
  * Поддерживает: компания + отделы пользователя, повторяющиеся события, недельный список
  * 
  * @module calendarWidget
- * @version 1.0.0
+ * @version 2.0.0
  */
+
+import { getCalendarEvents, invalidateCalendarEvents } from '../api/calendarApi.js';
+import { getMyDepartments } from '../api/departmentsApi.js';
 
 /**
  * Инициализация виджета календаря
@@ -307,8 +310,10 @@ export function initCalendarWidget(options = {}) {
 
     let raw = [];
     try {
-      raw = await fetchJSON(API_MY_DEPTS);
+      // Используем кешированный API вместо прямого fetch
+      raw = await getMyDepartments();
     } catch (e) {
+      console.error('[CalendarWidget] Failed to load departments:', e);
       raw = [];
     }
 
@@ -422,12 +427,21 @@ export function initCalendarWidget(options = {}) {
   /* ===== Комбинированная загрузка событий (occurrences) ===== */
   // События для текущего контекста (используется календарём)
   async function fetchEventsCombined(start, end) {
-    let base = eventsUrl(state.type === 'dept' ? state.deptId : null);
-    const withRange = addRange(base, start, end);
     try {
-      return await fetchJSON(withRange);
+      const params = {
+        start: ymdLocal(start),
+        end: ymdLocal(end)
+      };
+      
+      // Добавляем department_id если нужно
+      if (state.type === 'dept' && state.deptId) {
+        params.department_id = state.deptId;
+      }
+      
+      // Используем кешированный API
+      return await getCalendarEvents(params);
     } catch (e) {
-      console.error('Fetch events failed', e);
+      console.error('[CalendarWidget] Fetch events failed', e);
       return [];
     }
   }
@@ -440,28 +454,38 @@ export function initCalendarWidget(options = {}) {
         await loadDepartments();
       } catch (_) {}
     }
+    
+    const startStr = ymdLocal(start);
+    const endStr = ymdLocal(end);
+    
     // Формируем список источников с подписью
     const sources = [
-      { url: addRange(eventsUrl(null), start, end), label: 'Компания', type: 'company', id: null },
+      { params: { start: startStr, end: endStr }, label: 'Компания', type: 'company', id: null },
       ...departments.map((d) => ({
-        url: addRange(eventsUrl(d.id), start, end),
+        params: { start: startStr, end: endStr, department_id: d.id },
         label: d.name,
         type: 'dept',
         id: d.id,
       })),
     ];
+    
+    // Загружаем все источники параллельно (с кешированием!)
     const chunks = await Promise.all(
       sources.map((s) =>
-        fetchJSON(s.url)
+        getCalendarEvents(s.params)
           .then((arr) =>
             (arr || []).map((ev) => ({
               ...ev,
               __source: { label: s.label, type: s.type, id: s.id },
             }))
           )
-          .catch(() => [])
+          .catch((err) => {
+            console.error(`[CalendarWidget] Failed to load events for ${s.label}:`, err);
+            return [];
+          })
       )
     );
+    
     const merged = chunks.flat();
     // Дедуп по устойчивому ключу
     const seen = new Set();
