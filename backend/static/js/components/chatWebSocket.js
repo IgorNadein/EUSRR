@@ -27,6 +27,11 @@ import {
  * @param {Object} [options.markReadApi] - API из chatMarkRead для интеграции
  * @returns {Object|null} API WebSocket или null если параметры невалидны
  */
+
+// Храним активное соединение для предотвращения дубликатов
+let activeWebSocket = null;
+let lastOptions = null;
+
 export function initChatWebSocket(options = {}) {
   const {
     chatId,
@@ -47,6 +52,15 @@ export function initChatWebSocket(options = {}) {
     console.warn('ChatWebSocket: chatId and meId are required');
     return null;
   }
+  
+  // Закрываем существующее соединение перед созданием нового
+  if (activeWebSocket && activeWebSocket.readyState !== WebSocket.CLOSED) {
+    console.log('ChatWebSocket: closing existing connection');
+    activeWebSocket.close(1000, 'Reconnecting');
+  }
+  
+  // Сохраняем опции для переподключения
+  lastOptions = options;
 
   // Получение элементов
   const scrollEl = document.getElementById(scrollContainerId);
@@ -66,6 +80,14 @@ export function initChatWebSocket(options = {}) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const wsUrl = `${proto}://${location.host}/ws/chat/${chatId}/`;
   const ws = new WebSocket(wsUrl);
+  
+  // Сохраняем активное соединение
+  activeWebSocket = ws;
+  
+  // Настройки переподключения
+  let reconnectAttempts = 0;
+  const maxReconnectAttempts = 5;
+  const reconnectDelay = 3000;
 
   /**
    * Инициализирует последний день из DOM
@@ -166,6 +188,14 @@ export function initChatWebSocket(options = {}) {
   }
 
   /**
+   * Обрабатывает успешное подключение
+   */
+  ws.addEventListener('open', () => {
+    console.log('ChatWebSocket: connection established');
+    reconnectAttempts = 0; // Сбрасываем счетчик при успешном подключении
+  });
+
+  /**
    * Обрабатывает входящие сообщения WebSocket
    */
   ws.addEventListener('message', (e) => {
@@ -189,9 +219,40 @@ export function initChatWebSocket(options = {}) {
   /**
    * Обрабатывает закрытие соединения
    */
-  ws.addEventListener('close', () => {
-    console.log('ChatWebSocket: connection closed, reloading in 2s...');
-    setTimeout(() => location.reload(), 2000);
+  ws.addEventListener('close', (event) => {
+    console.log('ChatWebSocket: connection closed', event.code, event.reason);
+    
+    // Не переподключаемся если закрытие было нормальным (код 1000)
+    if (event.code === 1000) {
+      console.log('ChatWebSocket: normal closure, not reconnecting');
+      return;
+    }
+    
+    // Пробуем переподключиться
+    if (reconnectAttempts < maxReconnectAttempts) {
+      reconnectAttempts++;
+      console.log(`ChatWebSocket: reconnecting in ${reconnectDelay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+      
+      setTimeout(() => {
+        if (document.querySelector('[data-chat-ws]')) {
+          console.log('ChatWebSocket: attempting to reconnect...');
+          // Переинициализируем WebSocket с сохраненными опциями
+          initChatWebSocket(lastOptions);
+        }
+      }, reconnectDelay);
+    } else {
+      console.warn('ChatWebSocket: max reconnect attempts reached');
+      // Показываем уведомление пользователю вместо перезагрузки
+      const notification = document.createElement('div');
+      notification.className = 'alert alert-warning position-fixed bottom-0 start-50 translate-middle-x mb-3';
+      notification.style.zIndex = '9999';
+      notification.innerHTML = `
+        <i class="bi-exclamation-triangle me-2"></i>
+        Соединение с сервером потеряно. 
+        <button class="btn btn-sm btn-link" onclick="location.reload()">Обновить страницу</button>
+      `;
+      document.body.appendChild(notification);
+    }
   });
 
   /**
@@ -199,6 +260,7 @@ export function initChatWebSocket(options = {}) {
    */
   ws.addEventListener('error', (err) => {
     console.error('ChatWebSocket: connection error', err);
+    // Не перезагружаем страницу при ошибке - дожидаемся события 'close'
   });
 
   /**

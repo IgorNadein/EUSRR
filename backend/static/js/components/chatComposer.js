@@ -60,6 +60,7 @@ class ChatComposer {
 		}
 
 		this.bindEvents();
+		this.bindEmojiPicker();
 		form.dataset.composerBound = '1';
 	}
 
@@ -93,6 +94,42 @@ class ChatComposer {
 		}
 
 		window.addEventListener('chat:message-received', this.boundMessageHandler);
+	}
+
+	bindEmojiPicker() {
+		// Новый emoji-picker-element
+		const picker = this.form.querySelector('[data-emoji-picker]');
+		if (picker) {
+			picker.addEventListener('emoji-click', (event) => {
+				event.preventDefault();
+				const emoji = event.detail?.unicode;
+				if (emoji) {
+					this.insertEmoji(emoji);
+				}
+			});
+
+			// Предотвращаем закрытие dropdown при клике внутри emoji-picker
+			const emojiDropdown = picker.closest('.dropdown-menu');
+			if (emojiDropdown) {
+				emojiDropdown.addEventListener('click', (event) => {
+					event.stopPropagation();
+				});
+			}
+		}
+	}
+
+	insertEmoji(emoji) {
+		if (!this.textarea) return;
+		const textarea = this.textarea;
+		const start = textarea.selectionStart ?? textarea.value.length;
+		const end = textarea.selectionEnd ?? textarea.value.length;
+		const value = textarea.value || '';
+		const emojiText = typeof emoji === 'string' ? emoji : emoji.emoji || emoji.unicode || emoji;
+		textarea.value = `${value.slice(0, start)}${emojiText}${value.slice(end)}`;
+		const caret = start + emojiText.length;
+		textarea.focus();
+		textarea.setSelectionRange?.(caret, caret);
+		textarea.dispatchEvent(new Event('input', { bubbles: true }));
 	}
 
 	handleFileSelect(event) {

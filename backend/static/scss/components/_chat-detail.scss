@@ -150,8 +150,16 @@ main.main {
   color: var(--bs-body-color);
 }
 
+.chat-composer .btn-emoji {
+  color: var(--bs-body-color);
+}
+
 .chat-composer .btn-send {
   box-shadow: 0 4px 16px rgba(var(--bs-primary-rgb), 0.35);
+}
+
+.chat-composer .message-emoji .dropdown-menu {
+  background: var(--bs-body-bg);
 }
 
 /* Превью вложений */
@@ -331,10 +339,51 @@ main.main {
   bottom: 4.25rem;
   z-index: 2;
   display: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  border: none !important;
+  background: var(--bs-primary) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 16px rgba(var(--bs-primary-rgb), 0.25) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  
+  i {
+    font-size: 1.25rem;
+  }
+  
+  &:hover {
+    transform: scale(1.08);
+    box-shadow: 0 6px 20px rgba(var(--bs-primary-rgb), 0.35) !important;
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
 }
 
 .scroll-to-bottom.show {
-  display: block;
+  display: inline-flex;
+  opacity: 1;
+  pointer-events: auto;
+  animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────
