@@ -148,7 +148,7 @@
         <!-- Композер -->
         <div class="chat-composer">
           <div id="typing" class="small text-secondary ps-1 pt-1 d-none">Собеседник печатает…</div>
-          <form id="chatForm" class="composer-wrap">
+          <form id="chatForm" class="composer-wrap" action="javascript:void(0);" onsubmit="return false;">
             {% csrf_token %}
             <div class="composer-input-group">
               <!-- Кнопка вложений с выпадающим меню -->
@@ -219,212 +219,31 @@
   </div>
 </div>
 
+{% block extra_js %}
+<script src="{% static 'js/components/chatAvatarMap.js' %}"></script>
+<script src="{% static 'js/components/chatMessageTemplates.js' %}"></script>
+<script src="{% static 'js/components/chatWebSocket.js' %}"></script>
+<script src="{% static 'js/components/chatComposer.js' %}"></script>
+<script src="{% static 'js/chat-detail-enhanced.js' %}"></script>
+<script src="{% static 'js/components/textareaAutogrow.js' %}"></script>
+
 <script>
-// Функция для получения CSRF токена из cookie
-function getCookie(name) {
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';');
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim();
-      if (cookie.substring(0, name.length + 1) === (name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
-      }
+  // Инициализация компонентов
+  document.addEventListener('DOMContentLoaded', function() {
+    // 1. Авто-высота поля ввода
+    if (window.initTextareaAutogrow) {
+      window.initTextareaAutogrow();
     }
-  }
-  return cookieValue;
-}
 
-// Обработка вложений
-document.addEventListener('DOMContentLoaded', function() {
-  const attachDocument = document.getElementById('attachDocument');
-  const attachImage = document.getElementById('attachImage');
-  const attachCamera = document.getElementById('attachCamera');
-  const attachAudio = document.getElementById('attachAudio');
-  
-  const documentInput = document.getElementById('documentInput');
-  const imageInput = document.getElementById('imageInput');
-  const cameraInput = document.getElementById('cameraInput');
-  const audioInput = document.getElementById('audioInput');
-  
-  const attachmentPreview = document.getElementById('attachmentPreview');
-  const chatForm = document.getElementById('chatForm');
-  
-  // Массив для хранения выбранных файлов
-  let selectedFiles = [];
-  
-  // Обработчики кликов на пункты меню
-  attachDocument?.addEventListener('click', (e) => {
-    e.preventDefault();
-    documentInput.click();
-  });
-  
-  attachImage?.addEventListener('click', (e) => {
-    e.preventDefault();
-    imageInput.click();
-  });
-  
-  attachCamera?.addEventListener('click', (e) => {
-    e.preventDefault();
-    cameraInput.click();
-  });
-  
-  attachAudio?.addEventListener('click', (e) => {
-    e.preventDefault();
-    audioInput.click();
-  });
-  
-  // Обработка выбора файлов
-  function handleFileSelect(files) {
-    if (!files || files.length === 0) return;
-    
-    // Добавляем новые файлы к существующим
-    selectedFiles = [...selectedFiles, ...Array.from(files)];
-    
-    updatePreview();
-  }
-  
-  function updatePreview() {
-    if (selectedFiles.length === 0) {
-      attachmentPreview.classList.add('d-none');
-      attachmentPreview.innerHTML = '';
-      return;
-    }
-    
-    attachmentPreview.classList.remove('d-none');
-    attachmentPreview.innerHTML = '';
-    
-    selectedFiles.forEach((file, index) => {
-      const fileItem = document.createElement('div');
-      fileItem.className = 'attachment-item d-flex align-items-center gap-2 p-2 border rounded mb-2';
-      
-      // Иконка в зависимости от типа файла
-      let icon = 'bi-file-earmark';
-      if (file.type.startsWith('image/')) icon = 'bi-image';
-      else if (file.type.startsWith('video/')) icon = 'bi-camera-video';
-      else if (file.type.startsWith('audio/')) icon = 'bi-music-note';
-      else if (file.type.includes('pdf')) icon = 'bi-file-pdf';
-      
-      fileItem.innerHTML = `
-        <i class="${icon} fs-4 text-primary"></i>
-        <div class="flex-grow-1">
-          <div class="fw-semibold">${file.name}</div>
-          <div class="small text-secondary">${formatFileSize(file.size)}</div>
-        </div>
-        <button type="button" class="btn btn-sm btn-ghost" data-remove-index="${index}">
-          <i class="bi-x-lg"></i>
-        </button>
-      `;
-      
-      // Обработчик удаления конкретного файла
-      const removeBtn = fileItem.querySelector('[data-remove-index]');
-      removeBtn.addEventListener('click', () => removeAttachment(index));
-      
-      attachmentPreview.appendChild(fileItem);
-    });
-  }
-  
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
-  
-  function removeAttachment(index) {
-    selectedFiles.splice(index, 1);
-    updatePreview();
-  }
-  
-  documentInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
-  imageInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
-  cameraInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
-  audioInput?.addEventListener('change', (e) => handleFileSelect(e.target.files));
-  
-  // Обработка отправки формы с файлами
-  chatForm?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    // Получаем FormData из самой формы для захвата всех данных
-    const formDataFromForm = new FormData(chatForm);
-    const contentFromForm = formDataFromForm.get('content') || '';
-    const content = contentFromForm.trim();
-    
-    console.log('DEBUG: content from FormData:', content);
-    console.log('DEBUG: content length:', content.length);
-    console.log('DEBUG: selectedFiles.length:', selectedFiles.length);
-    
-    // Проверка: должен быть либо текст, либо файлы
-    if (!content && selectedFiles.length === 0) {
-      alert('Введите текст сообщения или прикрепите файл');
-      return;
-    }
-    
-    // Всегда отправляем через API (с файлами или без)
-    const formData = new FormData();
-    formData.append('content', content);
-    
-    selectedFiles.forEach((file, index) => {
-      formData.append(`file_${index}`, file);
-      console.log(`DEBUG: Adding file ${index}:`, file.name, file.size);
-    });
-    
-    formData.append('chat_id', '{{ chat.id }}');
-    
-    // Выводим все что в FormData
-    console.log('DEBUG: FormData содержит:');
-    for (let [key, value] of formData.entries()) {
-      if (value instanceof File) {
-        console.log(`  ${key}: [File] ${value.name} (${value.size} bytes)`);
-      } else {
-        console.log(`  ${key}: ${value}`);
-      }
-    }
-    
-    const csrftoken = getCookie('csrftoken');
-    console.log('CSRF token:', csrftoken);
-    
-    if (!csrftoken) {
-      console.error('CSRF token not found in cookies!');
-      alert('Ошибка: CSRF токен не найден. Обновите страницу.');
-      return;
-    }
-    
-    try {
-      const response = await fetch('/api/v1/communications/upload-message/', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'X-CSRFToken': csrftoken
-        }
+    // 2. Композер сообщений (отправка текста и файлов)
+    if (window.ChatComposer) {
+      const composer = new ChatComposer({
+        chatId: '{{ chat.id }}',
+        apiEndpoint: '/api/v1/communications/upload-message/'
       });
-      
-      const result = await response.json();
-      
-      if (result.ok) {
-        console.log('Сообщение отправлено:', result);
-        
-        // Очищаем форму
-        const textarea = document.getElementById('id_content');
-        if (textarea) textarea.value = '';
-        selectedFiles = [];
-        updatePreview();
-        if (documentInput) documentInput.value = '';
-        if (imageInput) imageInput.value = '';
-        if (cameraInput) cameraInput.value = '';
-        if (audioInput) audioInput.value = '';
-        
-        // Отображаем сообщение через WebSocket будет автоматически
-      } else {
-        console.error('Ошибка отправки:', result.error);
-        alert('Ошибка при отправке: ' + result.error);
-      }
-    } catch (error) {
-      console.error('Ошибка отправки:', error);
-      alert('Ошибка сети при отправке сообщения');
+    } else {
+      console.error('ChatComposer not loaded');
     }
   });
-});
 </script>
-
 {% endblock %}

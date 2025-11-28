@@ -118,14 +118,10 @@ class ChatListView(LoginRequiredMixin, ListView):
         return qs
 
 
-class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
+class ChatDetailView(LoginRequiredMixin, DetailView):
     model = Chat
     template_name = "communications/chat_detail.html"
     context_object_name = "chat"
-    form_class = MessageForm
-
-    def get_success_url(self):
-        return reverse("communications:chat_detail", kwargs={"pk": self.object.pk})
 
     def _user_has_access(self, chat: Chat, user) -> bool:
         if chat.type == "global":
@@ -157,7 +153,6 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         context["messages"] = chat.messages.select_related("author").order_by(
             "created_at"
         )
-        context["form"] = context.get("form", MessageForm())
         context["participants"] = chat.get_participants
 
         # отдаём клиенту last_read_at и «первое непрочитанное»
@@ -189,40 +184,6 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
             context["unread_from_ts"] = None
 
         return context
-
-    def post(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        user = request.user
-
-        if not ChatDetailView._user_has_access(self, self.object, user):
-            from django.http import HttpResponseForbidden
-
-            return HttpResponseForbidden("forbidden")
-
-        form = self.get_form()
-        if form.is_valid():
-            msg = form.save(commit=False)
-            msg.chat = self.object
-            msg.author = user
-            msg.save()
-
-            # автору сразу «прочитано» — делаем безопасно
-            ts = msg.created_at
-            updated = ChatReadState.objects.filter(
-                chat=self.object, user=user, last_read_at__lt=ts
-            ).update(last_read_at=ts)
-            if not updated:
-                try:
-                    ChatReadState.objects.create(
-                        chat=self.object, user=user, last_read_at=ts
-                    )
-                except IntegrityError:
-                    ChatReadState.objects.filter(
-                        chat=self.object, user=user, last_read_at__lt=ts
-                    ).update(last_read_at=ts)
-
-            return redirect(self.get_success_url())
-        return self.render_to_response(self.get_context_data(form=form))
 
 
 def start_private_chat(request, employee_pk):
