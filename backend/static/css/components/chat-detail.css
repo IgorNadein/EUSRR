@@ -270,10 +270,20 @@ main.main {
 }
 
 .message-attachments .text-secondary {
+  color: inherit;
   opacity: 0.7;
 }
 
-.bubble-me .message-attachments .text-primary {
+.bubble-me .message-attachments .text-secondary {
+  color: rgba(255, 255, 255, 0.9) !important;
+  opacity: 1;
+}
+
+.bubble-me .message-attachments .fw-semibold {
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.bubble-me .message-attachments i {
   color: rgba(255, 255, 255, 0.9) !important;
 }
 

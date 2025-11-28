@@ -148,7 +148,7 @@
         <!-- Композер -->
         <div class="chat-composer">
           <div id="typing" class="small text-secondary ps-1 pt-1 d-none">Собеседник печатает…</div>
-          <form method="post" id="chatForm" class="composer-wrap">
+          <form id="chatForm" class="composer-wrap">
             {% csrf_token %}
             <div class="composer-input-group">
               <!-- Кнопка вложений с выпадающим меню -->
@@ -354,62 +354,56 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
     
-    // Если есть вложения, отправляем через API
-    if (selectedFiles.length > 0) {
-      const formData = new FormData();
-      // Если текст пустой, отправляем пустую строку
-      formData.append('content', content || '');
-      
-      selectedFiles.forEach((file, index) => {
-        formData.append(`file_${index}`, file);
+    // Всегда отправляем через API (с файлами или без)
+    const formData = new FormData();
+    formData.append('content', content || '');
+    
+    selectedFiles.forEach((file, index) => {
+      formData.append(`file_${index}`, file);
+    });
+    
+    formData.append('chat_id', '{{ chat.id }}');
+    
+    const csrftoken = getCookie('csrftoken');
+    console.log('CSRF token:', csrftoken);
+    
+    if (!csrftoken) {
+      console.error('CSRF token not found in cookies!');
+      alert('Ошибка: CSRF токен не найден. Обновите страницу.');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/v1/communications/upload-message/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-CSRFToken': csrftoken
+        }
       });
       
-      formData.append('chat_id', '{{ chat.id }}');
+      const result = await response.json();
       
-      const csrftoken = getCookie('csrftoken');
-      console.log('CSRF token:', csrftoken);
-      
-      if (!csrftoken) {
-        console.error('CSRF token not found in cookies!');
-        alert('Ошибка: CSRF токен не найден. Обновите страницу.');
-        return;
-      }
-      
-      try {
-        const response = await fetch('/api/v1/communications/upload-message/', {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'X-CSRFToken': csrftoken
-          }
-        });
+      if (result.ok) {
+        console.log('Сообщение отправлено:', result);
         
-        const result = await response.json();
+        // Очищаем форму
+        textarea.value = '';
+        selectedFiles = [];
+        updatePreview();
+        documentInput.value = '';
+        imageInput.value = '';
+        cameraInput.value = '';
+        audioInput.value = '';
         
-        if (result.ok) {
-          console.log('Сообщение с файлами отправлено:', result);
-          
-          // Очищаем форму
-          textarea.value = '';
-          selectedFiles = [];
-          updatePreview();
-          documentInput.value = '';
-          imageInput.value = '';
-          cameraInput.value = '';
-          audioInput.value = '';
-          
-          // Отображаем сообщение через WebSocket будет автоматически
-        } else {
-          console.error('Ошибка отправки:', result.error);
-          alert('Ошибка при отправке файлов: ' + result.error);
-        }
-      } catch (error) {
-        console.error('Ошибка отправки файлов:', error);
-        alert('Ошибка сети при отправке файлов');
+        // Отображаем сообщение через WebSocket будет автоматически
+      } else {
+        console.error('Ошибка отправки:', result.error);
+        alert('Ошибка при отправке: ' + result.error);
       }
-    } else if (content) {
-      // Отправляем только текст (стандартное поведение формы)
-      chatForm.submit();
+    } catch (error) {
+      console.error('Ошибка отправки:', error);
+      alert('Ошибка сети при отправке сообщения');
     }
   });
 });
