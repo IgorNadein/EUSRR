@@ -223,14 +223,42 @@ export function createMessageElement(msg, options = {}) {
     wrap.innerHTML = `${bubble}<a class="ms-2 text-decoration-none" href="${profileUrl}">${ava}</a>`;
   }
 
-  // Принудительно загружаем видео после добавления в DOM
+  // Принудительно создаём и загружаем видео элементы после добавления в DOM
   if (msg.has_attachments && msg.attachments && msg.attachments.length > 0) {
-    setTimeout(() => {
-      const videos = wrap.querySelectorAll('video');
-      videos.forEach(video => {
-        video.load();
-      });
-    }, 100);
+    // Находим все video placeholder'ы и заменяем их реальными элементами
+    const videoContainers = wrap.querySelectorAll('.attachment-item');
+    msg.attachments.forEach((att, index) => {
+      if (att.file_type === 'video') {
+        const container = videoContainers[index];
+        if (container) {
+          // Очищаем контейнер
+          container.innerHTML = '';
+          
+          // Создаём video элемент программно
+          const video = document.createElement('video');
+          video.controls = true;
+          video.preload = 'metadata';
+          video.className = 'w-100';
+          video.style.maxWidth = '400px';
+          
+          const source = document.createElement('source');
+          source.src = att.file_url;
+          source.type = att.mime_type;
+          
+          video.appendChild(source);
+          
+          const textDiv = document.createElement('div');
+          textDiv.className = 'small text-secondary';
+          textDiv.textContent = att.file_name;
+          
+          container.appendChild(video);
+          container.appendChild(textDiv);
+          
+          // Загружаем видео
+          video.load();
+        }
+      }
+    });
   }
 
   return wrap;

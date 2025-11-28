@@ -200,8 +200,7 @@
                           id="id_content" 
                           class="form-control composer-textarea" 
                           rows="1" 
-                          placeholder="Напишите сообщение…" 
-                          required></textarea>
+                          placeholder="Напишите сообщение…"></textarea>
               </div>
               
               <!-- Кнопка отправки -->
@@ -349,10 +348,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const textarea = document.getElementById('id_content');
     const content = textarea.value.trim();
     
+    // Проверка: должен быть либо текст, либо файлы
+    if (!content && selectedFiles.length === 0) {
+      alert('Введите текст сообщения или прикрепите файл');
+      return;
+    }
+    
     // Если есть вложения, отправляем через API
     if (selectedFiles.length > 0) {
       const formData = new FormData();
-      formData.append('content', content || 'Вложение');
+      // Если текст пустой, отправляем пустую строку
+      formData.append('content', content || '');
       
       selectedFiles.forEach((file, index) => {
         formData.append(`file_${index}`, file);
