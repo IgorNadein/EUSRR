@@ -129,13 +129,15 @@ class NotificationManager {
     handleMessage(event) {
         try {
             const data = JSON.parse(event.data);
+            
+            // Игнорируем ping сообщения для keepalive (не логируем)
+            if (data.type === 'ping') {
+                return;
+            }
+            
             console.log('[Notifications] Received:', data);
             
             switch (data.type) {
-                case 'ping':
-                    // Игнорируем ping сообщения для keepalive
-                    return;
-                    
                 case 'unread_count':
                     this.updateBadge(data.count);
                     break;
