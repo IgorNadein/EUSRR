@@ -309,7 +309,16 @@ def chat_mark_read(request, pk: int):
         if c.type == "private":
             return c.participants.filter(pk=u.pk).exists()
         if c.type == "department" and c.department_id:
-            return c.get_participants.filter(pk=u.pk).exists()
+            has = c.get_participants.filter(pk=u.pk).exists()
+            # Временное логирование для отладки
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"chat_mark_read access check: chat_id={c.id}, "
+                f"type={c.type}, dept_id={c.department_id}, "
+                f"user_id={u.id}, has_access={has}"
+            )
+            return has
         return False
 
     if not has_access(chat, user):
