@@ -1,6 +1,8 @@
 # backend/api/v1/communications/views.py
 """API views для чатов и сообщений"""
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import JsonResponse
@@ -14,6 +16,7 @@ from communications.models import (
     Message,
     MessageAttachment,
 )
+from communications.consumers import serialize_message
 
 
 @csrf_protect
@@ -125,6 +128,22 @@ def upload_message_with_attachments(request):
                 'file_size': attachment.file_size,
                 'mime_type': attachment.mime_type
             })
+    
+    # Отправляем сообщение через WebSocket всем участникам чата
+    channel_layer = get_channel_layer()
+    group_name = f"chat_{chat.id}"
+    
+    # Сериализуем сообщение для WebSocket
+    message_data = serialize_message(message)
+    
+    async_to_sync(channel_layer.group_send)(
+        group_name,
+        {
+            "type": "chat.message",
+            "chat_id": chat.id,
+            "payload": message_data
+        }
+    )
     
     avatar_url = None
     if hasattr(request.user, 'avatar') and request.user.avatar:
