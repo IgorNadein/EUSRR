@@ -155,7 +155,6 @@ export function createMessageElement(msg, options = {}) {
   
   // Формирование вложений
   let attachmentsHTML = '';
-  let videoIds = [];
   if (msg.has_attachments && msg.attachments && msg.attachments.length > 0) {
     attachmentsHTML = '<div class="message-attachments mt-2">';
     msg.attachments.forEach((att, index) => {
@@ -176,11 +175,9 @@ export function createMessageElement(msg, options = {}) {
           </audio>
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
       } else if (att.file_type === 'video') {
-        const videoId = `video_${Date.now()}_${index}`;
-        videoIds.push({ id: videoId, url: att.file_url, mime: att.mime_type });
         attachmentsHTML += `
-          <video id="${videoId}" controls preload="auto" class="w-100" style="max-width: 400px;">
-            <source type="${att.mime_type}">
+          <video controls preload="metadata" class="w-100" style="max-width: 400px;">
+            <source src="${att.file_url}" type="${att.mime_type}">
             Ваш браузер не поддерживает видео.
           </video>
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
@@ -188,9 +185,9 @@ export function createMessageElement(msg, options = {}) {
         const fileSize = att.file_size ? formatFileSize(att.file_size) : '';
         attachmentsHTML += `
           <a href="${att.file_url}" 
-             class="d-flex align-items-center text-decoration-none p-2 border rounded"
+             class="d-flex align-items-center text-decoration-none p-2 rounded"
              download="${esc(att.file_name)}">
-            <i class="bi-file-earmark fs-3 text-primary me-2"></i>
+            <i class="bi-file-earmark fs-3 me-2"></i>
             <div>
               <div class="fw-semibold">${esc(att.file_name)}</div>
               <div class="small text-secondary">${fileSize}</div>
@@ -224,23 +221,6 @@ export function createMessageElement(msg, options = {}) {
     wrap.innerHTML = `<a class="me-2 text-decoration-none" href="${link}">${ava}</a>${bubble}`;
   } else {
     wrap.innerHTML = `${bubble}<a class="ms-2 text-decoration-none" href="${profileUrl}">${ava}</a>`;
-  }
-
-  // Устанавливаем src для видео после добавления в DOM
-  if (videoIds.length > 0) {
-    // Используем requestAnimationFrame чтобы убедиться что элементы в DOM
-    requestAnimationFrame(() => {
-      videoIds.forEach(videoData => {
-        const video = wrap.querySelector(`#${videoData.id}`);
-        if (video) {
-          const source = video.querySelector('source');
-          if (source) {
-            source.src = videoData.url;
-            video.load();
-          }
-        }
-      });
-    });
   }
 
   return wrap;
