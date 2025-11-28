@@ -360,6 +360,13 @@ document.addEventListener('DOMContentLoaded', function() {
       formData.append('chat_id', '{{ chat.id }}');
       
       const csrftoken = getCookie('csrftoken');
+      console.log('CSRF token:', csrftoken);
+      
+      if (!csrftoken) {
+        console.error('CSRF token not found in cookies!');
+        alert('Ошибка: CSRF токен не найден. Обновите страницу.');
+        return;
+      }
       
       try {
         const response = await fetch('/api/v1/communications/upload-message/', {

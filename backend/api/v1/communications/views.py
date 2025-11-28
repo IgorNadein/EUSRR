@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
 from communications.models import (
@@ -16,9 +16,9 @@ from communications.models import (
 )
 
 
+@csrf_protect
 @login_required
 @require_POST
-@ensure_csrf_cookie
 def upload_message_with_attachments(request):
     """Отправка сообщения с вложениями"""
     chat_id = request.POST.get('chat_id')
@@ -33,18 +33,48 @@ def upload_message_with_attachments(request):
     chat = get_object_or_404(Chat, pk=chat_id)
     
     # Проверка доступа к чату
-    membership = ChatMembership.objects.filter(
-        chat=chat,
-        user=request.user,
-        is_active=True,
-        can_send_messages=True
-    ).first()
-    
-    if not membership:
-        return JsonResponse(
-            {'ok': False, 'error': 'Cannot send messages to this chat'},
-            status=403
-        )
+    # Для групповых, канальных и объявлений проверяем ChatMembership
+    if chat.type in ['group', 'channel', 'announcement']:
+        membership = ChatMembership.objects.filter(
+            chat=chat,
+            user=request.user,
+            is_active=True,
+            can_send_messages=True
+        ).first()
+        
+        if not membership:
+            return JsonResponse(
+                {'ok': False, 'error': 'Cannot send messages to this chat'},
+                status=403
+            )
+    # Для личных чатов проверяем, что пользователь - участник
+    elif chat.type == 'private':
+        if not chat.participants.filter(id=request.user.id).exists():
+            return JsonResponse(
+                {'ok': False, 'error': 'You are not a participant'},
+                status=403
+            )
+    # Для чатов отдела проверяем принадлежность к отделу
+    elif chat.type == 'department':
+        if chat.department:
+            from employees.models import EmployeeDepartment
+            is_member = EmployeeDepartment.objects.filter(
+                department=chat.department,
+                employee=request.user,
+                is_active=True
+            ).exists()
+            if not is_member and chat.department.head_id != request.user.id:
+                return JsonResponse(
+                    {'ok': False, 'error': 'Not a department member'},
+                    status=403
+                )
+    # Глобальный чат доступен всем активным пользователям
+    elif chat.type == 'global':
+        if not request.user.is_active:
+            return JsonResponse(
+                {'ok': False, 'error': 'User is not active'},
+                status=403
+            )
     
     # Если нет ни текста, ни файлов
     if not content and not request.FILES:

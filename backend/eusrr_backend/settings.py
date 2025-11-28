@@ -191,6 +191,11 @@ CSRF_TRUSTED_ORIGINS = _split_env_list(
     os.getenv("CSRF_TRUSTED_ORIGINS", "https://*.sytes.net")
 )
 
+# Настройки CSRF для AJAX запросов
+CSRF_COOKIE_HTTPONLY = False  # Позволяет JavaScript читать cookie
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_USE_SESSIONS = False
+
 # -----------------------------------------------------------------------------
 # EMAIL
 # -----------------------------------------------------------------------------
