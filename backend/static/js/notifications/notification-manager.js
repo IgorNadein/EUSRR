@@ -132,6 +132,10 @@ class NotificationManager {
             console.log('[Notifications] Received:', data);
             
             switch (data.type) {
+                case 'ping':
+                    // Игнорируем ping сообщения для keepalive
+                    return;
+                    
                 case 'unread_count':
                     this.updateBadge(data.count);
                     break;

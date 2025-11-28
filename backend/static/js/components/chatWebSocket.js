@@ -202,6 +202,11 @@ export function initChatWebSocket(options = {}) {
     try {
       const data = JSON.parse(e.data);
 
+      // Обработка ping для keepalive (игнорируем)
+      if (data.type === 'ping') {
+        return;
+      }
+
       // Обработка события "печатает..."
       if (data.type === 'typing' && Number(data.user_id) !== Number(meId)) {
         showTyping();

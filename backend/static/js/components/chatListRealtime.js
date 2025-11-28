@@ -72,6 +72,11 @@ export function initChatListRealtime(options = {}) {
     try {
       const data = JSON.parse(e.data);
       
+      // Игнорируем ping сообщения для keepalive
+      if (data.type === 'ping') {
+        return;
+      }
+      
       // Обрабатываем только list_update события
       if (data.type !== 'list_update') return;
 

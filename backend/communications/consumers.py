@@ -1,4 +1,5 @@
 # communications/consumers.py
+import asyncio
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
@@ -81,6 +82,11 @@ def serialize_message(m: Message) -> dict:
 
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ping_task = None
+        self.ping_interval = 20  # Ping каждые 20 секунд
+    
     async def connect(self):
         user = self.scope.get("user")
         if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
@@ -99,13 +105,35 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         # помечаем как прочитанное «до текущего»
         await self._mark_read(self.chat, user)
+        
+        # Запускаем ping цикл для keepalive
+        self.ping_task = asyncio.create_task(self._ping_loop())
 
     async def disconnect(self, code):
+        # Останавливаем ping цикл
+        if self.ping_task:
+            self.ping_task.cancel()
+            try:
+                await self.ping_task
+            except asyncio.CancelledError:
+                pass
+        
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
             # Сбрасываем статус "набирает текст"
             if hasattr(self, 'chat'):
                 await self._set_typing_status(self.chat, self.scope["user"], False)
+    
+    async def _ping_loop(self):
+        """Отправка ping каждые N секунд для keepalive"""
+        try:
+            while True:
+                await asyncio.sleep(self.ping_interval)
+                await self.send_json({"type": "ping", "timestamp": timezone.now().isoformat()})
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Ping loop error: {e}")
 
     async def receive_json(self, content, **kwargs):
         """Обработка входящих сообщений и действий"""
@@ -455,6 +483,11 @@ class ChatListConsumer(AsyncJsonWebsocketConsumer):
     Список чатов подписывается на все chat_{id} пользователя, и каждое
     новое сообщение получает как компактное обновление для карточки.
     """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ping_task = None
+        self.ping_interval = 20  # Ping каждые 20 секунд
+    
     async def connect(self):
         user = self.scope.get("user")
         if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
@@ -468,10 +501,32 @@ class ChatListConsumer(AsyncJsonWebsocketConsumer):
             self.group_names.append(g)
 
         await self.accept()
+        
+        # Запускаем ping цикл для keepalive
+        self.ping_task = asyncio.create_task(self._ping_loop())
 
     async def disconnect(self, code):
+        # Останавливаем ping цикл
+        if self.ping_task:
+            self.ping_task.cancel()
+            try:
+                await self.ping_task
+            except asyncio.CancelledError:
+                pass
+        
         for g in getattr(self, "group_names", []):
             await self.channel_layer.group_discard(g, self.channel_name)
+    
+    async def _ping_loop(self):
+        """Отправка ping каждые N секунд для keepalive"""
+        try:
+            while True:
+                await asyncio.sleep(self.ping_interval)
+                await self.send_json({"type": "ping", "timestamp": timezone.now().isoformat()})
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Ping loop error: {e}")
 
     async def chat_message(self, event):
         # Проксируем компактное событие в UI списка

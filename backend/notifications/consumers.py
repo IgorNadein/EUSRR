@@ -1,8 +1,10 @@
+import asyncio
 import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -10,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 class NotificationConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer для уведомлений в реальном времени"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ping_task = None
+        self.ping_interval = 20  # Ping каждые 20 секунд
 
     async def connect(self):
         """Подключение к WebSocket"""
@@ -36,14 +43,39 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             'type': 'unread_count',
             'count': unread_count
         }))
+        
+        # Запускаем ping цикл для keepalive
+        self.ping_task = asyncio.create_task(self._ping_loop())
 
     async def disconnect(self, close_code):
         """Отключение от WebSocket"""
+        # Останавливаем ping цикл
+        if self.ping_task:
+            self.ping_task.cancel()
+            try:
+                await self.ping_task
+            except asyncio.CancelledError:
+                pass
+        
         if hasattr(self, 'notification_group_name'):
             await self.channel_layer.group_discard(
                 self.notification_group_name,
                 self.channel_name
             )
+    
+    async def _ping_loop(self):
+        """Отправка ping каждые N секунд для keepalive"""
+        try:
+            while True:
+                await asyncio.sleep(self.ping_interval)
+                await self.send(text_data=json.dumps({
+                    'type': 'ping',
+                    'timestamp': timezone.now().isoformat()
+                }))
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Ping loop error: {e}")
 
     async def receive(self, text_data):
         """Получение сообщения от клиента"""
