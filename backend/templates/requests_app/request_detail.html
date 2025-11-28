@@ -132,9 +132,9 @@
           {# Добавить комментарий — #}
           <form class="mt-2" method="post" action="{% url 'requests_app:request_comment_add' request_obj.pk %}">
             {% csrf_token %}
-            <div class="input-group">
-              <textarea name="text" class="form-control" rows="1" placeholder="Оставить комментарий…" maxlength="1000"></textarea>
-              <button class="btn btn-primary" type="submit"><i class="bi-send"></i></button>
+            <div class="message-field message-field--compact">
+              <textarea name="text" class="form-control message-input" rows="1" placeholder="Оставить комментарий…" maxlength="1000"></textarea>
+              <button class="btn btn-primary message-send" type="submit"><i class="bi-send"></i></button>
             </div>
           </form>
         </div>

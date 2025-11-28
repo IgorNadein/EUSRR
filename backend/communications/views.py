@@ -4,6 +4,7 @@ import datetime
 from datetime import datetime as dt
 from datetime import timezone as dt_tz
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import IntegrityError, models
@@ -18,7 +19,9 @@ from django.views.decorators.http import require_POST
 from django.views.generic import DetailView, FormView, ListView
 
 from .forms import MessageForm
-from .models import Chat, ChatReadState, Message
+from .models import Chat, ChatMembership, ChatReadState, Message
+
+CHAT_MESSAGES_PAGE_SIZE = getattr(settings, "CHAT_MESSAGES_PAGE_SIZE", 50)
 
 # ===== helpers =====
 
@@ -45,6 +48,20 @@ def _coerce_ts(val: str | None) -> datetime.datetime:
     if timezone.is_naive(d):
         return timezone.make_aware(d, timezone=timezone.get_current_timezone())
     return d
+
+
+def user_can_access_chat(chat: Chat, user) -> bool:
+    if not chat or not user:
+        return False
+    if chat.type == "global":
+        return True
+    if chat.type == "private":
+        return chat.participants.filter(pk=user.pk).exists()
+    if chat.type == "department" and chat.department_id:
+        return chat.get_participants.filter(pk=user.pk).exists()
+    if chat.type in ["group", "channel", "announcement"]:
+        return ChatMembership.objects.filter(chat=chat, user=user).exists()
+    return False
 
 
 class ChatListView(LoginRequiredMixin, ListView):
@@ -113,30 +130,27 @@ class ChatListView(LoginRequiredMixin, ListView):
                     to_attr="last_message",
                 ),
             )
-            .order_by(models.F("last_msg_at").desc(nulls_last=True), "-created_at")
+            .order_by(
+                models.F("last_msg_at").desc(nulls_last=True),
+                "-created_at",
+            )
         )
         return qs
 
 
-class ChatDetailView(LoginRequiredMixin, DetailView):
+class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
     model = Chat
     template_name = "communications/chat_detail.html"
     context_object_name = "chat"
+    form_class = MessageForm
+
+    def get_success_url(self):
+        return reverse(
+            "communications:chat_detail", kwargs={"pk": self.object.pk}
+        )
 
     def _user_has_access(self, chat: Chat, user) -> bool:
-        if chat.type == "global":
-            return True
-        if chat.type == "private":
-            return chat.participants.filter(pk=user.pk).exists()
-        if chat.type == "department" and chat.department_id:
-            return chat.get_participants.filter(pk=user.pk).exists()
-        if chat.type in ["group", "channel", "announcement"]:
-            # Проверяем membership для групповых чатов, каналов и объявлений
-            from communications.models import ChatMembership
-            return ChatMembership.objects.filter(
-                chat=chat, user=user
-            ).exists()
-        return False
+        return user_can_access_chat(chat, user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -150,9 +164,36 @@ class ChatDetailView(LoginRequiredMixin, DetailView):
             raise Http404("Chat not found")
 
         # сообщения + участники
-        context["messages"] = chat.messages.select_related("author").order_by(
-            "created_at"
+        messages_qs = (
+            chat.messages
+            .select_related("author")
+            .prefetch_related("attachments")
+            .order_by("-created_at")
         )
+
+        page_size = CHAT_MESSAGES_PAGE_SIZE
+        raw_messages = list(messages_qs[: page_size + 1])
+        has_more = len(raw_messages) > page_size
+
+        next_cursor = None
+        if has_more:
+            next_cursor = raw_messages.pop()
+
+        displayed_messages = list(reversed(raw_messages))
+        oldest_displayed = raw_messages[-1] if raw_messages else next_cursor
+
+        context["messages"] = displayed_messages
+        context["messages_has_more"] = has_more
+        context["messages_oldest_id"] = (
+            oldest_displayed.id if oldest_displayed else None
+        )
+        context["messages_oldest_ts"] = (
+            int(oldest_displayed.created_at.timestamp() * 1000)
+            if oldest_displayed
+            else None
+        )
+        context["messages_page_size"] = page_size
+        context["form"] = context.get("form", MessageForm())
         context["participants"] = chat.get_participants
 
         # отдаём клиенту last_read_at и «первое непрочитанное»
@@ -162,7 +203,9 @@ class ChatDetailView(LoginRequiredMixin, DetailView):
             .first()
         )
         last_read_at = (
-            read_state.last_read_at if read_state and read_state.last_read_at else None
+            read_state.last_read_at
+            if read_state and read_state.last_read_at
+            else None
         )
         context["last_read_at"] = last_read_at
 
@@ -177,13 +220,51 @@ class ChatDetailView(LoginRequiredMixin, DetailView):
             )
         context["first_unread_id"] = first_unread.id if first_unread else None
         if first_unread:
-            context["unread_from_ts"] = int(first_unread.created_at.timestamp() * 1000)
+            context["unread_from_ts"] = int(
+                first_unread.created_at.timestamp() * 1000
+            )
         elif last_read_at:
-            context["unread_from_ts"] = int(last_read_at.timestamp() * 1000) + 1
+            context["unread_from_ts"] = (
+                int(last_read_at.timestamp() * 1000) + 1
+            )
         else:
             context["unread_from_ts"] = None
 
         return context
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        user = request.user
+
+        if not ChatDetailView._user_has_access(self, self.object, user):
+            from django.http import HttpResponseForbidden
+
+            return HttpResponseForbidden("forbidden")
+
+        form = self.get_form()
+        if form.is_valid():
+            msg = form.save(commit=False)
+            msg.chat = self.object
+            msg.author = user
+            msg.save()
+
+            # автору сразу «прочитано» — делаем безопасно
+            ts = msg.created_at
+            updated = ChatReadState.objects.filter(
+                chat=self.object, user=user, last_read_at__lt=ts
+            ).update(last_read_at=ts)
+            if not updated:
+                try:
+                    ChatReadState.objects.create(
+                        chat=self.object, user=user, last_read_at=ts
+                    )
+                except IntegrityError:
+                    ChatReadState.objects.filter(
+                        chat=self.object, user=user, last_read_at__lt=ts
+                    ).update(last_read_at=ts)
+
+            return redirect(self.get_success_url())
+        return self.render_to_response(self.get_context_data(form=form))
 
 
 def start_private_chat(request, employee_pk):
@@ -202,7 +283,11 @@ def start_private_chat(request, employee_pk):
         # новый чат помечаем прочитанным для создателя (нет непрочитанных)
         now_ts = timezone.now()
         try:
-            ChatReadState.objects.create(chat=chat, user=user, last_read_at=now_ts)
+            ChatReadState.objects.create(
+                chat=chat,
+                user=user,
+                last_read_at=now_ts,
+            )
         except IntegrityError:
             ChatReadState.objects.filter(
                 chat=chat, user=user, last_read_at__lt=now_ts
@@ -219,8 +304,10 @@ def chat_mark_read(request, pk: int):
 
     # доступ
     def has_access(c: Chat, u) -> bool:
-        if c.type == "global": return True
-        if c.type == "private": return c.participants.filter(pk=u.pk).exists()
+        if c.type == "global":
+            return True
+        if c.type == "private":
+            return c.participants.filter(pk=u.pk).exists()
         if c.type == "department" and c.department_id:
             return c.get_participants.filter(pk=u.pk).exists()
         return False
@@ -228,24 +315,41 @@ def chat_mark_read(request, pk: int):
     if not has_access(chat, user):
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
-    # целевая точка времени: приоритет у upto_id, затем upto_ts, затем последний месседж
+    # целевая точка времени: приоритет у upto_id, затем upto_ts,
+    # затем последний месседж
     ts = None
     upto_id = request.POST.get("upto_id")
     if upto_id:
-        m = Message.objects.filter(chat=chat, pk=upto_id).only("created_at").first()
+        m = (
+            Message.objects.filter(chat=chat, pk=upto_id)
+            .only("created_at")
+            .first()
+        )
         ts = m.created_at if m else None
     if ts is None:
         ts = _coerce_ts(request.POST.get("upto_ts"))
 
     if ts is None:
-        ts = chat.messages.order_by("-created_at").values_list("created_at", flat=True).first() or timezone.now()
+        ts = (
+            chat.messages.order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
+            or timezone.now()
+        )
 
-    # обновляем только если новее; без update_or_create — устойчиво к SQLite/гонкам
-    updated = ChatReadState.objects.filter(chat=chat, user=user, last_read_at__lt=ts).update(last_read_at=ts)
+    # обновляем только если новее; без update_or_create — устойчиво
+    # к SQLite/гонкам
+    updated = ChatReadState.objects.filter(
+        chat=chat, user=user, last_read_at__lt=ts
+    ).update(last_read_at=ts)
     if not updated:
         try:
             ChatReadState.objects.create(chat=chat, user=user, last_read_at=ts)
         except IntegrityError:
-            ChatReadState.objects.filter(chat=chat, user=user, last_read_at__lt=ts).update(last_read_at=ts)
+            ChatReadState.objects.filter(
+                chat=chat, user=user, last_read_at__lt=ts
+            ).update(last_read_at=ts)
 
-    return JsonResponse({"ok": True, "last_read_at": int(ts.timestamp() * 1000)})
+    return JsonResponse(
+        {"ok": True, "last_read_at": int(ts.timestamp() * 1000)}
+    )

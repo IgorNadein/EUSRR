@@ -153,7 +153,7 @@
 ────────────────────────────────────────────────────────────── */
 .comment-new textarea {
   resize: vertical;
-  max-height: 300px;
-  min-height: 100px;
+  max-height: 220px;
+  min-height: 44px;
   overflow-y: auto;
 }

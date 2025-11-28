@@ -196,12 +196,11 @@
                 method="post"
                 action="{% url 'requests_app:request_comment_add' request_obj.pk %}?next={{ request.get_full_path|urlencode }}#comments">
             {% csrf_token %}
-            <div class="input-group">
-           
-              <textarea name="text" class="form-control" rows="1"
+            <div class="message-field message-field--compact">
+              <textarea name="text" class="form-control message-input" rows="1"
                         placeholder="Оставить комментарий…"
                         maxlength="{{ max_comment_len|default:1000 }}"></textarea>
-              <button class="btn btn-primary" type="submit">
+              <button class="btn btn-primary message-send" type="submit">
                 <i class="bi-send"></i>
               </button>
             </div>

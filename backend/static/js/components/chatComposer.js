@@ -1,230 +1,372 @@
+import { createMessageElement } from './chatMessageTemplates.js';
+
 /**
- * ChatComposer.js
- * Отвечает за логику ввода текста, выбора файлов и отправки сообщений.
- * Полностью заменяет стандартную отправку формы.
+ * Chat Composer module
+ * Отвечает за ввод текста, прикрепление файлов и отправку сообщений через REST API.
  */
+
+const DEFAULT_CONFIG = {
+	selector: '[data-chat-composer]',
+	textareaSelector: '#id_content',
+	previewSelector: '#attachmentPreview',
+	inputs: {
+		document: '#documentInput',
+		image: '#imageInput',
+		camera: '#cameraInput',
+		audio: '#audioInput'
+	},
+	submitSelector: '.btn-send',
+	uploadUrl: '/api/v1/communications/upload-message/',
+	csrfCookieName: 'csrftoken',
+	scrollSelector: '#chatScroll',
+	profileUrl: '/employees/profile/',
+	detailUrlTemplate: '/employees/0/'
+};
+
+const ICON_BY_MIME = [
+	{ test: (mime) => mime.startsWith('image/'), icon: 'bi-image text-success' },
+	{ test: (mime) => mime.startsWith('video/'), icon: 'bi-camera-video text-info' },
+	{ test: (mime) => mime.startsWith('audio/'), icon: 'bi-mic text-danger' },
+	{ test: (mime) => mime.includes('pdf'), icon: 'bi-file-pdf text-primary' }
+];
+
 class ChatComposer {
-    constructor(config) {
-        this.chatId = config.chatId;
-        this.apiEndpoint = config.apiEndpoint || '/api/v1/communications/upload-message/';
-        this.csrfToken = this.getCookie('csrftoken');
-        
-        // DOM Elements
-        this.form = document.getElementById('chatForm');
-        this.textarea = document.getElementById('id_content');
-        this.previewContainer = document.getElementById('attachmentPreview');
-        
-        // File Inputs
-        this.inputs = {
-            document: document.getElementById('documentInput'),
-            image: document.getElementById('imageInput'),
-            camera: document.getElementById('cameraInput'),
-            audio: document.getElementById('audioInput')
-        };
-        
-        // Buttons
-        this.buttons = {
-            document: document.getElementById('attachDocument'),
-            image: document.getElementById('attachImage'),
-            camera: document.getElementById('attachCamera'),
-            audio: document.getElementById('attachAudio'),
-            send: this.form?.querySelector('.btn-send')
-        };
+	constructor(form, options = {}) {
+		this.form = form;
+		this.options = { ...DEFAULT_CONFIG, ...options };
+		this.chatId = Number(options.chatId || form.dataset.chatId || 0);
+		this.uploadUrl = options.uploadUrl || form.dataset.uploadUrl || DEFAULT_CONFIG.uploadUrl;
+		this.textarea = form.querySelector(this.options.textareaSelector);
+		this.preview = form.querySelector(this.options.previewSelector) || document.querySelector(this.options.previewSelector);
+		this.inputs = this.resolveInputs();
+		this.submitButton = form.querySelector(this.options.submitSelector);
+		this.csrfCookieName = this.options.csrfCookieName;
+		this.scrollEl = document.querySelector(this.options.scrollSelector);
+		this.meId = Number(options.meId || form.dataset.meId || this.scrollEl?.dataset.meId || 0);
+		this.meName = options.meName || form.dataset.meName || 'Вы';
+		this.meAvatar = options.meAvatar || form.dataset.meAvatar || this.scrollEl?.dataset.meAvatar || '';
+		this.profileUrl = options.profileUrl || form.dataset.profileUrl || this.options.profileUrl;
+		this.detailUrlTemplate = options.detailUrlTemplate || form.dataset.detailUrlTemplate || this.options.detailUrlTemplate;
+		this.selectedFiles = [];
+		this.typingThrottle = 1200;
+		this.lastTypingSent = 0;
+		this.isSubmitting = false;
+		this.pendingQueue = [];
+		this.boundMessageHandler = (event) => this.handleIncomingMessage(event);
 
-        // State
-        this.selectedFiles = [];
-        this.isSubmitting = false;
+		if (!this.chatId) {
+			console.warn('ChatComposer: chatId is missing');
+			return;
+		}
 
-        this.init();
-    }
+		this.bindEvents();
+		form.dataset.composerBound = '1';
+	}
 
-    init() {
-        if (!this.form) {
-            console.error('ChatComposer: Form not found');
-            return;
-        }
+	resolveInputs() {
+		const resolved = {};
+		Object.entries(this.options.inputs || {}).forEach(([key, selector]) => {
+			resolved[key] = document.querySelector(selector);
+		});
+		return resolved;
+	}
 
-        this.bindEvents();
-        console.log('ChatComposer: Initialized');
-    }
+	bindEvents() {
+		this.form.addEventListener('submit', (e) => this.handleSubmit(e));
 
-    bindEvents() {
-        // 1. Блокировка стандартной отправки
-        this.form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.handleSubmit();
-        });
+		['document', 'image', 'camera', 'audio'].forEach((type) => {
+			const btn = document.getElementById(`attach${capitalize(type)}`);
+			const input = this.inputs[type];
+			if (btn && input) {
+				btn.addEventListener('click', (event) => {
+					event.preventDefault();
+					input.click();
+				});
+				input.addEventListener('change', (event) => this.handleFileSelect(event));
+			}
+		});
 
-        // 2. Обработка кнопок вложений
-        if (this.buttons.document) this.buttons.document.addEventListener('click', (e) => { e.preventDefault(); this.inputs.document.click(); });
-        if (this.buttons.image) this.buttons.image.addEventListener('click', (e) => { e.preventDefault(); this.inputs.image.click(); });
-        if (this.buttons.camera) this.buttons.camera.addEventListener('click', (e) => { e.preventDefault(); this.inputs.camera.click(); });
-        if (this.buttons.audio) this.buttons.audio.addEventListener('click', (e) => { e.preventDefault(); this.inputs.audio.click(); });
+		if (this.textarea) {
+			this.textarea.addEventListener('input', () => {
+				this.handleTyping();
+			});
+		}
 
-        // 3. Обработка выбора файлов (change event)
-        Object.values(this.inputs).forEach(input => {
-            if (input) {
-                input.addEventListener('change', (e) => this.handleFileSelect(e.target.files));
-            }
-        });
+		window.addEventListener('chat:message-received', this.boundMessageHandler);
+	}
 
-        // 4. Enter для отправки (если не Shift+Enter)
-        this.textarea.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                this.form.dispatchEvent(new Event('submit'));
-            }
-        });
-    }
+	handleFileSelect(event) {
+		const files = Array.from(event.target.files || []);
+		if (!files.length) return;
 
-    handleFileSelect(files) {
-        if (!files || files.length === 0) return;
-        
-        // Добавляем новые файлы к существующим
-        this.selectedFiles = [...this.selectedFiles, ...Array.from(files)];
-        
-        // Очищаем input, чтобы можно было выбрать тот же файл снова
-        Object.values(this.inputs).forEach(input => { if(input) input.value = ''; });
-        
-        this.updatePreview();
-    }
+			files.forEach((file) => {
+				const uuidSupported = window.crypto && typeof window.crypto.randomUUID === 'function';
+				const fileId = uuidSupported ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+				this.selectedFiles.push({ id: fileId, file });
+			});
 
-    removeFile(index) {
-        this.selectedFiles.splice(index, 1);
-        this.updatePreview();
-    }
+		event.target.value = '';
+		this.renderPreview();
+	}
 
-    updatePreview() {
-        if (!this.previewContainer) return;
+	handleTyping() {
+		const now = Date.now();
+		if (now - this.lastTypingSent > this.typingThrottle) {
+			this.lastTypingSent = now;
+			if (window.chatWebSocketApi?.sendTyping) {
+				window.chatWebSocketApi.sendTyping();
+			}
+		}
+	}
 
-        if (this.selectedFiles.length === 0) {
-            this.previewContainer.classList.add('d-none');
-            this.previewContainer.innerHTML = '';
-            return;
-        }
+	async handleSubmit(event) {
+		event.preventDefault();
+		if (this.isSubmitting) return;
 
-        this.previewContainer.classList.remove('d-none');
-        this.previewContainer.innerHTML = '';
+		const content = (this.textarea?.value || '').trim();
+		if (!content && this.selectedFiles.length === 0) {
+			alert('Введите текст сообщения или прикрепите файл');
+			return;
+		}
 
-        this.selectedFiles.forEach((file, index) => {
-            const item = document.createElement('div');
-            item.className = 'attachment-item d-flex align-items-center gap-2 p-2 border rounded mb-2 bg-white';
-            
-            let icon = 'bi-file-earmark';
-            if (file.type.startsWith('image/')) icon = 'bi-image';
-            else if (file.type.startsWith('video/')) icon = 'bi-camera-video';
-            else if (file.type.startsWith('audio/')) icon = 'bi-music-note';
-            
-            item.innerHTML = `
-                <i class="${icon} fs-4 text-primary"></i>
-                <div class="flex-grow-1 text-truncate">
-                    <div class="fw-semibold text-truncate">${file.name}</div>
-                    <div class="small text-secondary">${this.formatFileSize(file.size)}</div>
-                </div>
-                <button type="button" class="btn btn-sm btn-ghost text-danger remove-file-btn">
-                    <i class="bi-x-lg"></i>
-                </button>
-            `;
+		const csrfToken = getCookie(this.csrfCookieName);
+		if (!csrfToken) {
+			alert('CSRF токен не найден. Обновите страницу.');
+			return;
+		}
 
-            item.querySelector('.remove-file-btn').addEventListener('click', () => this.removeFile(index));
-            this.previewContainer.appendChild(item);
-        });
-    }
+		const formData = new FormData();
+		formData.append('chat_id', this.chatId);
+		formData.append('content', content);
+		this.selectedFiles.forEach((entry, index) => {
+			formData.append(`file_${index}`, entry.file, entry.file.name);
+		});
 
-    async handleSubmit() {
-        if (this.isSubmitting) return;
+		const shouldShowPending = this.selectedFiles.length > 0 && this.scrollEl;
+		let pendingId = null;
+		if (shouldShowPending) {
+			pendingId = this.renderPendingMessage(content);
+		}
 
-        const content = this.textarea.value.trim();
-        
-        // Валидация
-        if (!content && this.selectedFiles.length === 0) {
-            // Можно добавить визуальный эффект ошибки
-            this.textarea.focus();
-            return;
-        }
+		try {
+			this.setLoading(true);
+			const response = await fetch(this.uploadUrl, {
+				method: 'POST',
+				body: formData,
+				headers: {
+					'X-CSRFToken': csrfToken
+				}
+			});
 
-        this.isSubmitting = true;
-        this.toggleLoading(true);
+			const payload = await response.json().catch(() => ({}));
 
-        try {
-            const formData = new FormData();
-            formData.append('chat_id', this.chatId);
-            formData.append('content', content); // Отправляем даже пустой текст
+			if (!response.ok || !payload.ok) {
+				const errorMessage = payload.error || 'Не удалось отправить сообщение';
+				throw new Error(errorMessage);
+			}
 
-            // Добавляем файлы
-            this.selectedFiles.forEach((file, index) => {
-                formData.append(`file_${index}`, file);
-            });
+			this.resetForm();
+		} catch (error) {
+			console.error('ChatComposer: submit failed', error);
+			alert(error.message || 'Ошибка при отправке сообщения');
+			if (pendingId) {
+				this.removePendingMessage(pendingId);
+			}
+		} finally {
+			this.setLoading(false);
+		}
+	}
 
-            console.log(`ChatComposer: Sending message. Content len: ${content.length}, Files: ${this.selectedFiles.length}`);
+	renderPendingMessage(content) {
+		if (!this.scrollEl) return null;
+		const pendingId = (window.crypto?.randomUUID?.() || `pending-${Date.now()}-${Math.random()}`).toString();
+		const attachments = this.selectedFiles.map((entry) => {
+			const objectUrl = URL.createObjectURL(entry.file);
+			return {
+				id: entry.id,
+				file_name: entry.file.name,
+				file_type: detectFileType(entry.file.type),
+				file_url: objectUrl,
+				file_size: entry.file.size,
+				mime_type: entry.file.type
+			};
+		});
 
-            const response = await fetch(this.apiEndpoint, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': this.csrfToken
-                },
-                body: formData
-            });
+		const msg = {
+			id: pendingId,
+			author_id: this.meId,
+			author_name: this.meName,
+			author_url: this.profileUrl,
+			avatar: this.meAvatar,
+			content,
+			created_ts: Date.now(),
+			has_attachments: attachments.length > 0,
+			attachments,
+			is_pending: true
+		};
 
-            const result = await response.json();
+		const element = createMessageElement(msg, {
+			meId: this.meId,
+			profileUrl: this.profileUrl,
+			detailUrlTemplate: this.detailUrlTemplate
+		});
+		element.dataset.pendingId = pendingId;
+		this.scrollEl.appendChild(element);
+		this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
 
-            if (response.ok && result.ok) {
-                this.resetForm();
-            } else {
-                console.error('ChatComposer: Server error', result);
-                alert('Ошибка отправки: ' + (result.error || 'Неизвестная ошибка'));
-            }
+		this.pendingQueue.push({
+			id: pendingId,
+			element,
+			objectUrls: attachments.map((att) => att.file_url)
+		});
+		return pendingId;
+	}
 
-        } catch (error) {
-            console.error('ChatComposer: Network error', error);
-            alert('Ошибка сети. Проверьте подключение.');
-        } finally {
-            this.isSubmitting = false;
-            this.toggleLoading(false);
-            this.textarea.focus();
-        }
-    }
+	handleIncomingMessage(event) {
+		const msg = event?.detail;
+		if (!msg) return;
+		if (Number(msg.chat_id || this.chatId) !== Number(this.chatId)) return;
+		if (Number(msg.author_id) !== Number(this.meId)) return;
+		this.resolvePendingMessage();
+	}
 
-    resetForm() {
-        this.textarea.value = '';
-        this.selectedFiles = [];
-        this.updatePreview();
-        
-        // Сброс высоты textarea (если используется авто-высота)
-        this.textarea.style.height = 'auto';
-    }
+	resolvePendingMessage() {
+		const pending = this.pendingQueue.shift();
+		if (!pending) return;
+		pending.objectUrls.forEach((url) => URL.revokeObjectURL(url));
+		if (pending.element) {
+			pending.element.classList.add('message-pending--resolved');
+			pending.element.remove();
+		}
+	}
 
-    toggleLoading(isLoading) {
-        if (this.buttons.send) {
-            this.buttons.send.disabled = isLoading;
-            this.buttons.send.innerHTML = isLoading 
-                ? '<span class="spinner-border spinner-border-sm"></span>' 
-                : '<i class="bi-send-fill"></i>';
-        }
-    }
+	removePendingMessage(pendingId) {
+		const index = this.pendingQueue.findIndex((item) => item.id === pendingId);
+		if (index === -1) return;
+		const [pending] = this.pendingQueue.splice(index, 1);
+		pending.objectUrls.forEach((url) => URL.revokeObjectURL(url));
+		pending.element?.remove();
+	}
 
-    formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    }
+	renderPreview() {
+		if (!this.preview) return;
 
-    getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
-    }
+		if (this.selectedFiles.length === 0) {
+			this.preview.classList.add('d-none');
+			this.preview.innerHTML = '';
+			return;
+		}
+
+		this.preview.classList.remove('d-none');
+		this.preview.innerHTML = '';
+
+		this.selectedFiles.forEach((entry) => {
+			const iconClass = pickIcon(entry.file.type);
+			const wrapper = document.createElement('div');
+			wrapper.className = 'attachment-item d-flex align-items-center gap-2 p-2 rounded mb-2';
+			wrapper.innerHTML = `
+				<i class="${iconClass} fs-4"></i>
+				<div class="flex-grow-1">
+					<div class="fw-semibold text-truncate">${entry.file.name}</div>
+					<div class="small text-secondary">${formatFileSize(entry.file.size)}</div>
+				</div>
+				<button type="button" class="btn btn-sm btn-ghost" aria-label="Удалить файл" data-file-id="${entry.id}">
+					<i class="bi-x-lg"></i>
+				</button>
+			`;
+
+			wrapper.querySelector('button')?.addEventListener('click', () => {
+				this.removeFile(entry.id);
+			});
+
+			this.preview.appendChild(wrapper);
+		});
+	}
+
+	removeFile(entryId) {
+		this.selectedFiles = this.selectedFiles.filter((entry) => entry.id !== entryId);
+		this.renderPreview();
+	}
+
+	resetForm() {
+		if (this.textarea) {
+			this.textarea.value = '';
+			this.textarea.dispatchEvent(new Event('input'));
+		}
+
+		Object.values(this.inputs).forEach((input) => {
+			if (input) input.value = '';
+		});
+
+		this.selectedFiles = [];
+		this.renderPreview();
+	}
+
+	setLoading(state) {
+		this.isSubmitting = state;
+		if (!this.submitButton) return;
+		this.submitButton.disabled = state;
+		this.submitButton.setAttribute('aria-busy', state ? 'true' : 'false');
+	}
 }
 
-// Экспорт для использования
-window.ChatComposer = ChatComposer;
+function formatFileSize(bytes) {
+	if (!Number.isFinite(bytes)) return '';
+	if (bytes < 1024) return `${bytes} Б`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+	if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+	return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
+}
+
+function getCookie(name) {
+	const cookies = document.cookie ? document.cookie.split(';') : [];
+	for (const cookie of cookies) {
+		const trimmed = cookie.trim();
+		if (trimmed.startsWith(`${name}=`)) {
+			return decodeURIComponent(trimmed.substring(name.length + 1));
+		}
+	}
+	return null;
+}
+
+function pickIcon(mime = '') {
+	const match = ICON_BY_MIME.find((item) => item.test(mime));
+	return match ? match.icon : 'bi-file-earmark text-primary';
+}
+
+function capitalize(text = '') {
+	return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function detectFileType(mime = '') {
+	if (!mime) return 'file';
+	if (mime.startsWith('image/')) return 'image';
+	if (mime.startsWith('video/')) return 'video';
+	if (mime.startsWith('audio/')) return 'audio';
+	return 'file';
+}
+
+export function initChatComposer(config = {}) {
+	const forms = document.querySelectorAll(config.selector || DEFAULT_CONFIG.selector);
+	const instances = [];
+
+	forms.forEach((form) => {
+		if (form.dataset.composerBound === '1') return;
+		const instance = new ChatComposer(form, {
+			...config,
+			chatId: config.chatId || form.dataset.chatId,
+			uploadUrl: config.uploadUrl || form.dataset.uploadUrl
+		});
+		if (instance.form) {
+			instances.push(instance);
+		}
+	});
+
+	return instances;
+}
+
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', () => initChatComposer());
+} else {
+	initChatComposer();
+}

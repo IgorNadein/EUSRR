@@ -129,11 +129,15 @@ export function createMessageElement(msg, options = {}) {
   } = options;
 
   const mine = Number(msg.author_id) === Number(meId);
+  const isPending = Boolean(msg.is_pending);
   const ts = toTimestamp(msg);
 
   // Создание обёртки
   const wrap = document.createElement('div');
   wrap.className = `d-flex mb-3 msg ${mine ? 'justify-content-end' : 'justify-content-start'}`;
+  if (isPending) {
+    wrap.classList.add('message-pending');
+  }
   
   if (msg.id != null) {
     wrap.setAttribute('data-id', String(msg.id));
@@ -165,8 +169,8 @@ export function createMessageElement(msg, options = {}) {
           <a href="${att.file_url}" target="_blank">
             <img src="${att.file_url}" 
                  alt="${esc(att.file_name)}"
-                 class="img-fluid rounded"
-                 style="max-width: 300px; max-height: 300px;">
+                 loading="lazy"
+                 class="chat-media chat-media--image rounded">
           </a>`;
       } else if (att.file_type === 'audio') {
         attachmentsHTML += `
@@ -176,8 +180,8 @@ export function createMessageElement(msg, options = {}) {
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
       } else if (att.file_type === 'video') {
         attachmentsHTML += `
-          <video controls preload="metadata" class="w-100" style="max-width: 400px;">
-            <source src="${att.file_url}" type="${att.mime_type}">
+          <video controls preload="metadata" playsinline class="chat-media chat-media--video">
+            <source src="${att.file_url}" type="${att.mime_type || 'video/mp4'}">
             Ваш браузер не поддерживает видео.
           </video>
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
@@ -200,6 +204,10 @@ export function createMessageElement(msg, options = {}) {
     attachmentsHTML += '</div>';
   }
 
+  const pendingStatus = isPending
+    ? '<div class="message-status small text-secondary mt-2"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Отправляем…</div>'
+    : '';
+
   const bubble = `
     <div class="d-flex flex-column" style="max-width:80%;">
       <div class="small text-secondary ${mine ? 'text-end' : ''}">
@@ -208,6 +216,7 @@ export function createMessageElement(msg, options = {}) {
       <div class="mt-1 bubble ${mine ? 'bubble-me' : 'bubble-other'}">
         ${text ? text : ''}
         ${attachmentsHTML}
+        ${pendingStatus}
       </div>
     </div>`;
 

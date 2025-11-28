@@ -255,9 +255,9 @@
             <h6 class="mb-2">Оставить комментарий</h6>
             <form method="post" action="">
               {% csrf_token %}
-              <div class="input-group">
-                <textarea name="text" class="form-control" rows="2" placeholder="Напишите комментарий…"></textarea>
-                <button class="btn btn-primary" type="submit">
+              <div class="message-field">
+                <textarea name="text" class="form-control message-input" rows="2" placeholder="Напишите комментарий…"></textarea>
+                <button class="btn btn-primary message-send" type="submit">
                   <i class="bi-send"></i>
                 </button>
               </div>

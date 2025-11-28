@@ -38,7 +38,8 @@ export function initChatWebSocket(options = {}) {
     profileUrl = '/employees/profile/',
     detailUrlTemplate = '/employees/0/',
     avatarMap = {},
-    markReadApi
+    markReadApi,
+    bindFormSubmit = true
   } = options;
 
   // Проверка обязательных параметров
@@ -132,6 +133,13 @@ export function initChatWebSocket(options = {}) {
       autoscroll();
     }
 
+    // Сообщаем другим модулям о новом сообщении
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('chat:message-received', { detail: msg })
+      );
+    }
+
     // Обновляем observer для последнего чужого сообщения
     if (observeLastForeign) {
       observeLastForeign();
@@ -196,19 +204,20 @@ export function initChatWebSocket(options = {}) {
   /**
    * Обрабатывает отправку формы
    */
-  form?.addEventListener('submit', (e) => {
+  const handleFormSubmit = (e) => {
     e.preventDefault();
     
     const text = (ta?.value || '').trim();
     if (!text || ws.readyState !== WebSocket.OPEN) return;
 
-    // Отправка сообщения
     ws.send(JSON.stringify({ content: text }));
-
-    // Очистка textarea
     ta.value = '';
     ta.dispatchEvent(new Event('input'));
-  });
+  };
+
+  if (bindFormSubmit && form) {
+    form.addEventListener('submit', handleFormSubmit);
+  }
 
   /**
    * Обрабатывает ввод в textarea (индикация "печатает...")

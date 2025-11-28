@@ -1,5 +1,5 @@
 /**
- * chat-detail.css
+ * chat-detail.scss
  * Стили страницы детального чата: layout, scroll, bubbles, composer
  */
 
@@ -12,7 +12,7 @@ main.main {
 }
 
 /* ===== Контейнер страницы чата ===== */
-@supports(height: 100svh) {
+@supports (height: 100svh) {
   .chat-root {
     height: calc(100svh - var(--navbar-h));
   }
@@ -137,74 +137,21 @@ main.main {
   gap: var(--space-1);
 }
 
-.composer-input-group {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-1);
-  flex-wrap: nowrap;
+.chat-composer .message-field {
+  background: color-mix(in srgb, var(--bs-body-bg) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
 }
 
-.composer-textarea-wrapper {
-  flex: 1 1 auto;
-  position: relative;
-  min-width: 0;
+.chat-composer .message-input {
+  max-height: 180px;
 }
 
-.composer-textarea {
-  resize: none;
-  max-height: 120px;
-  border-radius: 20px;
-  padding: 10px 16px;
-  line-height: 1.4;
-  border: 1px solid var(--bs-border-color);
-  background: var(--bs-body-bg);
-  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-  overflow-y: hidden; /* Убираем полоску прокрутки */
-  scrollbar-width: none; /* Firefox */
+.chat-composer .btn-attachment {
+  color: var(--bs-body-color);
 }
 
-.composer-textarea::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Edge */
-}
-
-.composer-textarea:focus {
-  border-color: var(--bs-primary);
-  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.15);
-}
-
-.btn-attachment {
-  padding: 8px 12px;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.btn-attachment:hover {
-  background: var(--bs-secondary-bg);
-  transform: scale(1.05);
-}
-
-.btn-send {
-  padding: 10px 16px;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.btn-send:hover {
-  transform: scale(1.05);
-}
-
-.btn-send i {
-  font-size: 1.1rem;
+.chat-composer .btn-send {
+  box-shadow: 0 4px 16px rgba(var(--bs-primary-rgb), 0.35);
 }
 
 /* Превью вложений */
@@ -266,7 +213,53 @@ main.main {
 .message-attachments img,
 .message-attachments audio {
   max-width: 100%;
+  width: auto;
   border-radius: 8px;
+}
+
+.chat-media {
+  display: inline-block;
+  width: auto !important;
+  max-width: min(640px, 85vw);
+  max-height: 520px;
+  height: auto !important;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.08);
+  content-visibility: auto;
+}
+
+.message-attachments .attachment-item > a,
+.message-attachments .attachment-item > video,
+.message-attachments .attachment-item > img {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.chat-media--video {
+  background: #000;
+  object-fit: contain;
+}
+
+.chat-media--image {
+  object-fit: cover;
+}
+
+.message-pending .chat-media {
+  min-width: 90px;
+  min-height: 64px;
+}
+
+.message-pending .bubble {
+  position: relative;
+  opacity: 0.8;
+}
+
+.message-pending .message-status {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.bubble-other .message-status {
+  color: rgba(0, 0, 0, 0.5);
 }
 
 .message-attachments .text-secondary {
@@ -285,6 +278,20 @@ main.main {
 
 .bubble-me .message-attachments i {
   color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.history-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  color: var(--bs-secondary-color);
+}
+
+.history-loader .spinner-border {
+  width: 1rem;
+  height: 1rem;
 }
 
 /* Выпадающее меню вложений */
@@ -337,7 +344,7 @@ main.main {
   border-radius: 16px;
   padding: var(--space-1) var(--space-2);
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .bubble-me {
@@ -376,7 +383,7 @@ main.main {
   justify-content: center;
   gap: var(--space-1);
   margin: var(--space-1) 0 var(--space-2);
-  font-size: .85rem;
+  font-size: 0.85rem;
   line-height: 1;
   font-weight: 700;
   pointer-events: none;

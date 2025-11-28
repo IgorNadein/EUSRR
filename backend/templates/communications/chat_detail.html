@@ -3,9 +3,7 @@
 
 {% block title %}Чат{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/components/chat-detail.css' %}">
-{% endblock %}
+{% block extra_css %}{% endblock %}
 
 {% block content %}
 <div class="container chat-root">
@@ -52,8 +50,20 @@
         <div id="chatScroll"
              class="chat-scroll"
              data-me-id="{{ user.id }}"
+             data-me-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
+             data-profile-url="{% url 'employees:profile' %}"
+             data-detail-url-template="{% url 'employees:employee_detail' 0 %}"
              data-chat-id="{{ chat.id }}"
+             data-fetch-url="{% url 'api:v1:chat_messages' chat.pk %}"
+             data-page-size="{{ messages_page_size }}"
+             data-oldest-id="{{ messages_oldest_id }}"
+             data-oldest-ts="{{ messages_oldest_ts }}"
+             data-has-more="{% if messages_has_more %}1{% else %}0{% endif %}"
              data-last-read-ts="{% if last_read_at %}{{ last_read_at|date:'U' }}000{% endif %}">
+          <div class="history-loader d-none" data-history-loader>
+            <div class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></div>
+            <span class="small">Загружаем ранние сообщения…</span>
+          </div>
           {% if messages %}
             {% for message in messages %}
               {% ifchanged message.created_at|date:"d.m.Y" %}
@@ -95,11 +105,11 @@
                         {% for attachment in message.attachments.all %}
                           <div class="attachment-item mb-2">
                             {% if attachment.file_type == 'image' %}
-                              <a href="{{ attachment.file.url }}" target="_blank">
-                                <img src="{{ attachment.file.url }}" 
+                              <a href="{{ attachment.file.url }}" target="_blank" class="d-inline-block">
+                                <img src="{{ attachment.file.url }}"
                                      alt="{{ attachment.file_name }}"
-                                     class="img-fluid rounded"
-                                     style="max-width: 300px; max-height: 300px;">
+                                     loading="lazy"
+                                     class="chat-media chat-media--image">
                               </a>
                             {% elif attachment.file_type == 'audio' %}
                               <audio controls class="w-100">
@@ -107,7 +117,7 @@
                               </audio>
                               <div class="small text-secondary">{{ attachment.file_name }}</div>
                             {% elif attachment.file_type == 'video' %}
-                              <video controls preload="metadata" class="w-100" style="max-width: 400px;">
+                              <video controls preload="metadata" playsinline class="chat-media chat-media--video">
                                 <source src="{{ attachment.file.url }}" type="{{ attachment.mime_type }}">
                                 Ваш браузер не поддерживает видео.
                               </video>
@@ -148,11 +158,23 @@
         <!-- Композер -->
         <div class="chat-composer">
           <div id="typing" class="small text-secondary ps-1 pt-1 d-none">Собеседник печатает…</div>
-          <form id="chatForm" class="composer-wrap" action="javascript:void(0);" onsubmit="return false;">
+      <form id="chatForm"
+                class="composer-wrap"
+                method="post"
+                action="{% url 'communications:chat_detail' chat.pk %}"
+                enctype="multipart/form-data"
+                data-chat-composer="1"
+                data-chat-id="{{ chat.id }}"
+        data-upload-url="{% url 'api:v1:upload_message' %}"
+        data-me-id="{{ user.id }}"
+        data-me-name="{{ user.get_full_name|default:user.username }}"
+        data-me-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
+                data-profile-url="{% url 'employees:profile' %}"
+                data-detail-url-template="{% url 'employees:employee_detail' 0 %}">
             {% csrf_token %}
-            <div class="composer-input-group">
+            <div class="message-field">
               <!-- Кнопка вложений с выпадающим меню -->
-              <div class="dropdown">
+              <div class="dropdown message-attach">
                 <button type="button" class="btn btn-ghost btn-attachment" 
                         id="attachmentDropdown" 
                         data-bs-toggle="dropdown" 
@@ -187,27 +209,25 @@
                   </li>
                 </ul>
               </div>
-              
-              <!-- Скрытые input для файлов -->
-              <input type="file" id="documentInput" class="d-none" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar">
-              <input type="file" id="imageInput" class="d-none" accept="image/*,video/*" multiple>
-              <input type="file" id="cameraInput" class="d-none" accept="image/*" capture="environment">
-              <input type="file" id="audioInput" class="d-none" accept="audio/*">
-              
+
               <!-- Поле ввода текста -->
-              <div class="composer-textarea-wrapper">
-                <textarea name="content" 
-                          id="id_content" 
-                          class="form-control composer-textarea" 
-                          rows="1" 
-                          placeholder="Напишите сообщение…"></textarea>
-              </div>
-              
+              <textarea name="content" 
+                        id="id_content" 
+                        class="form-control composer-textarea message-input" 
+                        rows="1" 
+                        placeholder="Напишите сообщение…"></textarea>
+
               <!-- Кнопка отправки -->
-              <button type="submit" class="btn btn-primary btn-send" title="Отправить">
+              <button type="submit" class="btn btn-primary btn-send message-send" title="Отправить">
                 <i class="bi-send-fill"></i>
               </button>
             </div>
+
+            <!-- Скрытые input для файлов -->
+            <input type="file" id="documentInput" class="d-none" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar">
+            <input type="file" id="imageInput" class="d-none" accept="image/*,video/*" multiple>
+            <input type="file" id="cameraInput" class="d-none" accept="image/*" capture="environment">
+            <input type="file" id="audioInput" class="d-none" accept="audio/*">
             
             <!-- Превью прикрепленных файлов -->
             <div id="attachmentPreview" class="attachment-preview d-none"></div>
@@ -219,31 +239,10 @@
   </div>
 </div>
 
+{% endblock %}
+
 {% block extra_js %}
-<script src="{% static 'js/components/chatAvatarMap.js' %}"></script>
-<script src="{% static 'js/components/chatMessageTemplates.js' %}"></script>
-<script src="{% static 'js/components/chatWebSocket.js' %}"></script>
-<script src="{% static 'js/components/chatComposer.js' %}"></script>
-<script src="{% static 'js/chat-detail-enhanced.js' %}"></script>
-<script src="{% static 'js/components/textareaAutogrow.js' %}"></script>
-
-<script>
-  // Инициализация компонентов
-  document.addEventListener('DOMContentLoaded', function() {
-    // 1. Авто-высота поля ввода
-    if (window.initTextareaAutogrow) {
-      window.initTextareaAutogrow();
-    }
-
-    // 2. Композер сообщений (отправка текста и файлов)
-    if (window.ChatComposer) {
-      const composer = new ChatComposer({
-        chatId: '{{ chat.id }}',
-        apiEndpoint: '/api/v1/communications/upload-message/'
-      });
-    } else {
-      console.error('ChatComposer not loaded');
-    }
-  });
-</script>
+  {{ block.super }}
+  <script type="module" src="{% static 'js/components/chatComposer.js' %}"></script>
+  <script type="module" src="{% static 'js/components/chatHistoryLoader.js' %}"></script>
 {% endblock %}

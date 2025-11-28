@@ -1,0 +1,158 @@
+/**
+ * message-inputs.scss
+ * Унифицированные стили для полей ввода сообщений и комментариев
+ */
+
+$message-bg-default: color-mix(in srgb, var(--bs-body-bg) 95%, var(--bs-secondary-bg) 5%);
+$message-bg-focused: color-mix(in srgb, var(--bs-body-bg) 85%, var(--bs-secondary-bg) 15%);
+
+.message-field {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+  background: $message-bg-default;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.message-field:focus-within {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.15);
+  background: $message-bg-focused;
+}
+
+.message-field--stacked {
+  align-items: stretch;
+  flex-direction: column;
+  border-radius: 24px;
+  padding: 0.75rem;
+  gap: var(--space-1);
+}
+
+.message-field--compact {
+  padding: 0.25rem 0.3rem;
+  border-radius: 24px;
+}
+
+.message-input,
+.composer-textarea {
+  flex: 1 1 auto;
+  min-height: 44px;
+  max-height: 260px;
+  border: none;
+  background: transparent;
+  resize: none;
+  padding: 0.5rem 0.75rem;
+  line-height: 1.4;
+  font-size: 1rem;
+  color: inherit;
+  scrollbar-width: none;
+}
+
+.message-field--compact .message-input {
+  min-height: 32px;
+  font-size: 0.95rem;
+}
+
+.message-field--stacked .message-input {
+  min-height: 96px;
+  padding: 0.35rem 0;
+}
+
+.message-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.message-input::-webkit-scrollbar {
+  display: none;
+}
+
+.message-icon-btn,
+.btn-attachment,
+.btn-send,
+.message-send {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--bs-secondary-color);
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.message-field--compact .message-icon-btn,
+.message-field--compact .message-send {
+  width: 36px;
+  height: 36px;
+}
+
+.message-icon-btn:hover,
+.btn-attachment:hover {
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+  transform: scale(1.02);
+}
+
+.message-send,
+.btn-send {
+  background: var(--bs-primary);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.2);
+}
+
+.message-send:hover,
+.btn-send:hover {
+  background: color-mix(in srgb, var(--bs-primary) 93%, white 7%);
+  color: #fff;
+}
+
+.message-send:disabled,
+.btn-send:disabled {
+  opacity: 0.65;
+  box-shadow: none;
+}
+
+.message-attach {
+  position: relative;
+}
+
+.message-attach .dropdown-menu {
+  margin-top: 0.35rem;
+  border-radius: 16px;
+  padding: 0.5rem;
+}
+
+.message-field--solo {
+  display: block;
+  border-radius: 24px;
+  padding: 0.75rem 1rem;
+}
+
+.message-field--solo .message-input {
+  width: 100%;
+  min-height: 120px;
+  padding: 0;
+}
+
+@media (max-width: 576px) {
+  .message-field {
+    flex-wrap: wrap;
+    border-radius: 28px;
+  }
+
+  .message-send,
+  .btn-send,
+  .message-icon-btn,
+  .btn-attachment {
+    width: 38px;
+    height: 38px;
+  }
+}

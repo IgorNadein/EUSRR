@@ -156,9 +156,9 @@
               <div class="comments-list" data-role="list"></div>
               <form class="comment-new mt-3" data-role="form" autocomplete="off">
                 {% csrf_token %}
-                <div class="input-group input-group-sm">
-                  <textarea class="form-control" rows="3" placeholder="Написать…" data-role="text"></textarea>
-                  <button class="btn btn-outline-primary" type="submit" title="Отправить"><i class="bi-send"></i></button>
+                <div class="message-field message-field--compact">
+                  <textarea class="form-control message-input" rows="3" placeholder="Написать…" data-role="text"></textarea>
+                  <button class="btn btn-outline-primary message-send" type="submit" title="Отправить"><i class="bi-send"></i></button>
                 </div>
               </form>
             </div>
@@ -229,7 +229,9 @@
 
         <div class="mt-3">
           <label class="form-label">Комментарий</label>
-          <textarea name="comment" class="form-control" rows="3"></textarea>
+          <div class="message-field message-field--solo">
+            <textarea name="comment" class="form-control message-input" rows="3"></textarea>
+          </div>
         </div>
 
         <div class="mt-3">
@@ -275,10 +277,12 @@
         <!-- ✅ значение по умолчанию — submit -->
         <input type="hidden" name="_save_as" value="submit">
 
-        <div class="mb-3">
-          <label class="form-label">Тип</label>
-          <select name="type" id="editType" class="form-select">
-            <option value="">— Без изменения —</option>
+        <div class="mt-3">
+          <label class="form-label" for="editComment">Комментарий</label>
+          <div class="message-field message-field--solo">
+            <textarea name="comment" id="editComment" class="form-control message-input" rows="3"></textarea>
+          </div>
+        </div>
             <option value="vacation">Отпуск</option>
             <option value="sick_leave">Больничный</option>
             <option value="transfer">Перевод</option>
@@ -421,7 +425,9 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
       <div class="modal-body">
-        <textarea name="text" id="commentText" class="form-control" rows="4" required></textarea>
+        <div class="message-field message-field--solo">
+          <textarea name="text" id="commentText" class="form-control message-input" rows="4" required></textarea>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>

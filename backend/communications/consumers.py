@@ -53,6 +53,11 @@ def serialize_message(m: Message) -> dict:
                 "file_url": att.file.url,
                 "file_size": att.file_size,
                 "mime_type": att.mime_type,
+                "thumbnail": (
+                    att.thumbnail.url
+                    if getattr(att, "thumbnail", None)
+                    else None
+                ),
             })
         data["attachments"] = attachments
     
@@ -63,20 +68,6 @@ def serialize_message(m: Message) -> dict:
             "content": m.reply_to.content[:100] if m.reply_to else "",
             "author_name": m.reply_to.author.get_full_name() if m.reply_to else ""
         }
-    
-    # Вложения (если есть)
-    if m.has_attachments:
-        attachments = []
-        for att in m.attachments.all():
-            attachments.append({
-                "id": att.id,
-                "file_name": att.file_name,
-                "file_type": att.file_type,
-                "file_url": att.file.url,
-                "file_size": att.file_size,
-                "thumbnail": att.thumbnail.url if att.thumbnail else None
-            })
-        data["attachments"] = attachments
     
     # Информация о пересылке
     if m.is_forwarded and hasattr(m, 'forward_info'):

@@ -152,8 +152,14 @@
       profileUrl: "{% url 'employees:profile' %}",
       detailUrlTemplate: "{% url 'employees:employee_detail' 0 %}",
       avatarMap: avatarMap.getAll(),
-      markReadApi: markReadApi
+      markReadApi: markReadApi,
+      bindFormSubmit: false
     });
+
+    if (chatWebSocket) {
+      window.chatWebSocketApi = chatWebSocket;
+      window.dispatchEvent(new CustomEvent('chat:ws-ready', { detail: chatWebSocket }));
+    }
     {% endif %}
 
     // Глобальный обновлятель бейджа в сайдбаре
