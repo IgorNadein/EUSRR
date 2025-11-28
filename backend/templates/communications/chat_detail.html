@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', function() {
       formData.append('chat_id', '{{ chat.id }}');
       
       try {
-        const response = await fetch('/communications/api/upload-message/', {
+        const response = await fetch('/api/v1/communications/upload-message/', {
           method: 'POST',
           body: formData,
           headers: {

@@ -10,6 +10,7 @@ from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
 from .feed.views import CommentViewSet, PostViewSet
 from .documents.views import DocumentViewSet
 from .requests_app.views import RequestViewSet
+from .communications.views import upload_message_with_attachments
 
 app_name = "v1"
 
@@ -36,5 +37,10 @@ urlpatterns = [
     path("auth/register/", RegisterAPIView.as_view(), name="register"),
     path("auth/resend-email/", ResendEmailAPIView.as_view(), name="resend-email"),
     path("auth/verify-email/", VerifyEmailAPIView.as_view(), name="verify-email"),
+    path(
+        "communications/upload-message/",
+        upload_message_with_attachments,
+        name="upload_message"
+    ),
     path("", include(router.urls)),
 ]

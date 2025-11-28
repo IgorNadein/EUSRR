@@ -69,11 +69,7 @@ urlpatterns = [
     ),
     
     # Attachments
-    path(
-        "api/upload-message/",
-        api_views.upload_message_with_attachments,
-        name="api_upload_message"
-    ),
+    # Основной endpoint для загрузки сообщений с файлами находится в api/v1
     path(
         "api/attachment/upload/",
         api_views.upload_attachment,
