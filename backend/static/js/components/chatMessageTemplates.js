@@ -155,9 +155,10 @@ export function createMessageElement(msg, options = {}) {
   
   // Формирование вложений
   let attachmentsHTML = '';
+  let videoIds = [];
   if (msg.has_attachments && msg.attachments && msg.attachments.length > 0) {
     attachmentsHTML = '<div class="message-attachments mt-2">';
-    msg.attachments.forEach(att => {
+    msg.attachments.forEach((att, index) => {
       attachmentsHTML += '<div class="attachment-item mb-2">';
       
       if (att.file_type === 'image') {
@@ -175,9 +176,11 @@ export function createMessageElement(msg, options = {}) {
           </audio>
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
       } else if (att.file_type === 'video') {
+        const videoId = `video_${Date.now()}_${index}`;
+        videoIds.push({ id: videoId, url: att.file_url, mime: att.mime_type });
         attachmentsHTML += `
-          <video controls preload="metadata" class="w-100" style="max-width: 400px;">
-            <source src="${att.file_url}" type="${att.mime_type}">
+          <video id="${videoId}" controls preload="auto" class="w-100" style="max-width: 400px;">
+            <source type="${att.mime_type}">
             Ваш браузер не поддерживает видео.
           </video>
           <div class="small text-secondary">${esc(att.file_name)}</div>`;
@@ -185,7 +188,7 @@ export function createMessageElement(msg, options = {}) {
         const fileSize = att.file_size ? formatFileSize(att.file_size) : '';
         attachmentsHTML += `
           <a href="${att.file_url}" 
-             class="d-flex align-items-center text-decoration-none p-2 border rounded bg-light"
+             class="d-flex align-items-center text-decoration-none p-2 border rounded"
              download="${esc(att.file_name)}">
             <i class="bi-file-earmark fs-3 text-primary me-2"></i>
             <div>
@@ -223,41 +226,20 @@ export function createMessageElement(msg, options = {}) {
     wrap.innerHTML = `${bubble}<a class="ms-2 text-decoration-none" href="${profileUrl}">${ava}</a>`;
   }
 
-  // Принудительно создаём и загружаем видео элементы после добавления в DOM
-  if (msg.has_attachments && msg.attachments && msg.attachments.length > 0) {
-    // Находим все video placeholder'ы и заменяем их реальными элементами
-    const videoContainers = wrap.querySelectorAll('.attachment-item');
-    msg.attachments.forEach((att, index) => {
-      if (att.file_type === 'video') {
-        const container = videoContainers[index];
-        if (container) {
-          // Очищаем контейнер
-          container.innerHTML = '';
-          
-          // Создаём video элемент программно
-          const video = document.createElement('video');
-          video.controls = true;
-          video.preload = 'metadata';
-          video.className = 'w-100';
-          video.style.maxWidth = '400px';
-          
-          const source = document.createElement('source');
-          source.src = att.file_url;
-          source.type = att.mime_type;
-          
-          video.appendChild(source);
-          
-          const textDiv = document.createElement('div');
-          textDiv.className = 'small text-secondary';
-          textDiv.textContent = att.file_name;
-          
-          container.appendChild(video);
-          container.appendChild(textDiv);
-          
-          // Загружаем видео
-          video.load();
+  // Устанавливаем src для видео после добавления в DOM
+  if (videoIds.length > 0) {
+    // Используем requestAnimationFrame чтобы убедиться что элементы в DOM
+    requestAnimationFrame(() => {
+      videoIds.forEach(videoData => {
+        const video = wrap.querySelector(`#${videoData.id}`);
+        if (video) {
+          const source = video.querySelector('source');
+          if (source) {
+            source.src = videoData.url;
+            video.load();
+          }
         }
-      }
+      });
     });
   }
 
