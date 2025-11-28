@@ -345,8 +345,14 @@ document.addEventListener('DOMContentLoaded', function() {
   chatForm?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    const textarea = document.getElementById('id_content');
-    const content = textarea.value.trim();
+    // Получаем FormData из самой формы для захвата всех данных
+    const formDataFromForm = new FormData(chatForm);
+    const contentFromForm = formDataFromForm.get('content') || '';
+    const content = contentFromForm.trim();
+    
+    console.log('DEBUG: content from FormData:', content);
+    console.log('DEBUG: content length:', content.length);
+    console.log('DEBUG: selectedFiles.length:', selectedFiles.length);
     
     // Проверка: должен быть либо текст, либо файлы
     if (!content && selectedFiles.length === 0) {
@@ -356,13 +362,24 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Всегда отправляем через API (с файлами или без)
     const formData = new FormData();
-    formData.append('content', content || '');
+    formData.append('content', content);
     
     selectedFiles.forEach((file, index) => {
       formData.append(`file_${index}`, file);
+      console.log(`DEBUG: Adding file ${index}:`, file.name, file.size);
     });
     
     formData.append('chat_id', '{{ chat.id }}');
+    
+    // Выводим все что в FormData
+    console.log('DEBUG: FormData содержит:');
+    for (let [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        console.log(`  ${key}: [File] ${value.name} (${value.size} bytes)`);
+      } else {
+        console.log(`  ${key}: ${value}`);
+      }
+    }
     
     const csrftoken = getCookie('csrftoken');
     console.log('CSRF token:', csrftoken);
@@ -388,13 +405,14 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Сообщение отправлено:', result);
         
         // Очищаем форму
-        textarea.value = '';
+        const textarea = document.getElementById('id_content');
+        if (textarea) textarea.value = '';
         selectedFiles = [];
         updatePreview();
-        documentInput.value = '';
-        imageInput.value = '';
-        cameraInput.value = '';
-        audioInput.value = '';
+        if (documentInput) documentInput.value = '';
+        if (imageInput) imageInput.value = '';
+        if (cameraInput) cameraInput.value = '';
+        if (audioInput) audioInput.value = '';
         
         // Отображаем сообщение через WebSocket будет автоматически
       } else {

@@ -27,6 +27,10 @@ def upload_message_with_attachments(request):
     chat_id = request.POST.get('chat_id')
     content = request.POST.get('content', '').strip()
     
+    # Отладка
+    print(f"DEBUG: chat_id={chat_id}, content='{content}'")
+    print(f"DEBUG: FILES={list(request.FILES.keys())}")
+    
     if not chat_id:
         return JsonResponse(
             {'ok': False, 'error': 'chat_id required'},
