@@ -8,6 +8,8 @@
 
 .comment-item {
   padding: 0.5rem 0;  // py-2
+  display: flex;
+  flex-direction: column;
 
   .comment-header {
     font-size: 0.875rem;  // small
@@ -38,6 +40,24 @@
     line-height: 1.5;
     white-space: pre-wrap;
     word-wrap: break-word;
+    padding: 0.75rem 1rem;
+    background: var(--bs-secondary-bg);
+    border-radius: 1rem;
+    max-width: 70%;
+  }
+  
+  // Комментарии автора (текущего пользователя) - справа
+  &.comment-item--own {
+    align-items: flex-end;
+    
+    .comment-header {
+      text-align: right;
+    }
+    
+    .comment-body {
+      background: var(--bs-primary-bg-subtle);
+      border: 1px solid color-mix(in srgb, var(--bs-primary), transparent 85%);
+    }
   }
 }
 

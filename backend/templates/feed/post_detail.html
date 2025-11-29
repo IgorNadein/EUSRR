@@ -170,7 +170,7 @@
             {% for c in comments %}
               {% firstof c.id c.pk as cid %}
               {% firstof c.author.id c.author.pk c.author_id as c_author_id %}
-              <div id="c{{ cid }}" class="comment-item">
+              <div id="c{{ cid }}" class="comment-item{% if c_author_id == user.id %} comment-item--own{% endif %}">
                 <div class="comment-header">
                   {% if c_author_id %}
                     <a href="{% url 'employees:employee_detail' c_author_id %}" class="comment-author">
