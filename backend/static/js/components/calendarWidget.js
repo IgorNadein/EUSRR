@@ -63,7 +63,34 @@ export function initCalendarWidget(options = {}) {
   const globalToken = getAccessToken();
 
   function authHeaders() {
-    return globalToken ? { Authorization: 'Bearer ' + globalToken } : {};
+    const headers = {};
+    if (globalToken) {
+      headers.Authorization = 'Bearer ' + globalToken;
+    }
+    // Добавляем CSRF токен для POST/PUT/PATCH/DELETE запросов
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                      document.querySelector('meta[name="csrf-token"]')?.content ||
+                      getCookie('csrftoken');
+    if (csrfToken) {
+      headers['X-CSRFToken'] = csrfToken;
+    }
+    return headers;
+  }
+
+  // Функция для получения cookie
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
   }
 
   /* ===== Только ЧИСЛОВОЙ PK отдела ===== */
@@ -84,10 +111,14 @@ export function initCalendarWidget(options = {}) {
     return `${y}-${m}-${d}`;
   }
 
-  // Базовый URL событий: для отдела добавляем department_id
-  const eventsUrl = (deptId = null) => {
+  // Базовый URL событий: для отдела добавляем department_id, для личного - employee_id
+  const eventsUrl = (deptId = null, employeeId = null) => {
     const u = new URL(API_EVENTS, location.origin);
-    if (deptId != null) u.searchParams.set('department_id', String(deptId));
+    if (employeeId != null) {
+      u.searchParams.set('employee_id', String(employeeId));
+    } else if (deptId != null) {
+      u.searchParams.set('department_id', String(deptId));
+    }
     return u.pathname + (u.search ? '?' + u.searchParams.toString() : '');
   };
 
@@ -122,7 +153,7 @@ export function initCalendarWidget(options = {}) {
 
   /* ===== Состояние ===== */
   let departments = []; // [{id, name}] где id — всегда числовой PK
-  const state = { type: 'company', deptId: null };
+  const state = { type: 'company', deptId: null, employeeId: null };
   // Защита от гонок при загрузке отделов
   let deptsLoadSeq = 0;
 
@@ -292,13 +323,22 @@ export function initCalendarWidget(options = {}) {
   }
 
   async function openEventDetailsById(eventId) {
+    console.log('[CalendarWidget] openEventDetailsById called with:', eventId);
     try {
-      const data = await apiGet(`${API_EVENTS}${eventId}/`);
+      const url = `${API_EVENTS}${eventId}/`;
+      console.log('[CalendarWidget] Fetching event details from:', url);
+      const data = await apiGet(url);
+      console.log('[CalendarWidget] Event details loaded:', data);
       currentDetail = data;
       fillDetails(data);
-      detailsModal && detailsModal.show();
+      if (detailsModal) {
+        console.log('[CalendarWidget] Showing details modal');
+        detailsModal.show();
+      } else {
+        console.error('[CalendarWidget] detailsModal is not initialized!');
+      }
     } catch (err) {
-      console.error('Load details error', err);
+      console.error('[CalendarWidget] Load details error:', err);
       if (err.status === 403) alert('Недостаточно прав для просмотра деталей события.');
       else alert('Не удалось загрузить событие.');
     }
@@ -387,13 +427,19 @@ export function initCalendarWidget(options = {}) {
   }
 
   function currentDeptLabel() {
+    if (state.type === 'personal') return 'Личный';
     if (state.type !== 'dept') return 'Компания';
     const d = departments.find((x) => String(x.id) === String(state.deptId));
     return d?.name || `Отдел #${state.deptId}`;
   }
 
   function setChooserLabel() {
-    const label = state.type === 'company' ? 'Компания' : currentDeptLabel();
+    let label = 'Компания';
+    if (state.type === 'personal') {
+      label = 'Личный';
+    } else if (state.type === 'dept') {
+      label = currentDeptLabel();
+    }
     if (chooserBtn) chooserBtn.textContent = label;
     if (chooserBtnMobile) chooserBtnMobile.textContent = label;
     if (eventTargetLabel) eventTargetLabel.textContent = label;
@@ -407,6 +453,18 @@ export function initCalendarWidget(options = {}) {
     if (type === 'company') {
       state.type = 'company';
       state.deptId = null;
+      state.employeeId = null;
+    } else if (type === 'personal') {
+      state.type = 'personal';
+      state.deptId = null;
+      // Получаем employee_id из meta-тега или атрибута
+      const userMeta = document.querySelector('meta[name="user-id"]');
+      state.employeeId = userMeta ? userMeta.content : null;
+      if (!state.employeeId) {
+        alert('Не удалось определить ID пользователя');
+        state.type = 'company';
+        return;
+      }
     } else {
       const id = btn.dataset.id;
       if (!DIGITS_RE.test(String(id || ''))) {
@@ -415,6 +473,7 @@ export function initCalendarWidget(options = {}) {
       }
       state.type = 'dept';
       state.deptId = id;
+      state.employeeId = null;
     }
     setChooserLabel();
     [deskCalendar, mobCalendar].forEach((cal) => cal?.refetchEvents());
@@ -433,8 +492,12 @@ export function initCalendarWidget(options = {}) {
         end: ymdLocal(end)
       };
       
-      // Добавляем department_id если нужно
-      if (state.type === 'dept' && state.deptId) {
+      // Добавляем employee_id для личного календаря
+      if (state.type === 'personal' && state.employeeId) {
+        params.employee_id = state.employeeId;
+      }
+      // Добавляем department_id для отдела
+      else if (state.type === 'dept' && state.deptId) {
         params.department_id = state.deptId;
       }
       
@@ -446,7 +509,7 @@ export function initCalendarWidget(options = {}) {
     }
   }
 
-  // ✅ ВСЕ доступные календари: компания + все отделы пользователя
+  // ✅ ВСЕ доступные календари: компания + все отделы пользователя + личный
   async function fetchEventsAllCalendars(start, end) {
     // При первом вызове убедимся, что отделы загружены
     if (!departments || departments.length === 0) {
@@ -458,6 +521,10 @@ export function initCalendarWidget(options = {}) {
     const startStr = ymdLocal(start);
     const endStr = ymdLocal(end);
     
+    // Получаем employee_id текущего пользователя
+    const userMeta = document.querySelector('meta[name="user-id"]');
+    const currentEmployeeId = userMeta ? userMeta.content : null;
+    
     // Формируем список источников с подписью
     const sources = [
       { params: { start: startStr, end: endStr }, label: 'Компания', type: 'company', id: null },
@@ -468,6 +535,16 @@ export function initCalendarWidget(options = {}) {
         id: d.id,
       })),
     ];
+    
+    // Добавляем личный календарь, если есть employee_id
+    if (currentEmployeeId) {
+      sources.push({
+        params: { start: startStr, end: endStr, employee_id: currentEmployeeId },
+        label: 'Личный',
+        type: 'personal',
+        id: currentEmployeeId,
+      });
+    }
     
     // Загружаем все источники параллельно (с кешированием!)
     const chunks = await Promise.all(
@@ -502,6 +579,7 @@ export function initCalendarWidget(options = {}) {
   }
 
   function normalizeEvent(ev) {
+    const id = ev.id ?? ev.pk ?? ev.uuid ?? ev.slug ?? ev._id;
     const title = pick(ev, ['title', 'name', 'summary', 'text']) || '';
     const rs = pick(ev, ['start', 'start_date', 'date_start', 'date', 'date_from']);
     const re = pick(ev, ['end', 'end_date', 'date_end', 'date_to']);
@@ -520,7 +598,7 @@ export function initCalendarWidget(options = {}) {
     const location = ev.location || ev.place || '';
     const description = ev.description || ev.details || ev.note || '';
     const sourceLabel = ev.__source?.label || (ev.department?.name ?? ev.department) || 'Компания';
-    return { title, start: s, end: e, allDay, color, recurrence, location, description, sourceLabel };
+    return { id, title, start: s, end: e, allDay, color, recurrence, location, description, sourceLabel };
   }
 
   function renderVertical(container, rangeLabel, events, ws, we) {
@@ -550,6 +628,17 @@ export function initCalendarWidget(options = {}) {
     list.forEach((ev) => {
       const row = document.createElement('div');
       row.className = 'week-row';
+      
+      // Сохраняем ID события для обработчика клика (уже нормализовано в ev.id)
+      if (ev.id) {
+        row.dataset.eventId = String(ev.id);
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => {
+          console.log('[CalendarWidget] Opening event details:', ev.id);
+          openEventDetailsById(ev.id);
+        });
+      }
+      
       // Цветовая точка слева от заголовка
       const dot = document.createElement('span');
       dot.className = 'color-dot';
@@ -610,7 +699,201 @@ export function initCalendarWidget(options = {}) {
     );
   }
 
-  /* ===== Offcanvas header height fix ===== */
+  /* ===== Контекстное меню для событий ===== */
+  const contextMenu = document.getElementById('calendarContextMenu');
+  const contextMenuView = document.getElementById('contextMenuView');
+  const contextMenuEdit = document.getElementById('contextMenuEdit');
+  const contextMenuDelete = document.getElementById('contextMenuDelete');
+  
+  let contextMenuEventId = null;
+  let contextMenuLongPressTimer = null;
+
+  // Функция показа контекстного меню
+  function showContextMenu(x, y, eventId) {
+    if (!contextMenu) return;
+    
+    contextMenuEventId = eventId;
+    
+    // Проверяем права доступа
+    checkEventPermissions(eventId).then(perms => {
+      // Показываем/скрываем кнопки в зависимости от прав
+      if (contextMenuEdit) {
+        contextMenuEdit.classList.toggle('d-none', !perms.can_edit);
+      }
+      if (contextMenuDelete) {
+        contextMenuDelete.classList.toggle('d-none', !perms.can_delete);
+      }
+      
+      // Скрываем разделитель если нет прав на удаление
+      const divider = contextMenu.querySelector('.dropdown-divider[data-requires-permission="delete"]');
+      if (divider) {
+        divider.classList.toggle('d-none', !perms.can_delete);
+      }
+      
+      // Позиционируем меню
+      contextMenu.style.left = x + 'px';
+      contextMenu.style.top = y + 'px';
+      contextMenu.style.display = 'block';
+    });
+  }
+
+  // Функция скрытия контекстного меню
+  function hideContextMenu() {
+    if (contextMenu) {
+      contextMenu.style.display = 'none';
+    }
+    contextMenuEventId = null;
+  }
+
+  // Проверка прав на событие
+  async function checkEventPermissions(eventId) {
+    try {
+      const response = await fetch(`${API_EVENTS}${eventId}/permissions/`, {
+        headers: authHeaders()
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {
+      console.error('Failed to check permissions:', e);
+    }
+    return { can_view: true, can_edit: false, can_delete: false };
+  }
+
+  // Обработчики кнопок контекстного меню
+  if (contextMenuView) {
+    contextMenuView.addEventListener('click', () => {
+      if (contextMenuEventId) {
+        openEventDetailsById(contextMenuEventId);
+      }
+      hideContextMenu();
+    });
+  }
+
+  if (contextMenuEdit) {
+    contextMenuEdit.addEventListener('click', async () => {
+      if (contextMenuEventId) {
+        try {
+          const data = await apiGet(`${API_EVENTS}${contextMenuEventId}/`);
+          currentDetail = data;
+          // Переиспользуем логику редактирования из старой кнопки "Редактировать"
+          editEvent(data);
+        } catch (err) {
+          console.error('Load event for edit error', err);
+          alert('Не удалось загрузить событие для редактирования.');
+        }
+      }
+      hideContextMenu();
+    });
+  }
+
+  if (contextMenuDelete) {
+    contextMenuDelete.addEventListener('click', async () => {
+      if (contextMenuEventId) {
+        if (!confirm('Удалить это событие без возможности восстановления?')) {
+          hideContextMenu();
+          return;
+        }
+        try {
+          await apiDelete(`${API_EVENTS}${contextMenuEventId}/`);
+          invalidateCalendarEvents();
+          try {
+            deskCalendar?.refetchEvents?.();
+            mobCalendar?.refetchEvents?.();
+          } catch (_) {}
+          updateWeekLists();
+        } catch (err) {
+          console.error('Delete event error', err);
+          alert(
+            err.status === 403 ? 'Недостаточно прав для удаления.' : 'Не удалось удалить событие.'
+          );
+        }
+      }
+      hideContextMenu();
+    });
+  }
+
+  // Закрытие контекстного меню при клике вне его
+  document.addEventListener('click', (e) => {
+    if (contextMenu && !contextMenu.contains(e.target)) {
+      hideContextMenu();
+    }
+  });
+
+  // Функция редактирования события (вынесена из обработчика кнопки)
+  function editEvent(data) {
+    const form = document.getElementById('eventForm');
+    if (!form) return;
+
+    form.dataset.mode = 'edit';
+    form.dataset.eventId = data.id;
+
+    // Базовые поля
+    form.querySelector('[name="title"]').value = data.title || '';
+    form.querySelector('[name="location"]').value = data.location || '';
+    form.querySelector('[name="color"]').value = data.color || DEFAULT_EVENT_COLOR;
+    form.querySelector('[name="all_day"]').checked = !!data.all_day;
+
+    // Описание
+    const descEl = form.querySelector('[name="description"]');
+    if (descEl) descEl.value = data.description || '';
+
+    // Дата/время
+    const startIso =
+      data.start ||
+      (data.start_date
+        ? `${data.start_date}T${(data.start_time || '00:00').slice(0, 5)}`
+        : '');
+    const endIso =
+      data.end ||
+      (data.end_date
+        ? `${data.end_date}T${(data.end_time || '00:00').slice(0, 5)}`
+        : '');
+    const startEl = form.querySelector('[name="start"]');
+    const endEl = form.querySelector('[name="end"]');
+    if (startEl) startEl.value = (startIso || '').slice(0, 16);
+    if (endEl) endEl.value = (endIso || '').slice(0, 16);
+
+    // Повторы
+    const recSel = form.querySelector('[name="recurrence"]');
+    if (recSel) recSel.value = data.recurrence || 'one_time';
+    const recInt = form.querySelector('[name="recurrence_interval"]');
+    if (recInt) recInt.value = data.recurrence_interval || 1;
+
+    // Until / count
+    const untilEl = form.querySelector('[name="recurrence_until"]');
+    if (untilEl) untilEl.value = (data.recurrence_until || '').slice(0, 10);
+    const countEl = form.querySelector('[name="recurrence_count"]');
+    if (countEl) countEl.value = data.recurrence_count ?? '';
+
+    // Weekly дни из маски
+    if (data.weekdays_mask != null) setWeekdaysFromMask(data.weekdays_mask);
+
+    // Синхронизация UI
+    try {
+      typeof syncByRecurrence === 'function' && syncByRecurrence();
+    } catch (_) {}
+
+    // Отдел (если есть select)
+    const deptSel = form.querySelector('[name="department_id"]');
+    if (deptSel && data.department) {
+      const val = data.department.id ?? data.department;
+      if (val != null) deptSel.value = String(val);
+    }
+
+    // Открываем форму редактирования
+    const createModalEl = document.getElementById('eventCreateModal');
+    if (createModalEl) {
+      const createModal = bootstrap.Modal.getOrCreateInstance(createModalEl);
+      createModal.show();
+    } else {
+      const offcanvasEl = document.getElementById('rightbarOffcanvas');
+      if (offcanvasEl) bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl).show();
+    }
+    form.querySelector('[name="title"]')?.focus();
+  }
+
+  /* ===== Обработчики событий календаря ===== */
   const oc = document.getElementById('rightbarOffcanvas');
   const setHeadH = () => {
     const h = oc?.querySelector('.offcanvas-header')?.offsetHeight || 56;
@@ -630,6 +913,7 @@ export function initCalendarWidget(options = {}) {
     headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
     height: 'auto',
     displayEventTime: false,
+    selectable: true, // Позволяет выбирать даты
     events: async (info, success, failure) => {
       try {
         const raw = await fetchEventsCombined(info.start, info.end);
@@ -682,6 +966,85 @@ export function initCalendarWidget(options = {}) {
         s.fontWeight = '600';
         s.fontFamily =
           '"Arial Narrow","Roboto Condensed",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+      }
+      
+      // Добавляем обработчик правой кнопки мыши
+      info.el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const eid = info.event.id || info.event.extendedProps?.id;
+        if (eid) {
+          showContextMenu(e.pageX, e.pageY, eid);
+        }
+      });
+      
+      // Добавляем обработчик долгого нажатия для мобильных устройств
+      info.el.addEventListener('touchstart', (e) => {
+        contextMenuLongPressTimer = setTimeout(() => {
+          const eid = info.event.id || info.event.extendedProps?.id;
+          if (eid) {
+            const touch = e.touches[0];
+            showContextMenu(touch.pageX, touch.pageY, eid);
+          }
+        }, 500); // 500ms для долгого нажатия
+      });
+      
+      info.el.addEventListener('touchend', () => {
+        if (contextMenuLongPressTimer) {
+          clearTimeout(contextMenuLongPressTimer);
+          contextMenuLongPressTimer = null;
+        }
+      });
+      
+      info.el.addEventListener('touchmove', () => {
+        if (contextMenuLongPressTimer) {
+          clearTimeout(contextMenuLongPressTimer);
+          contextMenuLongPressTimer = null;
+        }
+      });
+    },
+    // Обработчик клика по дате для создания нового события
+    dateClick: (info) => {
+      // Открываем модал создания события
+      const form = document.getElementById('eventForm');
+      if (!form) return;
+      
+      // Очищаем форму
+      form.reset();
+      form.dataset.mode = 'create';
+      delete form.dataset.eventId;
+      
+      // Устанавливаем выбранную дату
+      const clickedDate = info.dateStr; // YYYY-MM-DD
+      const startEl = form.querySelector('[name="start"]');
+      const endEl = form.querySelector('[name="end"]');
+      
+      if (startEl) {
+        // Устанавливаем дату начала (с текущим временем)
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        startEl.value = `${clickedDate}T${timeStr}`;
+      }
+      
+      if (endEl) {
+        // Устанавливаем дату окончания (на час позже)
+        const now = new Date();
+        now.setHours(now.getHours() + 1);
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        endEl.value = `${clickedDate}T${timeStr}`;
+      }
+      
+      // Синхронизируем UI
+      try {
+        typeof syncByRecurrence === 'function' && syncByRecurrence();
+        typeof syncByAllDay === 'function' && syncByAllDay();
+        typeof syncUntilCount === 'function' && syncUntilCount();
+      } catch (_) {}
+      
+      // Открываем модал
+      const createModalEl = document.getElementById('eventCreateModal');
+      if (createModalEl) {
+        const createModal = bootstrap.Modal.getOrCreateInstance(createModalEl);
+        createModal.show();
       }
     },
   };
@@ -763,104 +1126,6 @@ export function initCalendarWidget(options = {}) {
   syncByRecurrence();
   syncByAllDay();
   syncUntilCount();
-
-  /* ===== Кнопки модала: редактирование/удаление ===== */
-  $dt?.btnEdit?.addEventListener?.('click', () => {
-    if (!currentDetail) return;
-    const form = document.getElementById('eventForm');
-    if (!form) {
-      detailsModal?.hide();
-      return;
-    }
-    form.dataset.mode = 'edit';
-    form.dataset.eventId = currentDetail.id;
-
-    // Базовые поля
-    form.querySelector('[name="title"]').value = currentDetail.title || '';
-    form.querySelector('[name="location"]').value = currentDetail.location || '';
-    form.querySelector('[name="color"]').value = currentDetail.color || DEFAULT_EVENT_COLOR;
-    form.querySelector('[name="all_day"]').checked = !!currentDetail.all_day;
-
-    // Описание
-    const descEl = form.querySelector('[name="description"]');
-    if (descEl) descEl.value = currentDetail.description || '';
-
-    // Дата/время
-    const startIso =
-      currentDetail.start ||
-      (currentDetail.start_date
-        ? `${currentDetail.start_date}T${(currentDetail.start_time || '00:00').slice(0, 5)}`
-        : '');
-    const endIso =
-      currentDetail.end ||
-      (currentDetail.end_date
-        ? `${currentDetail.end_date}T${(currentDetail.end_time || '00:00').slice(0, 5)}`
-        : '');
-    const startEl = form.querySelector('[name="start"]');
-    const endEl = form.querySelector('[name="end"]');
-    if (startEl) startEl.value = (startIso || '').slice(0, 16);
-    if (endEl) endEl.value = (endIso || '').slice(0, 16);
-
-    // Повторы
-    const recSel = form.querySelector('[name="recurrence"]');
-    if (recSel) recSel.value = currentDetail.recurrence || 'one_time';
-    const recInt = form.querySelector('[name="recurrence_interval"]');
-    if (recInt) recInt.value = currentDetail.recurrence_interval || 1;
-
-    // Until / count
-    const untilEl = form.querySelector('[name="recurrence_until"]');
-    if (untilEl) untilEl.value = (currentDetail.recurrence_until || '').slice(0, 10);
-    const countEl = form.querySelector('[name="recurrence_count"]');
-    if (countEl) countEl.value = currentDetail.recurrence_count ?? '';
-
-    // Weekly дни из маски
-    if (currentDetail.weekdays_mask != null) setWeekdaysFromMask(currentDetail.weekdays_mask);
-
-    // Синхронизация UI
-    try {
-      typeof syncByRecurrence === 'function' && syncByRecurrence();
-    } catch (_) {}
-
-    // Отдел (если есть select)
-    const deptSel = form.querySelector('[name="department_id"]');
-    if (deptSel && currentDetail.department) {
-      const val = currentDetail.department.id ?? currentDetail.department;
-      if (val != null) deptSel.value = String(val);
-    }
-
-    // Открываем форму редактирования
-    detailsModal?.hide();
-    setTimeout(() => {
-      const createModalEl = document.getElementById('eventCreateModal');
-      if (createModalEl) {
-        const createModal = bootstrap.Modal.getOrCreateInstance(createModalEl);
-        createModal.show();
-      } else {
-        const offcanvasEl = document.getElementById('rightbarOffcanvas');
-        if (offcanvasEl) bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl).show();
-      }
-      form.querySelector('[name="title"]')?.focus();
-    }, 150);
-  });
-
-  $dt?.btnDel?.addEventListener?.('click', async () => {
-    if (!currentDetail) return;
-    if (!confirm('Удалить это событие без возможности восстановления?')) return;
-    try {
-      await apiDelete(`${API_EVENTS}${currentDetail.id}/`);
-      detailsModal?.hide();
-      try {
-        deskCalendar?.refetchEvents?.();
-        mobCalendar?.refetchEvents?.();
-      } catch (_) {}
-      updateWeekLists();
-    } catch (err) {
-      console.error('Delete event error', err);
-      alert(
-        err.status === 403 ? 'Недостаточно прав для удаления.' : 'Не удалось удалить событие.'
-      );
-    }
-  });
 
   /* ===== Цвет: палитра и синхронизация с input[type=color] ===== */
   function initColorPicker() {
@@ -965,8 +1230,14 @@ export function initCalendarWidget(options = {}) {
       payload.weekdays = weekdays;
     }
 
-    // Область — компания/отдел
-    if (state.type === 'dept') {
+    // Область — компания/отдел/личный
+    if (state.type === 'personal') {
+      if (!state.employeeId) {
+        alert('Не удалось определить ID пользователя');
+        return;
+      }
+      payload.employee_id = Number(state.employeeId);
+    } else if (state.type === 'dept') {
       if (!DIGITS_RE.test(String(state.deptId))) {
         alert('Некорректный отдел');
         return;
@@ -998,6 +1269,7 @@ export function initCalendarWidget(options = {}) {
       syncByRecurrence();
       syncByAllDay();
       syncUntilCount();
+      invalidateCalendarEvents();
       [deskCalendar, mobCalendar].forEach((cal) => cal?.refetchEvents());
       updateWeekLists();
     } catch (err) {
@@ -1027,6 +1299,7 @@ export function initCalendarWidget(options = {}) {
     },
     getDepartments: () => departments,
     getState: () => ({ ...state }),
+    openEventById: (eventId) => openEventDetailsById(eventId),
   };
 }
 
@@ -1034,5 +1307,15 @@ export function initCalendarWidget(options = {}) {
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     window.calendarWidget = initCalendarWidget();
+    
+    // Проверяем URL на наличие параметра event_id для открытия модала
+    const urlParams = new URLSearchParams(window.location.search);
+    const eventIdFromUrl = urlParams.get('event_id');
+    if (eventIdFromUrl && window.calendarWidget) {
+      // Небольшая задержка, чтобы календарь успел загрузиться
+      setTimeout(() => {
+        window.calendarWidget.openEventById(eventIdFromUrl);
+      }, 500);
+    }
   });
 }
