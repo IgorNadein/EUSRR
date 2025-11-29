@@ -9,7 +9,7 @@
 
   // Константы
   const INITIAL_COMMENTS_COUNT = 10;
-  const DEBUG = true;
+  const DEBUG = true; // Проверяем новую логику
 
   // Состояние
   let modal = null;
@@ -79,6 +79,16 @@
     return div.innerHTML;
   }
 
+  function getCurrentUserId() {
+    // Получаем ID текущего пользователя из meta-тега
+    const meta = document.querySelector('meta[name="user-id"]');
+    if (meta) {
+      const userId = meta.getAttribute('content');
+      return userId ? parseInt(userId) : null;
+    }
+    return null;
+  }
+
   function getAuthorId(authorObj) {
     if (!authorObj) return null;
     // API возвращает author.id
@@ -137,16 +147,22 @@
       
       if (DEBUG) {
         console.log('=== POST DEBUG ===');
-        console.log('Post:', post);
-        console.log('Post author:', post.author);
-        console.log('Post author ID:', getAuthorId(post.author), typeof getAuthorId(post.author));
+        console.log('🙋 Current User ID:', getCurrentUserId());
+        console.log('📝 Post:', post);
+        console.log('👤 Post author:', post.author);
+        console.log('🆔 Post author ID:', getAuthorId(post.author), typeof getAuthorId(post.author));
+        
         if (post.comments && post.comments.length > 0) {
-          const firstComment = post.comments[0];
-          console.log('First comment:', firstComment);
-          console.log('Comment author:', firstComment.author);
-          console.log('Comment author ID:', getAuthorId(firstComment.author), typeof getAuthorId(firstComment.author));
+          console.log('\n=== ALL COMMENTS DEBUG ===');
+          console.table(post.comments.map(c => ({
+            id: c.id,
+            author_name: c.author?.full_name,
+            author_id: c.author?.id,
+            is_me: c.author?.id === getCurrentUserId() ? '✅ МОЙ' : '❌ чужой',
+            text: c.text.substring(0, 30)
+          })));
         }
-        console.log('==================');
+        console.log('==================\n');
       }
       
       currentPost = post;
@@ -272,31 +288,33 @@
   }
 
   function renderComment(comment, postAuthorId) {
-    // Используем флаг из API (приоритет) или fallback на сравнение ID
-    let isAuthor = false;
+    // ВАЖНО: Отображаем справа комментарии ТЕКУЩЕГО пользователя (как в мессенджере)
+    // НЕ автора поста, а автора комментария === текущий пользователь
+    const currentUserId = getCurrentUserId();
+    const commentAuthorId = getAuthorId(comment.author);
     
-    if (comment.hasOwnProperty('is_post_author')) {
-      // Используем флаг из API
-      isAuthor = comment.is_post_author;
-    } else {
-      // Fallback: сравниваем ID вручную
-      const commentAuthorId = getAuthorId(comment.author);
-      isAuthor = (commentAuthorId !== null && postAuthorId !== null && 
-                  String(commentAuthorId) === String(postAuthorId));
-    }
+    // Мой комментарий = справа, чужой = слева
+    const isMyComment = (currentUserId !== null && commentAuthorId !== null && 
+                         currentUserId === commentAuthorId);
     
     if (DEBUG) {
-      console.log(`Comment by ${comment.author?.full_name}:`, {
-        is_post_author_flag: comment.is_post_author,
-        calculated: isAuthor,
-        comment_author_id: getAuthorId(comment.author),
-        post_author_id: postAuthorId
+      console.log(`🔍 Comment #${comment.id} by ${comment.author?.full_name}:`, {
+        'currentUserId (ME)': currentUserId,
+        'commentAuthorId': commentAuthorId,
+        'isMyComment': isMyComment,
+        'CSS class': isMyComment ? 'comment-item--author (RIGHT ➡️)' : 'comment-item (LEFT ⬅️)'
       });
     }
     
-    const commentClass = isAuthor ? 'comment-item comment-item--author' : 'comment-item';
+    const commentClass = isMyComment ? 'comment-item comment-item--author' : 'comment-item';
     
-    let html = `<div class="${commentClass}">`;
+    let html = `<div class="${commentClass}"`;
+    // Добавляем data-атрибуты для отладки в инспекторе
+    html += ` data-comment-id="${comment.id}"`;
+    html += ` data-is-my-comment="${isMyComment}"`;
+    html += ` data-comment-author-id="${commentAuthorId}"`;
+    html += ` data-current-user-id="${currentUserId}">`;
+    
     html += '<div class="comment-header">';
     
     const authorName = comment.author?.full_name || 'Аноним';
@@ -424,20 +442,25 @@
     }
 
     try {
-      const response = await fetch(`/api/v1/posts/${postId}/comments/`, {
+      const response = await fetch(`/api/v1/comments/`, {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrfToken,
           'Content-Type': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
         },
-        body: JSON.stringify({ text: text })
+        body: JSON.stringify({ 
+          post: parseInt(postId),
+          text: text 
+        })
       });
 
       if (response.ok) {
         // Перезагружаем пост
         await loadPostDetail(postId);
       } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error submitting comment:', errorData);
         alert('Ошибка при отправке комментария');
       }
     } catch (error) {
