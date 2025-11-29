@@ -161,6 +161,7 @@ class CommentSerializer(serializers.ModelSerializer):
     created_at_display = serializers.DateTimeField(
         source="created_at", format="%d.%m.%Y %H:%M", read_only=True
     )
+    is_post_author = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
@@ -175,11 +176,18 @@ class CommentSerializer(serializers.ModelSerializer):
             "attachment",
             "created_at",
             "created_at_display",
+            "is_post_author",
         ]
         extra_kwargs = {
             "post": {"write_only": True},
             "text": {"required": False, "allow_blank": True},
         }
+
+    def get_is_post_author(self, obj):
+        """Проверяет, является ли автор комментария автором поста"""
+        if not obj.author or not obj.post or not obj.post.author:
+            return False
+        return obj.author.id == obj.post.author.id
 
     def validate(self, attrs):
         text = (attrs.get("text") or "").strip()
