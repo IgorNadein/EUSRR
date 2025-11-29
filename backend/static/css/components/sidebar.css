@@ -17,11 +17,15 @@
   background: var(--bs-body-bg);
 }
 
+/* На десктопе sidebar становится sticky с фиксированной высотой
+   Высота = 100vh - navbar - 2*отступ (сверху и снизу)
+   top = navbar + отступ сверху
+   Не перемещается с основным скролом страницы, имеет свой внутренний скролл */
 @media (min-width: 992px) {
   #sidebar.offcanvas-lg {
     position: sticky;
-    top: var(--navbar-h, 60px);
-    height: calc(100dvh - var(--navbar-h, 60px));
+    top: calc(var(--navbar-h, 60px) + var(--layout-padding-y, 12px));
+    height: calc(100dvh - var(--navbar-h, 60px) - 2 * var(--layout-padding-y, 12px));
     align-self: start;
     overflow: auto;
     border-right: .5px solid var(--bs-border-color);

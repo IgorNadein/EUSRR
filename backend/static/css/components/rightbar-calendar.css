@@ -47,11 +47,15 @@
   padding: var(--space-2);
 }
 
+/* На десктопе rightbar становится sticky с фиксированной высотой
+   Высота = 100vh - navbar - 2*отступ (сверху и снизу)
+   top = navbar + отступ сверху
+   Не перемещается с основным скролом страницы, скролл только внутри .card-body */
 @media (min-width: 992px){
   .rightbar{
     position: sticky; 
-    top: var(--navbar-h);
-    height: calc(100dvh - var(--navbar-h));
+    top: calc(var(--navbar-h) + var(--layout-padding-y, 12px));
+    height: calc(100dvh - var(--navbar-h) - 2 * var(--layout-padding-y, 12px));
     overflow: hidden;
     /* padding управляется через Bootstrap классы в шаблоне (px-0, py-3 и т.д.) */
   }
