@@ -42,8 +42,6 @@ $message-bg-focused: transparent;
 .message-input,
 .composer-textarea {
   flex: 1 1 auto;
-  min-height: 44px;
-  max-height: 260px;
   border: none !important;
   background: transparent !important;
   resize: none;
@@ -54,11 +52,13 @@ $message-bg-focused: transparent;
   scrollbar-width: none;
   box-shadow: none !important;
   outline: none !important;
+  // Высота управляется через textareaAutoExpand.js для rows="1"
+  // Для остальных textarea используется стандартное поведение
 }
 
 .message-field--compact .message-input {
-  min-height: 32px;
   font-size: 0.95rem;
+  // min-height удален - управляется textareaAutoExpand.js
 }
 
 .message-field--stacked .message-input {
@@ -74,6 +74,9 @@ $message-bg-focused: transparent;
 .message-input::-webkit-scrollbar {
   display: none;
 }
+
+// Кнопки действий в формах сообщений
+// Размеры и форма определяются здесь, стили (цвета, эффекты) - в custom-bootstrap.scss
 .message-icon-btn,
 .btn-attachment,
 .btn-send,
@@ -87,10 +90,6 @@ $message-bg-focused: transparent;
   align-items: center;
   justify-content: center;
   padding: 0 !important;
-  border: none !important;
-  background: transparent;
-  color: var(--bs-secondary-color);
-  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
   aspect-ratio: 1 / 1;
   flex: 0 0 auto;
   line-height: 1;
@@ -101,31 +100,10 @@ $message-bg-focused: transparent;
   box-sizing: border-box;
 }
 
-.message-icon-btn:hover,
-.btn-attachment:hover,
-.btn-emoji:hover {
-  background: var(--bs-secondary-bg);
-  color: var(--bs-body-color);
-  transform: scale(1.02);
-}
-
+// Кнопка отправки - дополнительная тень
 .message-send,
 .btn-send {
-  background: var(--bs-primary);
-  color: #fff;
   box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.2);
-}
-
-.message-send:hover,
-.btn-send:hover {
-  background: color-mix(in srgb, var(--bs-primary) 93%, white 7%);
-  color: #fff;
-}
-
-.message-send:disabled,
-.btn-send:disabled {
-  opacity: 0.65;
-  box-shadow: none;
 }
 
 .message-attach {

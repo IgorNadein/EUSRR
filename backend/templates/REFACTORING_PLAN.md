@@ -122,7 +122,7 @@ base.html       1 файл    (корневой шаблон)
 #### 5. **Дублирование CSS стилей**
 
 Обнаружены повторяющиеся блоки стилей:
-- `.feed-stream`, `.feed-card`, `.feed-hd` - определены в 5+ файлах
+- `.card-list`, `.card`, `.card-header` - определены в 5+ файлах
 - `.btn-icon`, `.badge-status` - дублируются
 - `.ios-overlay`, `.ios-sheet` - iOS-стиль модалок
 
@@ -201,7 +201,7 @@ base.html       1 файл    (корневой шаблон)
 2. Создать файл `static/css/components/_index.css` (главный импорт):
    ```css
    /* Общие компоненты - импортируются в base.html */
-   @import 'feed-cards.css';
+   @import 'cards.css';
    @import 'ios-search.css';
    @import 'modals.css';
    @import 'badges.css';
@@ -540,16 +540,16 @@ new ListFilter({
 #### Задача 3.1: Создать общие компоненты стилей
 
 **Обнаружены дублирующие классы** (из analyze_templates.py):
-- `.feed-header`, `.feed-stream`, `.feed-hd`, `.feed-ava` - в 4-6 файлах
+- `.feed-header`, `.card-list`, `.card-header`, `.card-icon` - в 4-6 файлах
 - `.ios-search`, `.ios-search-input`, `.ios-search-clear` - в 4 файлах
 - `.btn-icon` - в 3 файлах
 
 **Действия**:
 
-1. **Создать** `static/css/components/feed-cards.css`:
+1. **Создать** `static/css/components/cards.css`:
    ```css
    /* Стили для карточек в ленте */
-   .feed-card {
+   .card {
      background: var(--bs-body-bg);
      border-radius: var(--feed-radius, 18px);
      box-shadow: var(--feed-shadow);
@@ -557,7 +557,7 @@ new ListFilter({
      overflow: hidden;
    }
    
-   .feed-hd {
+   .card-header {
      display: flex;
      align-items: center;
      gap: 0.75rem;
@@ -565,7 +565,7 @@ new ListFilter({
      border-bottom: 1px solid var(--bs-border-color);
    }
    
-   .feed-ava {
+   .card-icon {
      width: 44px;
      height: 44px;
      border-radius: 50%;
@@ -617,7 +617,7 @@ new ListFilter({
    # 2. Извлечь стили в CSS файл
    # 3. Заменить <style>...</style> на:
    {% block extra_css %}
-   <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+   <link rel="stylesheet" href="{% static 'css/components/cards.css' %}">
    {% endblock %}
    
    # 4. Проверить рендер
@@ -633,7 +633,7 @@ new ListFilter({
 4. **Подключить в base.html**:
    ```django
    {% block extra_css %}
-   <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+   <link rel="stylesheet" href="{% static 'css/components/cards.css' %}">
    <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
    <link rel="stylesheet" href="{% static 'css/components/modals.css' %}">
    <link rel="stylesheet" href="{% static 'css/components/badges.css' %}">
@@ -1038,14 +1038,14 @@ employees/components/
    # CSS структура
    
    ## Файлы
-   - `components/` - переиспользуемые компоненты (feed-cards, modals, ios-search)
+   - `components/` - переиспользуемые компоненты (cards, modals, ios-search)
    - `pages/` - стили специфичных страниц
    - `variables.css` - CSS переменные
    
    ## Использование
    ```django
    {% block extra_css %}
-   <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+   <link rel="stylesheet" href="{% static 'css/components/cards.css' %}">
    {% endblock %}
    ```
    ```
@@ -1128,7 +1128,7 @@ employees/components/
 
 ### Главная страница
 - [ ] Лента новостей отображается
-- [ ] Стили feed-card применены
+- [ ] Стили card применены
 - [ ] Боковая панель календаря работает
 - [ ] Поиск работает
 
@@ -1314,7 +1314,7 @@ requests_app/
    ```
 
 2. **Извлечь повторяющиеся стили**:
-   - Найти все `.feed-stream` определения
+   - Найти все `.card-list` определения
    - Консолидировать в `feed.css`
    - Удалить из шаблонов
 
@@ -1336,8 +1336,8 @@ requests_app/
 #### Задача 3.2: Стандартизация классов
 
 **Текущие проблемы**:
-- `.feed-card` vs `.card` vs `.req-row`
-- `.feed-ava` vs `.avatar` vs `.rp-avatar`
+- `.card` vs `.card` vs `.req-row`
+- `.card-icon` vs `.avatar` vs `.rp-avatar`
 - `.badge-status` vs `.badge-acked` vs custom badges
 
 **Стандарт**:

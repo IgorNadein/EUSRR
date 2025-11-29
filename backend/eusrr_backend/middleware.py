@@ -138,3 +138,45 @@ class EmailVerificationMiddleware:
                 pass
 
         return self.get_response(request)
+
+
+class CacheControlMiddleware:
+    """
+    Добавляет правильные заголовки Cache-Control для страниц.
+    
+    Стратегия:
+    - HTML страницы: private cache на 60 секунд (только для браузера)
+    - API: обрабатывается на уровне DRF
+    - Статика/медиа: обрабатывается Nginx
+    """
+    
+    # Пути, для которых НЕ добавляем кэширование
+    NO_CACHE_PREFIXES = (
+        "/api/",  # API управляет своим кэшем
+        "/admin/",  # Админка всегда свежая
+        "/auth/",  # Страницы аутентификации
+        "/static/",  # Nginx обрабатывает
+        "/media/",  # Nginx обрабатывает
+    )
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        response = self.get_response(request)
+        
+        # Применяем только к HTML страницам
+        if (
+            response.status_code == 200
+            and request.method == "GET"
+            and response.get("Content-Type", "").startswith("text/html")
+        ):
+            path = request.path_info
+            
+            # Проверяем исключения
+            if not any(path.startswith(p) for p in self.NO_CACHE_PREFIXES):
+                # Если заголовок уже установлен декоратором - не перезаписываем
+                if not response.has_header("Cache-Control"):
+                    response["Cache-Control"] = "private, max-age=60"
+        
+        return response

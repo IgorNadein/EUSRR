@@ -6,7 +6,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/join-scroller.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/feed-specific.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -75,8 +75,8 @@
           </div>
         {% endif %}
 
-        <section class="feed-card mb-3">
-          <div class="feed-hd">
+        <section class="card mb-3">
+          <div class="card-header">
           </div>
           <div id="feedList">
             {% if posts %}
@@ -113,11 +113,18 @@
 {# Модальное окно для создания публикации #}
 {% include "feed/components/modal_create_post.html" %}
 
+{# Модальное окно для просмотра публикации #}
+{% include "feed/components/modal_post_detail.html" %}
+
+<script src="{% static 'js/components/postDetailModal.js' %}"></script>
+<script src="{% static 'js/components/feedLikes.js' %}"></script>
+<script src="{% static 'js/components/feedComments.js' %}"></script>
+
 <script type="module">
   import { initAutoScroller } from "{% static 'js/components/autoScrollerHandler.js' %}";
   import { initCreatePostModal } from "{% static 'js/components/createPostModal.js' %}";
   import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
-  
+
   document.addEventListener('DOMContentLoaded', () => {
     initAutoScroller({ 
       selector: '.js-join-scroller',
@@ -126,7 +133,7 @@
     
     // Инициализация модала создания публикации
     initCreatePostModal({
-      submitUrl: '{% url "feed:post_create" %}?type=company'
+      apiUrl: '{% url "api:v1:posts-list" %}'
     });
     
     // Инициализация поиска по публикациям
@@ -140,4 +147,7 @@
     });
   });
 </script>
+
+<!-- Emoji Picker Library -->
+<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
 {% endblock %}

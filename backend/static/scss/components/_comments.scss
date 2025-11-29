@@ -1,0 +1,120 @@
+// =============================================================================
+// Comments Component
+// =============================================================================
+// Единый стиль для комментариев во всех местах приложения:
+// - В карточках постов (_feed_cards.html)
+// - На странице деталей поста (post_detail.html)
+// - В модальном окне (postDetailModal.js)
+
+.comment-item {
+  padding: 0.5rem 0;  // py-2
+
+  .comment-header {
+    font-size: 0.875rem;  // small
+    margin-bottom: 0.25rem;
+
+    .comment-author {
+      font-weight: 600;  // fw-semibold
+      text-decoration: none;
+      color: inherit;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+
+    .comment-separator {
+      color: var(--bs-secondary);
+      margin: 0 0.25rem;
+    }
+
+    .comment-date {
+      color: var(--bs-secondary);
+    }
+  }
+
+  .comment-body {
+    font-size: 0.875rem;  // small
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+}
+
+// Контейнер для списка комментариев
+.comments-list {
+  margin-bottom: 1rem;
+}
+
+// Заголовок секции комментариев
+.comments-section-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+
+  .comments-icon {
+    font-size: 1.5rem;
+    color: var(--bs-primary);
+    margin-right: 0.5rem;
+  }
+
+  .comments-title {
+    margin-bottom: 0;
+  }
+
+  .comments-count {
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+    margin-left: 0.5rem;
+  }
+}
+
+// Обёртка для комментариев с sticky формой
+.comments-section-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh; // Максимальная высота секции комментариев
+  overflow: hidden;
+}
+
+// Скроллируемая область с комментариями
+.comments-scrollable {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 50vh;
+  padding-bottom: 5rem; // Отступ снизу для sticky формы
+  
+  // Firefox скроллбар
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  
+  // Стилизация скроллбара (Chrome, Safari, Edge)
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    
+    &:hover {
+      background: rgba(0, 0, 0, 0.25);
+    }
+  }
+}
+
+// Sticky форма для комментариев
+.comment-form-sticky {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--bs-body-bg);
+  margin-top: auto;
+}

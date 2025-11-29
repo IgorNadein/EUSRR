@@ -9,7 +9,7 @@
     <div class="col-12">
 
       <!-- Заголовок -->
-      <div class="feed-header">
+      <div class="section-header">
         <i class="bi-clipboard2-check fs-2 text-primary"></i>
         <h2 class="title mb-0">Заявления сотрудников</h2>
       </div>
@@ -57,11 +57,11 @@
 
       {% with items=requests|default:page.object_list %}
         {% if items %}
-          <div class="feed-stream">
+          <div class="card-list">
             {% for req in items %}
-              <article class="feed-card">
-                <header class="feed-hd">
-                  <div class="feed-ava" style="width:44px;height:44px;">
+              <article class="card">
+                <header class="card-header">
+                  <div class="card-icon" style="width:44px;height:44px;">
                     {% if req.employee.avatar %}
                       <img src="{{ req.employee.avatar }}" alt="">
                     {% else %}
@@ -69,10 +69,10 @@
                     {% endif %}
                   </div>
 
-                  <div class="feed-meta flex-grow-1">
+                  <div class="card-meta flex-grow-1">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                       <a href="{% url 'employees:employee_detail' req.employee.pk %}"
-                         class="feed-author text-decoration-none">
+                         class="card-title text-decoration-none">
                         {{ req.employee.get_full_name|default:req.employee.username }}
                       </a>
                       {% if req.department %}
@@ -82,7 +82,7 @@
                       {% endif %}
                     </div>
 
-                    <div class="feed-sub mt-1">
+                    <div class="card-subtitle mt-1">
                       <span class="text-secondary">Подано:</span>
                       {{ req.created_at|date:"d.m.Y H:i" }}
                     </div>
@@ -104,7 +104,7 @@
                   </div>
                 </header>
 
-                <div class="feed-body pt-0">
+                <div class="card-body pt-0">
                   <div class="mb-2">
                     <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
                       {{ req.get_type_display }}
@@ -121,7 +121,7 @@
                   </div>
                 </div>
 
-                <footer class="feed-actions">
+                <footer class="card-actions">
                   <a href="{% url 'requests_app:request_process' req.pk %}"
                      class="btn btn-ghost d-inline-flex align-items-center gap-1">
                     <i class="bi-box-arrow-up-right"></i><span>Рассмотреть</span>

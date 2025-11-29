@@ -9,7 +9,7 @@
     <div class="col-lg-8 col-xl-7">
 
       {# Заголовок страницы #}
-      <div class="feed-header">
+      <div class="section-header">
         <i class="bi-clipboard-plus fs-2 text-primary"></i>
         <h2 class="title mb-0">Новое заявление</h2>
         <a href="{% url 'requests:request_list' %}" class="ms-auto btn btn-ghost">
@@ -26,7 +26,7 @@
       </div>
 
       {# Форма #}
-      <form method="post" enctype="multipart/form-data" class="feed-card p-3">
+      <form method="post" enctype="multipart/form-data" class="card p-3">
         {% csrf_token %}
 
         {{ form.non_field_errors }}

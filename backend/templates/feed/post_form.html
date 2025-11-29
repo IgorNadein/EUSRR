@@ -80,13 +80,6 @@
         {% else %}
           <a href="javascript:history.back()" class="btn btn-outline-secondary">Отмена</a>
         {% endif %}
-
-        {% if form.instance.pk %}
-          <a href="{% url 'feed:post_delete' form.instance.pk %}?next={{ cancel_url|urlencode }}"
-             class="btn btn-outline-danger ms-auto">
-            <i class="bi-trash"></i> Удалить
-          </a>
-        {% endif %}
       </div>
     </div>
   </form>
@@ -94,7 +87,6 @@
 
 <script type="module">
   import { initImagePreview } from "{% static 'js/components/imagePreviewHandler.js' %}";
-  import { initTextareaAutogrow } from "{% static 'js/components/textareaAutogrowHandler.js' %}";
 
   // Превью изображения
   initImagePreview({
@@ -102,9 +94,6 @@
     previewId: 'newImagePreview',
     currentPreviewId: 'currentImagePreview'
   });
-
-  // Автоматическое изменение размера textarea
-  initTextareaAutogrow({ selector: 'form.card textarea' });
 </script>
 
 {% endblock %}

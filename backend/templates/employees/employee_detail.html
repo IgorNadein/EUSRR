@@ -12,8 +12,8 @@
 
 
 {% block content %}
-  <div class="container ios-page">
-    <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
+  <div class="container">
+    <div class="ios-header section-header d-flex align-items-center gap-2 flex-wrap">
       <i class="bi-person-badge fs-2 text-primary"></i>
       <h2 class="title ios-title mb-0">
         {% if is_me %}Мой профиль{% else %}Профиль сотрудника{% endif %}
@@ -406,19 +406,19 @@
           </div>
         {% endif %}
 
-        <section class="feed-card mb-3">
-          <div class="feed-hd">
-            <i class="bi-activity me-1"></i>
-            <div class="feed-meta">
-              <div class="feed-author">Активность</div>
+        <section class="ios-card mb-3">
+          <div class="p-3">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <i class="bi-activity"></i>
+              <div class="ios-section-title mb-0">Активность</div>
             </div>
-          </div>
-          <div>
-            {% if posts %}
-              {% include "feed/_feed_cards.html" with items=posts  %}
-            {% else %}
-              <div class="text-secondary small">Публикаций пока нет.</div>
-            {% endif %}
+            <div>
+              {% if posts %}
+                {% include "feed/_feed_cards.html" with items=posts  %}
+              {% else %}
+                <div class="text-secondary small">Публикаций пока нет.</div>
+              {% endif %}
+            </div>
           </div>
         </section>
       </div>

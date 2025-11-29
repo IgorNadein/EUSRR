@@ -7,10 +7,8 @@
            data-searchtitle="{{ post.title|default:'Без названия'|escape }}"
            data-searchauthor="{% with a=post.author %}{% if a %}{% firstof a.full_name a.get_full_name a.first_name a.last_name a.username a.email 'Автор' %}{% else %}Автор{% endif %}{% endwith %}"
            data-searchbody="{{ post.body|striptags|truncatewords:50|default:'Без содержания'|escape }}">
-    <header class="feed-hd">
-      
-      {# --- Аватар автора --- #}
-      <div class="feed-ava d-flex align-items-center justify-content-center">
+    <header class="card-header">
+      <div class="card-icon d-flex align-items-center justify-content-center">
         {% with a=post.author %}
           {% if a %}
             {% firstof a.avatar as ava_url %}
@@ -24,11 +22,8 @@
           {% endif %}
         {% endwith %}
       </div>
-
-      {# --- Метаданные (имя автора, дата, отдел) --- #}
-      
-      <div class="feed-meta">
-        <div class="feed-author">
+      <div class="card-meta">
+        <div class="card-title">
           {% with a=post.author %}
             {% firstof a.id post.author_id as author_id %}
             {% if author_id %}
@@ -53,19 +48,16 @@
             {% endif %}
           {% endwith %}
         </div>
-        
-        <div class="feed-sub">
+        <div class="card-subtitle">
           {% if post.created_at %}
             {{ post.created_at_display }}
           {% endif %}
           {% if post.type == 'department' %}
-            {# имя отдела может прийти как department.name (ORM) или department_name (API) #}
             {% firstof post.department.name post.department_name as dept_name %}
             {% if dept_name %} · {{ dept_name }}{% endif %}
           {% endif %}
         </div>
       </div>
-
       {% if post.pinned %}
         <span class="feed-pin"><i class="bi-pin-angle"></i></span>
       {% endif %}
@@ -74,22 +66,21 @@
       {% firstof post.image.url post.image as img_url %}
       {% if img_url %}
         <div class="feed-img">
-          {% if post_id %}<a href="{% url 'feed:post_detail' post_id %}" class="stretched-link"></a>{% endif %}
+          {% if post_id %}<a href="#" data-post-link data-post-id="{{ post_id }}" class="stretched-link"></a>{% endif %}
           <img src="{{ img_url }}" alt="{{ post.title|default:'Публикация' }}">
         </div>
       {% endif %}
     {% endif %}
-    <div class="feed-body">
+    <div class="card-body">
       <h3 class="feed-title mb-1">
         {% if post_id %}
-          <a href="{% url 'feed:post_detail' post_id %}" class="text-decoration-none stretched-link">
+          <a href="#" data-post-link data-post-id="{{ post_id }}" class="text-decoration-none stretched-link">
             {{ post.title|default:"Без названия" }}
           </a>
         {% else %}
           {{ post.title|default:"Без названия" }}
         {% endif %}
       </h3>
-
       {% with body=post.body|default_if_none:"" %}
         {% if body|wordcount > 42 %}
           <div class="feed-text mb-1" id="excerpt-{{ post_id }}">
@@ -102,40 +93,30 @@
                     aria-controls="full-{{ post_id }}"
                     aria-expanded="false">
               <span class="txt-more">Подробнее</span>
-
             </button>
           </div>
-
-          <div id="full-{{ post_id }}" class="collapse"
-              data-excerpt="#excerpt-{{ post_id }}"
-              data-btn="#more-{{ post_id }}">
+          <div id="full-{{ post_id }}" class="collapse" data-excerpt="#excerpt-{{ post_id }}" data-btn="#more-{{ post_id }}">
             <div class="feed-full mt-1">
               {{ body|linebreaksbr }}
               <button class="btn p-0 mt-1 small text-secondary text-decoration-none bg-transparent readmore-toggle"
-                    id="more-{{ post_id }}"
                     type="button"
                     data-bs-toggle="collapse"
                     data-bs-target="#full-{{ post_id }}"
                     aria-controls="full-{{ post_id }}"
                     aria-expanded="false">
-              <span class="txt-more">Скрыть</span>
-
-            </button>
+                <span class="txt-more">Скрыть</span>
+              </button>
             </div>
-            
           </div>
         {% else %}
-          <div class="feed-full">
-            {{ body|linebreaksbr }}
-          </div>
+          <div class="feed-full">{{ body|linebreaksbr }}</div>
         {% endif %}
       {% endwith %}
     </div>
-    <footer class="feed-actions border-0">
-      {# Кнопка/ссылка комментариев #}
+    <footer class="card-actions border-0">
       {% if post_id %}
         {% if user.is_authenticated %}
-          <button class="btn btn-ghost d-inline-flex align-items-center gap-1 "
+          <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
                   type="button"
                   data-bs-toggle="collapse"
                   data-bs-target="#ccoll-{{ post_id }}"
@@ -146,41 +127,29 @@
             <span class="txt-close">Скрыть</span>
           </button>
         {% else %}
-          <a href="{% url 'feed:post_detail' post_id %}#comments"
-             class="btn btn-ghost d-inline-flex align-items-center gap-1">
+          <a href="#" data-post-link data-post-id="{{ post_id }}" class="btn btn-ghost d-inline-flex align-items-center gap-1">
             <i class="bi-chat-dots"></i><span>{{ post.comments_count|default:0 }}</span>
           </a>
         {% endif %}
       {% endif %}
-
       {% if post.attachment %}
         {% firstof post.attachment.url post.attachment as att_url %}
         {% if att_url %}
-          <a href="{{ att_url }}" class="btn btn-ghost d-inline-flex align-items-center gap-1 ">
+          <a href="{{ att_url }}" class="btn btn-ghost d-inline-flex align-items-center gap-1">
             <i class="bi-paperclip"></i><span>Вложение</span>
           </a>
         {% endif %}
       {% endif %}
-
       <span class="ms-auto"></span>
-
-      {# Лайк: через внутренний view, который ходит в API #}
       {% if user.is_authenticated and post_id %}
-        <form method="post" action="{% url 'feed:toggle_like' post_id %}" class="ms-2">
-          {% csrf_token %}
-          <button type="submit"
-                  class="btn btn-ghost d-inline-flex align-items-center gap-1{% if post.is_liked %}is-liked{% endif %}"
-                  data-like-post="{{ post_id }}"
-                  data-like-url="{% url 'feed:toggle_like' post_id %}"
-                  aria-pressed="{% if post.is_liked %}true{% else %}false{% endif %}">
-            <i class="bi {% if post.is_liked %}bi-heart-fill{% else %}bi-heart{% endif %}"></i>
-            <span data-like-count>{{ post.likes_count|default:0 }}</span>
-          </button>
-        </form>
+        <button type="button" class="btn btn-ghost d-inline-flex align-items-center gap-1 like-btn-card" data-post-id="{{ post_id }}" data-liked="{% if post.is_liked %}true{% else %}false{% endif %}">
+          <i class="bi-heart{% if post.is_liked %}-fill text-danger{% endif %}"></i>
+          <span class="like-count">{{ post.likes_count|default:0 }}</span>
+        </button>
       {% else %}
-        <span class="small text-secondary d-inline-flex align-items-center gap-1">
-          <i class="bi-heart{% if post.is_liked %}-fill{% endif %}"></i>
-          <span data-like-count>{{ post.likes_count|default:0 }}</span>
+        <span class="btn btn-ghost d-inline-flex align-items-center gap-1">
+          <i class="bi-heart"></i>
+          <span>{{ post.likes_count|default:0 }}</span>
         </span>
       {% endif %}
     </footer>
@@ -191,47 +160,45 @@
         <div class="px-3 pt-2">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <a class="small text-primary text-decoration-none"
-               href="{% url 'feed:post_detail' post_id %}#comments">
+               href="#" data-post-link data-post-id="{{ post_id }}">
               Показать все комментарии записи ({{ post.comments_count }})
             </a>
           </div>
 
-          {# last_comment_list — есть только в старом ORM-пути; при API просто не покажется #}
           {% with last=post.last_comment_list|first %}
             {% if last %}
-              <div>
-                <div class="small mb-1">
+              <div class="comment-item">
+                <div class="comment-header">
                   {% firstof last.author.id last.author.pk as last_author_id %}
                   <a href="{% url 'employees:employee_detail' last_author_id %}"
-                     class="text-decoration-none fw-semibold">
+                     class="comment-author">
                     {% firstof last.author.get_full_name last.author.username "Сотрудник" %}
                   </a>
-                  <span class="text-secondary">·</span>
-                  <time class="text-muted">
+                  <span class="comment-separator">·</span>
+                  <time class="comment-date">
                     {% firstof last.created_at|date:"d.m.Y H:i" last.created_at %}
                   </time>
                 </div>
-                <div class="small">{{ last.text|truncatechars:220 }}</div>
+                <div class="comment-body">{{ last.text|truncatechars:220 }}</div>
               </div>
             {% elif post.last_comment %}
-              {# НОВОЕ: из API #}
               {% with lc=post.last_comment %}
-                <div class="bg-body-tertiary border rounded p-2">
-                  <div class="small mb-1">
+                <div class="comment-item">
+                  <div class="comment-header">
                     {% if lc.author.id %}
                       <a href="{% url 'employees:employee_detail' lc.author.id %}"
-                        class="text-decoration-none fw-semibold">
+                        class="comment-author">
                         {{ lc.author.full_name|default:"Сотрудник" }}
                       </a>
                     {% else %}
-                      {{ lc.author.full_name|default:"Сотрудник" }}
+                      <span class="comment-author">{{ lc.author.full_name|default:"Сотрудник" }}</span>
                     {% endif %}
-                    <span class="text-secondary">·</span>
-                    <time class="text-muted">
+                    <span class="comment-separator">·</span>
+                    <time class="comment-date">
                       {% firstof lc.created_at_display lc.created_at %}
                     </time>
                   </div>
-                  <div class="small">{{ lc.text|truncatechars:220 }}</div>
+                  <div class="comment-body">{{ lc.text|truncatechars:220 }}</div>
                 </div>
               {% endwith %}
             {% endif %}
@@ -240,12 +207,22 @@
       {% endif %}
 
       {% if user.is_authenticated and post_id %}
-        <form class="px-3 pb-3 pt-2" method="post" action="{% url 'feed:post_detail' post_id %}">
-          {% csrf_token %}
-          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <form class="px-3 pb-3 pt-2 comment-form-quick" data-post-id="{{ post_id }}">
           <div class="message-field message-field--compact">
-            <textarea name="text" class="form-control message-input" rows="1" placeholder="Оставить комментарий…"></textarea>
-            <button class="btn btn-primary message-send" type="submit"><i class="bi-send"></i></button>
+            <!-- Кнопка выбора эмодзи -->
+            <div class="dropdown message-emoji">
+              <button type="button" class="btn btn-ghost btn-emoji message-icon-btn"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      title="Вставить смайлик">
+                <i class="bi-emoji-smile"></i>
+              </button>
+              <div class="dropdown-menu dropdown-menu-start message-emoji-menu">
+                <emoji-picker data-emoji-picker class="chat-emoji-picker"></emoji-picker>
+              </div>
+            </div>
+            <textarea name="text" class="form-control message-input" rows="1" placeholder="Оставить комментарий…" required></textarea>
+            <button class="btn btn-primary message-send" type="submit" title="Отправить"><i class="bi-send"></i></button>
           </div>
         </form>
       {% endif %}
@@ -254,8 +231,3 @@
 {% empty %}
   <div class="alert alert-info shadow-sm">Пока нет новостей.</div>
 {% endfor %}
-
-<script type="module">
-  import { initCollapseToggle } from "{% static 'js/components/collapseToggleHandler.js' %}";
-  initCollapseToggle();
-</script>

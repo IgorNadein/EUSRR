@@ -5,14 +5,13 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="container ios-page">
+<div class="container">
 
   {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
   {% if perms.documents.add_document %}
@@ -22,18 +21,18 @@
   {% endif %}
 
   {# ===== Карточка со списком ===== #}
-  <div class="feed-card mb-3">
+  <div class="card mb-3">
     {% if documents %}
-      <div id="docList" class="feed-stream">
+      <div id="docList" class="card-list">
         {% for doc in documents %}
           <div class="doc-row {% if doc.id not in acked_ids %}doc-unacked{% endif %}" 
                data-doc-id="{{ doc.id }}"
                data-is-acked="{% if doc.id in acked_ids %}1{% else %}0{% endif %}">
-            <div class="feed-hd">
+            <div class="card-header">
               <div class="feed-ico" aria-hidden="true"><i class="bi-file-earmark-text"></i></div>
 
               <div class="feed-main">
-                <div class="feed-author">
+                <div class="card-title">
                   {% if doc.file_url %}
                     {# Для неознакомленных - через acknowledge URL, для ознакомленных - прямо на файл #}
                     {% if doc.id not in acked_ids and scope == 'mine' %}
@@ -55,7 +54,7 @@
                     {{ doc.title|default:"Без названия" }}
                   {% endif %}
                 </div>
-                <div class="feed-sub">
+                <div class="card-subtitle">
                   {{ doc.description|default:"— без описания —" }}
                   {% if doc.uploaded_at %} • Загружен: {{ doc.uploaded_at|date:"d.m.Y H:i" }}{% endif %}
                   {% if doc.sent_to_all %} • Для всех{% endif %}
@@ -305,47 +304,13 @@
 
 {% block extra_js %}
 <script type="module">
-  import { RecipientPicker } from "{% static 'js/components/recipientPickerHandler.js' %}";
-  import { initDocumentCrud } from "{% static 'js/components/documentCrudHandler.js' %}";
-  import { initDocumentAcks } from "{% static 'js/components/documentAcksHandler.js' %}";
+  import { initDocumentListPage } from "{% static 'js/pages/documentList.js' %}";
 
-  // Получаем токен доступа и настраиваем заголовки
-  const accessMeta = document.querySelector('meta[name="api-access"]');
-  const ACCESS = accessMeta ? accessMeta.content : '';
-  const headersAuth = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
-
-  // URL для API
-  const apiListUrl = "{{ api_document_list_url|default:'' }}";
-  const apiDetailBase = "{{ api_document_detail_base|default:'' }}";
-  const employeesApi = "{% url 'api:v1:employees-list' %}";
-  const departmentsApi = "{% url 'api:v1:departments-list' %}";
-
-  // Инициализация RecipientPicker для формы создания
-  const createPicker = new RecipientPicker(
-    document.getElementById('createRecipients'),
-    { headers: headersAuth, apiUrl: employeesApi }
-  );
-
-  // Инициализация RecipientPicker для формы редактирования
-  const editPicker = new RecipientPicker(
-    document.getElementById('editRecipients'),
-    { headers: headersAuth, apiUrl: employeesApi }
-  );
-
-  // Инициализация CRUD операций для документов
-  initDocumentCrud({
-    apiListUrl: apiListUrl,
-    apiDetailBase: apiDetailBase,
-    headers: headersAuth,
-    createPicker: createPicker,
-    editPicker: editPicker,
-    departmentsApi: departmentsApi
-  });
-
-  // Инициализация модалки ознакомлений
-  initDocumentAcks({
-    apiDetailBase: apiDetailBase,
-    headers: headersAuth,
+  initDocumentListPage({
+    apiListUrl: "{{ api_document_list_url|default:'' }}",
+    apiDetailBase: "{{ api_document_detail_base|default:'' }}",
+    employeesApi: "{% url 'api:v1:employees-list' %}",
+    departmentsApi: "{% url 'api:v1:departments-list' %}",
     pageSize: 100
   });
 </script>

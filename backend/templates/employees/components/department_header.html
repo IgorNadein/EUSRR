@@ -1,5 +1,5 @@
   {# ===== Заголовок ===== #}
-  <div class="ios-header feed-header d-flex align-items-center gap-2 flex-wrap">
+  <div class="ios-header section-header d-flex align-items-center gap-2 flex-wrap">
     <i class="bi-diagram-3 fs-2 text-primary"></i>
     <h2 class="title ios-title mb-0">{{ dept.name }}</h2>
     {% if user.is_staff or user.is_superuser or can_manage or dept.head.id == user.id %}

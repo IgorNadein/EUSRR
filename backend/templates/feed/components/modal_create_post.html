@@ -13,7 +13,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
       
-      <form id="createPostForm" method="POST" action="{% url 'feed:post_create' %}?type=company" novalidate enctype="multipart/form-data">
+      <form id="createPostForm" novalidate enctype="multipart/form-data">
         {% csrf_token %}
         
         <div class="modal-body">

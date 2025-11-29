@@ -8,9 +8,11 @@ This document describes the CSS architecture for the EUSRR application after Pha
 ```
 variables.css (base layer - CSS custom properties)
     ↓
+bootstrap-custom.css (Bootstrap с переопределениями .card, .card-header и т.д.)
+    ↓
 common.css (shared classes - buttons, badges, avatars, chips, utilities)
     ↓
-├── feed-cards.css (feed system - cards, headers, metadata)
+├── feed-specific.css (стили для постов - feed-pin, feed-title, feed-action)
 ├── ios-components.css (iOS UI - cards, lists, accordions)
 ├── component-specific.css (document-list, employee-list, etc.)
 └── base-app.css (app layout - navbar, sidebar, grid)
@@ -68,8 +70,8 @@ common.css (shared classes - buttons, badges, avatars, chips, utilities)
 .avatar-xs/sm/md/lg/xl /* Size variants */
 
 /* Feed Meta */
-.feed-author           /* Author name */
-.feed-sub              /* Subtitle/timestamp */
+.card-title           /* Author name */
+.card-subtitle              /* Subtitle/timestamp */
 
 /* Chips */
 .chip                  /* Base chip */
@@ -86,21 +88,50 @@ common.css (shared classes - buttons, badges, avatars, chips, utilities)
 
 ---
 
-### 3. feed-cards.css
-**Purpose**: Base feed card system.
+### 3. bootstrap-custom.css
+**Purpose**: Bootstrap с переопределением стилей карточек (.card, .card-header, .card-body и т.д.) для единого дизайна.
+
+**Переопределенные классы**:
+```css
+.card             /* Базовая карточка с тенями и анимацией */
+.card-header      /* Шапка карточки с flex-layout */
+.card-icon        /* Аватар/иконка (кастомный класс) */
+.card-meta        /* Метаинформация (кастомный класс) */
+.card-title       /* Заголовок/автор */
+.card-subtitle    /* Подзаголовок */
+.card-body        /* Тело карточки */
+.card-actions     /* Кнопки действий (кастомный класс) */
+.card-list        /* Контейнер списка карточек (кастомный класс) */
+.section-header   /* Заголовок секции (кастомный класс) */
+```
+
+**Вариации**:
+```css
+.card.compact     /* Компактная версия */
+.card.borderless  /* Без границ (для списков) */
+.card.highlighted /* С выделением (например, непрочитанное) */
+```
+
+**Note**: Стили определены в `scss/custom-bootstrap.scss` и компилируются в `css/bootstrap-custom.css`.
+
+**Dependencies**: `variables.css`, Bootstrap 5
+
+---
+
+### 4. feed-specific.css
+**Purpose**: Стили, специфичные только для постов в ленте новостей.
 
 **Key Classes**:
 ```css
-.feed-stream    /* Container */
-.feed-card      /* Individual card */
-.feed-hd        /* Header */
-.feed-ava       /* Avatar */
-.feed-meta      /* Metadata */
-.feed-body      /* Content */
-.feed-actions   /* Footer actions */
+.feed-pin      /* Значок закрепления */
+.feed-title    /* Заголовок поста */
+.feed-text     /* Текст поста */
+.feed-img      /* Изображение поста */
+.feed-action   /* Кнопки действий (лайки, комментарии) */
+.feed-footer   /* Футер поста */
 ```
 
-**Dependencies**: `variables.css`, `common.css`
+**Dependencies**: `variables.css`, `bootstrap-custom.css`
 
 ---
 
@@ -109,8 +140,10 @@ common.css (shared classes - buttons, badges, avatars, chips, utilities)
 ### In Templates
 ```html
 <link rel="stylesheet" href="{% static 'css/variables.css' %}">
+<link rel="stylesheet" href="{% static 'css/bootstrap-custom.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+<!-- Для страниц с постами: -->
+<link rel="stylesheet" href="{% static 'css/components/feed-specific.css' %}">
 <!-- Component-specific CSS -->
 ```
 
@@ -118,14 +151,14 @@ common.css (shared classes - buttons, badges, avatars, chips, utilities)
 ```css
 @import 'variables.css';
 @import 'common.css';
-@import 'feed-cards.css';
+@import 'feed-specific.css'; /* только для feed */
 /* Other components */
 ```
 
 **Why This Order?**
 1. `variables.css` - defines all CSS custom properties
 2. `common.css` - uses variables, defines shared classes
-3. `feed-cards.css` - uses variables + common classes
+3. `card-list.css` - uses variables + common classes
 4. Components - use all of the above
 
 ---
@@ -141,7 +174,7 @@ common.css (shared classes - buttons, badges, avatars, chips, utilities)
 ### Classes (BEM-like)
 ```css
 .block              /* Component/container */
-.block__element     /* Child element (or shorthand like .feed-hd) */
+.block__element     /* Child element (or shorthand like .card-header) */
 .block--modifier    /* Variant/state */
 ```
 
@@ -156,8 +189,9 @@ common.css (shared classes - buttons, badges, avatars, chips, utilities)
 
 ### Prefixes
 - `.ios-*` - iOS-style components
-- `.feed-*` - Feed-related classes
-- `.req-*` - Request-specific
+- `.feed-*` - Feed/post-specific classes (только для постов)
+- `.card-*` - Universal card components (Bootstrap + custom extensions)
+- `.section-*` - Page section components
 - `.doc-*` - Document-specific
 - `.dept-*` - Department-specific
 
@@ -172,27 +206,25 @@ Each component file contains ONLY unique styles:
 - `.feed-ico` (28px icon)
 - `.doc-actions` positioning
 
-**Dependencies**: `common.css` (`.btn-icon`, `.badge-acked`), `feed-cards.css`
+**Dependencies**: `bootstrap-custom.css`, `common.css` (`.btn-icon`, `.badge-acked`)
 
 ### employee-list.css
 - `#empList` layout
 - Component-specific overrides
 
-**Dependencies**: `common.css` (`.feed-author`, `.feed-sub`), `feed-cards.css`
+**Dependencies**: `bootstrap-custom.css`, `common.css` (`.card-title`, `.card-subtitle`)
 
-### request-list.css
-- `#reqList` feed layout
-- `.req-drawer` action panel
-- `.btn-soft-*` variants
+### feed-specific.css
+- Стили только для постов: `.feed-pin`, `.feed-title`, `.feed-text`, `.feed-img`, `.feed-action`, `.feed-footer`
 
-**Dependencies**: `common.css` (`.badge-status`), `feed-cards.css`
+**Dependencies**: `bootstrap-custom.css`, `variables.css`
 
 ---
 
 ## Best Practices
 
-### 1. Check common.css First
-Before creating a new class, check if it exists in `common.css`.
+### 1. Check bootstrap-custom.css and common.css First
+Before creating a new class, check if it exists in `bootstrap-custom.css` or `common.css`.
 
 ### 2. Use Variables
 ```css
@@ -208,12 +240,12 @@ box-shadow: 0 4px 12px rgba(0,0,0,.1);
 ### 3. Override Carefully
 ```css
 /* ✅ GOOD: Override specific property */
-#empList .feed-author {
+#empList .card-title {
   line-height: 1.3;
 }
 
 /* ❌ BAD: Complete redefinition */
-#empList .feed-author {
+#empList .card-title {
   font-weight: 700; /* duplicates common.css */
 }
 ```
@@ -247,7 +279,7 @@ box-shadow: 0 4px 12px rgba(0,0,0,.1);
 - `.btn-icon` × 3 → 1 in `common.css`
 - `.badge-status` × 2 → 1 in `common.css`
 - `.chip` × 2 → 1 in `common.css`
-- `.feed-author/.feed-sub` × 4 → 1 in `common.css`
+- `.card-title/.card-subtitle` × 4 → 1 in `common.css`
 - Variables × 3 → centralized in `variables.css`
 
 ### Benefits

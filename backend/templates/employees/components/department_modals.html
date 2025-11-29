@@ -30,7 +30,7 @@
                           data-link-id="{{ li.id }}"
                           data-name="{{ emp.display_name|default:emp.last_name }}"
                           data-email="{{ emp.email|default:'' }}">
-                    <span class="feed-ava"
+                    <span class="card-icon"
                           style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
                       {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}<i class="bi-person"></i>{% endif %}
                     </span>
@@ -91,7 +91,7 @@
 
             <template id="addMemberItemTpl-{{ dept.id }}">
               <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2" data-id="">
-                <span class="feed-ava" style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                <span class="card-icon" style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
                   <i class="bi-person"></i>
                 </span>
                 <span class="d-flex flex-column text-start">
@@ -152,7 +152,7 @@
                                 data-id="{{ emp.id }}"
                                 data-name="{{ emp.display_name|default:emp.last_name }}"
                                 data-email="{{ emp.email|default:'' }}">
-                          <span class="feed-ava"
+                          <span class="card-icon"
                                 style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
                             {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}<i class="bi-person"></i>{% endif %}
                           </span>

@@ -148,7 +148,7 @@
    FEED AUTHOR & META
 ────────────────────────────────────────────────────────────── */
 
-.feed-author {
+.card-title {
   font-weight: 700;
   color: var(--bs-body-color);
   display: block;
@@ -157,7 +157,7 @@
   white-space: nowrap;
 }
 
-.feed-sub {
+.card-subtitle {
   font-size: 0.82rem;
   color: var(--bs-secondary-color);
   display: block;
@@ -166,12 +166,12 @@
   white-space: nowrap;
 }
 
-.feed-sub a {
+.card-subtitle a {
   color: inherit;
   text-decoration: none;
 }
 
-.feed-sub a:hover {
+.card-subtitle a:hover {
   color: var(--bs-primary);
 }
 

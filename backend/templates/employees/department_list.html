@@ -5,7 +5,6 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
@@ -23,8 +22,8 @@
         {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" %}
       {% endif %}
       
-      <div class="feed-card mb-3">
-        <div id="deptList" class="list-view feed-stream">
+      <div class="card mb-3">
+        <div id="deptList" class="list-view card-list">
           {# поддержка обоих форматов: dict(results) или list #}
           {% with rows=departments.results|default:departments %}
             {% for dept in rows %}
@@ -33,18 +32,18 @@
                 <article class="dept-row list-row"
                      data-haystack="{{ dept.name }}{% if h %} {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}{% endif %}"
                      data-emp="{{ emp }}">
-                  <header class="feed-hd">
-                    <div class="feed-meta flex-grow-1">
+                  <header class="card-header">
+                    <div class="card-meta flex-grow-1">
                       <div class="d-flex align-items-center gap-2 flex-wrap">
                         {% if dept_url %}
-                          <a href="{{ dept_url }}" class="feed-author text-decoration-none">
+                          <a href="{{ dept_url }}" class="card-title text-decoration-none">
                             {{ dept.name }}
                           </a>
                         {% else %}
-                          <span class="feed-author">{{ dept.name }}</span>
+                          <span class="card-title">{{ dept.name }}</span>
                         {% endif %}
                       </div>
-                      <div class="feed-sub mt-1">
+                      <div class="card-subtitle mt-1">
                         {% if h %}
                           Руководитель: {{ h.last_name }}{% if h.first_name %} {{ h.first_name }}{% endif %}
                         {% endif %}

@@ -1,12 +1,12 @@
       {# --- Команда отдела (круг) --- #}
-      <section class="feed-card mb-3">
-        <div class="feed-hd">
+      <section class="card mb-3">
+        <div class="card-header">
           
           <i class="bi-people"></i>
-          <div class="feed-meta">
-            <div class="feed-author">{% url 'employees:employees_list' as employees_list_url %}
+          <div class="card-meta">
+            <div class="card-title">{% url 'employees:employees_list' as employees_list_url %}
       {% if employees_list_url %}
-        <a class="feed-author"
+        <a class="card-title"
            href="{{ employees_list_url }}?department={{ dept_id }}">
           Команда отдела →
         </a>
@@ -14,7 +14,7 @@
           </div>
         </div>
         
-        <div class="feed-body d-flex flex-column align-items-center">
+        <div class="card-body d-flex flex-column align-items-center">
           <div class="team-wrap d-flex flex-column align-items-center">
 
             {# КРУГ #}

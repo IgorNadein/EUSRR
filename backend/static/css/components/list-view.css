@@ -5,8 +5,8 @@
  * Оптимизированы для вертикальной прокрутки и адаптивного отображения
  * 
  * Использует:
- * - common.css (.feed-author, .feed-sub)
- * - feed-cards.css (.feed-hd, .feed-ava)
+ * - common.css (.card-title, .card-subtitle)
+ * - card-list.css (.card-header, .card-icon)
  */
 
 /* Токены списочных представлений */
@@ -23,8 +23,8 @@
   padding: 0;
 }
 
-/* Важно: убираем межстрочный gap от .feed-stream */
-.list-view.feed-stream{ 
+/* Важно: убираем межстрочный gap от .card-list */
+.list-view.card-list{ 
   display: block; 
   gap: 0 !important; 
 }
@@ -41,7 +41,7 @@
 }
 
 /* Шапка строки: базовый flex */
-.list-view .list-row .feed-hd{
+.list-view .list-row .card-header{
   display: flex;
   align-items: center;
   gap: var(--list-gap);
@@ -51,13 +51,13 @@
 }
 
 /* Шапка с аватаром: переключаем на grid */
-.list-view .list-row:has(.feed-ava) .feed-hd{
+.list-view .list-row:has(.card-icon) .card-header{
   display: grid;
   grid-template-columns: var(--list-avatar) 1fr auto;
 }
 
 /* Аватар */
-.list-view .list-row .feed-ava{
+.list-view .list-row .card-icon{
   width: var(--list-avatar);
   height: var(--list-avatar);
   border-radius: 50%;
@@ -69,7 +69,7 @@
   flex: none;
 }
 
-.list-view .list-row .feed-ava img{
+.list-view .list-row .card-icon img{
   display: block; 
   width: 100%; 
   height: 100%;
@@ -77,21 +77,21 @@
   object-position: center;
 }
 
-.list-view .list-row .feed-ava i{ 
+.list-view .list-row .card-icon i{ 
   font-size: 1.5rem; 
   line-height: 1; 
   opacity: .6; 
 }
 
 /* Контент */
-.list-view .list-row .feed-meta{ 
+.list-view .list-row .card-meta{ 
   margin: 0; 
   padding: 0; 
   min-width: 0; 
 }
 
 /* Специфичные стили для списков */
-.list-view .feed-author{ 
+.list-view .card-title{ 
   line-height: 1.25; 
 }
 
@@ -99,7 +99,7 @@
   color: var(--bs-secondary-color); 
 }
 
-.list-view .feed-sub{ 
+.list-view .card-subtitle{ 
   margin-top: var(--space-1); 
 }
 
@@ -109,14 +109,14 @@
 }
 
 /* Хвост карточки в списке не используем — убираем отступы */
-.list-view .list-row .feed-actions{ 
+.list-view .list-row .card-actions{ 
   padding: 0 !important; 
 }
 
-.list-view .list-row .feed-body:empty{ 
+.list-view .list-row .card-body:empty{ 
   display: none !important; 
 }
 
-.list-view .list-row .feed-body{ 
+.list-view .list-row .card-body{ 
   padding: 0 !important; 
 }

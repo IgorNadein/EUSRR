@@ -10,7 +10,7 @@
     <div class="col-12">
 
       {# — Шапка: заголовок + кнопка назад — #}
-      <div class="feed-header">
+      <div class="section-header">
         <i class="bi-clipboard-check fs-2 text-primary"></i>
         <h2 class="title mb-0">Рассмотрение заявления</h2>
         <div class="ms-auto">
@@ -21,9 +21,9 @@
       </div>
 
       {# — Карточка заявки: кто подал, статус, тип, даты, комментарий, вложение — #}
-      <article class="feed-card mb-3">
-        <header class="feed-hd">
-          <div class="feed-ava" style="width:48px;height:48px;">
+      <article class="card mb-3">
+        <header class="card-header">
+          <div class="card-icon" style="width:48px;height:48px;">
             {% if request_obj.employee.avatar %}
               <img src="{{ request_obj.employee.avatar }}" alt="Аватар сотрудника"
                    loading="lazy">
@@ -32,11 +32,11 @@
             {% endif %}
           </div>
 
-          <div class="feed-meta flex-grow-1">
+          <div class="card-meta flex-grow-1">
             <div class="d-flex align-items-center gap-2 flex-wrap">
               {# Ссылка на карточку сотрудника #}
               <a href="{% url 'employees:employee_detail' request_obj.employee.pk %}"
-                 class="feed-author text-decoration-none">
+                 class="card-title text-decoration-none">
                 {{ request_obj.employee.get_full_name|default:request_obj.employee.username }}
               </a>
 
@@ -61,7 +61,7 @@
               </span>
             </div>
 
-            <div class="feed-sub mt-1">
+            <div class="card-subtitle mt-1">
               {# Дата создания — ISO в datetime для машин, формат для людей #}
               <time datetime="{{ request_obj.created_at|date:'c' }}">
                 {{ request_obj.created_at|date:"d.m.Y H:i" }}
@@ -76,7 +76,7 @@
           </div>
         </header>
 
-        <div class="feed-body pt-0">
+        <div class="card-body pt-0">
           {# Комментарий сотрудника (если есть) #}
           <div class="small text-muted mb-2">
             <span class="text-secondary">Комментарий сотрудника:</span>
@@ -106,18 +106,18 @@
       {% endif %}
 
       {# — Форма решения: статус + служебный комментарий/вложение — #}
-      <article class="feed-card mb-3">
-        <header class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;">
+      <article class="card mb-3">
+        <header class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;">
             <i class="bi-check2-circle"></i>
           </div>
-          <div class="feed-meta">
-            <div class="feed-author">Принять решение</div>
-            <div class="feed-sub">Статус + служебный комментарий/вложение</div>
+          <div class="card-meta">
+            <div class="card-title">Принять решение</div>
+            <div class="card-subtitle">Статус + служебный комментарий/вложение</div>
           </div>
         </header>
 
-        <div class="feed-body pt-0">
+        <div class="card-body pt-0">
           <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
 
@@ -144,14 +144,14 @@
       </article>
 
       {# — Комментарии по заявлению — #}
-      <article class="feed-card" id="comments">
-        <header class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;">
+      <article class="card" id="comments">
+        <header class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;">
             <i class="bi-chat-dots"></i>
           </div>
-          <div class="feed-meta">
-            <div class="feed-author">Комментарии</div>
-            <div class="feed-sub">
+          <div class="card-meta">
+            <div class="card-title">Комментарии</div>
+            <div class="card-subtitle">
               {# Избегаем неправильных русских окончаний — просто покажем число #}
               {% with cnt=request_obj.comments.count %}
                 Комментариев: {{ cnt }}
@@ -160,7 +160,7 @@
           </div>
         </header>
 
-        <div class="feed-body pt-0">
+        <div class="card-body pt-0">
           {# Список комментариев. Используем {% empty %}, чтобы корректно показать «нет комментариев» #}
           <div class="d-flex flex-column gap-2 mb-3">
             {% for c in request_obj.comments.all %}
@@ -192,15 +192,27 @@
           </div>
 
           
-          <form class="mt-2"
+          <form class="mt-2 request-comment-form"
                 method="post"
                 action="{% url 'requests_app:request_comment_add' request_obj.pk %}?next={{ request.get_full_path|urlencode }}#comments">
             {% csrf_token %}
             <div class="message-field message-field--compact">
+              <!-- Кнопка выбора эмодзи -->
+              <div class="dropdown message-emoji">
+                <button type="button" class="btn btn-ghost btn-emoji message-icon-btn"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        title="Вставить смайлик">
+                  <i class="bi-emoji-smile"></i>
+                </button>
+                <div class="dropdown-menu dropdown-menu-start message-emoji-menu">
+                  <emoji-picker data-emoji-picker class="chat-emoji-picker"></emoji-picker>
+                </div>
+              </div>
               <textarea name="text" class="form-control message-input" rows="1"
                         placeholder="Оставить комментарий…"
                         maxlength="{{ max_comment_len|default:1000 }}"></textarea>
-              <button class="btn btn-primary message-send" type="submit">
+              <button class="btn btn-primary message-send" type="submit" title="Отправить">
                 <i class="bi-send"></i>
               </button>
             </div>
@@ -211,4 +223,11 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script src="{% static 'js/components/requestComments.js' %}"></script>
+<!-- Emoji Picker Library -->
+<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
 {% endblock %}

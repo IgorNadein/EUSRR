@@ -1,6 +1,6 @@
 /**
  * createPostModal.js
- * Обработчик модального окна создания публикации
+ * Обработчик модального окна создания публикации через API
  */
 
 export function initCreatePostModal(options = {}) {
@@ -9,7 +9,7 @@ export function initCreatePostModal(options = {}) {
     formId = 'createPostForm',
     errorsId = 'createPostErrors',
     submitBtnId = 'createPostSubmit',
-    submitUrl = '/feed/post/new/'
+    apiUrl = '/api/v1/posts/'
   } = options;
 
   const modal = document.getElementById(modalId);
@@ -22,7 +22,12 @@ export function initCreatePostModal(options = {}) {
     return;
   }
   
-  console.log('Create post modal initialized');
+  console.log('Create post modal initialized with API:', apiUrl);
+  
+  // Получаем токен доступа
+  const accessMeta = document.querySelector('meta[name="api-access"]');
+  const ACCESS = accessMeta ? accessMeta.content : '';
+  const headers = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
   
   // Маппинг полей для человекочитаемых названий
   const fieldLabels = {
@@ -138,14 +143,13 @@ export function initCreatePostModal(options = {}) {
   }
   
   /**
-   * Отправка формы через обычный submit (не AJAX)
-   * Проще использовать стандартную отправку формы Django
+   * Отправка формы через API
    */
-  function submitForm(e) {
+  async function submitForm(e) {
+    e.preventDefault();
     clearFormErrors();
     
     if (!validateRequiredFields()) {
-      e.preventDefault();
       return false;
     }
     
@@ -154,8 +158,41 @@ export function initCreatePostModal(options = {}) {
     const originalText = submitBtn.innerHTML;
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Публикация...';
     
-    // Позволяем форме отправиться обычным способом
-    return true;
+    const formData = new FormData(form);
+    
+    try {
+      // Для multipart/form-data НЕ передаём Content-Type, браузер установит сам с boundary
+      const fetchHeaders = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: fetchHeaders,
+        body: formData
+      });
+
+      if (response.ok) {
+        showSuccessNotification('Публикация создана!');
+        bootstrap.Modal.getInstance(modal).hide();
+        form.reset();
+        // Перезагружаем страницу для отображения новой публикации
+        setTimeout(() => window.location.reload(), 500);
+      } else {
+        const error = await response.json();
+        if (typeof error === 'object' && error !== null) {
+          displayFieldErrors(error);
+        } else {
+          displayGeneralError('Ошибка создания публикации');
+        }
+      }
+    } catch (error) {
+      console.error('Error creating post:', error);
+      displayGeneralError('Ошибка сети при создании публикации');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+    
+    return false;
   }
   
   // Обработчик отправки формы

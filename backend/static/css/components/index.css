@@ -16,8 +16,8 @@
 /* Общие переиспользуемые классы */
 @import 'common.css';
 
-/* Компоненты карточек ленты */
-@import 'feed-cards.css';
+/* Стили для постов (feed-специфичные) */
+@import 'feed-specific.css';
 
 /* Компонент поиска iOS-стиль */
 @import 'ios-search.css';

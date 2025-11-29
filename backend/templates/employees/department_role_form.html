@@ -8,7 +8,7 @@
   <div class="row justify-content-center">
     <div class="col-lg-7 col-xl-6">
 
-      <div class="feed-header">
+      <div class="section-header">
         <i class="bi-person-gear fs-2 text-primary"></i>
         <h2 class="title mb-0">Роль в отделе</h2>
         <span class="ms-2 small text-secondary text-truncate">— {{ department.name }}</span>
@@ -17,22 +17,22 @@
         </a>
       </div>
 
-      <article class="feed-card">
-        <header class="feed-hd">
-          <div class="feed-ava" style="width:56px;height:56px;">
+      <article class="card">
+        <header class="card-header">
+          <div class="card-icon" style="width:56px;height:56px;">
             {% if employee.avatar %}
               <img src="{{ employee.avatar }}" alt="">
             {% else %}<i class="bi-person"></i>{% endif %}
           </div>
-          <div class="feed-meta">
-            <div class="feed-author">
+          <div class="card-meta">
+            <div class="card-title">
               {{ employee.last_name }} {{ employee.first_name }}{% if employee.patronymic %} {{ employee.patronymic }}{% endif %}
             </div>
-            <div class="feed-sub">{{ employee.email }}</div>
+            <div class="card-subtitle">{{ employee.email }}</div>
           </div>
         </header>
 
-        <div class="feed-body pt-0">
+        <div class="card-body pt-0">
           <form method="post" class="mt-2">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next_url }}">

@@ -225,11 +225,13 @@ export function initChatMarkRead(options = {}) {
 
   /**
    * Автоматически изменяет высоту textarea
+   * DEPRECATED: теперь используется универсальный модуль textareaAutoExpand.js
+   * Оставлено для совместимости с autoscroll
    */
   function autosize() {
     if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 6 * 24) + 'px';
+    // Авторасширение теперь обрабатывается textareaAutoExpand.js
+    // Оставляем только autoscroll логику
     if (atBottom()) autoscroll();
   }
 

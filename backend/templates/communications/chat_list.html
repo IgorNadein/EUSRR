@@ -6,7 +6,6 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/chat-list-enhanced.css' %}">
@@ -21,10 +20,10 @@
       {% include "includes/components/page_header.html" with icon="bi-chat-dots" title="Мои чаты" search_id="chatSearch" search_placeholder="Поиск по названию или участникам" has_filters=True filters_target="chatFilters" filters_template="communications/_filters.html" create_as_card=True create_modal="chatCreateModal" create_text="Создать чат" %}
 
       {# ===== 1) ГЛОБАЛЬНЫЙ ===== #}
-      <div class="feed-card chat-section mb-3" data-sec="global">
-        <div class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-globe"></i></div>
-          <div class="feed-meta flex-grow-1">
+      <div class="card chat-section mb-3" data-sec="global">
+        <div class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;"><i class="bi-globe"></i></div>
+          <div class="card-meta flex-grow-1">
             <h6 class="mb-0 text-secondary">Глобальный</h6>
             <span class="small text-secondary" data-empty-note style="display:none;">Нет глобального чата</span>
           </div>
@@ -41,7 +40,7 @@
                   data-haystack="глобальный чат">
                 
                 {# Аватар или иконка #}
-                <div class="feed-ava" style="width:44px;height:44px;">
+                <div class="card-icon" style="width:44px;height:44px;">
                   {% if chat.avatar %}
                     <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
                   {% else %}
@@ -51,7 +50,7 @@
                 
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {{ chat.name|default:"Глобальный чат" }}
                     </a>
                     <span class="badge bg-light text-dark border">
@@ -60,7 +59,7 @@
                     <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
-                  <div class="feed-sub mt-1">
+                  <div class="card-subtitle mt-1">
                     {% if last %}
                       <span class="text-secondary">
                         <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
@@ -92,10 +91,10 @@
       </div>
 
       {# ===== 2) ОТДЕЛЫ ===== #}
-      <div class="feed-card chat-section mb-3" data-sec="department">
-        <div class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
-          <div class="feed-meta flex-grow-1">
+      <div class="card chat-section mb-3" data-sec="department">
+        <div class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
+          <div class="card-meta flex-grow-1">
             <h6 class="mb-0 text-secondary">Отделы</h6>
             <span class="small text-secondary" data-empty-note style="display:none;">Нет чатов отделов</span>
           </div>
@@ -110,10 +109,10 @@
                   data-type="department"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
                   data-haystack="{{ chat.department.name }}">
-                <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
+                <div class="card-icon" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       Чат отдела: {{ chat.department.name }}
                     </a>
                     <span class="badge bg-light text-dark border">
@@ -122,7 +121,7 @@
                     <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
-                  <div class="feed-sub mt-1">
+                  <div class="card-subtitle mt-1">
                     {% if last %}
                       <span class="text-secondary">
                         <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
@@ -154,10 +153,10 @@
       </div>
 
       {# ===== 3) ЛИЧНЫЕ ===== #}
-      <div class="feed-card chat-section mb-3" data-sec="private">
-        <div class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-people"></i></div>
-          <div class="flex-grow-1 feed-meta">
+      <div class="card chat-section mb-3" data-sec="private">
+        <div class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;"><i class="bi-people"></i></div>
+          <div class="flex-grow-1 card-meta">
             <h6 class="mb-0 text-secondary">Личные</h6>
             <span class="small text-secondary" data-empty-note style="display:none;">Нет личных чатов</span>
           </div>
@@ -172,7 +171,7 @@
                   data-type="private"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
                   data-haystack="{% for u in chat.participants.all %}{% if u != user %} {{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}">
-                <div class="feed-ava" style="width:44px;height:44px;">
+                <div class="card-icon" style="width:44px;height:44px;">
                   {% with p0=chat.participants.all.0 p1=chat.participants.all.1 %}
                     {% if p0 and p0 != user and p0.avatar %}
                       <img src="{{ p0.avatar.url }}" alt="{{ p0.get_full_name|default:p0.username }}" loading="lazy">
@@ -186,7 +185,7 @@
 
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {% comment %}Показываем имена участников (кроме текущего){% endcomment %}
                       {% for u in chat.participants.all %}{% if u.id != user.id %}{% cycle '' ', ' %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}
                     </a>
@@ -196,7 +195,7 @@
                     <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
-                  <div class="feed-sub mt-1">
+                  <div class="card-subtitle mt-1">
                     {% if last %}
                       <span class="text-secondary">
                         <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
@@ -230,10 +229,10 @@
       </div>
 
       {# ===== 4) ГРУППЫ ===== #}
-      <div class="feed-card chat-section mb-3" data-sec="group">
-        <div class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-people-fill"></i></div>
-          <div class="flex-grow-1 feed-meta">
+      <div class="card chat-section mb-3" data-sec="group">
+        <div class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;"><i class="bi-people-fill"></i></div>
+          <div class="flex-grow-1 card-meta">
             <h6 class="mb-0 text-secondary">Группы</h6>
             <span class="small text-secondary" data-empty-note style="display:none;">Нет групповых чатов</span>
           </div>
@@ -249,7 +248,7 @@
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
                   data-haystack="{{ chat.name }} {{ chat.description }}">
                 
-                <div class="feed-ava" style="width:44px;height:44px;">
+                <div class="card-icon" style="width:44px;height:44px;">
                   {% if chat.avatar %}
                     <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
                   {% else %}
@@ -259,7 +258,7 @@
 
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {{ chat.name }}
                     </a>
                     <span class="badge bg-light text-dark border">
@@ -268,7 +267,7 @@
                     <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
-                  <div class="feed-sub mt-1">
+                  <div class="card-subtitle mt-1">
                     {% if last %}
                       <span class="text-secondary">
                         <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
@@ -304,10 +303,10 @@
       </div>
 
       {# ===== 5) КАНАЛЫ ===== #}
-      <div class="feed-card chat-section mb-3" data-sec="channel">
-        <div class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-broadcast"></i></div>
-          <div class="flex-grow-1 feed-meta">
+      <div class="card chat-section mb-3" data-sec="channel">
+        <div class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;"><i class="bi-broadcast"></i></div>
+          <div class="flex-grow-1 card-meta">
             <h6 class="mb-0 text-secondary">Каналы</h6>
             <span class="small text-secondary" data-empty-note style="display:none;">Нет каналов</span>
           </div>
@@ -323,7 +322,7 @@
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
                   data-haystack="{{ chat.name }} {{ chat.description }}">
                 
-                <div class="feed-ava" style="width:44px;height:44px;">
+                <div class="card-icon" style="width:44px;height:44px;">
                   {% if chat.avatar %}
                     <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
                   {% else %}
@@ -333,7 +332,7 @@
 
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {{ chat.name }}
                     </a>
                     <span class="badge bg-light text-dark border">
@@ -342,7 +341,7 @@
                     <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
-                  <div class="feed-sub mt-1">
+                  <div class="card-subtitle mt-1">
                     {% if last %}
                       <span class="text-secondary">
                         <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
@@ -378,10 +377,10 @@
       </div>
 
       {# ===== 6) ОБЪЯВЛЕНИЯ ===== #}
-      <div class="feed-card chat-section mb-3" data-sec="announcement">
-        <div class="feed-hd">
-          <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-megaphone"></i></div>
-          <div class="flex-grow-1 feed-meta">
+      <div class="card chat-section mb-3" data-sec="announcement">
+        <div class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;"><i class="bi-megaphone"></i></div>
+          <div class="flex-grow-1 card-meta">
             <h6 class="mb-0 text-secondary">Объявления</h6>
             <span class="small text-secondary" data-empty-note style="display:none;">Нет объявлений</span>
           </div>
@@ -397,7 +396,7 @@
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
                   data-haystack="{{ chat.name }} {{ chat.description }}">
                 
-                <div class="feed-ava" style="width:44px;height:44px;">
+                <div class="card-icon" style="width:44px;height:44px;">
                   {% if chat.avatar %}
                     <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
                   {% else %}
@@ -407,7 +406,7 @@
 
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {{ chat.name }}
                     </a>
                     <span class="badge bg-light text-dark border">
@@ -416,7 +415,7 @@
                     <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
-                  <div class="feed-sub mt-1">
+                  <div class="card-subtitle mt-1">
                     {% if last %}
                       <span class="text-secondary">
                         <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·

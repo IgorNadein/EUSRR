@@ -1,6 +1,9 @@
 /**
  * Менеджер уведомлений - подключение к WebSocket и управление
  */
+
+import { getNotifications, invalidateNotifications } from '../api/notificationsApi.js';
+
 class NotificationManager {
     constructor() {
         this.ws = null;
@@ -145,10 +148,14 @@ class NotificationManager {
                 case 'new_notification':
                     this.showNewNotification(data.notification);
                     this.updateBadge(data.notification.unread_count);
+                    // Инвалидируем кеш при получении нового уведомления
+                    invalidateNotifications();
                     break;
                     
                 case 'count_update':
                     this.updateBadge(data.count);
+                    // Инвалидируем кеш при изменении счетчика
+                    invalidateNotifications();
                     break;
                     
                 default:
@@ -200,23 +207,16 @@ class NotificationManager {
     
     async loadInitialNotifications() {
         try {
-            const response = await fetch('/api/notifications/?page=1&page_size=5&unread_only=true', {
-                credentials: 'same-origin',
-                headers: {
-                    'Accept': 'application/json',
-                }
+            // Используем кешированный API вместо прямого fetch
+            const data = await getNotifications({
+                page: 1,
+                page_size: 5,
+                unread_only: true
             });
             
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('[Notifications] API Error:', response.status, errorText);
-                throw new Error(`Failed to load notifications: ${response.status}`);
-            }
-            
-            const data = await response.json();
             console.log('[Notifications] Loaded data:', data);
-            this.renderNotifications(data.notifications);
-            this.updateBadge(data.total);
+            this.renderNotifications(data.notifications || []);
+            this.updateBadge(data.total || 0);
         } catch (error) {
             console.error('[Notifications] Error loading notifications:', error);
             // Показываем заглушку при ошибке

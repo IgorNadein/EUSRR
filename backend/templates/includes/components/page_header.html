@@ -92,24 +92,24 @@
   {# ===== КНОПКА СОЗДАНИЯ В ВИДЕ КАРТОЧКИ ===== #}
   {% if not no_create and create_as_card %}
     {% if create_modal %}
-      <div class="feed-card mb-2">
+      <div class="card mb-2">
         <button type="button"
                 class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none border-0 bg-transparent"
                 data-bs-toggle="modal"
                 data-bs-target="#{{ create_modal }}"
                 role="button" 
                 aria-label="{{ create_text|default:'Создать' }}">
-          <span class="feed-author">{{ create_text|default:"Создать" }}</span>
+          <span class="card-title">{{ create_text|default:"Создать" }}</span>
           <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
         </button>
       </div>
     {% elif create_url %}
-      <div class="feed-card mb-2">
+      <div class="card mb-2">
         <a href="{{ create_url }}"
            class="dept-row d-flex w-100 justify-content-center align-items-center gap-2 text-decoration-none border-0 bg-transparent"
            role="button" 
            aria-label="{{ create_text|default:'Создать' }}">
-          <span class="feed-author">{{ create_text|default:"Создать" }}</span>
+          <span class="card-title">{{ create_text|default:"Создать" }}</span>
           <i class="{{ create_icon|default:'bi-plus-lg' }}"></i>
         </a>
       </div>

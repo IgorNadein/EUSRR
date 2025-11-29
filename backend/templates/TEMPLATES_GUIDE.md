@@ -68,7 +68,7 @@ templates/
 - `department-sidebar.css` - Боковая панель отдела
 - `document-list.css` - Список документов
 - `employee-detail.css` - Детали сотрудника
-- `feed-cards.css` - Карточки в ленте
+- `cards.css` - Карточки в ленте
 - `login.css` - Страница входа
 - `logout.css` - Страница выхода
 - `navbar.css` - Верхняя навигация
@@ -135,7 +135,7 @@ templates/
 
 ```django
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/cards.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/department-sidebar.css' %}">
 {% endblock %}
 ```
@@ -164,15 +164,15 @@ templates/
 </div>
 
 <!-- Feed карточки -->
-<div class="feed-card">
-  <div class="feed-hd">
-    <img src="..." class="feed-ava">
-    <div class="feed-meta">
-      <div class="feed-author">Иван Петров</div>
+<div class="card">
+  <div class="card-header">
+    <img src="..." class="card-icon">
+    <div class="card-meta">
+      <div class="card-title">Иван Петров</div>
       <div class="feed-ts">2 минуты назад</div>
     </div>
   </div>
-  <div class="feed-body">
+  <div class="card-body">
     <p>Текст поста...</p>
   </div>
 </div>
@@ -241,7 +241,7 @@ templates/
 ```django
 {# Стили в extra_css блоке #}
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/cards.css' %}">
 {% endblock %}
 
 {# Скрипты в extra_js блоке #}

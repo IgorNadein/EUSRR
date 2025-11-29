@@ -78,7 +78,32 @@ body {
   display: block;
 }
 
+/* Адаптивный контейнер для контента внутри main 
+   Работает как обычный Bootstrap container, но адаптируется к grid-layout */
+.content-container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* На мобильных - ведет себя как обычный container */
+@media (max-width: 991.98px) {
+  .content-container {
+    padding-left: var(--bs-gutter-x, 0.75rem);
+    padding-right: var(--bs-gutter-x, 0.75rem);
+  }
+}
+
 @media (min-width: 992px) {
+  /* При наличии grid-layout (с сайдбарами) - убираем padding и max-width */
+  .app-layout.with-sidebar .content-container,
+  .app-layout.with-rightbar .content-container {
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  
+  /* Grid layout для аутентифицированных пользователей */
   .app-layout.with-sidebar.with-rightbar {
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr var(--rightbar-w);
@@ -91,6 +116,51 @@ body {
     grid-template-columns: var(--sidebar-w) 1fr;
     gap: var(--layout-gap);
     align-items: start;
+  }
+  
+  /* Если нет сайдбаров - применяем стандартные max-width и padding */
+  .app-layout:not(.with-sidebar):not(.with-rightbar) .content-container {
+    padding-left: var(--bs-gutter-x, 0.75rem);
+    padding-right: var(--bs-gutter-x, 0.75rem);
+    max-width: 960px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-layout:not(.with-sidebar):not(.with-rightbar) .content-container {
+    max-width: 1140px;
+  }
+}
+
+@media (min-width: 1400px) {
+  .app-layout:not(.with-sidebar):not(.with-rightbar) .content-container {
+    max-width: 1320px;
+  }
+}
+
+/* Компенсация для .row внутри .content-container при grid-layout */
+@media (min-width: 992px) {
+  .app-layout.with-sidebar .content-container > .row,
+  .app-layout.with-rightbar .content-container > .row {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  
+  /* Убираем gutter для прямых колонок в row, чтобы не было переполнения */
+  .app-layout.with-sidebar .content-container > .row > [class*="col-"],
+  .app-layout.with-rightbar .content-container > .row > [class*="col-"] {
+    padding-left: calc(var(--bs-gutter-x) * 0.5);
+    padding-right: calc(var(--bs-gutter-x) * 0.5);
+  }
+  
+  /* Принудительная коррекция для .card внутри колонок */
+  .app-layout.with-sidebar .container > .row > [class*="col-"] > .card,
+  .app-layout.with-rightbar .container > .row > [class*="col-"] > .card,
+  .app-layout.with-sidebar .container > .row > [class*="col-"] > section.card,
+  .app-layout.with-rightbar .container > .row > [class*="col-"] > section.card {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
   }
 }
 
@@ -191,7 +261,7 @@ body {
 }
 
 /* stretched-link не перекрывает футер/формы */
-.feed-body .stretched-link::after,
+.card-body .stretched-link::after,
 .feed-img .stretched-link::after {
   z-index: 1;
 }

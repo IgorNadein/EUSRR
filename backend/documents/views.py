@@ -242,320 +242,38 @@ def _filter_for_user(items: Sequence[Dict[str, Any]], user_id: Optional[int]) ->
 
 @method_decorator([login_required, require_api_auth, csrf_protect], name="dispatch")
 class DocumentView(LoginRequiredMixin, TemplateView):
-    """Список документов + CRUD через POST на тот же URL.
-
-    Поведение:
-        - GET — загружает список документов через API и формирует контекст.
-        - POST — маршрутизирует действия форм `_action = create|edit|delete`:
-            создаёт, редактирует или удаляет документ через API.
-
-    Контекст (для шаблона `documents/document_list.html`):
-        documents (list[dict]): Список документов.
-        acked_ids (set[int]): Множество ID «ознакомленных» пользователем документов.
-        count (int): Общее количество элементов (если известно).
-        next_url (str|None): Ссылка на следующую страницу (как вернул API).
-        prev_url (str|None): Ссылка на предыдущую страницу (как вернул API).
-        page (int|str): Номер страницы (как пришёл из запроса).
-        scope (str): 'mine' или 'all' — активная область.
-        can_manage_documents (bool): Имеет ли пользователь модельные права/является staff.
-        show_admin_controls (bool): Показывать ли кнопки create/edit/delete (True при scope='all' и наличии прав).
-        scope_urls (dict): {'mine': url, 'all': url} — ссылки-переключатели.
-        api_document_list_url (str): URL API-эндпоинта списка документов.
-        api_document_detail_base (str): База detail (заканчивается '/documents/').
-        perm_can_add/change/delete (bool): Точечные права для тонкой логики в шаблоне.
+    """Страница списка документов.
+    
+    Все данные загружаются через JavaScript с использованием API.
+    View только рендерит пустой шаблон с необходимыми URL'ами и правами пользователя.
     """
 
     template_name = "documents/document_list.html"
 
-    @property
-    def paginate_by(self) -> int:
-        """Размер страницы для обратной совместимости (реальная пагинация на стороне API).
-
-        Returns:
-            int: Желаемый размер страницы.
-        """
-        return 20
-
-    # ---------- GET ----------
-
     def get_context_data(self, **kwargs: Any) -> Dict[str, Any]:
-        """Формирует контекст страницы.
-
-        QueryParams:
-            page (int, optional): Номер страницы (проксируется в API).
-            scope ('mine'|'all'): Область показа. Обычным пользователям всегда 'mine'.
-            ack_status ('acked'|'not_acked', optional): Фильтр по статусу ознакомления.
+        """Формирует минимальный контекст для JavaScript-приложения.
 
         Returns:
-            dict: Контекст для шаблона.
-
-        Raises:
-            RuntimeError: Если API вернул неожиданный формат данных.
+            dict: Контекст с API URLs и правами пользователя.
         """
         ctx = super().get_context_data(**kwargs)
-
-        request = self.request
-        user = request.user
-        api = get_api_client(request)
+        user = self.request.user
 
         can_manage = _user_can_manage_documents(user)
-        raw_scope = (request.GET.get("scope") or "mine").lower()
-        scope = raw_scope if (raw_scope in {"mine", "all"} and can_manage) else "mine"
-        page = request.GET.get("page") or 1
-        ack_status = (request.GET.get("ack_status") or "").lower().strip()
-
-        # Загружаем список документов через API
-        resp = api.get("v1/documents/", params={"page": page})
-        ok, data, _status = _api_unpack(resp)
-        if not ok:
-            messages.error(request, (data or {}).get("detail") or "Не удалось загрузить документы.")
-            page_data = ApiPage(items=[], count=0, next_url=None, prev_url=None)
-        else:
-            try:
-                page_data = _parse_page_payload(data)
-            except TypeError:
-                # Неожиданный формат ответа
-                messages.error(request, "Неожиданный ответ API при загрузке документов.")
-                page_data = ApiPage(items=[], count=0, next_url=None, prev_url=None)
-
-        # Всегда фильтруем «Мои» локально — это надёжно и не зависит от токена к API
-        items: List[Dict[str, Any]]
-        if scope == "mine":
-            try:
-                items = _filter_for_user(page_data.items, getattr(user, "id", None))
-            except ValueError:
-                items = []  # Без user.id не можем корректно отфильтровать
-        else:
-            items = page_data.items
-
-        # Фильтруем по статусу ознакомления
-        if ack_status == "acked":
-            items = [it for it in items if it.get("is_acknowledged")]
-        elif ack_status == "not_acked":
-            items = [it for it in items if not it.get("is_acknowledged")]
-
-        # Множество ID ознакомленных документов
-        acked_ids: Set[int] = {
-            int(it.get("id"))
-            for it in items
-            if isinstance(it, dict) and it.get("is_acknowledged")
-        }
-
-        # Ссылки переключателя
-        scope_urls = {
-            "mine": _current_url_with(request, scope="mine", page=None),
-            "all": _current_url_with(request, scope="all", page=None),
-        }
-
-        # API URL для фронта (если нужен JS) — сохраняем совместимость с шаблоном
-        api_document_list_url = reverse("api:v1:documents-list")
-
-        # Фильтры для передачи в шаблон
-        filters = {
-            "ack_status": ack_status if ack_status in {"acked", "not_acked"} else "",
-        }
-        
-        # Преобразуем API URL'ы пагинации в URL'ы представления
-        next_url = None
-        prev_url = None
-        
-        current_page = int(page) if str(page).isdigit() else 1
-        
-        if page_data.next_url:
-            # Извлекаем номер страницы из API URL
-            from urllib.parse import urlparse, parse_qs
-            parsed = urlparse(page_data.next_url)
-            next_page = parse_qs(parsed.query).get('page', [None])[0]
-            if next_page:
-                next_url = _current_url_with(request, page=next_page)
-        
-        if page_data.prev_url:
-            from urllib.parse import urlparse, parse_qs
-            parsed = urlparse(page_data.prev_url)
-            prev_page = parse_qs(parsed.query).get('page', [None])[0]
-            if prev_page:
-                prev_url = _current_url_with(request, page=prev_page)
-            else:
-                # Если в API URL нет параметра page, это страница 1
-                prev_url = _current_url_with(request, page=1)
-        elif current_page > 1:
-            # Если API не вернул prev_url, но мы не на первой странице - создаем его
-            prev_url = _current_url_with(request, page=current_page - 1)
-        
-        # Отладка пагинации
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(
-            f"Pagination debug: current_page={current_page}, "
-            f"prev_url={prev_url}, next_url={next_url}, "
-            f"api_prev={page_data.prev_url}, api_next={page_data.next_url}"
-        )
 
         ctx.update(
             {
-                "documents": items,
-                "acked_ids": acked_ids,
-                "count": page_data.count,
-                "next_url": next_url,
-                "prev_url": prev_url,
-                "page": int(page) if str(page).isdigit() else page,
-                "scope": scope,
-                "filters": filters,
+                "api_document_list_url": reverse("api:v1:documents-list"),
+                "api_document_detail_base": reverse("api:v1:documents-list"),
+                "acknowledge_url_template": reverse("documents:acknowledge", args=[0]).replace("/0/", "/{id}/"),
                 "can_manage_documents": can_manage,
-                "show_admin_controls": bool(can_manage and scope == "all"),
-                "scope_urls": scope_urls,
-                "api_document_list_url": api_document_list_url,
-                "api_document_detail_base": api_document_list_url,  # + {id}/
+                "user_id": user.id,
                 "perm_can_add": user.has_perm("documents.add_document") or user.is_staff,
                 "perm_can_change": user.has_perm("documents.change_document") or user.is_staff,
                 "perm_can_delete": user.has_perm("documents.delete_document") or user.is_staff,
             }
         )
         return ctx
-
-    # ---------- POST (CRUD через API) ----------
-
-    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        """Маршрутизация действий форм по полю `_action`.
-
-        Returns:
-            HttpResponse: Редирект на список после выполнения действия.
-
-        Raises:
-            ValueError: Если `_action` отсутствует или имеет неизвестное значение.
-        """
-        action = (request.POST.get("_action") or "").lower().strip()
-        if action == "create":
-            return self._create(request)
-        if action == "edit":
-            return self._edit(request)
-        if action == "delete":
-            return self._delete(request)
-        messages.error(request, "Неизвестное действие.")
-        raise ValueError("Unknown _action for DocumentListView.post")
-
-    # --- Handlers ---
-
-    def _create(self, request: HttpRequest) -> HttpResponse:
-        """Создаёт документ через API (multipart).
-
-        Ожидаемые поля:
-            title (str), description (str, optional),
-            file (uploaded, required),
-            sent_to_all (bool),
-            recipient_ids (repeat, если sent_to_all=false).
-
-        Returns:
-            HttpResponse: Редирект на список документов.
-
-        Raises:
-            ValueError: Если отсутствует обязательный файл.
-        """
-        title = (request.POST.get("title") or "").strip()
-        description = (request.POST.get("description") or "").strip()
-        sent_to_all = _as_bool(request.POST.get("sent_to_all"))
-        file = request.FILES.get("file")
-        if not file:
-            messages.error(request, "Файл обязателен.")
-            raise ValueError("file is required")
-
-        data: List[Tuple[str, str]] = [
-            ("title", title),
-            ("description", description),
-            ("sent_to_all", "true" if sent_to_all else "false"),
-        ]
-        if not sent_to_all:
-            data += _repeat_field_pairs("recipient_ids", request.POST.getlist("recipient_ids"))
-
-        files = {
-            "file": (getattr(file, "name", "file"), file, getattr(file, "content_type", None))
-        }
-
-        api = get_api_client(request)
-        resp = api.post("v1/documents/", data=data, files=files)
-        ok, j, status = _api_unpack(resp)
-        if ok:
-            messages.success(request, "Документ создан.")
-        else:
-            messages.error(request, j.get("detail") or f"Ошибка создания (HTTP {status}).")
-        return redirect(reverse("documents:document_list"))
-
-    def _edit(self, request: HttpRequest) -> HttpResponse:
-        """Редактирует документ через API (multipart PATCH).
-
-        Ожидаемые поля:
-            id (int), title (str), description (str),
-            sent_to_all (bool),
-            recipient_ids (repeat, если sent_to_all=false),
-            file (uploaded, optional).
-
-        Returns:
-            HttpResponse: Редирект на список документов.
-
-        Raises:
-            ValueError: Если id некорректен.
-        """
-        raw_id = request.POST.get("id")
-        if not str(raw_id).isdigit():
-            messages.error(request, "Некорректный идентификатор документа.")
-            raise ValueError("Invalid document id")
-
-        doc_id = int(raw_id)
-        title = (request.POST.get("title") or "").strip()
-        description = (request.POST.get("description") or "").strip()
-        sent_to_all = _as_bool(request.POST.get("sent_to_all"))
-        rids = request.POST.getlist("recipient_ids")
-
-        data: List[Tuple[str, str]] = [
-            ("title", title),
-            ("description", description),
-            ("sent_to_all", "true" if sent_to_all else "false"),
-        ]
-        if not sent_to_all:
-            data += _repeat_field_pairs("recipient_ids", rids)
-
-        file = request.FILES.get("file")
-        files = (
-            {"file": (getattr(file, "name", "file"), file, getattr(file, "content_type", None))}
-            if file
-            else None
-        )
-
-        api = get_api_client(request)
-        resp = api.patch(f"v1/documents/{doc_id}/", data=data, files=files)
-        ok, j, status = _api_unpack(resp)
-        if ok:
-            messages.success(request, "Документ сохранён.")
-        else:
-            messages.error(request, j.get("detail") or f"Не удалось сохранить (HTTP {status}).")
-        return redirect(reverse("documents:document_list"))
-
-    def _delete(self, request: HttpRequest) -> HttpResponse:
-        """Удаляет документ через API.
-
-        Ожидаемые поля:
-            id (int).
-
-        Returns:
-            HttpResponse: Редирект на список документов.
-
-        Raises:
-            ValueError: Если id некорректен.
-        """
-        raw_id = request.POST.get("id")
-        if not str(raw_id).isdigit():
-            messages.error(request, "Некорректный идентификатор документа.")
-            raise ValueError("Invalid document id")
-
-        doc_id = int(raw_id)
-        api = get_api_client(request)
-        resp = api.delete(f"v1/documents/{doc_id}/")
-        ok, j, status = _api_unpack(resp)
-        if ok or status == 204:
-            messages.success(request, "Документ удалён.")
-        else:
-            messages.error(request, (j or {}).get("detail") or f"Не удалось удалить (HTTP {status}).")
-        return redirect(reverse("documents:document_list"))
 
 
 @login_required

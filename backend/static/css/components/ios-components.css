@@ -325,7 +325,7 @@
   margin: 0 !important;
 }
 
-#activity .activity-feed .feed-card {
+#activity .activity-feed .card {
   width: 100% !important;
   max-width: none !important;
   border: 0 !important;
@@ -340,7 +340,7 @@
   gap: 1rem;
 }
 
-#activity .activity-feed .feed-stream {
+#activity .activity-feed .card-list {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -351,7 +351,7 @@
   max-width: 100% !important;
 }
 
-#activity .feed-actions {
+#activity .card-actions {
   border-top: 0 !important;
 }
 

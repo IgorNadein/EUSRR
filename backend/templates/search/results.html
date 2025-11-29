@@ -6,7 +6,6 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -21,20 +20,20 @@
 
         {# ===== ПУБЛИКАЦИИ ===== #}
         {% if counts.post %}
-        <div class="feed-card mb-3 section" data-sec="post">
-          <div class="feed-hd">
-            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-journal-text"></i></div>
-            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Публикации</h6></div>
+        <div class="card mb-3 section" data-sec="post">
+          <div class="card-header">
+            <div class="card-icon" style="width:44px;height:44px;"><i class="bi-journal-text"></i></div>
+            <div class="card-meta flex-grow-1"><h6 class="mb-0 text-secondary">Публикации</h6></div>
           </div>
           <div class="list-results">
             {% for item in results %}
               {% if item.model_name == 'post' %}
                 {% with post=item.object %}
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="post" data-haystack="{{ post.title|default_if_none:'' }}">
-                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-journal-text"></i></div>
+                  <div class="card-icon" style="width:44px;height:44px;"><i class="bi-journal-text"></i></div>
                   <div class="flex-grow-1 position-relative">
-                    <a href="{% url 'feed:post_detail' post.pk %}" class="feed-author text-decoration-none stretched-link">{{ post.title }}</a>
-                    <div class="feed-sub mt-1 text-secondary">{{ post.created_at|date:"d.m.Y H:i" }}</div>
+                    <a href="{% url 'feed:post_detail' post.pk %}" class="card-title text-decoration-none stretched-link">{{ post.title }}</a>
+                    <div class="card-subtitle mt-1 text-secondary">{{ post.created_at|date:"d.m.Y H:i" }}</div>
                     {% if post.body %}<div class="small mt-1 text-body">{{ post.body|truncatewords:35 }}</div>{% endif %}
                   </div>
                 </div>
@@ -47,24 +46,24 @@
 
         {# ===== СОТРУДНИКИ ===== #}
         {% if counts.employee %}
-        <div class="feed-card mb-3 section" data-sec="employee">
-          <div class="feed-hd">
-            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-person-badge"></i></div>
-            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Сотрудники</h6></div>
+        <div class="card mb-3 section" data-sec="employee">
+          <div class="card-header">
+            <div class="card-icon" style="width:44px;height:44px;"><i class="bi-person-badge"></i></div>
+            <div class="card-meta flex-grow-1"><h6 class="mb-0 text-secondary">Сотрудники</h6></div>
           </div>
           <div class="list-results">
             {% for item in results %}
               {% if item.model_name == 'employee' %}
                 {% with emp=item.object %}
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="employee" data-haystack="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic|default_if_none:'' }}">
-                  <div class="feed-ava" style="width:44px;height:44px;">
+                  <div class="card-icon" style="width:44px;height:44px;">
                     {% if emp.avatar %}<img src="{{ emp.avatar.url }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
                   </div>
                   <div class="flex-grow-1 position-relative">
-                    <a href="{% url 'employees:employee_detail' emp.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'employees:employee_detail' emp.pk %}" class="card-title text-decoration-none stretched-link">
                       {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
                     </a>
-                    <div class="feed-sub mt-1 text-secondary">
+                    <div class="card-subtitle mt-1 text-secondary">
                       {% if emp.position %}{{ emp.position.name }} · {% endif %}
                       {{ emp.email }}{% if emp.phone_number %} · {{ emp.phone_number }}{% endif %}
                     </div>
@@ -79,20 +78,20 @@
 
         {# ===== ОТДЕЛЫ ===== #}
         {% if counts.department %}
-        <div class="feed-card mb-3 section" data-sec="department">
-          <div class="feed-hd">
-            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
-            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Отделы</h6></div>
+        <div class="card mb-3 section" data-sec="department">
+          <div class="card-header">
+            <div class="card-icon" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
+            <div class="card-meta flex-grow-1"><h6 class="mb-0 text-secondary">Отделы</h6></div>
           </div>
           <div class="list-results">
             {% for item in results %}
               {% if item.model_name == 'department' %}
                 {% with dept=item.object %}
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="department" data-haystack="{{ dept.name|default_if_none:'' }}">
-                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
+                  <div class="card-icon" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
                   <div class="flex-grow-1 position-relative">
-                    <a href="{% url 'employees:department_detail' dept.pk %}" class="feed-author text-decoration-none stretched-link">{{ dept.name }}</a>
-                    <div class="feed-sub mt-1 text-secondary">
+                    <a href="{% url 'employees:department_detail' dept.pk %}" class="card-title text-decoration-none stretched-link">{{ dept.name }}</a>
+                    <div class="card-subtitle mt-1 text-secondary">
                       {% if dept.head %}Руководитель: {{ dept.head.last_name }} {{ dept.head.first_name }}{% if dept.head.patronymic %} {{ dept.head.patronymic }}{% endif %}{% endif %}
                     </div>
                     {% if dept.description %}<div class="small mt-1 text-body">{{ dept.description|truncatewords:35 }}</div>{% endif %}
@@ -107,22 +106,22 @@
 
         {# ===== ЗАЯВЛЕНИЯ ===== #}
         {% if counts.request %}
-        <div class="feed-card mb-3 section" data-sec="request">
-          <div class="feed-hd">
-            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-file-earmark-text"></i></div>
-            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Заявления</h6></div>
+        <div class="card mb-3 section" data-sec="request">
+          <div class="card-header">
+            <div class="card-icon" style="width:44px;height:44px;"><i class="bi-file-earmark-text"></i></div>
+            <div class="card-meta flex-grow-1"><h6 class="mb-0 text-secondary">Заявления</h6></div>
           </div>
           <div class="list-results">
             {% for item in results %}
               {% if item.model_name == 'request' %}
                 {% with req=item.object %}
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="request" data-haystack="{% firstof req.title req.get_type_display '' %}">
-                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-file-earmark-text"></i></div>
+                  <div class="card-icon" style="width:44px;height:44px;"><i class="bi-file-earmark-text"></i></div>
                   <div class="flex-grow-1 position-relative">
-                    <div class="feed-author">
+                    <div class="card-title">
                       {% firstof req.title req.get_type_display "Заявление" %}
                     </div>
-                    <div class="feed-sub mt-1 text-secondary">
+                    <div class="card-subtitle mt-1 text-secondary">
                       Автор: {{ req.employee }}{% if req.department %} · Отдел: {{ req.department }}{% endif %} · {{ req.created_at|date:"d.m.Y H:i" }}
                     </div>
                     {% if req.comment %}<div class="small mt-1 text-body">{{ req.comment|truncatewords:35 }}</div>{% endif %}
@@ -145,10 +144,10 @@
 
         {# ===== ЧАТЫ ===== #}
         {% if counts.chat %}
-        <div class="feed-card mb-3 section" data-sec="chat">
-          <div class="feed-hd">
-            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-dots"></i></div>
-            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Чаты</h6></div>
+        <div class="card mb-3 section" data-sec="chat">
+          <div class="card-header">
+            <div class="card-icon" style="width:44px;height:44px;"><i class="bi-chat-dots"></i></div>
+            <div class="card-meta flex-grow-1"><h6 class="mb-0 text-secondary">Чаты</h6></div>
           </div>
           <div class="list-results">
             {% for item in results %}
@@ -156,9 +155,9 @@
                 {% with chat=item.object %}
                 {% firstof chat.name chat.department.name chat.pk as chat_label %}
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="chat" data-haystack="{{ chat_label }}">
-                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-dots"></i></div>
+                  <div class="card-icon" style="width:44px;height:44px;"><i class="bi-chat-dots"></i></div>
                   <div class="flex-grow-1 position-relative">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {% if chat.type == 'global' %}
                         Глобальный чат
                       {% elif chat.type == 'department' and chat.department %}
@@ -180,10 +179,10 @@
 
         {# ===== СООБЩЕНИЯ ===== #}
         {% if counts.message %}
-        <div class="feed-card mb-3 section" data-sec="message">
-          <div class="feed-hd">
-            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-left-text"></i></div>
-            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">Сообщения</h6></div>
+        <div class="card mb-3 section" data-sec="message">
+          <div class="card-header">
+            <div class="card-icon" style="width:44px;height:44px;"><i class="bi-chat-left-text"></i></div>
+            <div class="card-meta flex-grow-1"><h6 class="mb-0 text-secondary">Сообщения</h6></div>
           </div>
           <div class="list-results">
             {% for item in results %}
@@ -191,13 +190,13 @@
                 {% with msg=item.object %}
                 {% firstof msg.chat.name msg.chat.department.name msg.chat.pk as msg_chat_label %}
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="message" data-haystack="{{ msg.content|default_if_none:'' }}">
-                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-chat-left-text"></i></div>
+                  <div class="card-icon" style="width:44px;height:44px;"><i class="bi-chat-left-text"></i></div>
                   <div class="flex-grow-1 position-relative">
-                    <a href="{% url 'communications:chat_detail' msg.chat.pk %}" class="feed-author text-decoration-none stretched-link">
+                    <a href="{% url 'communications:chat_detail' msg.chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {% if msg.author %}{{ msg.author.get_full_name|default:msg.author.username }}: {% endif %}
                       {{ msg.content|default:"(вложение)"|truncatechars:120 }}
                     </a>
-                    <div class="feed-sub mt-1 text-secondary">
+                    <div class="card-subtitle mt-1 text-secondary">
                       {{ msg.created_at|date:"d.m.Y H:i" }} · Чат: {{ msg_chat_label }}
                     </div>
                   </div>
@@ -211,10 +210,10 @@
 
         {# ===== СОБЫТИЯ ===== #}
         {% if counts.event %}
-        <div class="feed-card mb-3 section" data-sec="event">
-          <div class="feed-hd">
-            <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-calendar-event"></i></div>
-            <div class="feed-meta flex-grow-1"><h6 class="mb-0 text-secondary">События</h6></div>
+        <div class="card mb-3 section" data-sec="event">
+          <div class="card-header">
+            <div class="card-icon" style="width:44px;height:44px;"><i class="bi-calendar-event"></i></div>
+            <div class="card-meta flex-grow-1"><h6 class="mb-0 text-secondary">События</h6></div>
           </div>
           <div class="list-results">
             {% for item in results %}
@@ -222,10 +221,10 @@
                 {% with ev=item.object %}
                 {% firstof ev.title ev.name "Событие" as ev_title %}
                 <div class="result-row d-flex align-items-start gap-2 py-2 px-2" data-type="event" data-haystack="{{ ev_title }}">
-                  <div class="feed-ava" style="width:44px;height:44px;"><i class="bi-calendar-event"></i></div>
+                  <div class="card-icon" style="width:44px;height:44px;"><i class="bi-calendar-event"></i></div>
                   <div class="flex-grow-1 position-relative">
-                    <div class="feed-author">{{ ev_title }}</div>
-                    <div class="feed-sub mt-1 text-secondary">
+                    <div class="card-title">{{ ev_title }}</div>
+                    <div class="card-subtitle mt-1 text-secondary">
                       {% if ev.start %}Начало: {{ ev.start|date:"d.m.Y H:i" }}
                       {% elif ev.starts_at %}Начало: {{ ev.starts_at|date:"d.m.Y H:i" }}{% endif %}
                       {% if ev.location %} · {{ ev.location }}{% endif %}

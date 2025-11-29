@@ -101,6 +101,34 @@ class PostListSerializer(serializers.ModelSerializer):
 
 
 class PostSerializer(PostListSerializer):
+    """Сериализатор для деталей поста с комментариями"""
+    comments = serializers.SerializerMethodField()
+    user_has_liked = serializers.SerializerMethodField()
+
+    class Meta(PostListSerializer.Meta):
+        fields = PostListSerializer.Meta.fields + [
+            "comments",
+            "user_has_liked"
+        ]
+
+    def get_comments(self, obj):
+        """Возвращает список комментариев к посту"""
+        comments = obj.comments.select_related("author").order_by(
+            "created_at"
+        )
+        return CommentSerializer(
+            comments, many=True, context=self.context
+        ).data
+
+    def get_user_has_liked(self, obj):
+        """Проверяет, лайкнул ли текущий пользователь этот пост"""
+        request = self.context.get("request")
+        if request and request.user and request.user.is_authenticated:
+            return PostLike.objects.filter(
+                post=obj, user=request.user
+            ).exists()
+        return False
+
     def validate(self, attrs):
         # значения с учётом partial
         t = attrs.get("type", getattr(self.instance, "type", None))

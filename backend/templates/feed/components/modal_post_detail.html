@@ -1,0 +1,17 @@
+{% load static %}
+
+<!-- Модальное окно для просмотра поста -->
+<div class="modal fade" id="postDetailModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+    <div class="modal-content">
+      <div class="modal-body p-0" id="postDetailContent">
+        <!-- Контент поста будет загружен сюда через JavaScript -->
+        <div class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

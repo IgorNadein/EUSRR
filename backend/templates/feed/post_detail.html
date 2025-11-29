@@ -55,25 +55,12 @@
             {% endif %}
           {% endif %}
         {% endif %}
-
-        {# Редактирование #}
-        {% if post_id %}
-          {% if user.is_staff or user.id == post.author_id %}
-            <a href="{% url 'feed:post_update' post_id %}" class="btn btn-ghost">
-              <i class="bi-pencil"></i> Редактировать
-            </a>
-          {% elif post.type == 'department' and post.department and post.department.head_id == user.id %}
-            <a href="{% url 'feed:post_update' post_id %}" class="btn btn-ghost">
-              <i class="bi-pencil"></i> Редактировать
-            </a>
-          {% endif %}
-        {% endif %}
       </div>
 
       <!-- Карточка поста -->
-      <article class="feed-card" data-post-card>
-        <header class="feed-hd">
-          <div class="feed-ava">
+      <article class="card" data-post-card>
+        <header class="card-header">
+          <div class="card-icon">
             {% with a=post.author %}
               {% if a %}
                 {% firstof a.avatar.url a.avatar as ava_url %}
@@ -83,8 +70,8 @@
               {% endif %}
             {% endwith %}
           </div>
-          <div class="feed-meta">
-            <div class="feed-author">
+          <div class="card-meta">
+            <div class="card-title">
               {% if author_id %}
                 <a href="{% url 'employees:employee_detail' author_id %}" class="text-decoration-none">
                   {% with a=post.author %}
@@ -102,7 +89,7 @@
                 </a>
               {% else %}Автор не указан{% endif %}
             </div>
-            <div class="feed-sub">
+            <div class="card-subtitle">
               {% if post.created_at %}
                 {{ post.created_at_display }}
               {% endif %}
@@ -126,7 +113,7 @@
           {% endif %}
         {% endif %}
 
-        <div class="feed-body">
+        <div class="card-body">
           <h1 class="feed-title fs-4 mb-2">{% firstof post.title "Без названия" %}</h1>
           <div class="fs-6 lh-base">{{ post.body|linebreaks }}</div>
 
@@ -142,7 +129,7 @@
           {% endif %}
         </div>
 
-        <footer class="feed-actions">
+        <footer class="card-actions">
           <a href="#comments" class="btn btn-ghost">
             <i class="bi-chat-dots"></i> Комментарии ({{ comments|length }})
           </a>
@@ -172,75 +159,44 @@
 
       <!-- Комментарии -->
       <section id="comments" class="mt-4">
-        <div class="feed-header mb-2">
-          <i class="bi-chat-dots fs-4 text-primary"></i>
-          <h3 class="title mb-0">Комментарии</h3>
-          <span class="small text-secondary ms-2">({{ comments|length }})</span>
+        <div class="comments-section-header">
+          <i class="bi-chat-dots comments-icon"></i>
+          <h3 class="comments-title">Комментарии</h3>
+          <span class="comments-count">({{ comments|length }})</span>
         </div>
 
         {% if comments %}
-          <div class="feed-stream">
+          <div class="comments-list">
             {% for c in comments %}
               {% firstof c.id c.pk as cid %}
               {% firstof c.author.id c.author.pk c.author_id as c_author_id %}
-              <article id="c{{ cid }}" class="feed-card">
-                <header class="feed-hd">
-                  <div class="feed-ava" style="width:36px;height:36px;">
-                    {% with a=c.author %}
-                      {% if a %}
-                        {% firstof a.avatar.url a.avatar as c_ava %}
-                        {% if c_ava %}<img src="{{ c_ava }}" alt="">{% else %}<i class="bi-person"></i>{% endif %}
-                      {% else %}
-                        <i class="bi-person"></i>
-                      {% endif %}
-                    {% endwith %}
-                  </div>
-                  <div class="feed-meta">
-                    <div class="feed-author">
-                      {% if c_author_id %}
-                        <a href="{% url 'employees:employee_detail' c_author_id %}" class="text-decoration-none">
-                          {% with a=c.author %}
-                            {% if a %}
-                              {% firstof a.full_name a.get_full_name as nm %}
-                              {% if nm %}{{ nm }}{% else %}
-                                {% if a.first_name or a.last_name %}
-                                  {{ a.first_name }}{% if a.last_name %} {{ a.last_name }}{% endif %}
-                                {% else %}
-                                  {% firstof a.username a.email "Сотрудник" %}
-                                {% endif %}
-                              {% endif %}
-                            {% else %}Сотрудник #{{ c_author_id }}{% endif %}
-                          {% endwith %}
-                        </a>
-                      {% else %}Автор{% endif %}
-                    </div>
-                    <div class="feed-sub">
-                      {% if c.created_at %}
-                        <time datetime="{{ c.created_at }}">
-                          {{ c.created_at_display }}
-                        </time>
-                      {% endif %}
-                    </div>
-                  </div>
-
-                  {% if request.user.is_staff or request.user.id == c.author_id %}
-                    <div class="ms-auto d-flex gap-2">
-                      {% if cid %}
-                        <a href="{% url 'feed:comment_update' cid %}" class="btn btn-ghost btn-sm">
-                          <i class="bi-pencil"></i>
-                        </a>
-                        <a href="{% url 'feed:comment_delete' cid %}" class="btn btn-ghost btn-sm text-danger">
-                          <i class="bi-trash"></i>
-                        </a>
-                      {% endif %}
-                    </div>
-                  {% endif %}
-                </header>
-
-                <div class="feed-body">
-                  <div class="fs-6">{{ c.text|linebreaks }}</div>
+              <div id="c{{ cid }}" class="comment-item">
+                <div class="comment-header">
+                  {% if c_author_id %}
+                    <a href="{% url 'employees:employee_detail' c_author_id %}" class="comment-author">
+                      {% with a=c.author %}
+                        {% if a %}
+                          {% firstof a.full_name a.get_full_name as nm %}
+                          {% if nm %}{{ nm }}{% else %}
+                            {% if a.first_name or a.last_name %}
+                              {{ a.first_name }}{% if a.last_name %} {{ a.last_name }}{% endif %}
+                            {% else %}
+                              {% firstof a.username a.email "Сотрудник" %}
+                            {% endif %}
+                          {% endif %}
+                        {% else %}Сотрудник #{{ c_author_id }}{% endif %}
+                      {% endwith %}
+                    </a>
+                  {% else %}<span class="comment-author">Автор</span>{% endif %}
+                  <span class="comment-separator">·</span>
+                  <time class="comment-date">
+                    {% if c.created_at %}
+                      {{ c.created_at_display }}
+                    {% endif %}
+                  </time>
                 </div>
-              </article>
+                <div class="comment-body">{{ c.text|linebreaks }}</div>
+              </div>
             {% endfor %}
           </div>
         {% else %}
@@ -250,8 +206,8 @@
 
       <!-- Форма добавления комментария -->
       {% if user.is_authenticated and post_id %}
-        <div class="feed-card mt-3">
-          <div class="feed-body">
+        <div class="card mt-3">
+          <div class="card-body">
             <h6 class="mb-2">Оставить комментарий</h6>
             <form method="post" action="">
               {% csrf_token %}

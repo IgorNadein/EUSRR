@@ -6,7 +6,6 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
@@ -21,15 +20,15 @@
       {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
       {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" create_as_card=True create_modal="createEmployeeModal" create_text="Создать профиль" %}
       
-      <div class="feed-card mb-3">
-        <div id="empList" class="list-view feed-stream">
+      <div class="card mb-3">
+        <div id="empList" class="list-view card-list">
           {% if employees %}
             {% for emp in employees %}
             <article class="emp-row list-row"
                      data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {% firstof emp.position.name emp.position_label '' %}"
                      data-depts="{% if emp.departments %}{% for d in emp.departments %}{% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}{% elif is_filtered_by_department and current_department %}{{ current_department.name }}{% endif %}">
-              <header class="feed-hd">
-                <div class="feed-ava">
+              <header class="card-header">
+                <div class="card-icon">
                   {% if emp.avatar %}
                     <img src="{{ emp.avatar }}" alt="{{ emp.last_name }} {{ emp.first_name }}">
                   {% else %}
@@ -37,14 +36,14 @@
                   {% endif %}
                 </div>
 
-                <div class="feed-meta flex-grow-1">
+                <div class="card-meta flex-grow-1">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
                     {% if emp.id %}
-                      <a href="{% url 'employees:employee_detail' emp.id %}" class="feed-author text-decoration-none">
+                      <a href="{% url 'employees:employee_detail' emp.id %}" class="card-title text-decoration-none">
                         {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
                       </a>
                     {% else %}
-                      <span class="feed-author">
+                      <span class="card-title">
                         {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
                       </span>
                     {% endif %}
@@ -59,7 +58,7 @@
                   </div>
 
                   {% if emp.departments %}
-                    <div class="feed-sub">
+                    <div class="card-subtitle">
                       {% for d in emp.departments %}
                         {% if d.name %}
                           {% if d.id %}
@@ -72,7 +71,7 @@
                       {% endfor %}
                     </div>
                   {% elif is_filtered_by_department and current_department %}
-                    <div class="feed-sub">{{ current_department.name }}</div>
+                    <div class="card-subtitle">{{ current_department.name }}</div>
                   {% endif %}
                 </div>
 
@@ -92,7 +91,7 @@
                 </div>
               </header>
 
-              <div class="feed-body"></div>
+              <div class="card-body"></div>
             </article>
           {% endfor %}
         {% else %}

@@ -88,7 +88,7 @@ templates/
   <!-- CSS Components -->
   <link rel="stylesheet" href="{% static 'css/variables.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/cards.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/base-app.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-components.css' %}">

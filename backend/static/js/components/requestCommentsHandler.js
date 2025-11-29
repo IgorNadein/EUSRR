@@ -213,30 +213,13 @@ export function initRequestCommentsHandler(options) {
     });
   }
   
-  /**
-   * Автоматическое изменение высоты textarea
-   */
-  function initTextareaAutosize() {
-    const textareas = document.querySelectorAll('.comment-new textarea');
-    
-    textareas.forEach(textarea => {
-      textarea.addEventListener('input', () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = `${textarea.scrollHeight}px`;
-      });
-    });
-  }
-  
   // Подключаем обработчики событий
   document.addEventListener('show.bs.collapse', handleCollapseShow);
   document.addEventListener('submit', handleCommentSubmit);
   
   // Автозагрузка счётчиков
   if (autoloadCounts) {
-    document.addEventListener('DOMContentLoaded', () => {
-      autoloadAllCounts();
-      initTextareaAutosize();
-    });
+    document.addEventListener('DOMContentLoaded', autoloadAllCounts);
   }
   
   // API

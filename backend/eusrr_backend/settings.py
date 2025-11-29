@@ -61,6 +61,7 @@ MIDDLEWARE = [
     "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
     "eusrr_backend.middleware.AuthRequiredMiddleware",
     "eusrr_backend.middleware.EmailVerificationMiddleware",
+    "eusrr_backend.middleware.CacheControlMiddleware",  # Cache-Control headers
 ]
 
 ROOT_URLCONF = "eusrr_backend.urls"
@@ -223,8 +224,23 @@ DEFAULT_FROM_EMAIL = os.getenv(
 NOTIFICATION_BULK_THRESHOLD = int(os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
 
 # -----------------------------------------------------------------------------
-# CHANNELS
+# CHANNELS & CACHE
 # -----------------------------------------------------------------------------
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": (
+            f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:"
+            f"{os.getenv('REDIS_PORT', '6379')}/1"
+        ),
+        "OPTIONS": {
+            "db": "1",  # Используем отдельную БД для кэша (Channels - 0)
+        },
+        "KEY_PREFIX": "eusrr_cache",
+        "TIMEOUT": 300,  # 5 минут по умолчанию
+    }
+}
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",

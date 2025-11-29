@@ -170,8 +170,8 @@ export class RecipientPicker {
 
       // Аватар или иконка
       const avatar = emp.avatar
-        ? `<span class="feed-ava"><img src="${esc(emp.avatar)}" class="rp-avatar" alt=""></span>`
-        : `<span class="feed-ava"><i class="bi-person"></i></span>`;
+        ? `<span class="card-icon"><img src="${esc(emp.avatar)}" class="rp-avatar" alt=""></span>`
+        : `<span class="card-icon"><i class="bi-person"></i></span>`;
 
       return `
         <label class="rp-item">

@@ -279,14 +279,14 @@
 }
 
 /* ===== КНОПКА СОЗДАНИЯ В ВИДЕ КАРТОЧКИ (для модала) ===== */
-/* Кнопка должна выглядеть как ссылка в feed-card */
-.page-header .feed-card {
+/* Кнопка должна выглядеть как ссылка в card */
+.page-header .card {
   margin-top: var(--space-2);
   width: 100%;
 }
 
-.page-header .feed-card button.dept-row,
-.page-header .feed-card a.dept-row {
+.page-header .card button.dept-row,
+.page-header .card a.dept-row {
   cursor: pointer;
   transition: background-color 0.2s ease;
   width: 100%;
@@ -294,27 +294,27 @@
   text-align: center;
 }
 
-/* Текст кнопки должен быть как feed-author */
-.page-header .feed-card button.dept-row .feed-author,
-.page-header .feed-card a.dept-row .feed-author {
+/* Текст кнопки должен быть как card-title */
+.page-header .card button.dept-row .card-title,
+.page-header .card a.dept-row .card-title {
   font-weight: 700;
   color: var(--bs-body-color);
 }
 
 /* Иконка должна быть синей как в оригинале */
-.page-header .feed-card button.dept-row i,
-.page-header .feed-card a.dept-row i {
+.page-header .card button.dept-row i,
+.page-header .card a.dept-row i {
   color: var(--bs-primary);
 }
 
-.page-header .feed-card button.dept-row:hover,
-.page-header .feed-card a.dept-row:hover {
+.page-header .card button.dept-row:hover,
+.page-header .card a.dept-row:hover {
   background-color: var(--bs-light);
 }
 
 @media (prefers-color-scheme: dark) {
-  .page-header .feed-card button.dept-row:hover,
-  .page-header .feed-card a.dept-row:hover {
+  .page-header .card button.dept-row:hover,
+  .page-header .card a.dept-row:hover {
     background-color: color-mix(in srgb, var(--bs-body-bg) 95%, white);
   }
 }

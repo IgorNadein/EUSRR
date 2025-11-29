@@ -178,7 +178,7 @@ static/css/
 │   ├── common.css            # Общие стили
 │   ├── base-app.css          # Базовая структура приложения
 │   ├── ios-components.css    # iOS-стайлинг
-│   ├── feed-cards.css        # Карточки ленты
+│   ├── cards.css        # Карточки ленты
 │   ├── ios-search.css        # Поиск в iOS стиле
 │   └── rightbar-calendar.css # Стили календаря
 ```

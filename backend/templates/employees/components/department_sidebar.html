@@ -1,7 +1,7 @@
 {# ===== ПРАВАЯ КОЛОНКА: настройки + лента ===== #}
 {% if user.is_staff or user.is_superuser or can_manage or dept.head.id == user.id %}
   <div id="deptEditWrap-{{ dept.id }}" class="collapse mb-3">
-    <article class="feed-card mb-3">
+    <article class="card mb-3">
       <div class="p-3">
         <div class="d-flex align-items-center gap-2">
           <i class="bi-gear"></i>
@@ -22,11 +22,11 @@
   </div>
 {% endif %}
 
-<section class="feed-card mb-3">
-  <div class="feed-hd">
+<section class="card mb-3">
+  <div class="card-header">
     <i class="bi-newspaper"></i>
-    <div class="feed-meta">
-      <div class="feed-author">Публикации отдела</div>
+    <div class="card-meta">
+      <div class="card-title">Публикации отдела</div>
     </div>
   </div>
   <div>

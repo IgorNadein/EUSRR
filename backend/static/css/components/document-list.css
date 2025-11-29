@@ -3,15 +3,15 @@
  * Стили списка документов, виджета получателей, и подтверждений
  * 
  * Использует:
- * - common.css (.btn-icon, .badge-acked, .feed-author, .feed-sub)
- * - feed-cards.css (.feed-hd, .feed-ava)
+ * - common.css (.btn-icon, .badge-acked, .card-title, .card-subtitle)
+ * - card-list.css (.card-header, .card-icon)
  */
 
 /* ─────────────────────────────────────────────────────────────
    DOCUMENT LIST
 ────────────────────────────────────────────────────────────── */
 /* Список документов в общей «карточке» */
-#docList.feed-stream {
+#docList.card-list {
   display: block;
   gap: 0 !important;
 }
@@ -42,7 +42,7 @@
   border-bottom: 0;
 }
 
-#docList .feed-hd {
+#docList .card-header {
   display: grid;
   grid-template-columns: 28px 1fr auto;
   align-items: center;
@@ -70,7 +70,7 @@
 }
 
 @media (max-width: 576px) {
-  #docList .feed-hd {
+  #docList .card-header {
     grid-template-columns: 28px 1fr;
     gap: .5rem;
   }
@@ -197,7 +197,7 @@
   margin-top: .5rem;
 }
 
-.feed-ava {
+.card-icon {
   width: 32px;
   height: 32px;
   flex: 0 0 32px;

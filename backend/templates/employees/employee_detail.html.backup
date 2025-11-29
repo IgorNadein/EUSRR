@@ -406,11 +406,11 @@
           </div>
         {% endif %}
 
-        <section class="feed-card mb-3">
-          <div class="feed-hd">
+        <section class="card mb-3">
+          <div class="card-header">
             <i class="bi-activity me-1"></i>
-            <div class="feed-meta">
-              <div class="feed-author">Активность</div>
+            <div class="card-meta">
+              <div class="card-title">Активность</div>
             </div>
           </div>
           <div>

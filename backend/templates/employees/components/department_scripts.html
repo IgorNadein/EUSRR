@@ -97,7 +97,7 @@ import { debounce } from '{% static "js/utils/timing.js" %}';
     items.forEach(e => {
       const node = tpl.content.firstElementChild.cloneNode(true);
       node.dataset.id = e.id;
-      const ava = node.querySelector('.feed-ava');
+      const ava = node.querySelector('.card-icon');
       if (ava){
         ava.innerHTML = e.avatar
           ? `<img src="${esc(e.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;">`

@@ -30,14 +30,14 @@ main.main {
   min-height: 0;
 }
 
-.feed-header {
+.section-header {
   flex: 0 0 auto;
 }
 
 /* ─────────────────────────────────────────────────────────────
    CHAT BOX
 ────────────────────────────────────────────────────────────── */
-.feed-card.chat-box {
+.card.chat-box {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
@@ -146,14 +146,7 @@ main.main {
   max-height: 180px;
 }
 
-.chat-composer .btn-attachment {
-  color: var(--bs-body-color);
-}
-
-.chat-composer .btn-emoji {
-  color: var(--bs-body-color);
-}
-
+// Стили кнопок наследуются из custom-bootstrap.scss (glassmorphism)
 .chat-composer .btn-send {
   box-shadow: 0 4px 16px rgba(var(--bs-primary-rgb), 0.35);
 }
@@ -176,14 +169,6 @@ main.main {
 
 .attachment-item:hover {
   background: var(--bs-tertiary-bg);
-}
-
-.attachment-item .btn-ghost {
-  opacity: 0.6;
-}
-
-.attachment-item .btn-ghost:hover {
-  opacity: 1;
 }
 
 /* Вложения в сообщениях */

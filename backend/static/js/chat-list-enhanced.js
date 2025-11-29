@@ -107,7 +107,7 @@
         const chatRow = document.querySelector(`[data-chat-id="${chatId}"]`);
         if (!chatRow) return;
 
-        const feedSub = chatRow.querySelector('.feed-sub');
+        const feedSub = chatRow.querySelector('.card-subtitle');
         if (!feedSub) return;
 
         // Save original content

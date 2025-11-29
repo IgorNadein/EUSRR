@@ -6,7 +6,6 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/feed-cards.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/employee-list.css' %}">
@@ -78,14 +77,14 @@
       </div>
 
       {# ===== СПИСОК СОТРУДНИКОВ ===== #}
-      <div id="empList" class="feed-stream">
+      <div id="empList" class="card-list">
         {% if employees %}
           {% for emp in employees %}
             <article class="emp-row"
                      data-name="{{ emp.last_name }} {{ emp.first_name }} {{ emp.patronymic }} {% firstof emp.position.name emp.position_label '' %}"
                      data-depts="{% if emp.departments %}{% for d in emp.departments %}{% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}{% elif is_filtered_by_department and current_department %}{{ current_department.name }}{% endif %}">
-              <header class="feed-hd">
-                <div class="feed-ava">
+              <header class="card-header">
+                <div class="card-icon">
                   {% if emp.avatar %}
                     <img src="{{ emp.avatar }}" alt="{{ emp.last_name }} {{ emp.first_name }}">
                   {% else %}
@@ -93,14 +92,14 @@
                   {% endif %}
                 </div>
 
-                <div class="feed-meta flex-grow-1">
+                <div class="card-meta flex-grow-1">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
                     {% if emp.id %}
-                      <a href="{% url 'employees:employee_detail' emp.id %}" class="feed-author text-decoration-none">
+                      <a href="{% url 'employees:employee_detail' emp.id %}" class="card-title text-decoration-none">
                         {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
                       </a>
                     {% else %}
-                      <span class="feed-author">
+                      <span class="card-title">
                         {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
                       </span>
                     {% endif %}
@@ -112,7 +111,7 @@
                     {% endif %}
                   </div>
 
-                  <div class="feed-sub">
+                  <div class="card-subtitle">
                     {% if emp.departments %}
                       {% for d in emp.departments %}
                         {% if d.name %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endif %}
