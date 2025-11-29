@@ -9,6 +9,7 @@
   <meta name="color-scheme" content="light dark">
   {% if user.is_authenticated %}
     <meta name="api-access" content="{% api_access_token request %}">
+    <meta name="user-id" content="{{ user.id }}">
   {% endif %}
 
   {# КРИТИЧНО: Применяем тему ДО загрузки CSS для предотвращения FOUC #}

@@ -12,7 +12,7 @@
     <div class="d-flex align-items-center gap-2 flex-shrink-1 min-w-0">
       <h5 class="offcanvas-title mb-0" id="rightbarOffcanvasLabel">Календарь</h5>
       
-      {# Выпадающий выбор: Компания / Отделы #}
+      {# Выпадающий выбор: Личный / Компания / Отделы #}
       <div class="dropdown">
         <button class="btn btn-sm btn-outline-secondary dropdown-toggle text-truncate" type="button"
                 id="calendarChooserBtnMobile" data-bs-toggle="dropdown" aria-expanded="false"
@@ -20,6 +20,8 @@
           Компания
         </button>
         <ul class="dropdown-menu" aria-labelledby="calendarChooserBtnMobile" id="calendarChooserMenuMobile">
+          <li><button class="dropdown-item" type="button" data-cal="personal">Личный</button></li>
+          <li><hr class="dropdown-divider"></li>
           <li><button class="dropdown-item" type="button" data-cal="company">Компания</button></li>
           <li><hr class="dropdown-divider"></li>
           {# пункты отделов добавим из JS по data-dept-id #}

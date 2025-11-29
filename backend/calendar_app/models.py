@@ -24,10 +24,11 @@ class Recurrence(models.TextChoices):
 
 
 class CalendarEvent(models.Model):
-    """Событие календаря (компании или отдела) с поддержкой повторяемости.
+    """Событие календаря (компании, отдела или сотрудника) с поддержкой повторяемости.
 
-    Если `department` = NULL → событие компании (глобальное).
-    Если `department` задан → событие конкретного отдела.
+    Если `department` = NULL и `employee` = NULL → событие компании (глобальное).
+    Если `department` задан и `employee` = NULL → событие конкретного отдела.
+    Если `employee` задан и `department` = NULL → личное событие сотрудника.
     """
 
     # Область
@@ -38,7 +39,17 @@ class CalendarEvent(models.Model):
         verbose_name=_("Отдел"),
         null=True,
         blank=True,
-        help_text=_("Пусто — событие компании; задано — событие отдела."),
+        help_text=_("Пусто — событие компании или сотрудника; задано — событие отдела."),
+    )
+    
+    employee = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="personal_calendar_events",
+        verbose_name=_("Сотрудник"),
+        null=True,
+        blank=True,
+        help_text=_("Если задано — личное событие сотрудника."),
     )
 
     # Основное
@@ -133,15 +144,26 @@ class CalendarEvent(models.Model):
         ]
 
     def __str__(self) -> str:
-        scope = self.department or _("Компания")
+        if self.employee_id:
+            scope = f"Личный ({self.employee})"
+        elif self.department_id:
+            scope = str(self.department)
+        else:
+            scope = _("Компания")
+        
         if self.end_date:
             return f"{scope}: {self.title} ({self.start_date:%d.%m.%Y}–{self.end_date:%d.%m.%Y})"
         return f"{scope}: {self.title} ({self.start_date:%d.%m.%Y})"
 
     @property
     def is_company(self) -> bool:
-        """True если событие глобальное (без отдела)."""
-        return self.department_id is None
+        """True если событие глобальное (без отдела и сотрудника)."""
+        return self.department_id is None and self.employee_id is None
+    
+    @property
+    def is_personal(self) -> bool:
+        """True если событие личное (принадлежит конкретному сотруднику)."""
+        return self.employee_id is not None
 
     @property
     def has_time(self) -> bool:
@@ -155,6 +177,12 @@ class CalendarEvent(models.Model):
         Raises:
             ValidationError: При некорректных датах/времени или настройках повторения.
         """
+        # Проверка взаимоисключающих полей: department и employee
+        if self.department_id and self.employee_id:
+            raise ValidationError(
+                _("Событие не может одновременно принадлежать отделу и сотруднику.")
+            )
+        
         # База дат
         if self.end_date and self.start_date and self.end_date < self.start_date:
             raise ValidationError(

@@ -194,13 +194,22 @@ def get_event_recipients(event):
     
     - Для события компании - все активные сотрудники
     - Для события отдела - сотрудники этого отдела
+    - Для личного события - только владелец
     """
-    if event.is_company:
+    if event.is_personal:
+        # Личное событие - только владелец
+        return [event.employee] if event.employee else []
+    elif event.is_company:
         # Событие компании - все активные сотрудники
         return list(Employee.objects.filter(is_active=True))
     elif event.department:
-        # Событие отдела - сотрудники отдела
-        return list(event.department.employees.filter(is_active=True))
+        # Событие отдела - сотрудники через EmployeeDepartment
+        from employees.models import EmployeeDepartment
+        employee_ids = EmployeeDepartment.objects.filter(
+            department=event.department,
+            is_active=True
+        ).values_list('employee_id', flat=True)
+        return list(Employee.objects.filter(id__in=employee_ids, is_active=True))
     
     return []
 
@@ -208,7 +217,8 @@ def get_event_recipients(event):
 def get_calendar_url(event):
     """
     Возвращает URL календаря в зависимости от типа события.
+    Для всех типов событий используем параметр event_id для прямого открытия.
     """
-    if event.department:
-        return f'/calendar/department/{event.department.id}/'
-    return '/calendar/company/'
+    # Возвращаем главную страницу календаря с параметром event_id
+    # Это позволит открыть модал события автоматически
+    return f'/?event_id={event.id}'

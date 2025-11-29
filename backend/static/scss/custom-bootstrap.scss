@@ -166,22 +166,28 @@ $card-cap-color: null !default;
 
 // Базовые стили карточки - применяем эффект жидкого стекла
 .card {
-  // Размытие фона (glassmorphism)
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  // Прозрачный фон с лёгким оттенком для светлой темы (как в тёмной)
+  --bs-card-bg: transparent;
+  background: rgba(255, 255, 255, 0.1) !important;
   
-  // Рамка для светлой темы
+  // Размытие фона (glassmorphism) - основа эффекта жидкого стекла
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  
+  // Тонкая рамка для светлой темы
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
   
   // Плавные переходы
   transition: all 0.3s ease;
   overflow: hidden;
   
-  // Hover эффект
+  // Hover эффект - усиливаем эффект
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.15) !important;
     border-color: rgba(0, 0, 0, 0.12) !important;
-    box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(12px) saturate(200%);
+    -webkit-backdrop-filter: blur(12px) saturate(200%);
+    box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.15);
     transform: translateY(-2px);
   }
 }

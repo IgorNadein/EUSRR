@@ -1,0 +1,42 @@
+{# Контекстное меню для действий с событиями календаря #}
+<div id="calendarContextMenu" class="calendar-context-menu" style="display: none; position: absolute; z-index: 9999;">
+  <div class="dropdown-menu show">
+    <button class="dropdown-item" id="contextMenuView" type="button">
+      <i class="bi-eye me-2"></i>Просмотреть
+    </button>
+    <button class="dropdown-item" id="contextMenuEdit" type="button" data-requires-permission="edit">
+      <i class="bi-pencil me-2"></i>Редактировать
+    </button>
+    <div class="dropdown-divider" data-requires-permission="delete"></div>
+    <button class="dropdown-item text-danger" id="contextMenuDelete" type="button" data-requires-permission="delete">
+      <i class="bi-trash me-2"></i>Удалить
+    </button>
+  </div>
+</div>
+
+<style>
+.calendar-context-menu {
+  position: fixed;
+  z-index: 9999;
+}
+
+.calendar-context-menu .dropdown-menu {
+  position: static;
+  float: none;
+  border: var(--bs-dropdown-border-width) solid var(--bs-dropdown-border-color);
+  box-shadow: var(--bs-dropdown-box-shadow);
+}
+
+.calendar-context-menu .dropdown-item {
+  cursor: pointer;
+}
+
+.calendar-context-menu .dropdown-item:active {
+  background-color: var(--bs-dropdown-link-active-bg);
+  color: var(--bs-dropdown-link-active-color);
+}
+
+.calendar-context-menu .dropdown-item[data-requires-permission].d-none {
+  display: none !important;
+}
+</style>

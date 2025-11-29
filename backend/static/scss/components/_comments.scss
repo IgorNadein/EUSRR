@@ -109,20 +109,14 @@
 // Обёртка для комментариев с sticky формой
 .comments-section-wrapper {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 300px;
-  max-height: 65vh; // Максимальная высота всей секции
 }
 
 // Скроллируемая область с комментариями
 .comments-scrollable {
-  flex: 1 1 auto;
+  max-height: 400px;
   overflow-y: auto;
   overflow-x: hidden;
-  min-height: 0; // Важно для правильной работы flex
-  display: flex;
-  flex-direction: column;
+  padding-bottom: 1rem;
   
   // Firefox скроллбар
   scrollbar-width: thin;
@@ -149,10 +143,10 @@
 
 // Sticky форма для комментариев
 .comment-form-sticky {
-  flex: 0 0 auto;
-  position: relative; // Изменено с sticky на relative
-  z-index: 10;
+  position: sticky;
+  bottom: 0;
   background: var(--bs-body-bg);
+  z-index: 10;
   border-top: 1px solid var(--bs-border-color);
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+  padding-top: 1rem;
 }

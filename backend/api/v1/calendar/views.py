@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action as rest_action
 
 from calendar_app.models import CalendarEvent
 from .serializers import (
@@ -19,8 +20,8 @@ from .serializers import (
 )
 from calendar_app.services.recurrence import expand_event_occurrences
 
-from ..permissions import AdminOrActionOrModelPerms, AdminOrDeptAllowed     # пермишены для "компании"
-from employees.constants import DeptPerm                    # коды прав отделов
+from ..permissions import AdminOrDeptAllowed
+from employees.constants import DeptPerm
 import logging
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,9 @@ class CalendarEventsViewSet(ModelViewSet):
         "start_date", "start_time"
     )
     renderer_classes = [JSONRenderer]
+    # ВАЖНО: Переопределяем глобальные DEFAULT_PERMISSION_CLASSES
+    # Используем только get_permissions() для динамического определения прав
+    permission_classes = []
 
     # ---------- Внутренний пермишен для отделов ----------
 
@@ -51,14 +55,54 @@ class CalendarEventsViewSet(ModelViewSet):
     # ---------- Подключение пермишенов ----------
 
     def get_permissions(self):
-        dep = self._dept_id(required=False)
-        if dep is None:
-            # компания
-            if getattr(self, "action", None) == "list":
-                # список событий компании — достаточно быть залогиненным
+        """Настройка прав доступа в зависимости от действия.
+        
+        - list, retrieve: доступно всем авторизованным пользователям
+        - create, update, partial_update, destroy для компании: требуется staff/superuser
+        - create, update, partial_update, destroy для отдела: требуется MANAGE_CALENDAR
+        - create, update, partial_update, destroy для личного календаря: только владелец
+        """
+        action = getattr(self, "action", None)
+        method = self.request.method if hasattr(self, 'request') else None
+        
+        # Если action ещё не установлен, определяем по методу
+        if action is None:
+            if method in ['GET', 'HEAD', 'OPTIONS']:
                 return [IsAuthenticated()]
-            return [AdminOrActionOrModelPerms()]
-        # отдел
+            elif method == 'POST':
+                action = 'create'
+            elif method in ['PUT', 'PATCH']:
+                action = 'update'
+            elif method == 'DELETE':
+                action = 'destroy'
+        
+        # Просмотр событий доступен всем авторизованным пользователям
+        if action in ["list", "retrieve"]:
+            return [IsAuthenticated()]
+        
+        # Для изменений требуются права управления календарём
+        emp = self._employee_id(required=False)
+        dep = self._dept_id(required=False)
+        
+        # Личный календарь — полный контроль только у владельца
+        if emp is not None:
+            # Проверка, что текущий пользователь = владелец календаря
+            if self.request.user.id == emp:
+                return [IsAuthenticated()]
+            else:
+                # Другой пользователь не может изменять чужой личный календарь
+                from rest_framework.permissions import BasePermission
+                class DenyAll(BasePermission):
+                    def has_permission(self, request, view):
+                        return False
+                return [DenyAll()]
+        
+        # Календарь компании — только администраторы
+        if dep is None:
+            from rest_framework.permissions import IsAdminUser
+            return [IsAdminUser()]
+        
+        # Календарь отдела — требуется право MANAGE_CALENDAR
         self.kwargs = dict(self.kwargs)
         self.kwargs.setdefault("department_id", dep)
         return [self.ManageCalendarPerm()]
@@ -89,7 +133,7 @@ class CalendarEventsViewSet(ModelViewSet):
             Http404: При некорректном или отсутствующем department_id (когда required=True).
 
         Returns:
-            Optional[int]: PK отдела или None (компания).
+            Optional[int]: PK отдела или None (компания или личный календарь).
         """
         # nested-url вида: /departments/{department_id}/events/
         for key in ("department_pk", "department_id"):
@@ -121,11 +165,54 @@ class CalendarEventsViewSet(ModelViewSet):
         if required:
             raise Http404("Не указан department_id.")
         return None
+    
+    def _employee_id(self, *, required: bool = False) -> Optional[int]:
+        """Читает employee_id из kwargs/query/body для личного календаря.
+
+        Args:
+            required (bool): Если True — бросить 404 при отсутствии/ошибке.
+
+        Raises:
+            Http404: При некорректном или отсутствующем employee_id (когда required=True).
+
+        Returns:
+            Optional[int]: PK сотрудника или None (компания/отдел).
+        """
+        # nested-url вида: /employees/{employee_id}/events/
+        for key in ("employee_pk", "employee_id"):
+            if key in self.kwargs:
+                try:
+                    return int(self.kwargs[key])
+                except Exception:
+                    raise Http404("Некорректный employee_id в URL.")
+
+        req = getattr(self, "request", None)
+        if req is not None:
+            for key in ("employee_id", "employee"):
+                val = req.query_params.get(key)
+                if val is not None:
+                    try:
+                        return int(val)
+                    except Exception:
+                        raise Http404("Некорректный employee_id в query.")
+
+        data = getattr(req, "data", {}) if req is not None else {}
+        if isinstance(data, dict):
+            for key in ("employee_id", "employee"):
+                if key in data and data[key] is not None:
+                    try:
+                        return int(data[key])
+                    except Exception:
+                        raise Http404("Некорректный employee_id в теле запроса.")
+
+        if required:
+            raise Http404("Не указан employee_id.")
+        return None
 
     # ---------- QuerySet ----------
 
     def get_queryset(self):
-        """QS для list фильтруем по компании/отделу, для detail — не фильтруем.
+        """QS для list фильтруем по компании/отделу/сотруднику, для detail — не фильтруем.
 
         Returns:
             QuerySet: Набор для текущего действия.
@@ -136,7 +223,18 @@ class CalendarEventsViewSet(ModelViewSet):
             return qs
 
         dep = self._dept_id(required=False)
-        return qs.filter(department__isnull=True) if dep is None else qs.filter(department_id=dep)
+        emp = self._employee_id(required=False)
+        
+        # Приоритет: employee_id > department_id > company
+        if emp is not None:
+            # Личный календарь сотрудника
+            return qs.filter(employee_id=emp, department__isnull=True)
+        elif dep is not None:
+            # Календарь отдела
+            return qs.filter(department_id=dep, employee__isnull=True)
+        else:
+            # Календарь компании
+            return qs.filter(department__isnull=True, employee__isnull=True)
 
     # ---------- LIST: материализация повторов ----------
 
@@ -187,16 +285,27 @@ class CalendarEventsViewSet(ModelViewSet):
     # ---------- Создание/изменение/удаление ----------
 
     def perform_create(self, serializer: CalendarEventWriteSerializer) -> None:
-        """Сохраняет объект, подставляя department_id из контекста (если есть) и автора.
+        """Сохраняет объект, подставляя department_id/employee_id из контекста и автора.
 
         Raises:
             ValidationError: Если сериализатор невалиден (поднимет сам DRF).
         """
         dep = self._dept_id(required=False)
-        serializer.save(
-            department_id=dep if dep is not None else serializer.validated_data.get("department_id"),
-            created_by=self.request.user,
-        )
+        emp = self._employee_id(required=False)
+        
+        # Приоритет: employee_id > department_id
+        if emp is not None:
+            serializer.save(
+                employee_id=emp,
+                department_id=None,
+                created_by=self.request.user,
+            )
+        else:
+            serializer.save(
+                department_id=dep if dep is not None else serializer.validated_data.get("department_id"),
+                employee_id=None,
+                created_by=self.request.user,
+            )
         cache.clear()
 
     def perform_update(self, serializer: CalendarEventWriteSerializer) -> None:
@@ -208,3 +317,74 @@ class CalendarEventsViewSet(ModelViewSet):
         """Удаляет событие и чистит кеш."""
         instance.delete()
         cache.clear()
+
+    # ---------- Проверка прав ----------
+
+    @rest_action(
+        detail=True,
+        methods=["get"],
+        permission_classes=[IsAuthenticated],
+        url_path="permissions",
+    )
+    def permissions(self, request, pk=None):
+        """Проверяет права пользователя на редактирование/удаление события.
+
+        Returns:
+            Response: {
+                "can_edit": bool,
+                "can_delete": bool,
+                "can_view": bool (всегда True для авторизованных)
+            }
+        """
+        event = self.get_object()
+        user = request.user
+
+        # Просмотр доступен всем авторизованным
+        can_view = True
+
+        # Права на редактирование и удаление
+        can_edit = False
+        can_delete = False
+
+        # Проверка прав
+        if user.is_superuser or user.is_staff:
+            # Админы могут всё
+            can_edit = True
+            can_delete = True
+        elif event.employee_id is not None:
+            # Личное событие — редактировать может только владелец
+            if event.employee_id == user.id:
+                can_edit = True
+                can_delete = True
+        elif event.department_id is None:
+            # Событие компании — только админы (уже проверено выше)
+            pass
+        else:
+            # Событие отдела — проверяем право MANAGE_CALENDAR
+            try:
+                from employees.models import EmployeeDepartment
+
+                # Проверяем, является ли пользователь руководителем отдела
+                if hasattr(event.department, "head_id"):
+                    if event.department.head_id == user.id:
+                        can_edit = True
+                        can_delete = True
+
+                # Проверяем наличие права MANAGE_CALENDAR
+                if not can_edit:
+                    has_perm = EmployeeDepartment.objects.filter(
+                        employee_id=user.id,
+                        department_id=event.department_id,
+                        is_active=True,
+                        role__scoped_permissions__code=DeptPerm.MANAGE_CALENDAR,
+                    ).exists()
+
+                    if has_perm:
+                        can_edit = True
+                        can_delete = True
+            except Exception as e:
+                logger.error(f"Error checking permissions: {e}")
+
+        return Response(
+            {"can_view": can_view, "can_edit": can_edit, "can_delete": can_delete}
+        )

@@ -22,12 +22,14 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
         help_text="Список дней недели для WEEKLY (0=Mon..6=Sun).",
     )
     department_id = serializers.IntegerField(required=False, allow_null=True)
+    employee_id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = CalendarEvent
         fields = (
             "id",
             "department_id",
+            "employee_id",
             "title",
             "description",
             "start_date",

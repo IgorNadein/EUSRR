@@ -178,6 +178,7 @@ LOGGING = {
     "loggers": {
         "documents": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "bots": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "aiogram": {"handlers": ["console"], "level": "INFO", "propagate": False},
         # полезно видеть ошибки и отладку ldap3
