@@ -104,6 +104,9 @@
   function renderPostDetail(post) {
     const contentDiv = document.getElementById('postDetailContent');
     
+    // Сохраняем ID автора для определения его комментариев
+    const postAuthorId = post.author?.id;
+    
     // Формируем HTML с кнопкой закрытия
     let html = '<button type="button" class="btn-close position-absolute top-0 end-0 m-3" data-bs-dismiss="modal" aria-label="Закрыть" style="z-index: 1050;"></button>';
     html += '<article class="card">';
@@ -168,9 +171,9 @@
       html += '<h5 class="comments-title">Комментарии</h5>';
       html += `<span class="comments-count">(${post.comments.length})</span>`;
       html += '</div>';
-      html += '<div class="comments-list comments-scrollable">';
+      html += '<div class="comments-list comments-scrollable" id="commentsListContainer">';
       post.comments.forEach(comment => {
-        html += renderComment(comment);
+        html += renderComment(comment, postAuthorId);
       });
       html += '</div>';
       html += '</div>';
@@ -206,15 +209,30 @@
 
     contentDiv.innerHTML = html;
 
+    // Прокручиваем к нижней части комментариев после того, как DOM обновится
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const commentsContainer = document.getElementById('commentsListContainer');
+        if (commentsContainer) {
+          commentsContainer.scrollTop = commentsContainer.scrollHeight;
+        }
+      });
+    });
+
     // Добавляем обработчики
     attachLikeHandlers();
   }
 
   /**
    * Отображение комментария
+   * @param {Object} comment - Объект комментария
+   * @param {number} postAuthorId - ID автора поста
    */
-  function renderComment(comment) {
-    let html = '<div class="comment-item">';
+  function renderComment(comment, postAuthorId) {
+    const isAuthor = comment.author?.id === postAuthorId;
+    const commentClass = isAuthor ? 'comment-item comment-item--author' : 'comment-item';
+    
+    let html = `<div class="${commentClass}">`;
     html += '<div class="comment-header">';
     
     // Автор и дата

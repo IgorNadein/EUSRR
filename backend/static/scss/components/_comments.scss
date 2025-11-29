@@ -10,10 +10,14 @@
   padding: 0.5rem 0;  // py-2
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
 
   .comment-header {
     font-size: 0.875rem;  // small
     margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
 
     .comment-author {
       font-weight: 600;  // fw-semibold
@@ -33,6 +37,11 @@
     .comment-date {
       color: var(--bs-secondary);
     }
+    
+    .badge {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.4rem;
+    }
   }
 
   .comment-body {
@@ -40,23 +49,31 @@
     line-height: 1.5;
     white-space: pre-wrap;
     word-wrap: break-word;
-    padding: 0.75rem 1rem;
-    background: var(--bs-secondary-bg);
-    border-radius: 1rem;
-    max-width: 70%;
+    background: var(--bs-tertiary-bg);
+    padding: 0.5rem 0.75rem;
+    border-radius: 12px;
+    max-width: 80%;
   }
   
-  // Комментарии автора (текущего пользователя) - справа
-  &.comment-item--own {
+  // Комментарии автора поста справа
+  &.comment-item--author {
     align-items: flex-end;
     
     .comment-header {
-      text-align: right;
+      flex-direction: row-reverse;
+      
+      .comment-separator {
+        order: 0;
+      }
+      
+      .comment-date {
+        order: -1;
+      }
     }
     
     .comment-body {
-      background: var(--bs-primary-bg-subtle);
-      border: 1px solid color-mix(in srgb, var(--bs-primary), transparent 85%);
+      background: var(--bs-primary-bg-subtle, rgba(13, 110, 253, 0.1));
+      border: 1px solid var(--bs-primary-border-subtle, rgba(13, 110, 253, 0.2));
     }
   }
 }
@@ -94,16 +111,18 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  max-height: 60vh; // Максимальная высота секции комментариев
-  overflow: hidden;
+  min-height: 300px;
+  max-height: 65vh; // Максимальная высота всей секции
 }
 
 // Скроллируемая область с комментариями
 .comments-scrollable {
+  flex: 1 1 auto;
   overflow-y: auto;
   overflow-x: hidden;
-  max-height: 50vh;
-  padding-bottom: 5rem; // Отступ снизу для sticky формы
+  min-height: 0; // Важно для правильной работы flex
+  display: flex;
+  flex-direction: column;
   
   // Firefox скроллбар
   scrollbar-width: thin;
@@ -130,11 +149,10 @@
 
 // Sticky форма для комментариев
 .comment-form-sticky {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex: 0 0 auto;
+  position: relative; // Изменено с sticky на relative
   z-index: 10;
   background: var(--bs-body-bg);
-  margin-top: auto;
+  border-top: 1px solid var(--bs-border-color);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
 }
