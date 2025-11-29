@@ -17,6 +17,7 @@ $message-bg-focused: transparent;
   background: $message-bg-default;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
   --message-action-size: 42px;
+  flex-wrap: nowrap; // Важно: запрещаем перенос элементов на новую строку
 }
 
 .message-field:focus-within {
@@ -42,6 +43,7 @@ $message-bg-focused: transparent;
 .message-input,
 .composer-textarea {
   flex: 1 1 auto;
+  min-width: 0; // Важно: позволяет сжиматься ниже размера контента
   border: none !important;
   background: transparent !important;
   resize: none;
@@ -129,6 +131,8 @@ $message-bg-focused: transparent;
   height: 340px;
   border: none;
   outline: none;
+  
+  // Основные переменные для светлой и тёмной темы
   --background-color: var(--bs-body-bg);
   --text-color: var(--bs-body-color);
   --category-font-color: var(--bs-secondary-color);
@@ -141,10 +145,58 @@ $message-bg-focused: transparent;
   --input-placeholder-color: var(--bs-secondary-color);
   --input-focus-border-color: var(--bs-primary);
   --indicator-color: var(--bs-primary);
+  
+  // RGB переменные для emoji-picker-element (для тёмной темы)
+  --rgb-background: var(--bs-body-bg-rgb);
+  --rgb-color: var(--bs-body-color-rgb);
+  --rgb-accent: var(--bs-primary-rgb);
+  --rgb-input: var(--bs-body-bg-rgb);
+
+  // Скроллбар для светлой темы по умолчанию
+  --scrollbar-color: rgba(0, 0, 0, 0.3);
+  --scrollbar-background: rgba(0, 0, 0, 0.05);
 
   // Скрываем кнопку выбора тона кожи
   button.favorites {
     display: none !important;
+  }
+
+  // Кастомный скроллбар для внутренней панели
+  ::part(tabpanel) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-color) var(--scrollbar-background);
+  }
+
+  ::part(tabpanel)::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::part(tabpanel)::-webkit-scrollbar-track {
+    background: var(--scrollbar-background);
+  }
+
+  ::part(tabpanel)::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-color);
+    border-radius: 4px;
+  }
+
+  ::part(tabpanel)::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--bs-body-color-rgb), 0.4);
+  }
+}
+
+// Дополнительные стили для тёмной темы
+[data-bs-theme="dark"] {
+  .chat-emoji-picker {
+    // Явно устанавливаем цвета для тёмной темы
+    --background-color: var(--bs-body-bg);
+    --text-color: var(--bs-body-color);
+    --secondary-text-color: var(--bs-secondary-color);
+    --category-emoji-size: 1.125rem;
+    
+    // Скроллбар для темной темы
+    --scrollbar-color: rgba(255, 255, 255, 0.3);
+    --scrollbar-background: rgba(255, 255, 255, 0.05);
   }
 }
 
@@ -162,14 +214,21 @@ $message-bg-focused: transparent;
 
 @media (max-width: 576px) {
   .message-field {
-    flex-wrap: wrap;
-    border-radius: 28px;
-  }
-
-  .message-field {
+    // Уменьшаем размеры кнопок на мобильных
     --message-action-size: 38px;
+    padding: 0.3rem 0.35rem;
+    gap: 0.25rem;
   }
+  
   .message-field--compact {
     --message-action-size: 32px;
+    padding: 0.2rem 0.25rem;
+  }
+  
+  .message-input,
+  .composer-textarea {
+    // Уменьшаем отступы для экономии места
+    padding: 0.4rem 0.5rem;
+    font-size: 0.95rem;
   }
 }

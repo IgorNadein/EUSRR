@@ -9,7 +9,7 @@
 
   // Константы
   const INITIAL_COMMENTS_COUNT = 10;
-  const DEBUG = true; // Проверяем новую логику
+  const DEBUG = false; // Отключаем - всё работает
 
   // Состояние
   let modal = null;
