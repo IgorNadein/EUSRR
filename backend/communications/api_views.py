@@ -24,37 +24,121 @@ from .models import (
 @login_required
 @require_POST
 def create_chat(request):
-    """Создание нового чата (group, channel, announcement)"""
+    """
+    Создание нового чата
+    (group, department, channel, announcement, global)
+    """
     import json
-    
-    # Читаем JSON из тела запроса
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
-    
-    chat_type = data.get('type', 'group')
-    name = data.get('name', '').strip()
-    description = data.get('description', '').strip()
-    participant_ids = data.get('participant_ids', [])
-    
-    if chat_type not in ['group', 'channel', 'announcement']:
+
+    # Читаем данные из FormData или JSON
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        # FormData (с файлами)
+        chat_type = request.POST.get('type', 'group')
+        name = request.POST.get('name', '').strip()
+        description = request.POST.get('description', '').strip()
+        department_id = request.POST.get('department_id')
+        include_all = request.POST.get('include_all_employees') == 'true'
+        is_main = request.POST.get('is_main') == 'true'
+        avatar = request.FILES.get('avatar')
+        participant_ids = request.POST.getlist('participant_ids')
+    else:
+        # JSON (без файлов - legacy)
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse(
+                {'ok': False, 'error': 'Invalid JSON'}, status=400
+            )
+
+        chat_type = data.get('type', 'group')
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        department_id = data.get('department_id')
+        include_all = data.get('include_all_employees', False)
+        is_main = data.get('is_main', False)
+        avatar = None
+        participant_ids = data.get('participant_ids', [])
+
+    # Валидация типа чата
+    valid_types = ['group', 'department', 'channel', 'announcement', 'global']
+    if chat_type not in valid_types:
+        types_str = ", ".join(valid_types)
         return JsonResponse(
-            {'ok': False, 'error': 'Invalid chat type'}, status=400
+            {
+                'ok': False,
+                'error': f'Invalid chat type. Must be one of: {types_str}'
+            },
+            status=400
         )
-    
-    if not name:
+
+    # Валидация названия
+    if not name and chat_type != 'private':
         return JsonResponse(
             {'ok': False, 'error': 'Name is required'}, status=400
         )
-    
+
+    # Валидация для чата отдела
+    if chat_type == 'department':
+        if not department_id:
+            return JsonResponse(
+                {
+                    'ok': False,
+                    'error': 'Department is required for department chat'
+                },
+                status=400
+            )
+        try:
+            from employees.models import Department
+            department = Department.objects.get(id=department_id)
+        except Department.DoesNotExist:
+            return JsonResponse(
+                {'ok': False, 'error': 'Department not found'},
+                status=400
+            )
+    else:
+        department = None
+
+    # Валидация для основного чата
+    if is_main:
+        if chat_type == 'global':
+            # Проверяем, нет ли уже основного глобального чата
+            if Chat.objects.filter(type='global', is_main=True).exists():
+                return JsonResponse(
+                    {'ok': False, 'error': 'Main global chat already exists'},
+                    status=400
+                )
+        elif chat_type == 'department' and department:
+            # Проверяем, нет ли уже основного чата для этого отдела
+            exists = Chat.objects.filter(
+                type='department',
+                department=department,
+                is_main=True
+            ).exists()
+            if exists:
+                return JsonResponse(
+                    {
+                        'ok': False,
+                        'error': 'Main department chat already exists'
+                    },
+                    status=400
+                )
+
+    # Создаем чат
     chat = Chat.objects.create(
         type=chat_type,
         name=name,
         description=description,
-        created_by=request.user
+        created_by=request.user,
+        department=department,
+        include_all_employees=include_all,
+        is_main=is_main
     )
-    
+
+    # Добавляем аватар если был загружен
+    if avatar:
+        chat.avatar = avatar
+        chat.save()
+
     # Создатель - владелец с полными правами
     ChatMembership.objects.create(
         chat=chat,
@@ -65,7 +149,7 @@ def create_chat(request):
         can_remove_members=True,
         can_pin_messages=True
     )
-    
+
     # Добавляем участников для группового чата
     if chat_type == 'group' and participant_ids:
         from employees.models import Employee
@@ -81,7 +165,43 @@ def create_chat(request):
                     )
             except Employee.DoesNotExist:
                 pass
-    
+
+    # Для чатов с include_all_employees - добавляем всех активных
+    if include_all:
+        from employees.models import Employee
+        all_employees = Employee.objects.filter(is_active=True).exclude(
+            id=request.user.id
+        )
+        for employee in all_employees:
+            can_send = chat_type not in ['channel', 'announcement']
+            ChatMembership.objects.get_or_create(
+                chat=chat,
+                user=employee,
+                defaults={
+                    'role': 'member',
+                    'can_send_messages': can_send
+                }
+            )
+
+    # Для чата отдела - добавляем всех сотрудников отдела
+    if chat_type == 'department' and department:
+        from employees.models import EmployeeDepartment
+        dept_employees = EmployeeDepartment.objects.filter(
+            department=department,
+            is_active=True
+        ).select_related('employee')
+
+        for ed in dept_employees:
+            if ed.employee != request.user:  # Создателя уже добавили
+                ChatMembership.objects.get_or_create(
+                    chat=chat,
+                    user=ed.employee,
+                    defaults={
+                        'role': 'member',
+                        'can_send_messages': True
+                    }
+                )
+
     return JsonResponse({
         'ok': True,
         'chat_id': chat.id,

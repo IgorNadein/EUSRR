@@ -514,7 +514,7 @@
 
 {# ===== МОДАЛКА СОЗДАНИЯ ЧАТА ===== #}
 <div class="modal fade" id="chatCreateModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Создать чат</h5>
@@ -524,30 +524,93 @@
         
         {# Выбор типа чата #}
         <div class="mb-3">
-          <label for="chatTypeSelect" class="form-label">Тип чата</label>
+          <label for="chatTypeSelect" class="form-label">Тип чата <span class="text-danger">*</span></label>
           <select class="form-select" id="chatTypeSelect">
             <option value="private">Личный чат</option>
             <option value="group">Группа</option>
+            <option value="department">Чат отдела</option>
             <option value="channel">Канал</option>
             <option value="announcement">Объявления</option>
+            <option value="global">Глобальный чат</option>
           </select>
+          <div class="form-text">
+            <small>
+              <strong>Личный:</strong> приватный чат с 1 сотрудником.<br>
+              <strong>Группа:</strong> чат с несколькими участниками.<br>
+              <strong>Отдел:</strong> автоматически включает всех сотрудников отдела.<br>
+              <strong>Канал:</strong> для объявлений с ограниченной отправкой.<br>
+              <strong>Объявления:</strong> односторонняя рассылка.<br>
+              <strong>Глобальный:</strong> общий чат компании (может быть только 1 основной).
+            </small>
+          </div>
         </div>
 
-        {# Поля для группы/канала/объявлений #}
+        {# Поля для группы/канала/объявлений/глобального #}
         <div id="groupFieldsSection" style="display:none;">
           <div class="mb-3">
             <label for="chatNameInput" class="form-label">Название чата <span class="text-danger">*</span></label>
             <input type="text" class="form-control" id="chatNameInput" placeholder="Введите название">
           </div>
+          
           <div class="mb-3">
             <label for="chatDescInput" class="form-label">Описание</label>
             <textarea class="form-control" id="chatDescInput" rows="3" placeholder="Краткое описание чата"></textarea>
+          </div>
+
+          {# Аватар чата #}
+          <div class="mb-3">
+            <label for="chatAvatarInput" class="form-label">Аватар чата</label>
+            <div class="d-flex align-items-center gap-3">
+              <div id="chatAvatarPreview" class="position-relative bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                <i class="bi bi-people-fill text-secondary" style="font-size: 2rem;"></i>
+              </div>
+              <div class="flex-grow-1">
+                <input type="file" class="form-control" id="chatAvatarInput" accept="image/jpeg,image/png,image/gif">
+                <div class="form-text">JPG, PNG или GIF. Макс. 5 МБ. Будет сжато до 512x512px.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# Выбор отдела (только для типа "department") #}
+        <div id="departmentSection" style="display:none;">
+          <div class="mb-3">
+            <label for="chatDepartmentSelect" class="form-label">Отдел <span class="text-danger">*</span></label>
+            <select class="form-select" id="chatDepartmentSelect">
+              <option value="">-- Выберите отдел --</option>
+              {% for dept in departments %}
+              <option value="{{ dept.id }}">{{ dept.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Все сотрудники выбранного отдела автоматически станут участниками чата.</div>
+          </div>
+        </div>
+
+        {# Опция "Включить всех сотрудников" (для announcement/global/channel) #}
+        <div id="includeAllSection" style="display:none;">
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="includeAllEmployees">
+            <label class="form-check-label" for="includeAllEmployees">
+              Включить всех сотрудников компании
+            </label>
+            <div class="form-text">Все активные сотрудники автоматически станут участниками чата.</div>
+          </div>
+        </div>
+
+        {# Опция "Основной чат" (для global/department) #}
+        <div id="mainChatSection" style="display:none;">
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="isMainChat">
+            <label class="form-check-label" for="isMainChat">
+              Сделать основным чатом
+            </label>
+            <div class="form-text">Основной чат отображается первым в списке. Может быть только 1 основной глобальный чат и 1 основной чат на отдел.</div>
           </div>
         </div>
 
         {# Выбор участников (для личного чата и группы) #}
         <div id="recipientSection">
-          <label class="form-label">Выберите участников</label>
+          <label class="form-label">Выберите участников <span id="recipientRequired" class="text-danger" style="display:none;">*</span></label>
           <div id="chatRecipients" class="recipient-picker" data-api-employees="{% url 'api:v1:employees-list' %}">
             <div class="rp-selected" aria-live="polite"></div>
             <div class="rp-search mb-2">
@@ -610,24 +673,82 @@
   // Переключение типа чата
   const chatTypeSelect = document.getElementById('chatTypeSelect');
   const recipientSection = document.getElementById('recipientSection');
+  const recipientRequired = document.getElementById('recipientRequired');
   const groupFieldsSection = document.getElementById('groupFieldsSection');
+  const departmentSection = document.getElementById('departmentSection');
+  const includeAllSection = document.getElementById('includeAllSection');
+  const mainChatSection = document.getElementById('mainChatSection');
 
   chatTypeSelect?.addEventListener('change', function() {
     const type = this.value;
     
+    // Скрываем все секции по умолчанию
+    recipientSection.style.display = 'none';
+    recipientRequired.style.display = 'none';
+    groupFieldsSection.style.display = 'none';
+    departmentSection.style.display = 'none';
+    includeAllSection.style.display = 'none';
+    mainChatSection.style.display = 'none';
+    
     if(type === 'private') {
+      // Личный чат: только выбор 1 участника
       recipientSection.style.display = 'block';
-      groupFieldsSection.style.display = 'none';
+      recipientRequired.style.display = 'inline';
       chatPicker.setMaxSelections(1);
     } else if(type === 'group') {
+      // Группа: название + описание + аватар + участники
       recipientSection.style.display = 'block';
       groupFieldsSection.style.display = 'block';
       chatPicker.setMaxSelections(100);
-    } else {
-      // channel, announcement - только название/описание
-      recipientSection.style.display = 'none';
+    } else if(type === 'department') {
+      // Чат отдела: название + описание + аватар + выбор отдела + опция "основной"
       groupFieldsSection.style.display = 'block';
+      departmentSection.style.display = 'block';
+      mainChatSection.style.display = 'block';
+    } else if(type === 'global') {
+      // Глобальный: название + описание + аватар + опция "включить всех" + опция "основной"
+      groupFieldsSection.style.display = 'block';
+      includeAllSection.style.display = 'block';
+      mainChatSection.style.display = 'block';
+    } else {
+      // channel, announcement: название + описание + аватар + опция "включить всех"
+      groupFieldsSection.style.display = 'block';
+      includeAllSection.style.display = 'block';
     }
+  });
+
+  // Предпросмотр аватара чата
+  const chatAvatarInput = document.getElementById('chatAvatarInput');
+  const chatAvatarPreview = document.getElementById('chatAvatarPreview');
+  
+  chatAvatarInput?.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if(!file) {
+      // Восстанавливаем иконку по умолчанию
+      chatAvatarPreview.innerHTML = '<i class="bi bi-people-fill text-secondary" style="font-size: 2rem;"></i>';
+      return;
+    }
+    
+    // Валидация размера
+    if(file.size > 5 * 1024 * 1024) {
+      alert('Файл слишком большой. Максимум 5 МБ.');
+      this.value = '';
+      return;
+    }
+    
+    // Валидация типа
+    if(!file.type.match(/^image\/(jpeg|png|gif)$/)) {
+      alert('Разрешены только JPG, PNG или GIF.');
+      this.value = '';
+      return;
+    }
+    
+    // Показываем предпросмотр
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      chatAvatarPreview.innerHTML = `<img src="${e.target.result}" alt="Preview" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+    };
+    reader.readAsDataURL(file);
   });
 
   // Функция получения CSRF токена
@@ -670,36 +791,72 @@
       const employeeId = selected[0].id;
       window.location.href = "{% url 'communications:start_private_chat' 0 %}".replace('/0/', `/${employeeId}/`);
     } else {
-      // Создание group/channel/announcement через API
+      // Создание group/department/channel/announcement/global через API
       const nameInput = document.getElementById('chatNameInput');
       const descInput = document.getElementById('chatDescInput');
+      const departmentSelect = document.getElementById('chatDepartmentSelect');
+      const includeAllCheckbox = document.getElementById('includeAllEmployees');
+      const isMainCheckbox = document.getElementById('isMainChat');
+      const avatarInput = document.getElementById('chatAvatarInput');
+      
       const name = nameInput?.value.trim() || '';
       const description = descInput?.value.trim() || '';
 
-      if(!name) {
+      // Валидация обязательных полей
+      if(!name && type !== 'private') {
         alert('Введите название чата');
         return;
       }
 
+      if(type === 'department') {
+        const deptId = departmentSelect?.value;
+        if(!deptId) {
+          alert('Выберите отдел для чата отдела');
+          return;
+        }
+      }
+
+      // Собираем данные в FormData (для поддержки файлов)
+      const formData = new FormData();
+      formData.append('type', type);
+      formData.append('name', name);
+      formData.append('description', description);
+      
+      // Добавляем аватар если выбран
+      if(avatarInput?.files[0]) {
+        formData.append('avatar', avatarInput.files[0]);
+      }
+      
+      // Добавляем department_id для типа "department"
+      if(type === 'department' && departmentSelect?.value) {
+        formData.append('department_id', departmentSelect.value);
+      }
+      
+      // Добавляем include_all_employees
+      if(includeAllCheckbox?.checked) {
+        formData.append('include_all_employees', 'true');
+      }
+      
+      // Добавляем is_main
+      if(isMainCheckbox?.checked) {
+        formData.append('is_main', 'true');
+      }
+
       // Собираем participant_ids для группового чата
-      let participant_ids = [];
       if(type === 'group') {
         const selected = chatPicker.getSelected();
-        participant_ids = selected.map(s => s.id);
+        selected.forEach(s => {
+          formData.append('participant_ids', s.id);
+        });
       }
 
       const res = await fetch('/communications/api/chat/create/', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'X-CSRFToken': csrftoken
+          // НЕ устанавливаем Content-Type, браузер сам добавит multipart/form-data с boundary
         },
-        body: JSON.stringify({
-          type: type,
-          name: name,
-          description: description,
-          participant_ids: participant_ids
-        })
+        body: formData
       });
 
       if(res.ok) {

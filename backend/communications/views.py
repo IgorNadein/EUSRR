@@ -101,6 +101,13 @@ class ChatListView(LoginRequiredMixin, ListView):
     template_name = "communications/chat_list.html"
     context_object_name = "chats"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Добавляем список отделов для выбора при создании чата
+        from employees.models import Department
+        context['departments'] = Department.objects.all().order_by('name')
+        return context
+
     def get_queryset(self):
         user = self.request.user
         # ВАЖНО: у Employee.departments это property, а не менеджер
