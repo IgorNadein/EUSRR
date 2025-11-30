@@ -81,14 +81,32 @@
     z-index: 1;
 }
 
-/* Chat Avatars */
+/* Chat Avatars - ЖЕСТКО КРУГЛЫЕ! */
+.chat-avatar,
+.card-icon img,
+.chat-list-wrapper .card-icon,
+.chat-row .card-icon,
+.chat-section .card-icon {
+    border-radius: 50% !important; /* Круглая форма - приоритет */
+}
+
 .chat-avatar,
 .card-icon img {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%; /* Круглая форма */
+    width: 44px !important;
+    height: 44px !important;
     object-fit: cover;
     border: 2px solid var(--bs-border-color);
+}
+
+/* Фоновые иконки тоже круглые */
+.chat-list-wrapper .card-icon,
+.chat-row .card-icon {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 50% !important;
+    overflow: hidden;
 }
 
 .chat-avatar-group {
@@ -99,7 +117,7 @@
 .chat-avatar-group img {
     margin-left: -8px;
     border: 2px solid white;
-    border-radius: 8px;
+    border-radius: 50% !important; /* Тоже круглые! */
 }
 
 .chat-avatar-group img:first-child {
