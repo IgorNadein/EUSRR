@@ -142,6 +142,31 @@ class Chat(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
     is_main = models.BooleanField(default=False, verbose_name="Основной чат")
+    
+    # Новые поля для announcement и channel
+    is_blocked = models.BooleanField(
+        default=False,
+        verbose_name="Заблокирован",
+        help_text="Для announcement: заблокирован администратором, скрыт у всех"
+    )
+    blocked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата блокировки"
+    )
+    blocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='blocked_chats',
+        verbose_name="Кто заблокировал"
+    )
+    can_reply = models.BooleanField(
+        default=True,
+        verbose_name="Можно отвечать",
+        help_text="False для announcement (только реакции)"
+    )
 
     class Meta:
         verbose_name = "Чат"
@@ -158,6 +183,12 @@ class Chat(models.Model):
                 fields=["type", "department"],
                 condition=Q(is_main=True, type="department"),
                 name="unique_main_department_chat",
+            ),
+            # Только 1 announcement на сотрудника
+            models.UniqueConstraint(
+                fields=["type", "created_by"],
+                condition=Q(type="announcement"),
+                name="unique_announcement_per_user",
             ),
         ]
         indexes = [

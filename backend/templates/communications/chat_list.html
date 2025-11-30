@@ -507,6 +507,11 @@
                     <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {{ chat.name }}
                     </a>
+                    {% if chat.is_blocked %}
+                      <span class="badge bg-danger">
+                        <i class="bi-lock-fill"></i> Заблокировано
+                      </span>
+                    {% endif %}
                     <span class="badge bg-light text-dark border">
                       <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
                     </span>
@@ -913,7 +918,15 @@
         window.location.href = `/communications/chats/${data.chat_id}/`;
       } else {
         const err = await res.json();
-        alert('Ошибка: ' + (err.error || 'Неизвестная ошибка'));
+        
+        // Если это ошибка с existing_chat_id - редиректим на существующий чат
+        if(err.existing_chat_id) {
+          if(confirm(err.error + '\n\nПерейти к вашему чату объявлений?')) {
+            window.location.href = `/communications/chats/${err.existing_chat_id}/`;
+          }
+        } else {
+          alert('Ошибка: ' + (err.error || 'Неизвестная ошибка'));
+        }
       }
     }
   });

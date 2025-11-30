@@ -65,6 +65,18 @@ class Command(BaseCommand):
                         },
                         'is_groupable': False,
                     },
+                    {
+                        'code': 'announcement_new_message',
+                        'name': 'Новое объявление',
+                        'description': 'Опубликовано новое объявление',
+                        'priority': 'high',
+                        'default_channels': {
+                            'web': True,
+                            'email': False,
+                            'telegram': True
+                        },
+                        'is_groupable': False,
+                    },
                 ],
             },
             'documents': {

@@ -18,6 +18,19 @@
         {% elif chat.type == 'department' %}
           <i class="bi-diagram-3 fs-2 text-primary"></i>
           <h2 class="title mb-0">Чат отдела: {{ chat.department.name }}</h2>
+        {% elif chat.type == 'announcement' %}
+          <i class="bi-megaphone fs-2 text-warning"></i>
+          <h2 class="title mb-0">{{ chat.name|default:"Объявление" }}</h2>
+          {% if chat.is_blocked %}
+            <span class="badge bg-danger ms-2">
+              <i class="bi-lock-fill"></i> Заблокировано
+            </span>
+          {% endif %}
+          {% if not is_announcement_creator %}
+            <span class="badge bg-info ms-2">
+              <i class="bi-eye"></i> Только просмотр
+            </span>
+          {% endif %}
         {% else %}
           <i class="bi-person fs-2 text-primary"></i>
           <h2 class="title mb-0">
@@ -31,7 +44,18 @@
             {% endfor %}
           </h2>
         {% endif %}
-        <div class="ms-auto">
+        <div class="ms-auto d-flex gap-2">
+          {% if chat.type == 'announcement' and user.is_staff %}
+            {% if chat.is_blocked %}
+              <button type="button" class="btn btn-success btn-sm" onclick="unblockAnnouncement({{ chat.id }})">
+                <i class="bi-unlock"></i> Разблокировать
+              </button>
+            {% else %}
+              <button type="button" class="btn btn-danger btn-sm" onclick="blockAnnouncement({{ chat.id }})">
+                <i class="bi-lock"></i> Заблокировать
+              </button>
+            {% endif %}
+          {% endif %}
           <a href="{% url 'communications:chat_list' %}" class="btn btn-ghost">
             <i class="bi-arrow-left"></i> К чатам
           </a>
@@ -40,6 +64,35 @@
 
       <!-- Корпус чата -->
       <article class="card chat-box">
+
+        <!-- Предупреждение о блокировке -->
+        {% if chat.is_blocked %}
+          <div class="alert alert-danger m-3 mb-0" role="alert">
+            <div class="d-flex align-items-center">
+              <i class="bi-lock-fill fs-4 me-2"></i>
+              <div>
+                <strong>Это объявление заблокировано администратором</strong>
+                <br>
+                <small>
+                  Заблокировано: {{ chat.blocked_at|date:"d.m.Y в H:i" }}
+                  {% if chat.blocked_by %}
+                    пользователем <strong>{{ chat.blocked_by.get_full_name|default:chat.blocked_by.username }}</strong>
+                  {% endif %}
+                </small>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        <!-- Информация об объявлении -->
+        {% if chat.type == 'announcement' and not is_announcement_creator %}
+          <div class="alert alert-light border m-3 mb-0 py-2" role="alert">
+            <small class="text-secondary">
+              <i class="bi-info-circle me-1"></i>
+              Объявление от <strong>{{ chat.created_by.get_full_name|default:chat.created_by.username }}</strong>
+            </small>
+          </div>
+        {% endif %}
 
         <!-- Кнопка «вниз» -->
         <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
@@ -157,6 +210,7 @@
 
         <!-- Композер -->
         <div class="chat-composer">
+          {% if can_send_messages %}
           <div id="typing" class="small text-secondary ps-1 pt-1 d-none">Собеседник печатает…</div>
       <form id="chatForm"
                 class="composer-wrap"
@@ -247,6 +301,18 @@
             <!-- Превью прикрепленных файлов -->
             <div id="attachmentPreview" class="attachment-preview d-none"></div>
           </form>
+          {% else %}
+          <div class="text-center text-secondary py-3">
+            <i class="bi-lock fs-4"></i>
+            <p class="mb-0 mt-2">
+              {% if chat.type == 'announcement' %}
+                Только автор объявления может публиковать сообщения
+              {% else %}
+                У вас нет прав для отправки сообщений в этот чат
+              {% endif %}
+            </p>
+          </div>
+          {% endif %}
         </div>
       </article>
 
@@ -261,4 +327,58 @@
   <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
   <script type="module" src="{% static 'js/components/chatComposer.js' %}"></script>
   <script type="module" src="{% static 'js/components/chatHistoryLoader.js' %}"></script>
+  
+  <script>
+    // Блокировка объявления
+    async function blockAnnouncement(chatId) {
+      if (!confirm('Вы уверены, что хотите заблокировать это объявление? Оно исчезнет из списка чатов всех пользователей.')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/communications/api/announcement/${chatId}/block/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          location.reload();
+        } else {
+          alert(data.error || 'Ошибка блокировки');
+        }
+      } catch (error) {
+        console.error('Error blocking announcement:', error);
+        alert('Ошибка при блокировке объявления');
+      }
+    }
+    
+    // Разблокировка объявления
+    async function unblockAnnouncement(chatId) {
+      try {
+        const response = await fetch(`/communications/api/announcement/${chatId}/unblock/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          location.reload();
+        } else {
+          alert(data.error || 'Ошибка разблокировки');
+        }
+      } catch (error) {
+        console.error('Error unblocking announcement:', error);
+        alert('Ошибка при разблокировке объявления');
+      }
+    }
+  </script>
 {% endblock %}

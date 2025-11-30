@@ -165,8 +165,35 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         if not text:
             return
         
-        # Проверка на ответ
+        # Проверка прав на отправку сообщений
+        if self.chat.type == "announcement":
+            # Только создатель может писать в объявление
+            if self.chat.created_by_id != user.id:
+                await self.send_json({
+                    "type": "error",
+                    "error": "Только автор может публиковать в это объявление"
+                })
+                return
+        else:
+            # В других типах проверяем can_send_messages
+            has_permission = await self._check_send_permission(user)
+            if not has_permission:
+                await self.send_json({
+                    "type": "error",
+                    "error": "У вас нет прав для отправки сообщений"
+                })
+                return
+        
+        # Проверка на ответ (reply)
         reply_to_id = content.get("reply_to_id")
+        
+        # Запрет на reply в чатах где can_reply=False
+        if reply_to_id and not self.chat.can_reply:
+            await self.send_json({
+                "type": "error",
+                "error": "В этом чате запрещены ответы на сообщения"
+            })
+            return
         
         msg = await self._create_message(self.chat, user, text, reply_to_id)
         await self._mark_read(self.chat, user)
@@ -188,6 +215,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         if not message_id or not new_content:
             return
         
+        # Запрет на редактирование в объявлениях
+        if self.chat.type == "announcement":
+            await self.send_json({
+                "type": "error",
+                "error": "Редактирование запрещено в объявлениях"
+            })
+            return
+        
         success = await self._edit_message(message_id, user, new_content)
         if success:
             msg = await self._get_message(message_id)
@@ -206,6 +241,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         """Удаление сообщения"""
         message_id = content.get("message_id")
         if not message_id:
+            return
+        
+        # Запрет на удаление в объявлениях
+        if self.chat.type == "announcement":
+            await self.send_json({
+                "type": "error",
+                "error": "Удаление запрещено в объявлениях"
+            })
             return
         
         success = await self._delete_message(message_id, user)
@@ -347,6 +390,17 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             .prefetch_related("participants")
             .get(pk=chat_id)
         )
+
+    @database_sync_to_async
+    def _check_send_permission(self, user) -> bool:
+        """Проверка права на отправку сообщений"""
+        from .models import ChatMembership
+        membership = ChatMembership.objects.filter(
+            chat=self.chat, user=user
+        ).first()
+        if membership:
+            return membership.can_send_messages
+        return True  # По умолчанию можно писать
 
     @database_sync_to_async
     def _user_can_access(self, chat: Chat, user) -> bool:

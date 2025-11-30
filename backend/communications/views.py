@@ -140,8 +140,19 @@ class ChatListView(LoginRequiredMixin, ListView):
                 | Q(type="private", participants=user)
                 | Q(id__in=membership_chat_ids)  # group/channel/announcement
             )
+            .exclude(
+                # Скрываем заблокированные announcement
+                Q(type="announcement", is_blocked=True) &
+                ~Q(created_by=user)  # Создателю показываем
+            )
+            .exclude(
+                # Скрываем заблокированные announcement и для создателя
+                # если он не staff (чтобы staff мог разблокировать)
+                Q(type="announcement", is_blocked=True, created_by=user) &
+                Q(created_by__is_staff=False)
+            )
             .distinct()
-            .select_related("department")
+            .select_related("department", "created_by", "blocked_by")
             .annotate(last_msg_at=Subquery(last_qs))
             .annotate(
                 last_read_at=Coalesce(
@@ -331,37 +342,72 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         else:
             context["unread_from_ts"] = None
 
+        # Права на отправку сообщений в объявлениях
+        if chat.type == "announcement":
+            # Только создатель может писать в объявление
+            context["can_send_messages"] = (chat.created_by == user)
+            context["is_announcement_creator"] = (chat.created_by == user)
+        else:
+            # В других типах чатов проверяем can_send_messages
+            membership = ChatMembership.objects.filter(
+                chat=chat, user=user
+            ).first()
+            context["can_send_messages"] = (
+                membership.can_send_messages if membership
+                else True  # По умолчанию можно писать
+            )
+            context["is_announcement_creator"] = False
+
         return context
 
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
         user = request.user
+        chat = self.object
 
-        if not ChatDetailView._user_has_access(self, self.object, user):
+        if not ChatDetailView._user_has_access(self, chat, user):
             from django.http import HttpResponseForbidden
-
             return HttpResponseForbidden("forbidden")
+
+        # Проверка прав на отправку сообщений
+        if chat.type == "announcement":
+            # Только создатель может писать в объявление
+            if chat.created_by != user:
+                from django.http import HttpResponseForbidden
+                return HttpResponseForbidden(
+                    "Только автор может публиковать в это объявление"
+                )
+        else:
+            # В других типах чатов проверяем can_send_messages
+            membership = ChatMembership.objects.filter(
+                chat=chat, user=user
+            ).first()
+            if membership and not membership.can_send_messages:
+                from django.http import HttpResponseForbidden
+                return HttpResponseForbidden(
+                    "У вас нет прав для отправки сообщений"
+                )
 
         form = self.get_form()
         if form.is_valid():
             msg = form.save(commit=False)
-            msg.chat = self.object
+            msg.chat = chat
             msg.author = user
             msg.save()
 
             # автору сразу «прочитано» — делаем безопасно
             ts = msg.created_at
             updated = ChatReadState.objects.filter(
-                chat=self.object, user=user, last_read_at__lt=ts
+                chat=chat, user=user, last_read_at__lt=ts
             ).update(last_read_at=ts)
             if not updated:
                 try:
                     ChatReadState.objects.create(
-                        chat=self.object, user=user, last_read_at=ts
+                        chat=chat, user=user, last_read_at=ts
                     )
                 except IntegrityError:
                     ChatReadState.objects.filter(
-                        chat=self.object, user=user, last_read_at__lt=ts
+                        chat=chat, user=user, last_read_at__lt=ts
                     ).update(last_read_at=ts)
 
             return redirect(self.get_success_url())

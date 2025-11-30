@@ -40,6 +40,16 @@ urlpatterns = [
         api_views.set_chat_notifications,
         name="api_chat_notifications"
     ),
+    path(
+        "api/announcement/<int:chat_id>/block/",
+        api_views.block_announcement,
+        name="api_block_announcement"
+    ),
+    path(
+        "api/announcement/<int:chat_id>/unblock/",
+        api_views.unblock_announcement,
+        name="api_unblock_announcement"
+    ),
     
     # Message actions
     path(

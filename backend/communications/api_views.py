@@ -70,12 +70,42 @@ def create_chat(request):
             },
             status=400
         )
+    
+    # Валидация для announcement - только 1 на пользователя
+    if chat_type == 'announcement':
+        existing = Chat.objects.filter(
+            type='announcement',
+            created_by=request.user
+        ).first()
+        if existing:
+            if existing.is_blocked:
+                return JsonResponse(
+                    {
+                        'ok': False,
+                        'error': 'Ваш чат объявлений заблокирован администратором'
+                    },
+                    status=403
+                )
+            else:
+                return JsonResponse(
+                    {
+                        'ok': False,
+                        'error': 'У вас уже есть чат объявлений',
+                        'existing_chat_id': existing.id
+                    },
+                    status=400
+                )
 
     # Валидация названия
     if not name and chat_type != 'private':
-        return JsonResponse(
-            {'ok': False, 'error': 'Name is required'}, status=400
-        )
+        # Для announcement генерируем название автоматически
+        if chat_type == 'announcement':
+            user_name = request.user.get_full_name() or request.user.username
+            name = f"Объявления от {user_name}"
+        else:
+            return JsonResponse(
+                {'ok': False, 'error': 'Name is required'}, status=400
+            )
 
     # Валидация для чата отдела
     if chat_type == 'department':
@@ -131,15 +161,14 @@ def create_chat(request):
         created_by=request.user,
         department=department,
         include_all_employees=include_all,
-        is_main=is_main
+        is_main=is_main,
+        can_reply=(chat_type != 'announcement')  # Для announcement нельзя
     )
-
+    
     # Добавляем аватар если был загружен
     if avatar:
         chat.avatar = avatar
-        chat.save()
-
-    # Создатель - владелец с полными правами
+        chat.save()    # Создатель - владелец с полными правами
     ChatMembership.objects.create(
         chat=chat,
         user=request.user,
@@ -173,7 +202,14 @@ def create_chat(request):
             id=request.user.id
         )
         for employee in all_employees:
-            can_send = chat_type not in ['channel', 'announcement']
+            # Для announcement и channel - обычные участники не могут писать
+            if chat_type == 'announcement':
+                can_send = False  # Только создатель может писать
+            elif chat_type == 'channel':
+                can_send = False  # Только модераторы могут писать
+            else:
+                can_send = True
+            
             ChatMembership.objects.get_or_create(
                 chat=chat,
                 user=employee,
@@ -207,6 +243,65 @@ def create_chat(request):
         'chat_id': chat.id,
         'chat_type': chat.type,
         'name': chat.name
+    })
+
+
+@login_required
+@require_POST
+def block_announcement(request, chat_id):
+    """
+    Блокирует announcement чат (только для staff/superuser)
+    После блокировки чат скрывается у всех пользователей
+    """
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse(
+            {'ok': False, 'error': 'Permission denied'}, status=403
+        )
+    
+    chat = get_object_or_404(Chat, pk=chat_id, type='announcement')
+    
+    if chat.is_blocked:
+        return JsonResponse(
+            {'ok': False, 'error': 'Chat already blocked'}, status=400
+        )
+    
+    chat.is_blocked = True
+    chat.blocked_at = timezone.now()
+    chat.blocked_by = request.user
+    chat.save()
+    
+    return JsonResponse({
+        'ok': True,
+        'message': f'Announcement "{chat.name}" blocked'
+    })
+
+
+@login_required
+@require_POST
+def unblock_announcement(request, chat_id):
+    """
+    Разблокирует announcement чат (только для staff/superuser)
+    """
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse(
+            {'ok': False, 'error': 'Permission denied'}, status=403
+        )
+    
+    chat = get_object_or_404(Chat, pk=chat_id, type='announcement')
+    
+    if not chat.is_blocked:
+        return JsonResponse(
+            {'ok': False, 'error': 'Chat is not blocked'}, status=400
+        )
+    
+    chat.is_blocked = False
+    chat.blocked_at = None
+    chat.blocked_by = None
+    chat.save()
+    
+    return JsonResponse({
+        'ok': True,
+        'message': f'Announcement "{chat.name}" unblocked'
     })
 
 

@@ -98,6 +98,7 @@ def create_message_notifications(sender, instance, created, **kwargs):
     
     # Определяем, кому отправлять обычные уведомления
     # Для приватных чатов - всегда отправляем
+    # Для announcement - отправляем ВСЕМ участникам (это важные объявления)
     # Для групповых - можно добавить логику (например, только онлайн или с настройками)
     if chat.type == 'private':
         recipients_for_new_message = participants.exclude(id__in=excluded_ids)
@@ -115,6 +116,26 @@ def create_message_notifications(sender, instance, created, **kwargs):
                     'chat_name': get_chat_name(chat),
                     'message_id': instance.id,
                     'author_id': author.id,
+                }
+            )
+    elif chat.type == 'announcement':
+        # Для объявлений отправляем ВСЕМ участникам
+        recipients_for_announcement = participants.exclude(id__in=excluded_ids)
+        
+        for recipient in recipients_for_announcement:
+            NotificationService.create_notification(
+                recipient=recipient,
+                notification_type_code='announcement_new_message',
+                title=f'Новое объявление от {author.get_full_name() or author.username}',
+                message=truncate_message(content, 150),
+                content_object=instance,
+                action_url=f'/communications/chats/{chat.id}/',
+                metadata={
+                    'chat_id': chat.id,
+                    'chat_name': get_chat_name(chat),
+                    'message_id': instance.id,
+                    'author_id': author.id,
+                    'is_announcement': True,
                 }
             )
     elif chat.type in ['group', 'department', 'channel']:
