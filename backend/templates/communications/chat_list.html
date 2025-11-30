@@ -17,7 +17,56 @@
     <div class="col-12">
 
       {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-      {% include "includes/components/page_header.html" with icon="bi-chat-dots" title="Мои чаты" search_id="chatSearch" search_placeholder="Поиск по названию или участникам" has_filters=True filters_target="chatFilters" filters_template="communications/_filters.html" create_as_card=True create_modal="chatCreateModal" create_text="Создать чат" %}
+      {% include "includes/components/page_header.html" with icon="bi-chat-dots" title="Мои чаты" search_id="chatSearch" search_placeholder="Поиск по названию или участникам" create_as_card=True create_modal="chatCreateModal" create_text="Создать чат" %}
+
+      {# ===== ДВУХКОЛОНОЧНАЯ СТРУКТУРА ===== #}
+      <div class="d-flex gap-3 chat-list-wrapper">
+        
+        {# Левая колонка - иконки типов чатов #}
+        <div class="chat-type-sidebar">
+          <div class="card">
+            <div class="list-group list-group-flush">
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn active" 
+                      data-chat-type="all" title="Все чаты">
+                <i class="bi-chat-dots fs-4 d-block"></i>
+                <span class="badge rounded-pill bg-secondary" data-count="all">0</span>
+              </button>
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+                      data-chat-type="global" title="Глобальный">
+                <i class="bi-globe fs-4 d-block"></i>
+                <span class="badge rounded-pill bg-secondary" data-count="global">0</span>
+              </button>
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+                      data-chat-type="department" title="Отделы">
+                <i class="bi-diagram-3 fs-4 d-block"></i>
+                <span class="badge rounded-pill bg-secondary" data-count="department">0</span>
+              </button>
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+                      data-chat-type="private" title="Личные">
+                <i class="bi-person-fill fs-4 d-block"></i>
+                <span class="badge rounded-pill bg-secondary" data-count="private">0</span>
+              </button>
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+                      data-chat-type="group" title="Группы">
+                <i class="bi-people-fill fs-4 d-block"></i>
+                <span class="badge rounded-pill bg-secondary" data-count="group">0</span>
+              </button>
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+                      data-chat-type="channel" title="Каналы">
+                <i class="bi-broadcast fs-4 d-block"></i>
+                <span class="badge rounded-pill bg-secondary" data-count="channel">0</span>
+              </button>
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+                      data-chat-type="announcement" title="Объявления">
+                <i class="bi-megaphone fs-4 d-block"></i>
+                <span class="badge rounded-pill bg-secondary" data-count="announcement">0</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {# Правая колонка - список чатов #}
+        <div class="chat-list-main flex-grow-1">
 
       {# ===== 1) ГЛОБАЛЬНЫЙ ===== #}
       <div class="card chat-section mb-3" data-sec="global">
@@ -33,7 +82,7 @@
           {% for chat in chats %}
             {% if chat.type == 'global' %}
               {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2 {% if not forloop.first %}border-top{% endif %}"
+              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
                   data-chat-id="{{ chat.pk }}"
                   data-type="global"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
@@ -104,7 +153,7 @@
           {% for chat in chats %}
             {% if chat.type == 'department' %}
               {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2 {% if not forloop.first %}border-top{% endif %}"
+              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
                   data-chat-id="{{ chat.pk }}"
                   data-type="department"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
@@ -166,7 +215,7 @@
           {% for chat in chats %}
             {% if chat.type == 'private' %}
               {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2 {% if not forloop.first %}border-top{% endif %}"
+              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
                   data-chat-id="{{ chat.pk }}"
                   data-type="private"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
@@ -242,7 +291,7 @@
           {% for chat in chats %}
             {% if chat.type == 'group' %}
               {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2 {% if not forloop.first %}border-top{% endif %}"
+              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
                   data-chat-id="{{ chat.pk }}"
                   data-type="group"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
@@ -316,7 +365,7 @@
           {% for chat in chats %}
             {% if chat.type == 'channel' %}
               {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2 {% if not forloop.first %}border-top{% endif %}"
+              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
                   data-chat-id="{{ chat.pk }}"
                   data-type="channel"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
@@ -390,7 +439,7 @@
           {% for chat in chats %}
             {% if chat.type == 'announcement' %}
               {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2 {% if not forloop.first %}border-top{% endif %}"
+              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
                   data-chat-id="{{ chat.pk }}"
                   data-type="announcement"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
@@ -455,6 +504,9 @@
           Чатов пока нет. Начните с <a href="{% url 'employees:employees_list' %}" class="text-decoration-none">поиска сотрудника</a>.
         </div>
       {% endif %}
+
+        </div> {# конец chat-list-main #}
+      </div> {# конец d-flex #}
 
     </div>
   </div>
@@ -522,6 +574,28 @@
   const accessMeta = document.querySelector('meta[name="api-access"]');
   const ACCESS = accessMeta ? accessMeta.content : '';
   const headersAuth = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
+
+  // Динамически рассчитываем высоту page-header для смещения липкой панели
+  const chatListWrapper = document.querySelector('.chat-list-wrapper');
+
+  function updateSidebarOffset() {
+    const pageHeader = document.querySelector('.page-header');
+    if (!pageHeader) return;
+
+    const headerStyles = window.getComputedStyle(pageHeader);
+    const marginBottom = parseFloat(headerStyles.marginBottom) || 0;
+    const offset = pageHeader.offsetHeight + marginBottom;
+
+    document.documentElement.style.setProperty('--chat-sidebar-offset', `${offset}px`);
+  }
+
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(updateSidebarOffset, 150);
+  });
+
+  updateSidebarOffset();
 
   // Инициализация RecipientPicker для создания чата
   const chatPicker = new RecipientPicker(
@@ -646,40 +720,109 @@
     rowSelector: '.chat-row'
   });
 
-  // Обработка селекта фильтра типа чата
-  const chatTypeFilter = document.getElementById('chatTypeFilter');
-  const applyBtn = document.getElementById('applyChatFilter');
-  const resetBtn = document.getElementById('resetChatFilter');
-
-  function applyTypeFilter() {
-    const selectedType = chatTypeFilter?.value || 'all';
-    const sections = document.querySelectorAll('.chat-section');
+  // ===== ФИЛЬТРАЦИЯ ПО ТИПАМ ЧАТОВ =====
+  let activeFilter = 'all';
+  
+  const chatTypeButtons = document.querySelectorAll('.chat-type-btn');
+  const chatSections = document.querySelectorAll('.chat-section');
+  
+  // Функция подсчета чатов по типам и управления видимостью
+  function updateChatCounts() {
+    const counts = {
+      all: 0,
+      global: 0,
+      department: 0,
+      private: 0,
+      group: 0,
+      channel: 0,
+      announcement: 0
+    };
     
-    sections.forEach(section => {
+    // Подсчитываем чаты в каждой секции
+    chatSections.forEach(section => {
       const sectionType = section.dataset.sec;
-      if (selectedType === 'all' || selectedType === sectionType) {
-        section.style.display = '';
-      } else {
+      const chatRows = section.querySelectorAll('.chat-row');
+      
+      // Считаем только видимые (не скрытые поиском) чаты
+      const visibleChats = Array.from(chatRows).filter(row => {
+        return row.style.display !== 'none';
+      }).length;
+      
+      counts[sectionType] = visibleChats;
+      counts.all += visibleChats;
+      
+      // Управление видимостью секции
+      // 1. Если чатов нет (скрыты поиском или отсутствуют) -> скрываем секцию
+      if (visibleChats === 0) {
         section.style.display = 'none';
+      } 
+      // 2. Если чаты есть, проверяем активный фильтр
+      else {
+        if (activeFilter === 'all' || activeFilter === sectionType) {
+          section.style.display = '';
+        } else {
+          section.style.display = 'none';
+        }
       }
     });
     
-    // Переприменяем поиск после изменения видимости секций
+    // Обновляем бейджи и кнопки
+    Object.keys(counts).forEach(type => {
+      const badge = document.querySelector(`[data-count="${type}"]`);
+      const button = document.querySelector(`[data-chat-type="${type}"]`);
+      
+      if (badge) {
+        badge.textContent = counts[type];
+        // Скрываем бейдж если 0
+        badge.style.display = counts[type] === 0 ? 'none' : '';
+      }
+      
+      // Скрываем кнопку категории, если в ней нет чатов (кроме 'all')
+      if (button && type !== 'all') {
+        button.style.display = counts[type] === 0 ? 'none' : '';
+      }
+    });
+  }
+  
+  function applyTypeFilter(filterType) {
+    activeFilter = filterType;
+    
+    // Обновляем активную кнопку
+    chatTypeButtons.forEach(btn => {
+      if (btn.dataset.chatType === filterType) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    
+    // Переприменяем поиск (если есть), это обновит видимость строк
     if (filterApi && filterApi.reapply) {
       filterApi.reapply();
     }
+    
+    // Обновляем видимость секций и счетчики
+    updateChatCounts();
   }
-
-  function resetFilter() {
-    if(chatTypeFilter) chatTypeFilter.value = 'all';
-    applyTypeFilter();
-  }
-
-  applyBtn?.addEventListener('click', applyTypeFilter);
-  resetBtn?.addEventListener('click', resetFilter);
   
-  // Применяем фильтр при загрузке
-  applyTypeFilter();
+  // Обработка кликов по кнопкам типов
+  chatTypeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filterType = btn.dataset.chatType;
+      applyTypeFilter(filterType);
+    });
+  });
+  
+  // Применяем начальный фильтр и подсчитываем чаты
+  applyTypeFilter('all');
+  
+  // Обновляем счетчики после поиска
+  const searchInput = document.getElementById('chatSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      setTimeout(updateChatCounts, 100);
+    });
+  }
 </script>
 
 {# Подключаем chat-list-enhanced.js для WebSocket и контекстного меню #}
