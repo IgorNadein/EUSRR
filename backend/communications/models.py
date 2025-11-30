@@ -266,6 +266,19 @@ class Chat(models.Model):
             ).distinct()
         if self.type == "global":
             return Employee.objects.filter(is_active=True)
+        if self.type in ["announcement", "channel"]:
+            # Если include_all_employees - все активные сотрудники
+            if self.include_all_employees:
+                return Employee.objects.filter(is_active=True)
+            # Иначе только явно добавленные через participants или ChatMembership
+            from .models import ChatMembership
+            membership_ids = ChatMembership.objects.filter(
+                chat=self
+            ).values_list("user_id", flat=True)
+            return Employee.objects.filter(
+                Q(id__in=self.participants.values_list('id', flat=True)) |
+                Q(id__in=membership_ids)
+            ).distinct()
         return Employee.objects.none()
 
     def __str__(self):

@@ -37,7 +37,11 @@ def create_message_notifications(sender, instance, created, **kwargs):
     content = instance.content
     
     # Получаем всех участников чата кроме автора
-    participants = chat.participants.exclude(id=author.id)
+    # Для announcement/channel/department используем get_participants
+    if chat.type in ['announcement', 'channel', 'department', 'global']:
+        participants = chat.get_participants.exclude(id=author.id)
+    else:
+        participants = chat.participants.exclude(id=author.id)
     
     # 1. Обработка упоминаний (@username)
     mentioned_users = extract_mentions(content)
