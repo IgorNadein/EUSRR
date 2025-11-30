@@ -32,7 +32,7 @@ export function initChatListFilter(options = {}) {
   const labels = document.querySelectorAll(filterSelector);
 
   if (!search || !labels.length) {
-    console.warn(`ChatListFilter: elements not found`);
+    // Тихо выходим если не на странице чатов
     return null;
   }
 

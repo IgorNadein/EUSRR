@@ -24,7 +24,7 @@ export function initChatListRealtime(options = {}) {
   // Проверяем наличие списка чатов
   const listAny = document.querySelector(chatRowSelector);
   if (!listAny) {
-    console.warn('ChatListRealtime: no chat rows found, skipping');
+    // Тихо выходим если не на странице чатов
     return null;
   }
 
