@@ -72,40 +72,6 @@
               {% endif %}
             </div>
 
-            {# Быстрые действия с мессенджерами #}
-            {% if emp.telegram or emp.whatsapp or emp.wechat %}
-            <div class="mt-3 d-flex gap-2 justify-content-center flex-wrap">
-              {% if emp.telegram %}
-              <a href="https://t.me/{{ emp.telegram }}" target="_blank" 
-                 class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1"
-                 title="Написать в Telegram">
-                <i class="bi-telegram"></i>
-                <span class="d-none d-sm-inline">Telegram</span>
-              </a>
-              {% endif %}
-              
-              {% if emp.whatsapp %}
-              <a href="https://wa.me/{{ emp.whatsapp }}" target="_blank" 
-                 class="btn btn-sm d-flex align-items-center gap-1"
-                 style="background-color: #25D366; color: white; border-color: #25D366;"
-                 title="Написать в WhatsApp">
-                <i class="bi-whatsapp"></i>
-                <span class="d-none d-sm-inline">WhatsApp</span>
-              </a>
-              {% endif %}
-              
-              {% if emp.wechat %}
-              <button class="btn btn-sm d-flex align-items-center gap-1"
-                      style="background-color: #09B83E; color: white; border-color: #09B83E;"
-                      title="WeChat ID: {{ emp.wechat }}"
-                      onclick="navigator.clipboard.writeText('{{ emp.wechat }}'); this.innerHTML='<i class=\'bi-check\'></i> Скопировано'; setTimeout(() => this.innerHTML='<i class=\'bi-wechat\'></i> <span class=\'d-none d-sm-inline\'>WeChat</span>', 2000)">
-                <i class="bi-wechat"></i>
-                <span class="d-none d-sm-inline">WeChat</span>
-              </button>
-              {% endif %}
-            </div>
-            {% endif %}
-
             <!-- Contacts -->
             <div class="mt-3 text-start">
               <div class="ios-acc">
@@ -134,33 +100,9 @@
                           <a href="tel:{{ emp.phone_number }}">{{ emp.phone_number }}</a>
                         </div>
                       {% endif %}
-                      
-                      {# Мессенджеры с цветными иконками и ссылками #}
-                      {% if emp.telegram %}
-                        <div class="ios-cell">
-                          <i class="bi-telegram text-primary"></i>
-                          <a href="https://t.me/{{ emp.telegram }}" target="_blank" class="text-decoration-none">
-                            <span>Telegram: {{ emp.telegram }}</span>
-                          </a>
-                        </div>
-                      {% endif %}
-                      
-                      {% if emp.whatsapp %}
-                        <div class="ios-cell">
-                          <i class="bi-whatsapp" style="color: #25D366;"></i>
-                          <a href="https://wa.me/{{ emp.whatsapp }}" target="_blank" class="text-decoration-none">
-                            <span>WhatsApp: {{ emp.whatsapp }}</span>
-                          </a>
-                        </div>
-                      {% endif %}
-                      
-                      {% if emp.wechat %}
-                        <div class="ios-cell">
-                          <i class="bi-wechat" style="color: #09B83E;"></i>
-                          <span>WeChat: {{ emp.wechat }}</span>
-                        </div>
-                      {% endif %}
-                      
+                      {% if emp.telegram %}<div class="ios-cell"><i class="bi-telegram"></i><span>{{ emp.telegram }}</span></div>{% endif %}
+                      {% if emp.whatsapp %}<div class="ios-cell"><i class="bi-whatsapp"></i><span>{{ emp.whatsapp }}</span></div>{% endif %}
+                      {% if emp.wechat %}<div class="ios-cell"><i class="bi-wechat"></i><span>{{ emp.wechat }}</span></div>{% endif %}
                       {% if not emp.email and not emp.phone_number and not emp.telegram and not emp.whatsapp and not emp.wechat %}
                         <div class="ios-cell"><span class="text-secondary">Контакты не указаны</span></div>
                       {% endif %}

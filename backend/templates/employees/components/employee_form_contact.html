@@ -26,36 +26,24 @@
         </div>
 
         <div class="col-sm-4">
-          <label class="form-label" for="f_telegram">
-            <i class="bi-telegram text-primary"></i> Telegram
-          </label>
+          <label class="form-label" for="f_telegram">Telegram</label>
           <input id="f_telegram" class="form-control" name="telegram"
                  value="{{ emp.telegram|default:'' }}" inputmode="text"
-                 placeholder="@username или chat_id"
                  data-init="{{ emp.telegram|default:'' }}" data-contact="1">
-          <div class="form-text small">Для уведомлений (найдите ID через @userinfobot)</div>
           <div class="invalid-feedback"></div>
         </div>
         <div class="col-sm-4">
-          <label class="form-label" for="f_whatsapp">
-            <i class="bi-whatsapp" style="color: #25D366;"></i> WhatsApp
-          </label>
+          <label class="form-label" for="f_whatsapp">WhatsApp</label>
           <input id="f_whatsapp" class="form-control" name="whatsapp"
                  value="{{ emp.whatsapp|default:'' }}" inputmode="tel"
-                 placeholder="+79001234567"
                  data-init="{{ emp.whatsapp|default:'' }}" data-contact="1">
-          <div class="form-text small">Номер телефона в формате E.164</div>
           <div class="invalid-feedback"></div>
         </div>
         <div class="col-sm-4">
-          <label class="form-label" for="f_wechat">
-            <i class="bi-wechat" style="color: #09B83E;"></i> WeChat
-          </label>
+          <label class="form-label" for="f_wechat">WeChat</label>
           <input id="f_wechat" class="form-control" name="wechat"
                  value="{{ emp.wechat|default:'' }}" inputmode="text"
-                 placeholder="WeChat ID"
                  data-init="{{ emp.wechat|default:'' }}" data-contact="1">
-          <div class="form-text small">Ваш WeChat идентификатор</div>
           <div class="invalid-feedback"></div>
         </div>
       </div>

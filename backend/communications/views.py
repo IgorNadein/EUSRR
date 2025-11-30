@@ -460,10 +460,22 @@ def chat_mark_read(request, pk: int):
 def whatsapp_view(request):
     """WhatsApp интеграция"""
     from django.shortcuts import render
+    from .models import MessengerIntegration
+    
+    try:
+        integration = MessengerIntegration.objects.get(
+            messenger_type='whatsapp'
+        )
+        integration_status = integration.status if integration.is_enabled else 'inactive'
+    except MessengerIntegration.DoesNotExist:
+        integration_status = 'not_configured'
+    
     return render(request, 'communications/messengers/whatsapp.html', {
         'messenger_name': 'WhatsApp',
         'messenger_icon': 'bi-whatsapp',
-        'messenger_color': '#25D366'
+        'messenger_color': '#25D366',
+        'integration_status': integration_status,
+        'is_admin': request.user.is_staff or request.user.is_superuser,
     })
 
 
@@ -471,10 +483,22 @@ def whatsapp_view(request):
 def telegram_view(request):
     """Telegram интеграция"""
     from django.shortcuts import render
+    from .models import MessengerIntegration
+    
+    try:
+        integration = MessengerIntegration.objects.get(
+            messenger_type='telegram'
+        )
+        integration_status = integration.status if integration.is_enabled else 'inactive'
+    except MessengerIntegration.DoesNotExist:
+        integration_status = 'not_configured'
+    
     return render(request, 'communications/messengers/telegram.html', {
         'messenger_name': 'Telegram',
         'messenger_icon': 'bi-telegram',
-        'messenger_color': '#0088cc'
+        'messenger_color': '#0088cc',
+        'integration_status': integration_status,
+        'is_admin': request.user.is_staff or request.user.is_superuser,
     })
 
 
@@ -482,8 +506,20 @@ def telegram_view(request):
 def wechat_view(request):
     """WeChat интеграция"""
     from django.shortcuts import render
+    from .models import MessengerIntegration
+    
+    try:
+        integration = MessengerIntegration.objects.get(
+            messenger_type='wechat'
+        )
+        integration_status = integration.status if integration.is_enabled else 'inactive'
+    except MessengerIntegration.DoesNotExist:
+        integration_status = 'not_configured'
+    
     return render(request, 'communications/messengers/wechat.html', {
         'messenger_name': 'WeChat',
         'messenger_icon': 'bi-wechat',
-        'messenger_color': '#09B83E'
+        'messenger_color': '#09B83E',
+        'integration_status': integration_status,
+        'is_admin': request.user.is_staff or request.user.is_superuser,
     })

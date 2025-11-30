@@ -8,6 +8,9 @@ from .models import (
     Message,
     MessageAttachment,
     MessageReply,
+    MessengerIntegration,
+    MessengerAccount,
+    MessengerMessage,
 )
 
 
@@ -169,3 +172,176 @@ class CrossChatMessageAdmin(admin.ModelAdmin):
     list_filter = ("status", "requires_moderation", "sent_at")
     search_fields = ("sender__last_name", "target_chat__name")
     ordering = ("-sent_at",)
+
+
+# ===== АДМИН-ПАНЕЛЬ ДЛЯ ИНТЕГРАЦИЙ С МЕССЕНДЖЕРАМИ =====
+
+@admin.register(MessengerIntegration)
+class MessengerIntegrationAdmin(admin.ModelAdmin):
+    list_display = (
+        "messenger_type",
+        "is_enabled",
+        "status",
+        "messages_sent",
+        "messages_received",
+        "last_sync_at",
+        "updated_at"
+    )
+    list_filter = ("messenger_type", "is_enabled", "status")
+    search_fields = ("messenger_type",)
+    ordering = ("messenger_type",)
+    
+    fieldsets = (
+        ("Основная информация", {
+            "fields": ("messenger_type", "is_enabled", "status")
+        }),
+        ("API Настройки", {
+            "fields": ("api_key", "api_secret", "webhook_url", "settings"),
+            "classes": ("collapse",)
+        }),
+        ("Статистика", {
+            "fields": (
+                "messages_sent",
+                "messages_received",
+                "last_sync_at",
+                "last_error"
+            ),
+            "classes": ("collapse",)
+        }),
+        ("Системная информация", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",)
+        }),
+    )
+    
+    readonly_fields = (
+        "messages_sent",
+        "messages_received",
+        "last_sync_at",
+        "created_at",
+        "updated_at"
+    )
+    
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.status == 'active':
+            return self.readonly_fields + ("messenger_type",)
+        return self.readonly_fields
+
+
+@admin.register(MessengerAccount)
+class MessengerAccountAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "integration",
+        "external_username",
+        "phone_number",
+        "is_verified",
+        "is_active",
+        "updated_at"
+    )
+    list_filter = (
+        "integration__messenger_type",
+        "is_verified",
+        "is_active"
+    )
+    search_fields = (
+        "user__last_name",
+        "user__first_name",
+        "external_username",
+        "phone_number",
+        "external_id"
+    )
+    ordering = ("-created_at",)
+    
+    fieldsets = (
+        ("Пользователь", {
+            "fields": ("user", "integration")
+        }),
+        ("Данные в мессенджере", {
+            "fields": (
+                "external_id",
+                "external_username",
+                "phone_number"
+            )
+        }),
+        ("Статус", {
+            "fields": ("is_verified", "is_active")
+        }),
+        ("Дополнительно", {
+            "fields": ("metadata",),
+            "classes": ("collapse",)
+        }),
+        ("Системная информация", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",)
+        }),
+    )
+    
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(MessengerMessage)
+class MessengerMessageAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "integration",
+        "direction",
+        "status",
+        "sender_account",
+        "content_preview",
+        "external_timestamp",
+        "synced_at"
+    )
+    list_filter = (
+        "integration__messenger_type",
+        "direction",
+        "status",
+        "external_timestamp"
+    )
+    search_fields = (
+        "external_id",
+        "content",
+        "sender_account__external_username"
+    )
+    ordering = ("-external_timestamp",)
+    
+    fieldsets = (
+        ("Основная информация", {
+            "fields": (
+                "integration",
+                "internal_message",
+                "external_id"
+            )
+        }),
+        ("Участники", {
+            "fields": (
+                "sender_account",
+                "recipient_account",
+                "direction"
+            )
+        }),
+        ("Содержимое", {
+            "fields": ("content", "attachments")
+        }),
+        ("Статус и время", {
+            "fields": (
+                "status",
+                "external_timestamp",
+                "synced_at"
+            )
+        }),
+        ("Дополнительно", {
+            "fields": ("raw_data",),
+            "classes": ("collapse",)
+        }),
+    )
+    
+    readonly_fields = ("synced_at",)
+    
+    def content_preview(self, obj):
+        """Превью содержимого сообщения"""
+        if len(obj.content) > 50:
+            return obj.content[:50] + "..."
+        return obj.content
+    
+    content_preview.short_description = "Содержимое"
