@@ -22,11 +22,6 @@ urlpatterns = [
         name="start_private_chat"
     ),
     
-    # Messenger Views
-    path("messengers/whatsapp/", views.whatsapp_view, name="whatsapp"),
-    path("messengers/telegram/", views.telegram_view, name="telegram"),
-    path("messengers/wechat/", views.wechat_view, name="wechat"),
-    
     # API Endpoints
     # Chat management
     path("api/chat/create/", api_views.create_chat, name="api_create_chat"),

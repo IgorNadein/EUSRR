@@ -61,23 +61,6 @@
                 <i class="bi-megaphone fs-4 d-block"></i>
                 <span class="badge rounded-pill bg-secondary" data-count="announcement">0</span>
               </button>
-              
-              {# Разделитель #}
-              <div class="list-group-item p-0" style="height: 1px; background-color: var(--bs-border-color);"></div>
-              
-              {# Мессенджеры #}
-              <a href="{% url 'communications:whatsapp' %}" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
-                 title="WhatsApp" data-messenger="whatsapp">
-                <i class="bi-whatsapp fs-4 d-block text-success"></i>
-              </a>
-              <a href="{% url 'communications:telegram' %}" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
-                 title="Telegram" data-messenger="telegram">
-                <i class="bi-telegram fs-4 d-block text-primary"></i>
-              </a>
-              <a href="{% url 'communications:wechat' %}" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
-                 title="WeChat" data-messenger="wechat">
-                <i class="bi-wechat fs-4 d-block text-success"></i>
-              </a>
             </div>
           </div>
         </div>

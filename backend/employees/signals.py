@@ -1,4 +1,5 @@
 # users/signals.py
+import os
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -9,7 +10,32 @@ from bots.models import BotSubscriber
 
 
 @receiver(pre_save, sender=Employee)
-def unbind_bot_subscriber_on_contact_change(sender, instance: Employee, **kwargs):
+def delete_old_avatar_on_change(sender, instance: Employee, **kwargs):
+    """Удаляем старый файл аватара при замене на новый или при удалении."""
+    if instance.pk is None:
+        # Новый пользователь - нечего удалять
+        return
+    
+    try:
+        old = sender.objects.get(pk=instance.pk)
+    except sender.DoesNotExist:
+        return
+    
+    # Если аватар изменился или удален
+    if old.avatar and old.avatar != instance.avatar:
+        # Удаляем старый файл с диска
+        if os.path.isfile(old.avatar.path):
+            try:
+                os.remove(old.avatar.path)
+            except Exception as e:
+                # Логируем ошибку, но не прерываем сохранение
+                print(f"Error deleting old avatar: {e}")
+
+
+@receiver(pre_save, sender=Employee)
+def unbind_bot_subscriber_on_contact_change(
+    sender, instance: Employee, **kwargs
+):
     # Игнорируем новых пользователей
     if instance.pk is None:
         return

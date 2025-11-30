@@ -177,20 +177,43 @@ export function initEmployeeForm(options = {}) {
       const skills = collectSkillsPayload();
       if (skills) payload.skills_ids = skills;
 
-      // avatar (Base64) / clear
-      const avatarFile = document.getElementById('f_avatar')?.files?.[0] || null;
-      const clearAvatar = form.querySelector('input[name="clear_avatar"]')?.checked;
+      // avatar (файл через FormData)
+      const avatarInput = document.getElementById('avatarInput');
+      const avatarFile = avatarInput?.files?.[0] || null;
+      
+      let body;
+      let headers = {
+        'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]')?.value || ''
+      };
+
       if (avatarFile) {
-        try {
-          const dataUrl = await readFileAsDataURL(avatarFile);
-          payload.avatar = dataUrl; // Base64ImageField ожидает data URL
-        } catch (_) {}
-      } else if (clearAvatar) {
-        payload.avatar = ''; // Очистка
+        // Если есть файл - используем FormData
+        const formData = new FormData();
+        formData.append('avatar', avatarFile);
+        
+        // Добавляем остальные поля
+        Object.entries(payload).forEach(([key, value]) => {
+          if (Array.isArray(value)) {
+            value.forEach(v => formData.append(key, v));
+          } else {
+            formData.append(key, value);
+          }
+        });
+        
+        if (skills) {
+          skills.forEach(id => formData.append('skills_ids', id));
+        }
+        
+        body = formData;
+        // Не устанавливаем Content-Type для FormData - браузер сам добавит boundary
+      } else {
+        // Если файла нет - используем JSON
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify(payload);
       }
 
       // Если нечего отправлять — просто обновим UI
-      if (Object.keys(payload).length === 0) {
+      if (Object.keys(payload).length === 0 && !avatarFile) {
         setSubmitting(false);
         if (window.bootstrap) {
           try {
@@ -201,16 +224,10 @@ export function initEmployeeForm(options = {}) {
         return;
       }
 
-      const csrftoken = form.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
       const resp = await fetch(endpoint, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': csrftoken
-        },
-        body: JSON.stringify(payload),
+        headers: headers,
+        body: body,
         credentials: 'same-origin'
       });
 

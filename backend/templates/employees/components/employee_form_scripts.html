@@ -27,5 +27,101 @@
     if (groupPicker) window.groupPicker = groupPicker;
     if (editGroupPicker) window.editGroupPicker = editGroupPicker;
     if (groupsMgr) window.employeeGroupsManager = groupsMgr;
+    
+    // Инициализация загрузчика аватара
+    initAvatarUploader();
+  }
+  
+  // Обработка загрузки и предпросмотра аватара
+  function initAvatarUploader() {
+    const avatarInput = document.getElementById('avatarInput');
+    const avatarPreview = document.getElementById('avatarPreview');
+    const removeBtn = document.getElementById('removeAvatarBtn');
+    
+    if (!avatarInput || !avatarPreview) return;
+    
+    // Предпросмотр при выборе файла
+    avatarInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      // Проверка размера (5 МБ)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Файл слишком большой. Максимум 5 МБ.');
+        avatarInput.value = '';
+        return;
+      }
+      
+      // Проверка типа
+      if (!file.type.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
+        alert('Неподдерживаемый формат. Используйте JPG, PNG или GIF.');
+        avatarInput.value = '';
+        return;
+      }
+      
+      // Показываем предпросмотр
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (avatarPreview.tagName === 'IMG') {
+          avatarPreview.src = event.target.result;
+        } else {
+          // Заменяем placeholder на img
+          const img = document.createElement('img');
+          img.id = 'avatarPreview';
+          img.src = event.target.result;
+          img.alt = 'Фото';
+          img.className = 'rounded';
+          img.style.cssText = 'width: 120px; height: 120px; object-fit: cover; border: 2px solid #dee2e6;';
+          avatarPreview.replaceWith(img);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    // Удаление фото
+    if (removeBtn) {
+      removeBtn.addEventListener('click', async () => {
+        if (!confirm('Удалить фотографию?')) return;
+        
+        try {
+          const form = document.getElementById('apiEditForm');
+          const endpoint = form?.dataset?.endpoint;
+          if (!endpoint) {
+            alert('Ошибка: не указан endpoint');
+            return;
+          }
+          
+          const response = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify({ avatar: null })
+          });
+          
+          if (response.ok) {
+            // Заменяем изображение на placeholder
+            const placeholder = document.createElement('div');
+            placeholder.id = 'avatarPreview';
+            placeholder.className = 'rounded d-flex align-items-center justify-content-center bg-light text-muted';
+            placeholder.style.cssText = 'width: 120px; height: 120px; border: 2px solid #dee2e6;';
+            placeholder.innerHTML = '<i class="bi-person fs-1"></i>';
+            
+            document.getElementById('avatarPreview').replaceWith(placeholder);
+            removeBtn.remove();
+            avatarInput.value = '';
+            
+            alert('Фотография удалена');
+          } else {
+            const data = await response.json();
+            alert('Ошибка: ' + (data.error || 'Не удалось удалить фото'));
+          }
+        } catch (err) {
+          console.error('Avatar remove error:', err);
+          alert('Ошибка при удалении фото');
+        }
+      });
+    }
   }
 </script>
