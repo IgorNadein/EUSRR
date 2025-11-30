@@ -16,7 +16,12 @@ def create_main_department_chat(sender, instance, created, **kwargs):
         if not Chat.objects.filter(
             type="department", department=instance, is_main=True
         ).exists():
-            Chat.objects.create(type="department", department=instance, is_main=True)
+            Chat.objects.create(
+                type="department",
+                department=instance,
+                is_main=True,
+                name=f"Основной чат {instance.name}"
+            )
 
 
 @receiver(pre_save, sender='communications.Chat')

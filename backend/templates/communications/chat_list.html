@@ -101,6 +101,11 @@
                   <div class="d-flex align-items-center gap-2 flex-wrap">
                     <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
                       {{ chat.name|default:"Глобальный чат" }}
+                      {% if chat.is_main %}
+                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">
+                          <i class="bi-star-fill"></i> Основной
+                        </span>
+                      {% endif %}
                     </a>
                     <span class="badge bg-light text-dark border">
                       <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
@@ -129,6 +134,11 @@
                   <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i><span data-pin-text>Закрепить</span></a></li>
                     <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
+                    {% if not chat.is_main %}
+                      <li><a class="dropdown-item" href="#" data-action="edit"><i class="bi-pencil me-2"></i>Редактировать</a></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
+                    {% endif %}
                   </ul>
                 </div>
 
@@ -157,12 +167,26 @@
                   data-chat-id="{{ chat.pk }}"
                   data-type="department"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
-                  data-haystack="{{ chat.department.name }}">
-                <div class="card-icon" style="width:44px;height:44px;"><i class="bi-diagram-3"></i></div>
+                  data-haystack="{{ chat.name|default:'Основной чат' }} {{ chat.department.name }}">
+                
+                {# Аватар чата отдела или иконка #}
+                <div class="card-icon" style="width:44px;height:44px;">
+                  {% if chat.avatar %}
+                    <img src="{{ chat.avatar.url }}" alt="{{ chat.name|default:'Основной чат' }}" class="chat-avatar" loading="lazy">
+                  {% else %}
+                    <i class="bi-diagram-3"></i>
+                  {% endif %}
+                </div>
+                
                 <div class="flex-grow-1 position-relative">
                   <div class="d-flex align-items-center gap-2 flex-wrap">
                     <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
-                      Чат отдела: {{ chat.department.name }}
+                      {{ chat.name|default:"Основной чат" }}
+                      {% if chat.is_main %}
+                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">
+                          <i class="bi-star-fill"></i> Основной
+                        </span>
+                      {% endif %}
                     </a>
                     <span class="badge bg-light text-dark border">
                       <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
@@ -171,14 +195,18 @@
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
                   <div class="card-subtitle mt-1">
+                    {# Название отдела таким же шрифтом как последнее сообщение #}
+                    <span class="text-secondary">
+                      <i class="bi-diagram-3"></i> {{ chat.department.name }}
+                    </span>
                     {% if last %}
                       <span class="text-secondary">
-                        <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
+                        · <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
                         <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:120 }}</span>
+                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:100 }}</span>
                       </span>
                     {% else %}
-                      <span class="text-secondary">Сообщений пока нет.</span>
+                      <span class="text-secondary"> · Сообщений пока нет</span>
                     {% endif %}
                   </div>
                 </div>
@@ -191,6 +219,11 @@
                   <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i><span data-pin-text>Закрепить</span></a></li>
                     <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
+                    {% if not chat.is_main %}
+                      <li><a class="dropdown-item" href="#" data-action="edit"><i class="bi-pencil me-2"></i>Редактировать</a></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
+                    {% endif %}
                   </ul>
                 </div>
 
@@ -220,12 +253,22 @@
                   data-type="private"
                   data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
                   data-haystack="{% for u in chat.participants.all %}{% if u != user %} {{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}">
+                
+                {# Аватар собеседника #}
                 <div class="card-icon" style="width:44px;height:44px;">
                   {% with p0=chat.participants.all.0 p1=chat.participants.all.1 %}
-                    {% if p0 and p0 != user and p0.avatar %}
-                      <img src="{{ p0.avatar.url }}" alt="{{ p0.get_full_name|default:p0.username }}" loading="lazy">
-                    {% elif p1 and p1 != user and p1.avatar %}
-                      <img src="{{ p1.avatar.url }}" alt="{{ p1.get_full_name|default:p1.username }}" loading="lazy">
+                    {% if p0 and p0 != user %}
+                      {% if p0.avatar %}
+                        <img src="{{ p0.avatar.url }}" alt="{{ p0.get_full_name|default:p0.username }}" class="chat-avatar" loading="lazy">
+                      {% else %}
+                        <i class="bi-person"></i>
+                      {% endif %}
+                    {% elif p1 and p1 != user %}
+                      {% if p1.avatar %}
+                        <img src="{{ p1.avatar.url }}" alt="{{ p1.get_full_name|default:p1.username }}" class="chat-avatar" loading="lazy">
+                      {% else %}
+                        <i class="bi-person"></i>
+                      {% endif %}
                     {% else %}
                       <i class="bi-person"></i>
                     {% endif %}
@@ -317,13 +360,19 @@
                           data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
                   </div>
                   <div class="card-subtitle mt-1">
+                    {# Описание группы если есть #}
+                    {% if chat.description %}
+                      <span class="text-secondary">
+                        <i class="bi-info-circle"></i> {{ chat.description|truncatechars:80 }}
+                      </span>
+                    {% endif %}
                     {% if last %}
                       <span class="text-secondary">
-                        <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
+                        {% if chat.description %}<br>{% endif %}<span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
                         <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:120 }}</span>
+                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:100 }}</span>
                       </span>
-                    {% else %}
+                    {% elif not chat.description %}
                       <span class="text-secondary">Сообщений пока нет.</span>
                     {% endif %}
                   </div>

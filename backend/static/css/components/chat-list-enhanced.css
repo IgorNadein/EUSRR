@@ -86,7 +86,7 @@
 .card-icon img {
     width: 44px;
     height: 44px;
-    border-radius: 8px; /* Овальная форма вместо круглой */
+    border-radius: 50%; /* Круглая форма */
     object-fit: cover;
     border: 2px solid var(--bs-border-color);
 }
