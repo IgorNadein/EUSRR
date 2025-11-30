@@ -1,0 +1,102 @@
+{# backend/templates/communications/messengers/telegram.html #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ messenger_name }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<style>
+    .messenger-container {
+        min-height: 70vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+    
+    .messenger-icon {
+        font-size: 6rem;
+        color: {{ messenger_color }};
+        margin-bottom: 2rem;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    
+    .messenger-title {
+        font-size: 2.5rem;
+        font-weight: 600;
+        color: {{ messenger_color }};
+        margin-bottom: 1rem;
+    }
+    
+    .messenger-description {
+        font-size: 1.2rem;
+        color: var(--bs-secondary);
+        max-width: 600px;
+        margin: 0 auto 2rem;
+    }
+    
+    .messenger-actions {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .messenger-btn {
+        padding: 0.75rem 2rem;
+        font-size: 1.1rem;
+        border-radius: 0.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .messenger-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            {% include "includes/components/page_header.html" with icon=messenger_icon title=messenger_name %}
+            
+            <div class="card shadow-sm">
+                <div class="card-body messenger-container">
+                    <i class="{{ messenger_icon }} messenger-icon"></i>
+                    
+                    <h2 class="messenger-title">{{ messenger_name }} интеграция</h2>
+                    
+                    <p class="messenger-description">
+                        Здесь будет отображаться интеграция с {{ messenger_name }}. 
+                        Функционал находится в разработке.
+                    </p>
+                    
+                    <div class="messenger-actions">
+                        <a href="{% url 'communications:chat_list' %}" class="btn btn-outline-secondary messenger-btn">
+                            <i class="bi-arrow-left"></i> Вернуться к чатам
+                        </a>
+                        <button class="btn btn-primary messenger-btn" style="background-color: {{ messenger_color }}; border-color: {{ messenger_color }};" disabled>
+                            <i class="bi-link-45deg"></i> Подключить {{ messenger_name }}
+                        </button>
+                    </div>
+                    
+                    <div class="mt-5">
+                        <div class="alert alert-info d-inline-block">
+                            <i class="bi-info-circle"></i> Для настройки интеграции обратитесь к администратору
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -187,7 +187,39 @@
     color: white;
 }
 
-.chat-type-btn .badge {
+/* Мессенджеры - ссылки */
+.chat-type-btn[data-messenger] {
+    text-decoration: none;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.chat-type-btn[data-messenger]:hover {
+    background-color: var(--bs-light) !important;
+    transform: scale(1.05);
+}
+
+.chat-type-btn[data-messenger] i {
+    transition: transform 0.2s ease;
+}
+
+.chat-type-btn[data-messenger]:hover i {
+    transform: scale(1.1);
+}
+
+/* Цвета иконок мессенджеров */
+.chat-type-btn[data-messenger="whatsapp"] i {
+    color: #25D366 !important;
+}
+
+.chat-type-btn[data-messenger="telegram"] i {
+    color: #0088cc !important;
+}
+
+.chat-type-btn[data-messenger="wechat"] i {
+    color: #09B83E !important;
+}
+
+.chat-type-badge {
     position: absolute;
     top: 0.25rem;
     right: 0.25rem;

@@ -452,3 +452,38 @@ def chat_mark_read(request, pk: int):
     return JsonResponse(
         {"ok": True, "last_read_at": int(ts.timestamp() * 1000)}
     )
+
+
+# ===== Messenger Views =====
+
+@login_required
+def whatsapp_view(request):
+    """WhatsApp интеграция"""
+    from django.shortcuts import render
+    return render(request, 'communications/messengers/whatsapp.html', {
+        'messenger_name': 'WhatsApp',
+        'messenger_icon': 'bi-whatsapp',
+        'messenger_color': '#25D366'
+    })
+
+
+@login_required
+def telegram_view(request):
+    """Telegram интеграция"""
+    from django.shortcuts import render
+    return render(request, 'communications/messengers/telegram.html', {
+        'messenger_name': 'Telegram',
+        'messenger_icon': 'bi-telegram',
+        'messenger_color': '#0088cc'
+    })
+
+
+@login_required
+def wechat_view(request):
+    """WeChat интеграция"""
+    from django.shortcuts import render
+    return render(request, 'communications/messengers/wechat.html', {
+        'messenger_name': 'WeChat',
+        'messenger_icon': 'bi-wechat',
+        'messenger_color': '#09B83E'
+    })
