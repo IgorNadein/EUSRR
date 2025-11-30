@@ -1,5 +1,6 @@
 # users/signals.py
 import os
+from django.core.files.base import ContentFile
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -10,10 +11,41 @@ from bots.models import BotSubscriber
 
 
 @receiver(pre_save, sender=Employee)
-def delete_old_avatar_on_change(sender, instance: Employee, **kwargs):
-    """Удаляем старый файл аватара при замене на новый или при удалении."""
+def compress_and_cleanup_avatar(sender, instance: Employee, **kwargs):
+    """Сжимает новый аватар и удаляет старый файл при замене."""
+    # Импортируем здесь, чтобы избежать циклических импортов
+    from common.image_utils import compress_avatar
+    
+    # Проверяем, загружен ли новый файл аватара
+    if instance.avatar and hasattr(instance.avatar, 'file'):
+        try:
+            # Читаем данные нового аватара
+            instance.avatar.seek(0)
+            original_data = instance.avatar.read()
+            
+            # Сжимаем изображение
+            compressed_data = compress_avatar(original_data)
+            
+            # Если сжатие дало результат меньшего размера, заменяем
+            if len(compressed_data) < len(original_data):
+                # Получаем имя файла
+                filename = instance.avatar.name.split('/')[-1]
+                if not filename.lower().endswith('.jpg'):
+                    # Меняем расширение на .jpg
+                    filename = filename.rsplit('.', 1)[0] + '.jpg'
+                
+                # Заменяем файл на сжатый
+                instance.avatar.save(
+                    filename,
+                    ContentFile(compressed_data),
+                    save=False
+                )
+        except Exception as e:
+            # Логируем ошибку, но не прерываем сохранение
+            print(f"Error compressing avatar: {e}")
+    
+    # Удаляем старый файл если он был заменен
     if instance.pk is None:
-        # Новый пользователь - нечего удалять
         return
     
     try:
@@ -28,7 +60,6 @@ def delete_old_avatar_on_change(sender, instance: Employee, **kwargs):
             try:
                 os.remove(old.avatar.path)
             except Exception as e:
-                # Логируем ошибку, но не прерываем сохранение
                 print(f"Error deleting old avatar: {e}")
 
 
