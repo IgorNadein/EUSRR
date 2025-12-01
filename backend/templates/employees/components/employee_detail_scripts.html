@@ -4,10 +4,15 @@
 <script type="module">
   import { initSkillsManager } from '{% static "js/components/skillsManager.js" %}';
   import { initDeptRoleEditor } from '{% static "js/components/deptRoleEditor.js" %}';
+  import { initEmployeeForm } from '{% static "js/components/employeeFormHandler.js" %}';
   import { smoothScrollTo } from '{% static "js/utils/scroll.js" %}';
 
   document.addEventListener('DOMContentLoaded', () => {
-    // 1. Менеджер навыков
+    // 1. Обработчик формы редактирования профиля
+    const employeeForm = initEmployeeForm();
+    console.log('[employee_detail_scripts] employeeForm initialized:', employeeForm);
+
+    // 2. Менеджер навыков
     const skillsManager = initSkillsManager({
       blockId: 'skillsBlock',
       formId: 'skillAddForm',
@@ -15,7 +20,7 @@
       removeUrl: "{% url 'employees:skill_remove' emp.id %}"
     });
 
-    // 2. Редакторы ролей в отделах
+    // 3. Редакторы ролей в отделах
     const deptRoleEditor = initDeptRoleEditor();
 
     // 3. Smooth scroll к форме редактирования на мобильных
@@ -41,6 +46,7 @@
     }
 
     // Экспорт в window для отладки
+    if (employeeForm) window.employeeForm = employeeForm;
     if (skillsManager) window.skillsManager = skillsManager;
     if (deptRoleEditor) window.deptRoleEditor = deptRoleEditor;
   });
