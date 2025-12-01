@@ -1674,6 +1674,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         ser = self.get_serializer(instance, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         vd = dict(ser.validated_data)
+        
+        logger.info(f"[ME PATCH] validated_data keys: {list(vd.keys())}")
+        if 'avatar' in vd:
+            logger.info(f"[ME PATCH] avatar in validated_data: type={type(vd['avatar'])}, hasattr read={hasattr(vd.get('avatar'), 'read')}")
+            avatar_obj = vd.get('avatar')
+            if avatar_obj:
+                logger.info(f"[ME PATCH] avatar object: name={getattr(avatar_obj, 'name', None)}, size={getattr(avatar_obj, 'size', None)}")
 
         # Проверяем изменение email
         new_email = vd.get("email")
@@ -1717,11 +1724,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         
         # Проверяем аватар в validated_data (base64) или в FILES (FormData)
         avatar_file = ser.validated_data.get("avatar") or request.FILES.get("avatar")
+        logger.info(f"[ME PATCH] avatar_file after check: {avatar_file}, type: {type(avatar_file) if avatar_file else None}")
         if avatar_file and hasattr(avatar_file, "read"):
             try:
                 svc_changes["avatar_bytes"] = avatar_file.read()
-            except Exception:
-                pass
+                logger.info(f"[ME PATCH] avatar_bytes read, length: {len(svc_changes['avatar_bytes'])}")
+            except Exception as e:
+                logger.error(f"[ME PATCH] Error reading avatar: {e}")
 
         if ldap_enabled and (svc_changes or move_to_department_dn or group_cns is not None):
             # Режим с LDAP: обновляем через DirectoryService
@@ -1740,18 +1749,24 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 )
         elif not ldap_enabled and svc_changes:
             # Режим без LDAP: обновляем напрямую в БД
+            logger.info(f"[ME PATCH] LDAP disabled, updating DB directly with: {list(svc_changes.keys())}")
             for k, v in svc_changes.items():
                 if k != "position" and k != "avatar_bytes":
                     setattr(instance, k, v)
+                    logger.info(f"[ME PATCH] Set {k} = {v}")
                 elif k == "position":
                     instance.position_id = v
+                    logger.info(f"[ME PATCH] Set position_id = {v}")
                 elif k == "avatar_bytes" and v:
+                    filename = f"avatar_{instance.id}.jpg"
                     instance.avatar.save(
-                        f"avatar_{instance.id}.jpg",
+                        filename,
                         ContentFile(v),
                         save=False,
                     )
+                    logger.info(f"[ME PATCH] Avatar saved as {filename}, path: {instance.avatar.name if instance.avatar else 'None'}")
             instance.save()
+            logger.info(f"[ME PATCH] Instance saved, avatar path in DB: {instance.avatar.name if instance.avatar else 'None'}")
 
         # DB-only
         if vd:
@@ -1762,6 +1777,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             data = ser_db.data
         else:
             data = self.get_serializer(instance).data
+        
+        logger.info(f"[ME PATCH] Final response data keys: {list(data.keys())}")
+        if 'avatar' in data:
+            logger.info(f"[ME PATCH] avatar in response: {data['avatar'][:100] if data['avatar'] else None}...")
 
         # Сброс email_verified при изменении email
         if email_changed:
