@@ -9,6 +9,7 @@ Management команда для очистки и оптимизации ава
 import os
 from django.core.management.base import BaseCommand
 from django.core.files.base import ContentFile
+from django.conf import settings
 from employees.models import Employee
 from common.image_utils import compress_avatar
 
@@ -68,7 +69,9 @@ class Command(BaseCommand):
         # Очистка неиспользуемых файлов
         if do_cleanup:
             self.stdout.write('\n=== ОЧИСТКА НЕИСПОЛЬЗУЕМЫХ ФАЙЛОВ ===')
-            avatar_dir = os.path.join('media', 'users', 'avatars')
+            
+            # Используем абсолютный путь из settings
+            avatar_dir = os.path.join(settings.MEDIA_ROOT, 'users', 'avatars')
             
             if not os.path.exists(avatar_dir):
                 self.stdout.write(
