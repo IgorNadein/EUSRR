@@ -39,6 +39,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.exceptions import ValidationError
 
 from ..permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
                            IsSelfOrStaff, has_dept_perm)
@@ -1902,7 +1903,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             )
 
         ser = self.get_serializer(emp, data=request.data, partial=True)
-        ser.is_valid(raise_exception=True)
+        try:
+            ser.is_valid(raise_exception=True)
+        except ValidationError as exc:
+            print("[EMP PATCH] serializer errors: %s" % exc.detail)
+            raise
         vd = dict(ser.validated_data)
         ldap_enabled = _is_ldap_enabled()
 
@@ -2052,7 +2057,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     # Обновляем только оставшиеся поля, чтобы не перетирать работу сервиса
         if vd:
             ser_db = self.get_serializer(emp, data=vd, partial=True)
-            ser_db.is_valid(raise_exception=True)
+            try:
+                ser_db.is_valid(raise_exception=True)
+            except ValidationError as exc:
+                print("[EMP PATCH] DB serializer errors: %s" % exc.detail)
+                raise
             ser_db.save()
             emp = ser_db.instance
             data = ser_db.data
