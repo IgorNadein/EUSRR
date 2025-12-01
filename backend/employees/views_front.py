@@ -508,6 +508,10 @@ def employee_edit_me(request):
     import logging
     logger = logging.getLogger(__name__)
     
+    logger.info("=" * 80)
+    logger.info("[employee_edit_me] ===== FUNCTION CALLED =====")
+    logger.info(f"[employee_edit_me] Method: {request.method}")
+    
     api = get_api_client(request)
     
     # Проверяем Content-Type
