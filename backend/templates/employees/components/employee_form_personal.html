@@ -14,15 +14,25 @@
           <label class="form-label">Фотография</label>
           <div class="d-flex align-items-start gap-3">
             <div class="position-relative">
-              {% if emp.avatar %}
-                <img id="avatarPreview" src="{{ emp.avatar.url }}" alt="Фото" 
-                     class="rounded" style="width: 120px; height: 120px; object-fit: cover; border: 2px solid #dee2e6;">
-              {% else %}
-                <div id="avatarPreview" class="rounded d-flex align-items-center justify-content-center bg-light text-muted" 
-                     style="width: 120px; height: 120px; border: 2px solid #dee2e6;">
-                  <i class="bi-person fs-1"></i>
-                </div>
-              {% endif %}
+              {% with emp.avatar.url|default:emp.avatar as avatar_url %}
+                {% if avatar_url %}
+                  <img
+                    id="avatarPreview"
+                    src="{{ avatar_url }}"
+                    alt="Фото"
+                    class="rounded"
+                    style="width: 120px; height: 120px; object-fit: cover; border: 2px solid #dee2e6;"
+                  >
+                {% else %}
+                  <div
+                    id="avatarPreview"
+                    class="rounded d-flex align-items-center justify-content-center bg-light text-muted"
+                    style="width: 120px; height: 120px; border: 2px solid #dee2e6;"
+                  >
+                    <i class="bi-person fs-1"></i>
+                  </div>
+                {% endif %}
+              {% endwith %}
             </div>
             <div class="flex-grow-1">
               <input type="file" class="form-control mb-2" id="avatarInput" name="avatar" accept="image/*">

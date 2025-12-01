@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+from io import BytesIO
 from typing import Any, Dict, Tuple
 
 from api.client import get_api_client
@@ -16,6 +17,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
+from django.http.multipartparser import MultiPartParser, MultiPartParserError
 
 
 from .forms_front import DepartmentEditForm, SetHeadForm
@@ -43,6 +45,41 @@ def _file_to_data_uri(uploaded) -> str:
     )
     b64 = base64.b64encode(content).decode("ascii")
     return f"data:{mime};base64,{b64}"
+
+
+def _parse_multipart_request(
+    request: HttpRequest, logger
+) -> tuple[Dict[str, Any], Any]:
+    """Возвращает (POST, FILES) даже для PATCH с multipart/form-data."""
+    content_type = request.content_type or ""
+    if request.method == "POST" or "multipart/form-data" not in content_type:
+        return request.POST, request.FILES
+
+    try:
+        stream = BytesIO(request.body)
+        parser = MultiPartParser(
+            request.META,
+            stream,
+            request.upload_handlers,
+            request.encoding,
+        )
+        post_data, files_data = parser.parse()
+        logger.info(
+            "[multipart_parser] Parsed PATCH payload: %s fields, %s files",
+            len(post_data.keys()),
+            len(files_data.keys()),
+        )
+        return post_data, files_data
+    except MultiPartParserError as exc:
+        logger.error(
+            "[multipart_parser] Failed to parse multipart body: %s",
+            exc,
+        )
+    except Exception:
+        logger.exception(
+            "[multipart_parser] Unexpected error while parsing multipart body"
+        )
+    return request.POST, request.FILES
 
 
 def _extract_items(payload: Any):
@@ -444,8 +481,15 @@ def employee_edit(request, pk: int):
     # Проверяем Content-Type
     content_type = request.content_type or ''
     logger.info(f"[employee_edit] pk={pk}, Content-Type: {content_type}")
-    logger.info(f"[employee_edit] request.POST keys: {list(request.POST.keys())}")
-    logger.info(f"[employee_edit] request.FILES keys: {list(request.FILES.keys())}")
+    parsed_post, parsed_files = _parse_multipart_request(request, logger)
+    logger.info(
+        "[employee_edit] request.POST keys: %s",
+        list(parsed_post.keys()),
+    )
+    logger.info(
+        "[employee_edit] request.FILES keys: %s",
+        list(parsed_files.keys()),
+    )
     
     if 'multipart/form-data' in content_type:
         # Обрабатываем multipart/form-data (файлы)
@@ -453,21 +497,28 @@ def employee_edit(request, pk: int):
         payload = {}
         
         # Собираем обычные поля из POST
-        for key, value in request.POST.items():
+        for key, value in parsed_post.items():
             if key == 'csrfmiddlewaretoken':
                 continue
             # Если это массив (например skills_ids)
             if key.endswith('_ids') or key == 'skills':
-                payload[key] = request.POST.getlist(key)
+                payload[key] = parsed_post.getlist(key)
             else:
                 payload[key] = value
         
-        logger.info(f"[employee_edit] Payload before avatar: {list(payload.keys())}")
+        logger.info(
+            "[employee_edit] Payload before avatar: %s",
+            list(payload.keys()),
+        )
         
         # Обрабатываем файлы (аватар)
-        if 'avatar' in request.FILES:
-            avatar_file = request.FILES['avatar']
-            logger.info(f"[employee_edit] Processing avatar: {avatar_file.name}, size: {avatar_file.size}")
+        if 'avatar' in parsed_files:
+            avatar_file = parsed_files['avatar']
+            logger.info(
+                "[employee_edit] Processing avatar: %s, size: %s",
+                avatar_file.name,
+                avatar_file.size,
+            )
             # Конвертируем в data URI для Base64ImageField
             data_uri = _file_to_data_uri(avatar_file)
             payload['avatar'] = data_uri
@@ -494,7 +545,30 @@ def employee_edit(request, pk: int):
         data = resp.json
     except Exception:
         data = {"detail": resp.text}
-    return JsonResponse(data or {}, status=resp.status)
+
+    accepts = (request.headers.get("Accept") or "").lower()
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    wants_json = "application/json" in accepts or is_ajax
+
+    if wants_json:
+        return JsonResponse(data or {}, status=resp.status)
+
+    if resp.ok:
+        messages.success(request, "Профиль сотрудника обновлён")
+    else:
+        detail = ""
+        if isinstance(data, dict):
+            detail = data.get("detail") or data.get("error") or ""
+        messages.error(
+            request,
+            detail or f"Не удалось обновить сотрудника (HTTP {resp.status})",
+        )
+
+    redirect_url = request.META.get("HTTP_REFERER") or reverse(
+        "employees:employee_profile",
+        args=(pk,),
+    )
+    return redirect(redirect_url)
 
 
 # ---------- EDIT ME ----------
@@ -517,8 +591,15 @@ def employee_edit_me(request):
     # Проверяем Content-Type
     content_type = request.content_type or ''
     logger.info(f"[employee_edit_me] Content-Type: {content_type}")
-    logger.info(f"[employee_edit_me] request.POST keys: {list(request.POST.keys())}")
-    logger.info(f"[employee_edit_me] request.FILES keys: {list(request.FILES.keys())}")
+    parsed_post, parsed_files = _parse_multipart_request(request, logger)
+    logger.info(
+        "[employee_edit_me] request.POST keys: %s",
+        list(parsed_post.keys()),
+    )
+    logger.info(
+        "[employee_edit_me] request.FILES keys: %s",
+        list(parsed_files.keys()),
+    )
     
     if 'multipart/form-data' in content_type:
         # Обрабатываем multipart/form-data (файлы)
@@ -526,29 +607,43 @@ def employee_edit_me(request):
         payload = {}
         
         # Собираем обычные поля из POST
-        for key, value in request.POST.items():
+        for key, value in parsed_post.items():
             if key == 'csrfmiddlewaretoken':
                 continue
             # Если это массив (например skills_ids)
             if key.endswith('_ids') or key == 'skills':
-                payload[key] = request.POST.getlist(key)
+                payload[key] = parsed_post.getlist(key)
             else:
                 payload[key] = value
         
-        logger.info(f"[employee_edit_me] Payload before avatar: {list(payload.keys())}")
+        logger.info(
+            "[employee_edit_me] Payload before avatar: %s",
+            list(payload.keys()),
+        )
         
         # Обрабатываем файлы (аватар)
-        if 'avatar' in request.FILES:
-            avatar_file = request.FILES['avatar']
-            logger.info(f"[employee_edit_me] Processing avatar: {avatar_file.name}, size: {avatar_file.size}, content_type: {avatar_file.content_type}")
+        if 'avatar' in parsed_files:
+            avatar_file = parsed_files['avatar']
+            logger.info(
+                "[employee_edit_me] Processing avatar: %s, size: %s, content_type: %s",
+                avatar_file.name,
+                avatar_file.size,
+                avatar_file.content_type,
+            )
             # Конвертируем в data URI для Base64ImageField
             data_uri = _file_to_data_uri(avatar_file)
             payload['avatar'] = data_uri
-            logger.info(f"[employee_edit_me] Avatar converted to data URI, length: {len(data_uri)}")
+            logger.info(
+                "[employee_edit_me] Avatar converted to data URI, length: %s",
+                len(data_uri),
+            )
         else:
             logger.warning("[employee_edit_me] No avatar in request.FILES")
         
-        logger.info(f"[employee_edit_me] Final payload keys: {list(payload.keys())}")
+        logger.info(
+            "[employee_edit_me] Final payload keys: %s",
+            list(payload.keys()),
+        )
         
         # Отправляем в DRF как JSON (с base64 аватаром)
         resp = api.patch("v1/employees/me/", json=payload)
@@ -567,7 +662,27 @@ def employee_edit_me(request):
         data = resp.json
     except Exception:
         data = {"detail": resp.text}
-    return JsonResponse(data or {}, status=resp.status)
+
+    accepts = (request.headers.get("Accept") or "").lower()
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    wants_json = "application/json" in accepts or is_ajax
+
+    if wants_json:
+        return JsonResponse(data or {}, status=resp.status)
+
+    if resp.ok:
+        messages.success(request, "Профиль обновлён")
+    else:
+        detail = ""
+        if isinstance(data, dict):
+            detail = data.get("detail") or data.get("error") or ""
+        messages.error(
+            request,
+            detail or f"Не удалось обновить профиль (HTTP {resp.status})",
+        )
+
+    redirect_url = request.META.get("HTTP_REFERER") or reverse("employees:profile")
+    return redirect(redirect_url)
 
 
 # ---------- CREATE (staff) ----------

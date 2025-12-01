@@ -3,8 +3,13 @@
 {% load static %}
 <link rel="stylesheet" href="{% static 'css/components/modal-overrides.css' %}">
 
-<form id="apiEditForm" class="row g-3" data-endpoint="{{ endpoint }}"
-  action="{% if is_me %}{% url 'employees:employee_set_position_me' %}{% else %}{% url 'employees:employee_set_position' emp.id %}{% endif %}">
+<form
+  id="apiEditForm"
+  class="row g-3"
+  method="post"
+  enctype="multipart/form-data"
+  data-endpoint="{{ endpoint }}"
+  action="{{ endpoint }}">
   {% csrf_token %}
 
   {# === ЛИЧНЫЕ ДАННЫЕ === #}
