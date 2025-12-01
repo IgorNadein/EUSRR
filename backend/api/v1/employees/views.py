@@ -1733,7 +1733,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 elif k == "position":
                     instance.position_id = v
                 elif k == "avatar_bytes" and v:
-                    instance.photo.save(
+                    instance.avatar.save(
                         f"avatar_{instance.id}.jpg",
                         ContentFile(v),
                         save=False,
