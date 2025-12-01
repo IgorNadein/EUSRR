@@ -224,6 +224,7 @@ export function initEmployeeForm(options = {}) {
 
       // Если нечего отправлять — просто обновим UI
       if (Object.keys(payload).length === 0 && !avatarFile) {
+        console.log('[EmployeeForm] Nothing to save, reloading...');
         setSubmitting(false);
         if (window.bootstrap) {
           try {
@@ -234,12 +235,18 @@ export function initEmployeeForm(options = {}) {
         return;
       }
 
+      console.log('[EmployeeForm] Sending PATCH request to:', endpoint);
+      console.log('[EmployeeForm] Headers:', headers);
+      console.log('[EmployeeForm] Body type:', body instanceof FormData ? 'FormData' : typeof body);
+      
       const resp = await fetch(endpoint, {
         method: 'PATCH',
         headers: headers,
         body: body,
         credentials: 'same-origin'
       });
+      
+      console.log('[EmployeeForm] Response status:', resp.status, resp.statusText);
 
       if (!resp.ok) {
         let body = null;
