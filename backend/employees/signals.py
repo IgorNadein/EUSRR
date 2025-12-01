@@ -16,33 +16,33 @@ def compress_and_cleanup_avatar(sender, instance: Employee, **kwargs):
     # Импортируем здесь, чтобы избежать циклических импортов
     from common.image_utils import compress_avatar
     
-    # Проверяем, загружен ли новый файл аватара
-    if instance.avatar and hasattr(instance.avatar, 'file'):
-        try:
-            # Читаем данные нового аватара
-            instance.avatar.seek(0)
-            original_data = instance.avatar.read()
-            
-            # Сжимаем изображение
-            compressed_data = compress_avatar(original_data)
-            
-            # Если сжатие дало результат меньшего размера, заменяем
-            if len(compressed_data) < len(original_data):
-                # Получаем имя файла
-                filename = instance.avatar.name.split('/')[-1]
-                if not filename.lower().endswith('.jpg'):
-                    # Меняем расширение на .jpg
-                    filename = filename.rsplit('.', 1)[0] + '.jpg'
-                
-                # Заменяем файл на сжатый
-                instance.avatar.save(
-                    filename,
-                    ContentFile(compressed_data),
-                    save=False
-                )
-        except Exception as e:
-            # Логируем ошибку, но не прерываем сохранение
-            print(f"Error compressing avatar: {e}")
+    avatar_field = instance.avatar
+    avatar_name = getattr(avatar_field, "name", "")
+    if avatar_field and avatar_name:
+        storage = avatar_field.storage
+        if storage.exists(avatar_name):
+            try:
+                avatar_field.open("rb")
+                avatar_field.seek(0)
+                original_data = avatar_field.read()
+
+                compressed_data = compress_avatar(original_data)
+
+                if len(compressed_data) < len(original_data):
+                    filename = avatar_name.split("/")[-1]
+                    if not filename.lower().endswith(".jpg"):
+                        filename = filename.rsplit(".", 1)[0] + ".jpg"
+
+                    avatar_field.save(
+                        filename,
+                        ContentFile(compressed_data),
+                        save=False,
+                    )
+            except FileNotFoundError:
+                print(f"Avatar file missing during compression: {avatar_name}")
+            except Exception as e:
+                # Логируем ошибку, но не прерываем сохранение
+                print(f"Error compressing avatar: {e}")
     
     # Удаляем старый файл если он был заменен
     if instance.pk is None:

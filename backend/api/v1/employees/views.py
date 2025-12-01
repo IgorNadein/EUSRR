@@ -344,8 +344,25 @@ class RegisterAPIView(APIView):
         if not phone_norm:
             return Response({"ok": False, "error": "invalid_phone"}, status=400)
 
-        if Employee.objects.filter(phone_number=phone_norm).exists():
-            return Response({"ok": False, "error": "phone_taken"}, status=400)
+        existing_phone = Employee.objects.filter(phone_number=phone_norm).first()
+        if existing_phone:
+            logger.warning(
+                "[REGISTER] Phone %s already used by user id=%s",
+                phone_norm,
+                existing_phone.id,
+            )
+            return Response(
+                {
+                    "ok": False,
+                    "error": "phone_taken",
+                    "detail": "Номер телефона уже зарегистрирован."
+                    " Войдите в существующий аккаунт или используйте другой номер.",
+                    "phone_number": [
+                        "Этот номер телефона уже привязан к другому аккаунту."
+                    ],
+                },
+                status=400,
+            )
 
         user = Employee.objects.filter(email__iexact=email).first()
         if user:
