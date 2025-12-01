@@ -1,5 +1,6 @@
-# backend/api/v1/employees/views.py
+# flake8: noqa
 from __future__ import annotations
+# backend/api/v1/employees/views.py
 
 import traceback
 from datetime import timedelta
@@ -1902,7 +1903,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 % (avatar_file_req.name, avatar_file_req.size)
             )
 
-        ser = self.get_serializer(emp, data=request.data, partial=True)
+        data = request.data.copy()
+        if hasattr(data, "_mutable") and not data._mutable:
+            data._mutable = True
+        avatar_raw = data.get("avatar")
+        if avatar_raw in ("", None):
+            data.pop("avatar", None)
+            print("[EMP PATCH] removed empty avatar value from payload")
+
+        ser = self.get_serializer(emp, data=data, partial=True)
         try:
             ser.is_valid(raise_exception=True)
         except ValidationError as exc:
@@ -1935,25 +1944,33 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         email_changed = new_email and new_email.lower() != old_email.lower()
 
         # --- LDAP часть ---
-        ldap_keys = {"first_name", "last_name", "email", "phone_number", "is_active"}
-        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
+        ldap_keys = {
+            "first_name",
+            "last_name",
+            "email",
+            "phone_number",
+            "is_active",
+        }
+        ldap_changes = {
+            k: vd.pop(k)
+            for k in list(vd.keys())
+            if k in ldap_keys
+        }
 
         svc_changes = dict(ldap_changes)
-        pos_key_present = ("position" in request.data) or (
-            "position_id" in request.data
-        )
+        pos_key_present = ("position" in data) or ("position_id" in data)
         if pos_key_present:
             pos_raw = (
-                request.data.get("position")
-                if "position" in request.data
-                else request.data.get("position_id")
+                data.get("position")
+                if "position" in data
+                else data.get("position_id")
             )
-            svc_changes["position"] = pos_raw  # тут может быть None — так и надо
+            svc_changes["position"] = pos_raw  # None допустим
             vd.pop("position", None)
             vd.pop("position_id", None)
 
-        move_to_department_dn = request.data.get("department_dn")
-        group_cns = request.data.get("group_cns")  # список строк/None
+        move_to_department_dn = data.get("department_dn")
+        group_cns = data.get("group_cns")  # список строк/None
 
         # avatar → bytes (если разрешено править аватар в LDAP)
         avatar_file = ser.validated_data.get("avatar")
@@ -2052,11 +2069,12 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     )
                 except Exception as exc:
                     print(
-                        "[EMP PATCH] Error while saving avatar in DB mode: %s" % exc
+                        "[EMP PATCH] Error while saving avatar in DB mode: %s"
+                        % exc
                     )
 
         # --- DB-only часть ---
-    # Обновляем только оставшиеся поля, чтобы не перетирать работу сервиса
+        # Обновляем только оставшиеся поля, чтобы не перетирать работу сервиса
         if vd:
             ser_db = self.get_serializer(emp, data=vd, partial=True)
             try:
@@ -2139,7 +2157,9 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
             )
         qs = Group.objects.filter(id__in=ids)
         if qs.count() != len(set(ids)):
-            return None, Response({"detail": "Некоторые группы не найдены"}, status=400)
+            return None, Response(
+                {"detail": "Некоторые группы не найдены"}, status=400
+            )
         return qs, None
 
     def get_permissions(self):
@@ -2165,7 +2185,10 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if err2:
             return err2
         return Response(
-            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))}
+            {
+                "ok": True,
+                "group_ids": list(pos.groups.values_list("id", flat=True)),
+            }
         )
 
     @action(detail=True, methods=["post"])
@@ -2179,7 +2202,10 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if err2:
             return err2
         return Response(
-            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))}
+            {
+                "ok": True,
+                "group_ids": list(pos.groups.values_list("id", flat=True)),
+            }
         )
 
     @action(detail=True, methods=["post"])
@@ -2193,7 +2219,10 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         if err2:
             return err2
         return Response(
-            {"ok": True, "group_ids": list(pos.groups.values_list("id", flat=True))}
+            {
+                "ok": True,
+                "group_ids": list(pos.groups.values_list("id", flat=True)),
+            }
         )
 
     @action(detail=True, methods=["get"])
@@ -2240,9 +2269,10 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
 class DepartmentRoleViewSet(viewsets.ModelViewSet):
     """
-    Роли отдела:
-      - list/retrieve с фильтром ?department=<id>
-      - create/update/destroy → требуется право DeptPerm.ASSIGN_ROLE в рамках отдела роли
+        Роли отдела:
+            - list/retrieve с фильтром ?department=<id>
+            - create/update/destroy → требуется право DeptPerm.ASSIGN_ROLE
+                в рамках отдела роли
       - GET  /department-roles/perm_choices/
       - GET  /department-roles/{id}/perms/
       - POST /department-roles/{id}/set_perms  (ids или codes; полная замена)
