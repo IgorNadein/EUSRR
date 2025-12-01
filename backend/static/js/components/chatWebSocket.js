@@ -207,9 +207,58 @@ export function initChatWebSocket(options = {}) {
         return;
       }
 
+      // Обработка начальной загрузки сообщений
+      if (data.type === 'initial_messages') {
+        // Убираем лоадер
+        const loader = scrollEl.querySelector('.initial-loader');
+        if (loader) {
+          loader.remove();
+        }
+        
+        // Рендерим все сообщения
+        if (data.messages && Array.isArray(data.messages)) {
+          data.messages.forEach(msg => renderMessage(msg));
+        }
+        
+        // Скроллим вниз после загрузки
+        if (autoscroll) {
+          setTimeout(() => autoscroll(), 100);
+        }
+        return;
+      }
+
       // Обработка события "печатает..."
       if (data.type === 'typing' && Number(data.user_id) !== Number(meId)) {
         showTyping();
+        return;
+      }
+
+      // События реакций - диспетчеризуем для обработки в chat-reactions-integration.js
+      if (data.type === 'reaction_added') {
+        console.log('[ChatWebSocket] >>> Dispatching reaction_added event:', data);
+        window.dispatchEvent(new CustomEvent('chat:reaction-added', { detail: data }));
+        console.log('[ChatWebSocket] >>> Event dispatched');
+        return;
+      }
+      
+      if (data.type === 'reaction_removed') {
+        console.log('[ChatWebSocket] >>> Dispatching reaction_removed event:', data);
+        window.dispatchEvent(new CustomEvent('chat:reaction-removed', { detail: data }));
+        console.log('[ChatWebSocket] >>> Event dispatched');
+        return;
+      }
+
+      // Событие редактирования сообщения
+      if (data.type === 'message_edited') {
+        console.log('[ChatWebSocket] >>> Dispatching message_edited event:', data);
+        window.dispatchEvent(new CustomEvent('chat:message-edited', { detail: data }));
+        console.log('[ChatWebSocket] >>> Event dispatched');
+        return;
+      }
+
+      // События обновления голосования - диспетчеризуем для обработки
+      if (data.type === 'poll_update') {
+        window.dispatchEvent(new CustomEvent('chat:poll-update', { detail: data }));
         return;
       }
 
@@ -270,21 +319,18 @@ export function initChatWebSocket(options = {}) {
 
   /**
    * Обрабатывает отправку формы
+   * ОТКЛЮЧЕНО: теперь отправка только через chatComposer.js -> REST API
    */
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    
-    const text = (ta?.value || '').trim();
-    if (!text || ws.readyState !== WebSocket.OPEN) return;
-
-    ws.send(JSON.stringify({ content: text }));
-    ta.value = '';
-    ta.dispatchEvent(new Event('input'));
+    console.log('ChatWebSocket: form submission intercepted but ignored (handled by chatComposer.js)');
+    // Отправка теперь обрабатывается через chatComposer.js
   };
 
-  if (bindFormSubmit && form) {
-    form.addEventListener('submit', handleFormSubmit);
-  }
+  // НЕ привязываем обработчик - пусть chatComposer.js обрабатывает
+  // if (bindFormSubmit && form) {
+  //   form.addEventListener('submit', handleFormSubmit);
+  // }
 
   /**
    * Обрабатывает ввод в textarea (индикация "печатает...")

@@ -81,69 +81,7 @@
         <div id="sec-global" class="list-chats">
           {% for chat in chats %}
             {% if chat.type == 'global' %}
-              {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
-                  data-chat-id="{{ chat.pk }}"
-                  data-type="global"
-                  data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
-                  data-haystack="глобальный чат">
-                
-                {# Аватар или иконка #}
-                <div class="card-icon" style="width:44px;height:44px;">
-                  {% if chat.avatar %}
-                    <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
-                  {% else %}
-                    <i class="bi-globe"></i>
-                  {% endif %}
-                </div>
-                
-                <div class="flex-grow-1 position-relative">
-                  <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
-                      {{ chat.name|default:"Глобальный чат" }}
-                      {% if chat.is_main %}
-                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">
-                          <i class="bi-star-fill"></i> Основной
-                        </span>
-                      {% endif %}
-                    </a>
-                    <span class="badge bg-light text-dark border">
-                      <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
-                    </span>
-                    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
-                          data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
-                  </div>
-                  <div class="card-subtitle mt-1">
-                    {% if last %}
-                      <span class="text-secondary">
-                        <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
-                        <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:120 }}</span>
-                      </span>
-                    {% else %}
-                      <span class="text-secondary">Сообщений пока нет.</span>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {# Меню действий - Глобальный чат #}
-                <div class="chat-actions-menu position-relative" style="z-index:2;">
-                  <button class="btn btn-sm btn-link text-secondary p-1" type="button" data-chat-menu-btn data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi-three-dots-vertical"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i><span data-pin-text>Закрепить</span></a></li>
-                    <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
-                    {% if not chat.is_main %}
-                      <li><a class="dropdown-item" href="#" data-action="edit"><i class="bi-pencil me-2"></i>Редактировать</a></li>
-                      <li><hr class="dropdown-divider"></li>
-                      <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
-                    {% endif %}
-                  </ul>
-                </div>
-
-              </div>
-              {% endwith %}
+              {% include "includes/components/chat_card.html" with chat=chat %}
             {% endif %}
           {% endfor %}
         </div>
@@ -162,73 +100,7 @@
         <div id="sec-department" class="list-chats">
           {% for chat in chats %}
             {% if chat.type == 'department' %}
-              {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
-                  data-chat-id="{{ chat.pk }}"
-                  data-type="department"
-                  data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
-                  data-haystack="{{ chat.name|default:'Основной чат' }} {{ chat.department.name }}">
-                
-                {# Аватар чата отдела или иконка #}
-                <div class="card-icon" style="width:44px;height:44px;">
-                  {% if chat.avatar %}
-                    <img src="{{ chat.avatar.url }}" alt="{{ chat.name|default:'Основной чат' }}" class="chat-avatar" loading="lazy">
-                  {% else %}
-                    <i class="bi-diagram-3"></i>
-                  {% endif %}
-                </div>
-                
-                <div class="flex-grow-1 position-relative">
-                  <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
-                      {{ chat.name|default:"Основной чат" }}
-                      {% if chat.is_main %}
-                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">
-                          <i class="bi-star-fill"></i> Основной
-                        </span>
-                      {% endif %}
-                    </a>
-                    <span class="badge bg-light text-dark border">
-                      <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
-                    </span>
-                    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
-                          data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
-                  </div>
-                  <div class="card-subtitle mt-1">
-                    {# Название отдела таким же шрифтом как последнее сообщение #}
-                    <span class="text-secondary">
-                      <i class="bi-diagram-3"></i> {{ chat.department.name }}
-                    </span>
-                    {% if last %}
-                      <span class="text-secondary">
-                        · <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
-                        <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:100 }}</span>
-                      </span>
-                    {% else %}
-                      <span class="text-secondary"> · Сообщений пока нет</span>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {# Меню действий - Отдел #}
-                <div class="chat-actions-menu position-relative" style="z-index:2;">
-                  <button class="btn btn-sm btn-link text-secondary p-1" type="button" data-chat-menu-btn data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi-three-dots-vertical"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i><span data-pin-text>Закрепить</span></a></li>
-                    <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
-                    {% if not chat.is_main %}
-                      <li><a class="dropdown-item" href="#" data-action="edit"><i class="bi-pencil me-2"></i>Редактировать</a></li>
-                      <li><hr class="dropdown-divider"></li>
-                      <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
-                    {% endif %}
-                  </ul>
-                </div>
-
-              </div>
-              {% endwith %}
+              {% include "includes/components/chat_card.html" with chat=chat %}
             {% endif %}
           {% endfor %}
         </div>
@@ -247,74 +119,7 @@
         <div id="sec-private" class="list-chats">
           {% for chat in chats %}
             {% if chat.type == 'private' %}
-              {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
-                  data-chat-id="{{ chat.pk }}"
-                  data-type="private"
-                  data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
-                  data-haystack="{% for u in chat.participants.all %}{% if u != user %} {{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}">
-                
-                {# Аватар собеседника #}
-                <div class="card-icon" style="width:44px;height:44px;">
-                  {% with p0=chat.participants.all.0 p1=chat.participants.all.1 %}
-                    {% if p0 and p0 != user %}
-                      {% if p0.avatar %}
-                        <img src="{{ p0.avatar.url }}" alt="{{ p0.get_full_name|default:p0.username }}" class="chat-avatar" loading="lazy">
-                      {% else %}
-                        <i class="bi-person"></i>
-                      {% endif %}
-                    {% elif p1 and p1 != user %}
-                      {% if p1.avatar %}
-                        <img src="{{ p1.avatar.url }}" alt="{{ p1.get_full_name|default:p1.username }}" class="chat-avatar" loading="lazy">
-                      {% else %}
-                        <i class="bi-person"></i>
-                      {% endif %}
-                    {% else %}
-                      <i class="bi-person"></i>
-                    {% endif %}
-                  {% endwith %}
-                </div>
-
-                <div class="flex-grow-1 position-relative">
-                  <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
-                      {% comment %}Показываем имена участников (кроме текущего){% endcomment %}
-                      {% for u in chat.participants.all %}{% if u.id != user.id %}{% cycle '' ', ' %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}
-                    </a>
-                    <span class="badge bg-light text-dark border">
-                      <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
-                    </span>
-                    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
-                          data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
-                  </div>
-                  <div class="card-subtitle mt-1">
-                    {% if last %}
-                      <span class="text-secondary">
-                        <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
-                        <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:120 }}</span>
-                      </span>
-                    {% else %}
-                      <span class="text-secondary">Сообщений пока нет.</span>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {# Меню действий - Личный чат #}
-                <div class="chat-actions-menu position-relative" style="z-index:2;">
-                  <button class="btn btn-sm btn-link text-secondary p-1" type="button" data-chat-menu-btn data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi-three-dots-vertical"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i><span data-pin-text>Закрепить</span></a></li>
-                    <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
-                  </ul>
-                </div>
-
-              </div>
-              {% endwith %}
+              {% include "includes/components/chat_card.html" with chat=chat %}
             {% endif %}
           {% endfor %}
         </div>
@@ -333,68 +138,7 @@
         <div id="sec-group" class="list-chats">
           {% for chat in chats %}
             {% if chat.type == 'group' %}
-              {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
-                  data-chat-id="{{ chat.pk }}"
-                  data-type="group"
-                  data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
-                  data-haystack="{{ chat.name }} {{ chat.description }}">
-                
-                <div class="card-icon" style="width:44px;height:44px;">
-                  {% if chat.avatar %}
-                    <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
-                  {% else %}
-                    <i class="bi-people-fill"></i>
-                  {% endif %}
-                </div>
-
-                <div class="flex-grow-1 position-relative">
-                  <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
-                      {{ chat.name }}
-                    </a>
-                    <span class="badge bg-light text-dark border">
-                      <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
-                    </span>
-                    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
-                          data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
-                  </div>
-                  <div class="card-subtitle mt-1">
-                    {# Описание группы если есть #}
-                    {% if chat.description %}
-                      <span class="text-secondary">
-                        <i class="bi-info-circle"></i> {{ chat.description|truncatechars:80 }}
-                      </span>
-                    {% endif %}
-                    {% if last %}
-                      <span class="text-secondary">
-                        {% if chat.description %}<br>{% endif %}<span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
-                        <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:100 }}</span>
-                      </span>
-                    {% elif not chat.description %}
-                      <span class="text-secondary">Сообщений пока нет.</span>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {# Меню действий #}
-                <div class="chat-actions-menu position-relative" style="z-index:2;">
-                  <button class="btn btn-sm btn-link text-secondary p-1" type="button" data-chat-menu-btn data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi-three-dots-vertical"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i>Закрепить</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="edit"><i class="bi-pencil me-2"></i>Редактировать</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="manage"><i class="bi-gear me-2"></i>Управление</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
-                  </ul>
-                </div>
-
-              </div>
-              {% endwith %}
+              {% include "includes/components/chat_card.html" with chat=chat %}
             {% endif %}
           {% endfor %}
         </div>
@@ -413,62 +157,7 @@
         <div id="sec-channel" class="list-chats">
           {% for chat in chats %}
             {% if chat.type == 'channel' %}
-              {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
-                  data-chat-id="{{ chat.pk }}"
-                  data-type="channel"
-                  data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
-                  data-haystack="{{ chat.name }} {{ chat.description }}">
-                
-                <div class="card-icon" style="width:44px;height:44px;">
-                  {% if chat.avatar %}
-                    <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
-                  {% else %}
-                    <i class="bi-broadcast"></i>
-                  {% endif %}
-                </div>
-
-                <div class="flex-grow-1 position-relative">
-                  <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
-                      {{ chat.name }}
-                    </a>
-                    <span class="badge bg-light text-dark border">
-                      <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
-                    </span>
-                    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
-                          data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
-                  </div>
-                  <div class="card-subtitle mt-1">
-                    {% if last %}
-                      <span class="text-secondary">
-                        <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
-                        <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:120 }}</span>
-                      </span>
-                    {% else %}
-                      <span class="text-secondary">Сообщений пока нет.</span>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {# Меню действий #}
-                <div class="chat-actions-menu position-relative" style="z-index:2;">
-                  <button class="btn btn-sm btn-link text-secondary p-1" type="button" data-chat-menu-btn data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi-three-dots-vertical"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i>Закрепить</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="edit"><i class="bi-pencil me-2"></i>Редактировать</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="manage"><i class="bi-gear me-2"></i>Управление</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
-                  </ul>
-                </div>
-
-              </div>
-              {% endwith %}
+              {% include "includes/components/chat_card.html" with chat=chat %}
             {% endif %}
           {% endfor %}
         </div>
@@ -487,67 +176,7 @@
         <div id="sec-announcement" class="list-chats">
           {% for chat in chats %}
             {% if chat.type == 'announcement' %}
-              {% with last=chat.last_message.0 %}
-              <div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
-                  data-chat-id="{{ chat.pk }}"
-                  data-type="announcement"
-                  data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
-                  data-haystack="{{ chat.name }} {{ chat.description }}">
-                
-                <div class="card-icon" style="width:44px;height:44px;">
-                  {% if chat.avatar %}
-                    <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
-                  {% else %}
-                    <i class="bi-megaphone"></i>
-                  {% endif %}
-                </div>
-
-                <div class="flex-grow-1 position-relative">
-                  <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link">
-                      {{ chat.name }}
-                    </a>
-                    {% if chat.is_blocked %}
-                      <span class="badge bg-danger">
-                        <i class="bi-lock-fill"></i> Заблокировано
-                      </span>
-                    {% endif %}
-                    <span class="badge bg-light text-dark border">
-                      <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
-                    </span>
-                    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
-                          data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
-                  </div>
-                  <div class="card-subtitle mt-1">
-                    {% if last %}
-                      <span class="text-secondary">
-                        <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
-                        <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
-                        <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:120 }}</span>
-                      </span>
-                    {% else %}
-                      <span class="text-secondary">Сообщений пока нет.</span>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {# Меню действий #}
-                <div class="chat-actions-menu position-relative" style="z-index:2;">
-                  <button class="btn btn-sm btn-link text-secondary p-1" type="button" data-chat-menu-btn data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi-three-dots-vertical"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="#" data-action="pin"><i class="bi-pin me-2"></i>Закрепить</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="notifications"><i class="bi-bell me-2"></i>Уведомления</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="edit"><i class="bi-pencil me-2"></i>Редактировать</a></li>
-                    <li><a class="dropdown-item" href="#" data-action="manage"><i class="bi-gear me-2"></i>Управление</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="bi-trash me-2"></i>Удалить</a></li>
-                  </ul>
-                </div>
-
-              </div>
-              {% endwith %}
+              {% include "includes/components/chat_card.html" with chat=chat %}
             {% endif %}
           {% endfor %}
         </div>
@@ -1044,6 +673,16 @@
   }
 </script>
 
-{# Подключаем chat-list-enhanced.js для WebSocket и контекстного меню #}
-<script src="{% static 'js/chat-list-enhanced.js' %}"></script>
+{# ========== CHAT SCRIPTS ========== #}
+{# Общие скрипты для всех chat-страниц #}
+{% include "includes/chat_scripts.html" %}
+
+{# Скрипты специфичные для chat_list #}
+{% include "includes/chat_list_scripts.html" %}
+
+{# УСТАРЕЛО: chat-list-enhanced.js больше не используется #}
+{# Весь функционал перенесён в модульные компоненты: #}
+{# - chatListFilter.js - фильтрация чатов #}
+{# - chatListRealtime.js - real-time обновления #}
+{# - userWebSocket.js - единое WS соединение #}
 {% endblock %}

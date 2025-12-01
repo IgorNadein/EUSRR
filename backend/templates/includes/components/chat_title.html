@@ -1,0 +1,37 @@
+{# includes/components/chat_title.html #}
+{# Заголовок для карточки чата в списке #}
+{% load static %}
+
+<div class="d-flex align-items-center gap-2 flex-wrap">
+  <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link" data-chat-name="{% if chat.type == 'global' %}{{ chat.name|default:"Глобальный чат" }}{% elif chat.type == 'department' %}{{ chat.name|default:"Основной чат" }}{% elif chat.type == 'private' %}{% for u in chat.participants.all %}{% if u.id != user.id %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}{% else %}{{ chat.name }}{% endif %}">
+    {% if chat.type == 'global' %}
+      {{ chat.name|default:"Глобальный чат" }}
+    
+    {% elif chat.type == 'department' %}
+      {{ chat.name|default:"Основной чат" }}
+    
+    {% elif chat.type == 'private' %}
+      {# Показываем имена участников (кроме текущего) #}
+      {% for u in chat.participants.all %}{% if u.id != user.id %}{% cycle '' ', ' %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}
+    
+    {% else %}
+      {{ chat.name }}
+    {% endif %}
+    
+    {# Бейдж "Основной" #}
+    {% if chat.is_main %}
+      <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">
+        <i class="bi-star-fill"></i> Основной
+      </span>
+    {% endif %}
+  </a>
+  
+  {# Количество сообщений #}
+  <span class="badge bg-light text-dark border">
+    <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
+  </span>
+  
+  {# Счётчик непрочитанных #}
+  <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
+        data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
+</div>

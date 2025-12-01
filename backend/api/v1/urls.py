@@ -11,8 +11,24 @@ from .feed.views import CommentViewSet, PostViewSet
 from .documents.views import DocumentViewSet
 from .requests_app.views import RequestViewSet
 from .communications.views import (
+    add_reaction,
+    bulk_delete_messages,
+    delete_message,
+    edit_message,
+    forward_messages,
+    get_available_reactions,
+    get_message_reactions,
+    get_user_chats,
     load_chat_messages,
+    pin_chat,
+    remove_reaction,
     upload_message_with_attachments,
+)
+from .communications.poll_views import (
+    close_poll,
+    create_poll,
+    get_poll_results,
+    vote_poll,
 )
 
 app_name = "v1"
@@ -57,6 +73,11 @@ urlpatterns = [
         name="verify-email",
     ),
     path(
+        "communications/chats/",
+        get_user_chats,
+        name="user_chats"
+    ),
+    path(
         "communications/upload-message/",
         upload_message_with_attachments,
         name="upload_message"
@@ -65,6 +86,72 @@ urlpatterns = [
         "communications/chats/<int:pk>/messages/",
         load_chat_messages,
         name="chat_messages",
+    ),
+    path(
+        "communications/chats/<int:chat_id>/pin/",
+        pin_chat,
+        name="pin_chat"
+    ),
+    path(
+        "communications/messages/<int:message_id>/reactions/",
+        get_message_reactions,
+        name="message_reactions"
+    ),
+    path(
+        "communications/reactions/available/",
+        get_available_reactions,
+        name="available_reactions"
+    ),
+    path(
+        "communications/messages/<int:message_id>/react/",
+        add_reaction,
+        name="add_reaction"
+    ),
+    path(
+        "communications/messages/<int:message_id>/unreact/",
+        remove_reaction,
+        name="remove_reaction"
+    ),
+    path(
+        "communications/messages/<int:message_id>/edit/",
+        edit_message,
+        name="edit_message"
+    ),
+    path(
+        "communications/messages/<int:message_id>/delete/",
+        delete_message,
+        name="delete_message"
+    ),
+    path(
+        "communications/messages/forward/",
+        forward_messages,
+        name="forward_messages"
+    ),
+    path(
+        "communications/messages/bulk-delete/",
+        bulk_delete_messages,
+        name="bulk_delete_messages"
+    ),
+    # Poll endpoints
+    path(
+        "communications/polls/create/",
+        create_poll,
+        name="create_poll"
+    ),
+    path(
+        "communications/polls/<int:poll_id>/vote/",
+        vote_poll,
+        name="vote_poll"
+    ),
+    path(
+        "communications/polls/<int:poll_id>/close/",
+        close_poll,
+        name="close_poll"
+    ),
+    path(
+        "communications/polls/<int:poll_id>/results/",
+        get_poll_results,
+        name="poll_results"
     ),
     path("", include(router.urls)),
 ]

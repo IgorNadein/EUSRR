@@ -8,6 +8,9 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
 from .models import (
     Chat,
     ChatMembership,
@@ -419,12 +422,25 @@ def edit_message(request, message_id):
 @require_POST
 def delete_message(request, message_id):
     """Удаление сообщения"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(
+        "[DELETE_MESSAGE] API called: message_id=%s, user=%s",
+        message_id, request.user.username
+    )
+    
     message = get_object_or_404(Message, pk=message_id)
+    logger.info(
+        "[DELETE_MESSAGE] Message found: chat_id=%s, author=%s",
+        message.chat_id, message.author.username
+    )
     
     # Проверка: автор или модератор/админ чата
     can_delete = False
     if message.author == request.user:
         can_delete = True
+        logger.info("[DELETE_MESSAGE] User is author, can delete")
     else:
         membership = ChatMembership.objects.filter(
             chat=message.chat,
@@ -433,60 +449,46 @@ def delete_message(request, message_id):
         ).first()
         if membership:
             can_delete = True
+            logger.info(
+                "[DELETE_MESSAGE] User has moderator role: %s",
+                membership.role
+            )
     
     if not can_delete:
+        logger.warning(
+            "[DELETE_MESSAGE] Permission denied for user %s",
+            request.user.username
+        )
         return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
     
+    logger.info("[DELETE_MESSAGE] Marking message as deleted")
     message.is_deleted = True
     message.deleted_at = timezone.now()
     message.deleted_by = request.user
     message.save()
+    logger.info(
+        "[DELETE_MESSAGE] Message deleted successfully: %s", message_id
+    )
+    
+    # Отправляем WebSocket событие всем участникам чата
+    logger.info(
+        "[DELETE_MESSAGE] Sending WebSocket event to chat group: chat_%s",
+        message.chat_id
+    )
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"chat_{message.chat_id}",
+        {
+            "type": "chat.message_deleted",
+            "chat_id": message.chat_id,
+            "message_id": message_id
+        }
+    )
+    logger.info(
+        "[DELETE_MESSAGE] WebSocket event sent for message_id=%s", message_id
+    )
     
     return JsonResponse({'ok': True})
-
-
-@login_required
-@require_POST
-def add_reaction(request, message_id):
-    """Добавление реакции на сообщение"""
-    message = get_object_or_404(Message, pk=message_id)
-    emoji = request.POST.get('emoji', '').strip()
-    
-    if not emoji:
-        return JsonResponse({'ok': False, 'error': 'Emoji required'}, status=400)
-    
-    reactions = message.reactions or {}
-    
-    if emoji not in reactions:
-        reactions[emoji] = []
-    
-    if request.user.id not in reactions[emoji]:
-        reactions[emoji].append(request.user.id)
-    
-    message.reactions = reactions
-    message.save()
-    
-    return JsonResponse({'ok': True, 'reactions': reactions})
-
-
-@login_required
-@require_POST
-def remove_reaction(request, message_id):
-    """Удаление реакции"""
-    message = get_object_or_404(Message, pk=message_id)
-    emoji = request.POST.get('emoji', '').strip()
-    
-    reactions = message.reactions or {}
-    
-    if emoji in reactions and request.user.id in reactions[emoji]:
-        reactions[emoji].remove(request.user.id)
-        if not reactions[emoji]:
-            del reactions[emoji]
-    
-    message.reactions = reactions
-    message.save()
-    
-    return JsonResponse({'ok': True, 'reactions': reactions})
 
 
 @login_required

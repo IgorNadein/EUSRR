@@ -1,0 +1,69 @@
+{# includes/components/chat_avatar.html #}
+{# Аватар для карточки чата в списке #}
+{% load static %}
+
+<div class="card-icon" style="width:44px;height:44px;">
+  {% if chat.type == 'global' %}
+    {% if chat.avatar %}
+      <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
+    {% else %}
+      <i class="bi-globe"></i>
+    {% endif %}
+  
+  {% elif chat.type == 'department' %}
+    {% if chat.avatar %}
+      <img src="{{ chat.avatar.url }}" alt="{{ chat.name|default:'Основной чат' }}" class="chat-avatar" loading="lazy">
+    {% else %}
+      <i class="bi-diagram-3"></i>
+    {% endif %}
+  
+  {% elif chat.type == 'private' %}
+    {# Показываем аватар собеседника #}
+    {% with p0=chat.participants.all.0 p1=chat.participants.all.1 %}
+      {% if p0 and p0 != user %}
+        {% if p0.avatar %}
+          <img src="{{ p0.avatar.url }}" alt="{{ p0.get_full_name|default:p0.username }}" class="chat-avatar" loading="lazy">
+        {% else %}
+          <i class="bi-person"></i>
+        {% endif %}
+      {% elif p1 and p1 != user %}
+        {% if p1.avatar %}
+          <img src="{{ p1.avatar.url }}" alt="{{ p1.get_full_name|default:p1.username }}" class="chat-avatar" loading="lazy">
+        {% else %}
+          <i class="bi-person"></i>
+        {% endif %}
+      {% else %}
+        <i class="bi-person"></i>
+      {% endif %}
+    {% endwith %}
+  
+  {% elif chat.type == 'group' %}
+    {% if chat.avatar %}
+      <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
+    {% else %}
+      <i class="bi-people-fill"></i>
+    {% endif %}
+  
+  {% elif chat.type == 'channel' %}
+    {% if chat.avatar %}
+      <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
+    {% else %}
+      <i class="bi-broadcast"></i>
+    {% endif %}
+  
+  {% elif chat.type == 'announcement' %}
+    {% if chat.avatar %}
+      <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
+    {% else %}
+      <i class="bi-megaphone"></i>
+    {% endif %}
+  
+  {% else %}
+    {# Fallback #}
+    {% if chat.avatar %}
+      <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar" loading="lazy">
+    {% else %}
+      <i class="bi-chat-dots"></i>
+    {% endif %}
+  {% endif %}
+</div>

@@ -101,6 +101,17 @@ class ChatListView(LoginRequiredMixin, ListView):
     template_name = "communications/chat_list.html"
     context_object_name = "chats"
 
+    def dispatch(self, request, *args, **kwargs):
+        """Добавляем заголовки для отключения кэширования"""
+        response = super().dispatch(request, *args, **kwargs)
+        # Запрещаем кэширование списка чатов
+        response['Cache-Control'] = (
+            'no-cache, no-store, must-revalidate, max-age=0'
+        )
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # Добавляем список отделов для выбора при создании чата
@@ -193,6 +204,17 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
     template_name = "communications/chat_detail.html"
     context_object_name = "chat"
     form_class = MessageForm
+
+    def dispatch(self, request, *args, **kwargs):
+        """Добавляем заголовки для отключения кэширования"""
+        response = super().dispatch(request, *args, **kwargs)
+        # Запрещаем кэширование страницы чата в браузере
+        response['Cache-Control'] = (
+            'no-cache, no-store, must-revalidate, max-age=0'
+        )
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
     def get_queryset(self):
         """Возвращает только чаты, к которым пользователь имеет доступ"""

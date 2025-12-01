@@ -428,15 +428,32 @@ class Message(models.Model):
     )
     pinned_at = models.DateTimeField(null=True, blank=True)
     
-    # Реакции
-    reactions = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Формат: {'👍': [user_id1, user_id2], '❤️': [user_id3]}"
-    )
-    
     # Флаги для специальных типов сообщений
     is_forwarded = models.BooleanField(default=False)
+    forwarded_from_message_id = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="ID исходного сообщения при пересылке"
+    )
+    forwarded_from_author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='forwarded_messages_source',
+        help_text="Автор исходного сообщения при пересылке"
+    )
+    forwarded_from_created_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Дата создания исходного сообщения при пересылке"
+    )
+    forwarded_from_chat_name = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Название исходного чата при пересылке"
+    )
     is_cross_chat = models.BooleanField(
         default=False,
         help_text="Сообщение отправлено не участником чата"
@@ -467,6 +484,35 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.author}: {self.content[:30]}"
+
+    def get_reactions_summary(self):
+        """
+        Получить сводку по реакциям для этого сообщения
+        Возвращает словарь вида:
+        {
+            '👍': {'count': 3, 'users': [1, 2, 3], 'user_names': ['User1', ...]},
+            '❤️': {'count': 1, 'users': [4], 'user_names': ['User4']}
+        }
+        """
+        # Используем related_name='reactions' из MessageReaction
+        reactions_qs = self.reactions.select_related('user')
+        
+        summary = {}
+        for reaction in reactions_qs:
+            emoji = reaction.emoji
+            if emoji not in summary:
+                summary[emoji] = {
+                    'count': 0,
+                    'users': [],
+                    'user_names': []
+                }
+            summary[emoji]['count'] += 1
+            summary[emoji]['users'].append(reaction.user_id)
+            summary[emoji]['user_names'].append(
+                reaction.user.get_full_name() or reaction.user.username
+            )
+        
+        return summary
 
 
 class MessageAttachment(models.Model):
@@ -894,3 +940,308 @@ class ChatMembership(models.Model):
     
     def __str__(self):
         return f"{self.user} в {self.chat} ({self.get_role_display()})"
+
+
+class MessageReaction(models.Model):
+    """Реакции на сообщения (эмодзи)"""
+    
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='reactions',
+        verbose_name="Сообщение"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='message_reactions',
+        verbose_name="Пользователь"
+    )
+    emoji = models.CharField(
+        max_length=10,
+        verbose_name="Эмодзи",
+        help_text="Unicode эмодзи (например: 👍, ❤️, 😂)"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Время добавления"
+    )
+    
+    class Meta:
+        verbose_name = "Реакция на сообщение"
+        verbose_name_plural = "Реакции на сообщения"
+        unique_together = [('message', 'user')]
+        indexes = [
+            models.Index(fields=['message', 'emoji']),
+            models.Index(fields=['message', 'user']),
+            models.Index(fields=['created_at']),
+        ]
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f"{self.user} {self.emoji} → сообщение {self.message_id}"
+
+
+class AvailableReaction(models.Model):
+    """Доступные реакции для сообщений"""
+    
+    emoji = models.CharField(
+        max_length=10,
+        unique=True,
+        verbose_name="Эмодзи",
+        help_text="Unicode эмодзи (например: 👍, ❤️, 😂)"
+    )
+    name = models.CharField(
+        max_length=50,
+        verbose_name="Название",
+        help_text="Человекочитаемое название (например: 'Лайк', 'Сердце')"
+    )
+    order = models.IntegerField(
+        default=0,
+        verbose_name="Порядок отображения",
+        help_text="Меньше = выше в списке"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активна",
+        help_text="Отображать ли эту реакцию пользователям"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата добавления"
+    )
+    
+    class Meta:
+        verbose_name = "Доступная реакция"
+        verbose_name_plural = "Доступные реакции"
+        ordering = ['order', 'created_at']
+        indexes = [
+            models.Index(fields=['is_active', 'order']),
+        ]
+    
+    def __str__(self):
+        return f"{self.emoji} {self.name}"
+
+
+class Poll(models.Model):
+    """Голосование в чате"""
+    
+    message = models.OneToOneField(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='poll',
+        verbose_name="Сообщение"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='created_polls',
+        verbose_name="Автор"
+    )
+    question = models.CharField(
+        max_length=500,
+        verbose_name="Вопрос"
+    )
+    
+    # Настройки голосования
+    is_anonymous = models.BooleanField(
+        default=False,
+        verbose_name="Анонимное голосование",
+        help_text="Не показывать кто голосовал"
+    )
+    is_multiple_choice = models.BooleanField(
+        default=False,
+        verbose_name="Множественный выбор",
+        help_text="Можно выбрать несколько вариантов"
+    )
+    is_quiz = models.BooleanField(
+        default=False,
+        verbose_name="Викторина",
+        help_text="Только один правильный ответ, показывается после голосования"
+    )
+    allows_custom_answers = models.BooleanField(
+        default=False,
+        verbose_name="Разрешить свои варианты",
+        help_text="Пользователи могут добавить свой вариант ответа"
+    )
+    
+    # Статус
+    is_closed = models.BooleanField(
+        default=False,
+        verbose_name="Голосование закрыто"
+    )
+    closed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Время закрытия"
+    )
+    closes_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Автоматическое закрытие",
+        help_text="Голосование автоматически закроется в указанное время"
+    )
+    
+    # Метаданные
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Создано"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Обновлено"
+    )
+    total_voters = models.IntegerField(
+        default=0,
+        verbose_name="Всего проголосовало",
+        help_text="Количество уникальных пользователей, проголосовавших"
+    )
+    
+    class Meta:
+        verbose_name = "Голосование"
+        verbose_name_plural = "Голосования"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['message']),
+            models.Index(fields=['author', 'created_at']),
+            models.Index(fields=['is_closed', 'closes_at']),
+        ]
+    
+    def __str__(self):
+        return f"Голосование: {self.question[:50]}"
+    
+    def close(self):
+        """Закрыть голосование"""
+        if not self.is_closed:
+            self.is_closed = True
+            self.closed_at = timezone.now()
+            self.save(update_fields=['is_closed', 'closed_at'])
+    
+    def get_results(self):
+        """Получить результаты голосования"""
+        options = self.options.annotate(
+            vote_count_calc=models.Count('votes')
+        ).order_by('position')
+        
+        total_votes = sum(opt.vote_count for opt in options)
+        
+        results = []
+        for option in options:
+            percentage = (
+                (option.vote_count / total_votes * 100)
+                if total_votes > 0 else 0
+            )
+            results.append({
+                'id': option.id,
+                'text': option.text,
+                'vote_count': option.vote_count,
+                'percentage': round(percentage, 1),
+                'is_correct': option.is_correct,
+                'voters': [] if self.is_anonymous else list(
+                    option.votes.select_related('voter').values(
+                        'voter__id',
+                        'voter__first_name',
+                        'voter__last_name',
+                        'voter__email'
+                    )
+                )
+            })
+        
+        return {
+            'id': self.id,
+            'question': self.question,
+            'total_voters': self.total_voters,
+            'is_closed': self.is_closed,
+            'is_anonymous': self.is_anonymous,
+            'is_multiple_choice': self.is_multiple_choice,
+            'is_quiz': self.is_quiz,
+            'options': results
+        }
+
+
+class PollOption(models.Model):
+    """Вариант ответа в голосовании"""
+    
+    poll = models.ForeignKey(
+        Poll,
+        on_delete=models.CASCADE,
+        related_name='options',
+        verbose_name="Голосование"
+    )
+    text = models.CharField(
+        max_length=200,
+        verbose_name="Текст варианта"
+    )
+    position = models.IntegerField(
+        default=0,
+        verbose_name="Порядковый номер"
+    )
+    vote_count = models.IntegerField(
+        default=0,
+        verbose_name="Количество голосов"
+    )
+    is_correct = models.BooleanField(
+        default=False,
+        verbose_name="Правильный ответ",
+        help_text="Для викторин"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Создан"
+    )
+    
+    class Meta:
+        verbose_name = "Вариант ответа"
+        verbose_name_plural = "Варианты ответов"
+        ordering = ['position', 'id']
+        indexes = [
+            models.Index(fields=['poll', 'position']),
+        ]
+    
+    def __str__(self):
+        return f"{self.poll.question[:30]} - {self.text[:30]}"
+
+
+class PollVote(models.Model):
+    """Голос пользователя в голосовании"""
+    
+    poll = models.ForeignKey(
+        Poll,
+        on_delete=models.CASCADE,
+        related_name='votes',
+        verbose_name="Голосование"
+    )
+    option = models.ForeignKey(
+        PollOption,
+        on_delete=models.CASCADE,
+        related_name='votes',
+        verbose_name="Выбранный вариант"
+    )
+    voter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='poll_votes',
+        verbose_name="Проголосовавший"
+    )
+    voted_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Время голосования"
+    )
+    
+    class Meta:
+        verbose_name = "Голос"
+        verbose_name_plural = "Голоса"
+        ordering = ['-voted_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['poll', 'voter', 'option'],
+                name='unique_vote_per_option'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['poll', 'voter']),
+            models.Index(fields=['option']),
+        ]
+    
+    def __str__(self):
+        return f"{self.voter} → {self.option.text}"

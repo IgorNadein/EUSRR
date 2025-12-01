@@ -1,0 +1,42 @@
+{# includes/components/chat_menu.html #}
+{# Меню действий для карточки чата в списке #}
+{% load static %}
+
+<div class="chat-actions-menu position-relative">
+  <button class="btn btn-sm btn-link text-secondary p-1" type="button" 
+          data-chat-menu-btn 
+          data-bs-toggle="dropdown" 
+          data-bs-auto-close="true"
+          data-bs-boundary="viewport"
+          data-bs-display="dynamic"
+          aria-expanded="false">
+    <i class="bi-three-dots-vertical"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end shadow-sm" data-bs-popper="static">
+    <li>
+      <a class="dropdown-item" href="#" data-action="pin">
+        <i class="bi-pin me-2"></i><span data-pin-text>Закрепить</span>
+      </a>
+    </li>
+    <li>
+      <a class="dropdown-item" href="#" data-action="notifications">
+        <i class="bi-bell me-2"></i>Уведомления
+      </a>
+    </li>
+    
+    {# Редактирование и удаление - не для основных чатов #}
+    {% if not chat.is_main %}
+      <li>
+        <a class="dropdown-item" href="#" data-action="edit">
+          <i class="bi-pencil me-2"></i>Редактировать
+        </a>
+      </li>
+      <li><hr class="dropdown-divider"></li>
+      <li>
+        <a class="dropdown-item text-danger" href="#" data-action="delete">
+          <i class="bi-trash me-2"></i>Удалить
+        </a>
+      </li>
+    {% endif %}
+  </ul>
+</div>

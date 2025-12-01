@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Test: WebSocket Message Edited Event</title>
+    <style>
+        body {
+            font-family: system-ui;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test: WebSocket Events → chat:message-edited</h1>
+    
+    <div>
+        <h3>Эмулировать события:</h3>
+        <button onclick="simulateMessageUpdated()">message_updated</button>
+        <button onclick="simulateMessageEdited()">message_edited</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div>
+        <h3>Event Log:</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <div>
+        <h3>Результат:</h3>
+        <div id="result"></div>
+    </div>
+
+    <script type="module">
+        const log = (msg, type = 'info') => {
+            console.log(msg);
+            const logEl = document.getElementById('log');
+            const color = type === 'success' ? '#0f0' : type === 'error' ? '#f00' : '#fff';
+            logEl.innerHTML += `<div style="color:${color}">${new Date().toISOString().substr(11, 12)} - ${msg}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        };
+
+        // Слушаем событие chat:message-edited
+        let eventCount = 0;
+        window.addEventListener('chat:message-edited', (event) => {
+            eventCount++;
+            log(`✓ chat:message-edited received! (${eventCount})`, 'success');
+            log(`  payload.id: ${event.detail.payload?.id}`);
+            log(`  payload.content: ${event.detail.payload?.content}`);
+            log(`  payload.attachments: ${event.detail.payload?.attachments?.length || 0}`);
+            
+            document.getElementById('result').innerHTML = `
+                <div class="success">
+                    ✅ Event received ${eventCount} time(s)<br>
+                    Message ID: ${event.detail.payload?.id}<br>
+                    Content: ${event.detail.payload?.content}<br>
+                    Attachments: ${event.detail.payload?.attachments?.length || 0}
+                </div>
+            `;
+        });
+
+        // Импортируем userWebSocket для доступа к функциям
+        import * as userWS from '/static/js/components/userWebSocket.js';
+        
+        window.simulateMessageUpdated = function() {
+            log('Simulating message_updated event...');
+            
+            const fakeData = {
+                type: 'message_updated',
+                chat_id: 10,
+                message: {
+                    id: 495,
+                    content: 'Updated content from message_updated',
+                    is_edited: true,
+                    has_attachments: true,
+                    attachments: [
+                        { id: 1, file_name: 'test.pdf', file_type: 'file' }
+                    ],
+                    reply_to: {
+                        id: 494,
+                        author_name: 'Test User',
+                        content: 'Original message'
+                    }
+                }
+            };
+            
+            // Эмулируем получение через WebSocket
+            window.dispatchEvent(new MessageEvent('message', {
+                data: JSON.stringify(fakeData)
+            }));
+            
+            log('→ Sent message_updated event');
+        };
+
+        window.simulateMessageEdited = function() {
+            log('Simulating message_edited event...');
+            
+            const fakeData = {
+                type: 'message_edited',
+                chat_id: 10,
+                message: {
+                    id: 495,
+                    content: 'Updated content from message_edited',
+                    is_edited: true,
+                    has_attachments: true,
+                    attachments: [
+                        { id: 1, file_name: 'document.pdf', file_type: 'file' }
+                    ]
+                }
+            };
+            
+            // Эмулируем получение через WebSocket
+            window.dispatchEvent(new MessageEvent('message', {
+                data: JSON.stringify(fakeData)
+            }));
+            
+            log('→ Sent message_edited event');
+        };
+
+        window.clearLog = function() {
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('result').innerHTML = '';
+            eventCount = 0;
+            log('✓ Log cleared');
+        };
+
+        log('✓ Test ready! Click buttons to simulate events.');
+        log('  Listening for: chat:message-edited');
+    </script>
+</body>
+</html>

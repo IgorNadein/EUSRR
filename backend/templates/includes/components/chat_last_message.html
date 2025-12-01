@@ -1,0 +1,27 @@
+{# includes/components/chat_last_message.html #}
+{# Последнее сообщение для карточки чата в списке #}
+{% load static %}
+
+<div class="card-subtitle mt-1">
+  {# Для department показываем название отдела #}
+  {% if chat.type == 'department' %}
+    <span class="text-secondary">
+      <i class="bi-diagram-3"></i> {{ chat.department.name }}
+    </span>
+  {% endif %}
+  
+  {# Последнее сообщение #}
+  {% if last %}
+    <span class="text-secondary">
+      {% if chat.type == 'department' %} · {% endif %}
+      <span data-last-time>{{ last.created_at|date:"d.m.Y H:i" }}</span> ·
+      <strong data-last-author>{{ last.author.get_full_name|default:last.author.username }}</strong>:
+      <span data-last-preview>{{ last.content|default:"(вложение)"|truncatechars:120 }}</span>
+    </span>
+  {% else %}
+    <span class="text-secondary">
+      {% if chat.type == 'department' %} · {% endif %}
+      Сообщений пока нет{% if chat.type == 'department' %}{% else %}.{% endif %}
+    </span>
+  {% endif %}
+</div>

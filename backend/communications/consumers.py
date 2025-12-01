@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Chat, ChatReadState, Message
+from .models import Chat, ChatReadState, Message, MessageReaction
 
 
 def serialize_message(m: Message) -> dict:
@@ -21,7 +21,7 @@ def serialize_message(m: Message) -> dict:
     except Exception:
         avatar = ""
 
-    # Базовая информация
+    # Новые поля
     data = {
         "id": m.id,
         "content": m.content,
@@ -39,9 +39,51 @@ def serialize_message(m: Message) -> dict:
         "is_pinned": m.is_pinned,
         "is_forwarded": m.is_forwarded,
         "is_system": m.is_system,
-        "reactions": m.reactions or {},
         "has_attachments": m.has_attachments,
     }
+    
+    # Информация о пересылке
+    if m.is_forwarded and m.forwarded_from_author:
+        forwarded_data = {
+            "author_id": m.forwarded_from_author.id,
+            "author_name": (
+                m.forwarded_from_author.get_full_name()
+                or m.forwarded_from_author.username
+            ),
+            "message_id": m.forwarded_from_message_id,
+        }
+        
+        # Добавляем дату оригинального сообщения
+        if m.forwarded_from_created_at:
+            forwarded_data["created_at"] = (
+                m.forwarded_from_created_at.strftime("%d.%m.%Y %H:%M")
+            )
+            forwarded_data["created_ts"] = int(
+                m.forwarded_from_created_at.timestamp() * 1000
+            )
+        
+        # Добавляем название исходного чата
+        if m.forwarded_from_chat_name:
+            forwarded_data["chat_name"] = m.forwarded_from_chat_name
+        
+        data["forwarded_from"] = forwarded_data
+    
+    # Реакции - сериализуем из связанной модели MessageReaction
+    reactions_summary = {}
+    for reaction in m.reactions.select_related('user'):
+        emoji = reaction.emoji
+        if emoji not in reactions_summary:
+            reactions_summary[emoji] = {
+                'count': 0,
+                'users': [],
+                'user_names': []
+            }
+        reactions_summary[emoji]['count'] += 1
+        reactions_summary[emoji]['users'].append(reaction.user_id)
+        reactions_summary[emoji]['user_names'].append(
+            reaction.user.get_full_name() or reaction.user.username
+        )
+    data["reactions_summary"] = reactions_summary
     
     # Вложения
     if m.has_attachments:
@@ -62,13 +104,58 @@ def serialize_message(m: Message) -> dict:
             })
         data["attachments"] = attachments
     
+    # Голосование
+    if hasattr(m, 'poll'):
+        poll = m.poll
+        poll_data = {
+            "id": poll.id,
+            "question": poll.question,
+            "is_anonymous": poll.is_anonymous,
+            "is_multiple_choice": poll.is_multiple_choice,
+            "is_quiz": poll.is_quiz,
+            "is_closed": poll.is_closed,
+            "closes_at": poll.closes_at.isoformat() if poll.closes_at else None,
+            "total_voters": poll.total_voters,
+            "options": []
+        }
+        for option in poll.options.all():
+            poll_data["options"].append({
+                "id": option.id,
+                "text": option.text,
+                "position": option.position,
+                "vote_count": option.vote_count,
+                "percentage": 0  # Будет пересчитан на клиенте
+            })
+        data["poll"] = poll_data
+    
     # Ответ на сообщение
     if m.reply_to_id:
-        data["reply_to"] = {
-            "id": m.reply_to_id,
-            "content": m.reply_to.content[:100] if m.reply_to else "",
-            "author_name": m.reply_to.author.get_full_name() if m.reply_to else ""
-        }
+        try:
+            reply_msg = m.reply_to if hasattr(m, 'reply_to') else None
+            if not reply_msg:
+                from communications.models import Message as Msg
+                reply_msg = Msg.objects.select_related('author').get(
+                    pk=m.reply_to_id
+                )
+
+            data["reply_to"] = {
+                "id": reply_msg.id,
+                "content": (
+                    reply_msg.content[:100] if reply_msg.content else ""
+                ),
+                "author_name": (
+                    reply_msg.author.get_full_name()
+                    if reply_msg.author
+                    else "Неизвестный"
+                )
+            }
+            print(f"[DEBUG] serialize_message: added reply_to "
+                  f"id={reply_msg.id}, author={data['reply_to']['author_name']}")
+        except Exception as e:
+            # Если не удалось загрузить reply_to, просто пропускаем
+            print(f"[DEBUG] serialize_message: failed to load reply_to: {e}")
+            pass
+
     
     # Информация о пересылке
     if m.is_forwarded and hasattr(m, 'forward_info'):
@@ -102,6 +189,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         self.chat = chat
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+
+        # Отправляем начальную историю сообщений
+        await self._send_initial_messages()
 
         # помечаем как прочитанное «до текущего»
         await self._mark_read(self.chat, user)
@@ -142,6 +232,8 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         
         action = content.get("action", "send_message")
         user = self.scope["user"]
+        
+        print(f"[DEBUG] receive_json: action={action}, user={user.id}, content={content}")
         
         # Обработка разных действий
         if action == "send_message":
@@ -239,20 +331,38 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def _handle_delete_message(self, content, user):
         """Удаление сообщения"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         message_id = content.get("message_id")
+        logger.info(
+            "[WS_DELETE] Received delete request: message_id=%s, user=%s",
+            message_id, user.username
+        )
+        
         if not message_id:
+            logger.warning("[WS_DELETE] No message_id provided")
             return
         
         # Запрет на удаление в объявлениях
         if self.chat.type == "announcement":
+            logger.warning(
+                "[WS_DELETE] Delete blocked: announcement chat"
+            )
             await self.send_json({
                 "type": "error",
                 "error": "Удаление запрещено в объявлениях"
             })
             return
         
+        logger.info("[WS_DELETE] Calling _delete_message")
         success = await self._delete_message(message_id, user)
+        logger.info("[WS_DELETE] Delete result: %s", success)
+        
         if success:
+            logger.info(
+                "[WS_DELETE] Broadcasting to group: %s", self.group_name
+            )
             await self.channel_layer.group_send(
                 self.group_name,
                 {
@@ -260,6 +370,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                     "chat_id": self.chat_id,
                     "message_id": message_id
                 },
+            )
+            logger.info(
+                "[WS_DELETE] Broadcast sent for message_id=%s", message_id
             )
 
     async def _handle_add_reaction(self, content, user):
@@ -278,7 +391,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                     "type": "chat.reaction_added",
                     "chat_id": self.chat_id,
                     "message_id": message_id,
-                    "reactions": reactions
+                    "user_id": user.id,
+                    "emoji": emoji,
+                    "reactions_summary": reactions
                 },
             )
 
@@ -298,7 +413,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                     "type": "chat.reaction_removed",
                     "chat_id": self.chat_id,
                     "message_id": message_id,
-                    "reactions": reactions
+                    "user_id": user.id,
+                    "emoji": emoji,
+                    "reactions_summary": reactions
                 },
             )
 
@@ -332,7 +449,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     # Обработчики событий от group_send
     async def chat_message(self, event):
         """Новое сообщение"""
-        await self.send_json(event["payload"])
+        await self.send_json({
+            "type": "message",
+            **event["payload"]
+        })
 
     async def chat_message_edited(self, event):
         """Сообщение отредактировано"""
@@ -343,9 +463,29 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def chat_message_deleted(self, event):
         """Сообщение удалено"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(
+            "[WS_DELETE] chat_message_deleted handler called: %s",
+            event
+        )
+        
         await self.send_json({
             "type": "message_deleted",
             "message_id": event["message_id"]
+        })
+        
+        logger.info(
+            "[WS_DELETE] Sent to client: message_id=%s",
+            event["message_id"]
+        )
+
+    async def poll_update(self, event):
+        """Обновление результатов голосования"""
+        await self.send_json({
+            "type": "poll_update",
+            **event["payload"]
         })
 
     async def chat_reaction_added(self, event):
@@ -353,7 +493,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             "type": "reaction_added",
             "message_id": event["message_id"],
-            "reactions": event["reactions"]
+            "user_id": event.get("user_id"),
+            "emoji": event.get("emoji"),
+            "reactions_summary": event.get("reactions_summary", {})
         })
 
     async def chat_reaction_removed(self, event):
@@ -361,7 +503,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             "type": "reaction_removed",
             "message_id": event["message_id"],
-            "reactions": event["reactions"]
+            "user_id": event.get("user_id"),
+            "emoji": event.get("emoji"),
+            "reactions_summary": event.get("reactions_summary", {})
         })
 
     async def chat_user_typing(self, event):
@@ -427,12 +571,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _create_message(self, chat: Chat, user, text: str, reply_to_id=None) -> Message:
+        print(f"[DEBUG] Creating message: chat={chat.id}, user={user.id}, text='{text[:50]}...'")
         msg = Message.objects.create(
             chat=chat,
             author=user,
             content=text[:2000],
             reply_to_id=reply_to_id
         )
+        print(f"[DEBUG] Message created: id={msg.id}")
         return msg
 
     @database_sync_to_async
@@ -467,48 +613,76 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _delete_message(self, message_id: int, user) -> bool:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         try:
+            logger.info(
+                "[WS_DELETE_DB] Looking for message: id=%s, author=%s",
+                message_id, user.username
+            )
             msg = Message.objects.get(pk=message_id, author=user)
+            logger.info(
+                "[WS_DELETE_DB] Message found: chat_id=%s",
+                msg.chat_id
+            )
+            
             msg.is_deleted = True
             msg.deleted_at = timezone.now()
             msg.deleted_by = user
             msg.save()
+            
+            logger.info(
+                "[WS_DELETE_DB] Message marked as deleted: %s",
+                message_id
+            )
             return True
         except Message.DoesNotExist:
+            logger.warning(
+                "[WS_DELETE_DB] Message not found or wrong author: %s",
+                message_id
+            )
             return False
 
     @database_sync_to_async
     def _add_reaction(self, message_id: int, user, emoji: str):
+        """Добавить реакцию (новая реализация с MessageReaction)"""
         try:
             msg = Message.objects.get(pk=message_id)
-            reactions = msg.reactions or {}
             
-            if emoji not in reactions:
-                reactions[emoji] = []
+            # Создаём или обновляем реакцию
+            reaction, created = MessageReaction.objects.update_or_create(
+                message=msg,
+                user=user,
+                defaults={'emoji': emoji}
+            )
             
-            if user.id not in reactions[emoji]:
-                reactions[emoji].append(user.id)
-            
-            msg.reactions = reactions
-            msg.save()
-            return reactions
+            # Возвращаем сводку по всем реакциям
+            return msg.get_reactions_summary()
         except Message.DoesNotExist:
             return None
 
     @database_sync_to_async
     def _remove_reaction(self, message_id: int, user, emoji: str):
+        """Удалить реакцию (новая реализация с MessageReaction)"""
         try:
             msg = Message.objects.get(pk=message_id)
-            reactions = msg.reactions or {}
             
-            if emoji in reactions and user.id in reactions[emoji]:
-                reactions[emoji].remove(user.id)
-                if not reactions[emoji]:
-                    del reactions[emoji]
+            # Удаляем реакцию пользователя (если указан emoji - только этот, иначе все)
+            if emoji:
+                MessageReaction.objects.filter(
+                    message=msg,
+                    user=user,
+                    emoji=emoji
+                ).delete()
+            else:
+                MessageReaction.objects.filter(
+                    message=msg,
+                    user=user
+                ).delete()
             
-            msg.reactions = reactions
-            msg.save()
-            return reactions
+            # Возвращаем обновлённую сводку
+            return msg.get_reactions_summary()
         except Message.DoesNotExist:
             return None
 
@@ -522,6 +696,31 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 'typing_updated_at': timezone.now() if is_typing else None
             }
         )
+
+    async def _send_initial_messages(self):
+        """Отправить начальную историю сообщений при подключении"""
+        messages = await self._get_initial_messages(self.chat_id, limit=50)
+        
+        # Отправляем все сообщения одним пакетом
+        await self.send_json({
+            "type": "initial_messages",
+            "messages": messages
+        })
+
+    @database_sync_to_async
+    def _get_initial_messages(self, chat_id: int, limit: int = 50):
+        """Получить последние N сообщений из чата"""
+        messages = Message.objects.filter(
+            chat_id=chat_id
+        ).select_related(
+            'author'
+        ).prefetch_related(
+            'attachments',
+            'reactions__user'
+        ).order_by('-created_at')[:limit]
+        
+        # Возвращаем в прямом порядке (старые -> новые)
+        return [serialize_message(msg) for msg in reversed(list(messages))]
 
     @database_sync_to_async
     def _mark_read(self, chat: Chat, user):
@@ -608,6 +807,26 @@ class ChatListConsumer(AsyncJsonWebsocketConsumer):
             "user_id": event.get("user_id"),
             "user_name": event.get("user_name")
         })
+    
+    async def chat_user_stopped_typing(self, event):
+        """Остановка индикатора набора текста"""
+        await self.send_json({
+            "type": "user_stopped_typing",
+            "chat_id": event.get("chat_id"),
+            "user_id": event.get("user_id")
+        })
+
+    async def chat_reaction_added(self, event):
+        """Реакция добавлена (игнорируем в списке чатов)"""
+        pass
+
+    async def chat_reaction_removed(self, event):
+        """Реакция удалена (игнорируем в списке чатов)"""
+        pass
+
+    async def chat_poll_update(self, event):
+        """Обновление голосования (игнорируем в списке чатов)"""
+        pass
 
     @database_sync_to_async
     def _get_available_chat_ids(self, user):

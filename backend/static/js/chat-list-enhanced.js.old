@@ -151,7 +151,7 @@
         const chatRow = document.querySelector(`[data-chat-id="${chatId}"]`);
         const isPinned = chatRow.classList.contains('pinned');
 
-        fetch(`/communications/api/chat/${chatId}/pin/`, {
+        fetch(`/api/v1/communications/chats/${chatId}/pin/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',

@@ -32,6 +32,8 @@ const ICON_BY_MIME = [
 
 class ChatComposer {
 	constructor(form, options = {}) {
+		console.log('[ChatComposer] Constructor called with form:', form, 'options:', options);
+		
 		this.form = form;
 		this.options = { ...DEFAULT_CONFIG, ...options };
 		this.chatId = Number(options.chatId || form.dataset.chatId || 0);
@@ -73,7 +75,14 @@ class ChatComposer {
 	}
 
 	bindEvents() {
-		this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+		console.log('[ChatComposer] bindEvents: attaching handlers', this.form);
+		
+		// Обработка submit формы
+		this.form.addEventListener('submit', (e) => {
+			console.log('[ChatComposer] FORM SUBMIT EVENT!');
+			e.preventDefault(); // На всякий случай
+			this.handleSubmit(e);
+		});
 
 		['document', 'image', 'camera', 'audio'].forEach((type) => {
 			const btn = document.getElementById(`attach${capitalize(type)}`);
@@ -156,16 +165,186 @@ class ChatComposer {
 		}
 	}
 
+	/**
+	 * ЕДИНОЕ место обработки формы
+	 * Обрабатывает ВСЕ типы отправки: send, reply, edit
+	 * Определяет режим через chatFormManager
+	 */
 	async handleSubmit(event) {
-		event.preventDefault();
-		if (this.isSubmitting) return;
-
+		console.log('[ChatComposer] handleSubmit called');
+		
 		const content = (this.textarea?.value || '').trim();
+		
+		// Валидация: если нет текста И нет файлов - не отправляем
 		if (!content && this.selectedFiles.length === 0) {
-			alert('Введите текст сообщения или прикрепите файл');
+			console.log('[ChatComposer] Empty message, skipping');
+			return;
+		}
+		
+		// Определяем режим через formManager
+		const mode = window.chatFormManager?.mode || 'send';
+		const messageId = window.chatFormManager?.currentMessageId || null;
+		
+		console.log('[ChatComposer] Mode:', mode, 'MessageId:', messageId);
+		
+		// Блокируем повторную отправку
+		if (this.isSubmitting) {
+			console.log('[ChatComposer] Already submitting, skipping');
+			return;
+		}
+		
+		try {
+			this.isSubmitting = true;
+			this.setLoading(true);
+			
+			// EDIT: отправляем на отдельный endpoint
+			if (mode === 'edit' && messageId) {
+				await this.sendEdit(messageId, content);
+			}
+			// SEND или REPLY: отправляем на upload-message
+			else {
+				await this.sendMessage(content);
+			}
+			
+		} catch (error) {
+			console.error('[ChatComposer] Send failed', error);
+			alert(error.message || 'Ошибка при отправке сообщения');
+		} finally {
+			this.isSubmitting = false;
+			this.setLoading(false);
+		}
+	}
+	
+	/**
+	 * Отправка нового сообщения или ответа
+	 */
+	async sendMessage(content) {
+		const formData = new FormData(this.form);
+		
+		// Добавляем файлы из this.selectedFiles
+		this.selectedFiles.forEach((entry, index) => {
+			formData.append(`file_${index}`, entry.file, entry.file.name);
+		});
+		
+		// Если content не попал в FormData, добавляем вручную
+		if (!formData.has('content') && content) {
+			formData.set('content', content);
+		}
+		
+		// Проверяем chat_id
+		if (!formData.has('chat_id')) {
+			console.error('[ChatComposer] chat_id missing!');
+			formData.set('chat_id', this.chatId);
+		}
+		
+		// Определяем URL для отправки
+		const url = this.form.action || this.uploadUrl;
+		
+		const response = await fetch(url, {
+			method: 'POST',
+			body: formData
+		});
+		
+		// Проверяем критичные ошибки
+		if (response.status === 403 || response.status === 400) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || 'Ошибка отправки');
+		}
+		
+		// Успех - очищаем форму
+		this.resetForm();
+		
+		// Сбрасываем formManager
+		if (window.chatFormManager) {
+			window.chatFormManager.setModeToSend();
+		}
+	}
+	
+	/**
+	 * Редактирование существующего сообщения
+	 */
+	async sendEdit(messageId, content) {
+		const csrfToken = getCookie(this.csrfCookieName);
+		if (!csrfToken) {
+			throw new Error('CSRF токен не найден');
+		}
+		
+		const editUrl = `/api/v1/communications/messages/${messageId}/edit/`;
+		
+		const response = await fetch(editUrl, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-CSRFToken': csrfToken
+			},
+			body: JSON.stringify({ content })
+		});
+		
+		console.log('[ChatComposer] Edit response:', response.status);
+		
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.error || 'Ошибка редактирования');
+		}
+		
+		// Успех - очищаем форму
+		this.resetForm();
+		
+		// Сбрасываем formManager
+		if (window.chatFormManager) {
+			window.chatFormManager.setModeToSend();
+		}
+		
+		console.log('[ChatComposer] Message edited successfully');
+	}
+
+	/**
+	 * Редактирование существующего сообщения
+	 */
+	async editMessage(messageId, newContent) {
+		const csrfToken = getCookie(this.csrfCookieName);
+		if (!csrfToken) {
+			alert('CSRF токен не найден. Обновите страницу.');
 			return;
 		}
 
+		try {
+			this.setLoading(true);
+			
+			const response = await fetch(`/api/v1/communications/messages/${messageId}/edit/`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-CSRFToken': csrfToken
+				},
+				body: JSON.stringify({ content: newContent })
+			});
+
+			const payload = await response.json().catch(() => ({}));
+
+			if (!response.ok || !payload.ok) {
+				const errorMessage = payload.error || 'Не удалось отредактировать сообщение';
+				throw new Error(errorMessage);
+			}
+
+			// Очищаем форму и индикаторы
+			this.resetForm();
+			this.clearEditMode();
+			
+			// Сбрасываем formManager если доступен
+			if (window.chatFormManager) {
+				window.chatFormManager.setModeToSend();
+			}
+			
+		} catch (error) {
+			console.error('ChatComposer: edit failed', error);
+			alert(error.message || 'Ошибка при редактировании сообщения');
+		} finally {
+			this.setLoading(false);
+		}
+	}
+
+	async sendViaHTTP(content, files, replyToMessageId = null) {
 		const csrfToken = getCookie(this.csrfCookieName);
 		if (!csrfToken) {
 			alert('CSRF токен не найден. Обновите страницу.');
@@ -174,12 +353,18 @@ class ChatComposer {
 
 		const formData = new FormData();
 		formData.append('chat_id', this.chatId);
-		formData.append('content', content);
-		this.selectedFiles.forEach((entry, index) => {
+		formData.append('content', content || ''); // Может быть пустым если только файлы
+		
+		// Добавляем reply_to если это ответ на сообщение
+		if (replyToMessageId) {
+			formData.append('reply_to', replyToMessageId);
+		}
+		
+		files.forEach((entry, index) => {
 			formData.append(`file_${index}`, entry.file, entry.file.name);
 		});
 
-		const shouldShowPending = this.selectedFiles.length > 0 && this.scrollEl;
+		const shouldShowPending = files.length > 0 && this.scrollEl;
 		let pendingId = null;
 		if (shouldShowPending) {
 			pendingId = this.renderPendingMessage(content);
@@ -203,6 +388,12 @@ class ChatComposer {
 			}
 
 			this.resetForm();
+			
+			// Сбрасываем formManager если доступен (для режима reply)
+			if (window.chatFormManager && window.chatFormManager.getMode() !== 'send') {
+				window.chatFormManager.setModeToSend();
+			}
+			
 		} catch (error) {
 			console.error('ChatComposer: submit failed', error);
 			alert(error.message || 'Ошибка при отправке сообщения');
@@ -337,6 +528,33 @@ class ChatComposer {
 
 		this.selectedFiles = [];
 		this.renderPreview();
+		
+		// Очищаем индикаторы reply и edit
+		this.clearReplyMode();
+		this.clearEditMode();
+	}
+	
+	/**
+	 * Очистка режима ответа
+	 */
+	clearReplyMode() {
+		const replyIndicator = document.querySelector('.reply-composer-indicator');
+		if (replyIndicator) {
+			replyIndicator.remove();
+		}
+	}
+	
+	/**
+	 * Очистка режима редактирования
+	 */
+	clearEditMode() {
+		const editIndicator = document.querySelector('.edit-indicator');
+		if (editIndicator) {
+			editIndicator.remove();
+		}
+		if (this.textarea) {
+			delete this.textarea.dataset.editingMessageId;
+		}
 	}
 
 	setLoading(state) {
@@ -383,6 +601,11 @@ function detectFileType(mime = '') {
 	return 'file';
 }
 
+/**
+ * Инициализация композера для форм на странице
+ * @param {Object} config - Конфигурация
+ * @returns {Array<ChatComposer>} Массив инстансов композеров
+ */
 export function initChatComposer(config = {}) {
 	const forms = document.querySelectorAll(config.selector || DEFAULT_CONFIG.selector);
 	const instances = [];
@@ -399,11 +622,13 @@ export function initChatComposer(config = {}) {
 		}
 	});
 
-	return instances;
+	// Возвращаем первый инстанс или массив
+	return instances.length === 1 ? instances[0] : instances;
 }
 
-if (document.readyState === 'loading') {
-	document.addEventListener('DOMContentLoaded', () => initChatComposer());
-} else {
-	initChatComposer();
-}
+// УДАЛЕНО: Авто-инициализация теперь происходит через chat_detail_scripts.html
+// if (document.readyState === 'loading') {
+// 	document.addEventListener('DOMContentLoaded', () => initChatComposer());
+// } else {
+// 	initChatComposer();
+// }

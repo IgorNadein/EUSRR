@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Reactions API</title>
+</head>
+<body>
+    <h1>Test Available Reactions</h1>
+    <div id="result"></div>
+
+    <script>
+        fetch('/api/v1/communications/reactions/available/')
+            .then(response => response.json())
+            .then(data => {
+                console.log('API Response:', data);
+                const div = document.getElementById('result');
+                
+                if (data.ok && Array.isArray(data.reactions)) {
+                    div.innerHTML = '<h2>Доступные реакции:</h2><ul>' +
+                        data.reactions.map(r => 
+                            `<li>${r.emoji} - ${r.name} (order: ${r.order})</li>`
+                        ).join('') +
+                        '</ul>';
+                } else {
+                    div.innerHTML = '<p style="color: red;">Ошибка загрузки реакций</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 
+                    '<p style="color: red;">Ошибка: ' + error + '</p>';
+            });
+    </script>
+</body>
+</html>

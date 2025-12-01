@@ -1,9 +1,10 @@
 # backend\communications\routing.py
 from django.urls import re_path
 
-from .consumers import ChatConsumer, ChatListConsumer
+from .user_consumer import UserConsumer
 
 websocket_urlpatterns = [
-    re_path(r"^ws/chat/(?P<chat_id>\d+)/$", ChatConsumer.as_asgi(), name="ws_chat"),
-    re_path(r"^ws/chats/$", ChatListConsumer.as_asgi(), name="ws_chat_list"),
+    # Универсальный WebSocket для пользователя
+    # Обрабатывает: чаты, уведомления, бейджи, онлайн-статус и др.
+    re_path(r"^ws/$", UserConsumer.as_asgi(), name="ws_user"),
 ]

@@ -1,23 +1,22 @@
 /**
- * @fileoverview Chat List Realtime - WebSocket для обновления списка чатов в реальном времени
- * Обновляет последние сообщения, время, счётчики, пересортирует список по timestamp
+ * @fileoverview Chat List Realtime - обновление списка чатов в реальном времени
+ * ВНИМАНИЕ: Больше НЕ создаёт собственное WebSocket соединение!
+ * Использует универсальное userWebSocket из base.html через callback onListUpdate
  * @module components/chatListRealtime
  */
 
 /**
- * Инициализирует WebSocket для realtime-обновлений списка чатов
+ * Инициализирует обработчик realtime-обновлений списка чатов
  * @param {Object} options - Опции инициализации
  * @param {number} options.meId - ID текущего пользователя
  * @param {string} [options.chatRowSelector='.chat-row'] - Селектор элементов чата
- * @param {string} [options.wsUrl] - URL WebSocket (по умолчанию /ws/chats/)
  * @param {Object} [options.badgeManager] - API chatBadgeManager для обновления бейджей
- * @returns {Object|null} API WebSocket или null если список чатов не найден
+ * @returns {Object|null} API обработчика или null если список чатов не найден
  */
 export function initChatListRealtime(options = {}) {
   const {
     meId,
     chatRowSelector = '.chat-row',
-    wsUrl,
     badgeManager
   } = options;
 
@@ -29,14 +28,11 @@ export function initChatListRealtime(options = {}) {
   }
 
   if (!meId) {
-    console.warn('ChatListRealtime: meId is required');
+    console.warn('[ChatListRealtime] meId is required');
     return null;
   }
 
-  // Создаём WebSocket соединение
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = wsUrl || `/ws/chats/`;
-  const ws = new WebSocket(`${proto}://${location.host}${url}`);
+  console.log('[ChatListRealtime] Initialized (using shared userWebSocket)');
 
   /**
    * Пересортирует элементы секции по timestamp
@@ -56,32 +52,27 @@ export function initChatListRealtime(options = {}) {
 
   /**
    * Получает контейнер для типа чата
-   * @param {string} type - Тип чата (global, department, private)
+   * @param {string} type - Тип чата (global, department, private, group, channel, announcement)
    * @returns {HTMLElement|null}
    */
   function containerForType(type) {
     if (type === 'global') return document.getElementById('sec-global');
     if (type === 'department') return document.getElementById('sec-department');
-    return document.getElementById('sec-private');
+    if (type === 'private') return document.getElementById('sec-private');
+    if (type === 'group') return document.getElementById('sec-group');
+    if (type === 'channel') return document.getElementById('sec-channel');
+    if (type === 'announcement') return document.getElementById('sec-announcement');
+    return null;
   }
 
   /**
-   * Обрабатывает входящие сообщения WebSocket
+   * Обновляет карточку чата в списке (вызывается из userWebSocket через onListUpdate)
+   * @param {string|number} chatId - ID чата
+   * @param {Object} msg - Объект сообщения с полями created, author_name, preview и т.д.
    */
-  ws.addEventListener('message', (e) => {
+  function updateChatCard(chatId, msg = {}) {
     try {
-      const data = JSON.parse(e.data);
-      
-      // Игнорируем ping сообщения для keepalive
-      if (data.type === 'ping') {
-        return;
-      }
-      
-      // Обрабатываем только list_update события
-      if (data.type !== 'list_update') return;
-
-      const chatId = String(data.chat_id);
-      const msg = data.message || {};
+      chatId = String(chatId);
       
       // Находим строку чата
       const row = document.querySelector(`${chatRowSelector}[data-chat-id="${chatId}"]`);
@@ -134,55 +125,26 @@ export function initChatListRealtime(options = {}) {
       if (list) {
         resortSection(list);
       }
+
+      // Обновить глобальный бейдж если есть
+      if (badgeManager) {
+        badgeManager.refresh();
+      }
+
+      // Анимация обновления
+      row.classList.add('updated');
+      setTimeout(() => row.classList.remove('updated'), 300);
+
     } catch (err) {
-      console.warn('ChatListRealtime: failed to parse message', err);
+      console.error('[ChatListRealtime] updateChatCard error:', err);
     }
-  });
-
-  /**
-   * Обрабатывает закрытие соединения
-   */
-  ws.addEventListener('close', () => {
-    console.log('ChatListRealtime: connection closed');
-  });
-
-  /**
-   * Обрабатывает ошибки WebSocket
-   */
-  ws.addEventListener('error', (err) => {
-    console.error('ChatListRealtime: connection error', err);
-  });
+  }
 
   // API
   return {
-    /**
-     * Закрывает WebSocket соединение
-     */
-    close: () => {
-      ws.close();
-    },
-
-    /**
-     * Программная пересортировка секции
-     * @param {string} type - Тип секции (global, department, private)
-     */
-    resortSection: (type) => {
-      const container = containerForType(type);
-      if (container) {
-        resortSection(container);
-      }
-    },
-
-    /**
-     * Получает состояние соединения
-     * @returns {number} WebSocket.readyState
-     */
-    getReadyState: () => ws.readyState,
-
-    /**
-     * Прямой доступ к WebSocket (для отладки)
-     */
-    ws
+    updateChatCard,  // Главная функция - вызывается из userWebSocket
+    resortSection,
+    containerForType
   };
 }
 

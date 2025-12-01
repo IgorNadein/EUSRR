@@ -1,0 +1,104 @@
+{# includes/chat_scripts.html #}
+{# Общие скрипты для всех страниц с чатами (chat_list.html, chat_detail.html) #}
+{% load static %}
+
+<script type="module">
+  import { initChatAvatarMap } from "{% static 'js/components/chatAvatarMap.js' %}";
+  import { initChatBadgeManager } from "{% static 'js/components/chatBadgeManager.js' %}";
+
+  // ========== CHAT AVATAR MAP ==========
+  // Карта аватаров пользователей для отображения в сообщениях
+  const avatarMap = initChatAvatarMap({
+    "{{ user.id }}": {% if user.avatar %}"{{ user.avatar.url }}"{% else %}""{% endif %}
+  });
+
+  // ========== CHAT BADGE MANAGER ==========
+  // Управление счётчиками непрочитанных сообщений
+  const badgeManager = initChatBadgeManager();
+
+  // ========== SIDEBAR BADGE ==========
+  // Глобальный счётчик непрочитанных в сайдбаре
+  (function initSidebarBadge() {
+    const meId = {{ user.id|default:"0" }};
+    const badge = document.getElementById('sidebarChatBadge');
+
+    function setBadge(n) {
+      if (!badge) return;
+      const v = Math.max(0, Number(n) || 0);
+      badge.dataset.count = String(v);
+      badge.textContent = v > 99 ? '99+' : String(v);
+      badge.classList.toggle('d-none', v <= 0);
+    }
+
+    // Стартовое значение
+    setBadge(badge?.dataset.count || 0);
+
+    // Карта непрочитанных по чатам
+    const chatUnread = Object.create(null);
+    document.querySelectorAll('.chat-row[data-chat-id]').forEach(row => {
+      const id = String(row.getAttribute('data-chat-id'));
+      const cnt = Number(row.querySelector('[data-unread-count]')?.textContent || 0);
+      chatUnread[id] = cnt;
+    });
+
+    function recompute() {
+      let total = 0;
+      for (const k in chatUnread) {
+        total += Number(chatUnread[k] || 0);
+      }
+      setBadge(total);
+    }
+
+    if (Object.keys(chatUnread).length) recompute();
+
+    // Слушаем событие list_update из WebSocket
+    window.addEventListener('chat:list-update', (e) => {
+      const { chatId, message } = e.detail;
+      const isMine = Number(message.author_id) === Number(meId);
+      
+      if (!isMine) {
+        chatUnread[String(chatId)] = (Number(chatUnread[String(chatId)] || 0) + 1);
+        recompute();
+      }
+    });
+
+    // Обработка события chat:read
+    window.addEventListener('chat:read', (e) => {
+      const chatId = String(e?.detail?.chatId || '');
+      if (!chatId) return;
+      chatUnread[chatId] = 0;
+      recompute();
+    });
+  })();
+
+  // ========== ENHANCED USER WEBSOCKET ==========
+  // Расширенная инициализация WebSocket с chat-обработчиками
+  // Ждём готовности базового WebSocket из base.html
+  window.addEventListener('user:ws-ready', (e) => {
+    const userWs = e.detail.api;
+
+    // Настраиваем chat-специфичные обработчики
+    if (userWs && userWs.ws) {
+      // Сохраняем ссылки для обратной совместимости
+      window.chatWebSocketApi = userWs;
+      window.chatWebSocket = userWs.ws;
+      
+      // Экспортируем avatarMap и badgeManager для других модулей
+      window.chatAvatarMap = avatarMap;
+      window.chatBadgeManager = badgeManager;
+
+      // Уведомляем, что chat-система готова
+      console.log('[ChatScripts] Dispatching chat:system-ready event');
+      window.dispatchEvent(new CustomEvent('chat:system-ready', {
+        detail: {
+          userWs,
+          avatarMap,
+          badgeManager
+        }
+      }));
+      console.log('[ChatScripts] chat:system-ready event dispatched');
+    } else {
+      console.error('[ChatScripts] userWs or userWs.ws is missing!', userWs);
+    }
+  });
+</script>

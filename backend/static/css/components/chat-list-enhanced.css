@@ -37,6 +37,8 @@
 /* Chat List Animations */
 .chat-row {
     border-top: 1px solid var(--bs-border-color);
+    overflow: hidden; /* Предотвращаем выход контента за границы */
+    min-height: 60px; /* Минимальная высота для стабильности */
 }
 
 .chat-row.updated {
@@ -44,7 +46,44 @@
     transition: background 0.3s ease-out;
 }
 
+/* Контейнер с flex-grow для контента чата */
+.chat-row .flex-grow-1 {
+    min-width: 0; /* Критично! Позволяет flex-элементам сжиматься ниже min-content */
+    overflow: hidden; /* Предотвращаем выход контента */
+}
+
+/* Заголовок чата - обрезка по ширине */
+.chat-row .flex-grow-1 a,
+.chat-row .flex-grow-1 .card-title {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+/* Последнее сообщение - обрезка с многоточием */
+.chat-row [data-last-preview],
+.chat-row .card-subtitle {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
 /* Chat Section Headers */
+.chat-section {
+    overflow: visible !important; /* КРИТИЧНО! Позволяет dropdown выходить за границы */
+    position: relative; /* Нужен для z-index */
+    z-index: 1; /* Базовый z-index */
+}
+
+/* Когда dropdown открыт, поднимаем z-index секции */
+.chat-section:has(.dropdown-menu.show) {
+    z-index: 1000; /* Поверх соседних секций */
+}
+
 .chat-section .card-header {
     text-align: center;
     border-bottom: 1px solid var(--bs-border-color);
@@ -57,6 +96,10 @@
 .chat-section .card-header .card-meta {
     width: 100%;
     text-align: center;
+}
+
+.chat-section .list-chats {
+    overflow: visible !important; /* КРИТИЧНО! Позволяет dropdown выходить за границы */
 }
 
 /* Pinned Chat Indicator */
@@ -128,6 +171,7 @@
 .chat-actions-menu {
     display: flex;
     align-items: center;
+    flex-shrink: 0; /* Не сжимается при overflow */
 }
 
 .chat-actions-menu .btn {
@@ -147,7 +191,9 @@
 .chat-actions-menu .dropdown-menu {
     font-size: 0.9rem;
     min-width: 200px;
-    z-index: 1050;
+    z-index: 9999; /* Поверх всего! */
+    position: fixed !important; /* Фиксированное позиционирование относительно viewport */
+    /* Bootstrap Dropdown автоматически вычислит правильные координаты */
 }
 
 .chat-actions-menu .dropdown-item {

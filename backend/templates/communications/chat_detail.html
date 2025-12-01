@@ -1,12 +1,28 @@
 {% extends "base.html" %}
 {% load static %}
+{% load api_tags %}
 
 {% block title %}Чат{% endblock %}
 
-{% block extra_css %}{% endblock %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/message-reactions.css' %}">
+  <link rel="stylesheet" href="{% static 'css/message-context-menu.css' %}">
+  <link rel="stylesheet" href="{% static 'css/message-selection.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/chat-polls.css' %}">
+{% endblock %}
 
 {% block content %}
-<div class="container chat-root">
+<div class="container chat-root" 
+     id="chatDetailApp"
+     data-chat-id="{{ chat.id }}"
+     data-user-id="{{ user.id }}"
+     data-user-name="{{ user.get_full_name|default:user.username }}"
+     data-user-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
+     data-upload-url="{% url 'api:v1:upload_message' %}"
+     data-messages-url="{% url 'api:v1:chat_messages' chat.pk %}"
+     data-mark-read-url="{% url 'communications:chat_mark_read' chat.pk %}"
+     data-edit-url-template="/api/v1/communications/messages/{id}/edit/"
+     data-last-read-timestamp="{{ chat.last_read_timestamp|default:'0' }}">
   <div class="row gx-0"> 
     <div class="col-12 chat-col">
 
@@ -113,119 +129,52 @@
              data-oldest-ts="{{ messages_oldest_ts }}"
              data-has-more="{% if messages_has_more %}1{% else %}0{% endif %}"
              data-last-read-ts="{% if last_read_at %}{{ last_read_at|date:'U' }}000{% endif %}">
+          
+          <!-- Индикатор загрузки истории (для прокрутки вверх) -->
           <div class="history-loader d-none" data-history-loader>
             <div class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></div>
             <span class="small">Загружаем ранние сообщения…</span>
           </div>
-          {% if messages %}
-            {% for message in messages %}
-              {% ifchanged message.created_at|date:"d.m.Y" %}
-                <div class="day-divider"><span>{{ message.created_at|date:"d.m.Y" }}</span></div>
-              {% endifchanged %}
+          
+          <!-- Индикатор первоначальной загрузки -->
+          <div class="initial-loader text-center py-5" id="initialLoader">
+            <div class="spinner-border text-primary mb-3" role="status">
+              <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="text-secondary">Загружаем сообщения...</p>
+          </div>
+          
+          <!-- Сообщения будут добавлены через JavaScript -->
+          
+        </div>
 
-              <!-- сообщение -->
-              <div class="d-flex mb-3 msg {% if message.author_id == user.id %}justify-content-end{% else %}justify-content-start{% endif %}"
-                   data-id="{{ message.id }}"
-                   data-ts="{{ message.created_at|date:'U' }}000"
-                   data-author-id="{{ message.author_id }}">
-                {% if message.author_id != user.id %}
-                  <a class="me-2 text-decoration-none" href="{% url 'employees:employee_detail' message.author.pk %}">
-                    <span class="mini-ava border">
-                      {% if message.author.avatar %}<img src="{{ message.author.avatar.url }}" alt="" loading="lazy">
-                      {% else %}<i class="bi-person"></i>{% endif %}
-                    </span>
-                  </a>
-                {% endif %}
-
-                <div class="d-flex flex-column" style="max-width:80%;">
-                  <div class="small text-secondary {% if message.author_id == user.id %}text-end{% endif %}">
-                    {% if message.author_id == user.id %}
-                      <a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>
-                    {% else %}
-                      <a href="{% url 'employees:employee_detail' message.author.pk %}" class="text-decoration-none fw-semibold">
-                        {{ message.author.get_full_name|default:message.author.username }}
-                      </a>
-                    {% endif %}
-                    · <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"H:i" }}</time>
-                  </div>
-                  <div class="mt-1 bubble {% if message.author_id == user.id %}bubble-me{% else %}bubble-other{% endif %}">
-                    {% if message.content %}
-                      {{ message.content|linebreaksbr }}
-                    {% endif %}
-                    
-                    {% if message.has_attachments %}
-                      <div class="message-attachments mt-2">
-                        {% for attachment in message.attachments.all %}
-                          <div class="attachment-item mb-2">
-                            {% if attachment.file_type == 'image' %}
-                              <a href="{{ attachment.file.url }}" target="_blank" class="d-inline-block">
-                                <img src="{{ attachment.file.url }}"
-                                     alt="{{ attachment.file_name }}"
-                                     loading="lazy"
-                                     class="chat-media chat-media--image">
-                              </a>
-                            {% elif attachment.file_type == 'audio' %}
-                              <audio controls class="w-100">
-                                <source src="{{ attachment.file.url }}" type="{{ attachment.mime_type }}">
-                              </audio>
-                              <div class="small text-secondary">{{ attachment.file_name }}</div>
-                            {% elif attachment.file_type == 'video' %}
-                              <video controls preload="metadata" playsinline class="chat-media chat-media--video">
-                                <source src="{{ attachment.file.url }}" type="{{ attachment.mime_type }}">
-                                Ваш браузер не поддерживает видео.
-                              </video>
-                              <div class="small text-secondary">{{ attachment.file_name }}</div>
-                            {% else %}
-                              <a href="{{ attachment.file.url }}" 
-                                 class="d-flex align-items-center text-decoration-none p-2 border rounded"
-                                 download="{{ attachment.file_name }}">
-                                <i class="bi-file-earmark fs-3 text-primary me-2"></i>
-                                <div>
-                                  <div class="fw-semibold">{{ attachment.file_name }}</div>
-                                  <div class="small text-secondary">{{ attachment.file_size|filesizeformat }}</div>
-                                </div>
-                              </a>
-                            {% endif %}
-                          </div>
-                        {% endfor %}
-                      </div>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {% if message.author_id == user.id %}
-                  <a class="ms-2 text-decoration-none" href="{% url 'employees:profile' %}">
-                    <span class="mini-ava border">
-                      {% if user.avatar %}<img src="{{ user.avatar.url }}" alt="" loading="lazy">
-                      {% else %}<i class="bi-person"></i>{% endif %}
-                    </span>
-                  </a>
-                {% endif %}
-              </div>
-            {% endfor %}
-          {% else %}
-            <div class="text-center text-secondary py-5">Пока нет сообщений.</div>
-          {% endif %}
+        <!-- Индикатор печати -->
+        <div id="typing" class="small text-secondary ps-3 pt-2 d-none">
+          <span class="typing-indicator">
+            <span></span><span></span><span></span>
+          </span>
+          Собеседник печатает…
         </div>
 
         <!-- Композер -->
         <div class="chat-composer">
           {% if can_send_messages %}
-          <div id="typing" class="small text-secondary ps-1 pt-1 d-none">Собеседник печатает…</div>
-      <form id="chatForm"
+          <form id="chatForm"
                 class="composer-wrap"
                 method="post"
-                action="{% url 'communications:chat_detail' chat.pk %}"
+                action="{% url 'api:v1:upload_message' %}"
                 enctype="multipart/form-data"
                 data-chat-composer="1"
                 data-chat-id="{{ chat.id }}"
-        data-upload-url="{% url 'api:v1:upload_message' %}"
-        data-me-id="{{ user.id }}"
-        data-me-name="{{ user.get_full_name|default:user.username }}"
-        data-me-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
+                data-upload-url="{% url 'api:v1:upload_message' %}"
+                data-me-id="{{ user.id }}"
+                data-me-name="{{ user.get_full_name|default:user.username }}"
+                data-me-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
                 data-profile-url="{% url 'employees:profile' %}"
-                data-detail-url-template="{% url 'employees:employee_detail' 0 %}">
+                data-detail-url-template="{% url 'employees:employee_detail' 0 %}"
+                onsubmit="return false;">
             {% csrf_token %}
+            <input type="hidden" name="chat_id" value="{{ chat.id }}">
             <div class="message-field">
               <!-- Кнопка вложений с выпадающим меню -->
               <div class="dropdown message-attach">
@@ -259,6 +208,13 @@
                     <a class="dropdown-item" href="#" id="attachAudio">
                       <i class="bi-mic text-danger me-2"></i>
                       Аудио
+                    </a>
+                  </li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <a class="dropdown-item" href="#" id="createPoll">
+                      <i class="bi-bar-chart text-warning me-2"></i>
+                      Создать голосование
                     </a>
                   </li>
                 </ul>
@@ -324,9 +280,15 @@
 
 {% block extra_js %}
   {{ block.super }}
+  
+  {# ========== THIRD-PARTY ========== #}
   <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
-  <script type="module" src="{% static 'js/components/chatComposer.js' %}"></script>
-  <script type="module" src="{% static 'js/components/chatHistoryLoader.js' %}"></script>
+  
+  {# ========== CHAT DETAIL - NEW ENHANCED VERSION ========== #}
+  <script type="module" src="{% static 'js/chat-detail-enhanced.js' %}"></script>
+  
+  {# ========== CHAT DETAIL PAGE - CORE FUNCTIONALITY ========== #}
+  <script type="module" src="{% static 'js/pages/chatDetail.js' %}"></script>
   
   <script>
     // Блокировка объявления
@@ -381,4 +343,90 @@
       }
     }
   </script>
+  
+  <!-- Модальное окно создания голосования -->
+  <div class="modal fade" id="pollModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi-bar-chart me-2"></i>Создать голосование
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="pollQuestion" class="form-label">Вопрос</label>
+            <input type="text" class="form-control" id="pollQuestion" 
+                   placeholder="Введите вопрос" maxlength="500">
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Варианты ответа</label>
+            <div id="pollOptions">
+              <div class="input-group mb-2">
+                <span class="input-group-text">1</span>
+                <input type="text" class="form-control poll-option" 
+                       placeholder="Вариант ответа" maxlength="200">
+              </div>
+              <div class="input-group mb-2">
+                <span class="input-group-text">2</span>
+                <input type="text" class="form-control poll-option" 
+                       placeholder="Вариант ответа" maxlength="200">
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addPollOption">
+              <i class="bi-plus-circle me-1"></i>Добавить вариант
+            </button>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pollAnonymous">
+              <label class="form-check-label" for="pollAnonymous">
+                Анонимное голосование
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pollMultiple">
+              <label class="form-check-label" for="pollMultiple">
+                Множественный выбор
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pollQuiz">
+              <label class="form-check-label" for="pollQuiz">
+                Викторина (с правильным ответом)
+              </label>
+            </div>
+          </div>
+          
+          <div class="mb-3" id="quizCorrectAnswer" style="display: none;">
+            <label class="form-label">Правильный ответ</label>
+            <select class="form-select" id="pollCorrectOption">
+              <option value="">Выберите правильный вариант</option>
+            </select>
+          </div>
+          
+          <div class="mb-3">
+            <label for="pollCloses" class="form-label">
+              Автоматическое закрытие (минуты, необязательно)
+            </label>
+            <input type="number" class="form-control" id="pollCloses" 
+                   min="1" placeholder="Оставьте пустым для бессрочного">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Отмена
+          </button>
+          <button type="button" class="btn btn-primary" id="submitPoll">
+            Создать
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
 {% endblock %}

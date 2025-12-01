@@ -160,46 +160,85 @@ main.main {
   padding: var(--space-1) 0;
   max-height: 200px;
   overflow-y: auto;
+  max-width: 100%;
+  width: 100%;
 }
 
 .attachment-item {
   background: var(--bs-secondary-bg);
   transition: background-color 0.15s ease;
+  max-width: 100%; // Ограничиваем ширину контейнера
 }
 
-.attachment-item:hover {
-  background: var(--bs-tertiary-bg);
+/* Обрезка текста в форме загрузки файлов */
+.attachment-item .flex-grow-1 {
+  min-width: 0; // Важно для flex-элементов с text-truncate внутри
+  overflow: hidden; // Предотвращаем выход контента за границы
+}
+
+.attachment-item .text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* Вложения в сообщениях */
-.message-attachments {
-  margin-top: 8px;
-}
-
-.message-attachments .attachment-item {
-  background: transparent !important;
+.bubble .attachment-item {
+  background: transparent;
   padding: 0;
   margin-bottom: 8px;
 }
 
-.message-attachments a {
-  background: rgba(0, 0, 0, 0.05);
+.bubble .attachment-item a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
   border: none;
   transition: all 0.2s ease;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+// Attachment links in regular messages (other person)
+.bubble-other .attachment-item a {
+  background: rgba(0, 0, 0, 0.05);
   color: inherit;
 }
 
-.bubble-me .message-attachments a {
-  background: rgba(255, 255, 255, 0.15);
-  color: inherit;
-}
-
-.message-attachments a:hover {
+.bubble-other .attachment-item a:hover {
   background: rgba(0, 0, 0, 0.08);
 }
 
-.bubble-me .message-attachments a:hover {
+// Attachment links in own messages
+.bubble-me .attachment-item a {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.bubble-me .attachment-item a:hover {
   background: rgba(255, 255, 255, 0.25);
+}
+
+// Icons in attachments
+.bubble .attachment-item a i {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.bubble-me .attachment-item a i {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+// Text truncation for file names
+.bubble .attachment-item a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0; // Important for flex items
 }
 
 .message-attachments video,

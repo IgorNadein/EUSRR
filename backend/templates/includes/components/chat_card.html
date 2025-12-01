@@ -1,0 +1,27 @@
+{# includes/components/chat_card.html #}
+{# Единая карточка чата для списка #}
+{% load static %}
+
+{% with last=chat.last_message.0 %}
+<div class="chat-row d-flex align-items-start gap-2 py-2 px-2"
+     data-chat-id="{{ chat.pk }}"
+     data-type="{{ chat.type }}"
+     data-last-ts="{% if last %}{{ last.created_at|date:'U' }}000{% else %}{{ chat.created_at|date:'U' }}000{% endif %}"
+     data-haystack="{% if chat.type == 'global' %}глобальный чат{% elif chat.type == 'department' %}{{ chat.name|default:'Основной чат' }} {{ chat.department.name }}{% elif chat.type == 'private' %}{% for u in chat.participants.all %}{% if u != user %} {{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}{% else %}{{ chat.name }} {{ chat.description }}{% endif %}">
+  
+  {# Аватар #}
+  {% include "includes/components/chat_avatar.html" with chat=chat %}
+  
+  {# Контент #}
+  <div class="flex-grow-1 position-relative">
+    {# Заголовок #}
+    {% include "includes/components/chat_title.html" with chat=chat %}
+    
+    {# Последнее сообщение #}
+    {% include "includes/components/chat_last_message.html" with chat=chat last=last %}
+  </div>
+  
+  {# Меню действий #}
+  {% include "includes/components/chat_menu.html" with chat=chat %}
+</div>
+{% endwith %}

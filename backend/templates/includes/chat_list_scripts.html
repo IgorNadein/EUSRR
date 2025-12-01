@@ -1,0 +1,61 @@
+{# includes/chat_list_scripts.html #}
+{# Скрипты только для страницы chat_list.html #}
+{% load static %}
+
+<script type="module">
+  import { initChatListFilter } from "{% static 'js/components/chatListFilter.js' %}";
+  import { initChatListRealtime } from "{% static 'js/components/chatListRealtime.js' %}";
+  import { initChatMenuActions } from "{% static 'js/components/chatMenuActions.js' %}";
+
+  // Инициализируем обработчики меню действий чата
+  initChatMenuActions();
+
+  // Ждём готовности chat-системы
+  window.addEventListener('chat:system-ready', (e) => {
+    const { userWs, avatarMap, badgeManager } = e.detail;
+
+    // ========== CHAT LIST FILTER ==========
+    // Фильтрация чатов по типу и поиску
+    const chatListFilter = initChatListFilter();
+
+    // ========== CHAT LIST REALTIME ==========
+    // Real-time обновления карточек чатов в списке
+    const chatListRealtime = initChatListRealtime({
+      meId: {{ user.id|default:"0" }},
+      badgeManager: badgeManager
+    });
+
+    // Расширяем userWebSocket обработчиком для списка чатов
+    if (userWs.configure) {
+      userWs.configure({
+        onListUpdate: (chatId, message) => {
+          if (chatListRealtime) {
+            chatListRealtime.updateChatCard(chatId, message);
+          }
+        }
+      });
+    }
+
+    // Экспортируем API
+    window.chatListFilter = chatListFilter;
+    window.chatListRealtime = chatListRealtime;
+  });
+
+  // ========== DROPDOWN Z-INDEX MANAGEMENT ==========
+  // Поднимаем z-index секции при открытии dropdown, возвращаем обратно при закрытии
+  document.addEventListener('shown.bs.dropdown', (event) => {
+    const dropdownButton = event.target;
+    const chatSection = dropdownButton.closest('.chat-section');
+    if (chatSection) {
+      chatSection.style.zIndex = '1000';
+    }
+  });
+
+  document.addEventListener('hidden.bs.dropdown', (event) => {
+    const dropdownButton = event.target;
+    const chatSection = dropdownButton.closest('.chat-section');
+    if (chatSection) {
+      chatSection.style.zIndex = '1'; // Возвращаем базовый z-index
+    }
+  });
+</script>

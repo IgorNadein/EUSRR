@@ -141,6 +141,10 @@ export function createMessageElement(msg, options = {}) {
   
   if (msg.id != null) {
     wrap.setAttribute('data-id', String(msg.id));
+    wrap.setAttribute('data-message-id', String(msg.id));
+    // Добавляем реакции если они есть
+    const reactionsData = msg.reactions_summary || {};
+    wrap.setAttribute('data-reactions', JSON.stringify(reactionsData));
   }
   wrap.setAttribute('data-ts', String(ts));
   wrap.setAttribute('data-author-id', String(msg.author_id || ''));
@@ -156,6 +160,52 @@ export function createMessageElement(msg, options = {}) {
   );
   const time = formatTime(ts);
   const text = esc(msg.content || '').replace(/\n/g, '<br>');
+  
+  // Формирование информации о пересылке
+  let forwardedHTML = '';
+  if (msg.is_forwarded && msg.forwarded_from) {
+    const fwd = msg.forwarded_from;
+    const fwdAuthor = esc(fwd.author_name || 'Неизвестный');
+    const fwdTime = fwd.created_at ? fwd.created_at : '';
+    const fwdChat = fwd.chat_name ? ` из «${esc(fwd.chat_name)}»` : '';
+    
+    forwardedHTML = `
+      <div class="forwarded-indicator small mb-2 d-flex align-items-center">
+        <i class="bi-arrow-90deg-right me-2"></i>
+        <div>
+          <div>Переслано от <strong>${fwdAuthor}</strong>${fwdChat}</div>
+          ${fwdTime ? `<div class="small opacity-75">${fwdTime}</div>` : ''}
+        </div>
+      </div>`;
+  }
+  
+  // Формирование информации об ответе
+  let replyHTML = '';
+  if (msg.reply_to) {
+    const reply = msg.reply_to;
+    const replyAuthor = esc(reply.author_name || 'Неизвестный');
+    const replyContent = esc(reply.content || '');
+    const replyPreview = replyContent.substring(0, 50);
+    const replyFull = replyContent.length > 50 ? replyPreview + '...' : replyPreview;
+    
+    replyHTML = `
+      <div class="reply-indicator small mb-2" style="
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.05);
+        border-left: 3px solid #007bff;
+        border-radius: 4px;
+        cursor: pointer;"
+        data-reply-to-id="${reply.id}"
+        onclick="event.stopPropagation(); const el = document.querySelector('[data-message-id=&quot;${reply.id}&quot;]'); if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'});">
+        <div style="display: flex; align-items: center;">
+          <i class="bi-reply me-2"></i>
+          <div>
+            <div style="font-weight: 600; color: #007bff;">${replyAuthor}</div>
+            <div style="opacity: 0.75;">${replyFull}</div>
+          </div>
+        </div>
+      </div>`;
+  }
   
   // Формирование вложений
   let attachmentsHTML = '';
@@ -208,16 +258,54 @@ export function createMessageElement(msg, options = {}) {
     ? '<div class="message-status small text-secondary mt-2"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Отправляем…</div>'
     : '';
 
+  // Рендер голосования
+  let pollHTML = '';
+  if (msg.poll) {
+    const poll = msg.poll;
+    pollHTML += `
+      <div class="poll-widget mt-2" data-poll-id="${poll.id}">
+        <div class="poll-question mb-3">
+          <strong>${esc(poll.question)}</strong>
+        </div>
+        <div class="poll-options">`;
+    
+    poll.options.forEach(option => {
+      pollHTML += `
+          <div class="poll-option mb-2" data-option-id="${option.id}">
+            <button type="button" class="btn btn-outline-secondary btn-poll-option w-100 text-start" 
+                    data-option-id="${option.id}">
+              ${esc(option.text)}
+            </button>
+          </div>`;
+    });
+    
+    pollHTML += `
+        </div>
+        <div class="poll-footer mt-3 d-flex justify-content-between align-items-center">
+          <div class="small text-muted">
+            ${poll.total_voters || 0} проголосовало
+            ${poll.is_anonymous ? ' • Анонимное' : ''}
+            ${poll.is_multiple_choice ? ' • Множественный выбор' : ''}
+            ${poll.is_closed ? ' • Закрыто' : ''}
+          </div>
+        </div>
+      </div>`;
+  }
+
   const bubble = `
     <div class="d-flex flex-column" style="max-width:80%;">
       <div class="small text-secondary ${mine ? 'text-end' : ''}">
         ${who} · ${time}
       </div>
       <div class="mt-1 bubble ${mine ? 'bubble-me' : 'bubble-other'}">
+        ${replyHTML}
+        ${forwardedHTML}
         ${text ? text : ''}
+        ${pollHTML}
         ${attachmentsHTML}
         ${pendingStatus}
       </div>
+      <div class="message-reactions-wrapper mt-1"></div>
     </div>`;
 
   // Аватар

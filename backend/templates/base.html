@@ -49,6 +49,12 @@
   {% block extra_css %}{% endblock %}
 </head>
 <body class="min-vh-100">
+  {# Устанавливаем глобальные переменные в самом начале #}
+  {% if user.is_authenticated %}
+  <script>
+    window.currentUserId = {{ user.id }};
+  </script>
+  {% endif %}
 
   {% include "includes/navbar.html" %}
 
@@ -109,129 +115,24 @@
     });
   </script>
 
-  {# ========== CHAT MODULES ========== #}
+  {# ========== UNIVERSAL USER WEBSOCKET ========== #}
+  {# Универсальное WebSocket-подключение для всех real-time обновлений #}
   {% if user.is_authenticated %}
   <script type="module">
-    import { initChatAvatarMap } from "{% static 'js/components/chatAvatarMap.js' %}";
-    import { initChatMarkRead } from "{% static 'js/components/chatMarkRead.js' %}";
-    import { initChatWebSocket } from "{% static 'js/components/chatWebSocket.js' %}";
-    import { initChatListFilter } from "{% static 'js/components/chatListFilter.js' %}";
-    import { initChatBadgeManager } from "{% static 'js/components/chatBadgeManager.js' %}";
-    import { initChatListRealtime } from "{% static 'js/components/chatListRealtime.js' %}";
+    import { initUserWebSocket } from "{% static 'js/components/userWebSocket.js' %}";
 
-    // Инициализация карты аватаров
-    const avatarMap = initChatAvatarMap({
-      "{{ user.id }}": {% if user.avatar %}"{{ user.avatar.url }}"{% else %}""{% endif %}
+    // Базовая инициализация WebSocket (без chat-специфичной логики)
+    const userWs = initUserWebSocket({
+      userId: {{ user.id }}
     });
 
-    // Инициализация badge менеджера (слушает события chat:read)
-    const badgeManager = initChatBadgeManager();
-
-    // Инициализация фильтрации списка чатов
-    const chatListFilter = initChatListFilter();
-
-    // Инициализация realtime-обновлений списка чатов
-    const chatListRealtime = initChatListRealtime({
-      meId: {{ user.id|default:"0" }},
-      badgeManager: badgeManager
-    });
-
-    // Инициализация отметки прочитанного (если открыт конкретный чат)
-    {% if chat %}
-    const markReadApi = initChatMarkRead({
-      chatId: {{ chat.id }},
-      meId: {{ user.id|default:"0" }},
-      scrollContainerId: 'chatScroll',
-      textareaId: 'id_content',
-      formId: 'chatForm',
-      scrollBtnId: 'scrollBtn',
-      markReadUrl: "{% url 'communications:chat_mark_read' chat.pk %}",
-      initialLastReadTs: {{ chat.last_read_timestamp|default:"null" }}
-    });
-
-    // Инициализация WebSocket для чата
-    const chatWebSocket = initChatWebSocket({
-      chatId: {{ chat.id }},
-      meId: {{ user.id|default:"0" }},
-      scrollContainerId: 'chatScroll',
-      formId: 'chatForm',
-      textareaId: 'id_content',
-      typingIndicatorId: 'typing',
-      profileUrl: "{% url 'employees:profile' %}",
-      detailUrlTemplate: "{% url 'employees:employee_detail' 0 %}",
-      avatarMap: avatarMap.getAll(),
-      markReadApi: markReadApi,
-      bindFormSubmit: false
-    });
-
-    if (chatWebSocket) {
-      window.chatWebSocketApi = chatWebSocket;
-      window.dispatchEvent(new CustomEvent('chat:ws-ready', { detail: chatWebSocket }));
+    // Экспортируем в window для доступа из других модулей
+    if (userWs) {
+      window.userWebSocket = userWs;
+      window.dispatchEvent(new CustomEvent('user:ws-ready', {
+        detail: { api: userWs, ws: userWs.ws }
+      }));
     }
-    {% endif %}
-
-    // Глобальный обновлятель бейджа в сайдбаре
-    (function initSidebarBadge() {
-      const meId = {{ user.id|default:"0" }};
-      const badge = document.getElementById('sidebarChatBadge');
-
-      function setBadge(n) {
-        if (!badge) return;
-        const v = Math.max(0, Number(n) || 0);
-        badge.dataset.count = String(v);
-        badge.textContent = v > 99 ? '99+' : String(v);
-        badge.classList.toggle('d-none', v <= 0);
-      }
-
-      // Стартовое значение
-      setBadge(badge?.dataset.count || 0);
-
-      // Карта непрочитанных по чатам
-      const chatUnread = Object.create(null);
-      document.querySelectorAll('.chat-row[data-chat-id]').forEach(row => {
-        const id = String(row.getAttribute('data-chat-id'));
-        const cnt = Number(row.querySelector('[data-unread-count]')?.textContent || 0);
-        chatUnread[id] = cnt;
-      });
-
-      function recompute() {
-        let total = 0;
-        for (const k in chatUnread) {
-          total += Number(chatUnread[k] || 0);
-        }
-        setBadge(total);
-      }
-
-      if (Object.keys(chatUnread).length) recompute();
-
-      // Глобальный WebSocket для обновления бейджа
-      try {
-        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${proto}://${location.host}/ws/chats/`);
-
-        ws.addEventListener('message', (e) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.type !== 'list_update') return;
-
-            const chatId = String(data.chat_id);
-            const msg = data.message || {};
-            const isMine = Number(msg.author_id) === Number(meId);
-
-            chatUnread[chatId] = isMine ? 0 : (Number(chatUnread[chatId] || 0) + 1);
-            recompute();
-          } catch (_) {}
-        });
-      } catch (_) {}
-
-      // Обработка события chat:read
-      window.addEventListener('chat:read', (e) => {
-        const chatId = String(e?.detail?.chatId || '');
-        if (!chatId) return;
-        chatUnread[chatId] = 0;
-        recompute();
-      });
-    })();
   </script>
 
   <!-- Notification Manager -->

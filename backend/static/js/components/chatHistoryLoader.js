@@ -230,8 +230,9 @@ export function initChatHistoryLoader(options = {}) {
   };
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => initChatHistoryLoader());
-} else {
-  initChatHistoryLoader();
-}
+// УДАЛЕНО: Авто-инициализация теперь происходит через chat_detail_scripts.html
+// if (document.readyState === 'loading') {
+//   document.addEventListener('DOMContentLoaded', () => initChatHistoryLoader());
+// } else {
+//   initChatHistoryLoader();
+// }

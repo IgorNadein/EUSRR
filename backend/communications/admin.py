@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import (
+    AvailableReaction,
     Chat,
     ChatMembership,
     ChatUserSettings,
@@ -7,7 +8,11 @@ from .models import (
     ForwardedMessage,
     Message,
     MessageAttachment,
+    MessageReaction,
     MessageReply,
+    Poll,
+    PollOption,
+    PollVote,
 )
 
 
@@ -169,3 +174,155 @@ class CrossChatMessageAdmin(admin.ModelAdmin):
     list_filter = ("status", "requires_moderation", "sent_at")
     search_fields = ("sender__last_name", "target_chat__name")
     ordering = ("-sent_at",)
+
+
+@admin.register(MessageReaction)
+class MessageReactionAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "message",
+        "user",
+        "emoji",
+        "created_at"
+    )
+    list_filter = ("emoji", "created_at")
+    search_fields = ("message__content", "user__last_name", "emoji")
+    ordering = ("-created_at",)
+    readonly_fields = ("created_at",)
+
+
+@admin.register(AvailableReaction)
+class AvailableReactionAdmin(admin.ModelAdmin):
+    list_display = (
+        "emoji",
+        "name",
+        "order",
+        "is_active",
+        "created_at"
+    )
+    list_filter = ("is_active", "created_at")
+    search_fields = ("emoji", "name")
+    ordering = ("order", "created_at")
+    list_editable = ("order", "is_active")
+    readonly_fields = ("created_at",)
+    
+    fieldsets = (
+        ("Основное", {
+            "fields": ("emoji", "name", "is_active")
+        }),
+        ("Отображение", {
+            "fields": ("order",)
+        }),
+        ("Информация", {
+            "fields": ("created_at",),
+            "classes": ("collapse",)
+        }),
+    )
+
+
+class PollOptionInline(admin.TabularInline):
+    model = PollOption
+    extra = 0
+    readonly_fields = ("vote_count", "created_at")
+    ordering = ["position"]
+
+
+class PollVoteInline(admin.TabularInline):
+    model = PollVote
+    extra = 0
+    readonly_fields = ("voter", "option", "voted_at")
+    can_delete = False
+
+
+@admin.register(Poll)
+class PollAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "question_short",
+        "author",
+        "total_voters",
+        "is_closed",
+        "created_at"
+    )
+    list_filter = (
+        "is_anonymous",
+        "is_multiple_choice",
+        "is_quiz",
+        "is_closed",
+        "created_at"
+    )
+    search_fields = ("question", "author__last_name")
+    ordering = ("-created_at",)
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "closed_at",
+        "total_voters"
+    )
+    inlines = [PollOptionInline, PollVoteInline]
+    
+    def question_short(self, obj):
+        return (
+            obj.question[:50] + "..."
+            if len(obj.question) > 50
+            else obj.question
+        )
+    question_short.short_description = "Вопрос"
+
+
+@admin.register(PollOption)
+class PollOptionAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "poll_question_short",
+        "text",
+        "vote_count",
+        "is_correct"
+    )
+    list_filter = ("is_correct", "created_at")
+    search_fields = ("text", "poll__question")
+    ordering = ("poll", "position")
+    readonly_fields = ("vote_count", "created_at")
+    
+    def poll_question_short(self, obj):
+        return (
+            obj.poll.question[:30] + "..."
+            if len(obj.poll.question) > 30
+            else obj.poll.question
+        )
+    poll_question_short.short_description = "Голосование"
+
+
+@admin.register(PollVote)
+class PollVoteAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "poll_question_short",
+        "voter",
+        "option_text_short",
+        "voted_at"
+    )
+    list_filter = ("voted_at",)
+    search_fields = (
+        "poll__question",
+        "voter__last_name",
+        "option__text"
+    )
+    ordering = ("-voted_at",)
+    readonly_fields = ("voted_at",)
+    
+    def poll_question_short(self, obj):
+        return (
+            obj.poll.question[:30] + "..."
+            if len(obj.poll.question) > 30
+            else obj.poll.question
+        )
+    poll_question_short.short_description = "Голосование"
+    
+    def option_text_short(self, obj):
+        return (
+            obj.option.text[:20] + "..."
+            if len(obj.option.text) > 20
+            else obj.option.text
+        )
+    option_text_short.short_description = "Вариант"

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Message Editing - Full Rerender</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #chatScroll {
+            border: 1px solid #ccc;
+            padding: 10px;
+            min-height: 200px;
+            background: #f9f9f9;
+        }
+        .msg {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        .bubble {
+            padding: 10px;
+            border-radius: 8px;
+            background: white;
+            border: 1px solid #ddd;
+        }
+        .bubble-me {
+            background: #e3f2fd;
+        }
+        .message-reactions-wrapper {
+            margin-top: 5px;
+            font-size: 14px;
+        }
+        .reply-reference {
+            border-left: 3px solid #2196F3;
+            padding-left: 8px;
+            margin-bottom: 8px;
+            opacity: 0.8;
+            font-size: 13px;
+        }
+        .attachment {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .message-edited-indicator {
+            color: #999;
+            font-size: 12px;
+            font-style: italic;
+        }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test: Message Editing with Full Rerender</h1>
+    
+    <div class="test-section">
+        <h3>Текущее состояние</h3>
+        <div id="chatScroll" data-chat-id="1" data-me-id="123"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Тесты</h3>
+        <button onclick="testSimpleEdit()">1. Простое редактирование текста</button>
+        <button onclick="testWithAttachments()">2. Редактирование с вложениями</button>
+        <button onclick="testWithReply()">3. Редактирование с ответом</button>
+        <button onclick="testRemoveReply()">4. Удаление ответа</button>
+        <button onclick="testWithReactions()">5. Редактирование с реакциями</button>
+        <button onclick="clearChat()">🗑️ Очистить</button>
+    </div>
+
+    <div class="test-section">
+        <h3>Console Log</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script type="module">
+        import { MessageRenderer } from '/static/js/components/messageRenderer.js';
+        
+        window.currentUserAvatar = '';
+        window.meId = 123;
+        
+        const log = (msg, ...args) => {
+            console.log(msg, ...args);
+            const logEl = document.getElementById('log');
+            logEl.innerHTML += `<div>${new Date().toISOString().substr(11, 8)} - ${msg}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        };
+
+        window.testSimpleEdit = function() {
+            log('TEST 1: Simple text edit');
+            
+            const renderer = new MessageRenderer({
+                containerId: 'chatScroll',
+                currentUserId: 123
+            });
+            
+            // Исходное сообщение
+            const originalMsg = {
+                id: 1,
+                author_id: 123,
+                author_name: 'Вы',
+                content: 'Привет! Это исходный текст.',
+                created_ts: Date.now(),
+                is_edited: false,
+                reactions_summary: {}
+            };
+            
+            renderer.renderMessage(originalMsg);
+            log('✓ Original message rendered');
+            
+            setTimeout(() => {
+                // Редактированное сообщение
+                const editedMsg = {
+                    ...originalMsg,
+                    content: 'Привет! Это ОТРЕДАКТИРОВАННЫЙ текст.',
+                    is_edited: true,
+                    edited_at: new Date().toISOString()
+                };
+                
+                log('Simulating WebSocket edit event...');
+                window.dispatchEvent(new CustomEvent('chat:message-edited', {
+                    detail: { payload: editedMsg }
+                }));
+                
+                setTimeout(() => {
+                    const el = document.querySelector('[data-message-id="1"]');
+                    const hasIndicator = el?.querySelector('.message-edited-indicator');
+                    log(hasIndicator ? '✓ Edit indicator found!' : '✗ Edit indicator NOT found');
+                }, 100);
+            }, 500);
+        };
+
+        window.testWithAttachments = function() {
+            log('TEST 2: Edit with attachments');
+            
+            const renderer = new MessageRenderer({
+                containerId: 'chatScroll',
+                currentUserId: 456
+            });
+            
+            const msgWithAttachments = {
+                id: 2,
+                author_id: 456,
+                author_name: 'User',
+                content: 'Смотрите фото!',
+                created_ts: Date.now(),
+                is_edited: false,
+                attachments: [
+                    { id: 1, file_name: 'photo1.jpg', file_type: 'image', file_url: '#' },
+                    { id: 2, file_name: 'photo2.jpg', file_type: 'image', file_url: '#' }
+                ],
+                reactions_summary: {}
+            };
+            
+            renderer.renderMessage(msgWithAttachments);
+            log('✓ Message with 2 attachments rendered');
+            
+            setTimeout(() => {
+                const editedMsg = {
+                    ...msgWithAttachments,
+                    content: 'Смотрите ОБНОВЛЕННОЕ фото!',
+                    attachments: [
+                        { id: 1, file_name: 'photo1.jpg', file_type: 'image', file_url: '#' }
+                    ],
+                    is_edited: true,
+                    edited_at: new Date().toISOString()
+                };
+                
+                log('Editing message (removed 1 attachment)...');
+                window.dispatchEvent(new CustomEvent('chat:message-edited', {
+                    detail: { payload: editedMsg }
+                }));
+                
+                setTimeout(() => {
+                    const el = document.querySelector('[data-message-id="2"]');
+                    const attachments = el?.querySelectorAll('.attachment, img');
+                    log(`Attachments in DOM: ${attachments?.length || 0} (should be 1)`);
+                }, 100);
+            }, 500);
+        };
+
+        window.testWithReply = function() {
+            log('TEST 3: Edit message with reply');
+            
+            const renderer = new MessageRenderer({
+                containerId: 'chatScroll',
+                currentUserId: 123
+            });
+            
+            const msgWithReply = {
+                id: 3,
+                author_id: 123,
+                author_name: 'Вы',
+                content: 'Согласен!',
+                created_ts: Date.now(),
+                is_edited: false,
+                reply_to: {
+                    id: 999,
+                    author_name: 'Иван',
+                    content: 'Идем завтра на встречу?'
+                },
+                reactions_summary: {}
+            };
+            
+            renderer.renderMessage(msgWithReply);
+            log('✓ Message with reply rendered');
+            
+            setTimeout(() => {
+                const editedMsg = {
+                    ...msgWithReply,
+                    content: 'Полностью согласен!',
+                    is_edited: true,
+                    edited_at: new Date().toISOString()
+                };
+                
+                log('Editing message (reply preserved)...');
+                window.dispatchEvent(new CustomEvent('chat:message-edited', {
+                    detail: { payload: editedMsg }
+                }));
+                
+                setTimeout(() => {
+                    const el = document.querySelector('[data-message-id="3"]');
+                    const replyBlock = el?.querySelector('.reply-reference');
+                    log(replyBlock ? '✓ Reply block still present' : '✗ Reply block missing');
+                }, 100);
+            }, 500);
+        };
+
+        window.testRemoveReply = function() {
+            log('TEST 4: Remove reply on edit');
+            
+            const renderer = new MessageRenderer({
+                containerId: 'chatScroll',
+                currentUserId: 123
+            });
+            
+            const msgWithReply = {
+                id: 4,
+                author_id: 123,
+                author_name: 'Вы',
+                content: 'Отвечаю на вопрос',
+                created_ts: Date.now(),
+                is_edited: false,
+                reply_to: {
+                    id: 998,
+                    author_name: 'Петр',
+                    content: 'Есть вопрос...'
+                },
+                reactions_summary: {}
+            };
+            
+            renderer.renderMessage(msgWithReply);
+            log('✓ Message with reply rendered');
+            
+            setTimeout(() => {
+                const editedMsg = {
+                    ...msgWithReply,
+                    content: 'Просто сообщение без ответа',
+                    reply_to: null,  // ← Удалили ответ!
+                    is_edited: true,
+                    edited_at: new Date().toISOString()
+                };
+                
+                log('Editing message (REMOVING reply)...');
+                window.dispatchEvent(new CustomEvent('chat:message-edited', {
+                    detail: { payload: editedMsg }
+                }));
+                
+                setTimeout(() => {
+                    const el = document.querySelector('[data-message-id="4"]');
+                    const replyBlock = el?.querySelector('.reply-reference');
+                    log(replyBlock ? '✗ Reply block still present (BUG!)' : '✓ Reply block removed');
+                }, 100);
+            }, 500);
+        };
+
+        window.testWithReactions = function() {
+            log('TEST 5: Edit with reactions');
+            
+            const renderer = new MessageRenderer({
+                containerId: 'chatScroll',
+                currentUserId: 123
+            });
+            
+            const msgWithReactions = {
+                id: 5,
+                author_id: 456,
+                author_name: 'User',
+                content: 'Отличная идея!',
+                created_ts: Date.now(),
+                is_edited: false,
+                reactions_summary: {
+                    '👍': { count: 3, users: [1, 2, 3] },
+                    '❤️': { count: 1, users: [4] }
+                }
+            };
+            
+            renderer.renderMessage(msgWithReactions);
+            log('✓ Message with reactions rendered');
+            
+            setTimeout(() => {
+                const editedMsg = {
+                    ...msgWithReactions,
+                    content: 'ОЧЕНЬ отличная идея!',
+                    is_edited: true,
+                    edited_at: new Date().toISOString(),
+                    reactions_summary: {
+                        '👍': { count: 5, users: [1, 2, 3, 5, 6] },
+                        '❤️': { count: 2, users: [4, 7] },
+                        '🔥': { count: 1, users: [8] }
+                    }
+                };
+                
+                log('Editing message (reactions updated)...');
+                window.dispatchEvent(new CustomEvent('chat:message-edited', {
+                    detail: { payload: editedMsg }
+                }));
+                
+                setTimeout(() => {
+                    const el = document.querySelector('[data-message-id="5"]');
+                    const reactionsData = JSON.parse(el?.dataset.reactions || '{}');
+                    const reactionCount = Object.keys(reactionsData).length;
+                    log(`Reactions in DOM: ${reactionCount} types (should be 3)`);
+                }, 100);
+            }, 500);
+        };
+
+        window.clearChat = function() {
+            document.getElementById('chatScroll').innerHTML = '';
+            document.getElementById('log').innerHTML = '';
+            log('✓ Cleared');
+        };
+
+        // Импортируем и инициализируем messageEditing
+        import { initMessageEditing } from '/static/js/components/messageEditing.js';
+        initMessageEditing();
+        log('✓ Message editing initialized');
+        
+        log('Ready to test! Click buttons above.');
+    </script>
+</body>
+</html>
