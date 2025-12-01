@@ -1702,8 +1702,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         # LDAP-часть
-        ldap_keys = {"first_name", "last_name", "email", "phone_number", "is_active"}
-        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
+        ldap_keys = {
+            "first_name",
+            "last_name",
+            "email",
+            "phone_number",
+            "is_active",
+        }
+        ldap_changes = {
+            k: vd.pop(k)
+            for k in list(vd.keys())
+            if k in ldap_keys
+        }
 
         svc_changes = dict(ldap_changes)
         pos_key_present = ("position" in request.data) or (
@@ -1715,7 +1725,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 if "position" in request.data
                 else request.data.get("position_id")
             )
-            svc_changes["position"] = pos_raw  # тут может быть None — так и надо
+            svc_changes["position"] = pos_raw  # None допустим
             vd.pop("position", None)
             vd.pop("position_id", None)
 
@@ -1868,11 +1878,52 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         """
         emp = self.get_object()
         old_email = emp.email  # Сохраняем старый email для проверки
-        
+
+        print("=" * 80)
+        print(
+            "[EMP PATCH] pk=%s, actor=%s, method=%s"
+            % (emp.pk, getattr(request.user, "id", None), request.method)
+        )
+        print(f"[EMP PATCH] request.data keys: {list(request.data.keys())}")
+        print(f"[EMP PATCH] request.FILES keys: {list(request.FILES.keys())}")
+        print(f"[EMP PATCH] Content-Type: {request.content_type}")
+        if "avatar" in request.data:
+            avatar_data = request.data["avatar"]
+            avatar_len = len(str(avatar_data)) if avatar_data else 0
+            print(
+                "[EMP PATCH] avatar in request.data: type=%s, length=%s"
+                % (type(avatar_data), avatar_len)
+            )
+        if "avatar" in request.FILES:
+            avatar_file_req = request.FILES["avatar"]
+            print(
+                "[EMP PATCH] avatar in request.FILES: name=%s, size=%s"
+                % (avatar_file_req.name, avatar_file_req.size)
+            )
+
         ser = self.get_serializer(emp, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         vd = dict(ser.validated_data)
         ldap_enabled = _is_ldap_enabled()
+
+        print(f"[EMP PATCH] validated_data keys: {list(vd.keys())}")
+        if "avatar" in vd:
+            avatar_vd = vd["avatar"]
+            print(
+                (
+                    "[EMP PATCH] avatar in validated_data: type=%s, "
+                    "hasattr read=%s"
+                )
+                % (type(avatar_vd), hasattr(avatar_vd, "read"))
+            )
+            if hasattr(avatar_vd, "name"):
+                print(
+                    "[EMP PATCH] avatar object info: name=%s, size=%s"
+                    % (
+                        getattr(avatar_vd, "name", None),
+                        getattr(avatar_vd, "size", None),
+                    )
+                )
 
         # Проверяем изменение email
         new_email = vd.get("email")
@@ -1901,11 +1952,20 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         # avatar → bytes (если разрешено править аватар в LDAP)
         avatar_file = ser.validated_data.get("avatar")
+        avatar_file_type = type(avatar_file) if avatar_file else None
+        print(
+            "[EMP PATCH] avatar_file extracted: %s, type=%s"
+            % (avatar_file, avatar_file_type)
+        )
         if avatar_file and hasattr(avatar_file, "read"):
             try:
                 svc_changes["avatar_bytes"] = avatar_file.read()
-            except Exception:
-                pass
+                print(
+                    "[EMP PATCH] avatar_bytes prepared for LDAP, length=%s"
+                    % len(svc_changes["avatar_bytes"])
+                )
+            except Exception as exc:
+                print(f"[EMP PATCH] Error reading avatar for LDAP: {exc}")
 
         if ldap_enabled:
             # LDAP mode: sync with DirectoryService
@@ -1918,10 +1978,16 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         group_cns=group_cns if group_cns is not None else None,
                         move_to_department_dn=move_to_department_dn,
                     )
-                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                except (
+                    DirectoryLdapError,
+                    DirectoryDbError,
+                    DirectoryServiceError,
+                ) as e:
                     return Response(
                         {"detail": str(e)},
-                        status=502 if isinstance(e, DirectoryLdapError) else 500,
+                        status=(
+                            502 if isinstance(e, DirectoryLdapError) else 500
+                        ),
                     )
         else:
             # Non-LDAP mode: direct DB updates
@@ -1942,28 +2008,48 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         vd["position"] = Position.objects.get(id=pos_raw)
                     except Position.DoesNotExist:
                         return Response(
-                            {"detail": f"Position {pos_raw} not found"}, status=400
+                            {"detail": f"Position {pos_raw} not found"},
+                            status=400,
                         )
                 elif isinstance(pos_raw, dict) and "id" in pos_raw:
                     try:
                         vd["position"] = Position.objects.get(id=pos_raw["id"])
                     except Position.DoesNotExist:
                         return Response(
-                            {"detail": f"Position {pos_raw['id']} not found"}, status=400
+                            {"detail": f"Position {pos_raw['id']} not found"},
+                            status=400,
                         )
 
             # Handle avatar in non-LDAP mode
             if avatar_file and hasattr(avatar_file, "read"):
                 try:
                     from django.core.files.base import ContentFile
+
                     avatar_bytes = avatar_file.read()
-                    emp.avatar.save(avatar_file.name, ContentFile(avatar_bytes), save=False)
-                    vd.pop("avatar", None)  # Remove from vd as we handled it manually
-                except Exception:
-                    pass
+                    print(
+                        "[EMP PATCH] Non-LDAP avatar bytes len=%s"
+                        % (len(avatar_bytes) if avatar_bytes else 0)
+                    )
+                    emp.avatar.save(
+                        avatar_file.name,
+                        ContentFile(avatar_bytes),
+                        save=False,
+                    )
+                    vd.pop("avatar", None)
+                    print(
+                        (
+                            "[EMP PATCH] Avatar saved to model field, "
+                            "current path=%s"
+                        )
+                        % (emp.avatar.name if emp.avatar else None)
+                    )
+                except Exception as exc:
+                    print(
+                        "[EMP PATCH] Error while saving avatar in DB mode: %s" % exc
+                    )
 
         # --- DB-only часть ---
-        # Обновляем ТОЛЬКО оставшиеся поля, чтобы не перезаписать то, что уже сделал сервис
+    # Обновляем только оставшиеся поля, чтобы не перетирать работу сервиса
         if vd:
             ser_db = self.get_serializer(emp, data=vd, partial=True)
             ser_db.is_valid(raise_exception=True)
@@ -1972,6 +2058,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             data = ser_db.data
         else:
             data = self.get_serializer(emp).data
+
+        print(f"[EMP PATCH] Final response keys: {list(data.keys())}")
+        if isinstance(data, dict) and data.get("avatar"):
+            print(
+                "[EMP PATCH] avatar preview in response: %s..."
+                % data["avatar"][:80]
+            )
 
         # Сброс email_verified при изменении email
         if email_changed:
