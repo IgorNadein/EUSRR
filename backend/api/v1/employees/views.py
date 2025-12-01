@@ -1663,9 +1663,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         # Логируем для отладки
         import logging
         logger = logging.getLogger(__name__)
-        logger.debug(f"[ME PATCH] request.data keys: {request.data.keys()}")
-        logger.debug(f"[ME PATCH] request.FILES keys: {request.FILES.keys()}")
-        logger.debug(f"[ME PATCH] Content-Type: {request.content_type}")
+        logger.info(f"[ME PATCH] request.data keys: {list(request.data.keys())}")
+        logger.info(f"[ME PATCH] request.FILES keys: {list(request.FILES.keys())}")
+        logger.info(f"[ME PATCH] Content-Type: {request.content_type}")
+        if 'avatar' in request.data:
+            logger.info(f"[ME PATCH] avatar in request.data: {type(request.data['avatar'])}, length: {len(str(request.data['avatar'])) if request.data['avatar'] else 0}")
+        if 'avatar' in request.FILES:
+            logger.info(f"[ME PATCH] avatar in request.FILES: {request.FILES['avatar'].name}, size: {request.FILES['avatar'].size}")
         
         ser = self.get_serializer(instance, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
