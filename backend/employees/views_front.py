@@ -434,13 +434,42 @@ def employee_profile(request, pk: str | int = "me"):
 def employee_edit(request, pk: int):
     """
     Редактирование пользователя по id.
+    Поддерживает как JSON, так и multipart/form-data (для загрузки файлов).
     """
     api = get_api_client(request)
-    try:
-        payload = json.loads(request.body or b"{}")
-    except Exception:
+    
+    # Проверяем Content-Type
+    content_type = request.content_type or ''
+    
+    if 'multipart/form-data' in content_type:
+        # Обрабатываем multipart/form-data (файлы)
         payload = {}
-    resp = api.patch(f"v1/employees/{pk}/", json=payload)
+        
+        # Собираем обычные поля из POST
+        for key, value in request.POST.items():
+            if key == 'csrfmiddlewaretoken':
+                continue
+            # Если это массив (например skills_ids)
+            if key.endswith('_ids') or key == 'skills':
+                payload[key] = request.POST.getlist(key)
+            else:
+                payload[key] = value
+        
+        # Обрабатываем файлы (аватар)
+        if 'avatar' in request.FILES:
+            # Конвертируем в data URI для Base64ImageField
+            payload['avatar'] = _file_to_data_uri(request.FILES['avatar'])
+        
+        # Отправляем в DRF как JSON (с base64 аватаром)
+        resp = api.patch(f"v1/employees/{pk}/", json=payload)
+    else:
+        # Обрабатываем JSON (как раньше)
+        try:
+            payload = json.loads(request.body or b"{}")
+        except Exception:
+            payload = {}
+        resp = api.patch(f"v1/employees/{pk}/", json=payload)
+    
     try:
         data = resp.json
     except Exception:
@@ -454,15 +483,42 @@ def employee_edit(request, pk: int):
 def employee_edit_me(request):
     """
     Редактирование собственного профиля через /api/v1/employees/me/
+    Поддерживает как JSON, так и multipart/form-data (для загрузки файлов).
     """
     api = get_api_client(request)
-    # принимаем JSON из браузера
-    try:
-        payload = json.loads(request.body or b"{}")
-    except Exception:
+    
+    # Проверяем Content-Type
+    content_type = request.content_type or ''
+    
+    if 'multipart/form-data' in content_type:
+        # Обрабатываем multipart/form-data (файлы)
         payload = {}
-    # отправляем в DRF
-    resp = api.patch("v1/employees/me/", json=payload)
+        
+        # Собираем обычные поля из POST
+        for key, value in request.POST.items():
+            if key == 'csrfmiddlewaretoken':
+                continue
+            # Если это массив (например skills_ids)
+            if key.endswith('_ids') or key == 'skills':
+                payload[key] = request.POST.getlist(key)
+            else:
+                payload[key] = value
+        
+        # Обрабатываем файлы (аватар)
+        if 'avatar' in request.FILES:
+            # Конвертируем в data URI для Base64ImageField
+            payload['avatar'] = _file_to_data_uri(request.FILES['avatar'])
+        
+        # Отправляем в DRF как JSON (с base64 аватаром)
+        resp = api.patch("v1/employees/me/", json=payload)
+    else:
+        # Обрабатываем JSON (как раньше)
+        try:
+            payload = json.loads(request.body or b"{}")
+        except Exception:
+            payload = {}
+        resp = api.patch("v1/employees/me/", json=payload)
+    
     try:
         data = resp.json
     except Exception:
