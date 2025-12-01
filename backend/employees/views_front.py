@@ -436,13 +436,20 @@ def employee_edit(request, pk: int):
     Редактирование пользователя по id.
     Поддерживает как JSON, так и multipart/form-data (для загрузки файлов).
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     api = get_api_client(request)
     
     # Проверяем Content-Type
     content_type = request.content_type or ''
+    logger.info(f"[employee_edit] pk={pk}, Content-Type: {content_type}")
+    logger.info(f"[employee_edit] request.POST keys: {list(request.POST.keys())}")
+    logger.info(f"[employee_edit] request.FILES keys: {list(request.FILES.keys())}")
     
     if 'multipart/form-data' in content_type:
         # Обрабатываем multipart/form-data (файлы)
+        logger.info("[employee_edit] Processing multipart/form-data")
         payload = {}
         
         # Собираем обычные поля из POST
@@ -455,18 +462,31 @@ def employee_edit(request, pk: int):
             else:
                 payload[key] = value
         
+        logger.info(f"[employee_edit] Payload before avatar: {list(payload.keys())}")
+        
         # Обрабатываем файлы (аватар)
         if 'avatar' in request.FILES:
+            avatar_file = request.FILES['avatar']
+            logger.info(f"[employee_edit] Processing avatar: {avatar_file.name}, size: {avatar_file.size}")
             # Конвертируем в data URI для Base64ImageField
-            payload['avatar'] = _file_to_data_uri(request.FILES['avatar'])
+            data_uri = _file_to_data_uri(avatar_file)
+            payload['avatar'] = data_uri
+            logger.info(f"[employee_edit] Avatar converted, data URI length: {len(data_uri)}")
+        else:
+            logger.warning("[employee_edit] No avatar in request.FILES")
+        
+        logger.info(f"[employee_edit] Final payload keys: {list(payload.keys())}")
         
         # Отправляем в DRF как JSON (с base64 аватаром)
         resp = api.patch(f"v1/employees/{pk}/", json=payload)
+        logger.info(f"[employee_edit] API response status: {resp.status}")
     else:
         # Обрабатываем JSON (как раньше)
+        logger.info("[employee_edit] Processing JSON")
         try:
             payload = json.loads(request.body or b"{}")
-        except Exception:
+        except Exception as e:
+            logger.error(f"[employee_edit] JSON parse error: {e}")
             payload = {}
         resp = api.patch(f"v1/employees/{pk}/", json=payload)
     
@@ -485,13 +505,20 @@ def employee_edit_me(request):
     Редактирование собственного профиля через /api/v1/employees/me/
     Поддерживает как JSON, так и multipart/form-data (для загрузки файлов).
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     api = get_api_client(request)
     
     # Проверяем Content-Type
     content_type = request.content_type or ''
+    logger.info(f"[employee_edit_me] Content-Type: {content_type}")
+    logger.info(f"[employee_edit_me] request.POST keys: {list(request.POST.keys())}")
+    logger.info(f"[employee_edit_me] request.FILES keys: {list(request.FILES.keys())}")
     
     if 'multipart/form-data' in content_type:
         # Обрабатываем multipart/form-data (файлы)
+        logger.info("[employee_edit_me] Processing multipart/form-data")
         payload = {}
         
         # Собираем обычные поля из POST
@@ -504,18 +531,31 @@ def employee_edit_me(request):
             else:
                 payload[key] = value
         
+        logger.info(f"[employee_edit_me] Payload before avatar: {list(payload.keys())}")
+        
         # Обрабатываем файлы (аватар)
         if 'avatar' in request.FILES:
+            avatar_file = request.FILES['avatar']
+            logger.info(f"[employee_edit_me] Processing avatar: {avatar_file.name}, size: {avatar_file.size}, content_type: {avatar_file.content_type}")
             # Конвертируем в data URI для Base64ImageField
-            payload['avatar'] = _file_to_data_uri(request.FILES['avatar'])
+            data_uri = _file_to_data_uri(avatar_file)
+            payload['avatar'] = data_uri
+            logger.info(f"[employee_edit_me] Avatar converted to data URI, length: {len(data_uri)}")
+        else:
+            logger.warning("[employee_edit_me] No avatar in request.FILES")
+        
+        logger.info(f"[employee_edit_me] Final payload keys: {list(payload.keys())}")
         
         # Отправляем в DRF как JSON (с base64 аватаром)
         resp = api.patch("v1/employees/me/", json=payload)
+        logger.info(f"[employee_edit_me] API response status: {resp.status}")
     else:
         # Обрабатываем JSON (как раньше)
+        logger.info("[employee_edit_me] Processing JSON")
         try:
             payload = json.loads(request.body or b"{}")
-        except Exception:
+        except Exception as e:
+            logger.error(f"[employee_edit_me] JSON parse error: {e}")
             payload = {}
         resp = api.patch("v1/employees/me/", json=payload)
     
