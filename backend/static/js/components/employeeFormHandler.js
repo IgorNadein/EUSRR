@@ -181,6 +181,10 @@ export function initEmployeeForm(options = {}) {
       const avatarInput = document.getElementById('avatarInput');
       const avatarFile = avatarInput?.files?.[0] || null;
       
+      console.log('[EmployeeForm] Avatar input:', avatarInput);
+      console.log('[EmployeeForm] Avatar file:', avatarFile);
+      console.log('[EmployeeForm] Payload:', payload);
+      
       let body;
       let headers = {
         'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]')?.value || ''
@@ -188,6 +192,7 @@ export function initEmployeeForm(options = {}) {
 
       if (avatarFile) {
         // Если есть файл - используем FormData
+        console.log('[EmployeeForm] Using FormData with avatar:', avatarFile.name, avatarFile.size);
         const formData = new FormData();
         formData.append('avatar', avatarFile);
         
@@ -205,9 +210,14 @@ export function initEmployeeForm(options = {}) {
         }
         
         body = formData;
+        console.log('[EmployeeForm] FormData entries:');
+        for (let [key, value] of formData.entries()) {
+          console.log(`  ${key}:`, value);
+        }
         // Не устанавливаем Content-Type для FormData - браузер сам добавит boundary
       } else {
         // Если файла нет - используем JSON
+        console.log('[EmployeeForm] Using JSON (no avatar)');
         headers['Content-Type'] = 'application/json';
         body = JSON.stringify(payload);
       }
