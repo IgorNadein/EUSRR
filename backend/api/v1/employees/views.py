@@ -1965,6 +1965,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         if avatar_file and hasattr(avatar_file, "read"):
             try:
                 svc_changes["avatar_bytes"] = avatar_file.read()
+                if hasattr(avatar_file, "seek"):
+                    avatar_file.seek(0)
                 print(
                     "[EMP PATCH] avatar_bytes prepared for LDAP, length=%s"
                     % len(svc_changes["avatar_bytes"])
