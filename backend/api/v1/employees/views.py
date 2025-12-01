@@ -1660,6 +1660,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         # PATCH
         old_email = instance.email  # Сохраняем старый email
         
+        # Логируем для отладки
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"[ME PATCH] request.data keys: {request.data.keys()}")
+        logger.debug(f"[ME PATCH] request.FILES keys: {request.FILES.keys()}")
+        logger.debug(f"[ME PATCH] Content-Type: {request.content_type}")
+        
         ser = self.get_serializer(instance, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         vd = dict(ser.validated_data)
@@ -1703,7 +1710,9 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         move_to_department_dn = request.data.get("department_dn")
         group_cns = request.data.get("group_cns")
-        avatar_file = ser.validated_data.get("avatar")
+        
+        # Проверяем аватар в validated_data (base64) или в FILES (FormData)
+        avatar_file = ser.validated_data.get("avatar") or request.FILES.get("avatar")
         if avatar_file and hasattr(avatar_file, "read"):
             try:
                 svc_changes["avatar_bytes"] = avatar_file.read()
