@@ -1,10 +1,13 @@
 /**
- * RecipientPicker - компонент для выбора получателей заявления
- * Поддерживает выбор:
- * - Нескольких отделов
- * - Основных получателей (recipients)
- * - Пользователей в копии (CC)
- * - Флаг "Отправить всем сотрудникам отделов"
+ * RecipientPicker - компонент для выбора получателей заявления в стиле email-клиента
+ * Использует Token/Chip input с autocomplete для удобного выбора получателей
+ * 
+ * Особенности:
+ * - Autocomplete с поиском по имени/email
+ * - Chip-based UI (как в Gmail)
+ * - Разделение To/CC (как в почтовых клиентах)
+ * - Выбор отделов через dropdown
+ * - Опция "Всем сотрудникам отделов"
  */
 
 export class RecipientPicker {
@@ -13,6 +16,9 @@ export class RecipientPicker {
     this.options = {
       apiUsersUrl: '/api/v1/employees/',
       apiDepartmentsUrl: '/api/v1/departments/',
+      placeholder: 'Начните вводить имя или выберите из списка...',
+      showCC: true,
+      showDepartments: true,
       onChange: null,
       ...options
     };
@@ -22,7 +28,12 @@ export class RecipientPicker {
       recipients: [],
       ccUsers: [],
       sendToAllDepartment: false,
-      loading: false
+      showCC: false,
+      loading: false,
+      searchQuery: '',
+      searchQueryCC: '',
+      showDropdown: false,
+      showDropdownCC: false
     };
 
     this.users = [];
@@ -63,133 +74,206 @@ export class RecipientPicker {
 
   render() {
     this.container.innerHTML = `
-      <div class="recipient-picker">
-        <!-- Отделы -->
-        <div class="mb-3">
-          <label class="form-label">
-            <i class="bi-building"></i> Отделы
-            <span class="text-muted small">(можно выбрать несколько)</span>
-          </label>
-          <select class="form-select" id="recipientDepts" multiple size="3">
-            ${this.departments.map(dept => `
-              <option value="${dept.id}" ${this.state.departments.includes(dept.id) ? 'selected' : ''}>
-                ${dept.name}
-              </option>
-            `).join('')}
-          </select>
-          <div class="form-text">
-            Заявление будет видно сотрудникам отделов с правами обработки
-          </div>
-        </div>
-
-        <!-- Флаг: всем сотрудникам -->
-        <div class="mb-3">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="sendToAllDept"
-                   ${this.state.sendToAllDepartment ? 'checked' : ''}>
-            <label class="form-check-label" for="sendToAllDept">
-              <i class="bi-people-fill"></i> Отправить всем сотрудникам выбранных отделов
+      <div class="recipient-picker-email">
+        
+        <!-- Отделы (компактный выбор) -->
+        ${this.options.showDepartments ? `
+          <div class="recipient-row">
+            <label class="recipient-label">
+              <i class="bi-building"></i>
+              <span>Отделы:</span>
             </label>
+            <div class="recipient-field">
+              <div class="recipient-chips" id="departmentChips">
+                ${this.renderDepartmentChips()}
+              </div>
+              <div class="dropdown d-inline-block">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                        data-bs-toggle="dropdown">
+                  Выбрать отдел
+                </button>
+                <div class="dropdown-menu" id="departmentDropdown">
+                  ${this.departments.map(dept => `
+                    <div class="dropdown-item" data-action="toggle-dept" data-dept-id="${dept.id}">
+                      <input type="checkbox" class="form-check-input me-2" 
+                             ${this.state.departments.includes(dept.id) ? 'checked' : ''}>
+                      ${dept.name}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              
+              <!-- Флаг: всем сотрудникам -->
+              <div class="form-check form-check-inline ms-3">
+                <input class="form-check-input" type="checkbox" id="sendToAllDept"
+                       ${this.state.sendToAllDepartment ? 'checked' : ''}>
+                <label class="form-check-label text-muted small" for="sendToAllDept">
+                  <i class="bi-people-fill"></i> Всем сотрудникам
+                </label>
+              </div>
+            </div>
           </div>
-          <div class="form-text ms-4">
-            Все активные сотрудники выбранных отделов получат уведомление и доступ к заявлению
-          </div>
-        </div>
+        ` : ''}
 
-        <!-- Основные получатели -->
-        <div class="mb-3" id="recipientsBlock">
-          <label class="form-label">
-            <i class="bi-person-check"></i> Основные получатели
-            <span class="text-muted small">(опционально)</span>
+        <!-- Основные получатели (To:) -->
+        <div class="recipient-row">
+          <label class="recipient-label">
+            <i class="bi-person-check"></i>
+            <span>Кому:</span>
           </label>
-          <div class="recipient-list mb-2" id="recipientsList">
-            ${this.renderSelectedUsers(this.state.recipients, 'recipient')}
-          </div>
-          <select class="form-select" id="recipientsSelect">
-            <option value="">Добавить получателя...</option>
-            ${this.getAvailableUsers('recipients').map(user => `
-              <option value="${user.id}">
-                ${user.last_name} ${user.first_name}${user.patronymic ? ' ' + user.patronymic : ''}
-                ${user.position ? ` - ${user.position}` : ''}
-              </option>
-            `).join('')}
-          </select>
-          <div class="form-text">
-            Получат уведомление и смогут работать с заявлением
-          </div>
-        </div>
-
-        <!-- Пользователи в копии -->
-        <div class="mb-3">
-          <label class="form-label">
-            <i class="bi-person-plus"></i> В копии (CC)
-            <span class="text-muted small">(опционально)</span>
-          </label>
-          <div class="recipient-list mb-2" id="ccList">
-            ${this.renderSelectedUsers(this.state.ccUsers, 'cc')}
-          </div>
-          <select class="form-select" id="ccSelect">
-            <option value="">Добавить в копию...</option>
-            ${this.getAvailableUsers('cc').map(user => `
-              <option value="${user.id}">
-                ${user.last_name} ${user.first_name}${user.patronymic ? ' ' + user.patronymic : ''}
-                ${user.position ? ` - ${user.position}` : ''}
-              </option>
-            `).join('')}
-          </select>
-          <div class="form-text">
-            Получат уведомление, но не смогут изменять статус заявления
+          <div class="recipient-field">
+            <div class="recipient-input-wrapper" id="recipientsWrapper">
+              ${this.renderUserChips(this.state.recipients)}
+              <input type="text" 
+                     class="recipient-input" 
+                     id="recipientInput"
+                     placeholder="${this.options.placeholder}"
+                     autocomplete="off">
+              <div class="recipient-dropdown" id="recipientDropdown" style="display: none;">
+                ${this.renderUserDropdown(this.state.recipients, 'recipient')}
+              </div>
+            </div>
+            ${!this.state.showCC && this.options.showCC ? `
+              <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-2" 
+                      id="showCCBtn">
+                + Копия
+              </button>
+            ` : ''}
           </div>
         </div>
 
-        ${this.state.sendToAllDepartment && this.state.recipients.length > 0 ? `
-          <div class="alert alert-warning small">
-            <i class="bi-exclamation-triangle"></i>
-            Указаны и конкретные получатели, и флаг "всем сотрудникам". 
-            Уведомления получат все сотрудники отделов + дополнительные получатели.
+        <!-- Копия (CC:) -->
+        ${this.state.showCC && this.options.showCC ? `
+          <div class="recipient-row">
+            <label class="recipient-label">
+              <i class="bi-person-plus"></i>
+              <span>Копия:</span>
+            </label>
+            <div class="recipient-field">
+              <div class="recipient-input-wrapper" id="ccWrapper">
+                ${this.renderUserChips(this.state.ccUsers, true)}
+                <input type="text" 
+                       class="recipient-input" 
+                       id="ccInput"
+                       placeholder="Добавить в копию..."
+                       autocomplete="off">
+                <div class="recipient-dropdown" id="ccDropdown" style="display: none;">
+                  ${this.renderUserDropdown(this.state.ccUsers, 'cc')}
+                </div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Подсказка -->
+        ${this.state.sendToAllDepartment && this.state.departments.length > 0 ? `
+          <div class="alert alert-info alert-sm">
+            <i class="bi-info-circle"></i>
+            <small>
+              Заявление будет отправлено всем сотрудникам выбранных отделов
+              ${this.state.recipients.length > 0 ? ' + указанным получателям' : ''}.
+            </small>
           </div>
         ` : ''}
       </div>
     `;
   }
 
-  renderSelectedUsers(userIds, type) {
-    if (!userIds || userIds.length === 0) {
-      return '<div class="text-muted small">Не выбрано</div>';
+  renderDepartmentChips() {
+    if (this.state.departments.length === 0) {
+      return '<span class="text-muted small">Не выбрано</span>';
     }
 
+    return this.state.departments.map(id => {
+      const dept = this.departments.find(d => d.id === id);
+      if (!dept) return '';
+
+      return `
+        <span class="recipient-chip">
+          ${dept.name}
+          <button type="button" class="chip-remove" data-action="remove-dept" data-dept-id="${id}">
+            <i class="bi-x"></i>
+          </button>
+        </span>
+      `;
+    }).join('');
+  }
+
+  renderUserChips(userIds, isCC = false) {
     return userIds.map(id => {
       const user = this.users.find(u => u.id === id);
       if (!user) return '';
 
+      const displayName = `${user.last_name} ${user.first_name}`;
+      
       return `
-        <div class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle me-1 mb-1">
-          ${user.last_name} ${user.first_name}
-          <button type="button" class="btn-close btn-close-sm ms-1" 
-                  data-action="remove-${type}" data-user-id="${id}" 
-                  aria-label="Удалить" style="font-size: 0.7em;"></button>
+        <span class="recipient-chip ${isCC ? 'chip-cc' : ''}">
+          ${displayName}
+          <button type="button" class="chip-remove" 
+                  data-action="remove-${isCC ? 'cc' : 'recipient'}" 
+                  data-user-id="${id}">
+            <i class="bi-x"></i>
+          </button>
+        </span>
+      `;
+    }).join('');
+  }
+
+  renderUserDropdown(excludeIds, type) {
+    const query = type === 'cc' ? this.state.searchQueryCC : this.state.searchQuery;
+    const allExcludeIds = [...this.state.recipients, ...this.state.ccUsers];
+    
+    let filteredUsers = this.users.filter(u => !allExcludeIds.includes(u.id));
+
+    // Фильтрация по запросу
+    if (query) {
+      const lowerQuery = query.toLowerCase();
+      filteredUsers = filteredUsers.filter(u => {
+        const fullName = `${u.last_name} ${u.first_name} ${u.patronymic || ''}`.toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        return fullName.includes(lowerQuery) || email.includes(lowerQuery);
+      });
+    }
+
+    if (filteredUsers.length === 0) {
+      return '<div class="dropdown-item-empty">Никого не найдено</div>';
+    }
+
+    // Ограничиваем до 10 результатов
+    return filteredUsers.slice(0, 10).map(user => {
+      const displayName = `${user.last_name} ${user.first_name}`;
+      const subtitle = user.position || user.email || '';
+      
+      return `
+        <div class="dropdown-item-user" data-action="add-${type}" data-user-id="${user.id}">
+          <div class="user-avatar-small">${this.getInitials(user)}</div>
+          <div class="user-info">
+            <div class="user-name">${displayName}</div>
+            ${subtitle ? `<div class="user-subtitle">${subtitle}</div>` : ''}
+          </div>
         </div>
       `;
     }).join('');
   }
 
-  getAvailableUsers(type) {
-    // Исключаем уже выбранных пользователей
-    const excludeIds = [
-      ...this.state.recipients,
-      ...this.state.ccUsers
-    ];
-
-    return this.users.filter(u => !excludeIds.includes(u.id));
+  getInitials(user) {
+    const first = (user.first_name || '').charAt(0).toUpperCase();
+    const last = (user.last_name || '').charAt(0).toUpperCase();
+    return first + last || '?';
   }
 
   attachEvents() {
-    // Выбор отделов
-    const deptsSelect = this.container.querySelector('#recipientDepts');
-    if (deptsSelect) {
-      deptsSelect.addEventListener('change', (e) => {
-        this.state.departments = Array.from(e.target.selectedOptions).map(o => parseInt(o.value));
-        this.triggerChange();
+    // Показать CC
+    const showCCBtn = this.container.querySelector('#showCCBtn');
+    if (showCCBtn) {
+      showCCBtn.addEventListener('click', () => {
+        this.state.showCC = true;
+        this.render();
+        this.attachEvents();
+        // Фокус на CC input
+        setTimeout(() => {
+          this.container.querySelector('#ccInput')?.focus();
+        }, 100);
       });
     }
 
@@ -198,55 +282,125 @@ export class RecipientPicker {
     if (sendToAllCheckbox) {
       sendToAllCheckbox.addEventListener('change', (e) => {
         this.state.sendToAllDepartment = e.target.checked;
-        
-        // Если включен флаг, отключаем возможность выбора конкретных получателей
-        const recipientsBlock = this.container.querySelector('#recipientsBlock');
-        if (recipientsBlock) {
-          if (e.target.checked) {
-            recipientsBlock.style.opacity = '0.6';
-          } else {
-            recipientsBlock.style.opacity = '1';
-          }
-        }
-        
         this.render();
         this.attachEvents();
         this.triggerChange();
       });
     }
 
-    // Добавление основного получателя
-    const recipientsSelect = this.container.querySelector('#recipientsSelect');
-    if (recipientsSelect) {
-      recipientsSelect.addEventListener('change', (e) => {
-        const userId = parseInt(e.target.value);
-        if (userId && !this.state.recipients.includes(userId)) {
-          this.state.recipients.push(userId);
-          this.render();
-          this.attachEvents();
-          this.triggerChange();
+    // Toggle отделов через dropdown
+    this.container.querySelectorAll('[data-action="toggle-dept"]').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const deptId = parseInt(e.currentTarget.dataset.deptId);
+        
+        if (this.state.departments.includes(deptId)) {
+          this.state.departments = this.state.departments.filter(id => id !== deptId);
+        } else {
+          this.state.departments.push(deptId);
         }
+        
+        this.render();
+        this.attachEvents();
+        this.triggerChange();
+      });
+    });
+
+    // Удаление отдела через chip
+    this.container.querySelectorAll('[data-action="remove-dept"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const deptId = parseInt(e.currentTarget.dataset.deptId);
+        this.state.departments = this.state.departments.filter(id => id !== deptId);
+        this.render();
+        this.attachEvents();
+        this.triggerChange();
+      });
+    });
+
+    // Input для получателей с autocomplete
+    const recipientInput = this.container.querySelector('#recipientInput');
+    if (recipientInput) {
+      recipientInput.addEventListener('input', (e) => {
+        this.state.searchQuery = e.target.value;
+        const dropdown = this.container.querySelector('#recipientDropdown');
+        
+        if (this.state.searchQuery.length > 0) {
+          dropdown.innerHTML = this.renderUserDropdown(this.state.recipients, 'recipient');
+          dropdown.style.display = 'block';
+          this.state.showDropdown = true;
+        } else {
+          dropdown.style.display = 'none';
+          this.state.showDropdown = false;
+        }
+        
+        this.attachDropdownEvents();
+      });
+
+      // Показать dropdown при фокусе
+      recipientInput.addEventListener('focus', () => {
+        const dropdown = this.container.querySelector('#recipientDropdown');
+        dropdown.innerHTML = this.renderUserDropdown(this.state.recipients, 'recipient');
+        dropdown.style.display = 'block';
+        this.state.showDropdown = true;
+        this.attachDropdownEvents();
+      });
+
+      // Скрыть dropdown при потере фокуса (с задержкой для клика)
+      recipientInput.addEventListener('blur', () => {
+        setTimeout(() => {
+          const dropdown = this.container.querySelector('#recipientDropdown');
+          if (dropdown) {
+            dropdown.style.display = 'none';
+            this.state.showDropdown = false;
+          }
+        }, 200);
       });
     }
 
-    // Добавление в копию
-    const ccSelect = this.container.querySelector('#ccSelect');
-    if (ccSelect) {
-      ccSelect.addEventListener('change', (e) => {
-        const userId = parseInt(e.target.value);
-        if (userId && !this.state.ccUsers.includes(userId)) {
-          this.state.ccUsers.push(userId);
-          this.render();
-          this.attachEvents();
-          this.triggerChange();
+    // Input для CC с autocomplete
+    const ccInput = this.container.querySelector('#ccInput');
+    if (ccInput) {
+      ccInput.addEventListener('input', (e) => {
+        this.state.searchQueryCC = e.target.value;
+        const dropdown = this.container.querySelector('#ccDropdown');
+        
+        if (this.state.searchQueryCC.length > 0) {
+          dropdown.innerHTML = this.renderUserDropdown(this.state.ccUsers, 'cc');
+          dropdown.style.display = 'block';
+          this.state.showDropdownCC = true;
+        } else {
+          dropdown.style.display = 'none';
+          this.state.showDropdownCC = false;
         }
+        
+        this.attachDropdownEvents();
+      });
+
+      ccInput.addEventListener('focus', () => {
+        const dropdown = this.container.querySelector('#ccDropdown');
+        dropdown.innerHTML = this.renderUserDropdown(this.state.ccUsers, 'cc');
+        dropdown.style.display = 'block';
+        this.state.showDropdownCC = true;
+        this.attachDropdownEvents();
+      });
+
+      ccInput.addEventListener('blur', () => {
+        setTimeout(() => {
+          const dropdown = this.container.querySelector('#ccDropdown');
+          if (dropdown) {
+            dropdown.style.display = 'none';
+            this.state.showDropdownCC = false;
+          }
+        }, 200);
       });
     }
 
-    // Удаление получателя
+    // Удаление получателей через chip
     this.container.querySelectorAll('[data-action="remove-recipient"]').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const userId = parseInt(e.target.dataset.userId);
+        e.stopPropagation();
+        const userId = parseInt(e.currentTarget.dataset.userId);
         this.state.recipients = this.state.recipients.filter(id => id !== userId);
         this.render();
         this.attachEvents();
@@ -254,14 +408,63 @@ export class RecipientPicker {
       });
     });
 
-    // Удаление CC
+    // Удаление CC через chip
     this.container.querySelectorAll('[data-action="remove-cc"]').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const userId = parseInt(e.target.dataset.userId);
+        e.stopPropagation();
+        const userId = parseInt(e.currentTarget.dataset.userId);
         this.state.ccUsers = this.state.ccUsers.filter(id => id !== userId);
         this.render();
         this.attachEvents();
         this.triggerChange();
+      });
+    });
+  }
+
+  attachDropdownEvents() {
+    // Добавление получателя из dropdown
+    this.container.querySelectorAll('[data-action="add-recipient"]').forEach(item => {
+      item.addEventListener('click', () => {
+        const userId = parseInt(item.dataset.userId);
+        if (!this.state.recipients.includes(userId)) {
+          this.state.recipients.push(userId);
+          this.state.searchQuery = '';
+          
+          const input = this.container.querySelector('#recipientInput');
+          if (input) input.value = '';
+          
+          this.render();
+          this.attachEvents();
+          this.triggerChange();
+          
+          // Возвращаем фокус
+          setTimeout(() => {
+            this.container.querySelector('#recipientInput')?.focus();
+          }, 100);
+        }
+      });
+    });
+
+    // Добавление CC из dropdown
+    this.container.querySelectorAll('[data-action="add-cc"]').forEach(item => {
+      item.addEventListener('click', () => {
+        const userId = parseInt(item.dataset.userId);
+        if (!this.state.ccUsers.includes(userId)) {
+          this.state.ccUsers.push(userId);
+          this.state.searchQueryCC = '';
+          
+          const input = this.container.querySelector('#ccInput');
+          if (input) input.value = '';
+          
+          this.render();
+          this.attachEvents();
+          this.triggerChange();
+          
+          // Возвращаем фокус
+          setTimeout(() => {
+            this.container.querySelector('#ccInput')?.focus();
+          }, 100);
+        }
       });
     });
   }
