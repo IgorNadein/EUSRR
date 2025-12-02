@@ -1846,11 +1846,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             if vd:
                 logger.info("[ME PATCH] Step 11: Validating and saving DB-only fields...")
                 ser_db = self.get_serializer(instance, data=vd, partial=True)
-                ser_db.is_valid(raise_exception=True)
-                ser_db.save()
-                instance = ser_db.instance
-                data = ser_db.data
-                logger.info("[ME PATCH] Step 11: DB-only fields saved successfully")
+                try:
+                    ser_db.is_valid(raise_exception=True)
+                    ser_db.save()
+                    instance = ser_db.instance
+                    data = ser_db.data
+                    logger.info("[ME PATCH] Step 11: DB-only fields saved successfully")
+                except ValidationError as ve:
+                    logger.warning(f"[ME PATCH] Step 11: Validation error: {ve.detail}")
+                    return Response(ve.detail, status=400)
             else:
                 logger.info("[ME PATCH] Step 11: No DB-only fields to save")
                 data = self.get_serializer(instance).data
@@ -2170,12 +2174,12 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             ser_db = self.get_serializer(emp, data=vd, partial=True)
             try:
                 ser_db.is_valid(raise_exception=True)
+                ser_db.save()
+                emp = ser_db.instance
+                data = ser_db.data
             except ValidationError as exc:
-                print("[EMP PATCH] DB serializer errors: %s" % exc.detail)
-                raise
-            ser_db.save()
-            emp = ser_db.instance
-            data = ser_db.data
+                print("[EMP PATCH] DB serializer validation error: %s" % exc.detail)
+                return Response(exc.detail, status=400)
         else:
             data = self.get_serializer(emp).data
 
