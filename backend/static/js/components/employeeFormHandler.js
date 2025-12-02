@@ -107,6 +107,54 @@ function displayFormErrors(form, errors) {
   }
   
   if (typeof errors === 'object') {
+    // Обрабатываем специальный случай с полем "detail"
+    if (errors.detail && Object.keys(errors).length === 1) {
+      // Пытаемся распарсить detail, если там есть информация о полях
+      const detailStr = String(errors.detail);
+      
+      // Проверяем, есть ли в detail информация о конкретных полях
+      // Формат: "Internal server error: {'field': [ErrorDetail(...)]}"
+      const fieldMatch = detailStr.match(/\{'(\w+)':\s*\[(.*?)\]/);
+      
+      if (fieldMatch) {
+        const fieldName = fieldMatch[1];
+        const errorText = fieldMatch[2];
+        
+        // Извлекаем читаемое сообщение об ошибке
+        const msgMatch = errorText.match(/ErrorDetail\(string='([^']+)'/);
+        const errorMessage = msgMatch ? msgMatch[1] : errorText;
+        
+        // Показываем ошибку в конкретном поле
+        const field = form.querySelector(`[name="${fieldName}"]`);
+        
+        if (field) {
+          field.classList.add('is-invalid');
+          
+          let feedbackEl = field.parentElement.querySelector('.invalid-feedback');
+          
+          if (!feedbackEl) {
+            feedbackEl = document.createElement('div');
+            feedbackEl.className = 'invalid-feedback';
+            field.parentElement.appendChild(feedbackEl);
+          }
+          
+          feedbackEl.textContent = errorMessage;
+          feedbackEl.style.display = 'block';
+          
+          console.log(`[EmployeeForm] Ошибка в поле ${fieldName}:`, errorMessage);
+        } else {
+          // Если поле не найдено, показываем общую ошибку
+          showErrorMessage(errorMessage);
+        }
+      } else {
+        // Если не удалось распарсить, показываем как общую ошибку
+        showErrorMessage(detailStr);
+      }
+      
+      return;
+    }
+    
+    // Стандартная обработка ошибок по полям
     Object.keys(errors).forEach(fieldName => {
       const errorMessages = Array.isArray(errors[fieldName]) 
         ? errors[fieldName] 
@@ -133,8 +181,13 @@ function displayFormErrors(form, errors) {
         feedbackEl.style.display = 'block';
         
         console.log(`[EmployeeForm] Ошибка в поле ${fieldName}:`, errorMessages);
+      } else if (fieldName === 'non_field_errors') {
+        // Общие ошибки формы
+        showErrorMessage(errorMessages.join(', '));
       } else {
         console.warn(`[EmployeeForm] Поле ${fieldName} не найдено в форме`);
+        // Показываем как общую ошибку
+        showErrorMessage(`${fieldName}: ${errorMessages.join(', ')}`);
       }
     });
   }

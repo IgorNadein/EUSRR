@@ -529,8 +529,15 @@ def employee_edit(request, pk: int):
         logger.info(f"[employee_edit] Final payload keys: {list(payload.keys())}")
         
         # Отправляем в DRF как JSON (с base64 аватаром)
-        resp = api.patch(f"v1/employees/{pk}/", json=payload)
-        logger.info(f"[employee_edit] API response status: {resp.status}")
+        try:
+            resp = api.patch(f"v1/employees/{pk}/", json=payload)
+            logger.info(f"[employee_edit] API response status: {resp.status}")
+        except Exception as e:
+            logger.error(f"[employee_edit] API call error: {e}")
+            return JsonResponse(
+                {"detail": f"API error: {str(e)}"},
+                status=500
+            )
     else:
         # Обрабатываем JSON (как раньше)
         logger.info("[employee_edit] Processing JSON")
@@ -539,11 +546,20 @@ def employee_edit(request, pk: int):
         except Exception as e:
             logger.error(f"[employee_edit] JSON parse error: {e}")
             payload = {}
-        resp = api.patch(f"v1/employees/{pk}/", json=payload)
+        
+        try:
+            resp = api.patch(f"v1/employees/{pk}/", json=payload)
+        except Exception as e:
+            logger.error(f"[employee_edit] API call error: {e}")
+            return JsonResponse(
+                {"detail": f"API error: {str(e)}"},
+                status=500
+            )
     
     try:
         data = resp.json
-    except Exception:
+    except Exception as e:
+        logger.error(f"[employee_edit] Response JSON parse error: {e}")
         data = {"detail": resp.text}
 
     # Всегда возвращаем JSON без редиректа
@@ -625,8 +641,15 @@ def employee_edit_me(request):
         )
         
         # Отправляем в DRF как JSON (с base64 аватаром)
-        resp = api.patch("v1/employees/me/", json=payload)
-        logger.info(f"[employee_edit_me] API response status: {resp.status}")
+        try:
+            resp = api.patch("v1/employees/me/", json=payload)
+            logger.info(f"[employee_edit_me] API response status: {resp.status}")
+        except Exception as e:
+            logger.error(f"[employee_edit_me] API call error: {e}")
+            return JsonResponse(
+                {"detail": f"API error: {str(e)}"},
+                status=500
+            )
     else:
         # Обрабатываем JSON (как раньше)
         logger.info("[employee_edit_me] Processing JSON")
@@ -635,11 +658,20 @@ def employee_edit_me(request):
         except Exception as e:
             logger.error(f"[employee_edit_me] JSON parse error: {e}")
             payload = {}
-        resp = api.patch("v1/employees/me/", json=payload)
+        
+        try:
+            resp = api.patch("v1/employees/me/", json=payload)
+        except Exception as e:
+            logger.error(f"[employee_edit_me] API call error: {e}")
+            return JsonResponse(
+                {"detail": f"API error: {str(e)}"},
+                status=500
+            )
     
     try:
         data = resp.json
-    except Exception:
+    except Exception as e:
+        logger.error(f"[employee_edit_me] Response JSON parse error: {e}")
         data = {"detail": resp.text}
 
     # Всегда возвращаем JSON без редиректа
