@@ -1879,6 +1879,12 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
             # DB-only
             logger.info(f"[ME PATCH] Step 11: Processing DB-only fields, vd keys: {list(vd.keys())}")
+            
+            # КРИТИЧНО: удаляем avatar из vd, т.к. он уже обработан выше
+            if 'avatar' in vd:
+                logger.info("[ME PATCH] Step 11: Removing avatar from vd (already processed)")
+                vd.pop('avatar')
+            
             if vd:
                 logger.info("[ME PATCH] Step 11: Validating and saving DB-only fields...")
                 ser_db = self.get_serializer(instance, data=vd, partial=True)
@@ -2206,6 +2212,12 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         # --- DB-only часть ---
         # Обновляем только оставшиеся поля, чтобы не перетирать работу сервиса
+        
+        # КРИТИЧНО: удаляем avatar из vd, т.к. он уже обработан выше
+        if 'avatar' in vd:
+            print("[EMP PATCH] Removing avatar from vd (already processed)")
+            vd.pop('avatar')
+        
         if vd:
             ser_db = self.get_serializer(emp, data=vd, partial=True)
             try:
