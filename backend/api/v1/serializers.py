@@ -116,8 +116,34 @@ class Base64ImageField(serializers.ImageField):
         
         # Если это не строка (например, InMemoryUploadedFile)
         logger.info(
-            f"[Base64ImageField] Не строка, передаем в parent as-is"
+            "[Base64ImageField] Не строка, передаем в parent as-is"
         )
+        
+        # КРИТИЧНО: проверяем, не пустой ли файл
+        if hasattr(data, 'size') and data.size == 0:
+            logger.warning(
+                "[Base64ImageField] Пустой файл (size=0), "
+                "возвращаем None"
+            )
+            return None
+        
+        if hasattr(data, 'read'):
+            # Проверяем содержимое файла
+            try:
+                content = data.read()
+                if hasattr(data, 'seek'):
+                    data.seek(0)
+                if not content or len(content) == 0:
+                    logger.warning(
+                        "[Base64ImageField] Файл пустой (len=0), "
+                        "возвращаем None"
+                    )
+                    return None
+            except Exception as e:
+                logger.error(
+                    f"[Base64ImageField] Ошибка чтения файла: {e}"
+                )
+        
         result = super().to_internal_value(data)
         logger.info(
             f"[Base64ImageField] Parent validation passed, "
