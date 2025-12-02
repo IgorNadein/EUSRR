@@ -201,16 +201,21 @@ class UserService:
         
         with _ldap() as conn:
             ldap_changes = dict(changes)
-            avatar_bytes = ldap_changes.get("avatar_bytes")  # Сохраняем для синхронизации в БД
-            
             try:
-                new_dn = self._update_user_in_ldap(
+                result = self._update_user_in_ldap(
                     conn=conn,
                     current_dn=current_dn,
                     model_changes=ldap_changes,
                     move_to_department_dn=move_to_department_dn,
                     group_cns=group_cns,
                 )
+                # Распаковываем результат (dn, avatar_bytes или None)
+                if isinstance(result, tuple):
+                    new_dn, saved_avatar_bytes = result
+                else:
+                    # Обратная совместимость (если метод вернул только dn)
+                    new_dn = result
+                    saved_avatar_bytes = None
             except Exception as e:
                 raise DirectoryLdapError(f"LDAP update failed: {e}") from e
 
@@ -242,19 +247,6 @@ class UserService:
                         if hasattr(emp, k) and getattr(emp, k) != v:
                             setattr(emp, k, v)
                             updated_fields.append(k)
-                    
-                    # КРИТИЧНО: синхронизируем avatar из LDAP обратно в БД
-                    if avatar_bytes and hasattr(emp, "avatar"):
-                        from django.core.files.base import ContentFile
-                        from employees.ldap.utils.avatar import normalize_avatar_to_jpeg
-                        
-                        # Нормализуем аватар (как в LDAP)
-                        normalized_avatar = normalize_avatar_to_jpeg(avatar_bytes, max_kb=100)
-                        if normalized_avatar:
-                            # Сохраняем в поле avatar модели
-                            filename = f"avatar_{emp.id}.jpg"
-                            emp.avatar.save(filename, ContentFile(normalized_avatar), save=False)
-                            updated_fields.append("avatar")
 
                     if pos_in_payload and hasattr(emp, "position"):
                         old_id = getattr(emp, "position_id", None)
@@ -269,6 +261,14 @@ class UserService:
                         dept = dept_svc._get_department_by_dn(move_to_department_dn)
                         if dept:
                             emp.set_active_department(dept)
+
+                    # Сохраняем аватар в БД, если он был успешно записан в LDAP
+                    if saved_avatar_bytes and hasattr(emp, "avatar"):
+                        from django.core.files.base import ContentFile
+                        filename = f"avatar_{emp.pk}.jpg"
+                        emp.avatar.save(filename, ContentFile(saved_avatar_bytes), save=False)
+                        if "avatar" not in updated_fields:
+                            updated_fields.append("avatar")
 
                     if updated_fields:
                         emp.save(update_fields=list(set(updated_fields)))
@@ -604,16 +604,19 @@ class UserService:
             modify_user_attrs(conn, dn, attrs_to_update, do_write=True)
 
         # 5) Аватар
+        avatar_saved = False
         if avatar_bytes:
             avatar = normalize_avatar_to_jpeg(avatar_bytes, max_kb=100)
             if avatar:
                 modify_user_attrs(conn, dn, {"thumbnailPhoto": avatar}, do_write=True)
+                avatar_saved = True  # Флаг для сохранения в БД
 
         # 6) Группы
         if group_cns is not None:
             sync_user_groups_by_cns(conn, dn, set(group_cns), do_write=True)
 
-        return dn
+        # Возвращаем dn и флаг сохранения аватара
+        return (dn, avatar_bytes if avatar_saved else None)
 
     def _get_employee_dn(self, employee: Employee) -> str:
         """Возвращает DN сотрудника из LdapSyncState или модели.
