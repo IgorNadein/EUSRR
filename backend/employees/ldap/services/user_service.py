@@ -201,6 +201,8 @@ class UserService:
         
         with _ldap() as conn:
             ldap_changes = dict(changes)
+            avatar_bytes = ldap_changes.get("avatar_bytes")  # Сохраняем для синхронизации в БД
+            
             try:
                 new_dn = self._update_user_in_ldap(
                     conn=conn,
@@ -240,6 +242,19 @@ class UserService:
                         if hasattr(emp, k) and getattr(emp, k) != v:
                             setattr(emp, k, v)
                             updated_fields.append(k)
+                    
+                    # КРИТИЧНО: синхронизируем avatar из LDAP обратно в БД
+                    if avatar_bytes and hasattr(emp, "avatar"):
+                        from django.core.files.base import ContentFile
+                        from employees.ldap.utils.avatar import normalize_avatar_to_jpeg
+                        
+                        # Нормализуем аватар (как в LDAP)
+                        normalized_avatar = normalize_avatar_to_jpeg(avatar_bytes, max_kb=100)
+                        if normalized_avatar:
+                            # Сохраняем в поле avatar модели
+                            filename = f"avatar_{emp.id}.jpg"
+                            emp.avatar.save(filename, ContentFile(normalized_avatar), save=False)
+                            updated_fields.append("avatar")
 
                     if pos_in_payload and hasattr(emp, "position"):
                         old_id = getattr(emp, "position_id", None)
