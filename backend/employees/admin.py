@@ -627,7 +627,9 @@ class LdapSyncStateAdmin(admin.ModelAdmin):
     )
     list_filter = ("model", "last_sync_dir")
     search_fields = ("object_pk", "ldap_dn", "ldap_guid")
-    readonly_fields = (
+    readonly_fields = ("updated_at",)
+    
+    fields = (
         "model",
         "object_pk",
         "ldap_dn",
