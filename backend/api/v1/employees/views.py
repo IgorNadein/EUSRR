@@ -1782,8 +1782,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
             logger.info(f"[ME PATCH] Step 9: svc_changes keys: {list(svc_changes.keys())}")
 
-            if ldap_enabled and (svc_changes or move_to_department_dn or group_cns is not None):
-                # Режим с LDAP: обновляем через DirectoryService
+            # Проверяем, есть ли у пользователя ldap_dn
+            has_ldap_dn = False
+            if ldap_enabled:
+                from employees.models import LdapSyncState
+                has_ldap_dn = (
+                    LdapSyncState.objects.filter(employee=instance, ldap_dn__isnull=False).exists()
+                    or (hasattr(instance, 'ldap_dn') and instance.ldap_dn)
+                )
+                logger.info(f"[ME PATCH] Step 9.5: LDAP enabled, user has ldap_dn: {has_ldap_dn}")
+
+            if ldap_enabled and has_ldap_dn and (svc_changes or move_to_department_dn or group_cns is not None):
+                # Режим с LDAP: обновляем через DirectoryService (только для пользователей с ldap_dn)
                 logger.info("[ME PATCH] Step 10: LDAP mode - updating via DirectoryService...")
                 logger.info(f"[ME PATCH] Step 10: DirectoryService params - svc_changes={list(svc_changes.keys())}, move_to_department_dn={move_to_department_dn}, group_cns={group_cns}")
                 svc = DirectoryService()
@@ -1804,9 +1814,9 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         {"detail": str(e)},
                         status=502 if isinstance(e, DirectoryLdapError) else 500,
                     )
-            elif not ldap_enabled and svc_changes:
-                # Режим без LDAP: обновляем напрямую в БД
-                logger.info(f"[ME PATCH] Step 10: LDAP disabled, updating DB directly with: {list(svc_changes.keys())}")
+            elif (not ldap_enabled or not has_ldap_dn) and svc_changes:
+                # Режим без LDAP или пользователь без ldap_dn: обновляем напрямую в БД
+                logger.info(f"[ME PATCH] Step 10: LDAP disabled or no ldap_dn, updating DB directly with: {list(svc_changes.keys())}")
                 for k, v in svc_changes.items():
                     if k != "position" and k != "avatar_bytes":
                         setattr(instance, k, v)
@@ -2054,8 +2064,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             except Exception as exc:
                 print(f"[EMP PATCH] Error reading avatar for LDAP: {exc}")
 
+        # Проверяем, есть ли у пользователя ldap_dn
+        has_ldap_dn = False
         if ldap_enabled:
-            # LDAP mode: sync with DirectoryService
+            from employees.models import LdapSyncState
+            has_ldap_dn = (
+                LdapSyncState.objects.filter(employee=emp, ldap_dn__isnull=False).exists()
+                or (hasattr(emp, 'ldap_dn') and emp.ldap_dn)
+            )
+            print(f"[EMP PATCH] LDAP enabled, user has ldap_dn: {has_ldap_dn}")
+
+        if ldap_enabled and has_ldap_dn:
+            # LDAP mode: sync with DirectoryService (только для пользователей с ldap_dn)
             svc = DirectoryService()
             if svc_changes or move_to_department_dn or group_cns is not None:
                 try:
@@ -2077,7 +2097,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         ),
                     )
         else:
-            # Non-LDAP mode: direct DB updates
+            # Non-LDAP mode or user without ldap_dn: direct DB updates
             # Restore ldap_changes back to vd for DB-only save
             vd.update(ldap_changes)
             

@@ -595,9 +595,9 @@ def employee_edit(request, pk: int):
             )
             messages.error(request, error_msg)
         
-        # Возвращаем на страницу редактирования, а не на профиль
-        edit_url = reverse("employees:employee_edit", args=(pk,))
-        return redirect(edit_url)
+        # Возвращаем на страницу профиля сотрудника
+        profile_url = reverse("employees:employee_detail", args=(pk,))
+        return redirect(profile_url)
 
 
 # ---------- EDIT ME ----------
@@ -740,9 +740,9 @@ def employee_edit_me(request):
             )
             messages.error(request, error_msg)
         
-        # Возвращаем на страницу редактирования
-        edit_url = reverse("employees:employee_edit_me")
-        return redirect(edit_url)
+        # Возвращаем на страницу профиля (где есть форма редактирования)
+        profile_url = reverse("employees:profile")
+        return redirect(profile_url)
 
 
 # ---------- CREATE (staff) ----------
