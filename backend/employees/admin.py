@@ -231,20 +231,44 @@ class EmployeeAdmin(DjangoUserAdmin):
             return "-"
         
         from django.utils.html import format_html
+        import logging
+        logger = logging.getLogger(__name__)
         
         # Если не управляется LDAP
         if not obj.is_ldap_managed:
             return format_html('<span style="color: gray;">Локальный</span>')
         
         try:
+            # Логируем попытку поиска
+            logger.debug(
+                f"[ldap_sync_status] Searching for employee {obj.pk} "
+                f"(email: {obj.email})"
+            )
+            
             sync_state = LdapSyncState.objects.filter(
                 model="employee",
                 object_pk=str(obj.pk)
             ).first()
             
+            logger.debug(
+                f"[ldap_sync_status] Employee {obj.pk}: "
+                f"sync_state={'found' if sync_state else 'not found'}"
+            )
+            
             if not sync_state:
+                # Попробуем найти любые записи для этого employee
+                all_syncs = LdapSyncState.objects.filter(
+                    model="employee"
+                ).values_list("object_pk", flat=True)
+                logger.warning(
+                    f"[ldap_sync_status] No sync record for employee {obj.pk}. "
+                    f"All employee object_pks in sync table: {list(all_syncs)}"
+                )
+                
                 return format_html(
-                    '<span style="color: red;" title="Пользователь помечен как LDAP, но нет записи синхронизации">❌ Нет записи</span>'
+                    '<span style="color: red;" title="ID: {} - Пользователь помечен как LDAP, но нет записи синхронизации. Проверьте логи.">❌ Нет записи (ID: {})</span>',
+                    obj.pk,
+                    obj.pk
                 )
             
             # Проверяем полноту данных
@@ -255,7 +279,8 @@ class EmployeeAdmin(DjangoUserAdmin):
             # Полные данные
             if has_guid and has_dn and has_updated:
                 return format_html(
-                    '✅ <span title="GUID: {}\nDN: {}">{}</span>',
+                    '✅ <span title="ID: {}\nGUID: {}\nDN: {}">{}</span>',
+                    obj.pk,
                     sync_state.ldap_guid,
                     sync_state.ldap_dn[:80] + '...' if len(sync_state.ldap_dn) > 80 else sync_state.ldap_dn,
                     sync_state.updated_at.strftime("%d.%m.%Y %H:%M")
@@ -269,17 +294,23 @@ class EmployeeAdmin(DjangoUserAdmin):
                     missing.append("DN")
                 
                 return format_html(
-                    '⚠️ <span title="Отсутствует: {}">{}</span>',
+                    '⚠️ <span title="ID: {}\nОтсутствует: {}">{}</span>',
+                    obj.pk,
                     ", ".join(missing),
                     sync_state.updated_at.strftime("%d.%m.%Y %H:%M")
                 )
             else:
                 return format_html(
-                    '<span style="color: orange;" title="Нет даты обновления">⚠️ Неполные данные</span>'
+                    '<span style="color: orange;" title="ID: {} - Нет даты обновления">⚠️ Неполные данные</span>',
+                    obj.pk
                 )
         except Exception as e:
+            logger.exception(
+                f"[ldap_sync_status] Error for employee {obj.pk}: {e}"
+            )
             return format_html(
-                '<span style="color: red;" title="{}">❌ Ошибка</span>',
+                '<span style="color: red;" title="ID: {} - Ошибка: {}">❌ Ошибка</span>',
+                obj.pk,
                 str(e)
             )
     
