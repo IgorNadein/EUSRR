@@ -24,6 +24,45 @@ from .models import (
 #   Формы для кастомного User (Employee)
 # =========================
 
+
+class LdapSyncedFilter(admin.SimpleListFilter):
+    """Фильтр для отображения сотрудников по состоянию LDAP синхронизации."""
+    
+    title = "Статус LDAP синхронизации"
+    parameter_name = "ldap_synced"
+    
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", "Есть запись синхронизации"),
+            ("no", "Нет записи синхронизации"),
+        )
+    
+    def queryset(self, request, queryset):
+        from django.db.models import Exists, OuterRef
+        
+        if self.value() == "yes":
+            # Показываем только тех, у кого есть запись синхронизации
+            return queryset.filter(
+                Exists(
+                    LdapSyncState.objects.filter(
+                        model="employee",
+                        object_pk=OuterRef("pk")
+                    )
+                )
+            )
+        elif self.value() == "no":
+            # Показываем только тех, у кого нет записи синхронизации
+            return queryset.exclude(
+                Exists(
+                    LdapSyncState.objects.filter(
+                        model="employee",
+                        object_pk=OuterRef("pk")
+                    )
+                )
+            )
+        return queryset
+
+
 class EmployeeCreationForm(forms.ModelForm):
     """
     Создание сотрудника в админке: логин — email, без username.
@@ -158,6 +197,7 @@ class EmployeeAdmin(DjangoUserAdmin):
         "is_active",
         "email_verified",
         "is_ldap_managed",
+        "ldap_sync_status",
         "is_staff",
     )
     list_filter = (
@@ -166,6 +206,7 @@ class EmployeeAdmin(DjangoUserAdmin):
         "is_staff",
         "is_superuser",
         "is_ldap_managed",
+        LdapSyncedFilter,
         "position",
         "groups",
     )
@@ -183,6 +224,42 @@ class EmployeeAdmin(DjangoUserAdmin):
         "email_activation_code",
         "sms_activation_code",
     )
+    
+    def ldap_sync_status(self, obj):
+        """Краткий статус LDAP синхронизации для списка."""
+        if not obj.pk or not obj.is_ldap_managed:
+            return "-"
+        
+        try:
+            sync_state = LdapSyncState.objects.filter(
+                model="employee",
+                object_pk=str(obj.pk)
+            ).first()
+            
+            if not sync_state:
+                return "❌ Нет записи"
+            
+            from django.utils.html import format_html
+            
+            # Показываем GUID и дату последнего обновления
+            if sync_state.ldap_guid and sync_state.updated_at:
+                return format_html(
+                    '✅ <span title="GUID: {}">{}</span>',
+                    sync_state.ldap_guid,
+                    sync_state.updated_at.strftime("%d.%m.%Y %H:%M")
+                )
+            elif sync_state.updated_at:
+                return format_html(
+                    '⚠️ {}',
+                    sync_state.updated_at.strftime("%d.%m.%Y %H:%M")
+                )
+            else:
+                return "⚠️ Неполные данные"
+        except Exception:
+            return "❌ Ошибка"
+    
+    ldap_sync_status.short_description = "LDAP статус"
+    ldap_sync_status.admin_order_field = "id"  # Сортировка по ID
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -236,8 +313,21 @@ class EmployeeAdmin(DjangoUserAdmin):
                 return "Нет записи синхронизации"
             
             from django.utils.html import format_html
+            from django.urls import reverse
             
-            info = []
+            # Ссылка на запись синхронизации в админке
+            sync_url = reverse(
+                'admin:employees_ldapsyncstate_change',
+                args=[sync_state.pk]
+            )
+            
+            info = [
+                format_html(
+                    '<a href="{}" target="_blank">📋 Открыть запись синхронизации</a>',
+                    sync_url
+                )
+            ]
+            
             if sync_state.ldap_dn:
                 info.append(f"<b>DN:</b> {sync_state.ldap_dn}")
             if sync_state.ldap_guid:
