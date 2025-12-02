@@ -34,7 +34,48 @@ export function initEmployeeForm(options = {}) {
       const endpoint = form.dataset.endpoint || form.action;
       const formData = new FormData(form);
       
+      // ДЕТАЛЬНЫЕ ЛОГИ: проверяем все поля в FormData
       console.log('[EmployeeForm] Отправка данных на:', endpoint);
+      console.log('[EmployeeForm] Все поля в FormData:');
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`  ${key}: [File] name="${value.name}", size=${value.size}, type="${value.type}"`);
+        } else {
+          console.log(`  ${key}: "${value}" (length: ${String(value).length})`);
+        }
+      }
+      
+      // Проверяем поле avatar особенно внимательно
+      const avatarInput = form.querySelector('input[name="avatar"]');
+      if (avatarInput) {
+        console.log('[EmployeeForm] Avatar input найден:');
+        console.log('  - type:', avatarInput.type);
+        console.log('  - files.length:', avatarInput.files?.length || 0);
+        if (avatarInput.files && avatarInput.files.length > 0) {
+          console.log('  - files[0]:', avatarInput.files[0]);
+        } else {
+          console.log('  - НЕТ выбранных файлов');
+        }
+        console.log('  - value:', avatarInput.value);
+        
+        // КРИТИЧНО: если файл не выбран, удаляем поле avatar из FormData
+        if (!avatarInput.files || avatarInput.files.length === 0) {
+          console.warn('[EmployeeForm] Аватар не выбран - УДАЛЯЕМ поле avatar из FormData');
+          formData.delete('avatar');
+        }
+      } else {
+        console.log('[EmployeeForm] Avatar input НЕ НАЙДЕН в форме');
+      }
+      
+      // Логируем финальное состояние FormData после очистки
+      console.log('[EmployeeForm] Финальный FormData (после очистки):');
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`  ${key}: [File] name="${value.name}", size=${value.size}`);
+        } else {
+          console.log(`  ${key}: "${value}"`);
+        }
+      }
       
       const response = await fetch(endpoint, {
         method: 'PATCH',

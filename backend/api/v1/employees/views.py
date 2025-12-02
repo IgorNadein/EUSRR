@@ -1689,25 +1689,61 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             logger.info(f"[ME PATCH] request.data keys: {list(request.data.keys())}")
             logger.info(f"[ME PATCH] request.FILES keys: {list(request.FILES.keys())}")
             logger.info(f"[ME PATCH] Content-Type: {request.content_type}")
+            
+            # ДЕТАЛЬНАЯ ДИАГНОСТИКА АВАТАРА
             if 'avatar' in request.data:
                 avatar_data = request.data['avatar']
-                logger.info(f"[ME PATCH] avatar in request.data: type={type(avatar_data)}, length={len(str(avatar_data)) if avatar_data else 0}")
+                avatar_type = type(avatar_data).__name__
+                logger.info(f"[ME PATCH] ⚠️ avatar В request.data:")
+                logger.info(f"  - type: {avatar_type}")
+                logger.info(f"  - value: {repr(avatar_data)[:200]}")
+                logger.info(f"  - is empty string: {avatar_data == ''}")
+                logger.info(f"  - is None: {avatar_data is None}")
+                logger.info(f"  - bool(avatar_data): {bool(avatar_data)}")
+                if hasattr(avatar_data, '__len__'):
+                    logger.info(f"  - length: {len(avatar_data) if avatar_data else 0}")
+            else:
+                logger.info(f"[ME PATCH] ✓ avatar НЕТ в request.data")
+                
             if 'avatar' in request.FILES:
                 avatar_file = request.FILES['avatar']
-                logger.info(f"[ME PATCH] avatar in request.FILES: name={avatar_file.name}, size={avatar_file.size}")
+                logger.info(f"[ME PATCH] ⚠️ avatar В request.FILES:")
+                logger.info(f"  - name: {avatar_file.name}")
+                logger.info(f"  - size: {avatar_file.size}")
+                logger.info(f"  - content_type: {avatar_file.content_type}")
+            else:
+                logger.info(f"[ME PATCH] ✓ avatar НЕТ в request.FILES")
             
             logger.info("[ME PATCH] Step 1: Validating serializer...")
-            ser = self.get_serializer(instance, data=request.data, partial=True)
-            ser.is_valid(raise_exception=True)
+            logger.info(f"[ME PATCH] Step 1: Передаем в сериализатор data с ключами: {list(request.data.keys())}")
+            
+            try:
+                ser = self.get_serializer(instance, data=request.data, partial=True)
+                ser.is_valid(raise_exception=True)
+                logger.info("[ME PATCH] Step 1: ✓ Serializer validated successfully")
+            except ValidationError as ve:
+                logger.error(f"[ME PATCH] Step 1: ❌ Serializer validation FAILED:")
+                logger.error(f"  - error detail: {ve.detail}")
+                logger.error(f"  - error detail type: {type(ve.detail)}")
+                if hasattr(ve.detail, 'items'):
+                    for field, errors in ve.detail.items():
+                        logger.error(f"  - field '{field}': {errors}")
+                raise
+                
             vd = dict(ser.validated_data)
-            logger.info("[ME PATCH] Step 1: Serializer validated successfully")
             
             logger.info(f"[ME PATCH] Step 2: validated_data keys: {list(vd.keys())}")
             if 'avatar' in vd:
                 avatar_obj = vd.get('avatar')
-                logger.info(f"[ME PATCH] avatar in validated_data: type={type(avatar_obj)}, hasattr read={hasattr(avatar_obj, 'read')}")
+                logger.info(f"[ME PATCH] Step 2: avatar В validated_data:")
+                logger.info(f"  - type: {type(avatar_obj)}")
+                logger.info(f"  - hasattr read: {hasattr(avatar_obj, 'read')}")
+                logger.info(f"  - repr: {repr(avatar_obj)[:200]}")
                 if avatar_obj:
-                    logger.info(f"[ME PATCH] avatar object: name={getattr(avatar_obj, 'name', None)}, size={getattr(avatar_obj, 'size', None)}")
+                    logger.info(f"  - name: {getattr(avatar_obj, 'name', None)}")
+                    logger.info(f"  - size: {getattr(avatar_obj, 'size', None)}")
+            else:
+                logger.info(f"[ME PATCH] Step 2: ✓ avatar НЕТ в validated_data")
 
             # Проверяем изменение email
             logger.info("[ME PATCH] Step 3: Checking email change...")

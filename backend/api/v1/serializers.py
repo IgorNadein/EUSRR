@@ -39,25 +39,91 @@ class Base64ImageField(serializers.ImageField):
             return self.default_ext, "image/jpeg"
 
     def to_internal_value(self, data):
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("[Base64ImageField] to_internal_value вызван:")
+        logger.info(f"  - data type: {type(data).__name__}")
+        logger.info(f"  - data repr: {repr(data)[:200]}")
+        logger.info(f"  - data is None: {data is None}")
+        logger.info(f"  - data == '': {data == ''}")
+        logger.info(f"  - data == b'': {data == b''}")
+        
         # Принимаем None/пустое
         if data in (None, "", b""):
+            logger.info(
+                "[Base64ImageField] Пустое значение, передаем в parent"
+            )
             return super().to_internal_value(data)
 
         if isinstance(data, str):
+            logger.info(
+                f"[Base64ImageField] Обрабатываем строку, "
+                f"length: {len(data)}"
+            )
+            
             # Срезаем префикс data:image/...;base64, если есть
             if data.startswith("data:image"):
+                logger.info(
+                    "[Base64ImageField] Найден data URI префикс"
+                )
                 try:
                     _, data = data.split(";base64,", 1)
+                    logger.info(
+                        f"[Base64ImageField] Префикс обрезан, "
+                        f"осталось: {len(data)} символов"
+                    )
                 except ValueError:
-                    raise serializers.ValidationError("Некорректный формат data URI.")
+                    logger.error(
+                        "[Base64ImageField] Некорректный формат data URI"
+                    )
+                    raise serializers.ValidationError(
+                        "Некорректный формат data URI."
+                    )
+            
             try:
+                logger.info("[Base64ImageField] Декодируем base64...")
                 decoded = base64.b64decode(data)
-            except (TypeError, ValueError, binascii.Error):
+                logger.info(
+                    f"[Base64ImageField] Base64 декодирован, "
+                    f"размер: {len(decoded)} байт"
+                )
+            except (TypeError, ValueError, binascii.Error) as e:
+                logger.error(
+                    f"[Base64ImageField] Ошибка декодирования "
+                    f"base64: {e}"
+                )
                 raise serializers.ValidationError("Невалидный base64.")
 
+            logger.info(
+                "[Base64ImageField] Определяем формат изображения..."
+            )
             ext, _ = self._detect_ext_mime(decoded)
+            logger.info(f"[Base64ImageField] Формат определен: {ext}")
+            
             file = ContentFile(decoded, name=f"upload.{ext}")
-            return super().to_internal_value(file)
+            logger.info(
+                "[Base64ImageField] ContentFile создан, "
+                "передаем в parent ImageField"
+            )
+            
+            result = super().to_internal_value(file)
+            logger.info(
+                f"[Base64ImageField] Parent validation passed, "
+                f"result type: {type(result)}"
+            )
+            return result
+        
+        # Если это не строка (например, InMemoryUploadedFile)
+        logger.info(
+            f"[Base64ImageField] Не строка, передаем в parent as-is"
+        )
+        result = super().to_internal_value(data)
+        logger.info(
+            f"[Base64ImageField] Parent validation passed, "
+            f"result type: {type(result)}"
+        )
+        return result
 
         return super().to_internal_value(data)
 
