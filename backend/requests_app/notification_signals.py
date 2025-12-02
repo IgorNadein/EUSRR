@@ -101,8 +101,8 @@ def create_comment_notification(sender, instance, created, **kwargs):
     # Если sent_to_all_department - все сотрудники отделов
     if request_obj.sent_to_all_department:
         dept_employees = Employee.objects.filter(
-            employee_departments__department__in=request_obj.departments.all(),
-            employee_departments__is_active=True,
+            departments_links__department__in=request_obj.departments.all(),
+            departments_links__is_active=True,
             is_active=True
         ).exclude(id__in=[author.id, request_obj.employee.id]).distinct()
         
@@ -155,8 +155,8 @@ def notify_new_request(request_obj):
     # 3. Если sent_to_all_department - все сотрудники отделов
     if request_obj.sent_to_all_department:
         dept_employees = Employee.objects.filter(
-            employee_departments__department__in=request_obj.departments.all(),
-            employee_departments__is_active=True,
+            departments_links__department__in=request_obj.departments.all(),
+            departments_links__is_active=True,
             is_active=True
         ).exclude(id=request_obj.employee.id).distinct()
         
@@ -183,9 +183,9 @@ def notify_new_request(request_obj):
     
     if dept_ids:
         dept_processors = Employee.objects.filter(
-            employee_departments__department_id__in=dept_ids,
-            employee_departments__is_active=True,
-            employee_departments__role__scoped_permissions__code='can_process_requests',
+            departments_links__department_id__in=dept_ids,
+            departments_links__is_active=True,
+            departments_links__role__scoped_permissions__code='can_process_requests',
             is_active=True
         ).exclude(id=request_obj.employee.id).distinct()
         
@@ -266,8 +266,8 @@ def notify_status_change(request_obj, old_status, new_status):
     # 4. Если sent_to_all_department - все сотрудники отделов
     if request_obj.sent_to_all_department:
         dept_employees = Employee.objects.filter(
-            employee_departments__department__in=request_obj.departments.all(),
-            employee_departments__is_active=True,
+            departments_links__department__in=request_obj.departments.all(),
+            departments_links__is_active=True,
             is_active=True
         ).exclude(id=request_obj.employee.id).distinct()
         

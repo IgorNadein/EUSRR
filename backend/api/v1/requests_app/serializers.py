@@ -4,6 +4,7 @@ from typing import Any, Mapping
 
 from django.contrib.auth import get_user_model
 from django.db import models
+from employees.models import Department
 from requests_app.enums import RequestStatus, RequestType
 from requests_app.models import Request, RequestComment
 from rest_framework import serializers
@@ -184,7 +185,7 @@ class RequestWriteSerializer(serializers.ModelSerializer):
     # Новые поля для получателей
     department_ids = serializers.PrimaryKeyRelatedField(
         many=True,
-        queryset=None,  # Установим в __init__
+        queryset=Department.objects.all(),
         source='departments',
         required=False,
         allow_empty=True
