@@ -29,6 +29,7 @@ export class RecipientPicker {
       ccUsers: [],
       sendToAllDepartment: false,
       showCC: false,
+      showDepartments: false,  // Новый флаг для показа строки отделов
       loading: false,
       searchQuery: '',
       searchQueryCC: '',
@@ -76,8 +77,8 @@ export class RecipientPicker {
     this.container.innerHTML = `
       <div class="recipient-picker-email">
         
-        <!-- Отделы (компактный выбор) -->
-        ${this.options.showDepartments ? `
+        <!-- Отделы (показываются по кнопке) -->
+        ${this.state.showDepartments ? `
           <div class="recipient-row">
             <label class="recipient-label">
               <i class="bi-building"></i>
@@ -103,14 +104,16 @@ export class RecipientPicker {
                 </div>
               </div>
               
-              <!-- Флаг: всем сотрудникам -->
-              <div class="form-check form-check-inline ms-3">
-                <input class="form-check-input" type="checkbox" id="sendToAllDept"
-                       ${this.state.sendToAllDepartment ? 'checked' : ''}>
-                <label class="form-check-label text-muted small" for="sendToAllDept">
-                  <i class="bi-people-fill"></i> Всем сотрудникам
-                </label>
-              </div>
+              <!-- Флаг: всем в отделе (только если выбран хотя бы 1 отдел) -->
+              ${this.state.departments.length > 0 ? `
+                <div class="form-check form-check-inline ms-3">
+                  <input class="form-check-input" type="checkbox" id="sendToAllDept"
+                         ${this.state.sendToAllDepartment ? 'checked' : ''}>
+                  <label class="form-check-label text-muted small" for="sendToAllDept">
+                    <i class="bi-people-fill"></i> Всем в отделе${this.state.departments.length > 1 ? 'ах' : ''}
+                  </label>
+                </div>
+              ` : ''}
             </div>
           </div>
         ` : ''}
@@ -133,12 +136,20 @@ export class RecipientPicker {
                 ${this.renderUserDropdown(this.state.recipients, 'recipient')}
               </div>
             </div>
-            ${!this.state.showCC && this.options.showCC ? `
-              <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-2" 
-                      id="showCCBtn">
-                + Копия
-              </button>
-            ` : ''}
+            <div class="d-flex gap-2 ms-2">
+              ${!this.state.showCC && this.options.showCC ? `
+                <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" 
+                        id="showCCBtn">
+                  + Копия
+                </button>
+              ` : ''}
+              ${!this.state.showDepartments && this.options.showDepartments ? `
+                <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" 
+                        id="showDepartmentsBtn">
+                  + Отделы
+                </button>
+              ` : ''}
+            </div>
           </div>
         </div>
 
@@ -274,6 +285,16 @@ export class RecipientPicker {
         setTimeout(() => {
           this.container.querySelector('#ccInput')?.focus();
         }, 100);
+      });
+    }
+
+    // Показать Отделы
+    const showDepartmentsBtn = this.container.querySelector('#showDepartmentsBtn');
+    if (showDepartmentsBtn) {
+      showDepartmentsBtn.addEventListener('click', () => {
+        this.state.showDepartments = true;
+        this.render();
+        this.attachEvents();
       });
     }
 
@@ -489,6 +510,10 @@ export class RecipientPicker {
       this.state.departments = Array.isArray(data.department_ids) 
         ? data.department_ids 
         : [data.department_ids];
+      // Если есть отделы - показываем строку отделов
+      if (this.state.departments.length > 0) {
+        this.state.showDepartments = true;
+      }
     }
     if (data.recipient_ids) {
       this.state.recipients = Array.isArray(data.recipient_ids)
@@ -499,6 +524,10 @@ export class RecipientPicker {
       this.state.ccUsers = Array.isArray(data.cc_user_ids)
         ? data.cc_user_ids
         : [data.cc_user_ids];
+      // Если есть CC - показываем строку CC
+      if (this.state.ccUsers.length > 0) {
+        this.state.showCC = true;
+      }
     }
     if (data.sent_to_all_department !== undefined) {
       this.state.sendToAllDepartment = data.sent_to_all_department;
@@ -513,6 +542,8 @@ export class RecipientPicker {
     this.state.recipients = [];
     this.state.ccUsers = [];
     this.state.sendToAllDepartment = false;
+    this.state.showCC = false;
+    this.state.showDepartments = false;
     this.render();
     this.attachEvents();
   }
