@@ -56,6 +56,10 @@ export function initEmployeeForm(options = {}) {
         }, 1000);
       } else {
         console.warn('[EmployeeForm] Ошибка валидации:', data);
+        // Логируем полный текст ошибки detail для отладки
+        if (data.detail) {
+          console.error('[EmployeeForm] Полный текст ошибки detail:', data.detail);
+        }
         displayFormErrors(form, data);
         showErrorMessage('Исправьте ошибки в форме');
       }

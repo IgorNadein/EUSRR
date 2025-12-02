@@ -1787,7 +1787,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             if ldap_enabled:
                 from employees.models import LdapSyncState
                 has_ldap_dn = (
-                    LdapSyncState.objects.filter(employee=instance, ldap_dn__isnull=False).exists()
+                    LdapSyncState.objects.filter(
+                        model='employee',
+                        object_pk=str(instance.pk),
+                        ldap_dn__isnull=False
+                    ).exists()
                     or (hasattr(instance, 'ldap_dn') and instance.ldap_dn)
                 )
                 logger.info(f"[ME PATCH] Step 9.5: LDAP enabled, user has ldap_dn: {has_ldap_dn}")
@@ -2069,7 +2073,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         if ldap_enabled:
             from employees.models import LdapSyncState
             has_ldap_dn = (
-                LdapSyncState.objects.filter(employee=emp, ldap_dn__isnull=False).exists()
+                LdapSyncState.objects.filter(
+                    model='employee',
+                    object_pk=str(emp.pk),
+                    ldap_dn__isnull=False
+                ).exists()
                 or (hasattr(emp, 'ldap_dn') and emp.ldap_dn)
             )
             print(f"[EMP PATCH] LDAP enabled, user has ldap_dn: {has_ldap_dn}")
