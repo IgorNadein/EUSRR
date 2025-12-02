@@ -6,6 +6,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/recipientPicker.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -264,6 +265,20 @@
           <input type="file" name="attachment" class="form-control">
           <div class="form-text">Допустимые форматы и размер контролируются на сервере.</div>
         </div>
+
+        <!-- Получатели -->
+        <div class="mt-4">
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <h6 class="mb-0">Получатели</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" 
+                    data-bs-toggle="collapse" data-bs-target="#createRecipientsCollapse">
+              <i class="bi-people"></i> Настроить
+            </button>
+          </div>
+          <div class="collapse" id="createRecipientsCollapse">
+            <div id="createRecipientPicker"></div>
+          </div>
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -344,6 +359,20 @@
           <input class="form-check-input" type="checkbox" id="editIsDraft" name="_save_as" value="draft">
           <label class="form-check-label" for="editIsDraft">Сохранить как черновик</label>
           <div class="form-text">Если отмечено, заявка будет переведена в статус черновика.</div>
+        </div>
+
+        <!-- Получатели -->
+        <div class="mt-4">
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <h6 class="mb-0">Получатели</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" 
+                    data-bs-toggle="collapse" data-bs-target="#editRecipientsCollapse">
+              <i class="bi-people"></i> Настроить
+            </button>
+          </div>
+          <div class="collapse" id="editRecipientsCollapse">
+            <div id="editRecipientPicker"></div>
+          </div>
         </div>
       </div>
 
