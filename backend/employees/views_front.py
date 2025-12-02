@@ -546,58 +546,8 @@ def employee_edit(request, pk: int):
     except Exception:
         data = {"detail": resp.text}
 
-    accepts = (request.headers.get("Accept") or "").lower()
-    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    wants_json = "application/json" in accepts or is_ajax
-
-    if wants_json:
-        return JsonResponse(data or {}, status=resp.status)
-
-    if resp.ok:
-        messages.success(request, "Профиль сотрудника обновлён")
-        redirect_url = request.META.get("HTTP_REFERER") or reverse(
-            "employees:employee_profile",
-            args=(pk,),
-        )
-        return redirect(redirect_url)
-    else:
-        # При ошибке валидации показываем детали
-        if resp.status == 400 and isinstance(data, dict):
-            # Собираем все ошибки валидации
-            error_messages = []
-            for field, errors in data.items():
-                if field == 'detail':
-                    error_messages.append(str(errors))
-                elif isinstance(errors, list):
-                    field_name = field.replace('_', ' ').title()
-                    for error in errors:
-                        if isinstance(error, dict):
-                            err_str = error.get('string', error)
-                            error_messages.append(f"{field_name}: {err_str}")
-                        else:
-                            error_messages.append(f"{field_name}: {error}")
-                else:
-                    field_name = field.replace('_', ' ').title()
-                    error_messages.append(f"{field_name}: {errors}")
-            
-            if error_messages:
-                for msg in error_messages:
-                    messages.error(request, msg)
-            else:
-                messages.error(request, "Ошибка валидации данных")
-        else:
-            detail = ""
-            if isinstance(data, dict):
-                detail = data.get("detail") or data.get("error") or ""
-            error_msg = (
-                detail
-                or f"Не удалось обновить сотрудника (HTTP {resp.status})"
-            )
-            messages.error(request, error_msg)
-        
-        # Возвращаем на страницу профиля сотрудника
-        profile_url = reverse("employees:employee_detail", args=(pk,))
-        return redirect(profile_url)
+    # Всегда возвращаем JSON без редиректа
+    return JsonResponse(data or {}, status=resp.status)
 
 
 # ---------- EDIT ME ----------
@@ -692,57 +642,8 @@ def employee_edit_me(request):
     except Exception:
         data = {"detail": resp.text}
 
-    accepts = (request.headers.get("Accept") or "").lower()
-    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    wants_json = "application/json" in accepts or is_ajax
-
-    if wants_json:
-        return JsonResponse(data or {}, status=resp.status)
-
-    if resp.ok:
-        messages.success(request, "Профиль обновлён")
-        redirect_url = (
-            request.META.get("HTTP_REFERER")
-            or reverse("employees:profile")
-        )
-        return redirect(redirect_url)
-    else:
-        # При ошибке валидации показываем детали
-        if resp.status == 400 and isinstance(data, dict):
-            # Собираем все ошибки валидации
-            error_messages = []
-            for field, errors in data.items():
-                if field == 'detail':
-                    error_messages.append(str(errors))
-                elif isinstance(errors, list):
-                    field_name = field.replace('_', ' ').title()
-                    for error in errors:
-                        if isinstance(error, dict):
-                            err_str = error.get('string', error)
-                            error_messages.append(f"{field_name}: {err_str}")
-                        else:
-                            error_messages.append(f"{field_name}: {error}")
-                else:
-                    field_name = field.replace('_', ' ').title()
-                    error_messages.append(f"{field_name}: {errors}")
-            
-            if error_messages:
-                for msg in error_messages:
-                    messages.error(request, msg)
-            else:
-                messages.error(request, "Ошибка валидации данных")
-        else:
-            detail = ""
-            if isinstance(data, dict):
-                detail = data.get("detail") or data.get("error") or ""
-            error_msg = (
-                detail or f"Не удалось обновить профиль (HTTP {resp.status})"
-            )
-            messages.error(request, error_msg)
-        
-        # Возвращаем на страницу профиля (где есть форма редактирования)
-        profile_url = reverse("employees:profile")
-        return redirect(profile_url)
+    # Всегда возвращаем JSON без редиректа
+    return JsonResponse(data or {}, status=resp.status)
 
 
 # ---------- CREATE (staff) ----------

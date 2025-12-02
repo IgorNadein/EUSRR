@@ -17,6 +17,7 @@ from .models import (
     EmployeeDepartment,
     Position,
     Skill,
+    LdapSyncState,
 )
 
 # =========================
@@ -278,3 +279,45 @@ class PermissionAdmin(admin.ModelAdmin):
     list_display = ("name", "codename", "content_type")
     list_filter = ("content_type",)
     search_fields = ("name", "codename")
+
+
+@admin.register(LdapSyncState)
+class LdapSyncStateAdmin(admin.ModelAdmin):
+    """Админка для просмотра состояния синхронизации LDAP."""
+    
+    list_display = (
+        "model",
+        "object_pk",
+        "ldap_dn_short",
+        "ldap_guid",
+        "last_sync_dir",
+        "updated_at",
+    )
+    list_filter = ("model", "last_sync_dir")
+    search_fields = ("object_pk", "ldap_dn", "ldap_guid")
+    readonly_fields = (
+        "model",
+        "object_pk",
+        "ldap_dn",
+        "ldap_guid",
+        "last_ldap_modify_ts",
+        "last_django_modify_ts",
+        "last_sync_dir",
+        "data_hash",
+        "updated_at",
+    )
+    
+    def ldap_dn_short(self, obj):
+        """Показываем сокращенную версию DN для удобства."""
+        if obj.ldap_dn:
+            return obj.ldap_dn[:50] + "..." if len(obj.ldap_dn) > 50 else obj.ldap_dn
+        return "-"
+    ldap_dn_short.short_description = "LDAP DN"
+    
+    def has_add_permission(self, request):
+        """Запрещаем создание вручную."""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """Разрешаем удаление для очистки."""
+        return True
