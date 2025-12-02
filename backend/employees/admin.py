@@ -647,8 +647,8 @@ class LdapSyncStateAdmin(admin.ModelAdmin):
     ldap_dn_short.short_description = "LDAP DN"
     
     def has_add_permission(self, request):
-        """Запрещаем создание вручную."""
-        return False
+        """Разрешаем создание записей для отсутствующих пользователей."""
+        return True
     
     def has_delete_permission(self, request, obj=None):
         """Разрешаем удаление для очистки."""
