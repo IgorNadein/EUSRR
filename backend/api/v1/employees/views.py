@@ -439,11 +439,10 @@ class RegisterAPIView(APIView):
         emp.whatsapp = v.get("whatsapp", "")
         emp.wechat = v.get("wechat", "")
         emp.birth_date = v["birth_date"]
+        emp.gender = v["gender"]  # обязательное поле
         
         if v.get("patronymic"):
             emp.patronymic = v["patronymic"]
-        if v.get("gender") is not None:
-            emp.gender = v["gender"]
         
         pos_id = v.get("position")
         if pos_id and Position.objects.filter(pk=pos_id).exists():

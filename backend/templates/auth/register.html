@@ -26,7 +26,6 @@
           <div class="row g-3 mb-4">
             <div class="col-md-6">
               {% bootstrap_field form.email show_label=False placeholder="E-mail" %}
-              <small class="text-muted">Пример: ivanov@company.com</small>
             </div>
             <div class="col-md-6">
               {% bootstrap_field form.phone_number show_label=False placeholder="Телефон" %}
@@ -77,21 +76,8 @@
               {% bootstrap_field form.birth_date show_label=False placeholder="Дата рождения" %}
             </div>
             <div class="col-md-8">
-              <label class="form-label d-block mb-2">Пол</label>
-              <div class="d-flex flex-wrap gap-3">
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="gender" id="gender-m" value="1">
-                  <label class="form-check-label" for="gender-m">Мужской</label>
-                </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="gender" id="gender-f" value="2">
-                  <label class="form-check-label" for="gender-f">Женский</label>
-                </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="gender" id="gender-u" value="0" checked>
-                  <label class="form-check-label" for="gender-u">Не указан</label>
-                </div>
-              </div>
+              <label class="form-label d-block mb-2">Пол <span class="text-danger">*</span></label>
+              {% bootstrap_field form.gender show_label=False %}
             </div>
           </div>
 
@@ -99,14 +85,18 @@
           <div class="row g-3 mb-4">
             <div class="col-md-6 position-relative">
               {% bootstrap_field form.password1 show_label=False placeholder="Пароль" %}
-              <span class="position-absolute top-50 end-0 translate-middle-y me-3" style="cursor:pointer">
-                <i class="bi bi-eye-slash password-toggle" data-target="#{{ form.password1.auto_id }}"></i>
+              <span class="password-toggle position-absolute top-50 end-0 translate-middle-y me-3 pe-5" 
+                    data-target="#{{ form.password1.auto_id }}"
+                    style="cursor:pointer; z-index:10;">
+                <i class="bi bi-eye-slash"></i>
               </span>
             </div>
             <div class="col-md-6 position-relative">
               {% bootstrap_field form.password2 show_label=False placeholder="Повторите пароль" %}
-              <span class="position-absolute top-50 end-0 translate-middle-y me-3" style="cursor:pointer">
-                <i class="bi bi-eye-slash password-toggle" data-target="#{{ form.password2.auto_id }}"></i>
+              <span class="password-toggle position-absolute top-50 end-0 translate-middle-y me-3 pe-5" 
+                    data-target="#{{ form.password2.auto_id }}"
+                    style="cursor:pointer; z-index:10;">
+                <i class="bi bi-eye-slash"></i>
               </span>
             </div>
           </div>
@@ -146,7 +136,7 @@
 <script type="module">
   import { initPasswordToggle } from "{% static 'js/components/passwordToggleHandler.js' %}";
   import { initAvatarPreview } from "{% static 'js/components/avatarPreviewHandler.js' %}";
-  import { initPhoneValidation } from "{% static 'js/components/phoneValidationHandler.js' %}";
+  import { initLiveValidation } from "{% static 'js/components/liveValidationHandler.js' %}";
 
   document.addEventListener('DOMContentLoaded', function () {
     // Переключение видимости пароля
@@ -159,8 +149,112 @@
       placeholderId: 'avatarPlaceholder'
     });
 
-    // Валидация телефонных номеров
-    initPhoneValidation();
+    // Live validation - валидация в реальном времени
+    const validator = initLiveValidation({
+      formSelector: 'form',
+      debounce: 500, // задержка 500мс после ввода
+      rules: {
+        email: [
+          { type: 'required', message: 'Email обязателен для заполнения' },
+          { type: 'email', message: 'Введите корректный email (example@company.com)' }
+        ],
+        phone_number: [
+          { type: 'required', message: 'Номер телефона обязателен' },
+          { 
+            type: 'pattern', 
+            pattern: /^\+\d{11,14}$/, 
+            message: 'Введите номер в формате +79991234567 (11-14 цифр с плюсом)' 
+          }
+        ],
+        first_name: [
+          { type: 'required', message: 'Имя обязательно для заполнения' },
+          { type: 'minLength', value: 2, message: 'Минимум 2 символа' },
+          { 
+            type: 'pattern', 
+            pattern: /^[^\d]+$/, 
+            message: 'Имя не должно содержать цифры' 
+          }
+        ],
+        last_name: [
+          { type: 'required', message: 'Фамилия обязательна для заполнения' },
+          { type: 'minLength', value: 2, message: 'Минимум 2 символа' },
+          { 
+            type: 'pattern', 
+            pattern: /^[^\d]+$/, 
+            message: 'Фамилия не должна содержать цифры' 
+          }
+        ],
+        patronymic: [
+          { 
+            type: 'pattern', 
+            pattern: /^[^\d]*$/, 
+            message: 'Отчество не должно содержать цифры',
+            required: false // Поле опциональное
+          }
+        ],
+        birth_date: [
+          { type: 'required', message: 'Дата рождения обязательна' },
+          {
+            type: 'custom',
+            validate: (value) => {
+              const date = new Date(value);
+              const today = new Date();
+              const age = today.getFullYear() - date.getFullYear();
+              return age >= 18 && age <= 100;
+            },
+            message: 'Возраст должен быть от 18 до 100 лет'
+          }
+        ],
+        gender: [
+          { type: 'required', message: 'Необходимо указать пол' }
+        ],
+        avatar: [
+          { type: 'required', message: 'Необходимо загрузить фотографию' }
+        ],
+        password1: [
+          { type: 'required', message: 'Пароль обязателен' },
+          { type: 'minLength', value: 6, message: 'Пароль должен содержать минимум 6 символов' }
+        ],
+        password2: [
+          { type: 'required', message: 'Подтвердите пароль' },
+          { 
+            type: 'match', 
+            field: 'password1', 
+            message: 'Пароли не совпадают' 
+          }
+        ],
+        // Специальная проверка контактов (хотя бы один)
+        telegram: [
+          {
+            type: 'anyContact',
+            fields: ['telegram', 'whatsapp', 'wechat'],
+            message: 'Заполните хотя бы один мессенджер (Telegram, WhatsApp или WeChat)'
+          }
+        ],
+        whatsapp: [
+          {
+            type: 'anyContact',
+            fields: ['telegram', 'whatsapp', 'wechat'],
+            message: 'Заполните хотя бы один мессенджер (Telegram, WhatsApp или WeChat)'
+          }
+        ],
+        wechat: [
+          {
+            type: 'anyContact',
+            fields: ['telegram', 'whatsapp', 'wechat'],
+            message: 'Заполните хотя бы один мессенджер (Telegram, WhatsApp или WeChat)'
+          }
+        ]
+      }
+    });
+
+    // При изменении password1 - ревалидируем password2
+    document.querySelector('[name="password1"]')?.addEventListener('input', () => {
+      const password2 = document.querySelector('[name="password2"]');
+      if (password2 && password2.value) {
+        validator.validateField('password2');
+      }
+    });
   });
 </script>
 {% endblock %}

@@ -1,4 +1,5 @@
 from collections import defaultdict
+import re
 from typing import Any, Dict, Optional
 
 from django.contrib.auth import get_user_model
@@ -53,17 +54,72 @@ class RegisterSerializer(serializers.Serializer):
     whatsapp = serializers.CharField(required=False, allow_blank=True, default="")
     wechat = serializers.CharField(required=False, allow_blank=True, default="")
 
-    avatar = Base64ImageField(required=False, allow_null=True)
+    avatar = Base64ImageField(required=True)
     patronymic = serializers.CharField(required=False, allow_blank=True, default="")
 
     gender = serializers.ChoiceField(
-        required=False,
-        allow_null=True,
-        choices=((0, "Не указан"), (1, "Мужской"), (2, "Женский")),
+        required=True,
+        choices=((1, "Мужской"), (2, "Женский")),
+        error_messages={
+            'required': 'Поле "Пол" обязательно для заполнения.',
+            'invalid_choice': 'Укажите пол: 1 - Мужской, 2 - Женский.'
+        }
     )
 
     position = serializers.IntegerField(required=False, allow_null=True)
     skills = serializers.ListField(child=serializers.IntegerField(), required=False)
+
+    def validate_first_name(self, value: str) -> str:
+        """Валидация имени: только буквы, пробелы и дефисы."""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError(
+                "Имя обязательно для заполнения."
+            )
+        if re.search(r'\d', value):
+            raise serializers.ValidationError(
+                "Имя не должно содержать цифры."
+            )
+        if not re.match(r'^[\w\s\-\']+$', value, re.UNICODE):
+            raise serializers.ValidationError(
+                "Имя может содержать только буквы, пробелы, "
+                "дефисы и апострофы."
+            )
+        return value
+
+    def validate_last_name(self, value: str) -> str:
+        """Валидация фамилии: только буквы, пробелы и дефисы."""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError(
+                "Фамилия обязательна для заполнения."
+            )
+        if re.search(r'\d', value):
+            raise serializers.ValidationError(
+                "Фамилия не должна содержать цифры."
+            )
+        if not re.match(r'^[\w\s\-\']+$', value, re.UNICODE):
+            raise serializers.ValidationError(
+                "Фамилия может содержать только буквы, пробелы, "
+                "дефисы и апострофы."
+            )
+        return value
+
+    def validate_patronymic(self, value: str) -> str:
+        """Валидация отчества: только буквы, пробелы и дефисы."""
+        value = value.strip()
+        if not value:
+            return value  # Отчество опциональное
+        if re.search(r'\d', value):
+            raise serializers.ValidationError(
+                "Отчество не должно содержать цифры."
+            )
+        if not re.match(r'^[\w\s\-\']+$', value, re.UNICODE):
+            raise serializers.ValidationError(
+                "Отчество может содержать только буквы, пробелы, "
+                "дефисы и апострофы."
+            )
+        return value
 
     def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         """Глобальная валидация: контакты + телефон (alias) + нормализация E.164.

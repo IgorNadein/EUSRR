@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any, Dict, List, Optional
 
 from django import forms
@@ -50,10 +51,8 @@ class RegistrationForm(forms.Form):
         widget=forms.TextInput(attrs={
             "type": "tel",
             "inputmode": "numeric",
-            "pattern": r"^\+?\d{10,15}$",
             "autocomplete": "tel",
-            "data-phone-only": "1",
-            "title": "Введите номер в формате +79991234567 (10–15 цифр)",
+            "title": "Введите номер в формате +79991234567",
         })
     )
     email = forms.EmailField(label="Email")
@@ -72,11 +71,66 @@ class RegistrationForm(forms.Form):
 
     # Опциональные поля модели
     patronymic = forms.CharField(required=False, label="Отчество")
-    gender = forms.IntegerField(required=False, label="Пол (0/1/2)")
+    gender = forms.ChoiceField(
+        required=True,
+        label="Пол",
+        choices=[(1, "Мужской"), (2, "Женский")],
+        widget=forms.RadioSelect,
+        error_messages={
+            'required': 'Необходимо указать пол.',
+            'invalid_choice': 'Выберите Мужской или Женский.',
+        }
+    )
     position = forms.IntegerField(required=False, label="ID должности")
     # skills — список ID через запятую
     skills = forms.CharField(required=False, label="Навыки (ID через запятую)")
-    avatar = forms.ImageField(required=False, label="Аватар")
+    avatar = forms.ImageField(required=True, label="Аватар")
+
+    def clean_first_name(self) -> str:
+        """Валидация имени: только буквы, пробелы и дефисы."""
+        value = self.cleaned_data.get("first_name", "").strip()
+        if not value:
+            raise forms.ValidationError("Имя обязательно для заполнения.")
+        if re.search(r'\d', value):
+            raise forms.ValidationError(
+                "Имя не должно содержать цифры."
+            )
+        # Разрешаем буквы (любых алфавитов), пробелы, дефисы, апострофы
+        if not re.match(r'^[\w\s\-\']+$', value, re.UNICODE):
+            raise forms.ValidationError(
+                "Имя может содержать только буквы, пробелы, дефисы и апострофы."
+            )
+        return value
+
+    def clean_last_name(self) -> str:
+        """Валидация фамилии: только буквы, пробелы и дефисы."""
+        value = self.cleaned_data.get("last_name", "").strip()
+        if not value:
+            raise forms.ValidationError("Фамилия обязательна для заполнения.")
+        if re.search(r'\d', value):
+            raise forms.ValidationError(
+                "Фамилия не должна содержать цифры."
+            )
+        if not re.match(r'^[\w\s\-\']+$', value, re.UNICODE):
+            raise forms.ValidationError(
+                "Фамилия может содержать только буквы, пробелы, дефисы и апострофы."
+            )
+        return value
+
+    def clean_patronymic(self) -> str:
+        """Валидация отчества: только буквы, пробелы и дефисы."""
+        value = self.cleaned_data.get("patronymic", "").strip()
+        if not value:
+            return value  # Отчество опциональное
+        if re.search(r'\d', value):
+            raise forms.ValidationError(
+                "Отчество не должно содержать цифры."
+            )
+        if not re.match(r'^[\w\s\-\']+$', value, re.UNICODE):
+            raise forms.ValidationError(
+                "Отчество может содержать только буквы, пробелы, дефисы и апострофы."
+            )
+        return value
 
     def clean(self) -> Dict[str, Any]:
         """Глобальная валидация формы.
@@ -232,6 +286,7 @@ class RegistrationForm(forms.Form):
             "email": cd["email"],
             "birth_date": cd["birth_date"].isoformat(),
             "password": cd["password1"],
+            "gender": int(cd["gender"]),  # обязательное поле
             "telegram": cd.get("telegram") or "",
             "whatsapp": cd.get("whatsapp") or "",
             "wechat": cd.get("wechat") or "",
@@ -240,8 +295,6 @@ class RegistrationForm(forms.Form):
         # Доп. поля
         if cd.get("patronymic"):
             payload["patronymic"] = cd["patronymic"]
-        if cd.get("gender") is not None:
-            payload["gender"] = cd["gender"]
         if cd.get("position") is not None:
             payload["position"] = cd["position"]
 

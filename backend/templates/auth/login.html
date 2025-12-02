@@ -29,11 +29,13 @@
                     {% endif %}
 
                     <div class="mb-4 form-floating">
-                        <input type="tel" 
+                        <input type="text" 
                                name="username" 
                                class="form-control {% if form.username.errors %}is-invalid{% endif %}" 
                                id="id_username"
+                               placeholder="Номер телефона или email"
                                value="{{ form.username.value|default:'' }}"
+                               autocomplete="username"
                                required autofocus>
                         <label for="id_username">Номер телефона или email</label>
                         {% if form.username.errors %}
@@ -43,21 +45,27 @@
                         {% endif %}
                     </div>
 
-                    <div class="mb-4 form-floating position-relative">
-                        <input type="password" 
-                               name="password" 
-                               class="form-control {% if form.password.errors %}is-invalid{% endif %}" 
-                               id="id_password" 
-                               placeholder="Пароль"
-                               required>
-                        <label for="id_password">Пароль</label>
-                        <i class="bi bi-eye-slash password-toggle position-absolute top-50 end-0 translate-middle-y me-3" 
-                           style="cursor: pointer; z-index: 5"></i>
-                        {% if form.password.errors %}
-                        <div class="invalid-feedback">
-                            {{ form.password.errors|striptags }}
+                    <div class="mb-4 position-relative">
+                        <div class="form-floating">
+                            <input type="password" 
+                                   name="password" 
+                                   class="form-control {% if form.password.errors %}is-invalid{% endif %} pe-5" 
+                                   id="id_password" 
+                                   placeholder="Пароль"
+                                   autocomplete="current-password"
+                                   required>
+                            <label for="id_password">Пароль</label>
+                            {% if form.password.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.password.errors|striptags }}
+                            </div>
+                            {% endif %}
                         </div>
-                        {% endif %}
+                        <span class="password-toggle position-absolute top-50 end-0 translate-middle-y me-3" 
+                              data-target="#id_password"
+                              style="cursor: pointer; z-index: 10; margin-top: -0.25rem;">
+                            <i class="bi bi-eye-slash"></i>
+                        </span>
                     </div>
 
                     <div class="d-grid gap-2">
