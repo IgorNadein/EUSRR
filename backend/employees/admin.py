@@ -227,8 +227,14 @@ class EmployeeAdmin(DjangoUserAdmin):
     
     def ldap_sync_status(self, obj):
         """Краткий статус LDAP синхронизации для списка."""
-        if not obj.pk or not obj.is_ldap_managed:
+        if not obj.pk:
             return "-"
+        
+        from django.utils.html import format_html
+        
+        # Если не управляется LDAP
+        if not obj.is_ldap_managed:
+            return format_html('<span style="color: gray;">Локальный</span>')
         
         try:
             sync_state = LdapSyncState.objects.filter(
@@ -237,26 +243,45 @@ class EmployeeAdmin(DjangoUserAdmin):
             ).first()
             
             if not sync_state:
-                return "❌ Нет записи"
-            
-            from django.utils.html import format_html
-            
-            # Показываем GUID и дату последнего обновления
-            if sync_state.ldap_guid and sync_state.updated_at:
                 return format_html(
-                    '✅ <span title="GUID: {}">{}</span>',
+                    '<span style="color: red;" title="Пользователь помечен как LDAP, но нет записи синхронизации">❌ Нет записи</span>'
+                )
+            
+            # Проверяем полноту данных
+            has_guid = bool(sync_state.ldap_guid)
+            has_dn = bool(sync_state.ldap_dn)
+            has_updated = bool(sync_state.updated_at)
+            
+            # Полные данные
+            if has_guid and has_dn and has_updated:
+                return format_html(
+                    '✅ <span title="GUID: {}\nDN: {}">{}</span>',
                     sync_state.ldap_guid,
+                    sync_state.ldap_dn[:80] + '...' if len(sync_state.ldap_dn) > 80 else sync_state.ldap_dn,
                     sync_state.updated_at.strftime("%d.%m.%Y %H:%M")
                 )
-            elif sync_state.updated_at:
+            # Неполные данные
+            elif has_updated:
+                missing = []
+                if not has_guid:
+                    missing.append("GUID")
+                if not has_dn:
+                    missing.append("DN")
+                
                 return format_html(
-                    '⚠️ {}',
+                    '⚠️ <span title="Отсутствует: {}">{}</span>',
+                    ", ".join(missing),
                     sync_state.updated_at.strftime("%d.%m.%Y %H:%M")
                 )
             else:
-                return "⚠️ Неполные данные"
-        except Exception:
-            return "❌ Ошибка"
+                return format_html(
+                    '<span style="color: orange;" title="Нет даты обновления">⚠️ Неполные данные</span>'
+                )
+        except Exception as e:
+            return format_html(
+                '<span style="color: red;" title="{}">❌ Ошибка</span>',
+                str(e)
+            )
     
     ldap_sync_status.short_description = "LDAP статус"
     ldap_sync_status.admin_order_field = "id"  # Сортировка по ID
@@ -373,7 +398,93 @@ class EmployeeAdmin(DjangoUserAdmin):
         }),
     )
 
-    inlines = [EmployeeDepartmentInline,]
+    inlines = [EmployeeDepartmentInline]
+    
+    actions = ["create_ldap_sync_records", "check_ldap_sync_status"]
+    
+    def create_ldap_sync_records(self, request, queryset):
+        """Создать записи синхронизации для выбранных сотрудников."""
+        created_count = 0
+        already_exists = 0
+        
+        for employee in queryset:
+            if not employee.is_ldap_managed:
+                continue
+            
+            sync_state, created = LdapSyncState.objects.get_or_create(
+                model="employee",
+                object_pk=str(employee.pk),
+                defaults={
+                    "last_sync_dir": "django",
+                }
+            )
+            
+            if created:
+                created_count += 1
+            else:
+                already_exists += 1
+        
+        if created_count:
+            self.message_user(
+                request,
+                f"Создано {created_count} записей синхронизации",
+                level="success"
+            )
+        if already_exists:
+            self.message_user(
+                request,
+                f"У {already_exists} сотрудников уже есть записи синхронизации",
+                level="info"
+            )
+        if created_count == 0 and already_exists == 0:
+            self.message_user(
+                request,
+                "Выбраны только локальные пользователи (не управляются LDAP)",
+                level="warning"
+            )
+    
+    create_ldap_sync_records.short_description = "Создать записи LDAP синхронизации"
+    
+    def check_ldap_sync_status(self, request, queryset):
+        """Проверить статус LDAP синхронизации для выбранных сотрудников."""
+        ldap_managed = queryset.filter(is_ldap_managed=True)
+        ldap_count = ldap_managed.count()
+        
+        if ldap_count == 0:
+            self.message_user(
+                request,
+                "Среди выбранных нет пользователей, управляемых через LDAP",
+                level="warning"
+            )
+            return
+        
+        # Проверяем наличие записей синхронизации
+        sync_records = LdapSyncState.objects.filter(
+            model="employee",
+            object_pk__in=[str(e.pk) for e in ldap_managed]
+        )
+        
+        has_sync = sync_records.count()
+        missing_sync = ldap_count - has_sync
+        
+        # Проверяем полноту данных
+        complete = sync_records.filter(
+            ldap_guid__isnull=False,
+            ldap_dn__isnull=False
+        ).exclude(ldap_dn="").count()
+        
+        incomplete = has_sync - complete
+        
+        message = f"Статус LDAP синхронизации:\n"
+        message += f"• Управляются LDAP: {ldap_count}\n"
+        message += f"• Есть запись синхронизации: {has_sync}\n"
+        message += f"• Нет записи синхронизации: {missing_sync}\n"
+        message += f"• Полные данные: {complete}\n"
+        message += f"• Неполные данные: {incomplete}"
+        
+        self.message_user(request, message, level="info")
+    
+    check_ldap_sync_status.short_description = "Проверить статус LDAP синхронизации"
 
 
 @admin.register(Position)
