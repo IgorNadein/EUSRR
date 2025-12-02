@@ -265,8 +265,16 @@ class EmployeeAdmin(DjangoUserAdmin):
                     f"All employee object_pks in sync table: {list(all_syncs)}"
                 )
                 
+                # Создаем ссылку для быстрого создания записи
+                from django.urls import reverse
+                create_url = reverse('admin:employees_ldapsyncstate_add')
+                
                 return format_html(
-                    '<span style="color: red;" title="ID: {} - Пользователь помечен как LDAP, но нет записи синхронизации. Проверьте логи.">❌ Нет записи (ID: {})</span>',
+                    '<span style="color: red;" title="ID: {} - Нет записи синхронизации. Кликните для создания.">'
+                    '<a href="{}?model=employee&object_pk={}" style="color: red;">❌ Нет записи (ID: {})</a>'
+                    '</span>',
+                    obj.pk,
+                    create_url,
                     obj.pk,
                     obj.pk
                 )
