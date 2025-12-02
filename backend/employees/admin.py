@@ -157,16 +157,32 @@ class EmployeeAdmin(DjangoUserAdmin):
         "position",
         "is_active",
         "email_verified",
+        "is_ldap_managed",
         "is_staff",
     )
-    list_filter = ("is_active", "email_verified", "is_staff", "is_superuser", "position", "groups")
+    list_filter = (
+        "is_active",
+        "email_verified",
+        "is_staff",
+        "is_superuser",
+        "is_ldap_managed",
+        "position",
+        "groups",
+    )
     search_fields = ("email", "first_name", "last_name", "phone_number")
     ordering = ("last_name", "first_name")
     list_select_related = ("position",)
 
     filter_horizontal = ("groups", "user_permissions", "skills")
 
-    readonly_fields = ("last_login", "created_at", "updated_at")
+    readonly_fields = (
+        "last_login",
+        "created_at",
+        "updated_at",
+        "ldap_sync_info",
+        "email_activation_code",
+        "sms_activation_code",
+    )
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -190,14 +206,60 @@ class EmployeeAdmin(DjangoUserAdmin):
             "fields": (
                 "is_active",
                 "email_verified",
+                "email_activation_code",
+                "sms_activation_code",
                 "is_staff",
                 "is_superuser",
                 "groups",
                 "user_permissions",
             )
         }),
+        ("LDAP", {
+            "fields": ("is_ldap_managed", "ldap_sync_info"),
+            "classes": ("collapse",),
+        }),
         ("Служебное", {"fields": ("last_login", "created_at", "updated_at")}),
     )
+    
+    def ldap_sync_info(self, obj):
+        """Отображает информацию о состоянии синхронизации LDAP."""
+        if not obj.pk:
+            return "-"
+        
+        try:
+            sync_state = LdapSyncState.objects.filter(
+                model="employee",
+                object_pk=str(obj.pk)
+            ).first()
+            
+            if not sync_state:
+                return "Нет записи синхронизации"
+            
+            from django.utils.html import format_html
+            
+            info = []
+            if sync_state.ldap_dn:
+                info.append(f"<b>DN:</b> {sync_state.ldap_dn}")
+            if sync_state.ldap_guid:
+                info.append(f"<b>GUID:</b> {sync_state.ldap_guid}")
+            if sync_state.last_sync_dir:
+                info.append(f"<b>Направление:</b> {sync_state.last_sync_dir}")
+            if sync_state.last_ldap_modify_ts:
+                info.append(
+                    f"<b>LDAP изменен:</b> {sync_state.last_ldap_modify_ts}"
+                )
+            if sync_state.last_django_modify_ts:
+                info.append(
+                    f"<b>Django изменен:</b> {sync_state.last_django_modify_ts}"
+                )
+            if sync_state.updated_at:
+                info.append(f"<b>Обновлено:</b> {sync_state.updated_at}")
+            
+            return format_html("<br>".join(info)) if info else "-"
+        except Exception as e:
+            return f"Ошибка: {e}"
+    
+    ldap_sync_info.short_description = "Состояние LDAP синхронизации"
 
     add_fieldsets = (
         (None, {
@@ -227,8 +289,17 @@ class EmployeeAdmin(DjangoUserAdmin):
 @admin.register(Position)
 class PositionAdmin(SimpleHistoryAdmin):
     list_display = ("name", "description")
-    search_fields = ("name", "description")
+    search_fields = ("name", "description", "ldap_group_dn")
     filter_horizontal = ("groups",)
+    
+    fieldsets = (
+        (None, {"fields": ("name", "description")}),
+        ("Права", {"fields": ("groups",)}),
+        ("LDAP", {
+            "fields": ("ldap_group_dn",),
+            "classes": ("collapse",),
+        }),
+    )
 
 
 @admin.register(EmployeeAction)
@@ -242,21 +313,42 @@ class EmployeeActionAdmin(SimpleHistoryAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ("name", "head", "created_at")
+    list_display = ("name", "head", "head_appointed_at", "created_at")
     list_filter = ("head",)
-    search_fields = ("name",)
+    search_fields = ("name", "description", "ldap_group_dn")
     autocomplete_fields = ("head",)
     readonly_fields = ("created_at", "head_appointed_at")
     inlines = [DepartmentMembershipInline]
+    
+    fieldsets = (
+        (None, {"fields": ("name", "description")}),
+        ("Руководство", {
+            "fields": ("head", "head_appointed_at"),
+        }),
+        ("LDAP", {
+            "fields": ("ldap_group_dn",),
+            "classes": ("collapse",),
+        }),
+        ("Служебное", {"fields": ("created_at",)}),
+    )
 
 
 @admin.register(DepartmentRole)
 class DepartmentRoleAdmin(admin.ModelAdmin):
     list_display = ("name", "department")
     list_filter = ("department",)
-    search_fields = ("name", "department__name")
+    search_fields = ("name", "department__name", "ldap_group_dn")
     autocomplete_fields = ("department",)
     filter_horizontal = ("scoped_permissions",)
+    
+    fieldsets = (
+        (None, {"fields": ("department", "name")}),
+        ("Права", {"fields": ("scoped_permissions",)}),
+        ("LDAP", {
+            "fields": ("ldap_group_dn",),
+            "classes": ("collapse",),
+        }),
+    )
 
 @admin.register(EmployeeDepartment)
 class EmployeeDepartmentAdmin(admin.ModelAdmin):
