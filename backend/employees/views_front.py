@@ -555,20 +555,49 @@ def employee_edit(request, pk: int):
 
     if resp.ok:
         messages.success(request, "Профиль сотрудника обновлён")
-    else:
-        detail = ""
-        if isinstance(data, dict):
-            detail = data.get("detail") or data.get("error") or ""
-        messages.error(
-            request,
-            detail or f"Не удалось обновить сотрудника (HTTP {resp.status})",
+        redirect_url = request.META.get("HTTP_REFERER") or reverse(
+            "employees:employee_profile",
+            args=(pk,),
         )
-
-    redirect_url = request.META.get("HTTP_REFERER") or reverse(
-        "employees:employee_profile",
-        args=(pk,),
-    )
-    return redirect(redirect_url)
+        return redirect(redirect_url)
+    else:
+        # При ошибке валидации показываем детали
+        if resp.status == 400 and isinstance(data, dict):
+            # Собираем все ошибки валидации
+            error_messages = []
+            for field, errors in data.items():
+                if field == 'detail':
+                    error_messages.append(str(errors))
+                elif isinstance(errors, list):
+                    field_name = field.replace('_', ' ').title()
+                    for error in errors:
+                        if isinstance(error, dict):
+                            err_str = error.get('string', error)
+                            error_messages.append(f"{field_name}: {err_str}")
+                        else:
+                            error_messages.append(f"{field_name}: {error}")
+                else:
+                    field_name = field.replace('_', ' ').title()
+                    error_messages.append(f"{field_name}: {errors}")
+            
+            if error_messages:
+                for msg in error_messages:
+                    messages.error(request, msg)
+            else:
+                messages.error(request, "Ошибка валидации данных")
+        else:
+            detail = ""
+            if isinstance(data, dict):
+                detail = data.get("detail") or data.get("error") or ""
+            error_msg = (
+                detail
+                or f"Не удалось обновить сотрудника (HTTP {resp.status})"
+            )
+            messages.error(request, error_msg)
+        
+        # Возвращаем на страницу редактирования, а не на профиль
+        edit_url = reverse("employees:employee_edit", args=(pk,))
+        return redirect(edit_url)
 
 
 # ---------- EDIT ME ----------
@@ -672,17 +701,48 @@ def employee_edit_me(request):
 
     if resp.ok:
         messages.success(request, "Профиль обновлён")
-    else:
-        detail = ""
-        if isinstance(data, dict):
-            detail = data.get("detail") or data.get("error") or ""
-        messages.error(
-            request,
-            detail or f"Не удалось обновить профиль (HTTP {resp.status})",
+        redirect_url = (
+            request.META.get("HTTP_REFERER")
+            or reverse("employees:profile")
         )
-
-    redirect_url = request.META.get("HTTP_REFERER") or reverse("employees:profile")
-    return redirect(redirect_url)
+        return redirect(redirect_url)
+    else:
+        # При ошибке валидации показываем детали
+        if resp.status == 400 and isinstance(data, dict):
+            # Собираем все ошибки валидации
+            error_messages = []
+            for field, errors in data.items():
+                if field == 'detail':
+                    error_messages.append(str(errors))
+                elif isinstance(errors, list):
+                    field_name = field.replace('_', ' ').title()
+                    for error in errors:
+                        if isinstance(error, dict):
+                            err_str = error.get('string', error)
+                            error_messages.append(f"{field_name}: {err_str}")
+                        else:
+                            error_messages.append(f"{field_name}: {error}")
+                else:
+                    field_name = field.replace('_', ' ').title()
+                    error_messages.append(f"{field_name}: {errors}")
+            
+            if error_messages:
+                for msg in error_messages:
+                    messages.error(request, msg)
+            else:
+                messages.error(request, "Ошибка валидации данных")
+        else:
+            detail = ""
+            if isinstance(data, dict):
+                detail = data.get("detail") or data.get("error") or ""
+            error_msg = (
+                detail or f"Не удалось обновить профиль (HTTP {resp.status})"
+            )
+            messages.error(request, error_msg)
+        
+        # Возвращаем на страницу редактирования
+        edit_url = reverse("employees:employee_edit_me")
+        return redirect(edit_url)
 
 
 # ---------- CREATE (staff) ----------

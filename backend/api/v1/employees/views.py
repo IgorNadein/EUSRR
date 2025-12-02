@@ -1677,164 +1677,210 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             return Response(data, status=200)
 
         # PATCH
-        old_email = instance.email  # Сохраняем старый email
-        
-        # Логируем для отладки
         import logging
+        import traceback
         logger = logging.getLogger(__name__)
-        logger.info(f"[ME PATCH] request.data keys: {list(request.data.keys())}")
-        logger.info(f"[ME PATCH] request.FILES keys: {list(request.FILES.keys())}")
-        logger.info(f"[ME PATCH] Content-Type: {request.content_type}")
-        if 'avatar' in request.data:
-            logger.info(f"[ME PATCH] avatar in request.data: {type(request.data['avatar'])}, length: {len(str(request.data['avatar'])) if request.data['avatar'] else 0}")
-        if 'avatar' in request.FILES:
-            logger.info(f"[ME PATCH] avatar in request.FILES: {request.FILES['avatar'].name}, size: {request.FILES['avatar'].size}")
         
-        ser = self.get_serializer(instance, data=request.data, partial=True)
-        ser.is_valid(raise_exception=True)
-        vd = dict(ser.validated_data)
-        
-        logger.info(f"[ME PATCH] validated_data keys: {list(vd.keys())}")
-        if 'avatar' in vd:
-            logger.info(f"[ME PATCH] avatar in validated_data: type={type(vd['avatar'])}, hasattr read={hasattr(vd.get('avatar'), 'read')}")
-            avatar_obj = vd.get('avatar')
-            if avatar_obj:
-                logger.info(f"[ME PATCH] avatar object: name={getattr(avatar_obj, 'name', None)}, size={getattr(avatar_obj, 'size', None)}")
+        try:
+            old_email = instance.email  # Сохраняем старый email
+            
+            # Логируем для отладки
+            logger.info(f"[ME PATCH] START - user_id={instance.id}, email={instance.email}")
+            logger.info(f"[ME PATCH] request.data keys: {list(request.data.keys())}")
+            logger.info(f"[ME PATCH] request.FILES keys: {list(request.FILES.keys())}")
+            logger.info(f"[ME PATCH] Content-Type: {request.content_type}")
+            if 'avatar' in request.data:
+                avatar_data = request.data['avatar']
+                logger.info(f"[ME PATCH] avatar in request.data: type={type(avatar_data)}, length={len(str(avatar_data)) if avatar_data else 0}")
+            if 'avatar' in request.FILES:
+                avatar_file = request.FILES['avatar']
+                logger.info(f"[ME PATCH] avatar in request.FILES: name={avatar_file.name}, size={avatar_file.size}")
+            
+            logger.info("[ME PATCH] Step 1: Validating serializer...")
+            ser = self.get_serializer(instance, data=request.data, partial=True)
+            ser.is_valid(raise_exception=True)
+            vd = dict(ser.validated_data)
+            logger.info("[ME PATCH] Step 1: Serializer validated successfully")
+            
+            logger.info(f"[ME PATCH] Step 2: validated_data keys: {list(vd.keys())}")
+            if 'avatar' in vd:
+                avatar_obj = vd.get('avatar')
+                logger.info(f"[ME PATCH] avatar in validated_data: type={type(avatar_obj)}, hasattr read={hasattr(avatar_obj, 'read')}")
+                if avatar_obj:
+                    logger.info(f"[ME PATCH] avatar object: name={getattr(avatar_obj, 'name', None)}, size={getattr(avatar_obj, 'size', None)}")
 
-        # Проверяем изменение email
-        new_email = vd.get("email")
-        email_changed = new_email and new_email.lower() != old_email.lower()
+            # Проверяем изменение email
+            logger.info("[ME PATCH] Step 3: Checking email change...")
+            new_email = vd.get("email")
+            email_changed = new_email and new_email.lower() != old_email.lower()
+            logger.info(f"[ME PATCH] Step 3: email_changed={email_changed}")
 
-        # Бизнес-валидация каналов связи
-        if all(k not in vd for k in ("whatsapp", "telegram", "wechat")):
-            new_whatsapp = vd.get("whatsapp", instance.whatsapp)
-            new_telegram = vd.get("telegram", instance.telegram)
-            new_wechat = vd.get("wechat", instance.wechat)
-            if not (new_whatsapp or new_telegram or new_wechat):
-                return Response(
-                    {
-                        "detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."
-                    },
-                    status=400,
-                )
-
-        ldap_enabled = _is_ldap_enabled()
-
-        # LDAP-часть
-        ldap_keys = {
-            "first_name",
-            "last_name",
-            "email",
-            "phone_number",
-            "is_active",
-        }
-        ldap_changes = {
-            k: vd.pop(k)
-            for k in list(vd.keys())
-            if k in ldap_keys
-        }
-
-        svc_changes = dict(ldap_changes)
-        pos_key_present = ("position" in request.data) or (
-            "position_id" in request.data
-        )
-        if pos_key_present:
-            pos_raw = (
-                request.data.get("position")
-                if "position" in request.data
-                else request.data.get("position_id")
-            )
-            svc_changes["position"] = pos_raw  # None допустим
-            vd.pop("position", None)
-            vd.pop("position_id", None)
-
-        move_to_department_dn = request.data.get("department_dn")
-        group_cns = request.data.get("group_cns")
-        
-        # Проверяем аватар в validated_data (base64) или в FILES (FormData)
-        avatar_file = ser.validated_data.get("avatar") or request.FILES.get("avatar")
-        logger.info(f"[ME PATCH] avatar_file after check: {avatar_file}, type: {type(avatar_file) if avatar_file else None}")
-        if avatar_file and hasattr(avatar_file, "read"):
-            try:
-                svc_changes["avatar_bytes"] = avatar_file.read()
-                logger.info(f"[ME PATCH] avatar_bytes read, length: {len(svc_changes['avatar_bytes'])}")
-            except Exception as e:
-                logger.error(f"[ME PATCH] Error reading avatar: {e}")
-
-        if ldap_enabled and (svc_changes or move_to_department_dn or group_cns is not None):
-            # Режим с LDAP: обновляем через DirectoryService
-            svc = DirectoryService()
-            try:
-                instance = svc.update_user(
-                    instance,
-                    changes=svc_changes,
-                    group_cns=group_cns if group_cns is not None else None,
-                    move_to_department_dn=move_to_department_dn,
-                )
-            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
-                return Response(
-                    {"detail": str(e)},
-                    status=502 if isinstance(e, DirectoryLdapError) else 500,
-                )
-        elif not ldap_enabled and svc_changes:
-            # Режим без LDAP: обновляем напрямую в БД
-            logger.info(f"[ME PATCH] LDAP disabled, updating DB directly with: {list(svc_changes.keys())}")
-            for k, v in svc_changes.items():
-                if k != "position" and k != "avatar_bytes":
-                    setattr(instance, k, v)
-                    logger.info(f"[ME PATCH] Set {k} = {v}")
-                elif k == "position":
-                    instance.position_id = v
-                    logger.info(f"[ME PATCH] Set position_id = {v}")
-                elif k == "avatar_bytes" and v:
-                    filename = f"avatar_{instance.id}.jpg"
-                    instance.avatar.save(
-                        filename,
-                        ContentFile(v),
-                        save=False,
+            # Бизнес-валидация каналов связи
+            logger.info("[ME PATCH] Step 4: Validating contact channels...")
+            if all(k not in vd for k in ("whatsapp", "telegram", "wechat")):
+                new_whatsapp = vd.get("whatsapp", instance.whatsapp)
+                new_telegram = vd.get("telegram", instance.telegram)
+                new_wechat = vd.get("wechat", instance.wechat)
+                if not (new_whatsapp or new_telegram or new_wechat):
+                    logger.warning("[ME PATCH] Step 4: Contact validation failed")
+                    return Response(
+                        {
+                            "detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."
+                        },
+                        status=400,
                     )
-                    logger.info(f"[ME PATCH] Avatar saved as {filename}, path: {instance.avatar.name if instance.avatar else 'None'}")
-            instance.save()
-            logger.info(f"[ME PATCH] Instance saved, avatar path in DB: {instance.avatar.name if instance.avatar else 'None'}")
+            logger.info("[ME PATCH] Step 4: Contact validation passed")
 
-        # DB-only
-        if vd:
-            ser_db = self.get_serializer(instance, data=vd, partial=True)
-            ser_db.is_valid(raise_exception=True)
-            ser_db.save()
-            instance = ser_db.instance
-            data = ser_db.data
-        else:
-            data = self.get_serializer(instance).data
-        
-        logger.info(f"[ME PATCH] Final response data keys: {list(data.keys())}")
-        if 'avatar' in data:
-            logger.info(f"[ME PATCH] avatar in response: {data['avatar'][:100] if data['avatar'] else None}...")
+            ldap_enabled = _is_ldap_enabled()
+            logger.info(f"[ME PATCH] Step 5: LDAP enabled={ldap_enabled}")
 
-        # Сброс email_verified при изменении email
-        if email_changed:
-            from django.utils.crypto import get_random_string
-            from common.emails import send_templated_mail
+            # LDAP-часть
+            ldap_keys = {
+                "first_name",
+                "last_name",
+                "email",
+                "phone_number",
+                "is_active",
+            }
+            ldap_changes = {
+                k: vd.pop(k)
+                for k in list(vd.keys())
+                if k in ldap_keys
+            }
+            logger.info(f"[ME PATCH] Step 6: ldap_changes keys: {list(ldap_changes.keys())}")
 
-            instance.email_verified = False
-            instance.email_activation_code = get_random_string(6, "0123456789")
-            instance.save(update_fields=["email_verified", "email_activation_code"])
-
-            # Отправляем код на новый email
-            try:
-                send_templated_mail(
-                    subject="Подтверждение нового email",
-                    to=[instance.email],
-                    template_base="emails/registration_verify_code",
-                    context={"code": instance.email_activation_code, "user": instance},
+            svc_changes = dict(ldap_changes)
+            pos_key_present = ("position" in request.data) or (
+                "position_id" in request.data
+            )
+            if pos_key_present:
+                pos_raw = (
+                    request.data.get("position")
+                    if "position" in request.data
+                    else request.data.get("position_id")
                 )
-            except Exception:
-                pass
+                svc_changes["position"] = pos_raw  # None допустим
+                vd.pop("position", None)
+                vd.pop("position_id", None)
+                logger.info(f"[ME PATCH] Step 6: position={pos_raw}")
 
-            # Обновляем данные в ответе
-            data["email_verified"] = False
+            move_to_department_dn = request.data.get("department_dn")
+            group_cns = request.data.get("group_cns")
+            logger.info(f"[ME PATCH] Step 7: move_to_department_dn={move_to_department_dn}, group_cns={group_cns}")
+            
+            # Проверяем аватар в validated_data (base64) или в FILES (FormData)
+            logger.info("[ME PATCH] Step 8: Processing avatar...")
+            avatar_file = ser.validated_data.get("avatar") or request.FILES.get("avatar")
+            logger.info(f"[ME PATCH] Step 8: avatar_file={avatar_file}, type={type(avatar_file) if avatar_file else None}")
+            if avatar_file and hasattr(avatar_file, "read"):
+                try:
+                    logger.info("[ME PATCH] Step 8: Reading avatar bytes...")
+                    svc_changes["avatar_bytes"] = avatar_file.read()
+                    logger.info(f"[ME PATCH] Step 8: avatar_bytes read successfully, length={len(svc_changes['avatar_bytes'])}")
+                except Exception as e:
+                    logger.error(f"[ME PATCH] Step 8: Error reading avatar: {e}", exc_info=True)
 
-        return Response(data, status=200)
+            logger.info(f"[ME PATCH] Step 9: svc_changes keys: {list(svc_changes.keys())}")
+
+            if ldap_enabled and (svc_changes or move_to_department_dn or group_cns is not None):
+                # Режим с LDAP: обновляем через DirectoryService
+                logger.info("[ME PATCH] Step 10: LDAP mode - updating via DirectoryService...")
+                logger.info(f"[ME PATCH] Step 10: DirectoryService params - svc_changes={list(svc_changes.keys())}, move_to_department_dn={move_to_department_dn}, group_cns={group_cns}")
+                svc = DirectoryService()
+                try:
+                    logger.info(f"[ME PATCH] Step 10: Calling svc.update_user(instance.id={instance.id}, changes={svc_changes}, group_cns={group_cns}, move_to_department_dn={move_to_department_dn})")
+                    instance = svc.update_user(
+                        instance,
+                        changes=svc_changes,
+                        group_cns=group_cns if group_cns is not None else None,
+                        move_to_department_dn=move_to_department_dn,
+                    )
+                    logger.info(f"[ME PATCH] Step 10: DirectoryService update successful - updated instance.id={instance.id}")
+                    if 'avatar_bytes' in svc_changes:
+                        logger.info(f"[ME PATCH] Step 10: Avatar updated in LDAP, new path={instance.avatar.name if instance.avatar else 'None'}")
+                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                    logger.error(f"[ME PATCH] Step 10: DirectoryService error: type={type(e).__name__}, message={e}", exc_info=True)
+                    return Response(
+                        {"detail": str(e)},
+                        status=502 if isinstance(e, DirectoryLdapError) else 500,
+                    )
+            elif not ldap_enabled and svc_changes:
+                # Режим без LDAP: обновляем напрямую в БД
+                logger.info(f"[ME PATCH] Step 10: LDAP disabled, updating DB directly with: {list(svc_changes.keys())}")
+                for k, v in svc_changes.items():
+                    if k != "position" and k != "avatar_bytes":
+                        setattr(instance, k, v)
+                        logger.info(f"[ME PATCH] Step 10: Set {k} = {v}")
+                    elif k == "position":
+                        instance.position_id = v
+                        logger.info(f"[ME PATCH] Step 10: Set position_id = {v}")
+                    elif k == "avatar_bytes" and v:
+                        logger.info(f"[ME PATCH] Step 10: Saving avatar, size={len(v)}")
+                        filename = f"avatar_{instance.id}.jpg"
+                        instance.avatar.save(
+                            filename,
+                            ContentFile(v),
+                            save=False,
+                        )
+                        logger.info(f"[ME PATCH] Step 10: Avatar saved as {filename}, path={instance.avatar.name if instance.avatar else 'None'}")
+                logger.info("[ME PATCH] Step 10: Saving instance to DB...")
+                instance.save()
+                logger.info(f"[ME PATCH] Step 10: Instance saved, avatar path={instance.avatar.name if instance.avatar else 'None'}")
+
+            # DB-only
+            logger.info(f"[ME PATCH] Step 11: Processing DB-only fields, vd keys: {list(vd.keys())}")
+            if vd:
+                logger.info("[ME PATCH] Step 11: Validating and saving DB-only fields...")
+                ser_db = self.get_serializer(instance, data=vd, partial=True)
+                ser_db.is_valid(raise_exception=True)
+                ser_db.save()
+                instance = ser_db.instance
+                data = ser_db.data
+                logger.info("[ME PATCH] Step 11: DB-only fields saved successfully")
+            else:
+                logger.info("[ME PATCH] Step 11: No DB-only fields to save")
+                data = self.get_serializer(instance).data
+            
+            logger.info(f"[ME PATCH] Step 12: Final response data keys: {list(data.keys())}")
+            if 'avatar' in data:
+                avatar_preview = data['avatar'][:100] if data['avatar'] else None
+                logger.info(f"[ME PATCH] Step 12: avatar in response: {avatar_preview}...")
+
+            # Сброс email_verified при изменении email
+            if email_changed:
+                logger.info("[ME PATCH] Step 13: Processing email change...")
+                from django.utils.crypto import get_random_string
+                from common.emails import send_templated_mail
+
+                instance.email_verified = False
+                instance.email_activation_code = get_random_string(6, "0123456789")
+                instance.save(update_fields=["email_verified", "email_activation_code"])
+
+                # Отправляем код на новый email
+                try:
+                    send_templated_mail(
+                        subject="Подтверждение нового email",
+                        to=[instance.email],
+                        template_base="emails/registration_verify_code",
+                        context={"code": instance.email_activation_code, "user": instance},
+                    )
+                    logger.info("[ME PATCH] Step 13: Email verification sent")
+                except Exception as email_err:
+                    logger.warning(f"[ME PATCH] Step 13: Failed to send email: {email_err}")
+
+                # Обновляем данные в ответе
+                data["email_verified"] = False
+
+            logger.info("[ME PATCH] SUCCESS - returning response")
+            return Response(data, status=200)
+            
+        except Exception as e:
+            logger.error(f"[ME PATCH] FATAL ERROR: {e}", exc_info=True)
+            logger.error(f"[ME PATCH] Traceback:\n{traceback.format_exc()}")
+            return Response(
+                {"detail": f"Internal server error: {str(e)}"},
+                status=500
+            )
 
     @action(detail=True, methods=["post"])
     def add_skill(self, request, pk=None):
@@ -2793,7 +2839,7 @@ class GroupViewSet(viewsets.ModelViewSet):
             raise ValueError("Не переданы корректные member_dns или member_ids")
         return uniq
 
-    def _dns_to_users(self, dns: list[str]) -> list[Employee]:
+    def _dns_to_users(self, dns):
         """Маппит DN участников на локальных пользователей через LdapSyncState.
 
         Args:
