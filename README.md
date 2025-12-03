@@ -320,6 +320,10 @@ python manage.py send_pending_notifications --batch-size=100
 
 ## Документация и troubleshooting
 
+### Архитектура
+- **[REALTIME_MIGRATION_GUIDE.md](REALTIME_MIGRATION_GUIDE.md)** ⭐ - **Миграция на архитектуру realtime**
+- [backend/realtime/README.md](backend/realtime/README.md) - WebSocket API документация
+
 ### Руководства по функциям
 - [MESSAGE_EDITING_ANALYSIS.md](MESSAGE_EDITING_ANALYSIS.md) - Редактирование сообщений
 - [POLLS_IMPLEMENTATION.md](POLLS_IMPLEMENTATION.md) - Система опросов
