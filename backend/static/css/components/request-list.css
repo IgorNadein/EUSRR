@@ -1,13 +1,8 @@
 /**
  * request-list.css
  * 
- * Табличный вид списка заявлений без разделяющих линий
- * между элементами, но с чистой сеткой как в таблице.
- * 
- * Используется:
- * - card-list.css для базовой структуры карточек
- * - message-inputs.scss для форм комментариев
- * - common.css для утилит и бейджей
+ * Настоящий табличный вид списка заявлений.
+ * Все поля идут в одну строку с фиксированной шириной и переносом текста.
  */
 
 /* Контейнер списка заявлений */
@@ -17,7 +12,7 @@
   padding: 0;
 }
 
-/* Строка заявления - табличный вид */
+/* Строка заявления */
 #reqList .req-row {
   padding: 0;
   margin: 0;
@@ -33,41 +28,108 @@
   border-bottom: 0;
 }
 
-/* Заголовок заявления - сетка с выравниванием колонок */
-#reqList .req-row > .card-header {
+/* Табличная сетка */
+#reqList .req-table-row {
   display: grid;
-  grid-template-columns: 42px 1fr auto;
+  grid-template-columns: 
+    48px           /* Иконка */
+    minmax(200px, 2fr)  /* Заголовок (расширяемая) */
+    minmax(120px, 1fr)  /* Автор */
+    100px          /* Даты */
+    110px          /* Статус */
+    80px           /* Создано */
+    80px;          /* Действия */
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.75rem 1rem;
+}
+
+/* Ячейка таблицы */
+#reqList .req-cell {
+  min-width: 0; /* Для корректного word-wrap */
+  display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.875rem 1rem;
-  border-bottom: none;
-  background: transparent;
 }
 
-/* Иконка типа заявления */
-#reqList .card-icon {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 auto;
+/* Контент ячейки с переносом текста */
+#reqList .req-cell-content {
+  width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+  line-height: 1.4;
 }
 
-/* Метаданные заявления */
-#reqList .card-meta {
-  min-width: 0; /* Для корректного truncate */
+/* Специфичные стили для ячеек */
+#reqList .req-cell-icon {
+  justify-content: center;
 }
 
-/* Тело карточки (комментарий) */
-#reqList .req-row > .card-body {
-  padding: 0 1rem 0.875rem 1rem;
-  margin-left: calc(42px + 1rem); /* Выравнивание с текстом */
-  border-bottom: none;
+#reqList .req-cell-icon .card-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
 }
 
-/* Футер с кнопками действий (комментарии, вложения) */
-#reqList .req-row > .card-actions {
+#reqList .req-cell-title {
+  font-size: 0.9rem;
+}
+
+#reqList .req-cell-title strong {
+  display: block;
+  margin-bottom: 0.125rem;
+}
+
+#reqList .req-cell-title .badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+}
+
+#reqList .req-cell-author {
+  font-size: 0.875rem;
+}
+
+#reqList .req-cell-dates {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+#reqList .req-cell-status {
+  justify-content: flex-start;
+}
+
+#reqList .req-cell-status .badge {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+}
+
+#reqList .req-cell-created {
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+#reqList .req-cell-actions {
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+#reqList .req-cell-actions .req-cell-content {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: center;
+}
+
+/* Футер с комментариями и вложениями */
+#reqList .req-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.5rem 1rem;
-  margin-left: calc(42px + 1rem); /* Выравнивание с текстом */
-  border-top: none; /* Убираем разделяющую линию */
+  margin-left: calc(48px + 0.75rem); /* Выравнивание с содержимым */
+  border-top: none;
   background: transparent;
 }
 
@@ -77,67 +139,103 @@
   background: color-mix(in srgb, var(--bs-tertiary-bg), transparent 50%);
   margin: 0;
   padding: 1rem;
+  margin-left: calc(48px + 0.75rem); /* Выравнивание с содержимым */
 }
 
-/* Отступ для списка комментариев */
-#reqList .comments-list {
-  margin-left: calc(42px + 1rem); /* Выравнивание с текстом заявления */
+/* Адаптивность для планшетов */
+@media (max-width: 992px) {
+  #reqList .req-table-row {
+    grid-template-columns: 
+      42px           /* Иконка */
+      minmax(150px, 2fr)  /* Заголовок */
+      minmax(100px, 1fr)  /* Автор */
+      90px           /* Даты */
+      100px          /* Статус */
+      70px;          /* Создано + Действия объединены */
+  }
+  
+  /* Прячем отдельную колонку действий */
+  #reqList .req-cell-actions {
+    display: none;
+  }
+  
+  /* Добавляем действия в строку заголовка */
+  #reqList .req-cell-title .req-cell-content::after {
+    content: '';
+    display: block;
+  }
 }
 
-/* Форма нового комментария */
-#reqList .comment-new {
-  margin-left: calc(42px + 1rem); /* Выравнивание с текстом заявления */
-}
-
-/* Адаптивность для мобильных устройств */
+/* Адаптивность для мобильных */
 @media (max-width: 768px) {
-  #reqList .req-row > .card-header {
+  #reqList .req-table-row {
     grid-template-columns: 36px 1fr;
-    gap: 0.75rem;
+    gap: 0.5rem;
     padding: 0.75rem;
   }
   
-  #reqList .card-icon {
+  /* Все ячейки в две колонки */
+  #reqList .req-cell-icon {
+    grid-row: 1 / span 3;
+    align-self: start;
+  }
+  
+  #reqList .req-cell-icon .card-icon {
     width: 36px;
     height: 36px;
   }
   
-  #reqList .req-row > .card-body {
-    padding: 0 0.75rem 0.75rem 0.75rem;
-    margin-left: calc(36px + 0.75rem);
-  }
-  
-  #reqList .req-row > .card-actions {
-    padding: 0.5rem 0.75rem;
-    margin-left: calc(36px + 0.75rem);
-  }
-  
-  #reqList .comments-list,
-  #reqList .comment-new {
-    margin-left: 0; /* На мобильных убираем отступ */
-  }
-  
-  /* Кнопки действий переносятся в следующую строку */
-  #reqList .req-row > .card-header {
-    grid-template-columns: 36px 1fr;
-  }
-  
-  #reqList .req-row > .card-header > .ms-auto {
+  #reqList .req-cell-title {
     grid-column: 2;
-    margin-top: 0.5rem;
-    margin-left: 0 !important;
-    justify-self: start;
+    font-size: 0.9rem;
+  }
+  
+  #reqList .req-cell-author {
+    grid-column: 2;
+    font-size: 0.8rem;
+    margin-top: -0.25rem;
+  }
+  
+  #reqList .req-cell-dates,
+  #reqList .req-cell-status,
+  #reqList .req-cell-created {
+    grid-column: 2;
+    font-size: 0.75rem;
+  }
+  
+  #reqList .req-cell-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    margin-top: 0.25rem;
+  }
+  
+  #reqList .req-footer {
+    margin-left: calc(36px + 0.5rem);
+    padding: 0.5rem 0.75rem;
+  }
+  
+  #reqList .comments-block {
+    margin-left: 0;
+    padding: 0.75rem;
   }
 }
 
-/* Дополнительные утилиты */
-#reqList .card-title {
-  font-size: 0.95rem;
-  line-height: 1.4;
-}
-
-#reqList .card-subtitle {
-  font-size: 0.85rem;
-  color: var(--bs-secondary-color);
+/* Компактный режим для маленьких экранов */
+@media (max-width: 576px) {
+  #reqList .req-table-row {
+    padding: 0.625rem;
+  }
+  
+  #reqList .req-cell-title .small {
+    display: none; /* Скрываем превью комментария */
+  }
+  
+  #reqList .req-cell-dates br {
+    display: none; /* Даты в одну строку */
+  }
+  
+  #reqList .req-cell-dates .req-cell-content::after {
+    content: ' — ';
+  }
 }
 

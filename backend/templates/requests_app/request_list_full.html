@@ -26,28 +26,27 @@
     {% if requests %}
       {% for obj in requests %}
         <article class="req-row" id="req-{{ obj.id }}">
-          <header class="card-header">
-            <!-- Иконка типа заявления -->
-            <div class="card-icon d-flex align-items-center justify-content-center">
-              {% with tp=obj.type|lower %}
-                {% if tp == 'vacation' %}<i class="bi-calendar-check text-primary"></i>
-                {% elif tp == 'sick_leave' %}<i class="bi-capsule text-danger"></i>
-                {% elif tp == 'transfer' %}<i class="bi-box-arrow-right text-info"></i>
-                {% elif tp == 'dismissal' %}<i class="bi-door-open text-warning"></i>
-                {% else %}<i class="bi-clipboard-check text-secondary"></i>
-                {% endif %}
-              {% endwith %}
+          <div class="req-table-row">
+            <!-- Иконка типа -->
+            <div class="req-cell req-cell-icon">
+              <div class="card-icon d-flex align-items-center justify-content-center">
+                {% with tp=obj.type|lower %}
+                  {% if tp == 'vacation' %}<i class="bi-calendar-check text-primary"></i>
+                  {% elif tp == 'sick_leave' %}<i class="bi-capsule text-danger"></i>
+                  {% elif tp == 'transfer' %}<i class="bi-box-arrow-right text-info"></i>
+                  {% elif tp == 'dismissal' %}<i class="bi-door-open text-warning"></i>
+                  {% else %}<i class="bi-clipboard-check text-secondary"></i>
+                  {% endif %}
+                {% endwith %}
+              </div>
             </div>
             
-            <!-- Основная информация -->
-            <div class="card-meta">
-              <div class="card-title d-flex align-items-center gap-2 flex-wrap">
-                <!-- Заголовок заявления -->
+            <!-- Заголовок и тип -->
+            <div class="req-cell req-cell-title">
+              <div class="req-cell-content">
                 <strong>{{ obj.title|default:"Без заголовка" }}</strong>
-                
-                <!-- Тип заявления -->
                 {% if obj.type %}{% with tp=obj.type|lower %}
-                  <span class="badge text-bg-light">
+                  <span class="badge text-bg-light ms-1">
                     {% if tp == 'vacation' %}Отпуск
                     {% elif tp == 'sick_leave' %}Больничный
                     {% elif tp == 'transfer' %}Перевод
@@ -56,29 +55,15 @@
                     {% else %}{{ obj.type }}{% endif %}
                   </span>
                 {% endwith %}{% endif %}
-                
-                <!-- Статус -->
-                {% if obj.status %}{% with st=obj.status|lower %}
-                  <span class="badge
-                    {% if st == 'approved' %}text-bg-success
-                    {% elif st == 'rejected' %}text-bg-danger
-                    {% elif st == 'pending' %}text-bg-warning
-                    {% elif st == 'cancelled' %}text-bg-secondary
-                    {% elif st == 'draft' %}text-bg-info
-                    {% else %}text-bg-light{% endif %}">
-                    {% if st == 'draft' %}Черновик
-                    {% elif st == 'pending' %}На рассмотрении
-                    {% elif st == 'approved' %}Одобрено
-                    {% elif st == 'rejected' %}Отклонено
-                    {% elif st == 'cancelled' %}Отменено
-                    {% else %}{{ obj.status }}{% endif %}
-                  </span>
-                {% endwith %}{% endif %}
+                {% if obj.comment %}
+                  <div class="small text-body-secondary mt-1">{{ obj.comment|truncatewords:15 }}</div>
+                {% endif %}
               </div>
-              
-              <!-- Дополнительная информация -->
-              <div class="card-subtitle">
-                <!-- Автор -->
+            </div>
+            
+            <!-- Автор -->
+            <div class="req-cell req-cell-author">
+              <div class="req-cell-content">
                 {% if obj.employee %}
                   {% if obj.employee.id == user.id %}
                     <a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>
@@ -88,67 +73,90 @@
                     </a>
                   {% endif %}
                 {% endif %}
-                
-                <!-- Период -->
+              </div>
+            </div>
+            
+            <!-- Период -->
+            <div class="req-cell req-cell-dates">
+              <div class="req-cell-content text-mono">
                 {% if obj.date_from or obj.date_to %}
-                  <span>·</span>
-                  <span class="text-mono">
-                    {{ obj.date_from|date:"d.m.Y"|default:"—" }} → {{ obj.date_to|date:"d.m.Y"|default:"—" }}
-                  </span>
-                {% endif %}
-                
-                <!-- Дата создания -->
-                {% if obj.created_at %}
-                  <span>·</span>
-                  <span>{{ obj.created_at|date:"d.m.Y H:i" }}</span>
+                  {{ obj.date_from|date:"d.m.Y"|default:"—" }}<br>
+                  {{ obj.date_to|date:"d.m.Y"|default:"—" }}
+                {% else %}
+                  —
                 {% endif %}
               </div>
             </div>
             
-            <!-- Кнопки действий -->
-            {% if obj.employee.id != user.id and can_process %}
-            <div class="ms-auto d-flex gap-1">
-              <button type="button" class="btn btn-ghost btn-sm text-success"
-                      data-bs-toggle="modal" data-bs-target="#reqApproveModal"
-                      data-id="{{ obj.id }}" title="Одобрить">
-                <i class="bi-hand-thumbs-up"></i>
-              </button>
-              <button type="button" class="btn btn-ghost btn-sm text-danger"
-                      data-bs-toggle="modal" data-bs-target="#reqRejectModal"
-                      data-id="{{ obj.id }}" title="Отклонить">
-                <i class="bi-hand-thumbs-down"></i>
-              </button>
+            <!-- Статус -->
+            <div class="req-cell req-cell-status">
+              <div class="req-cell-content">
+                {% if obj.status %}{% with st=obj.status|lower %}
+                  <span class="badge
+                    {% if st == 'approved' %}text-bg-success
+                    {% elif st == 'rejected' %}text-bg-danger
+                    {% elif st == 'pending' %}text-bg-warning
+                    {% elif st == 'cancelled' %}text-bg-secondary
+                    {% elif st == 'draft' %}text-bg-info
+                    {% else %}text-bg-light{% endif %}">
+                    {% if st == 'draft' %}Черновик
+                    {% elif st == 'pending' %}На рассмотр.
+                    {% elif st == 'approved' %}Одобрено
+                    {% elif st == 'rejected' %}Отклонено
+                    {% elif st == 'cancelled' %}Отменено
+                    {% else %}{{ obj.status }}{% endif %}
+                  </span>
+                {% endwith %}{% endif %}
+              </div>
             </div>
-            {% elif obj.employee.id == user.id %}
-            <div class="ms-auto d-flex gap-1">
-              <button type="button" class="btn btn-ghost btn-sm text-primary"
-                      data-bs-toggle="modal" data-bs-target="#reqEditModal"
-                      data-id="{{ obj.id }}"
-                      data-title="{{ obj.title|default_if_none:'' }}"
-                      data-type="{{ obj.type|default_if_none:'' }}"
-                      data-date_from="{{ obj.date_from|default_if_none:'' }}"
-                      data-date_to="{{ obj.date_to|default_if_none:'' }}"
-                      data-comment="{{ obj.comment|default_if_none:'' }}"
-                      data-status="{{ obj.status|lower }}" title="Изменить">
-                <i class="bi-pencil"></i>
-              </button>
-              <button type="button" class="btn btn-ghost btn-sm text-secondary"
-                      data-bs-toggle="modal" data-bs-target="#reqCancelModal"
-                      data-id="{{ obj.id }}" title="Отменить">
-                <i class="bi-slash-circle"></i>
-              </button>
+            
+            <!-- Дата создания -->
+            <div class="req-cell req-cell-created">
+              <div class="req-cell-content small text-body-secondary">
+                {{ obj.created_at|date:"d.m.Y" }}<br>
+                {{ obj.created_at|date:"H:i" }}
+              </div>
             </div>
-            {% endif %}
-          </header>
+            
+            <!-- Действия -->
+            <div class="req-cell req-cell-actions">
+              <div class="req-cell-content">
+                {% if obj.employee.id != user.id and can_process %}
+                  <button type="button" class="btn btn-ghost btn-sm text-success"
+                          data-bs-toggle="modal" data-bs-target="#reqApproveModal"
+                          data-id="{{ obj.id }}" title="Одобрить">
+                    <i class="bi-hand-thumbs-up"></i>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm text-danger"
+                          data-bs-toggle="modal" data-bs-target="#reqRejectModal"
+                          data-id="{{ obj.id }}" title="Отклонить">
+                    <i class="bi-hand-thumbs-down"></i>
+                  </button>
+                {% elif obj.employee.id == user.id %}
+                  <button type="button" class="btn btn-ghost btn-sm text-primary"
+                          data-bs-toggle="modal" data-bs-target="#reqEditModal"
+                          data-id="{{ obj.id }}"
+                          data-title="{{ obj.title|default_if_none:'' }}"
+                          data-type="{{ obj.type|default_if_none:'' }}"
+                          data-date_from="{{ obj.date_from|default_if_none:'' }}"
+                          data-date_to="{{ obj.date_to|default_if_none:'' }}"
+                          data-comment="{{ obj.comment|default_if_none:'' }}"
+                          data-status="{{ obj.status|lower }}" title="Изменить">
+                    <i class="bi-pencil"></i>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm text-secondary"
+                          data-bs-toggle="modal" data-bs-target="#reqCancelModal"
+                          data-id="{{ obj.id }}" title="Отменить">
+                    <i class="bi-slash-circle"></i>
+                  </button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
 
-          {% if obj.comment %}
-            <div class="card-body">
-              <div class="small text-body-secondary">{{ obj.comment }}</div>
-            </div>
-          {% endif %}
-
-          <footer class="card-actions">
-            <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
+          <!-- Футер с комментариями -->
+          <footer class="req-footer">
+            <button class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1"
                     type="button"
                     data-bs-toggle="collapse"
                     data-bs-target="#rcoll-{{ obj.id }}"
@@ -159,7 +167,7 @@
               <span class="txt-close">Скрыть</span>
             </button>
             {% if obj.attachment %}
-              <a href="{{ obj.attachment }}" class="btn btn-ghost d-inline-flex align-items-center gap-1" target="_blank">
+              <a href="{{ obj.attachment }}" class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1" target="_blank">
                 <i class="bi-paperclip"></i><span>Вложение</span>
               </a>
             {% endif %}
