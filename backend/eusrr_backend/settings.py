@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
+    "realtime.apps.RealtimeConfig",  # WebSocket consumers для real-time
     "communications.apps.CommunicationsConfig",
     "notifications.apps.NotificationsConfig",
     "search.apps.SearchConfig",

@@ -1,7 +1,7 @@
-# communications/user_consumer.py
+# realtime/consumers.py
 """
 WebSocket Consumer для пользователя.
-Один WebSocket на пользователя для всех real-time операций:
+Универсальное WebSocket соединение для всех real-time операций:
 - Чаты и сообщения
 - Уведомления
 - Обновления бейджей
@@ -15,8 +15,8 @@ from django.contrib.auth.models import AnonymousUser
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import Chat, ChatMembership, ChatReadState, Message, MessageReaction
-from .consumers import serialize_message  # Используем существующую функцию
+from communications.models import Chat, ChatMembership, ChatReadState, Message, MessageReaction
+from communications.consumers import serialize_message
 
 
 class UserConsumer(AsyncJsonWebsocketConsumer):
@@ -26,21 +26,21 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     - Чаты: обновления списка (бейдж, карточки), сообщения в активном чате
     - Реакции, редактирование, удаление сообщений
     - Индикатор "печатает..."
-    - Уведомления (будущее)
-    - Бейджи в sidebar (будущее)
-    - Онлайн-статус (будущее)
+    - Уведомления
+    - Бейджи в sidebar
+    - Онлайн-статус
     """
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ping_task = None
-        self.ping_interval = 30  # Ping каждые 30 секунд
+        self.ping_interval = 20  # Ping каждые 20 секунд
         self.active_chat_id = None  # ID открытого чата
         self.subscribed_chats = set()  # Чаты, на которые подписан
         self.user = None
     
     async def connect(self):
-        """Подключение пользователя - подписка на все его чаты"""
+        """Подключение пользователя - подписка на все его чаты и каналы"""
         self.user = self.scope.get("user")
         
         if not self.user or isinstance(self.user, AnonymousUser) or not self.user.is_authenticated:
@@ -59,6 +59,10 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         # Подписываемся на личный канал пользователя (для уведомлений)
         user_channel = f"user_{self.user.id}"
         await self.channel_layer.group_add(user_channel, self.channel_name)
+        
+        # Подписываемся на канал уведомлений
+        notifications_channel = f"notifications_{self.user.id}"
+        await self.channel_layer.group_add(notifications_channel, self.channel_name)
         
         await self.accept()
         
@@ -88,10 +92,13 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             group_name = f"chat_{chat_id}"
             await self.channel_layer.group_discard(group_name, self.channel_name)
         
-        # Отписываемся от личного канала
+        # Отписываемся от личных каналов
         if self.user:
             user_channel = f"user_{self.user.id}"
             await self.channel_layer.group_discard(user_channel, self.channel_name)
+            
+            notifications_channel = f"notifications_{self.user.id}"
+            await self.channel_layer.group_discard(notifications_channel, self.channel_name)
         
         print(f"[UserWS] User {self.user.id if self.user else 'unknown'} disconnected")
     
@@ -358,6 +365,22 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "message_id": payload.get("message_id"),
                 "results": payload.get("results")
             })
+    
+    # ==================== Обработчики уведомлений ====================
+    
+    async def notification_created(self, event):
+        """Новое уведомление"""
+        await self.send_json({
+            "type": "notification",
+            "notification": event.get("notification", {})
+        })
+    
+    async def notification_count(self, event):
+        """Обновление счетчика уведомлений"""
+        await self.send_json({
+            "type": "unread_count",
+            "count": event.get("count", 0)
+        })
     
     # ==================== Обработка действий пользователя ====================
     
