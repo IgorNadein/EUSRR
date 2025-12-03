@@ -318,6 +318,27 @@ python manage.py send_pending_notifications --batch-size=100
 - Настройте файрвол
 - Используйте переменные окружения для секретов
 
+## Документация и troubleshooting
+
+### Руководства по функциям
+- [MESSAGE_EDITING_ANALYSIS.md](MESSAGE_EDITING_ANALYSIS.md) - Редактирование сообщений
+- [POLLS_IMPLEMENTATION.md](POLLS_IMPLEMENTATION.md) - Система опросов
+- [PERSONAL_CALENDAR_FEATURE.md](PERSONAL_CALENDAR_FEATURE.md) - Персональный календарь
+- [REACTIONS_FROM_DATABASE.md](REACTIONS_FROM_DATABASE.md) - Система реакций
+- [REQUESTS_RECIPIENTS_PLAN.md](REQUESTS_RECIPIENTS_PLAN.md) - Система получателей заявок
+
+### WebSocket диагностика
+- **[WEBSOCKET_1006_QUICK_GUIDE.md](WEBSOCKET_1006_QUICK_GUIDE.md)** ⚡ - **Быстрая шпаргалка (5 минут)**
+- [WEBSOCKET_1006_PRIORITY_CHECK.md](WEBSOCKET_1006_PRIORITY_CHECK.md) - Приоритетная диагностика
+- [WEBSOCKET_1006_DIAGNOSTIC_PLAN.md](WEBSOCKET_1006_DIAGNOSTIC_PLAN.md) - Полный план диагностики
+- [WEBSOCKET_KEEPALIVE_FIX.md](WEBSOCKET_KEEPALIVE_FIX.md) - Исправление keepalive
+- [WEBSOCKET_UNIFIED_MIGRATION.md](WEBSOCKET_UNIFIED_MIGRATION.md) - Миграция на унифицированный WS
+
+### Рефакторинг и оптимизация
+- [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) - Общий итог рефакторинга
+- [CACHE_OPTIMIZATION_SUMMARY.md](CACHE_OPTIMIZATION_SUMMARY.md) - Оптимизация кеширования
+- [API_REFACTORING_TESTING.md](API_REFACTORING_TESTING.md) - Тестирование API
+
 ## Лицензия
 
 Проприетарное ПО © 2024-2025 Robotail
