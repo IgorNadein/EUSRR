@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load req_tags %}
 
 {% block title %}Заявления{% endblock %}
 
@@ -106,12 +107,12 @@
               <div class="req-cell-content text-mono">
                 {% if obj.date_from or obj.date_to %}
                   {% if obj.date_from %}
-                    {{ obj.date_from|slice:":10" }}<br>
+                    {{ obj.date_from|format_iso_date:"d.m.Y" }}<br>
                   {% else %}
                     —<br>
                   {% endif %}
                   {% if obj.date_to %}
-                    {{ obj.date_to|slice:":10" }}
+                    {{ obj.date_to|format_iso_date:"d.m.Y" }}
                   {% else %}
                     —
                   {% endif %}
@@ -147,8 +148,8 @@
             <div class="req-cell req-cell-created">
               <div class="req-cell-content small text-body-secondary">
                 {% if obj.created_at %}
-                  {{ obj.created_at|slice:":10" }}<br>
-                  {{ obj.created_at|slice:"11:16" }}
+                  {{ obj.created_at|format_iso_date:"d.m.Y" }}<br>
+                  {{ obj.created_at|format_iso_date:"H:i" }}
                 {% else %}
                   <span class="text-body-secondary">—</span>
                 {% endif %}
