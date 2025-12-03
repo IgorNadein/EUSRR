@@ -981,3 +981,88 @@ def delete_message(request, message_id):
     })
 
 
+@csrf_protect
+@login_required
+@require_POST
+def create_chat(request):
+    """Создание нового чата (группового, канала, объявлений и т.д.)"""
+    user = request.user
+    
+    # Получаем параметры
+    chat_type = request.POST.get('type', 'group')
+    name = request.POST.get('name', '').strip()
+    description = request.POST.get('description', '').strip()
+    department_id = request.POST.get('department_id')
+    include_all = request.POST.get('include_all_employees') == 'true'
+    is_main = request.POST.get('is_main') == 'true'
+    participant_ids = request.POST.getlist('participant_ids')
+    avatar_file = request.FILES.get('avatar')
+    
+    # Валидация
+    if not name:
+        return JsonResponse({'error': 'Название чата обязательно'}, status=400)
+    
+    # Проверка на существующий чат объявлений
+    if chat_type == 'announcement':
+        existing = Chat.objects.filter(
+            type='announcement',
+            created_by=user
+        ).first()
+        
+        if existing:
+            return JsonResponse({
+                'error': 'У вас уже есть чат объявлений',
+                'existing_chat_id': existing.id
+            }, status=400)
+    
+    try:
+        with transaction.atomic():
+            # Создаём чат
+            chat = Chat.objects.create(
+                type=chat_type,
+                name=name,
+                description=description,
+                created_by=user,
+                include_all_employees=include_all,
+                is_main=is_main
+            )
+            
+            # Аватар
+            if avatar_file:
+                chat.avatar = avatar_file
+                chat.save()
+            
+            # Привязка к отделу
+            if chat_type == 'department' and department_id:
+                from employees.models import Department
+                try:
+                    dept = Department.objects.get(id=department_id)
+                    chat.department = dept
+                    chat.save()
+                except Department.DoesNotExist:
+                    pass
+            
+            # Добавляем участников для группового чата
+            if chat_type == 'group' and participant_ids:
+                from employees.models import Employee
+                participants = Employee.objects.filter(id__in=participant_ids)
+                chat.participants.add(*participants)
+                # Добавляем создателя
+                chat.participants.add(user)
+            
+            # Для канала/объявлений добавляем создателя как участника
+            if chat_type in ('channel', 'announcement'):
+                chat.participants.add(user)
+        
+        return JsonResponse({
+            'ok': True,
+            'chat_id': chat.id,
+            'message': 'Чат успешно создан'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'error': f'Ошибка при создании чата: {str(e)}'
+        }, status=500)
+
+

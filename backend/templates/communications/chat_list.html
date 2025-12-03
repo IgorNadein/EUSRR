@@ -533,7 +533,7 @@
         });
       }
 
-      const res = await fetch('/communications/api/chat/create/', {
+      const res = await fetch('/api/v1/communications/chats/create/', {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrftoken

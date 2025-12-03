@@ -13,6 +13,7 @@ from .requests_app.views import RequestViewSet
 from .communications.views import (
     add_reaction,
     bulk_delete_messages,
+    create_chat,
     delete_message,
     edit_message,
     forward_messages,
@@ -76,6 +77,11 @@ urlpatterns = [
         "communications/chats/",
         get_user_chats,
         name="user_chats"
+    ),
+    path(
+        "communications/chats/create/",
+        create_chat,
+        name="create_chat"
     ),
     path(
         "communications/upload-message/",
