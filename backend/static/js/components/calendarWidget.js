@@ -339,8 +339,19 @@ export function initCalendarWidget(options = {}) {
       }
     } catch (err) {
       console.error('[CalendarWidget] Load details error:', err);
-      if (err.status === 403) alert('Недостаточно прав для просмотра деталей события.');
-      else alert('Не удалось загрузить событие.');
+      if (err.status === 404) {
+        alert('Событие не найдено. Возможно, оно было удалено.');
+        // Очистить параметр event_id из URL, если он есть
+        const url = new URL(window.location);
+        if (url.searchParams.has('event_id')) {
+          url.searchParams.delete('event_id');
+          window.history.replaceState({}, '', url);
+        }
+      } else if (err.status === 403) {
+        alert('Недостаточно прав для просмотра деталей события.');
+      } else {
+        alert('Не удалось загрузить событие.');
+      }
     }
   }
 
