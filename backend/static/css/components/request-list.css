@@ -1,10 +1,143 @@
 /**
  * request-list.css
  * 
- * Все стили заявлений теперь используют общие компоненты:
- * - card-list.css для структуры карточек
+ * Табличный вид списка заявлений без разделяющих линий
+ * между элементами, но с чистой сеткой как в таблице.
+ * 
+ * Используется:
+ * - card-list.css для базовой структуры карточек
  * - message-inputs.scss для форм комментариев
  * - common.css для утилит и бейджей
- * 
- * Этот файл оставлен для возможных специфичных доработок в будущем.
  */
+
+/* Контейнер списка заявлений */
+#reqList.card {
+  display: block;
+  gap: 0;
+  padding: 0;
+}
+
+/* Строка заявления - табличный вид */
+#reqList .req-row {
+  padding: 0;
+  margin: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 50%);
+  transition: background-color 0.15s ease;
+}
+
+#reqList .req-row:hover {
+  background-color: color-mix(in srgb, var(--bs-primary) 3%, transparent);
+}
+
+#reqList .req-row:last-child {
+  border-bottom: 0;
+}
+
+/* Заголовок заявления - сетка с выравниванием колонок */
+#reqList .req-row > .card-header {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  border-bottom: none;
+  background: transparent;
+}
+
+/* Иконка типа заявления */
+#reqList .card-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+}
+
+/* Метаданные заявления */
+#reqList .card-meta {
+  min-width: 0; /* Для корректного truncate */
+}
+
+/* Тело карточки (комментарий) */
+#reqList .req-row > .card-body {
+  padding: 0 1rem 0.875rem 1rem;
+  margin-left: calc(42px + 1rem); /* Выравнивание с текстом */
+  border-bottom: none;
+}
+
+/* Футер с кнопками действий (комментарии, вложения) */
+#reqList .req-row > .card-actions {
+  padding: 0.5rem 1rem;
+  margin-left: calc(42px + 1rem); /* Выравнивание с текстом */
+  border-top: none; /* Убираем разделяющую линию */
+  background: transparent;
+}
+
+/* Блок комментариев */
+#reqList .comments-block {
+  border-top: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 70%);
+  background: color-mix(in srgb, var(--bs-tertiary-bg), transparent 50%);
+  margin: 0;
+  padding: 1rem;
+}
+
+/* Отступ для списка комментариев */
+#reqList .comments-list {
+  margin-left: calc(42px + 1rem); /* Выравнивание с текстом заявления */
+}
+
+/* Форма нового комментария */
+#reqList .comment-new {
+  margin-left: calc(42px + 1rem); /* Выравнивание с текстом заявления */
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  #reqList .req-row > .card-header {
+    grid-template-columns: 36px 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+  
+  #reqList .card-icon {
+    width: 36px;
+    height: 36px;
+  }
+  
+  #reqList .req-row > .card-body {
+    padding: 0 0.75rem 0.75rem 0.75rem;
+    margin-left: calc(36px + 0.75rem);
+  }
+  
+  #reqList .req-row > .card-actions {
+    padding: 0.5rem 0.75rem;
+    margin-left: calc(36px + 0.75rem);
+  }
+  
+  #reqList .comments-list,
+  #reqList .comment-new {
+    margin-left: 0; /* На мобильных убираем отступ */
+  }
+  
+  /* Кнопки действий переносятся в следующую строку */
+  #reqList .req-row > .card-header {
+    grid-template-columns: 36px 1fr;
+  }
+  
+  #reqList .req-row > .card-header > .ms-auto {
+    grid-column: 2;
+    margin-top: 0.5rem;
+    margin-left: 0 !important;
+    justify-self: start;
+  }
+}
+
+/* Дополнительные утилиты */
+#reqList .card-title {
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+#reqList .card-subtitle {
+  font-size: 0.85rem;
+  color: var(--bs-secondary-color);
+}
+
