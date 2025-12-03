@@ -153,8 +153,15 @@ PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
 PHONE_DEFAULT_REGION = os.getenv("PHONE_DEFAULT_REGION", "RU")
 PHONENUMBER_DEFAULT_REGION = "RU"
 
-MEDIA_URL = "/media/"
+# Медиа файлы
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
+# Используем полный URL для медиа на продакшене
+USE_HTTPS = os.getenv("USE_HTTPS", "False").lower() == "true"
+DOMAIN = os.getenv("DOMAIN", "127.0.0.1:9000")
+if USE_HTTPS:
+    MEDIA_URL = f"https://{DOMAIN}/media/"
+else:
+    MEDIA_URL = "/media/"  # относительный URL для локальной разработки
 
 # -----------------------------------------------------------------------------
 # ЛОГИРОВАНИЕ
