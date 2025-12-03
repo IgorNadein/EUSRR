@@ -48,6 +48,9 @@ class DocumentViewSet(ModelViewSet):
     def get_queryset(self) -> QuerySet[Document]:
         """Базовый queryset + аннотация флага ознакомления текущего пользователя.
 
+        Поддерживает параметр ?scope=mine для фильтрации документов,
+        доступных текущему пользователю.
+
         Returns:
             QuerySet[Document]: оптимизированный для списка без N+1.
         """
@@ -55,13 +58,42 @@ class DocumentViewSet(ModelViewSet):
         request = getattr(self, "request", None)
         user = getattr(request, "user", None)
 
+        # Параметр scope из запроса
+        scope = ""
+        if request:
+            scope = request.query_params.get("scope", "").lower()
+
+        # Если scope=mine - показываем только доступные пользователю
+        if scope == "mine" and user and user.is_authenticated:
+            # Документы для всех ИЛИ где пользователь получатель
+            # ИЛИ в отделе ИЛИ автор
+            qs = qs.filter(
+                Q(sent_to_all=True) |
+                Q(recipients=user) |
+                Q(departments__employeedepartment__employee=user,
+                  departments__employeedepartment__is_active=True) |
+                Q(uploaded_by=user)
+            ).distinct()
+        # Если нет прав view_document - тоже ограничиваем
+        elif (user and user.is_authenticated and
+              not user.has_perm("documents.view_document") and
+              not user.is_staff):
+            qs = qs.filter(
+                Q(sent_to_all=True) |
+                Q(recipients=user) |
+                Q(departments__employeedepartment__employee=user,
+                  departments__employeedepartment__is_active=True) |
+                Q(uploaded_by=user)
+            ).distinct()
+
         # Для аутентифицированных аннотируем флаг "я ознакомился"
         if user and user.is_authenticated:
             subq = DocumentAcknowledgement.objects.filter(
                 document=OuterRef("pk"), user=user
             )
             qs = qs.annotate(_is_acknowledged=Exists(subq))
-        return qs
+
+        return qs.order_by("-uploaded_at")
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):

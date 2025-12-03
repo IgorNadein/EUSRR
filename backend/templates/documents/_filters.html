@@ -1,13 +1,8 @@
 {# Фильтры для страницы документов #}
 <form method="get" class="row g-2 align-items-end">
-  <div class="col-12 col-sm-4">
-    <label class="form-label mb-1">Область</label>
-    <select name="scope" class="form-select">
-      <option value="mine" {% if scope == 'mine' %}selected{% endif %}>Мои</option>
-      <option value="all" {% if scope == 'all' %}selected{% endif %}>Все</option>
-    </select>
-  </div>
-  <div class="col-12 col-sm-4">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  
+  <div class="col-12 col-sm-6">
     <label class="form-label mb-1">Статус ознакомления</label>
     <select name="ack_status" class="form-select">
       <option value="">— Любой —</option>
@@ -15,11 +10,12 @@
       <option value="not_acked" {% if filters.ack_status == 'not_acked' %}selected{% endif %}>Не ознакомился</option>
     </select>
   </div>
-  <div class="col-12 col-sm-4 d-flex justify-content-end gap-2">
+  
+  <div class="col-12 col-sm-6 d-flex justify-content-end gap-2">
     <button class="btn btn-outline-primary d-flex align-items-center justify-content-center gap-1" type="submit">
       <i class="bi-funnel"></i><span>Применить</span>
     </button>
-    <a class="btn btn-outline-secondary d-flex align-items-center justify-content-center" href="?" title="Сбросить фильтры">
+    <a class="btn btn-outline-secondary d-flex align-items-center justify-content-center" href="?scope={{ scope }}" title="Сбросить фильтры">
       <i class="bi-x-lg"></i>
     </a>
   </div>

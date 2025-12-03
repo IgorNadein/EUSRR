@@ -14,18 +14,36 @@
 <div class="container">
 
   {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-  {% if perms.documents.add_document %}
-    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal="docCreateModal" create_text="Создать документ" %}
-  {% else %}
-    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal='' create_text="Создать документ" %}
+  {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" no_search=True scope=scope has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal="docCreateModal" create_text="Создать документ" %}
+
+  {# ===== Tabs для переключения области (Mine/All) ===== #}
+  {% if can_manage_documents %}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <ul class="nav nav-pills nav-fill">
+        <li class="nav-item">
+          <a class="nav-link {% if scope == 'mine' %}active{% endif %}" 
+             href="?scope=mine">
+            <i class="bi-person-circle"></i> Мои документы
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if scope == 'all' %}active{% endif %}" 
+             href="?scope=all">
+            <i class="bi-folder"></i> Все документы
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
   {% endif %}
 
   {# ===== Карточка со списком ===== #}
   <div class="card mb-3">
-    {% if documents %}
-      <div id="docList" class="card-list">
+    <div id="docList" class="card-list">
+      {% if documents %}
         {% for doc in documents %}
-          <div class="doc-row {% if doc.id not in acked_ids %}doc-unacked{% endif %}" 
+          <div class="doc-row {% if scope == 'mine' and doc.id not in acked_ids %}doc-unacked{% endif %}" 
                data-doc-id="{{ doc.id }}"
                data-is-acked="{% if doc.id in acked_ids %}1{% else %}0{% endif %}">
             <div class="card-header">
@@ -62,24 +80,31 @@
               </div>
 
               <div class="doc-actions">
-                {# Вкладка "Мои" — просто бейдж для ознакомленных #}
+                {# В scope=mine показываем только статус #}
                 {% if scope == 'mine' %}
                   {% if doc.id in acked_ids %}
-                    <span class="badge-acked">✓ Ознакомлен</span>
+                    <span class="badge bg-success">
+                      <i class="bi-check-circle"></i> Ознакомлен
+                    </span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">
+                      <i class="bi-clock"></i> Требуется ознакомление
+                    </span>
                   {% endif %}
 
-                {# Вкладка "Все" — кнопка модалки #}
-                {% else %}
+                {# В scope=all показываем кнопку ознакомлений #}
+                {% elif scope == 'all' %}
                   <button type="button"
-                          class="btn btn-outline-secondary"
+                          class="btn btn-outline-secondary btn-sm"
                           data-action="show-acks"
                           data-doc-id="{{ doc.id }}"
                           data-doc-title="{{ doc.title|default_if_none:'Документ'|escape }}">
-                    Ознакомления
+                    <i class="bi-people"></i> Ознакомления
                   </button>
                 {% endif %}
 
-                {% if show_admin_controls %}
+                {# Кнопки управления только для админов в scope=all #}
+                {% if show_admin_controls and scope == 'all' %}
                   {% if perms.documents.change_document or user.is_staff or user.is_superuser %}
                     <button type="button"
                             class="btn-icon"
@@ -110,10 +135,10 @@
             </div>
           </div>
         {% endfor %}
-      </div>
-    {% else %}
-      <div class="p-4 text-center text-secondary">Нет доступных документов.</div>
-    {% endif %}
+      {% else %}
+        <div class="p-4 text-center text-secondary">Нет доступных документов.</div>
+      {% endif %}
+    </div>
   </div>
 
   {# ===== Пагинация ===== #}

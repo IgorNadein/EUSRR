@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from api.client import get_api_client
 from api.decorators import require_api_auth
@@ -13,28 +12,15 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.decorators import method_decorator
+from django.utils.dateparse import parse_datetime
+from django.utils.timezone import localtime
 from django.views.decorators.csrf import csrf_protect
 from django.views.generic import TemplateView
 
 
 # ==============================
-# Вспомогательные структуры/утилиты
+# Вспомогательные функции
 # ==============================
-
-@dataclass(frozen=True)
-class ApiPage:
-    """Результат пагинированного ответа API.
-
-    Attributes:
-        items (list[dict]): Список элементов (обычно объекты документов).
-        count (int): Общее количество элементов (если известно).
-        next_url (str|None): Ссылка на следующую страницу (как возвращает API).
-        prev_url (str|None): Ссылка на предыдущую страницу (как возвращает API).
-    """
-    items: List[Dict[str, Any]]
-    count: int
-    next_url: Optional[str]
-    prev_url: Optional[str]
 
 
 def _as_bool(value: Any) -> bool:
@@ -101,33 +87,43 @@ def _api_unpack(resp: Any) -> Tuple[bool, Dict[str, Any], int]:
     return ok, data, status
 
 
-def _parse_page_payload(payload: Any) -> ApiPage:
-    """Преобразует полезную нагрузку DRF в ApiPage.
+def _parse_page_payload(
+    payload: Any,
+) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], Optional[int]]:
+    """Нормализует ответ API к (results, next, previous, count).
 
     Поддерживает форматы:
-      - пагинация DRF: {"count": N, "next": URL, "previous": URL, "results": [...]}
+      - пагинация DRF: {"count": N, "next": URL, "previous": URL,
+                         "results": [...]}
       - сырой список:  [ ... ]
 
     Args:
         payload (Any): Десериализованный JSON из API.
 
     Returns:
-        ApiPage: Стандартизованный результат.
-
-    Raises:
-        TypeError: Если payload незнакомого формата.
+        Tuple: (results, next_url, prev_url, count)
     """
-    if isinstance(payload, dict) and "results" in payload:
-        items = list(payload.get("results") or [])
-        return ApiPage(
-            items=items,
-            count=int(payload.get("count") or 0),
-            next_url=payload.get("next"),
-            prev_url=payload.get("previous"),
-        )
+    # 1) Непагинированный список
     if isinstance(payload, list):
-        return ApiPage(items=list(payload), count=len(payload), next_url=None, prev_url=None)
-    raise TypeError("Unsupported API payload format")
+        results = _format_datetime_fields(payload)
+        return results, None, None, len(results)
+
+    # 2) Словарь (пагинированный или нет)
+    if isinstance(payload, dict):
+        if "results" in payload:
+            raw = payload.get("results") or []
+            results = _format_datetime_fields(list(raw))
+            return (
+                results,
+                payload.get("next"),
+                payload.get("previous"),
+                payload.get("count")
+            )
+        # словарь, но не страница — пустой список
+        return [], None, None, None
+
+    # 3) Непонятный формат
+    return [], None, None, None
 
 
 def _user_can_manage_documents(user: AbstractBaseUser) -> bool:
@@ -147,6 +143,84 @@ def _user_can_manage_documents(user: AbstractBaseUser) -> bool:
         if user.has_perm(f"{app_label}.{act}_{model}"):
             return True
     return False
+
+
+def _fmt_dt(val, fmt: str = "%d.%m.%Y %H:%M") -> str | None:
+    """Превращает ISO-строку/дату в локализованную строку.
+
+    Args:
+        val: ISO строка даты или datetime объект.
+        fmt: Формат вывода даты.
+
+    Returns:
+        str | None: Отформатированная строка или None.
+    """
+    if not val:
+        return None
+    # если уже datetime — ок, если строка — парсим
+    dt = parse_datetime(val) if isinstance(val, str) else val
+    if dt is None:
+        return val  # на всякий случай оставим как есть
+    try:
+        return localtime(dt).strftime(fmt)  # уважим таймзону пользователя
+    except Exception:
+        return val
+
+
+def _format_datetime_fields(
+    items: List[Any],
+    fields: tuple[str, ...] = ("uploaded_at", "created_at", "updated_at"),
+) -> List[Any]:
+    """Форматирует поля дат в списке объектов.
+
+    Args:
+        items: Список объектов (словарей).
+        fields: Кортеж имен полей с датами.
+
+    Returns:
+        List[Any]: Список с отформатированными датами.
+    """
+    out: List[Any] = []
+    for it in items:
+        if isinstance(it, Mapping):
+            d = dict(it)  # копия, не мутируем исходник
+            for f in fields:
+                if f in d:
+                    d[f] = _fmt_dt(d.get(f))
+            out.append(d)
+        else:
+            out.append(it)
+    return out
+
+
+def _err_msg(payload: Any, fallback: str = "") -> str:
+    """Извлекает сообщение об ошибке из ответа API.
+
+    Args:
+        payload: Полезная нагрузка ответа API.
+        fallback: Сообщение по умолчанию.
+
+    Returns:
+        str: Сообщение об ошибке.
+    """
+    # dict: detail / non_field_errors / первое поле со строкой
+    if isinstance(payload, dict):
+        if isinstance(payload.get("detail"), (str, list)):
+            d = payload["detail"]
+            return d if isinstance(d, str) else "; ".join(map(str, d))
+        if isinstance(payload.get("non_field_errors"), list):
+            return "; ".join(map(str, payload["non_field_errors"]))
+        # первая строка из значений полей
+        for v in payload.values():
+            if isinstance(v, list) and v and isinstance(v[0], str):
+                return "; ".join(map(str, v))
+            if isinstance(v, str):
+                return v
+    # list: склеить
+    if isinstance(payload, list):
+        return "; ".join(map(str, payload))
+    # str или что-то иное
+    return str(payload or fallback)
 
 
 def _current_url_with(request: HttpRequest, **new_params: Any) -> str:
@@ -242,37 +316,143 @@ def _filter_for_user(items: Sequence[Dict[str, Any]], user_id: Optional[int]) ->
 
 @method_decorator([login_required, require_api_auth, csrf_protect], name="dispatch")
 class DocumentView(LoginRequiredMixin, TemplateView):
-    """Страница списка документов.
-    
-    Все данные загружаются через JavaScript с использованием API.
-    View только рендерит пустой шаблон с необходимыми URL'ами и правами пользователя.
+    """Страница списка документов с SSR + API для CRUD.
+
+    GET:
+        - Загружает список документов через API (GET /api/v1/documents/).
+        - Понимает фильтры: scope=mine|all, ack_status=acked|not_acked.
+        - Для scope=mine загружает список ознакомленных документов.
+
+    Контекст шаблона:
+        documents, acked_ids, next_url, prev_url, count, scope,
+        show_admin_controls, can_manage_documents, filters, perms,
+        api_document_list_url, api_document_detail_base.
     """
 
     template_name = "documents/document_list.html"
 
     def get_context_data(self, **kwargs: Any) -> Dict[str, Any]:
-        """Формирует минимальный контекст для JavaScript-приложения.
-
-        Returns:
-            dict: Контекст с API URLs и правами пользователя.
-        """
+        """Формирует контекст страницы списка, фильтров и пагинации."""
         ctx = super().get_context_data(**kwargs)
-        user = self.request.user
+        request = self.request
+        user = request.user
+        api = get_api_client(request)
 
+        # --- Определяем права ---
         can_manage = _user_can_manage_documents(user)
+        show_admin_controls = can_manage
 
-        ctx.update(
-            {
+        # --- Читаем фильтры из GET ---
+        scope = (request.GET.get("scope") or "mine").strip().lower()
+        if scope not in ("mine", "all"):
+            scope = "mine"
+
+        # Если нет прав управления - принудительно mine
+        if not can_manage:
+            scope = "mine"
+
+        ack_status = (request.GET.get("ack_status") or "").strip()
+
+        # --- Формируем параметры для API ---
+        params: Dict[str, Any] = {}
+
+        if scope == "mine":
+            params["scope"] = "mine"
+
+        # --- Загружаем список документов ---
+        ok, data, status = _api_unpack(api.get("v1/documents/", params=params))
+
+        if not ok:
+            messages.error(
+                request,
+                _err_msg(
+                    data,
+                    f"Не удалось загрузить список документов (HTTP {status})."
+                )
+            )
+            # Возвращаем минимальный контекст с пустыми данными
+            ctx.update({
+                "documents": [],
+                "acked_ids": set(),
+                "next_url": None,
+                "prev_url": None,
+                "count": None,
+                "scope": scope,
+                "show_admin_controls": show_admin_controls,
+                "can_manage_documents": can_manage,
+                "filters": {"ack_status": ack_status},
+                "perms": {
+                    "documents": {
+                        "add_document": (
+                            user.has_perm("documents.add_document") or
+                            user.is_staff
+                        ),
+                        "change_document": (
+                            user.has_perm("documents.change_document") or
+                            user.is_staff
+                        ),
+                        "delete_document": (
+                            user.has_perm("documents.delete_document") or
+                            user.is_staff
+                        ),
+                    }
+                },
                 "api_document_list_url": reverse("api:v1:documents-list"),
                 "api_document_detail_base": reverse("api:v1:documents-list"),
-                "acknowledge_url_template": reverse("documents:acknowledge", args=[0]).replace("/0/", "/{id}/"),
-                "can_manage_documents": can_manage,
-                "user_id": user.id,
-                "perm_can_add": user.has_perm("documents.add_document") or user.is_staff,
-                "perm_can_change": user.has_perm("documents.change_document") or user.is_staff,
-                "perm_can_delete": user.has_perm("documents.delete_document") or user.is_staff,
-            }
-        )
+            })
+            return ctx
+
+        # --- Парсим результат ---
+        results, next_url, prev_url, count = _parse_page_payload(data)
+
+        # --- Получаем список ознакомленных документов ---
+        acked_ids: set = set()
+        if scope == "mine":
+            # Извлекаем is_acknowledged из каждого документа
+            for doc in results:
+                if doc.get("is_acknowledged"):
+                    acked_ids.add(doc["id"])
+
+        # --- Применяем локальную фильтрацию по ack_status ---
+        if ack_status and scope == "mine":
+            if ack_status == "acked":
+                results = [d for d in results if d["id"] in acked_ids]
+            elif ack_status == "not_acked":
+                results = [d for d in results if d["id"] not in acked_ids]
+
+        # --- Формируем полный контекст ---
+        ctx.update({
+            "documents": results,
+            "acked_ids": acked_ids,
+            "next_url": next_url,
+            "prev_url": prev_url,
+            "count": count,
+            "scope": scope,
+            "show_admin_controls": show_admin_controls,
+            "can_manage_documents": can_manage,
+            "filters": {
+                "ack_status": ack_status,
+            },
+            "perms": {
+                "documents": {
+                    "add_document": (
+                        user.has_perm("documents.add_document") or
+                        user.is_staff
+                    ),
+                    "change_document": (
+                        user.has_perm("documents.change_document") or
+                        user.is_staff
+                    ),
+                    "delete_document": (
+                        user.has_perm("documents.delete_document") or
+                        user.is_staff
+                    ),
+                }
+            },
+            "api_document_list_url": reverse("api:v1:documents-list"),
+            "api_document_detail_base": reverse("api:v1:documents-list"),
+        })
+
         return ctx
 
 

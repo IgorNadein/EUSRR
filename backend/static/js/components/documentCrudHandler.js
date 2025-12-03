@@ -17,6 +17,26 @@
  */
 
 /**
+ * Получает CSRF-токен из cookie.
+ * @returns {string|null} CSRF-токен или null
+ */
+function getCsrfToken() {
+  const name = 'csrftoken';
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+/**
  * Переключает видимость блоков получателей в зависимости от чекбокса "Отправить всем".
  * @param {HTMLInputElement} checkbox - Чекбокс "sent_to_all"
  * @param {HTMLElement} deptBlock - Блок с виджетом отделов
@@ -24,6 +44,7 @@
  */
 function toggleRecipientsBlocks(checkbox, deptBlock, recipBlock) {
   const hidden = checkbox.checked;
+  console.log('toggleRecipientsBlocks:', { checked: checkbox.checked, hidden, deptBlock: !!deptBlock, recipBlock: !!recipBlock });
   if (deptBlock) deptBlock.hidden = hidden;
   if (recipBlock) recipBlock.hidden = hidden;
 }
@@ -126,6 +147,14 @@ export function initDocumentCrud(options) {
   const createRecipBlock = document.getElementById('createRecipientsBlock');
   const createDeptSelect = document.getElementById('createDepartments');
 
+  console.log('🔍 Create form elements:', {
+    createForm: !!createForm,
+    createAllCheckbox: !!createAllCheckbox,
+    createDeptBlock: !!createDeptBlock,
+    createRecipBlock: !!createRecipBlock,
+    createDeptSelect: !!createDeptSelect
+  });
+
   // Элементы формы редактирования
   const editModal = document.getElementById('docEditModal');
   const editForm = document.getElementById('docEditForm');
@@ -134,11 +163,30 @@ export function initDocumentCrud(options) {
   const editRecipBlock = document.getElementById('editRecipientsBlock');
   const editDeptSelect = document.getElementById('editDepartments');
 
+  console.log('🔍 Edit form elements:', {
+    editModal: !!editModal,
+    editForm: !!editForm,
+    editAllCheckbox: !!editAllCheckbox,
+    editDeptBlock: !!editDeptBlock,
+    editRecipBlock: !!editRecipBlock,
+    editDeptSelect: !!editDeptSelect
+  });
+
   // Список документов
   const listElement = document.getElementById('docList');
 
+  console.log('🔍 Required elements check:', {
+    createForm: !!createForm,
+    editForm: !!editForm,
+    listElement: !!listElement
+  });
+
   if (!createForm || !editForm || !listElement) {
-    console.warn('initDocumentCrud: обязательные элементы не найдены');
+    console.warn('❌ initDocumentCrud: обязательные элементы не найдены', {
+      createForm: !!createForm,
+      editForm: !!editForm,
+      listElement: !!listElement
+    });
     return { destroy: () => {} };
   }
 
@@ -149,17 +197,53 @@ export function initDocumentCrud(options) {
 
   // Инициализация переключения блоков получателей
   if (createAllCheckbox) {
-    toggleRecipientsBlocks(createAllCheckbox, createDeptBlock, createRecipBlock);
-    createAllCheckbox.addEventListener('change', () => {
-      toggleRecipientsBlocks(createAllCheckbox, createDeptBlock, createRecipBlock);
+    console.log('✅ Init create checkbox toggle:', { 
+      checkbox: !!createAllCheckbox, 
+      deptBlock: !!createDeptBlock, 
+      recipBlock: !!createRecipBlock,
+      initialChecked: createAllCheckbox.checked
     });
+    toggleRecipientsBlocks(createAllCheckbox, createDeptBlock, createRecipBlock);
+    
+    // Добавляем обработчики на change и click для надёжности
+    const handleToggle = (event) => {
+      console.log('🔄 Create checkbox changed:', { 
+        checked: createAllCheckbox.checked,
+        willHide: createAllCheckbox.checked,
+        eventType: event.type
+      });
+      toggleRecipientsBlocks(createAllCheckbox, createDeptBlock, createRecipBlock);
+    };
+    
+    createAllCheckbox.addEventListener('change', handleToggle);
+    createAllCheckbox.addEventListener('click', handleToggle);
+  } else {
+    console.warn('❌ createAllCheckbox not found!');
   }
 
   if (editAllCheckbox) {
-    toggleRecipientsBlocks(editAllCheckbox, editDeptBlock, editRecipBlock);
-    editAllCheckbox.addEventListener('change', () => {
-      toggleRecipientsBlocks(editAllCheckbox, editDeptBlock, editRecipBlock);
+    console.log('✅ Init edit checkbox toggle:', { 
+      checkbox: !!editAllCheckbox, 
+      deptBlock: !!editDeptBlock, 
+      recipBlock: !!editRecipBlock,
+      initialChecked: editAllCheckbox.checked
     });
+    toggleRecipientsBlocks(editAllCheckbox, editDeptBlock, editRecipBlock);
+    
+    // Добавляем обработчики на change и click для надёжности
+    const handleToggle = (event) => {
+      console.log('🔄 Edit checkbox changed:', { 
+        checked: editAllCheckbox.checked,
+        willHide: editAllCheckbox.checked,
+        eventType: event.type
+      });
+      toggleRecipientsBlocks(editAllCheckbox, editDeptBlock, editRecipBlock);
+    };
+    
+    editAllCheckbox.addEventListener('change', handleToggle);
+    editAllCheckbox.addEventListener('click', handleToggle);
+  } else {
+    console.warn('❌ editAllCheckbox not found!');
   }
 
   /**
@@ -181,7 +265,7 @@ export function initDocumentCrud(options) {
       const recipientIds = createPicker.getIds();
       
       if (deptIds.length === 0 && recipientIds.length === 0) {
-        alert('Выберите отделы, получателей или включите «Отправить всем».');
+        alert('Необходимо выбрать:\n- Хотя бы один отдел, или\n- Хотя бы одного получателя, или\n- Включить «Отправить всем»');
         return;
       }
       
@@ -195,25 +279,39 @@ export function initDocumentCrud(options) {
         appendRecipientIds(formData, recipientIds);
       }
     } else {
+      // При sent_to_all=true удаляем получателей и отделы
       formData.delete('recipient_ids');
       formData.delete('department_ids');
     }
 
     try {
+      // Добавляем CSRF-токен в заголовки
+      const csrfToken = getCsrfToken();
+      const requestHeaders = { ...headers };
+      if (csrfToken) {
+        requestHeaders['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch(apiListUrl, {
         method: 'POST',
-        headers: headers,
+        headers: requestHeaders,
         body: formData
       });
 
       if (!response.ok) {
-        throw new Error('HTTP ' + response.status);
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.detail 
+          || errorData.non_field_errors?.[0]
+          || Object.values(errorData).flat().join(', ')
+          || 'HTTP ' + response.status;
+        throw new Error(errorMsg);
       }
 
       await response.json();
       window.location.reload();
     } catch (error) {
-      alert('Не удалось создать документ: ' + error.message);
+      console.error('Ошибка создания документа:', error);
+      alert('Не удалось создать документ:\n' + error.message);
     }
   }
 
@@ -315,20 +413,33 @@ export function initDocumentCrud(options) {
     }
 
     try {
+      // Добавляем CSRF-токен в заголовки
+      const csrfToken = getCsrfToken();
+      const requestHeaders = { ...headers };
+      if (csrfToken) {
+        requestHeaders['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch(apiDetailBase + docId + '/', {
         method: 'PATCH',
-        headers: headers,
+        headers: requestHeaders,
         body: formData
       });
 
       if (!response.ok) {
-        throw new Error('HTTP ' + response.status);
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.detail 
+          || errorData.non_field_errors?.[0]
+          || Object.values(errorData).flat().join(', ')
+          || 'HTTP ' + response.status;
+        throw new Error(errorMsg);
       }
 
       await response.json();
       window.location.reload();
     } catch (error) {
-      alert('Не удалось сохранить: ' + error.message);
+      console.error('Ошибка редактирования документа:', error);
+      alert('Не удалось сохранить:\n' + error.message);
     }
   }
 
@@ -342,18 +453,28 @@ export function initDocumentCrud(options) {
     const docId = button.getAttribute('data-doc-id');
 
     try {
+      // Добавляем CSRF-токен в заголовки
+      const csrfToken = getCsrfToken();
+      const requestHeaders = { ...headers };
+      if (csrfToken) {
+        requestHeaders['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch(apiDetailBase + docId + '/', {
         method: 'DELETE',
-        headers: headers
+        headers: requestHeaders
       });
 
       if (response.status === 204 || response.ok) {
         window.location.reload();
       } else {
-        throw new Error('HTTP ' + response.status);
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.detail || 'HTTP ' + response.status;
+        throw new Error(errorMsg);
       }
     } catch (error) {
-      alert('Не удалось удалить документ: ' + error.message);
+      console.error('Ошибка удаления документа:', error);
+      alert('Не удалось удалить документ:\n' + error.message);
     }
   }
 

@@ -28,7 +28,7 @@ class Document(models.Model):
 
     sent_to_all = models.BooleanField(
         _('Разослать всем'),
-        default=False,
+        default=True,
         help_text=_('Если включено — уведомление получат все активные сотрудники')
     )
     departments = models.ManyToManyField(
