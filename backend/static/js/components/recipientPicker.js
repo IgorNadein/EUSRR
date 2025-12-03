@@ -491,6 +491,9 @@ export class RecipientPicker {
   }
 
   triggerChange() {
+    // Очищаем ошибку при любом изменении
+    this.clearError();
+    
     if (this.options.onChange) {
       this.options.onChange(this.getValues());
     }
@@ -503,6 +506,49 @@ export class RecipientPicker {
       cc_user_ids: this.state.ccUsers,
       sent_to_all_department: this.state.sendToAllDepartment
     };
+  }
+
+  /**
+   * Проверяет, заполнены ли получатели
+   * @returns {boolean} true если есть получатели или отделы
+   */
+  validate() {
+    const hasDepartments = this.state.departments.length > 0;
+    const hasRecipients = this.state.recipients.length > 0;
+    const isValid = hasDepartments || hasRecipients;
+    
+    if (!isValid) {
+      this.setError('Укажите хотя бы одного получателя или отдел');
+    } else {
+      this.clearError();
+    }
+    
+    return isValid;
+  }
+
+  /**
+   * Устанавливает сообщение об ошибке
+   * @param {string} message - Текст ошибки
+   */
+  setError(message) {
+    this.clearError();
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'invalid-feedback d-block';
+    errorDiv.textContent = message;
+    errorDiv.id = 'recipientPickerError';
+    this.container.appendChild(errorDiv);
+    this.container.classList.add('is-invalid');
+  }
+
+  /**
+   * Убирает сообщение об ошибке
+   */
+  clearError() {
+    const errorDiv = this.container.querySelector('#recipientPickerError');
+    if (errorDiv) {
+      errorDiv.remove();
+    }
+    this.container.classList.remove('is-invalid');
   }
 
   setValues(data) {

@@ -245,8 +245,9 @@ class RequestWriteSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data: Mapping[str, Any]) -> dict[str, Any]:
         """Предвалидационная очистка входа.
 
-        Для обычного пользователя удаляет `employee`, `status`, `approver` до полевой валидации,
-        чтобы не получить 400 из-за, например, несуществующего PK в `employee`.
+        Для обычного пользователя удаляет `employee`, `status`, `approver`
+        до полевой валидации, чтобы не получить 400 из-за, например,
+        несуществующего PK в `employee`.
 
         Args:
             data (Mapping[str, Any]): Входные данные запроса.
@@ -260,6 +261,7 @@ class RequestWriteSerializer(serializers.ModelSerializer):
             data.pop("employee", None)
             data.pop("status", None)
             data.pop("approver", None)
+        
         return super().to_internal_value(data)
     
     def validate(self, attrs):
@@ -316,7 +318,8 @@ class RequestWriteSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict[str, Any]) -> Request:
         """Создание заявки.
 
-        Обычным пользователям проставляет текущего пользователя; статус берётся из default модели.
+        Обычным пользователям проставляет текущего пользователя;
+        статус берётся из default модели.
 
         Args:
             validated_data (dict[str, Any]): Провалидированные данные.

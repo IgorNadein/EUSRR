@@ -65,6 +65,23 @@ export function initRequestCrudHandler(options) {
     
     // Добавляем данные получателей из RecipientPicker
     if (createRecipientPicker) {
+      // Валидация: для обычной отправки должны быть получатели или отделы
+      if (saveAs === 'submit') {
+        if (!createRecipientPicker.validate()) {
+          return;
+        }
+        
+        // Проверка: автор не может быть получателем
+        const recipients = createRecipientPicker.getValues();
+        if (recipients.recipient_ids && window.currentUserId) {
+          if (recipients.recipient_ids.includes(window.currentUserId)) {
+            alert('Вы не можете отправить заявление самому себе');
+            createRecipientPicker.setError('Вы не можете быть получателем');
+            return;
+          }
+        }
+      }
+      
       const recipients = createRecipientPicker.getValues();
       
       // Добавляем department_ids
@@ -146,6 +163,23 @@ export function initRequestCrudHandler(options) {
     
     // Добавляем данные получателей из RecipientPicker
     if (editRecipientPicker) {
+      // Валидация: для обычной отправки должны быть получатели или отделы
+      if (saveAs === 'submit') {
+        if (!editRecipientPicker.validate()) {
+          return;
+        }
+        
+        // Проверка: автор не может быть получателем
+        const recipients = editRecipientPicker.getValues();
+        if (recipients.recipient_ids && window.currentUserId) {
+          if (recipients.recipient_ids.includes(window.currentUserId)) {
+            alert('Вы не можете отправить заявление самому себе');
+            editRecipientPicker.setError('Вы не можете быть получателем');
+            return;
+          }
+        }
+      }
+      
       const recipients = editRecipientPicker.getValues();
       
       // Добавляем department_ids
