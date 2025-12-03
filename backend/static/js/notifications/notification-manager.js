@@ -13,7 +13,6 @@ class NotificationManager {
         this.isConnected = false;
         this.notificationPermission = 'default';
         this.soundEnabled = this.loadSoundPreference();
-        this.notificationSound = null;
         
         this.init();
     }
@@ -36,12 +35,30 @@ class NotificationManager {
     
     /**
      * Воспроизвести звук уведомления
+     * Приоритет: 1) MP3 файл, 2) Web Audio API (fallback)
      */
     playNotificationSound() {
         if (!this.soundEnabled) return;
         
-        if (!this.notificationSound) {
-            // Создаем короткий звук через Web Audio API
+        try {
+            // Попытка воспроизвести MP3 файл
+            const audio = new Audio('/static/sounds/notification.mp3');
+            audio.volume = 0.3;
+            audio.play().catch(() => {
+                // Fallback на Web Audio API если MP3 недоступен
+                this.playFallbackSound();
+            });
+        } catch (error) {
+            // Fallback на Web Audio API
+            this.playFallbackSound();
+        }
+    }
+    
+    /**
+     * Резервный метод: синтетический звук через Web Audio API
+     */
+    playFallbackSound() {
+        try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
@@ -57,6 +74,8 @@ class NotificationManager {
             
             oscillator.start(audioContext.currentTime);
             oscillator.stop(audioContext.currentTime + 0.3);
+        } catch (error) {
+            console.warn('[Notifications] Sound playback failed:', error);
         }
     }
     
@@ -423,19 +442,6 @@ class NotificationManager {
         toastElement.addEventListener('hidden.bs.toast', () => {
             toastElement.remove();
         });
-    }
-    
-    playNotificationSound() {
-        // Опциональный звук уведомления
-        try {
-            const audio = new Audio('/static/sounds/notification.mp3');
-            audio.volume = 0.3;
-            audio.play().catch(() => {
-                // Игнорировать ошибки воспроизведения
-            });
-        } catch (error) {
-            // Звук не критичен
-        }
     }
     
     async markAsRead(notificationId) {
