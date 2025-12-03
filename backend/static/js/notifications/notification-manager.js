@@ -95,7 +95,8 @@ class NotificationManager {
     
     connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/notifications/`;
+        // Используем универсальный WebSocket endpoint (realtime architecture)
+        const wsUrl = `${protocol}//${window.location.host}/ws/`;
         
         console.log('[Notifications] Connecting to:', wsUrl);
         
@@ -145,7 +146,13 @@ class NotificationManager {
                     this.updateBadge(data.count);
                     break;
                     
-                case 'new_notification':
+                case 'notification':  // UserConsumer использует "notification"
+                    this.showNewNotification(data.notification);
+                    // Инвалидируем кеш при получении нового уведомления
+                    invalidateNotifications();
+                    break;
+                    
+                case 'new_notification':  // Backwards compatibility
                     this.showNewNotification(data.notification);
                     this.updateBadge(data.notification.unread_count);
                     // Инвалидируем кеш при получении нового уведомления
