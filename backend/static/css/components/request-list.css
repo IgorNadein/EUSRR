@@ -12,6 +12,47 @@
   padding: 0;
 }
 
+/* Заголовок таблицы */
+#reqList .req-table-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bs-body-bg);
+  border-bottom: 2px solid var(--bs-border-color);
+}
+
+#reqList .req-table-header .req-table-row {
+  padding: 0.625rem 1rem;
+}
+
+#reqList .req-table-header h6 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bs-secondary-color);
+  margin: 0;
+}
+
+#reqList .req-table-header .req-cell {
+  align-items: center;
+}
+
+#reqList .req-table-header .req-cell-title h6,
+#reqList .req-table-header .req-cell-author h6 {
+  text-align: left;
+}
+
+#reqList .req-table-header .req-cell-dates h6,
+#reqList .req-table-header .req-cell-status h6,
+#reqList .req-table-header .req-cell-created h6 {
+  text-align: center;
+}
+
+#reqList .req-table-header .req-cell-actions h6 {
+  text-align: center;
+}
+
 /* Строка заявления */
 #reqList .req-row {
   padding: 0;
@@ -144,6 +185,7 @@
 
 /* Адаптивность для планшетов */
 @media (max-width: 992px) {
+  #reqList .req-table-header .req-table-row,
   #reqList .req-table-row {
     grid-template-columns: 
       42px           /* Иконка */
@@ -155,6 +197,7 @@
   }
   
   /* Прячем отдельную колонку действий */
+  #reqList .req-table-header .req-cell-actions,
   #reqList .req-cell-actions {
     display: none;
   }
@@ -168,6 +211,11 @@
 
 /* Адаптивность для мобильных */
 @media (max-width: 768px) {
+  /* Скрываем заголовок таблицы на мобильных */
+  #reqList .req-table-header {
+    display: none;
+  }
+  
   #reqList .req-table-row {
     grid-template-columns: 36px 1fr;
     gap: 0.5rem;

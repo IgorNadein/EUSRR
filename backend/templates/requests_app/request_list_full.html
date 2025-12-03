@@ -23,6 +23,31 @@
   {# ===== Список ===== #}
   {# DEBUG: Фильтры - type: {{ filters.type }}, status: {{ filters.status }}, count: {{ requests|length }} #}
   <div id="reqList" class="card mb-3">
+    <!-- Заголовок таблицы -->
+    <div class="req-table-header">
+      <div class="req-table-row">
+        <div class="req-cell req-cell-icon"></div>
+        <div class="req-cell req-cell-title">
+          <h6 class="mb-0 text-secondary">Заявление</h6>
+        </div>
+        <div class="req-cell req-cell-author">
+          <h6 class="mb-0 text-secondary">Автор</h6>
+        </div>
+        <div class="req-cell req-cell-dates">
+          <h6 class="mb-0 text-secondary">Период</h6>
+        </div>
+        <div class="req-cell req-cell-status">
+          <h6 class="mb-0 text-secondary">Статус</h6>
+        </div>
+        <div class="req-cell req-cell-created">
+          <h6 class="mb-0 text-secondary">Создано</h6>
+        </div>
+        <div class="req-cell req-cell-actions">
+          <h6 class="mb-0 text-secondary">Действия</h6>
+        </div>
+      </div>
+    </div>
+    
     {% if requests %}
       {% for obj in requests %}
         <article class="req-row" id="req-{{ obj.id }}">
@@ -80,10 +105,18 @@
             <div class="req-cell req-cell-dates">
               <div class="req-cell-content text-mono">
                 {% if obj.date_from or obj.date_to %}
-                  {{ obj.date_from|date:"d.m.Y"|default:"—" }}<br>
-                  {{ obj.date_to|date:"d.m.Y"|default:"—" }}
+                  {% if obj.date_from %}
+                    {{ obj.date_from|slice:":10" }}<br>
+                  {% else %}
+                    —<br>
+                  {% endif %}
+                  {% if obj.date_to %}
+                    {{ obj.date_to|slice:":10" }}
+                  {% else %}
+                    —
+                  {% endif %}
                 {% else %}
-                  —
+                  <span class="text-body-secondary">—</span>
                 {% endif %}
               </div>
             </div>
@@ -113,8 +146,12 @@
             <!-- Дата создания -->
             <div class="req-cell req-cell-created">
               <div class="req-cell-content small text-body-secondary">
-                {{ obj.created_at|date:"d.m.Y" }}<br>
-                {{ obj.created_at|date:"H:i" }}
+                {% if obj.created_at %}
+                  {{ obj.created_at|slice:":10" }}<br>
+                  {{ obj.created_at|slice:"11:16" }}
+                {% else %}
+                  <span class="text-body-secondary">—</span>
+                {% endif %}
               </div>
             </div>
             
