@@ -39,7 +39,7 @@ export function initRequestCommentsHandler(options) {
       (comment.author.full_name || comment.author.display_name || comment.author.username)) || '—';
     const authorId = comment.author?.id;
     const authorLink = authorId 
-      ? `/employees/employee/${authorId}/`
+      ? `/employees/${authorId}/`
       : '#';
     const commentDate = esc(comment.created_at || '');
     

@@ -321,7 +321,7 @@
     const authorId = getAuthorId(comment.author);
     
     if (authorId) {
-      html += `<a href="/employees/employee/${authorId}/" class="comment-author">${escapeHtml(authorName)}</a>`;
+      html += `<a href="/employees/${authorId}/" class="comment-author">${escapeHtml(authorName)}</a>`;
     } else {
       html += `<span class="comment-author">${escapeHtml(authorName)}</span>`;
     }

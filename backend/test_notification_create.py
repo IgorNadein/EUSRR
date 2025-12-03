@@ -16,7 +16,7 @@ from notifications.services import NotificationService
 def main():
     """Создать тестовое уведомление"""
     # Получаем первого пользователя
-    user = Employee.objects.first()
+    user = Employee.objects.filter(id=1).first()
     
     if not user:
         print("❌ Нет пользователей в системе!")

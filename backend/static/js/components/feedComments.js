@@ -375,7 +375,7 @@
     const authorName = commentData.author?.full_name || 'Сотрудник';
     const authorId = commentData.author?.id;
     const authorLink = authorId 
-      ? `/employees/employee/${authorId}/`
+      ? `/employees/${authorId}/`
       : '#';
     const commentDate = formatDate(commentData.created_at);
     

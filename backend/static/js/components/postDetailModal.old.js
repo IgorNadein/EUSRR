@@ -202,7 +202,7 @@
     const authorId = comment.author?.id;
     
     if (authorId) {
-      html += `<a href="/employees/employee/${authorId}/" class="comment-author">${authorName}</a>`;
+      html += `<a href="/employees/${authorId}/" class="comment-author">${authorName}</a>`;
     } else {
       html += `<span class="comment-author">${authorName}</span>`;
     }
