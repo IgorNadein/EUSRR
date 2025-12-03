@@ -38,17 +38,25 @@ class NotificationManager {
      * Приоритет: 1) MP3 файл, 2) Web Audio API (fallback)
      */
     playNotificationSound() {
-        if (!this.soundEnabled) return;
+        if (!this.soundEnabled) {
+            console.log('[Notifications] Sound disabled');
+            return;
+        }
         
         try {
             // Попытка воспроизвести MP3 файл
             const audio = new Audio('/static/sounds/notification.mp3');
             audio.volume = 0.3;
-            audio.play().catch(() => {
+            console.log('[Notifications] Playing MP3 sound');
+            audio.play().then(() => {
+                console.log('[Notifications] MP3 sound played successfully');
+            }).catch((err) => {
+                console.warn('[Notifications] MP3 playback failed, using fallback:', err);
                 // Fallback на Web Audio API если MP3 недоступен
                 this.playFallbackSound();
             });
         } catch (error) {
+            console.warn('[Notifications] MP3 loading failed, using fallback:', error);
             // Fallback на Web Audio API
             this.playFallbackSound();
         }
@@ -58,6 +66,7 @@ class NotificationManager {
      * Резервный метод: синтетический звук через Web Audio API
      */
     playFallbackSound() {
+        console.log('[Notifications] Playing fallback Web Audio API sound');
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
@@ -74,6 +83,7 @@ class NotificationManager {
             
             oscillator.start(audioContext.currentTime);
             oscillator.stop(audioContext.currentTime + 0.3);
+            console.log('[Notifications] Fallback sound completed');
         } catch (error) {
             console.warn('[Notifications] Sound playback failed:', error);
         }
