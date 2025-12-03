@@ -368,15 +368,18 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     
     # ==================== Обработчики уведомлений ====================
     
-    async def notification_created(self, event):
-        """Новое уведомление"""
+    async def notification_new(self, event):
+        """Новое уведомление (вызывается из notifications/services.py)"""
         await self.send_json({
             "type": "notification",
             "notification": event.get("notification", {})
         })
     
-    async def notification_count(self, event):
-        """Обновление счетчика уведомлений"""
+    async def notification_count_update(self, event):
+        """
+        Обновление счетчика уведомлений.
+        Вызывается из notifications/services.py
+        """
         await self.send_json({
             "type": "unread_count",
             "count": event.get("count", 0)
