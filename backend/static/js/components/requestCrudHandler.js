@@ -3,6 +3,8 @@
  * @description Обработчик CRUD операций для заявлений через API
  */
 
+import { RecipientPicker } from './recipientPicker.js';
+
 /**
  * Инициализирует обработчики CRUD операций для заявлений
  * @param {Object} options - Опции инициализации
@@ -32,6 +34,26 @@ export function initRequestCrudHandler(options) {
     return { destroy: () => {} };
   }
 
+  // Инициализация RecipientPicker для создания
+  let createRecipientPicker = null;
+  const createPickerContainer = document.getElementById('createRecipientPicker');
+  if (createPickerContainer) {
+    createRecipientPicker = new RecipientPicker(createPickerContainer, {
+      apiUsersUrl: '/api/v1/employees/',
+      apiDepartmentsUrl: '/api/v1/departments/'
+    });
+  }
+
+  // Инициализация RecipientPicker для редактирования
+  let editRecipientPicker = null;
+  const editPickerContainer = document.getElementById('editRecipientPicker');
+  if (editPickerContainer) {
+    editRecipientPicker = new RecipientPicker(editPickerContainer, {
+      apiUsersUrl: '/api/v1/employees/',
+      apiDepartmentsUrl: '/api/v1/departments/'
+    });
+  }
+
   /**
    * Обработчик создания заявления
    */
@@ -40,6 +62,54 @@ export function initRequestCrudHandler(options) {
     
     const saveAs = e.submitter?.value || 'submit'; // 'draft' or 'submit'
     const formData = new FormData(createForm);
+    
+    // Добавляем данные получателей из RecipientPicker
+    if (createRecipientPicker) {
+      // Валидация: для обычной отправки должны быть получатели или отделы
+      if (saveAs === 'submit') {
+        if (!createRecipientPicker.validate()) {
+          return;
+        }
+        
+        // Проверка: автор не может быть получателем
+        const recipients = createRecipientPicker.getValues();
+        if (recipients.recipient_ids && window.currentUserId) {
+          if (recipients.recipient_ids.includes(window.currentUserId)) {
+            alert('Вы не можете отправить заявление самому себе');
+            createRecipientPicker.setError('Вы не можете быть получателем');
+            return;
+          }
+        }
+      }
+      
+      const recipients = createRecipientPicker.getValues();
+      
+      // Добавляем department_ids
+      if (recipients.department_ids && recipients.department_ids.length > 0) {
+        recipients.department_ids.forEach(id => {
+          formData.append('department_ids', id);
+        });
+      }
+      
+      // Добавляем recipient_ids
+      if (recipients.recipient_ids && recipients.recipient_ids.length > 0) {
+        recipients.recipient_ids.forEach(id => {
+          formData.append('recipient_ids', id);
+        });
+      }
+      
+      // Добавляем cc_user_ids
+      if (recipients.cc_user_ids && recipients.cc_user_ids.length > 0) {
+        recipients.cc_user_ids.forEach(id => {
+          formData.append('cc_user_ids', id);
+        });
+      }
+      
+      // Добавляем sent_to_all_department
+      if (recipients.sent_to_all_department) {
+        formData.set('sent_to_all_department', 'true');
+      }
+    }
     
     // Удаляем пустые поля для черновика
     if (saveAs === 'draft') {
@@ -68,6 +138,13 @@ export function initRequestCrudHandler(options) {
       // Показываем сообщение и перезагружаем
       const message = saveAs === 'draft' ? 'Черновик сохранён.' : 'Заявление отправлено на рассмотрение.';
       alert(message); // TODO: заменить на toast-уведомление
+      
+      // Очищаем форму и picker
+      createForm.reset();
+      if (createRecipientPicker) {
+        createRecipientPicker.reset();
+      }
+      
       window.location.reload();
     } catch (error) {
       alert('Не удалось создать заявление: ' + error.message);
@@ -83,6 +160,54 @@ export function initRequestCrudHandler(options) {
     const reqId = editForm.elements.id.value;
     const saveAs = e.submitter?.value || 'submit';
     const formData = new FormData(editForm);
+    
+    // Добавляем данные получателей из RecipientPicker
+    if (editRecipientPicker) {
+      // Валидация: для обычной отправки должны быть получатели или отделы
+      if (saveAs === 'submit') {
+        if (!editRecipientPicker.validate()) {
+          return;
+        }
+        
+        // Проверка: автор не может быть получателем
+        const recipients = editRecipientPicker.getValues();
+        if (recipients.recipient_ids && window.currentUserId) {
+          if (recipients.recipient_ids.includes(window.currentUserId)) {
+            alert('Вы не можете отправить заявление самому себе');
+            editRecipientPicker.setError('Вы не можете быть получателем');
+            return;
+          }
+        }
+      }
+      
+      const recipients = editRecipientPicker.getValues();
+      
+      // Добавляем department_ids
+      if (recipients.department_ids && recipients.department_ids.length > 0) {
+        recipients.department_ids.forEach(id => {
+          formData.append('department_ids', id);
+        });
+      }
+      
+      // Добавляем recipient_ids
+      if (recipients.recipient_ids && recipients.recipient_ids.length > 0) {
+        recipients.recipient_ids.forEach(id => {
+          formData.append('recipient_ids', id);
+        });
+      }
+      
+      // Добавляем cc_user_ids
+      if (recipients.cc_user_ids && recipients.cc_user_ids.length > 0) {
+        recipients.cc_user_ids.forEach(id => {
+          formData.append('cc_user_ids', id);
+        });
+      }
+      
+      // Добавляем sent_to_all_department
+      if (recipients.sent_to_all_department) {
+        formData.set('sent_to_all_department', 'true');
+      }
+    }
     
     // Удаляем пустые поля
     for (const [key, value] of Array.from(formData.entries())) {
@@ -288,11 +413,23 @@ export function initRequestCrudHandler(options) {
     rejectForm?.removeEventListener('submit', handleReject);
     cancelForm?.removeEventListener('submit', handleCancel);
     commentForm?.removeEventListener('submit', handleComment);
+    
+    // Очистка RecipientPicker
+    if (createRecipientPicker) {
+      createRecipientPicker.destroy();
+    }
+    if (editRecipientPicker) {
+      editRecipientPicker.destroy();
+    }
   }
 
   console.log('Request CRUD handler initialized');
 
-  return { destroy };
+  return { 
+    destroy,
+    createRecipientPicker,
+    editRecipientPicker
+  };
 }
 
 // Экспорт для совместимости с неModular кодом

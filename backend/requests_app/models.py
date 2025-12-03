@@ -76,12 +76,46 @@ class Request(models.Model):
         blank=True,
         verbose_name=_("Согласующий"),
     )
+    
+    # Устаревшее поле, сохранено для обратной совместимости
     department = models.ForeignKey(
         "employees.Department",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name=_("Отдел"),
+        verbose_name=_("Основной отдел (устар.)"),
+        help_text=_("Устаревшее поле, используйте departments"),
+    )
+    
+    # Новые поля для множественных получателей
+    departments = models.ManyToManyField(
+        "employees.Department",
+        verbose_name=_("Отделы-получатели"),
+        blank=True,
+        related_name="received_requests",
+        help_text=_("Заявка будет видна всем уполномоченным сотрудникам этих отделов")
+    )
+    
+    recipients = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        verbose_name=_("Получатели"),
+        blank=True,
+        related_name="received_requests",
+        help_text=_("Сотрудники, которым адресована заявка")
+    )
+    
+    cc_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        verbose_name=_("Копия (CC)"),
+        blank=True,
+        related_name="requests_cc",
+        help_text=_("Сотрудники в копии (уведомления без обязанности рассмотрения)")
+    )
+    
+    sent_to_all_department = models.BooleanField(
+        _("Всем сотрудникам отделов"),
+        default=False,
+        help_text=_("Если включено, заявка видна всем в выбранных отделах")
     )
 
     type = models.CharField(
@@ -170,6 +204,52 @@ class Request(models.Model):
     @property
     def is_final(self):
         return self.status in FINAL_STATUS
+    
+    @property
+    def all_recipients(self):
+        """Все получатели: основные + CC"""
+        User = settings.AUTH_USER_MODEL
+        from django.apps import apps
+        UserModel = apps.get_model(User)
+        
+        recipient_ids = set(self.recipients.values_list('id', flat=True))
+        cc_ids = set(self.cc_users.values_list('id', flat=True))
+        return UserModel.objects.filter(id__in=recipient_ids | cc_ids)
+    
+    @property
+    def primary_recipients(self):
+        """Только основные получатели (без CC)"""
+        return self.recipients.all()
+    
+    def is_recipient(self, user):
+        """Проверка, является ли пользователь получателем"""
+        # Прямой получатель или в копии
+        if self.recipients.filter(id=user.id).exists():
+            return True
+        if self.cc_users.filter(id=user.id).exists():
+            return True
+        
+        # Если sent_to_all_department и пользователь в одном из отделов
+        if self.sent_to_all_department:
+            from employees.models import EmployeeDepartment
+            return self.departments.filter(
+                employeedepartment__employee=user,
+                employeedepartment__is_active=True
+            ).exists()
+        
+        return False
+    
+    def add_recipient(self, user, is_cc=False):
+        """Добавить получателя"""
+        if is_cc:
+            self.cc_users.add(user)
+        else:
+            self.recipients.add(user)
+    
+    def remove_recipient(self, user):
+        """Удалить получателя из обеих групп"""
+        self.recipients.remove(user)
+        self.cc_users.remove(user)
 
     def approve(self, by_user):
         self.status = RequestStatus.APPROVED

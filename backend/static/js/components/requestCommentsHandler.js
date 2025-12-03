@@ -35,15 +35,24 @@ export function initRequestCommentsHandler(options) {
    * @returns {string} HTML строка
    */
   function renderComment(comment) {
-    const author = (comment.author && 
+    const authorName = (comment.author && 
       (comment.author.full_name || comment.author.display_name || comment.author.username)) || '—';
+    const authorId = comment.author?.id;
+    const authorLink = authorId 
+      ? `/employees/employee/${authorId}/`
+      : '#';
+    const commentDate = esc(comment.created_at || '');
     
     return `<div class="comment-item">
-      <div class="comment-meta">
-        <span class="comment-author">${esc(author)}</span>
-        <span class="text-mono">${esc(comment.created_at || '')}</span>
+      <div class="comment-header">
+        ${authorId 
+          ? `<a href="${authorLink}" class="comment-author">${esc(authorName)}</a>`
+          : `<span class="comment-author">${esc(authorName)}</span>`
+        }
+        <span class="comment-separator">·</span>
+        <time class="comment-date">${commentDate}</time>
       </div>
-      <div class="comment-text">${esc(comment.text || '')}</div>
+      <div class="comment-body">${esc(comment.text || '')}</div>
     </div>`;
   }
   
@@ -142,10 +151,13 @@ export function initRequestCommentsHandler(options) {
    * Обработчик отправки формы комментария
    */
   async function handleCommentSubmit(e) {
-    const form = e.target.closest(`${collapseSelector} form[data-role=form]`);
-    if (!form) return;
+    const form = e.target;
+    
+    // Проверяем, что это форма комментария внутри блока заявки
+    if (!form.matches(`${collapseSelector} form[data-role=form]`)) return;
     
     e.preventDefault();
+    e.stopPropagation();
     
     const block = form.closest('.comments-block');
     const textarea = form.querySelector('[data-role=text]');

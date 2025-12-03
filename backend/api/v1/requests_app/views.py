@@ -113,12 +113,12 @@ class RequestViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self) -> QuerySet[EmployeeRequest]:
-        """Список заявок с учётом прав:
+        """Список заявок с учётом прав и получателей:
         - staff/глобальные видят всё (или только свои при ?view=mine),
-        - остальные: свои + отделы с правом 'view_request', руководимые отделы,
-          отделы с правом 'can_process_requests'.
-        - Вариант B: добавляем заявки сотрудников этих отделов даже если
-          у заявок department_id = NULL.
+        - автор видит свои заявки,
+        - получатели (recipients/cc_users) видят адресованные им,
+        - сотрудники отделов видят заявки отделов (с правами),
+        - при sent_to_all_department видят все из отделов.
         """
         qs = super().get_queryset()
         user = self.request.user
@@ -128,12 +128,49 @@ class RequestViewSet(viewsets.ModelViewSet):
         want_mine = (params.get("view") == "mine") or (
             mine_raw in {"1", "true", "yes", "on"}
         )
+        
+        # Новый параметр для фильтрации "мне адресовано"
+        addressed_to_me = params.get("addressed_to_me") == "true"
 
         if user.is_staff or self._can_view_all(user):
             if want_mine:
                 qs = qs.filter(employee_id=user.id)
-            # Для staff: не возвращаем сразу, применяем фильтры ниже
+            elif addressed_to_me:
+                # Заявки, где я получатель
+                my_dept_ids = EmployeeDepartment.objects.filter(
+                    employee=user,
+                    is_active=True
+                ).values_list('department_id', flat=True)
+                
+                scope = (
+                    Q(recipients=user) | 
+                    Q(cc_users=user) |
+                    Q(
+                        sent_to_all_department=True,
+                        departments__in=my_dept_ids
+                    )
+                )
+                qs = qs.filter(scope).distinct()
         else:
+            # Обычный пользователь
+            scope = Q(employee_id=user.id)  # Свои заявки
+            
+            # Заявки, где я получатель (основной или CC)
+            scope |= Q(recipients=user) | Q(cc_users=user)
+            
+            # Заявки отделов с sent_to_all_department
+            my_dept_ids = EmployeeDepartment.objects.filter(
+                employee=user,
+                is_active=True
+            ).values_list('department_id', flat=True)
+            
+            if my_dept_ids:
+                scope |= Q(
+                    sent_to_all_department=True,
+                    departments__in=my_dept_ids
+                )
+            
+            # Департаментные права (как было)
             view_dept_ids = (
                 EmployeeDepartment.objects.filter(
                     employee_id=user.id,
@@ -152,30 +189,43 @@ class RequestViewSet(viewsets.ModelViewSet):
                 .values_list("department_id", flat=True)
                 .distinct()
             )
-            head_dept_ids = Department.objects.filter(head_id=user.id).values_list(
-                "id", flat=True
+            head_dept_ids = Department.objects.filter(
+                head_id=user.id
+            ).values_list("id", flat=True)
+            
+            combined_ids = (
+                set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
             )
-            combined_ids = set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
 
-            # сотрудники этих отделов (активные)
-            dept_emp_ids = (
-                EmployeeDepartment.objects.filter(
-                    department_id__in=list(combined_ids) if combined_ids else [],
-                    is_active=True,
+            if combined_ids:
+                # Заявки этих отделов (новое поле departments)
+                scope |= Q(departments__in=combined_ids)
+                
+                # Заявки сотрудников этих отделов
+                dept_emp_ids = (
+                    EmployeeDepartment.objects.filter(
+                        department_id__in=list(combined_ids),
+                        is_active=True,
+                    )
+                    .values_list("employee_id", flat=True)
+                    .distinct()
                 )
-                .values_list("employee_id", flat=True)
-                .distinct()
-            ) if combined_ids else []
-
-            if want_mine:
-                qs = qs.filter(employee_id=user.id)
-            else:
-                scope = Q(employee_id=user.id)
-                if combined_ids:
-                    scope |= Q(department_id__in=list(combined_ids))
                 if dept_emp_ids:
                     scope |= Q(employee_id__in=list(dept_emp_ids))
-                qs = qs.filter(scope)
+            
+            # Фильтр "только адресованные мне"
+            if addressed_to_me:
+                scope = (
+                    Q(recipients=user) | Q(cc_users=user) |
+                    Q(
+                        sent_to_all_department=True, 
+                        departments__in=my_dept_ids
+                    )
+                )
+            elif want_mine:
+                scope = Q(employee_id=user.id)
+            
+            qs = qs.filter(scope).distinct()
 
         # Применяем фильтры type/status для всех пользователей
         t = (params.get("type") or "").strip()

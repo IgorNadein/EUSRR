@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% load static %}
+{% load req_tags %}
 
 {% block title %}Заявления{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/request-list.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/recipientPicker.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -21,31 +24,55 @@
   {# ===== Список ===== #}
   {# DEBUG: Фильтры - type: {{ filters.type }}, status: {{ filters.status }}, count: {{ requests|length }} #}
   <div id="reqList" class="card mb-3">
+    <!-- Заголовок таблицы -->
+    <div class="req-table-header">
+      <div class="req-table-row">
+        <div class="req-cell req-cell-icon"></div>
+        <div class="req-cell req-cell-title">
+          <h6 class="mb-0 text-secondary">Заявление</h6>
+        </div>
+        <div class="req-cell req-cell-author">
+          <h6 class="mb-0 text-secondary">Автор</h6>
+        </div>
+        <div class="req-cell req-cell-dates">
+          <h6 class="mb-0 text-secondary">Период</h6>
+        </div>
+        <div class="req-cell req-cell-status">
+          <h6 class="mb-0 text-secondary">Статус</h6>
+        </div>
+        <div class="req-cell req-cell-created">
+          <h6 class="mb-0 text-secondary">Создано</h6>
+        </div>
+        <div class="req-cell req-cell-actions">
+          <h6 class="mb-0 text-secondary">Действия</h6>
+        </div>
+      </div>
+    </div>
+    
     {% if requests %}
       {% for obj in requests %}
         <article class="req-row" id="req-{{ obj.id }}">
-          <header class="card-header">
-            <!-- Иконка типа заявления -->
-            <div class="card-icon d-flex align-items-center justify-content-center">
-              {% with tp=obj.type|lower %}
-                {% if tp == 'vacation' %}<i class="bi-calendar-check text-primary"></i>
-                {% elif tp == 'sick_leave' %}<i class="bi-capsule text-danger"></i>
-                {% elif tp == 'transfer' %}<i class="bi-box-arrow-right text-info"></i>
-                {% elif tp == 'dismissal' %}<i class="bi-door-open text-warning"></i>
-                {% else %}<i class="bi-clipboard-check text-secondary"></i>
-                {% endif %}
-              {% endwith %}
+          <div class="req-table-row">
+            <!-- Иконка типа -->
+            <div class="req-cell req-cell-icon">
+              <div class="card-icon d-flex align-items-center justify-content-center">
+                {% with tp=obj.type|lower %}
+                  {% if tp == 'vacation' %}<i class="bi-calendar-check text-primary"></i>
+                  {% elif tp == 'sick_leave' %}<i class="bi-capsule text-danger"></i>
+                  {% elif tp == 'transfer' %}<i class="bi-box-arrow-right text-info"></i>
+                  {% elif tp == 'dismissal' %}<i class="bi-door-open text-warning"></i>
+                  {% else %}<i class="bi-clipboard-check text-secondary"></i>
+                  {% endif %}
+                {% endwith %}
+              </div>
             </div>
             
-            <!-- Основная информация -->
-            <div class="card-meta">
-              <div class="card-title d-flex align-items-center gap-2 flex-wrap">
-                <!-- Заголовок заявления -->
+            <!-- Заголовок и тип -->
+            <div class="req-cell req-cell-title">
+              <div class="req-cell-content">
                 <strong>{{ obj.title|default:"Без заголовка" }}</strong>
-                
-                <!-- Тип заявления -->
                 {% if obj.type %}{% with tp=obj.type|lower %}
-                  <span class="badge text-bg-light">
+                  <span class="badge text-bg-light ms-1">
                     {% if tp == 'vacation' %}Отпуск
                     {% elif tp == 'sick_leave' %}Больничный
                     {% elif tp == 'transfer' %}Перевод
@@ -54,29 +81,15 @@
                     {% else %}{{ obj.type }}{% endif %}
                   </span>
                 {% endwith %}{% endif %}
-                
-                <!-- Статус -->
-                {% if obj.status %}{% with st=obj.status|lower %}
-                  <span class="badge
-                    {% if st == 'approved' %}text-bg-success
-                    {% elif st == 'rejected' %}text-bg-danger
-                    {% elif st == 'pending' %}text-bg-warning
-                    {% elif st == 'cancelled' %}text-bg-secondary
-                    {% elif st == 'draft' %}text-bg-info
-                    {% else %}text-bg-light{% endif %}">
-                    {% if st == 'draft' %}Черновик
-                    {% elif st == 'pending' %}На рассмотрении
-                    {% elif st == 'approved' %}Одобрено
-                    {% elif st == 'rejected' %}Отклонено
-                    {% elif st == 'cancelled' %}Отменено
-                    {% else %}{{ obj.status }}{% endif %}
-                  </span>
-                {% endwith %}{% endif %}
+                {% if obj.comment %}
+                  <div class="small text-body-secondary mt-1">{{ obj.comment|truncatewords:15 }}</div>
+                {% endif %}
               </div>
-              
-              <!-- Дополнительная информация -->
-              <div class="card-subtitle">
-                <!-- Автор -->
+            </div>
+            
+            <!-- Автор -->
+            <div class="req-cell req-cell-author">
+              <div class="req-cell-content">
                 {% if obj.employee %}
                   {% if obj.employee.id == user.id %}
                     <a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>
@@ -86,67 +99,101 @@
                     </a>
                   {% endif %}
                 {% endif %}
-                
-                <!-- Период -->
+              </div>
+            </div>
+            
+            <!-- Период -->
+            <div class="req-cell req-cell-dates">
+              <div class="req-cell-content text-mono">
                 {% if obj.date_from or obj.date_to %}
-                  <span>·</span>
-                  <span class="text-mono">
-                    {{ obj.date_from|date:"d.m.Y"|default:"—" }} → {{ obj.date_to|date:"d.m.Y"|default:"—" }}
-                  </span>
-                {% endif %}
-                
-                <!-- Дата создания -->
-                {% if obj.created_at %}
-                  <span>·</span>
-                  <span>{{ obj.created_at|date:"d.m.Y H:i" }}</span>
+                  {% if obj.date_from %}
+                    {{ obj.date_from|format_iso_date:"d.m.Y" }}<br>
+                  {% else %}
+                    —<br>
+                  {% endif %}
+                  {% if obj.date_to %}
+                    {{ obj.date_to|format_iso_date:"d.m.Y" }}
+                  {% else %}
+                    —
+                  {% endif %}
+                {% else %}
+                  <span class="text-body-secondary">—</span>
                 {% endif %}
               </div>
             </div>
             
-            <!-- Кнопки действий -->
-            {% if obj.employee.id != user.id and can_process %}
-            <div class="ms-auto d-flex gap-1">
-              <button type="button" class="btn btn-ghost btn-sm text-success"
-                      data-bs-toggle="modal" data-bs-target="#reqApproveModal"
-                      data-id="{{ obj.id }}" title="Одобрить">
-                <i class="bi-hand-thumbs-up"></i>
-              </button>
-              <button type="button" class="btn btn-ghost btn-sm text-danger"
-                      data-bs-toggle="modal" data-bs-target="#reqRejectModal"
-                      data-id="{{ obj.id }}" title="Отклонить">
-                <i class="bi-hand-thumbs-down"></i>
-              </button>
+            <!-- Статус -->
+            <div class="req-cell req-cell-status">
+              <div class="req-cell-content">
+                {% if obj.status %}{% with st=obj.status|lower %}
+                  <span class="badge
+                    {% if st == 'approved' %}text-bg-success
+                    {% elif st == 'rejected' %}text-bg-danger
+                    {% elif st == 'pending' %}text-bg-warning
+                    {% elif st == 'cancelled' %}text-bg-secondary
+                    {% elif st == 'draft' %}text-bg-info
+                    {% else %}text-bg-light{% endif %}">
+                    {% if st == 'draft' %}Черновик
+                    {% elif st == 'pending' %}На рассмотр.
+                    {% elif st == 'approved' %}Одобрено
+                    {% elif st == 'rejected' %}Отклонено
+                    {% elif st == 'cancelled' %}Отменено
+                    {% else %}{{ obj.status }}{% endif %}
+                  </span>
+                {% endwith %}{% endif %}
+              </div>
             </div>
-            {% elif obj.employee.id == user.id %}
-            <div class="ms-auto d-flex gap-1">
-              <button type="button" class="btn btn-ghost btn-sm text-primary"
-                      data-bs-toggle="modal" data-bs-target="#reqEditModal"
-                      data-id="{{ obj.id }}"
-                      data-title="{{ obj.title|default_if_none:'' }}"
-                      data-type="{{ obj.type|default_if_none:'' }}"
-                      data-date_from="{{ obj.date_from|default_if_none:'' }}"
-                      data-date_to="{{ obj.date_to|default_if_none:'' }}"
-                      data-comment="{{ obj.comment|default_if_none:'' }}"
-                      data-status="{{ obj.status|lower }}" title="Изменить">
-                <i class="bi-pencil"></i>
-              </button>
-              <button type="button" class="btn btn-ghost btn-sm text-secondary"
-                      data-bs-toggle="modal" data-bs-target="#reqCancelModal"
-                      data-id="{{ obj.id }}" title="Отменить">
-                <i class="bi-slash-circle"></i>
-              </button>
+            
+            <!-- Дата создания -->
+            <div class="req-cell req-cell-created">
+              <div class="req-cell-content small text-body-secondary">
+                {% if obj.created_at %}
+                  {{ obj.created_at|format_iso_date:"d.m.Y" }}
+                {% else %}
+                  <span class="text-body-secondary">—</span>
+                {% endif %}
+              </div>
             </div>
-            {% endif %}
-          </header>
+            
+            <!-- Действия -->
+            <div class="req-cell req-cell-actions">
+              <div class="req-cell-content">
+                {% if obj.employee.id != user.id and can_process %}
+                  <button type="button" class="btn btn-ghost btn-sm text-success"
+                          data-bs-toggle="modal" data-bs-target="#reqApproveModal"
+                          data-id="{{ obj.id }}" title="Одобрить">
+                    <i class="bi-hand-thumbs-up"></i>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm text-danger"
+                          data-bs-toggle="modal" data-bs-target="#reqRejectModal"
+                          data-id="{{ obj.id }}" title="Отклонить">
+                    <i class="bi-hand-thumbs-down"></i>
+                  </button>
+                {% elif obj.employee.id == user.id %}
+                  <button type="button" class="btn btn-ghost btn-sm text-primary"
+                          data-bs-toggle="modal" data-bs-target="#reqEditModal"
+                          data-id="{{ obj.id }}"
+                          data-title="{{ obj.title|default_if_none:'' }}"
+                          data-type="{{ obj.type|default_if_none:'' }}"
+                          data-date_from="{{ obj.date_from|default_if_none:'' }}"
+                          data-date_to="{{ obj.date_to|default_if_none:'' }}"
+                          data-comment="{{ obj.comment|default_if_none:'' }}"
+                          data-status="{{ obj.status|lower }}" title="Изменить">
+                    <i class="bi-pencil"></i>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm text-secondary"
+                          data-bs-toggle="modal" data-bs-target="#reqCancelModal"
+                          data-id="{{ obj.id }}" title="Отменить">
+                    <i class="bi-slash-circle"></i>
+                  </button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
 
-          {% if obj.comment %}
-            <div class="card-body">
-              <div class="small text-body-secondary">{{ obj.comment }}</div>
-            </div>
-          {% endif %}
-
-          <footer class="card-actions">
-            <button class="btn btn-ghost d-inline-flex align-items-center gap-1"
+          <!-- Футер с комментариями -->
+          <footer class="req-footer">
+            <button class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1"
                     type="button"
                     data-bs-toggle="collapse"
                     data-bs-target="#rcoll-{{ obj.id }}"
@@ -157,7 +204,7 @@
               <span class="txt-close">Скрыть</span>
             </button>
             {% if obj.attachment %}
-              <a href="{{ obj.attachment }}" class="btn btn-ghost d-inline-flex align-items-center gap-1" target="_blank">
+              <a href="{{ obj.attachment }}" class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1" target="_blank">
                 <i class="bi-paperclip"></i><span>Вложение</span>
               </a>
             {% endif %}
@@ -215,54 +262,65 @@
 
 <!-- Create -->
 <div class="modal fade" id="reqCreateModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <form class="modal-content" id="reqCreateForm" enctype="multipart/form-data">
       {% csrf_token %}
       <div class="modal-header">
-        <h5 class="modal-title">Создать заявление</h5>
+        <h5 class="modal-title">
+          <i class="bi-plus-circle me-2"></i>Новое заявление
+        </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
 
       <div class="modal-body">
+        <!-- Получатели (как в email - в начале) -->
+        <div class="mb-4 pb-3 border-bottom">
+          <div id="createRecipientPicker"></div>
+        </div>
+
         <div class="mb-3">
-          <label class="form-label">Тип</label>
+          <label class="form-label">Тип заявления</label>
           <select name="type" class="form-select" required>
-            <option value="" selected disabled>Выберите…</option>
-            <option value="vacation">Отпуск</option>
-            <option value="sick_leave">Больничный</option>
-            <option value="transfer">Перевод</option>
-            <option value="dismissal">Увольнение</option>
-            <option value="other">Другое</option>
+            <option value="" selected disabled>Выберите тип…</option>
+            <option value="vacation">📅 Отпуск</option>
+            <option value="sick_leave">🏥 Больничный</option>
+            <option value="transfer">↔️ Перевод</option>
+            <option value="dismissal">👋 Увольнение</option>
+            <option value="other">📋 Другое</option>
           </select>
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Заголовок</label>
-          <input type="text" name="title" class="form-control" maxlength="255">
+          <label class="form-label">Тема</label>
+          <input type="text" name="title" class="form-control" 
+                 placeholder="Краткое описание заявления..." maxlength="255">
         </div>
 
-        <div class="row g-2">
+        <div class="row g-2 mb-3">
           <div class="col">
-            <label class="form-label">С даты</label>
+            <label class="form-label">Дата начала</label>
             <input type="date" name="date_from" class="form-control">
           </div>
           <div class="col">
-            <label class="form-label">По дату</label>
+            <label class="form-label">Дата окончания</label>
             <input type="date" name="date_to" class="form-control">
           </div>
         </div>
 
-        <div class="mt-3">
+        <div class="mb-3">
           <label class="form-label">Комментарий</label>
           <div class="message-field message-field--solo">
-            <textarea name="comment" class="form-control message-input" rows="3"></textarea>
+            <textarea name="comment" class="form-control message-input" rows="3"
+                      placeholder="Дополнительная информация..."></textarea>
           </div>
         </div>
 
-        <div class="mt-3">
-          <label class="form-label">Вложение</label>
+        <div class="mb-3">
+          <label class="form-label">
+            <i class="bi-paperclip"></i> Вложение
+          </label>
           <input type="file" name="attachment" class="form-control">
-          <div class="form-text">Допустимые форматы и размер контролируются на сервере.</div>
+          <div class="form-text">PDF, JPG, PNG до 10MB</div>
         </div>
       </div>
 
@@ -288,12 +346,14 @@
 
 <!-- Edit (PATCH) -->
 <div class="modal fade" id="reqEditModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <form class="modal-content" id="reqEditForm" enctype="multipart/form-data">
       {% csrf_token %}
       <input type="hidden" name="id" id="editId">
       <div class="modal-header">
-        <h5 class="modal-title">Изменить заявление</h5>
+        <h5 class="modal-title">
+          <i class="bi-pencil me-2"></i>Редактировать заявление
+        </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
 
@@ -301,30 +361,35 @@
         <!-- Значение по умолчанию — submit -->
         <input type="hidden" name="_save_as" value="submit">
 
+        <!-- Получатели -->
+        <div class="mb-4 pb-3 border-bottom">
+          <div id="editRecipientPicker"></div>
+        </div>
+
         <div class="mb-3">
-          <label class="form-label">Тип</label>
+          <label class="form-label">Тип заявления</label>
           <select name="type" id="editType" class="form-select" required>
-            <option value="" disabled>Выберите…</option>
-            <option value="vacation">Отпуск</option>
-            <option value="sick_leave">Больничный</option>
-            <option value="transfer">Перевод</option>
-            <option value="dismissal">Увольнение</option>
-            <option value="other">Другое</option>
+            <option value="" disabled>Выберите тип…</option>
+            <option value="vacation">📅 Отпуск</option>
+            <option value="sick_leave">🏥 Больничный</option>
+            <option value="transfer">↔️ Перевод</option>
+            <option value="dismissal">👋 Увольнение</option>
+            <option value="other">📋 Другое</option>
           </select>
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Заголовок</label>
+          <label class="form-label">Тема</label>
           <input type="text" name="title" id="editTitle" class="form-control" maxlength="255">
         </div>
 
         <div class="row g-2 mb-3">
           <div class="col">
-            <label class="form-label">С даты</label>
+            <label class="form-label">Дата начала</label>
             <input type="date" name="date_from" id="editDateFrom" class="form-control">
           </div>
           <div class="col">
-            <label class="form-label">По дату</label>
+            <label class="form-label">Дата окончания</label>
             <input type="date" name="date_to" id="editDateTo" class="form-control">
           </div>
         </div>
@@ -335,7 +400,9 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Новое вложение</label>
+          <label class="form-label">
+            <i class="bi-paperclip"></i> Новое вложение
+          </label>
           <input type="file" name="attachment" class="form-control">
         </div>
 
@@ -497,8 +564,8 @@
   initRequestListPage({
     apiListUrl: "{% url 'api:v1:request-list' %}",
     apiDetailBase: "{% url 'api:v1:request-list' %}",
-    commentsUrlTemplate: "{% url 'requests:request_comments' 0 %}",
-    addCommentUrlTemplate: "{% url 'requests:request_comment_add' 0 %}",
+    commentsUrlTemplate: "/api/v1/requests/0/comments/",
+    addCommentUrlTemplate: "/api/v1/requests/0/comments/",
     autoShowComments: {% if comments_for %}true{% else %}false{% endif %}
   });
 </script>

@@ -65,6 +65,12 @@ def track_status_change(sender, instance, **kwargs):
 def create_comment_notification(sender, instance, created, **kwargs):
     """
     Создает уведомление при добавлении комментария к заявке.
+    Уведомляет:
+    - Автора заявки
+    - Всех получателей
+    - Всех в копии
+    - Согласующего
+    - Сотрудников отделов (если sent_to_all_department)
     """
     if not created:
         return
@@ -72,35 +78,42 @@ def create_comment_notification(sender, instance, created, **kwargs):
     comment = instance
     request_obj = comment.request
     author = comment.author
+    recipients_set = set()
     
-    # Уведомляем автора заявки (если комментарий не от него)
+    # Автор заявки
     if request_obj.employee.id != author.id:
-        NotificationService.create_notification(
-            recipient=request_obj.employee,
-            notification_type_code='request_comment',
-            title='Новый комментарий к вашей заявке',
-            message=(
-                f'{author.get_full_name() or author.username} '
-                f'прокомментировал заявку: {comment.text[:100]}'
-            ),
-            content_object=request_obj,
-            action_url=f'/requests/{request_obj.id}/',
-            metadata={
-                'request_id': request_obj.id,
-                'request_type': request_obj.type,
-                'comment_id': comment.id,
-                'author_id': author.id,
-            }
-        )
+        recipients_set.add(request_obj.employee)
     
-    # Также уведомляем согласующего (если есть и это не он)
-    if (request_obj.approver and 
-        request_obj.approver.id != author.id and
-        request_obj.approver.id != request_obj.employee.id):
+    # Получатели
+    recipients_set.update(
+        request_obj.recipients.filter(is_active=True).exclude(id=author.id)
+    )
+    
+    # CC
+    recipients_set.update(
+        request_obj.cc_users.filter(is_active=True).exclude(id=author.id)
+    )
+    
+    # Согласующий
+    if request_obj.approver and request_obj.approver.id != author.id:
+        recipients_set.add(request_obj.approver)
+    
+    # Если sent_to_all_department - все сотрудники отделов
+    if request_obj.sent_to_all_department:
+        dept_employees = Employee.objects.filter(
+            departments_links__department__in=request_obj.departments.all(),
+            departments_links__is_active=True,
+            is_active=True
+        ).exclude(id__in=[author.id, request_obj.employee.id]).distinct()
+        
+        recipients_set.update(dept_employees)
+    
+    # Отправляем уведомления
+    for recipient in recipients_set:
         NotificationService.create_notification(
-            recipient=request_obj.approver,
+            recipient=recipient,
             notification_type_code='request_comment',
-            title='Комментарий к заявке',
+            title='Новый комментарий к заявке',
             message=(
                 f'{author.get_full_name() or author.username} '
                 f'прокомментировал заявку: {comment.text[:100]}'
@@ -120,108 +133,193 @@ def create_comment_notification(sender, instance, created, **kwargs):
 
 def notify_new_request(request_obj):
     """
-    Отправляет уведомление о новой заявке ответственным лицам.
+    Отправляет уведомление о новой заявке:
+    - Всем основным получателям (recipients)
+    - Всем в копии (cc_users)
+    - Согласующему (approver)
+    - Руководителям отделов
+    - Пользователям с правом can_process_requests
+    
+    При sent_to_all_department=True отправляет всем сотрудникам отделов
     """
-    # Определяем получателей в зависимости от типа заявки
-    recipients = []
+    recipients_set = set()
     
-    # 1. Руководитель отдела сотрудника
+    # 1. Основные получатели
+    for recipient in request_obj.recipients.filter(is_active=True):
+        recipients_set.add(recipient)
+    
+    # 2. Копия (CC)
+    for cc_user in request_obj.cc_users.filter(is_active=True):
+        recipients_set.add(cc_user)
+    
+    # 3. Если sent_to_all_department - все сотрудники отделов
+    if request_obj.sent_to_all_department:
+        dept_employees = Employee.objects.filter(
+            departments_links__department__in=request_obj.departments.all(),
+            departments_links__is_active=True,
+            is_active=True
+        ).exclude(id=request_obj.employee.id).distinct()
+        
+        recipients_set.update(dept_employees)
+    
+    # 4. Согласующий
+    if request_obj.approver and request_obj.approver.id != request_obj.employee.id:
+        recipients_set.add(request_obj.approver)
+    
+    # 5. Руководители отделов
+    for department in request_obj.departments.all():
+        if department.head and department.head.id != request_obj.employee.id:
+            recipients_set.add(department.head)
+    
+    # Также проверяем старое поле department для обратной совместимости
     if request_obj.department and request_obj.department.head:
-        head = request_obj.department.head
-        if head.id != request_obj.employee.id:
-            recipients.append(head)
+        if request_obj.department.head.id != request_obj.employee.id:
+            recipients_set.add(request_obj.department.head)
     
-    # 2. Если есть назначенный согласующий
-    if request_obj.approver:
-        if request_obj.approver not in recipients:
-            recipients.append(request_obj.approver)
+    # 6. Пользователи с правом обрабатывать заявки в этих отделах
+    dept_ids = list(request_obj.departments.values_list('id', flat=True))
+    if request_obj.department_id and request_obj.department_id not in dept_ids:
+        dept_ids.append(request_obj.department_id)
     
-    # 3. Пользователи с правом обрабатывать заявки
-    users_with_permission = Employee.objects.filter(
-        user_permissions__codename='can_process_requests'
-    ).exclude(id=request_obj.employee.id)
+    if dept_ids:
+        dept_processors = Employee.objects.filter(
+            departments_links__department_id__in=dept_ids,
+            departments_links__is_active=True,
+            departments_links__role__scoped_permissions__code='can_process_requests',
+            is_active=True
+        ).exclude(id=request_obj.employee.id).distinct()
+        
+        recipients_set.update(dept_processors)
     
-    for user in users_with_permission:
-        if user not in recipients:
-            recipients.append(user)
+    # Определяем тип уведомления для каждого получателя
+    author_name = (
+        request_obj.employee.get_full_name() or 
+        request_obj.employee.username
+    )
     
-    # Отправляем уведомления
-    for recipient in recipients:
+    for recipient in recipients_set:
+        # Определяем роль получателя
+        is_primary = request_obj.recipients.filter(id=recipient.id).exists()
+        is_cc = request_obj.cc_users.filter(id=recipient.id).exists()
+        is_approver = request_obj.approver_id == recipient.id
+        
+        # Формируем заголовок и сообщение
+        if is_approver:
+            title = f'Новая заявка на согласование от {author_name}'
+            notification_type = 'request_new'
+        elif is_primary:
+            title = f'Вам адресована заявка от {author_name}'
+            notification_type = 'request_new'
+        elif is_cc:
+            title = f'Вы в копии заявки от {author_name}'
+            notification_type = 'request_new'
+        else:
+            title = f'Новая заявка в отделе от {author_name}'
+            notification_type = 'request_new'
+        
+        message = (
+            f'Тип: {request_obj.get_type_display()}. '
+            f'{request_obj.comment[:100] if request_obj.comment else ""}'
+        )
+        
         NotificationService.create_notification(
             recipient=recipient,
-            notification_type_code='request_new',
-            title=f'Новая заявка от {request_obj.employee.get_full_name()}',
-            message=(
-                f'Тип: {request_obj.get_type_display()}. '
-                f'{request_obj.comment[:100] if request_obj.comment else ""}'
-            ),
+            notification_type_code=notification_type,
+            title=title,
+            message=message,
             content_object=request_obj,
             action_url=f'/requests/{request_obj.id}/',
             metadata={
                 'request_id': request_obj.id,
                 'request_type': request_obj.type,
                 'employee_id': request_obj.employee.id,
-                'department_id': (
-                    request_obj.department.id 
-                    if request_obj.department else None
-                ),
+                'is_primary_recipient': is_primary,
+                'is_cc': is_cc,
+                'is_approver': is_approver,
             }
         )
 
 
 def notify_status_change(request_obj, old_status, new_status):
     """
-    Отправляет уведомление при изменении статуса заявки.
+    Уведомляет о изменении статуса:
+    - Автора
+    - Всех получателей (recipients)
+    - Всех в копии (cc_users)
+    - Сотрудников отделов (если sent_to_all_department)
     """
-    # Уведомляем автора заявки
-    recipient = request_obj.employee
+    recipients_to_notify = set()
     
-    # Определяем тип уведомления и сообщение
-    if new_status == 'approved':
-        notification_type = 'request_approved'
-        title = 'Ваша заявка одобрена'
-        approver_name = (
-            request_obj.approver.get_full_name() 
-            if request_obj.approver else 'Руководитель'
-        )
-        message = (
-            f'Заявка "{request_obj.get_type_display()}" '
-            f'одобрена пользователем {approver_name}'
-        )
-    elif new_status == 'rejected':
-        notification_type = 'request_rejected'
-        title = 'Ваша заявка отклонена'
-        approver_name = (
-            request_obj.approver.get_full_name() 
-            if request_obj.approver else 'Руководитель'
-        )
-        message = (
-            f'Заявка "{request_obj.get_type_display()}" '
-            f'отклонена пользователем {approver_name}'
-        )
-    else:
-        # Общее уведомление об изменении статуса
-        notification_type = 'request_status_changed'
-        title = 'Статус заявки изменен'
-        message = (
-            f'Статус заявки "{request_obj.get_type_display()}" '
-            f'изменен: {old_status} → {new_status}'
-        )
+    # 1. Автор
+    recipients_to_notify.add(request_obj.employee)
     
-    NotificationService.create_notification(
-        recipient=recipient,
-        notification_type_code=notification_type,
-        title=title,
-        message=message,
-        content_object=request_obj,
-        action_url=f'/requests/{request_obj.id}/',
-        metadata={
-            'request_id': request_obj.id,
-            'request_type': request_obj.type,
-            'old_status': old_status,
-            'new_status': new_status,
-            'approver_id': (
-                request_obj.approver.id if request_obj.approver else None
-            ),
-        }
+    # 2. Основные получатели
+    recipients_to_notify.update(
+        request_obj.recipients.filter(is_active=True)
     )
+    
+    # 3. Копия
+    recipients_to_notify.update(
+        request_obj.cc_users.filter(is_active=True)
+    )
+    
+    # 4. Если sent_to_all_department - все сотрудники отделов
+    if request_obj.sent_to_all_department:
+        dept_employees = Employee.objects.filter(
+            departments_links__department__in=request_obj.departments.all(),
+            departments_links__is_active=True,
+            is_active=True
+        ).exclude(id=request_obj.employee.id).distinct()
+        
+        recipients_to_notify.update(dept_employees)
+    
+    # Формируем уведомления
+    for recipient in recipients_to_notify:
+        if new_status == 'approved':
+            notification_type = 'request_approved'
+            title = 'Заявка одобрена'
+            approver_name = (
+                request_obj.approver.get_full_name() 
+                if request_obj.approver else 'Руководитель'
+            )
+            message = (
+                f'Заявка "{request_obj.get_type_display()}" '
+                f'одобрена пользователем {approver_name}'
+            )
+        elif new_status == 'rejected':
+            notification_type = 'request_rejected'
+            title = 'Заявка отклонена'
+            approver_name = (
+                request_obj.approver.get_full_name() 
+                if request_obj.approver else 'Руководитель'
+            )
+            message = (
+                f'Заявка "{request_obj.get_type_display()}" '
+                f'отклонена пользователем {approver_name}'
+            )
+        else:
+            # Общее уведомление об изменении статуса
+            notification_type = 'request_status_changed'
+            title = 'Статус заявки изменен'
+            message = (
+                f'Статус заявки "{request_obj.get_type_display()}" '
+                f'изменен: {old_status} → {new_status}'
+            )
+        
+        NotificationService.create_notification(
+            recipient=recipient,
+            notification_type_code=notification_type,
+            title=title,
+            message=message,
+            content_object=request_obj,
+            action_url=f'/requests/{request_obj.id}/',
+            metadata={
+                'request_id': request_obj.id,
+                'request_type': request_obj.type,
+                'old_status': old_status,
+                'new_status': new_status,
+                'approver_id': (
+                    request_obj.approver.id if request_obj.approver else None
+                ),
+            }
+        )

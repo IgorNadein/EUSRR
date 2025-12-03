@@ -3,8 +3,9 @@
   <div class="col-12 col-sm-3">
     <label class="form-label mb-1">Область</label>
     <select name="view" class="form-select">
-      <option value="mine" {% if scope == 'mine' %}selected{% endif %}>Мои</option>
-      <option value="all" {% if scope == 'all' %}selected{% endif %}>Все</option>
+      <option value="" {% if not filters.view or filters.view == '' %}selected{% endif %}>Все доступные</option>
+      <option value="mine" {% if filters.view == 'mine' %}selected{% endif %}>Мои заявления</option>
+      <option value="addressed" {% if filters.view == 'addressed' %}selected{% endif %}>Мне адресовано</option>
     </select>
   </div>
   <div class="col-12 col-sm-3">

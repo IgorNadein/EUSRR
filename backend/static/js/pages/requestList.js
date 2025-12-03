@@ -28,7 +28,31 @@ export function initRequestListPage(config) {
   // Получаем токен доступа
   const accessMeta = document.querySelector('meta[name="api-access"]');
   const ACCESS = accessMeta ? accessMeta.content : '';
-  const headers = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
+  
+  // Функция для получения CSRF токена из cookie
+  function getCsrfToken() {
+    const name = 'csrftoken';
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+  
+  const headers = {
+    'X-CSRFToken': getCsrfToken()
+  };
+  
+  if (ACCESS) {
+    headers['Authorization'] = 'Bearer ' + ACCESS;
+  }
 
   // Инициализация обработчиков модальных окон
   initRequestModalHandler({
