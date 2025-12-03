@@ -176,8 +176,6 @@
 
 /* Блок комментариев */
 #reqList .comments-block {
-  border-top: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 70%);
-  background: color-mix(in srgb, var(--bs-tertiary-bg), transparent 50%);
   margin: 0;
   padding: 1rem;
   margin-left: calc(48px + 0.75rem); /* Выравнивание с содержимым */

@@ -148,8 +148,7 @@
             <div class="req-cell req-cell-created">
               <div class="req-cell-content small text-body-secondary">
                 {% if obj.created_at %}
-                  {{ obj.created_at|format_iso_date:"d.m.Y" }}<br>
-                  {{ obj.created_at|format_iso_date:"H:i" }}
+                  {{ obj.created_at|format_iso_date:"d.m.Y" }}
                 {% else %}
                   <span class="text-body-secondary">—</span>
                 {% endif %}
@@ -565,8 +564,8 @@
   initRequestListPage({
     apiListUrl: "{% url 'api:v1:request-list' %}",
     apiDetailBase: "{% url 'api:v1:request-list' %}",
-    commentsUrlTemplate: "{% url 'requests:request_comments' 0 %}",
-    addCommentUrlTemplate: "{% url 'requests:request_comment_add' 0 %}",
+    commentsUrlTemplate: "/api/v1/requests/0/comments/",
+    addCommentUrlTemplate: "/api/v1/requests/0/comments/",
     autoShowComments: {% if comments_for %}true{% else %}false{% endif %}
   });
 </script>

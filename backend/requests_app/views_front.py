@@ -185,13 +185,17 @@ class RequestsView(LoginRequiredMixin, TemplateView):
 
         # --- фильтры API ---
         params: Dict[str, Any] = {}
-        scope = (request.GET.get("view") or "").lower()
+        scope = (request.GET.get("view") or "").lower().strip()
         mine_raw = (request.GET.get("mine") or "").strip().lower()
+        
         if scope == "mine" or mine_raw in {"1", "true", "yes", "on"}:
             params["view"] = "mine"
             scope = "mine"
+        elif scope == "addressed":
+            params["addressed_to_me"] = "true"
+            scope = "addressed"
         else:
-            scope = "all"
+            scope = ""
 
         type_ = (request.GET.get("type") or "").strip()
         status_ = (request.GET.get("status") or "").strip()
@@ -218,7 +222,11 @@ class RequestsView(LoginRequiredMixin, TemplateView):
                     "count": None,
                     "scope": scope,
                     "can_process": _user_can_process_requests(request.user),
-                    "filters": {"type": type_, "status": status_, "view": scope},
+                    "filters": {
+                        "type": type_,
+                        "status": status_,
+                        "view": scope,
+                    },
                 }
             )
             return ctx
@@ -233,7 +241,11 @@ class RequestsView(LoginRequiredMixin, TemplateView):
                 "count": count,
                 "scope": scope,
                 "can_process": _user_can_process_requests(request.user),
-                "filters": {"type": type_, "status": status_, "view": scope},
+                "filters": {
+                    "type": type_,
+                    "status": status_,
+                    "view": scope,
+                },
             }
         )
 
@@ -245,7 +257,12 @@ class RequestsView(LoginRequiredMixin, TemplateView):
             )
             if ok_c:
                 comments, _, _, _ = _parse_page_payload(data_c)
-                ctx.update({"comments_for": int(comments_for), "comments": comments})
+                ctx.update(
+                    {
+                        "comments_for": int(comments_for),
+                        "comments": comments,
+                    }
+                )
             else:
                 messages.error(
                     request,
