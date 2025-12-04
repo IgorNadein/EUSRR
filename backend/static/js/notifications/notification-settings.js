@@ -337,7 +337,7 @@ class TelegramLinkManager {
                             </li>
                             <li class="mb-2">
                                 <strong>Добавьте Chat ID в <a href="/employees/me/" target="_blank">ваш профиль</a></strong><br>
-                                <small class="text-muted">Откройте профиль → Редактировать → вставьте Chat ID в поле "Telegram Chat ID"</small>
+                                <small class="text-muted">Откройте профиль → Редактировать → вставьте Chat ID в поле "Telegram"</small>
                             </li>
                             <li class="mb-2">
                                 <strong>Включите галочки "Telegram" для нужных категорий ниже</strong><br>
