@@ -41,130 +41,14 @@
   {# ===== Карточка со списком ===== #}
   <div class="card mb-3">
     <div id="docList" class="card-list">
-      {% if documents %}
-        {% for doc in documents %}
-          <div class="doc-row {% if scope == 'mine' and doc.id not in acked_ids %}doc-unacked{% endif %}" 
-               data-doc-id="{{ doc.id }}"
-               data-is-acked="{% if doc.id in acked_ids %}1{% else %}0{% endif %}">
-            <div class="card-header">
-              <div class="feed-ico" aria-hidden="true"><i class="bi-file-earmark-text"></i></div>
-
-              <div class="feed-main">
-                <div class="card-title">
-                  {% if doc.file_url %}
-                    {# Для неознакомленных - через acknowledge URL, для ознакомленных - прямо на файл #}
-                    {% if doc.id not in acked_ids and scope == 'mine' %}
-                      <a href="{% url 'documents:acknowledge' doc.id %}" 
-                         class="text-decoration-none doc-link" 
-                         target="_blank" 
-                         rel="noopener">
-                        {{ doc.title|default:"Без названия" }}
-                      </a>
-                    {% else %}
-                      <a href="{{ doc.file_url }}" 
-                         class="text-decoration-none doc-link" 
-                         target="_blank" 
-                         rel="noopener">
-                        {{ doc.title|default:"Без названия" }}
-                      </a>
-                    {% endif %}
-                  {% else %}
-                    {{ doc.title|default:"Без названия" }}
-                  {% endif %}
-                </div>
-                <div class="card-subtitle">
-                  {{ doc.description|default:"— без описания —" }}
-                  {% if doc.uploaded_at %} • Загружен: {{ doc.uploaded_at|date:"d.m.Y H:i" }}{% endif %}
-                  {% if doc.sent_to_all %} • Для всех{% endif %}
-                </div>
-              </div>
-
-              <div class="doc-actions">
-                {# В scope=mine показываем только статус #}
-                {% if scope == 'mine' %}
-                  {% if doc.id in acked_ids %}
-                    <span class="badge bg-success">
-                      <i class="bi-check-circle"></i> Ознакомлен
-                    </span>
-                  {% else %}
-                    <span class="badge bg-warning text-dark">
-                      <i class="bi-clock"></i> Требуется ознакомление
-                    </span>
-                  {% endif %}
-
-                {# В scope=all показываем кнопку ознакомлений #}
-                {% elif scope == 'all' %}
-                  <button type="button"
-                          class="btn btn-outline-secondary btn-sm"
-                          data-action="show-acks"
-                          data-doc-id="{{ doc.id }}"
-                          data-doc-title="{{ doc.title|default_if_none:'Документ'|escape }}">
-                    <i class="bi-people"></i> Ознакомления
-                  </button>
-                {% endif %}
-
-                {# Кнопки управления только для админов в scope=all #}
-                {% if show_admin_controls and scope == 'all' %}
-                  {% if perms.documents.change_document or user.is_staff or user.is_superuser %}
-                    <button type="button"
-                            class="btn-icon"
-                            data-bs-toggle="tooltip"
-                            title="Редактировать"
-                            aria-label="Редактировать"
-                            data-action="edit"
-                            data-doc-id="{{ doc.id }}"
-                            data-doc-title="{{ doc.title|default_if_none:'' }}"
-                            data-doc-description="{{ doc.description|default_if_none:'' }}"
-                            data-doc-sent_to_all="{{ doc.sent_to_all|yesno:'1,0' }}">
-                      <i class="bi-pencil-square"></i>
-                    </button>
-                  {% endif %}
-                  {% if perms.documents.delete_document or user.is_staff or user.is_superuser %}
-                    <button type="button"
-                            class="btn-icon btn-icon--danger"
-                            data-bs-toggle="tooltip"
-                            title="Удалить"
-                            aria-label="Удалить"
-                            data-action="delete"
-                            data-doc-id="{{ doc.id }}">
-                      <i class="bi-trash"></i>
-                    </button>
-                  {% endif %}
-                {% endif %}
-              </div>
-            </div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <div class="p-4 text-center text-secondary">Нет доступных документов.</div>
-      {% endif %}
+      {# Список загружается через JavaScript из documentListHandler.js #}
+      <div class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Загрузка...</span>
+        </div>
+      </div>
     </div>
   </div>
-
-  {# ===== Пагинация ===== #}
-  {% if prev_url or next_url or page > 1 %}
-    <div class="d-flex justify-content-between mb-3">
-      {% if prev_url %}
-        <a class="btn btn-outline-secondary" href="{{ prev_url }}">
-          <i class="bi-chevron-left"></i> Назад
-        </a>
-      {% else %}
-        <span class="btn btn-outline-secondary disabled">
-          <i class="bi-chevron-left"></i> Назад
-        </span>
-      {% endif %}
-      
-      {% if next_url %}
-        <a class="btn btn-outline-secondary" href="{{ next_url }}">
-          Вперёд <i class="bi-chevron-right"></i>
-        </a>
-      {% else %}
-        <span class="btn btn-outline-secondary disabled">
-          Вперёд <i class="bi-chevron-right"></i>
-        </span>
-      {% endif %}
-    </div>
-  {% endif %}
 
 </div>
 

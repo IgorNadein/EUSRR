@@ -336,7 +336,6 @@ class DocumentView(LoginRequiredMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         request = self.request
         user = request.user
-        api = get_api_client(request)
 
         # --- Определяем права ---
         can_manage = _user_can_manage_documents(user)
@@ -353,80 +352,11 @@ class DocumentView(LoginRequiredMixin, TemplateView):
 
         ack_status = (request.GET.get("ack_status") or "").strip()
 
-        # --- Формируем параметры для API ---
-        params: Dict[str, Any] = {}
-
-        if scope == "mine":
-            params["scope"] = "mine"
-
-        # --- Загружаем список документов ---
-        ok, data, status = _api_unpack(api.get("v1/documents/", params=params))
-
-        if not ok:
-            messages.error(
-                request,
-                _err_msg(
-                    data,
-                    f"Не удалось загрузить список документов (HTTP {status})."
-                )
-            )
-            # Возвращаем минимальный контекст с пустыми данными
-            ctx.update({
-                "documents": [],
-                "acked_ids": set(),
-                "next_url": None,
-                "prev_url": None,
-                "count": None,
-                "scope": scope,
-                "show_admin_controls": show_admin_controls,
-                "can_manage_documents": can_manage,
-                "filters": {"ack_status": ack_status},
-                "perms": {
-                    "documents": {
-                        "add_document": (
-                            user.has_perm("documents.add_document") or
-                            user.is_staff
-                        ),
-                        "change_document": (
-                            user.has_perm("documents.change_document") or
-                            user.is_staff
-                        ),
-                        "delete_document": (
-                            user.has_perm("documents.delete_document") or
-                            user.is_staff
-                        ),
-                    }
-                },
-                "api_document_list_url": reverse("api:v1:documents-list"),
-                "api_document_detail_base": reverse("api:v1:documents-list"),
-            })
-            return ctx
-
-        # --- Парсим результат ---
-        results, next_url, prev_url, count = _parse_page_payload(data)
-
-        # --- Получаем список ознакомленных документов ---
-        acked_ids: set = set()
-        if scope == "mine":
-            # Извлекаем is_acknowledged из каждого документа
-            for doc in results:
-                if doc.get("is_acknowledged"):
-                    acked_ids.add(doc["id"])
-
-        # --- Применяем локальную фильтрацию по ack_status ---
-        if ack_status and scope == "mine":
-            if ack_status == "acked":
-                results = [d for d in results if d["id"] in acked_ids]
-            elif ack_status == "not_acked":
-                results = [d for d in results if d["id"] not in acked_ids]
-
-        # --- Формируем полный контекст ---
+        # --- Формируем контекст без загрузки документов ---
+        # Документы загружаются через AJAX
         ctx.update({
-            "documents": results,
-            "acked_ids": acked_ids,
-            "next_url": next_url,
-            "prev_url": prev_url,
-            "count": count,
+            "documents": [],  # Пустой список - загрузка через JS
+            "acked_ids": set(),
             "scope": scope,
             "show_admin_controls": show_admin_controls,
             "can_manage_documents": can_manage,
