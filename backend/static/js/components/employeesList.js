@@ -15,11 +15,11 @@ export class EmployeesList {
     this.apiUrl = '/api/v1/employees/';
     this.employees = [];
     this.loading = false;
-    this.currentPage = 1;
     this.hasMore = true;
     this.nextUrl = null;
+    this.totalCount = 0;
     
-    // Параметры из URL
+    // Параметры из URL (без page - используем бесконечную прокрутку)
     const urlParams = new URLSearchParams(window.location.search);
     this.params = {
       ordering: urlParams.get('o') || 'last_name',
@@ -28,6 +28,10 @@ export class EmployeesList {
       position: urlParams.get('position') || '',
       is_active: urlParams.get('is_active') || ''
     };
+    
+    // Intersection Observer для бесконечной прокрутки
+    this.observerTarget = null;
+    this.observer = null;
   }
 
   /**
@@ -36,13 +40,66 @@ export class EmployeesList {
   async init() {
     if (!this.container) return;
     
+    // Устанавливаем hasMore в true перед первой загрузкой
+    this.hasMore = true;
+    
     try {
-      await this.loadEmployees();
-      this.render();
+      await this.loadEmployees(false); // append = false
+      this.render(false); // append = false
+      this.updateCount();
       this.setupInfiniteScroll();
     } catch (error) {
       console.error('Failed to load employees:', error);
       this.renderError();
+    }
+  }
+  
+  /**
+   * Обновление счетчика сотрудников в заголовке страницы
+   */
+  updateCount() {
+    const countElement = document.querySelector('.count-value');
+    if (countElement && this.totalCount !== undefined) {
+      countElement.textContent = this.totalCount;
+    }
+  }
+  
+  /**
+   * Настройка Intersection Observer для бесконечной прокрутки
+   */
+  setupInfiniteScroll() {
+    if (!this.observerTarget) return;
+    
+    // Создаем observer
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && this.hasMore && !this.loading) {
+            this.loadMore();
+          }
+        });
+      },
+      {
+        root: null,
+        rootMargin: '100px', // Загружаем за 100px до конца
+        threshold: 0.01
+      }
+    );
+    
+    // Наблюдаем за observer target
+    this.observer.observe(this.observerTarget);
+  }
+  
+  /**
+   * Загрузка следующей порции сотрудников
+   */
+  async loadMore() {
+    try {
+      await this.loadEmployees(true); // append = true
+      this.render(true); // append = true
+      this.updateCount();
+    } catch (error) {
+      console.error('Failed to load more employees:', error);
     }
   }
 
@@ -50,139 +107,114 @@ export class EmployeesList {
    * Загрузка сотрудников через API
    */
   async loadEmployees(append = false) {
-    if (this.loading || (!this.hasMore && append)) return;
+    // Проверяем hasMore только при подгрузке
+    if (this.loading || (append && !this.hasMore)) return;
     this.loading = true;
-
-    // Показываем loader
-    if (append) {
-      this.showLoadMoreSpinner();
-    }
-
-    const params = new URLSearchParams();
-    params.append('page', this.currentPage);
-    Object.entries(this.params).forEach(([key, value]) => {
-      if (value) params.append(key, value);
-    });
-
-    const response = await fetch(`${this.apiUrl}?${params}`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const newEmployees = data.results || data;
     
-    if (append) {
-      this.employees = [...this.employees, ...newEmployees];
-    } else {
-      this.employees = newEmployees;
-    }
-    
-    // Обновляем информацию о пагинации
-    this.nextUrl = data.next;
-    this.hasMore = !!data.next;
-    
-    this.loading = false;
-    
-    // Убираем loader
-    if (append) {
-      this.hideLoadMoreSpinner();
-    }
-  }
+    this.showLoadingSpinner();
 
-  /**
-   * Настройка бесконечной прокрутки
-   */
-  setupInfiniteScroll() {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const lastEntry = entries[0];
-        if (lastEntry.isIntersecting && this.hasMore && !this.loading) {
-          this.loadMore();
-        }
-      },
-      {
-        root: null,
-        rootMargin: '100px',
-        threshold: 0.1
+    try {
+      // Используем nextUrl если это подгрузка, иначе строим URL с параметрами
+      let url;
+      if (append && this.nextUrl) {
+        url = this.nextUrl;
+      } else {
+        const params = new URLSearchParams();
+        Object.entries(this.params).forEach(([key, value]) => {
+          if (value) params.append(key, value);
+        });
+        url = `${this.apiUrl}?${params}`;
       }
-    );
 
-    // Создаем маркер для отслеживания
-    const sentinel = document.createElement('div');
-    sentinel.id = 'empListSentinel';
-    sentinel.style.height = '1px';
-    this.container.parentElement.appendChild(sentinel);
-    
-    observer.observe(sentinel);
-    this.infiniteScrollObserver = observer;
-  }
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-  /**
-   * Загрузка следующей страницы
-   */
-  async loadMore() {
-    if (!this.hasMore || this.loading) return;
-    
-    this.currentPage++;
-    await this.loadEmployees(true);
-    this.appendNewEmployees();
-  }
-
-  /**
-   * Добавление новых сотрудников в конец списка
-   */
-  appendNewEmployees() {
-    // Находим индекс последнего отрендеренного сотрудника
-    const currentCount = this.container.querySelectorAll('.emp-row').length;
-    const newEmployees = this.employees.slice(currentCount);
-    
-    if (newEmployees.length === 0) return;
-    
-    const newItemsHtml = newEmployees.map(emp => this.createEmployeeCard(emp)).join('');
-    this.container.insertAdjacentHTML('beforeend', newItemsHtml);
-  }
-
-  /**
-   * Показать spinner загрузки
-   */
-  showLoadMoreSpinner() {
-    let spinner = document.getElementById('empListSpinner');
-    if (!spinner) {
-      spinner = document.createElement('div');
-      spinner.id = 'empListSpinner';
-      spinner.className = 'text-center py-3';
-      spinner.innerHTML = `
-        <div class="spinner-border spinner-border-sm text-primary" role="status">
-          <span class="visually-hidden">Загрузка...</span>
-        </div>
-      `;
-      this.container.parentElement.appendChild(spinner);
+      const data = await response.json();
+      const newEmployees = data.results || data;
+      
+      // Сохраняем метаданные
+      this.totalCount = data.count || newEmployees.length;
+      this.nextUrl = data.next || null;
+      this.hasMore = !!this.nextUrl;
+      
+      if (append) {
+        // Добавляем к существующим
+        this.employees = [...this.employees, ...newEmployees];
+      } else {
+        // Заменяем
+        this.employees = newEmployees;
+      }
+      
+      this.loading = false;
+      this.hideLoadingSpinner();
+    } catch (error) {
+      this.loading = false;
+      this.hideLoadingSpinner();
+      throw error;
     }
-    spinner.style.display = 'block';
   }
-
+  
   /**
-   * Скрыть spinner загрузки
+   * Показать спиннер загрузки
    */
-  hideLoadMoreSpinner() {
-    const spinner = document.getElementById('empListSpinner');
+  showLoadingSpinner() {
+    const existing = this.container.querySelector('.loading-spinner');
+    if (existing) return;
+    
+    const spinner = document.createElement('div');
+    spinner.className = 'loading-spinner text-center py-4';
+    spinner.innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Загрузка...</span>
+      </div>
+    `;
+    this.container.appendChild(spinner);
+  }
+  
+  /**
+   * Скрыть спиннер загрузки
+   */
+  hideLoadingSpinner() {
+    const spinner = this.container.querySelector('.loading-spinner');
     if (spinner) {
-      spinner.style.display = 'none';
+      spinner.remove();
     }
   }
 
   /**
    * Рендеринг списка сотрудников
    */
-  render() {
-    if (this.employees.length === 0) {
+  render(append = false) {
+    if (this.employees.length === 0 && !append) {
       this.container.innerHTML = '<div class="alert alert-info shadow-sm">Нет сотрудников.</div>';
       return;
     }
 
     const itemsHtml = this.employees.map(emp => this.createEmployeeCard(emp)).join('');
-    this.container.innerHTML = itemsHtml;
+    
+    if (append) {
+      // Удаляем observer target перед добавлением
+      if (this.observerTarget && this.observerTarget.parentNode) {
+        this.observerTarget.remove();
+      }
+      // Добавляем новые карточки
+      this.container.insertAdjacentHTML('beforeend', itemsHtml);
+      // Возвращаем observer target обратно
+      if (this.observerTarget) {
+        this.container.appendChild(this.observerTarget);
+      }
+    } else {
+      this.container.innerHTML = itemsHtml;
+      // Создаем observer target при первой загрузке
+      if (this.hasMore && !this.observerTarget) {
+        this.observerTarget = document.createElement('div');
+        this.observerTarget.className = 'load-more-trigger';
+        this.observerTarget.style.height = '1px';
+        this.container.appendChild(this.observerTarget);
+      }
+    }
   }
 
   /**
