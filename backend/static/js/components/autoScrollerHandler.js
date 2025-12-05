@@ -128,12 +128,17 @@ function initSingleScroller(wrapper, options = {}) {
   // Вычисляем точную ширину блока после рендеринга
   const blockScrollWidth = rail.scrollWidth / totalCopies;
   
+  // Точка прыжка - в середине всего контента (после половины копий)
+  // Это даст максимально плавный переход
+  const loopPoint = blockScrollWidth * Math.floor(totalCopies / 2);
+  
   let animationFrame = null;
   let paused = false;
   let resizeFrame = null;
   
   console.log('initSingleScroller: scrollStep =', scrollStep, 'originalCount =', originalCount, 'totalCopies =', totalCopies);
   console.log('initSingleScroller: blockScrollWidth =', blockScrollWidth, 'totalScrollWidth =', rail.scrollWidth);
+  console.log('initSingleScroller: loopPoint =', loopPoint, '(will jump back at this position)');
 
   /**
    * Один кадр анимации - плавный скролл.
@@ -152,13 +157,13 @@ function initSingleScroller(wrapper, options = {}) {
     // Максимальный scrollLeft (конец контента)
     const maxScrollLeft = rail.scrollWidth - wrapper.clientWidth;
     
-    // Прыгаем когда прокрутили первый блок (оригиналы)
+    // Прыгаем в середине контента для максимально незаметного перехода
     // ИЛИ когда достигли конца контейнера (защита от застревания)
-    if (wrapper.scrollLeft >= blockScrollWidth || wrapper.scrollLeft >= maxScrollLeft - 5) {
+    if (wrapper.scrollLeft >= loopPoint || wrapper.scrollLeft >= maxScrollLeft - 5) {
       const oldScrollLeft = wrapper.scrollLeft;
       wrapper.scrollLeft = 0;
       accumulatedScroll = 0;
-      console.log('animate: SEAMLESS LOOP! jumped from', oldScrollLeft, 'to 0, blockScrollWidth =', blockScrollWidth, 'maxScrollLeft =', maxScrollLeft);
+      console.log('animate: SEAMLESS LOOP! jumped from', oldScrollLeft, 'to 0, loopPoint =', loopPoint, 'maxScrollLeft =', maxScrollLeft);
     }
     
     // Накапливаем дробные пиксели
