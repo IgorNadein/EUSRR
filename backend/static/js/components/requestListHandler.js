@@ -434,6 +434,7 @@ export function initRequestListHandler(options) {
             </div>
             <div class="comments-list" data-role="list"></div>
             <form class="comment-new mt-3 request-comment-form" data-role="form" autocomplete="off">
+              <input type="hidden" name="csrfmiddlewaretoken" value="${getCsrfToken()}">
               <div class="message-field message-field--compact">
                 <div class="dropdown message-emoji">
                   <button type="button" class="btn btn-ghost btn-emoji message-icon-btn"
@@ -454,6 +455,26 @@ export function initRequestListHandler(options) {
         </div>
       </article>
     `;
+  }
+
+  /**
+   * Получает CSRF токен из cookie
+   * @returns {string} CSRF токен
+   */
+  function getCsrfToken() {
+    const name = 'csrftoken';
+    let cookieValue = '';
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
   }
 
   /**
