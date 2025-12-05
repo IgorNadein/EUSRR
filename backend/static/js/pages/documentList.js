@@ -6,6 +6,7 @@
 import { RecipientPicker } from '../components/recipientPickerHandler.js';
 import { initDocumentCrud } from '../components/documentCrudHandler.js';
 import { initDocumentAcks } from '../components/documentAcksHandler.js';
+import { initDocumentListHandler } from '../components/documentListHandler.js';
 
 /**
  * Инициализирует страницу списка документов
@@ -29,14 +30,39 @@ export function initDocumentListPage(config) {
   const accessMeta = document.querySelector('meta[name="api-access"]');
   const ACCESS = accessMeta ? accessMeta.content : '';
   const headers = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
+  
+  // Получаем ID текущего пользователя
+  const userId = parseInt(document.body.dataset.userId || '0', 10);
+  const canManage = document.body.dataset.canManageDocuments === 'true';
+  
+  // Получаем текущий scope из URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const currentScope = urlParams.get('scope') || 'mine';
 
-  console.log('Document CRUD initialization:', {
+  console.log('Document page initialization:', {
     apiListUrl,
     apiDetailBase,
     employeesApi,
     departmentsApi,
-    hasAuth: !!ACCESS
+    hasAuth: !!ACCESS,
+    userId,
+    canManage,
+    currentScope
   });
+  
+  // Инициализация списка документов (AJAX загрузка с бесконечной прокруткой)
+  const documentListHandler = initDocumentListHandler({
+    apiListUrl,
+    acknowledgeUrlTemplate: '/documents/ack/{id}/',
+    userId,
+    canManage,
+    headers
+  });
+  
+  // Устанавливаем начальный scope
+  if (currentScope && documentListHandler.setScope) {
+    documentListHandler.setScope(currentScope);
+  }
 
   // Инициализация RecipientPicker для формы создания
   const createPicker = new RecipientPicker(

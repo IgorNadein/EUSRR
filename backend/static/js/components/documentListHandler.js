@@ -31,13 +31,16 @@ export function initDocumentListHandler(options) {
   }
 
   // Текущее состояние
-  let currentScope = 'mine'; // 'mine' | 'all'
-  let currentAckStatus = ''; // '' | 'acked' | 'not_acked'
+  const urlParams = new URLSearchParams(window.location.search);
+  let currentScope = urlParams.get('scope') || 'mine'; // 'mine' | 'all'
+  let currentAckStatus = urlParams.get('ack_status') || ''; // '' | 'acked' | 'not_acked'
   let allDocuments = []; // Все загруженные документы
   let loading = false;
   let hasMore = true;
   let nextUrl = null;
   let totalCount = 0;
+  
+  console.log('documentListHandler: init with scope =', currentScope, 'ack_status =', currentAckStatus);
   
   // Intersection Observer для бесконечной прокрутки
   let observerTarget = null;
@@ -68,8 +71,15 @@ export function initDocumentListHandler(options) {
         hideLoadingSpinner();
         return [];
       } else {
-        url = apiListUrl;
-        console.log('loadDocuments: initial load', url);
+        // Формируем URL с параметрами scope
+        const params = new URLSearchParams();
+        if (currentScope === 'mine') {
+          params.append('scope', 'mine');
+        }
+        // ack_status фильтруется на клиенте, не в API
+        
+        url = `${apiListUrl}?${params}`;
+        console.log('loadDocuments: initial load', url, 'scope:', currentScope);
       }
       
       const response = await fetch(url, { headers });

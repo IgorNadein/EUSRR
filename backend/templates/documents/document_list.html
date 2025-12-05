@@ -212,6 +212,11 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+  // Передаем данные для инициализации страницы
+  document.body.dataset.userId = '{{ user.id }}';
+  document.body.dataset.canManageDocuments = '{{ can_manage_documents|yesno:"true,false" }}';
+</script>
 <script type="module">
   import { initDocumentListPage } from "{% static 'js/pages/documentList.js' %}";
 
