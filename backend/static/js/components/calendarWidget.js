@@ -741,10 +741,45 @@ export function initCalendarWidget(options = {}) {
         divider.classList.toggle('d-none', !perms.can_delete);
       }
       
-      // Позиционируем меню
-      contextMenu.style.left = x + 'px';
-      contextMenu.style.top = y + 'px';
+      // Сначала показываем меню для получения его размеров
       contextMenu.style.display = 'block';
+      contextMenu.style.visibility = 'hidden';
+      
+      // Получаем размеры меню и окна
+      const menuRect = contextMenu.getBoundingClientRect();
+      const menuWidth = menuRect.width;
+      const menuHeight = menuRect.height;
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+      
+      // Корректируем позицию по горизонтали
+      let finalX = x;
+      if (x + menuWidth > windowWidth) {
+        // Меню выходит за правый край - сдвигаем влево
+        finalX = windowWidth - menuWidth - 10; // 10px отступ от края
+      }
+      if (finalX < 10) {
+        finalX = 10; // Минимальный отступ слева
+      }
+      
+      // Корректируем позицию по вертикали
+      let finalY = y;
+      if (y + menuHeight > windowHeight) {
+        // Меню выходит за нижний край - показываем выше курсора
+        finalY = y - menuHeight;
+        // Если и сверху не помещается, прижимаем к нижнему краю
+        if (finalY < 10) {
+          finalY = windowHeight - menuHeight - 10;
+        }
+      }
+      if (finalY < 10) {
+        finalY = 10; // Минимальный отступ сверху
+      }
+      
+      // Применяем скорректированную позицию
+      contextMenu.style.left = finalX + 'px';
+      contextMenu.style.top = finalY + 'px';
+      contextMenu.style.visibility = 'visible';
     });
   }
 
