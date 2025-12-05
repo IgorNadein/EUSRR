@@ -3,98 +3,55 @@
 
 {% block title %}Мои заявления{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/common.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="container">
   <div class="row gx-0">
-     <div class="col-12">
+    <div class="col-12">
 
       {# — Шапка страницы — #}
-      <div class="section-header">
-        <i class="bi-file-earmark-text fs-2 text-primary"></i>
-        <h2 class="title mb-0">Мои заявления</h2>
-        <div class="ms-auto">
-          <a href="{% url 'requests_app:request_create' %}" class="btn btn-primary">
-            <i class="bi-plus-circle me-1"></i> Подать новое заявление
-          </a>
+      {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Мои заявления" search_id="requestFilter" search_placeholder="Поиск по типу или комментарию" create_url="requests_app:request_create" create_text="Подать новое заявление" %}
+      
+      <div class="card mb-3">
+        <div id="requestList" class="list-view card-list">
+          {# Список загружается через JavaScript из requestListHandler.js #}
+          <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Загрузка...</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {% if page.object_list %}
-        <div class="card-list">
-          {% for req in page.object_list %}
-            <article class="card">
-              <header class="card-header">
-                <div class="card-icon" style="width:48px;height:48px;">
-                  <i class="bi-file-earmark-text"></i>
-                </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
 
-                <div class="card-meta flex-grow-1">
-                  <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <div class="card-title">{{ req.get_type_display }}</div>
-                    {# — Статус — #}
-                    {% if req.status == 'pending' %}
-                      <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">На рассмотрении</span>
-                    {% elif req.status == 'approved' %}
-                      <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Одобрено</span>
-                    {% elif req.status == 'rejected' %}
-                      <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Отклонено</span>
-                    {% elif req.status == 'cancelled' %}
-                      <span class="badge bg-dark-subtle text-dark-emphasis border border-dark-subtle">Отменено</span>
-                    {% elif req.status == 'draft' %}
-                      <span class="badge bg-light text-body border">Черновик</span>
-                    {% else %}
-                      <span class="badge bg-light text-body border">Неизвестно</span>
-                    {% endif %}
-                  </div>
-                  <div class="card-subtitle mt-1">
-                    <time datetime="{{ req.created_at|date:'c' }}">{{ req.created_at|date:"d.m.Y H:i" }}</time>
-                    {% if req.date_from or req.date_to %}
-                      · Период:
-                      {{ req.date_from|date:'d.m.Y' }}
-                      {% if req.date_to %} — {{ req.date_to|date:'d.m.Y' }}{% endif %}
-                    {% endif %}
-                  </div>
-                </div>
-              </header>
+{% block extra_js %}
+<script type="module">
+  import { initRequestListHandler } from "{% static 'js/components/requestListHandler.js' %}";
 
-              <div class="card-body pt-0">
-                {% if req.comment %}
-                  <div class="small text-muted mb-2">{{ req.comment|truncatechars:220 }}</div>
-                {% endif %}
-
-                {% if req.attachment %}
-                  <a class="btn btn-ghost d-inline-flex align-items-center gap-1" href="{{ req.attachment.url }}" target="_blank">
-                    <i class="bi-paperclip"></i><span>Вложение</span>
-                  </a>
-                {% endif %}
-              </div>
-
-              <footer class="card-actions">
-                <a href="{% url 'requests_app:request_detail' req.pk %}"
-                   class="btn btn-ghost d-inline-flex align-items-center gap-1">
-                  <i class="bi-eye"></i><span>Подробнее</span>
-                </a>
-
-                <span class="ms-auto"></span>
-
-                {% if req.status == 'pending' and not req.is_final %}
-                  <a href="{% url 'requests_app:request_cancel' req.pk %}"
-                     class="btn btn-ghost d-inline-flex align-items-center gap-1">
-                    <i class="bi-x-circle"></i><span>Отозвать</span>
-                  </a>
-                {% endif %}
-              </footer>
-            </article>
-          {% endfor %}
-        </div>
-
-        {# Пагинация #}
-        <div class="mt-4">
-          {% bootstrap_pagination page %}
-        </div>
-      {% else %}
-        <div class="alert alert-info shadow-sm">У вас пока нет заявлений.</div>
-      {% endif %}
+  // Получаем токен доступа
+  const accessMeta = document.querySelector('meta[name="api-access"]');
+  const ACCESS = accessMeta ? accessMeta.content : '';
+  const headers = ACCESS ? { 'Authorization': 'Bearer ' + ACCESS } : {};
+  
+  // Инициализация списка заявлений
+  initRequestListHandler({
+    apiListUrl: '/api/v1/requests/',
+    scope: 'my',
+    userId: {{ user.id }},
+    headers
+  });
+</script>
+{% endblock %}
 
     </div>
   </div>

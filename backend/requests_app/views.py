@@ -242,13 +242,9 @@ def _get_request_for_comment_access(user, pk: int) -> Request:
 # ---------- Пользователь ----------
 @login_required
 def my_requests(request):
-    qs = BASE_REQUEST_QS.filter(employee=request.user)
-    qs, filters_ctx, errors = _apply_filters(qs, request, for_all=False)
-    if errors:
-        messages.error(request, " ".join(errors))
-    page = _paginate(qs, PAGINATE_MY, request.GET.get("page"))
+    # Упрощенный view - данные загружаются через AJAX
     return render(
-        request, "requests_app/my_requests.html", {"page": page, "filters": filters_ctx}
+        request, "requests_app/my_requests.html", {"requests": []}
     )
 
 
