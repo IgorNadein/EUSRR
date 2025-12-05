@@ -22,11 +22,11 @@ export function initRequestListHandler(options) {
     headers = {}
   } = options;
 
-  const listElement = document.getElementById('requestList');
+  const listElement = document.getElementById('reqList');
   const searchInput = document.getElementById('reqFilter');
   
   if (!listElement) {
-    console.warn('initRequestListHandler: #requestList not found');
+    console.warn('initRequestListHandler: #reqList not found');
     return { load: () => {}, destroy: () => {} };
   }
 
@@ -281,62 +281,177 @@ export function initRequestListHandler(options) {
    * @returns {string} HTML
    */
   function renderRequestRow(req) {
-    const statusClass = getStatusClass(req.status);
-    const statusText = getStatusText(req.status);
-    const detailUrl = detailUrlTemplate.replace('{id}', req.id);
+    const type = (req.type || '').toLowerCase();
+    const status = (req.status || '').toLowerCase();
+    
+    // Иконка типа
+    let typeIcon = 'bi-clipboard-check text-secondary';
+    if (type === 'vacation') typeIcon = 'bi-calendar-check text-primary';
+    else if (type === 'sick_leave') typeIcon = 'bi-capsule text-danger';
+    else if (type === 'transfer') typeIcon = 'bi-box-arrow-right text-info';
+    else if (type === 'dismissal') typeIcon = 'bi-door-open text-warning';
+    
+    // Текст типа
+    const typeText = {
+      'vacation': 'Отпуск',
+      'sick_leave': 'Больничный',
+      'transfer': 'Перевод',
+      'dismissal': 'Увольнение',
+      'other': 'Другое'
+    }[type] || req.type;
+    
+    // Класс и текст статуса
+    let statusBadgeClass = 'text-bg-light';
+    let statusText = req.status;
+    if (status === 'draft') { statusBadgeClass = 'text-bg-info'; statusText = 'Черновик'; }
+    else if (status === 'pending') { statusBadgeClass = 'text-bg-warning'; statusText = 'На рассмотр.'; }
+    else if (status === 'approved') { statusBadgeClass = 'text-bg-success'; statusText = 'Одобрено'; }
+    else if (status === 'rejected') { statusBadgeClass = 'text-bg-danger'; statusText = 'Отклонено'; }
+    else if (status === 'cancelled') { statusBadgeClass = 'text-bg-secondary'; statusText = 'Отменено'; }
+    
+    // URL для сотрудника
+    const employeeUrl = req.employee?.id === userId ? '/employees/profile/' : `/employees/${req.employee?.id}/`;
+    const employeeName = req.employee?.id === userId ? 'Вы' : (req.employee?.full_name || req.employee?.display_name || 'Сотрудник');
+    
+    // Кнопки действий
+    let actionButtons = '';
+    if (req.employee?.id !== userId && canProcess) {
+      actionButtons = `
+        <button type="button" class="btn btn-ghost btn-sm text-success"
+                data-bs-toggle="modal" data-bs-target="#reqApproveModal"
+                data-id="${req.id}" title="Одобрить">
+          <i class="bi-hand-thumbs-up"></i>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm text-danger"
+                data-bs-toggle="modal" data-bs-target="#reqRejectModal"
+                data-id="${req.id}" title="Отклонить">
+          <i class="bi-hand-thumbs-down"></i>
+        </button>
+      `;
+    } else if (req.employee?.id === userId) {
+      actionButtons = `
+        <button type="button" class="btn btn-ghost btn-sm text-primary"
+                data-bs-toggle="modal" data-bs-target="#reqEditModal"
+                data-id="${req.id}"
+                data-title="${escapeHtml(req.title || '')}"
+                data-type="${req.type || ''}"
+                data-date_from="${req.date_from || ''}"
+                data-date_to="${req.date_to || ''}"
+                data-comment="${escapeHtml(req.comment || '')}"
+                data-status="${status}" title="Изменить">
+          <i class="bi-pencil"></i>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm text-secondary"
+                data-bs-toggle="modal" data-bs-target="#reqCancelModal"
+                data-id="${req.id}" title="Отменить">
+          <i class="bi-slash-circle"></i>
+        </button>
+      `;
+    }
     
     return `
-      <article class="req-item" data-request-id="${req.id}">
-        <header class="req-header">
-          <div class="req-title-row">
-            <a href="${detailUrl}" class="req-link">
-              <i class="bi-file-earmark-text"></i>
-              <strong>${escapeHtml(req.display_title || req.title || 'Заявление')}</strong>
-            </a>
-            <span class="badge badge-${statusClass}">${statusText}</span>
+      <article class="req-row" id="req-${req.id}">
+        <div class="req-table-row">
+          <!-- Иконка типа -->
+          <div class="req-cell req-cell-icon">
+            <div class="card-icon d-flex align-items-center justify-content-center">
+              <i class="${typeIcon}"></i>
+            </div>
           </div>
           
-          <div class="req-meta">
-            <span class="req-employee">
-              <i class="bi-person"></i> ${escapeHtml(req.employee?.full_name || 'Неизвестно')}
-            </span>
-            ${req.date_from ? `
-              <span class="req-date">
-                <i class="bi-calendar3"></i> 
-                ${formatDate(req.date_from)}${req.date_to ? ' — ' + formatDate(req.date_to) : ''}
-              </span>
-            ` : ''}
-            <span class="req-created">
-              <i class="bi-clock"></i> ${formatDate(req.created_at)}
-            </span>
+          <!-- Заголовок и тип -->
+          <div class="req-cell req-cell-title">
+            <div class="req-cell-content">
+              <strong>${escapeHtml(req.title || 'Без заголовка')}</strong>
+              ${type ? `<span class="badge text-bg-light ms-1">${typeText}</span>` : ''}
+              ${req.comment ? `<div class="small text-body-secondary mt-1">${escapeHtml(req.comment.substring(0, 100))}</div>` : ''}
+            </div>
           </div>
-        </header>
-        
-        ${req.comment ? `
-          <div class="req-comment">${escapeHtml(req.comment)}</div>
-        ` : ''}
-        
+          
+          <!-- Автор -->
+          <div class="req-cell req-cell-author">
+            <div class="req-cell-content">
+              ${req.employee ? `<a href="${employeeUrl}" class="text-decoration-none">${employeeName}</a>` : ''}
+            </div>
+          </div>
+          
+          <!-- Период -->
+          <div class="req-cell req-cell-dates">
+            <div class="req-cell-content text-mono">
+              ${req.date_from || req.date_to ? `
+                ${req.date_from ? formatDate(req.date_from) : '—'}<br>
+                ${req.date_to ? formatDate(req.date_to) : '—'}
+              ` : '<span class="text-body-secondary">—</span>'}
+            </div>
+          </div>
+          
+          <!-- Статус -->
+          <div class="req-cell req-cell-status">
+            <div class="req-cell-content">
+              ${req.status ? `<span class="badge ${statusBadgeClass}">${statusText}</span>` : ''}
+            </div>
+          </div>
+          
+          <!-- Дата создания -->
+          <div class="req-cell req-cell-created">
+            <div class="req-cell-content small text-body-secondary">
+              ${req.created_at ? formatDate(req.created_at) : '<span class="text-body-secondary">—</span>'}
+            </div>
+          </div>
+          
+          <!-- Действия -->
+          <div class="req-cell req-cell-actions">
+            <div class="req-cell-content">
+              ${actionButtons}
+            </div>
+          </div>
+        </div>
+
+        <!-- Футер с комментариями -->
         <footer class="req-footer">
-          ${req.approver ? `
-            <div class="req-approver">
-              <i class="bi-person-check"></i> 
-              <span>Согласующий: ${escapeHtml(req.approver.full_name)}</span>
-            </div>
-          ` : ''}
-          
-          ${req.recipient_count > 0 ? `
-            <div class="req-recipients">
-              <i class="bi-people"></i> 
-              <span>Получатели: ${req.recipient_count}</span>
-            </div>
-          ` : ''}
-          
+          <button class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1 collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#rcoll-${req.id}"
+                  aria-controls="rcoll-${req.id}"
+                  aria-expanded="false">
+            <i class="bi-chat-dots"></i>
+            <span class="txt-open" data-role="count">${req.comments_count || 0}</span>
+            <span class="txt-close">Скрыть</span>
+          </button>
           ${req.attachment_url ? `
             <a href="${req.attachment_url}" class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1" target="_blank">
               <i class="bi-paperclip"></i><span>Вложение</span>
             </a>
           ` : ''}
         </footer>
+
+        <div id="rcoll-${req.id}" class="collapse" data-request-id="${req.id}" data-comments-collapse>
+          <div class="comments-block p-3">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <strong class="small mb-0">Комментарии</strong>
+              <div class="spinner-border spinner-border-sm text-secondary" role="status" style="display:none;"></div>
+            </div>
+            <div class="comments-list" data-role="list"></div>
+            <form class="comment-new mt-3 request-comment-form" data-role="form" autocomplete="off">
+              <div class="message-field message-field--compact">
+                <div class="dropdown message-emoji">
+                  <button type="button" class="btn btn-ghost btn-emoji message-icon-btn"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          title="Вставить смайлик">
+                    <i class="bi-emoji-smile"></i>
+                  </button>
+                  <div class="dropdown-menu dropdown-menu-start message-emoji-menu">
+                    <emoji-picker data-emoji-picker class="chat-emoji-picker"></emoji-picker>
+                  </div>
+                </div>
+                <textarea class="form-control message-input" rows="1" placeholder="Написать…" data-role="text"></textarea>
+                <button class="btn btn-primary message-send" type="submit" title="Отправить"><i class="bi-send"></i></button>
+              </div>
+            </form>
+          </div>
+        </div>
       </article>
     `;
   }

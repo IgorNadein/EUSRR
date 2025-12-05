@@ -49,214 +49,13 @@
       </div>
     </div>
     
-    {% if requests %}
-      {% for obj in requests %}
-        <article class="req-row" id="req-{{ obj.id }}">
-          <div class="req-table-row">
-            <!-- Иконка типа -->
-            <div class="req-cell req-cell-icon">
-              <div class="card-icon d-flex align-items-center justify-content-center">
-                {% with tp=obj.type|lower %}
-                  {% if tp == 'vacation' %}<i class="bi-calendar-check text-primary"></i>
-                  {% elif tp == 'sick_leave' %}<i class="bi-capsule text-danger"></i>
-                  {% elif tp == 'transfer' %}<i class="bi-box-arrow-right text-info"></i>
-                  {% elif tp == 'dismissal' %}<i class="bi-door-open text-warning"></i>
-                  {% else %}<i class="bi-clipboard-check text-secondary"></i>
-                  {% endif %}
-                {% endwith %}
-              </div>
-            </div>
-            
-            <!-- Заголовок и тип -->
-            <div class="req-cell req-cell-title">
-              <div class="req-cell-content">
-                <strong>{{ obj.title|default:"Без заголовка" }}</strong>
-                {% if obj.type %}{% with tp=obj.type|lower %}
-                  <span class="badge text-bg-light ms-1">
-                    {% if tp == 'vacation' %}Отпуск
-                    {% elif tp == 'sick_leave' %}Больничный
-                    {% elif tp == 'transfer' %}Перевод
-                    {% elif tp == 'dismissal' %}Увольнение
-                    {% elif tp == 'other' %}Другое
-                    {% else %}{{ obj.type }}{% endif %}
-                  </span>
-                {% endwith %}{% endif %}
-                {% if obj.comment %}
-                  <div class="small text-body-secondary mt-1">{{ obj.comment|truncatewords:15 }}</div>
-                {% endif %}
-              </div>
-            </div>
-            
-            <!-- Автор -->
-            <div class="req-cell req-cell-author">
-              <div class="req-cell-content">
-                {% if obj.employee %}
-                  {% if obj.employee.id == user.id %}
-                    <a href="{% url 'employees:profile' %}" class="text-decoration-none">Вы</a>
-                  {% else %}
-                    <a href="{% url 'employees:employee_detail' obj.employee.id %}" class="text-decoration-none">
-                      {{ obj.employee.full_name|default:obj.employee.display_name|default:"Сотрудник" }}
-                    </a>
-                  {% endif %}
-                {% endif %}
-              </div>
-            </div>
-            
-            <!-- Период -->
-            <div class="req-cell req-cell-dates">
-              <div class="req-cell-content text-mono">
-                {% if obj.date_from or obj.date_to %}
-                  {% if obj.date_from %}
-                    {{ obj.date_from|format_iso_date:"d.m.Y" }}<br>
-                  {% else %}
-                    —<br>
-                  {% endif %}
-                  {% if obj.date_to %}
-                    {{ obj.date_to|format_iso_date:"d.m.Y" }}
-                  {% else %}
-                    —
-                  {% endif %}
-                {% else %}
-                  <span class="text-body-secondary">—</span>
-                {% endif %}
-              </div>
-            </div>
-            
-            <!-- Статус -->
-            <div class="req-cell req-cell-status">
-              <div class="req-cell-content">
-                {% if obj.status %}{% with st=obj.status|lower %}
-                  <span class="badge
-                    {% if st == 'approved' %}text-bg-success
-                    {% elif st == 'rejected' %}text-bg-danger
-                    {% elif st == 'pending' %}text-bg-warning
-                    {% elif st == 'cancelled' %}text-bg-secondary
-                    {% elif st == 'draft' %}text-bg-info
-                    {% else %}text-bg-light{% endif %}">
-                    {% if st == 'draft' %}Черновик
-                    {% elif st == 'pending' %}На рассмотр.
-                    {% elif st == 'approved' %}Одобрено
-                    {% elif st == 'rejected' %}Отклонено
-                    {% elif st == 'cancelled' %}Отменено
-                    {% else %}{{ obj.status }}{% endif %}
-                  </span>
-                {% endwith %}{% endif %}
-              </div>
-            </div>
-            
-            <!-- Дата создания -->
-            <div class="req-cell req-cell-created">
-              <div class="req-cell-content small text-body-secondary">
-                {% if obj.created_at %}
-                  {{ obj.created_at|format_iso_date:"d.m.Y" }}
-                {% else %}
-                  <span class="text-body-secondary">—</span>
-                {% endif %}
-              </div>
-            </div>
-            
-            <!-- Действия -->
-            <div class="req-cell req-cell-actions">
-              <div class="req-cell-content">
-                {% if obj.employee.id != user.id and can_process %}
-                  <button type="button" class="btn btn-ghost btn-sm text-success"
-                          data-bs-toggle="modal" data-bs-target="#reqApproveModal"
-                          data-id="{{ obj.id }}" title="Одобрить">
-                    <i class="bi-hand-thumbs-up"></i>
-                  </button>
-                  <button type="button" class="btn btn-ghost btn-sm text-danger"
-                          data-bs-toggle="modal" data-bs-target="#reqRejectModal"
-                          data-id="{{ obj.id }}" title="Отклонить">
-                    <i class="bi-hand-thumbs-down"></i>
-                  </button>
-                {% elif obj.employee.id == user.id %}
-                  <button type="button" class="btn btn-ghost btn-sm text-primary"
-                          data-bs-toggle="modal" data-bs-target="#reqEditModal"
-                          data-id="{{ obj.id }}"
-                          data-title="{{ obj.title|default_if_none:'' }}"
-                          data-type="{{ obj.type|default_if_none:'' }}"
-                          data-date_from="{{ obj.date_from|default_if_none:'' }}"
-                          data-date_to="{{ obj.date_to|default_if_none:'' }}"
-                          data-comment="{{ obj.comment|default_if_none:'' }}"
-                          data-status="{{ obj.status|lower }}" title="Изменить">
-                    <i class="bi-pencil"></i>
-                  </button>
-                  <button type="button" class="btn btn-ghost btn-sm text-secondary"
-                          data-bs-toggle="modal" data-bs-target="#reqCancelModal"
-                          data-id="{{ obj.id }}" title="Отменить">
-                    <i class="bi-slash-circle"></i>
-                  </button>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-
-          <!-- Футер с комментариями -->
-          <footer class="req-footer">
-            <button class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target="#rcoll-{{ obj.id }}"
-                    aria-controls="rcoll-{{ obj.id }}"
-                    aria-expanded="false">
-              <i class="bi-chat-dots"></i>
-              <span class="txt-open" data-role="count">{{ obj.comments_count|default:0 }}</span>
-              <span class="txt-close">Скрыть</span>
-            </button>
-            {% if obj.attachment %}
-              <a href="{% absolute_url obj.attachment.url %}" class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1" target="_blank">
-                <i class="bi-paperclip"></i><span>Вложение</span>
-              </a>
-            {% endif %}
-          </footer>
-
-          <div id="rcoll-{{ obj.id }}" class="collapse" data-request-id="{{ obj.id }}" data-comments-collapse>
-            <div class="comments-block p-3">
-              <div class="d-flex align-items-center gap-2 mb-3">
-                <strong class="small mb-0">Комментарии</strong>
-                <div class="spinner-border spinner-border-sm text-secondary" role="status" style="display:none;"></div>
-              </div>
-              <div class="comments-list" data-role="list"></div>
-              <form class="comment-new mt-3 request-comment-form" data-role="form" autocomplete="off">
-                {% csrf_token %}
-                <div class="message-field message-field--compact">
-                  <!-- Кнопка выбора эмодзи -->
-                  <div class="dropdown message-emoji">
-                    <button type="button" class="btn btn-ghost btn-emoji message-icon-btn"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
-                            title="Вставить смайлик">
-                      <i class="bi-emoji-smile"></i>
-                    </button>
-                    <div class="dropdown-menu dropdown-menu-start message-emoji-menu">
-                      <emoji-picker data-emoji-picker class="chat-emoji-picker"></emoji-picker>
-                    </div>
-                  </div>
-                  <textarea class="form-control message-input" rows="1" placeholder="Написать…" data-role="text"></textarea>
-                  <button class="btn btn-primary message-send" type="submit" title="Отправить"><i class="bi-send"></i></button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </article>
-      {% endfor %}
-    {% else %}
-      <div class="p-4 text-center text-body-secondary">Нет заявлений.</div>
-    {% endif %}
-  </div>
-
-  {# Пагинация по next/prev ссылкам из API (если есть) #}
-  {% if next_url or prev_url %}
-    <div class="d-flex justify-content-between align-items-center mt-3">
-      <a class="btn btn-outline-secondary {% if not prev_url %}disabled{% endif %}" href="{{ prev_url|default:'#' }}">
-        <i class="bi-arrow-left"></i> Назад
-      </a>
-      <span class="text-body-secondary small">Всего: {{ count|default:'—' }}</span>
-      <a class="btn btn-outline-secondary {% if not next_url %}disabled{% endif %}" href="{{ next_url|default:'#' }}">
-        Вперёд <i class="bi-arrow-right"></i>
-      </a>
+    {# Список загружается через JavaScript из requestListHandler.js #}
+    <div class="text-center py-4" id="reqListLoading">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Загрузка...</span>
+      </div>
     </div>
-  {% endif %}
+  </div>
 
 {# ===== Modals ===== #}
 
@@ -558,6 +357,11 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+  // Передаем данные для инициализации страницы
+  document.body.dataset.userId = '{{ user.id }}';
+  document.body.dataset.canProcess = '{{ can_process|yesno:"true,false" }}';
+</script>
 <script type="module">
   import { initRequestListPage } from "{% static 'js/pages/requestList.js' %}";
 
@@ -566,7 +370,8 @@
     apiDetailBase: "{% url 'api:v1:request-list' %}",
     commentsUrlTemplate: "/api/v1/requests/0/comments/",
     addCommentUrlTemplate: "/api/v1/requests/0/comments/",
-    autoShowComments: {% if comments_for %}true{% else %}false{% endif %}
+    autoShowComments: {% if comments_for %}true{% else %}false{% endif %},
+    useAjaxList: true  // Включаем AJAX режим для списка
   });
 </script>
 <script src="{% static 'js/components/requestComments.js' %}"></script>
