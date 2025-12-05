@@ -4,6 +4,33 @@ from datetime import datetime
 register = template.Library()
 
 
+@register.simple_tag(takes_context=True)
+def absolute_url(context, relative_url):
+    """
+    Преобразует относительный URL в абсолютный с доменом.
+    
+    Args:
+        context: контекст шаблона (автоматически передаётся)
+        relative_url: относительный путь (например, /media/file.pdf)
+    
+    Returns:
+        Полный URL с доменом (например, https://domain.com/media/file.pdf)
+    """
+    if not relative_url:
+        return ""
+    
+    # Если уже абсолютный URL - возвращаем как есть
+    if relative_url.startswith(('http://', 'https://')):
+        return relative_url
+    
+    request = context.get('request')
+    if request:
+        return request.build_absolute_uri(relative_url)
+    
+    # Fallback - возвращаем относительный URL
+    return relative_url
+
+
 @register.filter
 def in_list(value, csv):
     items = [s.strip() for s in str(csv).split(",") if s.strip()]

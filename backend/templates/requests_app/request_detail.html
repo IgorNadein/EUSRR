@@ -80,7 +80,7 @@
 
           {% if request_obj.attachment %}
             <a class="btn btn-ghost d-inline-flex align-items-center gap-1"
-               href="{{ request_obj.attachment.url }}" target="_blank" rel="noopener">
+               href="{% absolute_url request_obj.attachment.url %}" target="_blank" rel="noopener">
               <i class="bi-paperclip"></i><span>Вложение</span>
             </a>
           {% endif %}

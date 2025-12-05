@@ -204,7 +204,7 @@
               <span class="txt-close">Скрыть</span>
             </button>
             {% if obj.attachment %}
-              <a href="{{ obj.attachment }}" class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1" target="_blank">
+              <a href="{% absolute_url obj.attachment.url %}" class="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1" target="_blank">
                 <i class="bi-paperclip"></i><span>Вложение</span>
               </a>
             {% endif %}
