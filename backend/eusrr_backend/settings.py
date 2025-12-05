@@ -80,7 +80,6 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "communications.context_processors.chat_unread_total",
                 "eusrr_backend.context_processors.branding",
-                "core.context_processors.media_domain",
             ],
         },
     },
@@ -157,13 +156,7 @@ PHONENUMBER_DEFAULT_REGION = "RU"
 
 # Медиа файлы
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
-# Используем полный URL для медиа на продакшене
-USE_HTTPS = os.getenv("USE_HTTPS", "False").lower() == "true"
-DOMAIN = os.getenv("DOMAIN", "127.0.0.1:9000")
-if USE_HTTPS:
-    MEDIA_URL = f"https://{DOMAIN}/media/"
-else:
-    MEDIA_URL = "/media/"  # относительный URL для локальной разработки
+MEDIA_URL = "/media/"
 
 # -----------------------------------------------------------------------------
 # ЛОГИРОВАНИЕ
@@ -294,7 +287,6 @@ SIMPLE_JWT = {
 # Автообновление JWT токенов: за сколько минут до истечения обновлять
 JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
 
 # -----------------------------------------------------------------------------
 # АУТЕНТИФИКАЦИОННЫЕ БЭКЕНДЫ

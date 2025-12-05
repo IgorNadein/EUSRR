@@ -11,7 +11,6 @@ from employees.models import (Department, DepartmentPermission, DepartmentRole,
 from eusrr_backend.auth_backends import PHONE_FIELD as DETECTED_PHONE_FIELD
 from rest_framework import serializers
 
-from ..serializers import Base64ImageField
 from employees.utils import _normalize_phone
 
 Employee = get_user_model()
@@ -54,7 +53,7 @@ class RegisterSerializer(serializers.Serializer):
     whatsapp = serializers.CharField(required=False, allow_blank=True, default="")
     wechat = serializers.CharField(required=False, allow_blank=True, default="")
 
-    avatar = Base64ImageField(required=True)
+    avatar = serializers.ImageField(required=True)
     patronymic = serializers.CharField(required=False, allow_blank=True, default="")
 
     gender = serializers.ChoiceField(
@@ -268,7 +267,7 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
 class EmployeeSerializer(serializers.ModelSerializer):
     """Полная версия сотрудника для собственных эндпоинтов /employees/."""
 
-    avatar = Base64ImageField(required=False, allow_null=True)
+    avatar = serializers.ImageField(required=False, allow_null=True)
     actions = EmployeeActionSerializer(many=True, read_only=True)
 
     # навыки: читаем красиво, пишем ids
@@ -419,7 +418,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
 class EmployeeBriefSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
-    avatar = Base64ImageField(read_only=True)
+    avatar = serializers.ImageField(read_only=True)
     full_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -492,7 +491,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     email = serializers.EmailField(read_only=True)
     phone_number = serializers.CharField(read_only=True)
-    avatar = Base64ImageField(read_only=True)
+    avatar = serializers.ImageField(read_only=True)
     position = PositionBriefSerializer(read_only=True)
     departments = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()

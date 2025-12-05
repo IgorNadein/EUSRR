@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
 from feed.models import Comment, Post, PostLike
+from ..utils import build_media_url
 
 Employee = get_user_model()
 
@@ -28,14 +29,8 @@ class AuthorMiniSerializer(serializers.ModelSerializer):
     
     def get_avatar(self, obj):
         """Возвращает полный URL для аватара"""
-        if not obj.avatar:
-            return None
         request = self.context.get('request')
-        if request and hasattr(obj.avatar, 'url'):
-            return request.build_absolute_uri(obj.avatar.url)
-        if hasattr(obj.avatar, 'url'):
-            return obj.avatar.url
-        return str(obj.avatar)
+        return build_media_url(obj.avatar, request)
 
 
 class CommentMiniSerializer(serializers.ModelSerializer):
@@ -104,23 +99,13 @@ class PostListSerializer(serializers.ModelSerializer):
 
     def get_image(self, obj):
         """Возвращает полный URL для изображения"""
-        if not obj.image:
-            return None
         request = self.context.get('request')
-        if request and hasattr(obj.image, 'url'):
-            return request.build_absolute_uri(obj.image.url)
-        return obj.image.url if hasattr(obj.image, 'url') else str(obj.image)
+        return build_media_url(obj.image, request)
     
     def get_attachment(self, obj):
         """Возвращает полный URL для вложения"""
-        if not obj.attachment:
-            return None
         request = self.context.get('request')
-        if request and hasattr(obj.attachment, 'url'):
-            return request.build_absolute_uri(obj.attachment.url)
-        if hasattr(obj.attachment, 'url'):
-            return obj.attachment.url
-        return str(obj.attachment)
+        return build_media_url(obj.attachment, request)
 
     def get_last_comment(self, obj):
         # Берём готовую мапу из контекста, собранную во viewset.list()

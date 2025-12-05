@@ -17,8 +17,21 @@ class ApiConfig:
     login_url_name: str = "auth_front:login"  # куда редиректить, если токены протухли
 
 
-def load_config() -> ApiConfig:
-    base = getattr(settings, "API_BASE_URL", "http://localhost:8000/api")
+def load_config(request=None) -> ApiConfig:
+    """
+    Загружает конфигурацию API.
+    Если передан request, base_url формируется динамически на основе домена запроса.
+    Иначе используется настройка API_BASE_URL из settings.
+    """
+    if request:
+        # Динамическое формирование base_url на основе текущего домена
+        scheme = 'https' if request.is_secure() else 'http'
+        host = request.get_host()
+        base = f"{scheme}://{host}/api"
+    else:
+        # Fallback на статическую настройку (для фоновых задач, команд и т.д.)
+        base = getattr(settings, "API_BASE_URL", "http://localhost:9000/api")
+    
     return ApiConfig(
         base_url=base.rstrip("/"),
         token_obtain_path=getattr(settings, "API_TOKEN_OBTAIN_PATH", "/auth/token/"),
@@ -57,7 +70,7 @@ class ApiClient:
 
     def __init__(self, request, config: Optional[ApiConfig] = None):
         self.request = request
-        self.cfg = config or load_config()
+        self.cfg = config or load_config(request)
         self.session = requests.Session()
         self.access = request.session.get(SESSION_KEY_ACCESS)
         self.refresh = request.session.get(SESSION_KEY_REFRESH)
