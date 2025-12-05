@@ -1,13 +1,28 @@
 {% load static %}
 {# === JavaScript для страницы детального просмотра сотрудника === #}
 
+<script src="{% static 'js/components/postDetailModal.js' %}"></script>
+<script src="{% static 'js/components/feedLikes.js' %}"></script>
+<script src="{% static 'js/components/feedComments.js' %}"></script>
+
 <script type="module">
   import { initSkillsManager } from '{% static "js/components/skillsManager.js" %}';
   import { initDeptRoleEditor } from '{% static "js/components/deptRoleEditor.js" %}';
   import { initEmployeeForm } from '{% static "js/components/employeeFormHandler.js" %}';
   import { smoothScrollTo } from '{% static "js/utils/scroll.js" %}';
+  import { initEmployeeProfile } from '{% static "js/components/employeeProfile.js" %}';
 
   document.addEventListener('DOMContentLoaded', () => {
+    // 0. Загрузка данных профиля через AJAX (аватар и посты с правильными URL)
+    const employeeId = '{{ emp.id }}';
+    if (employeeId) {
+      initEmployeeProfile(employeeId, {
+        avatarContainer: '#employeeAvatar',
+        nameContainer: '#employeeName',
+        postsContainer: '#employeePosts'
+      });
+    }
+
     // 1. Обработчик формы редактирования профиля
     const employeeForm = initEmployeeForm();
     console.log('[employee_detail_scripts] employeeForm initialized:', employeeForm);

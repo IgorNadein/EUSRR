@@ -28,7 +28,7 @@
           <div class="p-3 text-center">
 
             <!-- Avatar -->
-            <div class="ava-wrap mb-3">
+            <div class="ava-wrap mb-3" id="employeeAvatar">
               {% if emp.avatar %}
                 <img src="{{ emp.avatar }}"
                      alt="Аватар {{ emp.last_name }} {{ emp.first_name }}"
@@ -43,7 +43,7 @@
 
             <!-- Name + edit button -->
             <div class="d-flex align-items-center justify-content-center gap-2 mb-1">
-              <div class="ios-name">
+              <div class="ios-name" id="employeeName">
                 {{ emp.last_name }} {{ emp.first_name }}{% if emp.patronymic %} {{ emp.patronymic }}{% endif %}
               </div>
               {% if can_edit %}
@@ -412,7 +412,8 @@
               <i class="bi-activity"></i>
               <div class="ios-section-title mb-0">Активность</div>
             </div>
-            <div>
+            <div id="employeePosts">
+              {# Посты загружаются через JavaScript из employeeProfile.js #}
               {% if posts %}
                 {% include "feed/_feed_cards.html" with items=posts  %}
               {% else %}
@@ -424,9 +425,16 @@
       </div>
     </div>
   </div>
+
+<!-- Модальное окно для просмотра публикации -->
+{% include "feed/components/modal_post_detail.html" %}
 {% endblock %}
 
 {% block extra_js %}
 {# === JavaScript логика === #}
 {% include "employees/components/employee_detail_scripts.html" %}
+
+<!-- Emoji Picker Library -->
+<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
 {% endblock %}
+
