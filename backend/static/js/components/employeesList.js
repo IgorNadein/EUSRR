@@ -351,7 +351,7 @@ export class EmployeesList {
     }
 
     return `
-      <a href="/communications/chats/private/${emp.id}/"
+      <a href="/communications/chats/start/${emp.id}/"
          class="btn btn-ghost action-btn" title="Чат">
         <i class="bi-chat-dots"></i><span class="d-none d-sm-inline ms-1">Чат</span>
       </a>
