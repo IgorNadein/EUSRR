@@ -242,10 +242,8 @@ def _get_request_for_comment_access(user, pk: int) -> Request:
 # ---------- Пользователь ----------
 @login_required
 def my_requests(request):
-    # Упрощенный view - данные загружаются через AJAX
-    return render(
-        request, "requests_app/my_requests.html", {"requests": []}
-    )
+    # Редирект на новую страницу заявлений
+    return redirect("requests:request_list")
 
 
 @login_required
@@ -266,7 +264,7 @@ def request_create(request):
             obj.employee = request.user
             obj.save()
             messages.success(request, "Заявление отправлено!")
-            return redirect("requests_app:my_requests")
+            return redirect("requests:request_list")
         messages.error(request, "Исправьте ошибки в форме.")
     else:
         form = RequestForm()
@@ -280,18 +278,18 @@ def request_cancel(request, pk):
 
     if req.status == Request.STATUS_CANCELLED:
         messages.info(request, "Заявление уже отменено.")
-        return redirect("requests_app:my_requests")
+        return redirect("requests:request_list")
 
     if req.is_final and req.status != Request.STATUS_CANCELLED:
         messages.error(
             request, "Нельзя отозвать заявление, по которому уже принято решение."
         )
-        return redirect("requests_app:my_requests")
+        return redirect("requests:request_list")
 
     if request.method == "POST":
         req.cancel()
         messages.success(request, "Заявление отменено.")
-        return redirect("requests_app:my_requests")
+        return redirect("requests:request_list")
 
     return render(
         request, "requests_app/request_confirm_cancel.html", {"request_obj": req}
@@ -387,7 +385,7 @@ def request_process(request, pk):
             if not status_changed and not soft_updates:
                 messages.info(request, "Изменений не обнаружено.")
 
-            return redirect("requests_app:all_requests")
+            return redirect("requests:request_list")
 
     # GET
     req = get_object_or_404(allowed_qs.prefetch_related(COMMENTS_PREFETCH), pk=pk)
