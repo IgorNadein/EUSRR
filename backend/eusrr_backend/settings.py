@@ -146,6 +146,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "employees.Employee"
 
 API_LOGIN_URL_NAME = "auth_front:login"
+# Внутренний URL для API клиента (для запросов view -> API внутри сервера)
+# Используем локальный адрес для избежания проблем с SSL
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000/api")
 LOGIN_URL = "auth_front:login"
 LOGIN_REDIRECT_URL = "/"
 REGISTRATION_AUTO_LOGIN = True

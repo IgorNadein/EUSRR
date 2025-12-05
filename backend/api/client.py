@@ -20,17 +20,12 @@ class ApiConfig:
 def load_config(request=None) -> ApiConfig:
     """
     Загружает конфигурацию API.
-    Если передан request, base_url формируется динамически на основе домена запроса.
-    Иначе используется настройка API_BASE_URL из settings.
+    Для внутренних запросов (API -> API) используем локальный адрес,
+    чтобы избежать проблем с SSL сертификатами.
     """
-    if request:
-        # Динамическое формирование base_url на основе текущего домена
-        scheme = 'https' if request.is_secure() else 'http'
-        host = request.get_host()
-        base = f"{scheme}://{host}/api"
-    else:
-        # Fallback на статическую настройку (для фоновых задач, команд и т.д.)
-        base = getattr(settings, "API_BASE_URL", "http://localhost:9000/api")
+    # Всегда используем локальный адрес для внутренних запросов API к самому себе
+    # Это избегает проблем с SSL и быстрее работает
+    base = getattr(settings, "API_BASE_URL", "http://127.0.0.1:8000/api")
     
     return ApiConfig(
         base_url=base.rstrip("/"),
