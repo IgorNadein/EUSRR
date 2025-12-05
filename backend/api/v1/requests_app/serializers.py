@@ -74,7 +74,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
     is_final = serializers.BooleanField(read_only=True)
     
     # URL для вложенного файла
-    attachment_url = serializers.FileField(source="attachment", read_only=True)
+    attachment_url = serializers.SerializerMethodField()
     
     # Новые поля для получателей
     departments = serializers.PrimaryKeyRelatedField(
@@ -161,6 +161,16 @@ class RequestReadSerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated:
             return False
         return obj.is_recipient(user)
+    
+    def get_attachment_url(self, obj):
+        """Возвращает полный URL к прикрепленному файлу"""
+        if not obj.attachment:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.attachment.url)
+        # Fallback на относительный URL если нет request
+        return obj.attachment.url
 
 
 class RequestWriteSerializer(serializers.ModelSerializer):
