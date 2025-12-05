@@ -49,18 +49,12 @@
 <script src="{% static 'js/components/feedComments.js' %}"></script>
 
 <script type="module">
-  import { initAutoScroller } from "{% static 'js/components/autoScrollerHandler.js' %}";
   import { initCreatePostModal } from "{% static 'js/components/createPostModal.js' %}";
   import { FeedList } from '{% static "js/components/feedList.js" %}';
   import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
   import { initNewEmployeesScroller } from '{% static "js/components/newEmployeesScroller.js" %}';
 
   document.addEventListener('DOMContentLoaded', () => {
-    initAutoScroller({ 
-      selector: '.js-join-scroller',
-      speed: 0.5  // пикселей за кадр (примерно 30px/сек)
-    });
-    
     // Инициализация модала создания публикации
     const createModal = initCreatePostModal({
       apiUrl: '{% url "api:v1:posts-list" %}'
@@ -73,7 +67,7 @@
       params: { type: 'company' }
     });
     
-    // 🆕 Загрузка новых сотрудников через AJAX
+    // 🆕 Загрузка новых сотрудников через AJAX (автоскролл инициализируется внутри)
     initNewEmployeesScroller('newEmployeesContainer');
     
     // Обновляем ленту после создания поста

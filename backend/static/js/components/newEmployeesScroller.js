@@ -62,6 +62,29 @@ export class NewEmployeesScroller {
     const scrollerHtml = this.createScrollerHtml(employees);
     this.container.innerHTML = scrollerHtml;
     this.container.style.display = 'block';
+    
+    // Инициализируем автоскролл после рендеринга
+    this.initAutoScroll();
+  }
+
+  /**
+   * Инициализация автоскролла для созданного скроллера
+   */
+  async initAutoScroll() {
+    try {
+      // Динамический импорт модуля автоскролла
+      const { initAutoScroller } = await import('/static/js/components/autoScrollerHandler.js');
+      
+      // Небольшая задержка для гарантии, что DOM обновился
+      setTimeout(() => {
+        initAutoScroller({
+          selector: '.js-join-scroller',
+          speed: 0.5
+        });
+      }, 100);
+    } catch (error) {
+      console.warn('Failed to initialize auto-scroller:', error);
+    }
   }
 
   /**
