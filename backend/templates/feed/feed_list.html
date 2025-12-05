@@ -41,19 +41,7 @@
                        class="join-ava text-decoration-none"
                        title="{{ emp_name }}">
                       {% if ava %}
-                        {% if ava.url %}
-                          {% if ava.url|slice:":7" == "/media/" %}
-                            <img src="{{ MEDIA_URL_DYNAMIC }}{{ ava.url|slice:"7:" }}" alt="">
-                          {% else %}
-                            <img src="{{ ava.url }}" alt="">
-                          {% endif %}
-                        {% else %}
-                          {% if ava|slice:":7" == "/media/" %}
-                            <img src="{{ MEDIA_URL_DYNAMIC }}{{ ava|slice:"7:" }}" alt="">
-                          {% else %}
-                            <img src="{{ ava }}" alt="">
-                          {% endif %}
-                        {% endif %}
+                        <img src="{{ ava.url|default:ava }}" alt="" loading="lazy">
                       {% else %}
                         <i class="bi-person" aria-hidden="true"></i>
                         <span class="visually-hidden">{{ emp_name }}</span>

@@ -8,14 +8,13 @@ from rest_framework import serializers
 
 from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
 from feed.models import Comment, Post, PostLike
-from ..serializers import Base64ImageField
 
 Employee = get_user_model()
 
 
 class AuthorMiniSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
-    avatar = Base64ImageField(read_only=True)
+    avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -26,6 +25,17 @@ class AuthorMiniSerializer(serializers.ModelSerializer):
         ln = (obj.last_name or "").strip()
         nm = f"{fn} {ln}".strip()
         return nm
+    
+    def get_avatar(self, obj):
+        """Возвращает полный URL для аватара"""
+        if not obj.avatar:
+            return None
+        request = self.context.get('request')
+        if request and hasattr(obj.avatar, 'url'):
+            return request.build_absolute_uri(obj.avatar.url)
+        if hasattr(obj.avatar, 'url'):
+            return obj.avatar.url
+        return str(obj.avatar)
 
 
 class CommentMiniSerializer(serializers.ModelSerializer):
@@ -54,6 +64,10 @@ class PostListSerializer(serializers.ModelSerializer):
     # для ссылок на отдел
     department_id = serializers.IntegerField(read_only=True)
     last_comment = serializers.SerializerMethodField()
+    
+    # Переопределяем поля для полных URL
+    image = serializers.SerializerMethodField()
+    attachment = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
@@ -87,6 +101,26 @@ class PostListSerializer(serializers.ModelSerializer):
             "department_id",
             "is_liked",
         )
+
+    def get_image(self, obj):
+        """Возвращает полный URL для изображения"""
+        if not obj.image:
+            return None
+        request = self.context.get('request')
+        if request and hasattr(obj.image, 'url'):
+            return request.build_absolute_uri(obj.image.url)
+        return obj.image.url if hasattr(obj.image, 'url') else str(obj.image)
+    
+    def get_attachment(self, obj):
+        """Возвращает полный URL для вложения"""
+        if not obj.attachment:
+            return None
+        request = self.context.get('request')
+        if request and hasattr(obj.attachment, 'url'):
+            return request.build_absolute_uri(obj.attachment.url)
+        if hasattr(obj.attachment, 'url'):
+            return obj.attachment.url
+        return str(obj.attachment)
 
     def get_last_comment(self, obj):
         # Берём готовую мапу из контекста, собранную во viewset.list()
