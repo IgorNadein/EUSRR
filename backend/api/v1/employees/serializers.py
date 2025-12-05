@@ -11,6 +11,7 @@ from employees.models import (Department, DepartmentPermission, DepartmentRole,
 from eusrr_backend.auth_backends import PHONE_FIELD as DETECTED_PHONE_FIELD
 from rest_framework import serializers
 
+from api.v1.serializers import Base64ImageField
 from employees.utils import _normalize_phone
 
 Employee = get_user_model()
@@ -53,7 +54,7 @@ class RegisterSerializer(serializers.Serializer):
     whatsapp = serializers.CharField(required=False, allow_blank=True, default="")
     wechat = serializers.CharField(required=False, allow_blank=True, default="")
 
-    avatar = serializers.ImageField(required=True)
+    avatar = Base64ImageField(required=True)
     patronymic = serializers.CharField(required=False, allow_blank=True, default="")
 
     gender = serializers.ChoiceField(
