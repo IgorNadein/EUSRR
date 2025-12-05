@@ -42,9 +42,17 @@
                        title="{{ emp_name }}">
                       {% if ava %}
                         {% if ava.url %}
-                          <img src="{{ ava.url }}" alt="">
+                          {% if ava.url|slice:":7" == "/media/" %}
+                            <img src="{{ MEDIA_URL_DYNAMIC }}{{ ava.url|slice:"7:" }}" alt="">
+                          {% else %}
+                            <img src="{{ ava.url }}" alt="">
+                          {% endif %}
                         {% else %}
-                          <img src="{{ ava }}" alt="">
+                          {% if ava|slice:":7" == "/media/" %}
+                            <img src="{{ MEDIA_URL_DYNAMIC }}{{ ava|slice:"7:" }}" alt="">
+                          {% else %}
+                            <img src="{{ ava }}" alt="">
+                          {% endif %}
                         {% endif %}
                       {% else %}
                         <i class="bi-person" aria-hidden="true"></i>

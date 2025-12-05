@@ -80,6 +80,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "communications.context_processors.chat_unread_total",
                 "eusrr_backend.context_processors.branding",
+                "core.context_processors.media_domain",
             ],
         },
     },

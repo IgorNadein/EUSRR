@@ -13,7 +13,13 @@
           {% if a %}
             {% firstof a.avatar as ava_url %}
             {% if ava_url %}
-              <img src="{{ ava_url }}" alt="">
+              {% if ava_url|slice:":7" == "/media/" %}
+                <img src="{{ MEDIA_URL_DYNAMIC }}{{ ava_url|slice:"7:" }}" alt="">
+              {% elif ava_url|slice:":1" == "/" %}
+                <img src="{{ request.scheme }}://{{ request.get_host }}{{ ava_url }}" alt="">
+              {% else %}
+                <img src="{{ ava_url }}" alt="">
+              {% endif %}
             {% else %}
               <i class="bi-person"></i>
             {% endif %}
@@ -67,7 +73,13 @@
       {% if img_url %}
         <div class="feed-img">
           {% if post_id %}<a href="#" data-post-link data-post-id="{{ post_id }}" class="stretched-link"></a>{% endif %}
-          <img src="{{ img_url }}" alt="{{ post.title|default:'Публикация' }}">
+          {% if img_url|slice:":7" == "/media/" %}
+            <img src="{{ MEDIA_URL_DYNAMIC }}{{ img_url|slice:"7:" }}" alt="{{ post.title|default:'Публикация' }}" loading="lazy" decoding="async">
+          {% elif img_url|slice:":1" == "/" %}
+            <img src="{{ request.scheme }}://{{ request.get_host }}{{ img_url }}" alt="{{ post.title|default:'Публикация' }}" loading="lazy" decoding="async">
+          {% else %}
+            <img src="{{ img_url }}" alt="{{ post.title|default:'Публикация' }}" loading="lazy" decoding="async">
+          {% endif %}
         </div>
       {% endif %}
     {% endif %}
