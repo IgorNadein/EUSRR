@@ -1,10 +1,4 @@
-{# Мобильная версия календаря - offcanvas + плавающая кнопка #}
-<button class="btn btn-primary calendar-fab d-lg-none" type="button"
-        data-bs-toggle="offcanvas" data-bs-target="#rightbarOffcanvas"
-        aria-controls="rightbarOffcanvas" aria-label="Календарь">
-  <i class="bi-calendar-event"></i>
-</button>
-
+{# Мобильная версия календаря - offcanvas без плавающей кнопки #}
 <div class="offcanvas offcanvas-end d-lg-none" id="rightbarOffcanvas" tabindex="-1"
      data-bs-scroll="true" data-dept-id="{{ dept_ids|default:'' }}"
      style="--bs-offcanvas-width: min(92vw, 420px);">

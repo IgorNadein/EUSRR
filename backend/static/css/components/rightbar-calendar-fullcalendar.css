@@ -273,7 +273,8 @@
   flex: 0 0 auto;
 }
 
-.calendar-fab {
+/* Calendar FAB removed - now using navbar button */
+/* .calendar-fab {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
@@ -282,7 +283,8 @@
   height: 52px;
   border-radius: 9999px;
   box-shadow: 0 8px 24px rgba(0,0,0,.18);
-}
+} */
+
 
 /* ─────────────────────────────────────────────────────────────
    COLOR PICKER (PALETTE)

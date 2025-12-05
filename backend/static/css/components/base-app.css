@@ -214,9 +214,9 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   MOBILE FAB
+   MOBILE FAB (REMOVED - now using navbar button)
 ────────────────────────────────────────────────────────────── */
-.calendar-fab {
+/* .calendar-fab {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
@@ -225,7 +225,8 @@ body {
   height: 52px;
   border-radius: 9999px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
-}
+} */
+
 
 /* ─────────────────────────────────────────────────────────────
    BUTTONS & GHOST BUTTONS
