@@ -73,6 +73,9 @@ class RequestReadSerializer(serializers.ModelSerializer):
     display_title = serializers.CharField(read_only=True)
     is_final = serializers.BooleanField(read_only=True)
     
+    # URL для вложенного файла
+    attachment_url = serializers.FileField(source="attachment", read_only=True)
+    
     # Новые поля для получателей
     departments = serializers.PrimaryKeyRelatedField(
         many=True, read_only=True
@@ -100,6 +103,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "comment",
             "status",
             "attachment",
+            "attachment_url",  # Полный URL к файлу
             "created_at",
             "updated_at",
             "decided_at",
@@ -122,6 +126,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "decided_at",
             "display_title",
             "is_final",
+            "attachment_url",
             "recipients",
             "cc_users",
             "recipient_count",
