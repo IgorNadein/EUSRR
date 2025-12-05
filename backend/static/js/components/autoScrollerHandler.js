@@ -86,9 +86,16 @@ function initSingleScroller(wrapper, options = {}) {
   const originalScrollWidth = rail.scrollWidth;
   const minScrollWidth = wrapper.clientWidth * 3; // Минимум 3 экрана контента
   
+  console.log('initSingleScroller: BEFORE cloning - originalChildren.length =', originalChildren.length);
+  console.log('initSingleScroller: BEFORE cloning - originalScrollWidth =', originalScrollWidth);
+  console.log('initSingleScroller: BEFORE cloning - wrapper.clientWidth =', wrapper.clientWidth);
+  console.log('initSingleScroller: BEFORE cloning - minScrollWidth =', minScrollWidth);
+  
   // Вычисляем сколько копий нужно создать
   let copiesNeeded = Math.ceil(minScrollWidth / originalScrollWidth);
   copiesNeeded = Math.max(2, copiesNeeded); // Минимум 2 копии (оригинал + 1 клон)
+  
+  console.log('initSingleScroller: copiesNeeded =', copiesNeeded);
   
   // Создаем копии
   const allClones = [];
@@ -99,6 +106,8 @@ function initSingleScroller(wrapper, options = {}) {
   }
   
   console.log('initSingleScroller: created', copiesNeeded, 'copies,', allClones.length, 'total cloned items');
+  console.log('initSingleScroller: AFTER cloning - rail.children.length =', rail.children.length);
+  console.log('initSingleScroller: AFTER cloning - rail.scrollWidth =', rail.scrollWidth);
 
   // Пересчитываем overflow после клонирования
   const hasOverflowAfterClone = rail.scrollWidth > wrapper.clientWidth + 4;
@@ -114,11 +123,17 @@ function initSingleScroller(wrapper, options = {}) {
   // Состояние
   let scrollStep = computeScrollStep(rail);
   const originalCount = originalChildren.length;
+  const totalCopies = copiesNeeded + 1; // +1 потому что есть оригиналы + копии
+  
+  // Вычисляем точную ширину блока после рендеринга
+  const blockScrollWidth = rail.scrollWidth / totalCopies;
+  
   let animationFrame = null;
   let paused = false;
   let resizeFrame = null;
   
-  console.log('initSingleScroller: scrollStep =', scrollStep, 'originalCount =', originalCount);
+  console.log('initSingleScroller: scrollStep =', scrollStep, 'originalCount =', originalCount, 'totalCopies =', totalCopies);
+  console.log('initSingleScroller: blockScrollWidth =', blockScrollWidth, 'totalScrollWidth =', rail.scrollWidth);
 
   /**
    * Один кадр анимации - плавный скролл.
@@ -134,13 +149,16 @@ function initSingleScroller(wrapper, options = {}) {
     
     frameCount++;
     
-    const maxScroll = scrollStep * originalCount;
+    // Максимальный scrollLeft (конец контента)
+    const maxScrollLeft = rail.scrollWidth - wrapper.clientWidth;
     
-    // Если достигли конца первой копии - прыгаем в начало
-    if (wrapper.scrollLeft >= maxScroll - 2) {
+    // Прыгаем когда прокрутили первый блок (оригиналы)
+    // ИЛИ когда достигли конца контейнера (защита от застревания)
+    if (wrapper.scrollLeft >= blockScrollWidth || wrapper.scrollLeft >= maxScrollLeft - 5) {
+      const oldScrollLeft = wrapper.scrollLeft;
       wrapper.scrollLeft = 0;
       accumulatedScroll = 0;
-      console.log('animate: reset to start, maxScroll =', maxScroll);
+      console.log('animate: SEAMLESS LOOP! jumped from', oldScrollLeft, 'to 0, blockScrollWidth =', blockScrollWidth, 'maxScrollLeft =', maxScrollLeft);
     }
     
     // Накапливаем дробные пиксели
