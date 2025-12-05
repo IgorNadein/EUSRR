@@ -94,6 +94,13 @@ export class EmployeesList {
    * Загрузка следующей порции сотрудников
    */
   async loadMore() {
+    console.log('loadMore: triggered', {
+      hasMore: this.hasMore,
+      loading: this.loading,
+      nextUrl: this.nextUrl,
+      currentCount: this.employees.length
+    });
+    
     try {
       await this.loadEmployees(true); // append = true
       this.render(true); // append = true
@@ -108,7 +115,10 @@ export class EmployeesList {
    */
   async loadEmployees(append = false) {
     // Проверяем hasMore только при подгрузке
-    if (this.loading || (append && !this.hasMore)) return;
+    if (this.loading || (append && !this.hasMore)) {
+      console.log('loadEmployees: skipped', { loading: this.loading, append, hasMore: this.hasMore });
+      return;
+    }
     this.loading = true;
     
     this.showLoadingSpinner();
@@ -118,12 +128,20 @@ export class EmployeesList {
       let url;
       if (append && this.nextUrl) {
         url = this.nextUrl;
+        console.log('loadEmployees: using nextUrl', url);
+      } else if (append && !this.nextUrl) {
+        // При подгрузке без nextUrl - это ошибка
+        console.warn('loadEmployees: append=true but no nextUrl, stopping');
+        this.loading = false;
+        this.hideLoadingSpinner();
+        return;
       } else {
         const params = new URLSearchParams();
         Object.entries(this.params).forEach(([key, value]) => {
           if (value) params.append(key, value);
         });
         url = `${this.apiUrl}?${params}`;
+        console.log('loadEmployees: initial load', url);
       }
 
       const response = await fetch(url);
@@ -134,6 +152,13 @@ export class EmployeesList {
       const data = await response.json();
       const newEmployees = data.results || data;
       
+      console.log('loadEmployees: received', {
+        newCount: newEmployees.length,
+        totalCount: data.count,
+        hasNext: !!data.next,
+        currentEmployees: this.employees.length
+      });
+      
       // Сохраняем метаданные
       this.totalCount = data.count || newEmployees.length;
       this.nextUrl = data.next || null;
@@ -142,9 +167,11 @@ export class EmployeesList {
       if (append) {
         // Добавляем к существующим
         this.employees = [...this.employees, ...newEmployees];
+        console.log('loadEmployees: appended, total now:', this.employees.length);
       } else {
         // Заменяем
         this.employees = newEmployees;
+        console.log('loadEmployees: replaced, total now:', this.employees.length);
       }
       
       this.loading = false;
