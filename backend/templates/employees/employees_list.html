@@ -22,6 +22,7 @@
       
       <div class="card mb-3">
         <div id="empList" class="list-view card-list">
+          {# Список загружается через JavaScript из employeesList.js #}
           {% if employees %}
             {% for emp in employees %}
             <article class="emp-row list-row"
@@ -129,20 +130,31 @@
 <script type="module">
   import { ListFilter, createDataAttrMatcher } from '{% static "js/components/listFilter.js" %}';
   import { initCreateEmployeeModal } from '{% static "js/components/createEmployeeModal.js" %}';
+  import { initEmployeesList } from '{% static "js/components/employeesList.js" %}';
   
-  // Инициализация фильтра списка
-  new ListFilter({
-    listSelector: '#empList',
-    itemSelector: '.emp-row',
-    searchInputSelector: '#empFilter',
-    clearButtonSelector: '.ios-search-clear',
-    matchFn: createDataAttrMatcher(['name', 'depts']),
-    debounceMs: 300
-  });
-  
-  // Инициализация модала создания сотрудника
-  initCreateEmployeeModal({
-    submitUrl: '{% url "employees:employee_create_modal" %}'
+  document.addEventListener('DOMContentLoaded', () => {
+    // Передаем ID текущего пользователя в глобальную переменную
+    window.currentUserId = {{ user.id|default:'null' }};
+    
+    // Инициализация списка сотрудников через AJAX
+    const employeesList = initEmployeesList({
+      containerId: 'empList'
+    });
+    
+    // Инициализация фильтра списка (работает с data-атрибутами)
+    new ListFilter({
+      listSelector: '#empList',
+      itemSelector: '.emp-row',
+      searchInputSelector: '#empFilter',
+      clearButtonSelector: '.ios-search-clear',
+      matchFn: createDataAttrMatcher(['name', 'depts']),
+      debounceMs: 300
+    });
+    
+    // Инициализация модала создания сотрудника
+    initCreateEmployeeModal({
+      submitUrl: '{% url "employees:employee_create_modal" %}'
+    });
   });
 </script>
 {% endblock %}
