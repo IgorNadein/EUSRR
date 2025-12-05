@@ -44,8 +44,8 @@ export class EmployeesList {
     this.hasMore = true;
     
     try {
-      await this.loadEmployees(false); // append = false
-      this.render(false); // append = false
+      const employees = await this.loadEmployees(false); // append = false
+      this.render(employees, false); // передаем загруженные записи
       this.updateCount();
       this.setupInfiniteScroll();
     } catch (error) {
@@ -102,8 +102,8 @@ export class EmployeesList {
     });
     
     try {
-      await this.loadEmployees(true); // append = true
-      this.render(true); // append = true
+      const newEmployees = await this.loadEmployees(true); // append = true
+      this.render(newEmployees, true); // передаем только новые записи
       this.updateCount();
     } catch (error) {
       console.error('Failed to load more employees:', error);
@@ -176,6 +176,9 @@ export class EmployeesList {
       
       this.loading = false;
       this.hideLoadingSpinner();
+      
+      // Возвращаем только новые записи для рендеринга
+      return newEmployees;
     } catch (error) {
       this.loading = false;
       this.hideLoadingSpinner();
@@ -212,14 +215,24 @@ export class EmployeesList {
 
   /**
    * Рендеринг списка сотрудников
+   * @param {Array} employees - массив сотрудников для рендеринга
+   * @param {boolean} append - добавить к существующим или заменить
    */
-  render(append = false) {
-    if (this.employees.length === 0 && !append) {
-      this.container.innerHTML = '<div class="alert alert-info shadow-sm">Нет сотрудников.</div>';
+  render(employees, append = false) {
+    if (!employees || employees.length === 0) {
+      if (!append) {
+        this.container.innerHTML = '<div class="alert alert-info shadow-sm">Нет сотрудников.</div>';
+      }
       return;
     }
 
-    const itemsHtml = this.employees.map(emp => this.createEmployeeCard(emp)).join('');
+    console.log('render: rendering', {
+      count: employees.length,
+      append,
+      totalInMemory: this.employees.length
+    });
+
+    const itemsHtml = employees.map(emp => this.createEmployeeCard(emp)).join('');
     
     if (append) {
       // Удаляем observer target перед добавлением
@@ -228,12 +241,14 @@ export class EmployeesList {
       }
       // Добавляем новые карточки
       this.container.insertAdjacentHTML('beforeend', itemsHtml);
+      console.log('render: appended to DOM');
       // Возвращаем observer target обратно
       if (this.observerTarget) {
         this.container.appendChild(this.observerTarget);
       }
     } else {
       this.container.innerHTML = itemsHtml;
+      console.log('render: replaced DOM');
       // Создаем observer target при первой загрузке
       if (this.hasMore && !this.observerTarget) {
         this.observerTarget = document.createElement('div');
