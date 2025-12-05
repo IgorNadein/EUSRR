@@ -78,15 +78,15 @@
 
         <div class="card-body pt-0">
           {# Комментарий сотрудника (если есть) #}
-          <div class="small text-muted mb-2">
+          <div class="mb-2">
             <span class="text-secondary">Комментарий сотрудника:</span>
             {{ request_obj.comment|default:"—" }}
           </div>
 
           {# Вложение сотрудника (если есть) #}
-          {% if request_obj.attachment %}
+          {% if request_obj.attachment_url %}
             <a class="btn btn-ghost d-inline-flex align-items-center gap-1"
-               href="{% absolute_url request_obj.attachment.url %}" target="_blank"
+               href="{{ request_obj.attachment_url }}" target="_blank"
                rel="noopener noreferrer" download>
               <i class="bi-paperclip"></i><span>Вложение сотрудника</span>
             </a>

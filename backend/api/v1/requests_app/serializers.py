@@ -74,7 +74,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
     is_final = serializers.BooleanField(read_only=True)
     
     # URL для вложенного файла (аналогично file_url в DocumentReadSerializer)
-    attachment_url = serializers.FileField(source="attachment", read_only=True, use_url=True)
+    attachment_url = serializers.FileField(source="attachment", read_only=True)
     
     # Новые поля для получателей
     departments = serializers.PrimaryKeyRelatedField(

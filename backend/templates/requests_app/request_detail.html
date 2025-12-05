@@ -78,9 +78,9 @@
             <div>{{ request_obj.comment|default:"—" }}</div>
           </div>
 
-          {% if request_obj.attachment %}
+          {% if request_obj.attachment_url %}
             <a class="btn btn-ghost d-inline-flex align-items-center gap-1"
-               href="{% absolute_url request_obj.attachment.url %}" target="_blank" rel="noopener">
+               href="{{ request_obj.attachment_url }}" target="_blank" rel="noopener">
               <i class="bi-paperclip"></i><span>Вложение</span>
             </a>
           {% endif %}

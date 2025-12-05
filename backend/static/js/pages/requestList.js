@@ -6,6 +6,7 @@
 import { initRequestModalHandler } from '../components/requestModalHandler.js';
 import { initRequestCommentsHandler } from '../components/requestCommentsHandler.js';
 import { initRequestCrudHandler } from '../components/requestCrudHandler.js';
+import { initRequestListHandler } from '../components/requestListHandler.js';
 
 /**
  * Инициализирует страницу списка заявлений
@@ -15,6 +16,7 @@ import { initRequestCrudHandler } from '../components/requestCrudHandler.js';
  * @param {string} config.commentsUrlTemplate - Шаблон URL для получения комментариев
  * @param {string} config.addCommentUrlTemplate - Шаблон URL для добавления комментария
  * @param {boolean} [config.autoShowComments=false] - Автоматически показать комментарии
+ * @param {boolean} [config.useAjaxList=false] - Использовать AJAX для загрузки списка
  */
 export function initRequestListPage(config) {
   const {
@@ -22,7 +24,8 @@ export function initRequestListPage(config) {
     apiDetailBase,
     commentsUrlTemplate,
     addCommentUrlTemplate,
-    autoShowComments = false
+    autoShowComments = false,
+    useAjaxList = false
   } = config;
 
   // Получаем токен доступа
@@ -52,6 +55,43 @@ export function initRequestListPage(config) {
   
   if (ACCESS) {
     headers['Authorization'] = 'Bearer ' + ACCESS;
+  }
+
+  // Если включен AJAX режим - инициализируем обработчик списка
+  if (useAjaxList) {
+    const userId = parseInt(document.body.dataset.userId || '0', 10);
+    const canProcess = document.body.dataset.canProcess === 'true';
+    
+    console.log('Request list AJAX mode:', {
+      apiListUrl,
+      userId,
+      canProcess
+    });
+    
+    // Инициализация списка заявлений (AJAX загрузка с бесконечной прокруткой)
+    const requestListHandler = initRequestListHandler({
+      apiListUrl,
+      detailUrlTemplate: '/requests/{id}/',
+      userId,
+      canProcess,
+      headers
+    });
+    
+    // Обработка переключения фильтров через URL параметры
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentView = urlParams.get('view') || '';
+    const currentType = urlParams.get('type') || '';
+    const currentStatus = urlParams.get('status') || '';
+    
+    if (currentView && requestListHandler.setView) {
+      requestListHandler.setView(currentView);
+    }
+    if (currentType && requestListHandler.setType) {
+      requestListHandler.setType(currentType);
+    }
+    if (currentStatus && requestListHandler.setStatus) {
+      requestListHandler.setStatus(currentStatus);
+    }
   }
 
   // Инициализация обработчиков модальных окон
