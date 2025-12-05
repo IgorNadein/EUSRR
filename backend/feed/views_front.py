@@ -133,18 +133,11 @@ def _post_back_url(post: dict, user) -> str:
 
 def feed_list(request):
     """
-    Лента компании - посты загружаются через API на клиенте.
-    Блок «новые сотрудники» загружается с сервера.
+    Лента компании - посты и новые сотрудники загружаются через API на клиенте.
     """
-    # Загружаем только новых сотрудников с сервера
-    new_employees = _api_list_new_employees(request, limit=10)
-    
     return render(
         request,
         "feed/feed_list.html",
-        {
-            "new_employees": new_employees,
-        },
     )
 
 

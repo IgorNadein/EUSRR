@@ -365,10 +365,11 @@ export class FeedList {
     collapseDiv.id = `ccoll-${post.id}`;
     collapseDiv.className = 'collapse';
     
-    // Заглушка - показываем кнопку "Показать все комментарии"
+    // Контейнер с padding
     const contentDiv = document.createElement('div');
     contentDiv.className = 'px-3 pt-2';
     
+    // Кнопка "Показать все комментарии"
     const linkContainer = document.createElement('div');
     linkContainer.className = 'd-flex justify-content-between align-items-center mb-2';
     
@@ -381,9 +382,139 @@ export class FeedList {
     
     linkContainer.appendChild(showAllLink);
     contentDiv.appendChild(linkContainer);
+    
+    // Последний комментарий (если есть)
+    if (post.last_comment) {
+      const commentDiv = this.createLastComment(post.last_comment);
+      contentDiv.appendChild(commentDiv);
+    }
+    
     collapseDiv.appendChild(contentDiv);
     
+    // Форма быстрого комментария
+    const form = this.createQuickCommentForm(post.id);
+    collapseDiv.appendChild(form);
+    
     return collapseDiv;
+  }
+  
+  /**
+   * Создание последнего комментария
+   */
+  createLastComment(comment) {
+    const commentDiv = document.createElement('div');
+    commentDiv.className = 'comment-item';
+    
+    // Header с автором и датой
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'comment-header';
+    
+    // Автор
+    if (comment.author?.id) {
+      const authorLink = document.createElement('a');
+      authorLink.href = `/employees/${comment.author.id}/`;
+      authorLink.className = 'comment-author';
+      authorLink.textContent = comment.author.full_name || 'Сотрудник';
+      headerDiv.appendChild(authorLink);
+    } else {
+      const authorSpan = document.createElement('span');
+      authorSpan.className = 'comment-author';
+      authorSpan.textContent = comment.author?.full_name || 'Сотрудник';
+      headerDiv.appendChild(authorSpan);
+    }
+    
+    // Разделитель
+    const separator = document.createElement('span');
+    separator.className = 'comment-separator';
+    separator.textContent = '·';
+    headerDiv.appendChild(separator);
+    
+    // Дата
+    const timeEl = document.createElement('time');
+    timeEl.className = 'comment-date';
+    timeEl.textContent = comment.created_at_display || comment.created_at || '';
+    headerDiv.appendChild(timeEl);
+    
+    commentDiv.appendChild(headerDiv);
+    
+    // Тело комментария (обрезанное до 220 символов)
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'comment-body';
+    let text = comment.text || '';
+    if (text.length > 220) {
+      text = text.substring(0, 217) + '...';
+    }
+    bodyDiv.textContent = text;
+    commentDiv.appendChild(bodyDiv);
+    
+    return commentDiv;
+  }
+  
+  /**
+   * Создание формы быстрого комментария
+   */
+  createQuickCommentForm(postId) {
+    const form = document.createElement('form');
+    form.className = 'px-3 pb-3 pt-2 comment-form-quick';
+    form.dataset.postId = postId;
+    
+    // Message field container
+    const messageField = document.createElement('div');
+    messageField.className = 'message-field message-field--compact';
+    
+    // Emoji picker dropdown
+    const emojiDropdown = document.createElement('div');
+    emojiDropdown.className = 'dropdown message-emoji';
+    
+    const emojiBtn = document.createElement('button');
+    emojiBtn.type = 'button';
+    emojiBtn.className = 'btn btn-ghost btn-emoji message-icon-btn';
+    emojiBtn.dataset.bsToggle = 'dropdown';
+    emojiBtn.setAttribute('aria-expanded', 'false');
+    emojiBtn.title = 'Вставить смайлик';
+    
+    const emojiIcon = document.createElement('i');
+    emojiIcon.className = 'bi-emoji-smile';
+    emojiBtn.appendChild(emojiIcon);
+    
+    const emojiMenu = document.createElement('div');
+    emojiMenu.className = 'dropdown-menu dropdown-menu-start message-emoji-menu';
+    
+    const emojiPicker = document.createElement('emoji-picker');
+    emojiPicker.dataset.emojiPicker = '';
+    emojiPicker.className = 'chat-emoji-picker';
+    emojiMenu.appendChild(emojiPicker);
+    
+    emojiDropdown.appendChild(emojiBtn);
+    emojiDropdown.appendChild(emojiMenu);
+    
+    messageField.appendChild(emojiDropdown);
+    
+    // Textarea
+    const textarea = document.createElement('textarea');
+    textarea.name = 'text';
+    textarea.className = 'form-control message-input';
+    textarea.rows = 1;
+    textarea.placeholder = 'Оставить комментарий…';
+    textarea.required = true;
+    
+    messageField.appendChild(textarea);
+    
+    // Send button
+    const sendBtn = document.createElement('button');
+    sendBtn.className = 'btn btn-primary message-send';
+    sendBtn.type = 'submit';
+    sendBtn.title = 'Отправить';
+    
+    const sendIcon = document.createElement('i');
+    sendIcon.className = 'bi-send';
+    sendBtn.appendChild(sendIcon);
+    
+    messageField.appendChild(sendBtn);
+    
+    form.appendChild(messageField);
+    
+    return form;
   }
   
   /**
