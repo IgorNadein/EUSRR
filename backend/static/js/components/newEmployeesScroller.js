@@ -73,7 +73,9 @@ export class NewEmployeesScroller {
   async initAutoScroll() {
     try {
       // Динамический импорт модуля автоскролла
-      const { initAutoScroller } = await import('/static/js/components/autoScrollerHandler.js');
+      // Добавляем timestamp для обхода кеша браузера
+      const timestamp = Date.now();
+      const { initAutoScroller } = await import(`/static/js/components/autoScrollerHandler.js?v=${timestamp}`);
       
       // Небольшая задержка для гарантии, что DOM обновился
       setTimeout(() => {
