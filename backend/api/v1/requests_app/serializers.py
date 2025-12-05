@@ -87,6 +87,8 @@ class RequestReadSerializer(serializers.ModelSerializer):
     recipient_count = serializers.SerializerMethodField()
     cc_count = serializers.SerializerMethodField()
     is_recipient = serializers.SerializerMethodField()
+    # Используем аннотированное поле из queryset
+    comments_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Request
@@ -116,6 +118,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "recipient_count",
             "cc_count",
             "is_recipient",
+            "comments_count",
         )
         read_only_fields = (
             "employee",
@@ -132,6 +135,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
             "recipient_count",
             "cc_count",
             "is_recipient",
+            "comments_count",
         )
     
     def get_recipient_count(self, obj):

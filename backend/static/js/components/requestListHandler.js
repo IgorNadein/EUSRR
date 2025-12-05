@@ -22,11 +22,11 @@ export function initRequestListHandler(options) {
     headers = {}
   } = options;
 
-  const listElement = document.getElementById('reqList');
+  const listElement = document.getElementById('reqListContent');
   const searchInput = document.getElementById('reqFilter');
   
   if (!listElement) {
-    console.warn('initRequestListHandler: #reqList not found');
+    console.warn('initRequestListHandler: #reqListContent not found');
     return { load: () => {}, destroy: () => {} };
   }
 
@@ -157,6 +157,11 @@ export function initRequestListHandler(options) {
     const spinner = listElement.querySelector('.loading-spinner');
     if (spinner) {
       spinner.remove();
+    }
+    // Удаляем начальный спиннер из шаблона
+    const initialSpinner = document.getElementById('reqListLoading');
+    if (initialSpinner) {
+      initialSpinner.remove();
     }
   }
   

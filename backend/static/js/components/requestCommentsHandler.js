@@ -153,8 +153,11 @@ export function initRequestCommentsHandler(options) {
   async function handleCommentSubmit(e) {
     const form = e.target;
     
-    // Проверяем, что это форма комментария внутри блока заявки
-    if (!form.matches(`${collapseSelector} form[data-role=form]`)) return;
+    // Проверяем, что это форма комментария
+    if (!form.matches('form[data-role=form]')) return;
+    
+    // Проверяем, что форма находится внутри блока заявки
+    if (!form.closest(collapseSelector)) return;
     
     e.preventDefault();
     e.stopPropagation();

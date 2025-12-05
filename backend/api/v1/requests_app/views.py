@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional  # было: Any, Dict, List, Type
 
-from django.db.models import Q, QuerySet
+from django.db.models import Q, QuerySet, Count
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
 from employees.models import EmployeeDepartment, Department  # добавлен Department
 from requests_app.models import Request as EmployeeRequest
@@ -59,7 +59,9 @@ class RequestViewSet(viewsets.ModelViewSet):
 
     queryset = EmployeeRequest.objects.select_related(
         "employee", "approver", "department"
-    ).all()
+    ).annotate(
+        comments_count=Count('comments')
+    ).order_by('-created_at')
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     # Используем глобальную пагинацию из settings (PageNumberPagination, PAGE_SIZE=20)
 
