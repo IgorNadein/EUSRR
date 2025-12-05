@@ -137,6 +137,12 @@ export class FeedList {
     const footer = this.createPostFooter(post);
     article.appendChild(footer);
     
+    // Collapse block for comments (пустой пока)
+    if (post.comments_count > 0) {
+      const collapseDiv = this.createCommentsCollapse(post);
+      article.appendChild(collapseDiv);
+    }
+    
     return article;
   }
   
@@ -276,44 +282,108 @@ export class FeedList {
    */
   createPostFooter(post) {
     const footer = document.createElement('footer');
-    footer.className = 'feed-ft';
+    footer.className = 'card-actions border-0';
     
-    const statsDiv = document.createElement('div');
-    statsDiv.className = 'feed-stats';
-    
-    // Likes
-    const likeBtn = document.createElement('button');
-    likeBtn.className = 'btn btn-link p-0';
-    likeBtn.dataset.action = 'like';
-    likeBtn.dataset.postId = post.id;
-    
-    const likeIcon = document.createElement('i');
-    likeIcon.className = post.is_liked ? 'bi-heart-fill text-danger' : 'bi-heart';
-    
-    likeBtn.appendChild(likeIcon);
-    likeBtn.appendChild(document.createTextNode(` ${post.likes_count || 0}`));
-    
-    statsDiv.appendChild(likeBtn);
-    
-    // Comments
+    // Comments button (collapse toggle)
     if (post.comments_count > 0) {
       const commentBtn = document.createElement('button');
-      commentBtn.className = 'btn btn-link p-0 ms-3';
-      commentBtn.dataset.postLink = '';
-      commentBtn.dataset.postId = post.id;
+      commentBtn.className = 'btn btn-ghost d-inline-flex align-items-center gap-1';
+      commentBtn.type = 'button';
+      commentBtn.dataset.bsToggle = 'collapse';
+      commentBtn.dataset.bsTarget = `#ccoll-${post.id}`;
+      commentBtn.setAttribute('aria-controls', `ccoll-${post.id}`);
+      commentBtn.setAttribute('aria-expanded', 'false');
       
       const commentIcon = document.createElement('i');
       commentIcon.className = 'bi-chat-dots';
       
-      commentBtn.appendChild(commentIcon);
-      commentBtn.appendChild(document.createTextNode(` ${post.comments_count}`));
+      const commentCount = document.createElement('span');
+      commentCount.className = 'txt-open';
+      commentCount.textContent = post.comments_count || 0;
       
-      statsDiv.appendChild(commentBtn);
+      const hideText = document.createElement('span');
+      hideText.className = 'txt-close';
+      hideText.textContent = 'Скрыть';
+      
+      commentBtn.appendChild(commentIcon);
+      commentBtn.appendChild(commentCount);
+      commentBtn.appendChild(hideText);
+      
+      footer.appendChild(commentBtn);
     }
     
-    footer.appendChild(statsDiv);
+    // Attachment button
+    if (post.attachment) {
+      const attachBtn = document.createElement('a');
+      attachBtn.href = post.attachment;
+      attachBtn.className = 'btn btn-ghost d-inline-flex align-items-center gap-1';
+      
+      const attachIcon = document.createElement('i');
+      attachIcon.className = 'bi-paperclip';
+      
+      const attachText = document.createElement('span');
+      attachText.textContent = 'Вложение';
+      
+      attachBtn.appendChild(attachIcon);
+      attachBtn.appendChild(attachText);
+      
+      footer.appendChild(attachBtn);
+    }
+    
+    // Spacer - pushes like button to the right
+    const spacer = document.createElement('span');
+    spacer.className = 'ms-auto';
+    footer.appendChild(spacer);
+    
+    // Like button - на правой стороне
+    const likeBtn = document.createElement('button');
+    likeBtn.type = 'button';
+    likeBtn.className = 'btn btn-ghost d-inline-flex align-items-center gap-1 like-btn-card';
+    likeBtn.dataset.postId = post.id;
+    likeBtn.dataset.liked = post.is_liked ? 'true' : 'false';
+    
+    const likeIcon = document.createElement('i');
+    likeIcon.className = post.is_liked ? 'bi-heart-fill text-danger' : 'bi-heart';
+    
+    const likeCount = document.createElement('span');
+    likeCount.className = 'like-count';
+    likeCount.textContent = post.likes_count || 0;
+    
+    likeBtn.appendChild(likeIcon);
+    likeBtn.appendChild(likeCount);
+    
+    footer.appendChild(likeBtn);
     
     return footer;
+  }
+  
+  /**
+   * Создание collapse блока с комментариями
+   */
+  createCommentsCollapse(post) {
+    const collapseDiv = document.createElement('div');
+    collapseDiv.id = `ccoll-${post.id}`;
+    collapseDiv.className = 'collapse';
+    
+    // Заглушка - показываем кнопку "Показать все комментарии"
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'px-3 pt-2';
+    
+    const linkContainer = document.createElement('div');
+    linkContainer.className = 'd-flex justify-content-between align-items-center mb-2';
+    
+    const showAllLink = document.createElement('a');
+    showAllLink.className = 'small text-primary text-decoration-none';
+    showAllLink.href = '#';
+    showAllLink.dataset.postLink = '';
+    showAllLink.dataset.postId = post.id;
+    showAllLink.textContent = `Показать все комментарии записи (${post.comments_count})`;
+    
+    linkContainer.appendChild(showAllLink);
+    contentDiv.appendChild(linkContainer);
+    collapseDiv.appendChild(contentDiv);
+    
+    return collapseDiv;
   }
   
   /**
