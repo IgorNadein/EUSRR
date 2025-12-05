@@ -206,46 +206,37 @@ def employee_list(request):
     Список сотрудников.
     Если ?format=json — вернуть JSON (для автокомплита):
       /employees/list/?format=json&q=...&exclude=1,2,3&limit=12
+    
+    Для HTML страницы - данные загружаются через JavaScript на клиенте.
     """
     api = get_api_client(request)
 
-    page = request.GET.get("page") or 1
-    ordering = request.GET.get("o") or "last_name"
-    q = (request.GET.get("q") or "").strip()
-    department = request.GET.get("department")
-    position = request.GET.get("position")
-    is_active = request.GET.get("is_active")
-
-    params = {"page": page, "ordering": ordering}
-    if q:
-        params["search"] = q
-    if department:
-        params["department"] = department
-    if position:
-        params["position"] = position
-    if is_active:
-        params["is_active"] = is_active
-
-    resp = api.get("v1/employees/", params=params)
-    if not resp.ok:
-        if request.GET.get("format") == "json":
-            return JsonResponse({"results": [], "count": 0}, status=resp.status or 500)
-        messages.error(request, f"Ошибка API ({resp.status})")
-        return render(
-            request,
-            "employees/employees_list.html",
-            {"employees": [], "q": q, "o": ordering, "page": page},
-        )
-
-    payload = resp.json or {}
-    items, count, next_url, prev_url = _extract_items(payload)
-    
-    # Преобразуем API URLs в frontend URLs
-    next_url = _convert_api_url_to_frontend(next_url, request.path)
-    prev_url = _convert_api_url_to_frontend(prev_url, request.path)
-
     # JSON-ветка для автокомплита
     if request.GET.get("format") == "json":
+        page = request.GET.get("page") or 1
+        ordering = request.GET.get("o") or "last_name"
+        q = (request.GET.get("q") or "").strip()
+        department = request.GET.get("department")
+        position = request.GET.get("position")
+        is_active = request.GET.get("is_active")
+
+        params = {"page": page, "ordering": ordering}
+        if q:
+            params["search"] = q
+        if department:
+            params["department"] = department
+        if position:
+            params["position"] = position
+        if is_active:
+            params["is_active"] = is_active
+
+        resp = api.get("v1/employees/", params=params)
+        if not resp.ok:
+            return JsonResponse({"results": [], "count": 0}, status=resp.status or 500)
+
+        payload = resp.json or {}
+        items, count, next_url, prev_url = _extract_items(payload)
+        
         # exclude: "1,2,3"
         raw_ex = (request.GET.get("exclude") or "").strip()
         try:
@@ -268,34 +259,18 @@ def employee_list(request):
         items = [e for e in items if _id(e) not in ex_ids][:limit]
         return JsonResponse({"results": items, "count": len(items)})
 
-    # HTML-ветка (как было)
-    # Проверяем права на создание сотрудников
-    create_url = None
-    has_perm = (
-        request.user.has_perm('employees.add_employee')
-        or request.user.is_staff
-        or request.user.is_superuser
-    )
-    if has_perm:
-        from django.urls import reverse
-        create_url = reverse('employees:employee_create')
-    
-    # Если фильтрация по отделу, меняем label
-    count_label = "Всего:"
-    if department:
-        count_label = "В отделе:"
-    
-    # Получаем списки для фильтров
+    # HTML-ветка - НЕ загружаем данные сотрудников, они загрузятся через JavaScript
+    # Получаем только справочники для фильтров
     departments_list = []
     positions_list = []
     try:
-        # Получаем все отделы
+        # Получаем все отделы для фильтров
         dept_resp = api.get("v1/departments/", params={"page_size": 1000})
         if dept_resp.ok:
             dept_data = dept_resp.json or {}
             departments_list = dept_data.get("results", [])
         
-        # Получаем все должности
+        # Получаем все должности для фильтров
         pos_resp = api.get("v1/positions/", params={"page_size": 1000})
         if pos_resp.ok:
             pos_data = pos_resp.json or {}
@@ -304,15 +279,7 @@ def employee_list(request):
         pass
     
     context = {
-        "employees": items,
-        "count": count,
-        "q": q,
-        "o": ordering,
-        "page": page,
-        "next_url": next_url,
-        "prev_url": prev_url,
-        "create_url": create_url,
-        "count_label": count_label,
+        "employees": [],  # Пустой список - данные загрузятся через JS
         "departments_list": departments_list,
         "positions_list": positions_list,
     }
