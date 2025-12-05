@@ -32,27 +32,158 @@ export function initDocumentListHandler(options) {
 
   // Текущее состояние
   let currentScope = 'mine'; // 'mine' | 'all'
-  let currentPage = 1;
   let currentAckStatus = ''; // '' | 'acked' | 'not_acked'
+  let allDocuments = []; // Все загруженные документы
+  let loading = false;
+  let hasMore = true;
+  let nextUrl = null;
+  let totalCount = 0;
+  
+  // Intersection Observer для бесконечной прокрутки
+  let observerTarget = null;
+  let observer = null;
 
   /**
    * Загружает документы с API
+   * @param {boolean} append - Добавить к существующим или заменить
+   * @returns {Promise<Array>} Массив новых документов
    */
-  async function loadDocuments() {
+  async function loadDocuments(append = false) {
+    if (loading || (append && !hasMore)) {
+      console.log('loadDocuments: skipped', { loading, append, hasMore });
+      return [];
+    }
+    
+    loading = true;
+    showLoadingSpinner();
+    
     try {
-      const params = new URLSearchParams({ page: currentPage });
-      const response = await fetch(`${apiListUrl}?${params}`, { headers });
+      let url;
+      if (append && nextUrl) {
+        url = nextUrl;
+        console.log('loadDocuments: using nextUrl', url);
+      } else if (append && !nextUrl) {
+        console.warn('loadDocuments: append=true but no nextUrl, stopping');
+        loading = false;
+        hideLoadingSpinner();
+        return [];
+      } else {
+        url = apiListUrl;
+        console.log('loadDocuments: initial load', url);
+      }
+      
+      const response = await fetch(url, { headers });
       
       if (!response.ok) {
         throw new Error('HTTP ' + response.status);
       }
 
       const data = await response.json();
-      renderDocuments(data);
+      const newDocuments = data.results || [];
+      
+      console.log('loadDocuments: received', {
+        newCount: newDocuments.length,
+        totalCount: data.count,
+        hasNext: !!data.next,
+        currentDocuments: allDocuments.length
+      });
+      
+      // Сохраняем метаданные
+      totalCount = data.count || newDocuments.length;
+      nextUrl = data.next || null;
+      hasMore = !!nextUrl;
+      
+      if (append) {
+        allDocuments = [...allDocuments, ...newDocuments];
+        console.log('loadDocuments: appended, total now:', allDocuments.length);
+      } else {
+        allDocuments = newDocuments;
+        console.log('loadDocuments: replaced, total now:', allDocuments.length);
+      }
+      
+      loading = false;
+      hideLoadingSpinner();
+      
+      return newDocuments;
     } catch (error) {
       console.error('Ошибка загрузки документов:', error);
+      loading = false;
+      hideLoadingSpinner();
       listElement.innerHTML = '<div class="p-4 text-center text-danger">Не удалось загрузить документы</div>';
+      return [];
     }
+  }
+  
+  /**
+   * Показать спиннер загрузки
+   */
+  function showLoadingSpinner() {
+    const existing = listElement.querySelector('.loading-spinner');
+    if (existing) return;
+    
+    const spinner = document.createElement('div');
+    spinner.className = 'loading-spinner text-center py-4';
+    spinner.innerHTML = `
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Загрузка...</span>
+      </div>
+    `;
+    listElement.appendChild(spinner);
+  }
+  
+  /**
+   * Скрыть спиннер загрузки
+   */
+  function hideLoadingSpinner() {
+    const spinner = listElement.querySelector('.loading-spinner');
+    if (spinner) {
+      spinner.remove();
+    }
+  }
+  
+  /**
+   * Загрузка следующей порции документов
+   */
+  async function loadMore() {
+    console.log('loadMore: triggered', {
+      hasMore,
+      loading,
+      nextUrl,
+      currentCount: allDocuments.length
+    });
+    
+    try {
+      const newDocuments = await loadDocuments(true); // append = true
+      renderDocuments(newDocuments, true); // append = true
+    } catch (error) {
+      console.error('Failed to load more documents:', error);
+    }
+  }
+  
+  /**
+   * Настройка Intersection Observer для бесконечной прокрутки
+   */
+  function setupInfiniteScroll() {
+    if (!observerTarget) return;
+    
+    // Создаем observer
+    observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && hasMore && !loading) {
+            loadMore();
+          }
+        });
+      },
+      {
+        root: null,
+        rootMargin: '100px',
+        threshold: 0.01
+      }
+    );
+    
+    // Наблюдаем за observer target
+    observer.observe(observerTarget);
   }
 
   /**
@@ -101,25 +232,62 @@ export function initDocumentListHandler(options) {
 
   /**
    * Отображает список документов
-   * @param {Object} data - Данные от API
+   * @param {Array} documents - Документы для рендеринга
+   * @param {boolean} append - Добавить к существующим или заменить
    */
-  function renderDocuments(data) {
-    const allItems = data.results || [];
-    let items = filterForUser(allItems);
-    items = filterByAckStatus(items);
+  function renderDocuments(documents, append = false) {
+    if (!documents || documents.length === 0) {
+      if (!append) {
+        listElement.innerHTML = '<div class="p-4 text-center text-secondary">Нет доступных документов.</div>';
+        if (paginationElement) paginationElement.innerHTML = '';
+      }
+      return;
+    }
 
-    if (items.length === 0) {
+    let items = filterForUser(documents);
+    items = filterByAckStatus(items);
+    
+    if (items.length === 0 && !append) {
       listElement.innerHTML = '<div class="p-4 text-center text-secondary">Нет доступных документов.</div>';
       if (paginationElement) paginationElement.innerHTML = '';
       return;
     }
 
-    // Рендерим документы
-    listElement.innerHTML = items.map(doc => renderDocumentRow(doc)).join('');
+    console.log('renderDocuments: rendering', {
+      count: items.length,
+      append,
+      totalInMemory: allDocuments.length
+    });
 
-    // Рендерим пагинацию
+    const itemsHtml = items.map(doc => renderDocumentRow(doc)).join('');
+    
+    if (append) {
+      // Удаляем observer target перед добавлением
+      if (observerTarget && observerTarget.parentNode) {
+        observerTarget.remove();
+      }
+      // Добавляем новые карточки
+      listElement.insertAdjacentHTML('beforeend', itemsHtml);
+      console.log('renderDocuments: appended to DOM');
+      // Возвращаем observer target обратно
+      if (observerTarget) {
+        listElement.appendChild(observerTarget);
+      }
+    } else {
+      listElement.innerHTML = itemsHtml;
+      console.log('renderDocuments: replaced DOM');
+      // Создаем observer target при первой загрузке
+      if (hasMore && !observerTarget) {
+        observerTarget = document.createElement('div');
+        observerTarget.className = 'load-more-trigger';
+        observerTarget.style.height = '1px';
+        listElement.appendChild(observerTarget);
+      }
+    }
+
+    // Убираем старую пагинацию
     if (paginationElement) {
-      renderPagination(data);
+      paginationElement.innerHTML = '';
     }
   }
 
@@ -205,48 +373,6 @@ export function initDocumentListHandler(options) {
   }
 
   /**
-   * Рендерит пагинацию
-   * @param {Object} data - Данные от API с next/previous
-   */
-  function renderPagination(data) {
-    if (!data.next && !data.previous && currentPage === 1) {
-      paginationElement.innerHTML = '';
-      return;
-    }
-
-    paginationElement.innerHTML = `
-      <div class="d-flex justify-content-between mb-3">
-        <button class="btn btn-outline-secondary ${!data.previous ? 'disabled' : ''}"
-                data-action="prev-page">
-          <i class="bi-chevron-left"></i> Назад
-        </button>
-        <button class="btn btn-outline-secondary ${!data.next ? 'disabled' : ''}"
-                data-action="next-page">
-          Вперёд <i class="bi-chevron-right"></i>
-        </button>
-      </div>
-    `;
-  }
-
-  /**
-   * Обработчик кликов по пагинации
-   */
-  function handlePaginationClick(e) {
-    const button = e.target.closest('button[data-action]');
-    if (!button || button.classList.contains('disabled')) return;
-
-    const action = button.getAttribute('data-action');
-    
-    if (action === 'prev-page') {
-      currentPage = Math.max(1, currentPage - 1);
-      loadDocuments();
-    } else if (action === 'next-page') {
-      currentPage += 1;
-      loadDocuments();
-    }
-  }
-
-  /**
    * Форматирует дату
    * @param {string} dateStr - ISO дата
    * @returns {string} Отформатированная дата
@@ -273,37 +399,46 @@ export function initDocumentListHandler(options) {
     return div.innerHTML;
   }
 
-  // Установка обработчиков
-  if (paginationElement) {
-    paginationElement.addEventListener('click', handlePaginationClick);
-  }
-
   /**
    * Публичный API для изменения фильтров
    */
-  function setScope(scope) {
+  async function setScope(scope) {
     currentScope = scope;
-    currentPage = 1;
-    loadDocuments();
+    hasMore = true;
+    nextUrl = null;
+    allDocuments = [];
+    const docs = await loadDocuments(false);
+    renderDocuments(docs, false);
+    setupInfiniteScroll();
   }
 
-  function setAckStatus(status) {
+  async function setAckStatus(status) {
     currentAckStatus = status;
-    currentPage = 1;
-    loadDocuments();
+    hasMore = true;
+    nextUrl = null;
+    allDocuments = [];
+    const docs = await loadDocuments(false);
+    renderDocuments(docs, false);
+    setupInfiniteScroll();
   }
 
   /**
    * Очистка обработчиков
    */
   function destroy() {
-    if (paginationElement) {
-      paginationElement.removeEventListener('click', handlePaginationClick);
+    if (observer) {
+      observer.disconnect();
+      observer = null;
     }
   }
 
   // Начальная загрузка
-  loadDocuments();
+  (async () => {
+    hasMore = true;
+    const docs = await loadDocuments(false);
+    renderDocuments(docs, false);
+    setupInfiniteScroll();
+  })();
 
   return {
     load: loadDocuments,
