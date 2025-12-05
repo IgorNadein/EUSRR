@@ -24,6 +24,7 @@ export function initDocumentListHandler(options) {
 
   const listElement = document.getElementById('docList');
   const paginationElement = document.querySelector('.pagination-container');
+  const searchInput = document.getElementById('docFilter');
   
   if (!listElement) {
     console.warn('initDocumentListHandler: #docList not found');
@@ -34,6 +35,7 @@ export function initDocumentListHandler(options) {
   const urlParams = new URLSearchParams(window.location.search);
   let currentScope = urlParams.get('scope') || 'mine'; // 'mine' | 'all'
   let currentAckStatus = urlParams.get('ack_status') || ''; // '' | 'acked' | 'not_acked'
+  let searchQuery = ''; // Поисковый запрос
   let allDocuments = []; // Все загруженные документы
   let loading = false;
   let hasMore = true;
@@ -239,6 +241,22 @@ export function initDocumentListHandler(options) {
     
     return items;
   }
+  
+  /**
+   * Фильтрует по поисковому запросу
+   * @param {Array} items - Список документов
+   * @returns {Array} Отфильтрованный список
+   */
+  function filterBySearch(items) {
+    if (!searchQuery.trim()) return items;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return items.filter(doc => {
+      const title = (doc.title || '').toLowerCase();
+      const description = (doc.description || '').toLowerCase();
+      return title.includes(query) || description.includes(query);
+    });
+  }
 
   /**
    * Отображает список документов
@@ -256,6 +274,7 @@ export function initDocumentListHandler(options) {
 
     let items = filterForUser(documents);
     items = filterByAckStatus(items);
+    items = filterBySearch(items);
     
     if (items.length === 0 && !append) {
       listElement.innerHTML = '<div class="p-4 text-center text-secondary">Нет доступных документов.</div>';
@@ -431,6 +450,33 @@ export function initDocumentListHandler(options) {
     renderDocuments(docs, false);
     setupInfiniteScroll();
   }
+  
+  /**
+   * Обработчик поиска (работает только с уже загруженными документами)
+   */
+  function handleSearch() {
+    // Применяем фильтрацию ко всем загруженным документам
+    renderDocuments(allDocuments, false);
+  }
+  
+  /**
+   * Настройка обработчика поиска
+   */
+  function setupSearch() {
+    if (!searchInput) return;
+    
+    let searchTimeout;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchQuery = e.target.value;
+      
+      // Debounce: ждем 300ms после последнего ввода
+      searchTimeout = setTimeout(() => {
+        console.log('Search query:', searchQuery);
+        handleSearch();
+      }, 300);
+    });
+  }
 
   /**
    * Очистка обработчиков
@@ -448,6 +494,7 @@ export function initDocumentListHandler(options) {
     const docs = await loadDocuments(false);
     renderDocuments(docs, false);
     setupInfiniteScroll();
+    setupSearch(); // Настраиваем поиск после первой загрузки
   })();
 
   return {
