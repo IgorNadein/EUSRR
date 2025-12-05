@@ -62,6 +62,7 @@ MIDDLEWARE = [
     "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
     "eusrr_backend.middleware.AuthRequiredMiddleware",
     "eusrr_backend.middleware.EmailVerificationMiddleware",
+    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",  # IP ограничение для регистрации
     "eusrr_backend.middleware.CacheControlMiddleware",  # Cache-Control headers
 ]
 
@@ -156,6 +157,17 @@ PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
 
 PHONE_DEFAULT_REGION = os.getenv("PHONE_DEFAULT_REGION", "RU")
 PHONENUMBER_DEFAULT_REGION = "RU"
+
+# -----------------------------------------------------------------------------
+# IP ОГРАНИЧЕНИЯ ДЛЯ РЕГИСТРАЦИИ
+# -----------------------------------------------------------------------------
+# Список разрешенных IP-адресов или сетей для регистрации (формат CIDR)
+# Примеры:
+#   None - разрешены только локальные IP (по умолчанию)
+#   ['*'] - разрешены все IP
+#   ['192.168.1.0/24', '10.0.0.0/8'] - конкретные сети
+#   ['192.168.1.100', '192.168.1.101'] - конкретные IP
+REGISTRATION_ALLOWED_IPS = None  # По умолчанию только локальные IP
 
 # Медиа файлы
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")

@@ -140,6 +140,143 @@ class EmailVerificationMiddleware:
         return self.get_response(request)
 
 
+class RegistrationIPRestrictionMiddleware:
+    """
+    Проверяет IP-адрес для запросов к регистрации.
+    
+    Применяется только к URL-ам регистрации:
+    - /auth/register/
+    - /api/v1/auth/register/
+    
+    Все остальные URL пропускаются без проверки.
+    """
+    
+    RESTRICTED_PATHS = (
+        "/auth/register/",
+        "/api/v1/auth/register/",
+    )
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        from common.ip_restrictions import get_client_ip, is_ip_allowed
+        
+        path = request.path_info
+        
+        # Проверяем только запросы к регистрации
+        if not any(path.startswith(p) for p in self.RESTRICTED_PATHS):
+            return self.get_response(request)
+        
+        # Проверяем IP-адрес
+        client_ip = get_client_ip(request)
+        
+        if not is_ip_allowed(client_ip):
+            # IP не разрешен - блокируем
+            
+            # Для API возвращаем JSON
+            if path.startswith("/api/"):
+                from django.http import JsonResponse
+                return JsonResponse(
+                    {
+                        "detail": "Регистрация доступна только из "
+                                  "локальной сети.",
+                        "client_ip": client_ip
+                    },
+                    status=403
+                )
+            
+            # Для веб-страниц возвращаем HTML
+            from django.http import HttpResponse
+            return HttpResponse(
+                f"""
+                <!DOCTYPE html>
+                <html lang="ru">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, 
+                                                    initial-scale=1.0">
+                    <title>403 Forbidden</title>
+                    <style>
+                        body {{
+                            font-family: -apple-system, BlinkMacSystemFont,
+                                         "Segoe UI", Roboto, sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            min-height: 100vh;
+                            margin: 0;
+                            background: linear-gradient(135deg, 
+                                        #667eea 0%, #764ba2 100%);
+                        }}
+                        .container {{
+                            background: white;
+                            padding: 3rem;
+                            border-radius: 1rem;
+                            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                            max-width: 500px;
+                            text-align: center;
+                        }}
+                        h1 {{
+                            color: #e53e3e;
+                            font-size: 3rem;
+                            margin: 0 0 1rem 0;
+                        }}
+                        h2 {{
+                            color: #2d3748;
+                            font-size: 1.5rem;
+                            margin: 0 0 1.5rem 0;
+                        }}
+                        p {{
+                            color: #4a5568;
+                            line-height: 1.6;
+                            margin: 0 0 1rem 0;
+                        }}
+                        .ip-info {{
+                            background: #f7fafc;
+                            border-left: 4px solid #667eea;
+                            padding: 1rem;
+                            margin: 1.5rem 0;
+                            border-radius: 0.5rem;
+                            font-family: monospace;
+                        }}
+                        .back-link {{
+                            display: inline-block;
+                            margin-top: 1.5rem;
+                            padding: 0.75rem 2rem;
+                            background: #667eea;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 0.5rem;
+                        }}
+                        .back-link:hover {{
+                            background: #5a67d8;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🔒 403</h1>
+                        <h2>Доступ запрещен</h2>
+                        <p>Регистрация доступна только из локальной сети.</p>
+                        <p>Если вы в офисе или подключены через VPN, 
+                           обратитесь к администратору.</p>
+                        <div class="ip-info">
+                            Ваш IP: <strong>{client_ip}</strong>
+                        </div>
+                        <a href="/" class="back-link">← На главную</a>
+                    </div>
+                </body>
+                </html>
+                """,
+                status=403,
+                content_type="text/html; charset=utf-8"
+            )
+        
+        # IP разрешен - продолжаем обработку
+        return self.get_response(request)
+
+
 class CacheControlMiddleware:
     """
     Добавляет правильные заголовки Cache-Control для страниц.
