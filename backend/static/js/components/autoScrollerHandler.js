@@ -81,19 +81,32 @@ function initSingleScroller(wrapper, options = {}) {
   }
 
   // Дублируем элементы для бесшовного цикла
+  // Создаем несколько копий для более плавной бесконечной прокрутки
   const originalChildren = Array.from(rail.children);
-  const clones = originalChildren.map(node => node.cloneNode(true));
-  rail.append(...clones);
+  const originalScrollWidth = rail.scrollWidth;
+  const minScrollWidth = wrapper.clientWidth * 3; // Минимум 3 экрана контента
   
-  console.log('initSingleScroller: cloned', originalChildren.length, 'items');
+  // Вычисляем сколько копий нужно создать
+  let copiesNeeded = Math.ceil(minScrollWidth / originalScrollWidth);
+  copiesNeeded = Math.max(2, copiesNeeded); // Минимум 2 копии (оригинал + 1 клон)
+  
+  // Создаем копии
+  const allClones = [];
+  for (let i = 0; i < copiesNeeded; i++) {
+    const clones = originalChildren.map(node => node.cloneNode(true));
+    rail.append(...clones);
+    allClones.push(...clones);
+  }
+  
+  console.log('initSingleScroller: created', copiesNeeded, 'copies,', allClones.length, 'total cloned items');
 
   // Пересчитываем overflow после клонирования
   const hasOverflowAfterClone = rail.scrollWidth > wrapper.clientWidth + 4;
-  console.log('initSingleScroller: hasOverflowAfterClone =', hasOverflowAfterClone);
+  console.log('initSingleScroller: hasOverflowAfterClone =', hasOverflowAfterClone, 'scrollWidth =', rail.scrollWidth);
   
   if (!hasOverflowAfterClone) {
     // Удаляем клоны если даже с ними нет переполнения
-    clones.forEach(clone => clone.remove());
+    allClones.forEach(clone => clone.remove());
     console.log('initSingleScroller: no overflow after clone, removing clones');
     return { start: () => {}, stop: () => {}, destroy: () => {} };
   }
