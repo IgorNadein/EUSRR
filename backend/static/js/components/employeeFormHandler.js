@@ -12,7 +12,22 @@ export function initEmployeeForm(options = {}) {
     return null;
   }
 
+  // Проверяем, не была ли форма уже инициализирована
+  if (form.dataset.employeeFormInitialized === 'true') {
+    console.warn('[EmployeeForm] Форма уже инициализирована, пропускаем повторную инициализацию');
+    return {
+      setSubmitting: (state) => {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = state;
+      },
+      refresh: () => location.reload()
+    };
+  }
+
   console.info('[EmployeeForm] Инициализация AJAX обработчика формы');
+  
+  // Помечаем форму как инициализированную
+  form.dataset.employeeFormInitialized = 'true';
 
   // Перехватываем submit формы
   form.addEventListener('submit', async (e) => {
