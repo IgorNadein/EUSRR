@@ -396,8 +396,25 @@ class RequestViewSet(viewsets.ModelViewSet):
         
         logger.info(
             f"[RequestViewSet.create] User: {request.user.id}, "
-            f"Data keys: {list(request.data.keys())}"
+            f"Content-Type: {request.content_type}"
         )
+        logger.info(
+            f"[RequestViewSet.create] POST keys: {list(request.POST.keys())}"
+        )
+        logger.info(
+            f"[RequestViewSet.create] FILES keys: {list(request.FILES.keys())}"
+        )
+        logger.info(
+            f"[RequestViewSet.create] Data keys: {list(request.data.keys())}"
+        )
+        
+        # Логируем значения для отладки
+        for key in ['type', 'title', 'date_from', 'date_to', 'comment']:
+            value = request.data.get(key)
+            logger.info(
+                f"[RequestViewSet.create] {key}: {value} "
+                f"(type: {type(value).__name__})"
+            )
         
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
