@@ -211,22 +211,25 @@ function initSingleScroller(wrapper, options = {}) {
    * Обработчик наведения на элемент.
    */
   function handleItemMouseEnter(event) {
-    // Больше НЕ ставим на паузу при наведении на карточку
-    // Просто применяется CSS hover эффект (увеличение)
-    // Пауза и центрирование сработают только при наведении у краев (см. handleWrapperMouseMove)
+    // Ставим на паузу, но НЕ центрируем (в отличие от старой версии)
+    paused = true;
   }
 
   /**
    * Обработчик ухода курсора с элемента.
    */
   function handleItemMouseLeave() {
-    // Пауза контролируется через handleWrapperMouseMove
+    // Снимаем паузу
+    paused = false;
   }
 
   /**
-   * Обработчик движения мыши по контейнеру - логика паузы у краев.
+   * Обработчик движения мыши по контейнеру - логика центрирования у краев.
    */
   function handleWrapperMouseMove(event) {
+    // Пропускаем если уже на паузе из-за hover на карточке
+    if (paused) return;
+    
     const containerRect = wrapper.getBoundingClientRect();
     const mouseX = event.clientX - containerRect.left;
     const containerWidth = containerRect.width;
@@ -238,36 +241,32 @@ function initSingleScroller(wrapper, options = {}) {
     const isNearRightEdge = mouseX > (containerWidth - edgeZone);
     
     if (isNearLeftEdge || isNearRightEdge) {
-      // Мышь у края - останавливаем скролл
-      if (!paused) {
-        paused = true;
+      // Мышь у края - останавливаем скролл и центрируем ближайший элемент
+      paused = true;
+      
+      // Находим ближайший элемент к курсору
+      const items = Array.from(rail.querySelectorAll('.join-item'));
+      let closestItem = null;
+      let minDistance = Infinity;
+      
+      items.forEach(item => {
+        const itemRect = item.getBoundingClientRect();
+        const itemCenterX = itemRect.left + itemRect.width / 2;
+        const distance = Math.abs(event.clientX - itemCenterX);
         
-        // Находим ближайший элемент к курсору
-        const items = Array.from(rail.querySelectorAll('.join-item'));
-        let closestItem = null;
-        let minDistance = Infinity;
-        
-        items.forEach(item => {
-          const itemRect = item.getBoundingClientRect();
-          const itemCenterX = itemRect.left + itemRect.width / 2;
-          const distance = Math.abs(event.clientX - itemCenterX);
-          
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestItem = item;
-          }
-        });
-        
-        // Центрируем ближайший элемент
-        if (closestItem) {
-          centerItemInView(wrapper, closestItem);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestItem = item;
         }
+      });
+      
+      // Центрируем ближайший элемент
+      if (closestItem) {
+        centerItemInView(wrapper, closestItem);
       }
     } else {
       // Мышь в центральной зоне - возобновляем скролл
-      if (paused) {
-        paused = false;
-      }
+      paused = false;
     }
   }
 
