@@ -529,7 +529,11 @@ class PositionRoleBackend(ModelBackend):
 
     def get_all_permissions(self, user_obj, obj=None):
         perms = super().get_all_permissions(user_obj, obj)
+        
+        # Проверяем, что пользователь authenticated и active
         if not getattr(user_obj, "is_authenticated", False) or obj is not None:
+            return perms
+        if not getattr(user_obj, "is_active", True):
             return perms
 
         # 1) Глобальные права от должности — оставить

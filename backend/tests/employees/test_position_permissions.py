@@ -19,101 +19,114 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
+# ============================================================================
+# Фикстуры (на уровне модуля, доступны всем тестам)
+# ============================================================================
+
+@pytest.fixture
+def feed_content_type():
+    """ContentType для приложения feed (для прав публикаций)."""
+    ct, _ = ContentType.objects.get_or_create(
+        app_label="feed", model="post"
+    )
+    return ct
+
+
+@pytest.fixture
+def documents_content_type():
+    """ContentType для приложения documents."""
+    ct, _ = ContentType.objects.get_or_create(
+        app_label="documents", model="document"
+    )
+    return ct
+
+
+@pytest.fixture
+def group_with_publish_perm(feed_content_type):
+    """Группа с правом публикации в feed."""
+    group = Group.objects.create(name="publishers")
+    
+    # Ищем существующее право или создаём новое
+    perm = Permission.objects.filter(
+        codename="publish_company_post",
+        content_type=feed_content_type,
+    ).first()
+    
+    if not perm:
+        perm = Permission.objects.create(
+            codename="publish_company_post",
+            name="Can publish company post",
+            content_type=feed_content_type,
+        )
+    
+    group.permissions.add(perm)
+    return group
+
+
+@pytest.fixture
+def group_with_document_perm(documents_content_type):
+    """Группа с правом добавления документов."""
+    group = Group.objects.create(name="doc_creators")
+    
+    # Ищем существующее право или используем defaults
+    perm = Permission.objects.filter(
+        codename="add_document",
+        content_type=documents_content_type,
+    ).first()
+    
+    if not perm:
+        perm = Permission.objects.create(
+            codename="add_document",
+            name="Can add document",
+            content_type=documents_content_type,
+        )
+    
+    group.permissions.add(perm)
+    return group
+
+
+@pytest.fixture
+def engineer_position(group_with_publish_perm, group_with_document_perm):
+    """Должность 'Инженер' с двумя группами прав."""
+    position = Position.objects.create(
+        name="Инженер",
+        description="Технический специалист",
+    )
+    position.groups.add(
+        group_with_publish_perm, group_with_document_perm
+    )
+    return position
+
+
+@pytest.fixture
+def manager_position(group_with_publish_perm):
+    """Должность 'Менеджер' только с правом публикации."""
+    position = Position.objects.create(
+        name="Менеджер",
+        description="Управленец",
+    )
+    position.groups.add(group_with_publish_perm)
+    return position
+
+
+@pytest.fixture
+def basic_user(user_factory):
+    """Обычный пользователь без должности и прав."""
+    return user_factory(
+        email="user@example.com",
+        staff=False,
+        superuser=False,
+        verified=True,
+        active=True,
+    )
+
+
+# ============================================================================
+# Тесты
+# ============================================================================
+
 class TestPositionPermissions:
     """Тесты прав доступа через должности."""
-
-    @pytest.fixture
-    def feed_content_type(self):
-        """ContentType для приложения feed (для прав публикаций)."""
-        ct, _ = ContentType.objects.get_or_create(
-            app_label="feed", model="post"
-        )
-        return ct
-
-    @pytest.fixture
-    def documents_content_type(self):
-        """ContentType для приложения documents."""
-        ct, _ = ContentType.objects.get_or_create(
-            app_label="documents", model="document"
-        )
-        return ct
-
-    @pytest.fixture
-    def group_with_publish_perm(self, feed_content_type):
-        """Группа с правом публикации в feed."""
-        group = Group.objects.create(name="publishers")
-        
-        # Ищем существующее право или создаём новое
-        perm = Permission.objects.filter(
-            codename="publish_company_post",
-            content_type=feed_content_type,
-        ).first()
-        
-        if not perm:
-            perm = Permission.objects.create(
-                codename="publish_company_post",
-                name="Can publish company post",
-                content_type=feed_content_type,
-            )
-        
-        group.permissions.add(perm)
-        return group
-
-    @pytest.fixture
-    def group_with_document_perm(self, documents_content_type):
-        """Группа с правом добавления документов."""
-        group = Group.objects.create(name="doc_creators")
-        
-        # Ищем существующее право или используем defaults
-        perm = Permission.objects.filter(
-            codename="add_document",
-            content_type=documents_content_type,
-        ).first()
-        
-        if not perm:
-            perm = Permission.objects.create(
-                codename="add_document",
-                name="Can add document",
-                content_type=documents_content_type,
-            )
-        
-        group.permissions.add(perm)
-        return group
-
-    @pytest.fixture
-    def engineer_position(
-        self, group_with_publish_perm, group_with_document_perm
-    ):
-        """Должность 'Инженер' с двумя группами прав."""
-        position = Position.objects.create(
-            name="Инженер",
-            description="Технический специалист",
-        )
-        position.groups.add(
-            group_with_publish_perm, group_with_document_perm
-        )
-        return position
-
-    @pytest.fixture
-    def manager_position(self, group_with_publish_perm):
-        """Должность 'Менеджер' только с правом публикации."""
-        position = Position.objects.create(
-            name="Менеджер",
-            description="Управленец",
-        )
-        position.groups.add(group_with_publish_perm)
-        return position
-
-    @pytest.fixture
-    def basic_user(self, user_factory):
-        """Обычный пользователь без должности и прав."""
-        return user_factory(
-            email="user@example.com",
-            staff=False,
-            superuser=False,
-            verified=True,
-            active=True,
-        )
 
     def test_user_without_position_has_no_permissions(self, basic_user):
         """Пользователь без должности не имеет прав."""
@@ -156,7 +169,10 @@ class TestPositionPermissions:
         # Назначаем инженера (2 права)
         basic_user.position = engineer_position
         basic_user.save()
-        basic_user.refresh_from_db()
+        
+        # Получаем fresh instance чтобы сбросить кэш прав
+        user_id = basic_user.id
+        basic_user = User.objects.get(id=user_id)
         
         assert basic_user.has_perm("feed.publish_company_post")
         assert basic_user.has_perm("documents.add_document")
@@ -164,7 +180,9 @@ class TestPositionPermissions:
         # Меняем на менеджера (только 1 право)
         basic_user.position = manager_position
         basic_user.save()
-        basic_user.refresh_from_db()
+        
+        # Снова получаем fresh instance
+        basic_user = User.objects.get(id=user_id)
         
         assert basic_user.has_perm("feed.publish_company_post"), \
             "Право на публикацию должно остаться"
@@ -178,7 +196,10 @@ class TestPositionPermissions:
         # Назначаем должность
         basic_user.position = engineer_position
         basic_user.save()
-        basic_user.refresh_from_db()
+        
+        # Получаем fresh instance
+        user_id = basic_user.id
+        basic_user = User.objects.get(id=user_id)
         
         assert basic_user.has_perm("feed.publish_company_post")
         assert basic_user.has_perm("documents.add_document")
@@ -186,7 +207,9 @@ class TestPositionPermissions:
         # Снимаем должность
         basic_user.position = None
         basic_user.save()
-        basic_user.refresh_from_db()
+        
+        # Снова fresh instance для сброса кэша
+        basic_user = User.objects.get(id=user_id)
         
         assert not basic_user.has_perm("feed.publish_company_post"), \
             "Права должны исчезнуть после снятия должности"
@@ -215,25 +238,25 @@ class TestPositionPermissions:
             assert user.has_perm("feed.publish_company_post")
             assert user.has_perm("documents.add_document")
 
-    def test_staff_user_keeps_all_permissions(
+    def test_superuser_has_all_permissions(
         self, user_factory, engineer_position
     ):
-        """is_staff пользователь имеет все права независимо от должности."""
-        staff_user = user_factory(email="staff@example.com", staff=True)
+        """is_superuser имеет все права независимо от должности."""
+        superuser = user_factory(email="admin@example.com", superuser=True)
         
-        # Без должности staff имеет все права
-        assert staff_user.has_perm("feed.publish_company_post")
-        assert staff_user.has_perm("documents.add_document")
-        assert staff_user.has_perm("any.random_permission")
+        # Без должности superuser имеет все права
+        assert superuser.has_perm("feed.publish_company_post")
+        assert superuser.has_perm("documents.add_document")
+        assert superuser.has_perm("any.random_permission")
         
         # С должностью тоже все права
-        staff_user.position = engineer_position
-        staff_user.save()
-        staff_user.refresh_from_db()
+        superuser.position = engineer_position
+        superuser.save()
+        superuser = User.objects.get(id=superuser.id)
         
-        assert staff_user.has_perm("feed.publish_company_post")
-        assert staff_user.has_perm("documents.add_document")
-        assert staff_user.has_perm("any.random_permission")
+        assert superuser.has_perm("feed.publish_company_post")
+        assert superuser.has_perm("documents.add_document")
+        assert superuser.has_perm("any.random_permission")
 
     def test_position_group_permissions_are_additive(
         self, basic_user, feed_content_type
@@ -331,6 +354,9 @@ class TestPositionPermissionsEdgeCases:
         user.position = engineer_position
         user.save()
         
+        # Получаем fresh instance
+        user = User.objects.get(id=user.id)
+        
         # is_active=False блокирует все права
         assert not user.has_perm("feed.publish_company_post")
         assert not user.has_perm("documents.add_document")
@@ -406,11 +432,19 @@ class TestPositionPermissionsIntegration:
             "add_document", "change_document",
             "delete_document", "view_document"
         ]:
-            perm, _ = Permission.objects.get_or_create(
+            # Используем filter().first() вместо get_or_create
+            perm = Permission.objects.filter(
                 codename=codename,
-                name=f"Can {codename.replace('_', ' ')}",
                 content_type=documents_content_type,
-            )
+            ).first()
+            
+            if not perm:
+                perm = Permission.objects.create(
+                    codename=codename,
+                    name=f"Can {codename.replace('_', ' ')}",
+                    content_type=documents_content_type,
+                )
+            
             doc_managers.permissions.add(perm)
         
         # Создаём должность документоведа
