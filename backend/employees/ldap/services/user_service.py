@@ -189,7 +189,10 @@ class UserService:
         if "position" in changes or "position_id" in changes:
             pos_in_payload = True
             val = changes.pop("position", changes.pop("position_id", None))
-            if isinstance(val, Position) or val is None:
+            # Обработка пустой строки как None (снятие должности)
+            if val == "":
+                new_pos = None
+            elif isinstance(val, Position) or val is None:
                 new_pos = val
             elif isinstance(val, int):
                 new_pos = Position.objects.filter(pk=val).first()
@@ -280,6 +283,9 @@ class UserService:
                     # Временное решение - используем методы из DirectoryService
                     # TODO: убрать после создания PositionService (Сессия 8)
                     from ..directory_service import DirectoryService
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    
                     svc = DirectoryService()
                     if old_pos:
                         old_dn = (old_pos.ldap_group_dn or "").strip()
@@ -291,7 +297,29 @@ class UserService:
                             )
                             old_dn = maybe or ""
                         if old_dn:
-                            svc.remove_group_members(conn, old_dn, [current_dn])
+                            try:
+                                logger.info(
+                                    f"Removing user {current_dn} "
+                                    f"from position group {old_dn}"
+                                )
+                                svc.remove_group_members(
+                                    conn, old_dn, [current_dn]
+                                )
+                            except RuntimeError as e:
+                                # Игнорируем unwillingToPerform
+                                # (пользователь не в группе)
+                                error_msg = str(e).lower()
+                                if (
+                                    "unwillingtoperform" in error_msg
+                                    or "will_not_perform" in error_msg
+                                ):
+                                    logger.warning(
+                                        f"LDAP refused to remove user "
+                                        f"from group (possibly not a "
+                                        f"member): {e}"
+                                    )
+                                else:
+                                    raise
 
                     if new_pos:
                         pos_dn = svc._ensure_position_group(conn, new_pos)
