@@ -122,6 +122,13 @@ export function initRequestCrudHandler(options) {
 
     try {
       const url = saveAs === 'draft' ? `${apiListUrl}?save_as=draft` : apiListUrl;
+      
+      // Логируем данные для отладки
+      console.log('[requestCrudHandler] Creating request with data:');
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value);
+      }
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: headers,
@@ -130,7 +137,21 @@ export function initRequestCrudHandler(options) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'HTTP ' + response.status);
+        console.error('[requestCrudHandler] Validation error:', error);
+        
+        // Показываем детали ошибки
+        let errorMessage = 'Не удалось создать заявление:\n';
+        if (error.detail) {
+          errorMessage += error.detail;
+        } else if (typeof error === 'object') {
+          // Форматируем ошибки валидации
+          for (const [field, messages] of Object.entries(error)) {
+            const fieldMessages = Array.isArray(messages) ? messages.join(', ') : messages;
+            errorMessage += `\n${field}: ${fieldMessages}`;
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
       await response.json();

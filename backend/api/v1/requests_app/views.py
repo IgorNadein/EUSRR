@@ -387,11 +387,38 @@ class RequestViewSet(viewsets.ModelViewSet):
         )
 
     def create(self, request, *args, **kwargs):
-        """Создание заявки: валидируем write-сериализатором, отвечаем read-сериализатором."""
+        """
+        Создание заявки: валидируем write-сериализатором,
+        отвечаем read-сериализатором.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(
+            f"[RequestViewSet.create] User: {request.user.id}, "
+            f"Data keys: {list(request.data.keys())}"
+        )
+        
         serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.error(
+                f"[RequestViewSet.create] Validation errors: "
+                f"{serializer.errors}"
+            )
+            logger.error(
+                f"[RequestViewSet.create] Request data: {request.data}"
+            )
+        
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         instance = serializer.instance
-        read = RequestReadSerializer(instance, context=self.get_serializer_context())
+        read = RequestReadSerializer(
+            instance,
+            context=self.get_serializer_context()
+        )
         headers = self.get_success_headers(read.data)
-        return Response(read.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response(
+            read.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
