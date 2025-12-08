@@ -211,14 +211,71 @@ function initSingleScroller(wrapper, options = {}) {
    * Обработчик наведения на элемент.
    */
   function handleItemMouseEnter(event) {
-    paused = true;
-    centerItemInView(wrapper, event.currentTarget);
+    // Больше НЕ ставим на паузу при наведении на карточку
+    // Просто применяется CSS hover эффект (увеличение)
+    // Пауза и центрирование сработают только при наведении у краев (см. handleWrapperMouseMove)
   }
 
   /**
    * Обработчик ухода курсора с элемента.
    */
   function handleItemMouseLeave() {
+    // Пауза контролируется через handleWrapperMouseMove
+  }
+
+  /**
+   * Обработчик движения мыши по контейнеру - логика паузы у краев.
+   */
+  function handleWrapperMouseMove(event) {
+    const containerRect = wrapper.getBoundingClientRect();
+    const mouseX = event.clientX - containerRect.left;
+    const containerWidth = containerRect.width;
+    
+    // Зона края (20% от ширины контейнера)
+    const edgeZone = containerWidth * 0.2;
+    
+    const isNearLeftEdge = mouseX < edgeZone;
+    const isNearRightEdge = mouseX > (containerWidth - edgeZone);
+    
+    if (isNearLeftEdge || isNearRightEdge) {
+      // Мышь у края - останавливаем скролл
+      if (!paused) {
+        paused = true;
+        
+        // Находим ближайший элемент к курсору
+        const items = Array.from(rail.querySelectorAll('.join-item'));
+        let closestItem = null;
+        let minDistance = Infinity;
+        
+        items.forEach(item => {
+          const itemRect = item.getBoundingClientRect();
+          const itemCenterX = itemRect.left + itemRect.width / 2;
+          const distance = Math.abs(event.clientX - itemCenterX);
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestItem = item;
+          }
+        });
+        
+        // Центрируем ближайший элемент
+        if (closestItem) {
+          centerItemInView(wrapper, closestItem);
+        }
+      }
+    } else {
+      // Мышь в центральной зоне - возобновляем скролл
+      if (paused) {
+        paused = false;
+      }
+    }
+  }
+
+  /**
+   * Обработчик ухода курсора с контейнера.
+   */
+  function handleWrapperMouseLeave() {
+    // Когда мышь покидает весь контейнер - снимаем паузу
     paused = false;
   }
 
@@ -291,6 +348,10 @@ function initSingleScroller(wrapper, options = {}) {
     item.addEventListener('focusout', handleItemFocusOut);
   });
 
+  // Обработчики на контейнер для отслеживания позиции мыши
+  wrapper.addEventListener('mousemove', handleWrapperMouseMove);
+  wrapper.addEventListener('mouseleave', handleWrapperMouseLeave);
+
   // Глобальные обработчики
   window.addEventListener('resize', handleResize);
   document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -319,12 +380,15 @@ function initSingleScroller(wrapper, options = {}) {
       item.removeEventListener('focusout', handleItemFocusOut);
     });
     
+    wrapper.removeEventListener('mousemove', handleWrapperMouseMove);
+    wrapper.removeEventListener('mouseleave', handleWrapperMouseLeave);
+    
     window.removeEventListener('resize', handleResize);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     cancelAnimationFrame(resizeFrame);
     
     // Удаляем клонированные элементы
-    clones.forEach(clone => clone.remove());
+    allClones.forEach(clone => clone.remove());
   }
 
   return { start, stop, destroy };
