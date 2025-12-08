@@ -572,6 +572,10 @@ def employee_edit_me(request):
         for key, value in parsed_post.items():
             if key == 'csrfmiddlewaretoken':
                 continue
+            # Пропускаем пустое поле avatar (приходит из FormData без файла)
+            if key == 'avatar' and value == '':
+                logger.info("[employee_edit_me] Skipping empty avatar field")
+                continue
             # Если это массив (например skills_ids)
             if key.endswith('_ids') or key == 'skills':
                 payload[key] = parsed_post.getlist(key)

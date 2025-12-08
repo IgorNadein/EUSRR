@@ -1713,11 +1713,22 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             else:
                 logger.info(f"[ME PATCH] ✓ avatar НЕТ в request.FILES")
             
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: удаляем пустое поле avatar ДО валидации
+            data_for_serializer = request.data
+            if 'avatar' in request.data:
+                avatar_value = request.data.get('avatar')
+                logger.info(f"[ME PATCH] � Проверяем avatar: type={type(avatar_value)}, value={repr(avatar_value)[:100]}")
+                
+                # Если avatar - пустая строка, создаем копию данных без него
+                if avatar_value == '':
+                    logger.warning(f"[ME PATCH] 🔧 Удаляем пустое поле avatar из данных")
+                    data_for_serializer = {k: v for k, v in request.data.items() if k != 'avatar'}
+            
             logger.info("[ME PATCH] Step 1: Validating serializer...")
-            logger.info(f"[ME PATCH] Step 1: Передаем в сериализатор data с ключами: {list(request.data.keys())}")
+            logger.info(f"[ME PATCH] Step 1: Передаем в сериализатор data с ключами: {list(data_for_serializer.keys())}")
             
             try:
-                ser = self.get_serializer(instance, data=request.data, partial=True)
+                ser = self.get_serializer(instance, data=data_for_serializer, partial=True)
                 ser.is_valid(raise_exception=True)
                 logger.info("[ME PATCH] Step 1: ✓ Serializer validated successfully")
             except ValidationError as ve:
