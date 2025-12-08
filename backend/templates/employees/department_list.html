@@ -16,7 +16,8 @@
       <div class="col-12">
 
       {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-      {% if can_create_departments or perms.employees.add_department or request.user.is_staff or request.user.is_superuser %}
+      {# Кнопка создания отдела: staff/superuser ИЛИ право add_department #}
+      {% if user.is_staff or user.is_superuser or perms.employees.add_department %}
         {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" create_as_card=True create_modal="createDepartmentModal" create_text="Создать отдел" %}
       {% else %}
         {% include "includes/components/page_header.html" with icon="bi-diagram-3" title="Отделы" count=departments|length count_label="Всего:" search_id="deptFilter" search_placeholder="Поиск по названию или руководителю" %}

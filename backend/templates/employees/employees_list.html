@@ -18,7 +18,12 @@
     <div class="col-12">
 
       {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-      {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" create_as_card=True create_modal="createEmployeeModal" create_text="Создать профиль" %}
+      {# Кнопка создания профиля доступна только staff/superuser #}
+      {% if user.is_staff or user.is_superuser %}
+        {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" create_as_card=True create_modal="createEmployeeModal" create_text="Создать профиль" %}
+      {% else %}
+        {% include "includes/components/page_header.html" with icon="bi-people" title="Сотрудники" count=employees|length count_label=count_label search_id="empFilter" search_placeholder="Поиск по ФИО, должности или отделу" has_filters=True filters_target="empFilters" filters_template="employees/_filters.html" %}
+      {% endif %}
       
       <div class="card mb-3">
         <div id="empList" class="list-view card-list">
