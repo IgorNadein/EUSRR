@@ -570,12 +570,20 @@ def employee_edit_me(request):
         
         # Собираем обычные поля из POST
         for key, value in parsed_post.items():
+            value_len = len(value) if hasattr(value, '__len__') else 'N/A'
+            logger.info(
+                f"[employee_edit_me] POST field: '{key}' = '{value}' "
+                f"(type: {type(value).__name__}, len: {value_len})"
+            )
             if key == 'csrfmiddlewaretoken':
                 continue
             # Пропускаем пустое поле avatar (приходит из FormData без файла)
             if key == 'avatar' and value == '':
-                logger.info("[employee_edit_me] Skipping empty avatar field")
+                logger.info("[employee_edit_me] ✅ Skipping empty avatar field")
                 continue
+            # Конвертируем пустые строки в null для ForeignKey полей
+            if key.endswith('_id') and value == '':
+                value = None
             # Если это массив (например skills_ids)
             if key.endswith('_ids') or key == 'skills':
                 payload[key] = parsed_post.getlist(key)
@@ -591,10 +599,9 @@ def employee_edit_me(request):
         if 'avatar' in parsed_files:
             avatar_file = parsed_files['avatar']
             logger.info(
-                "[employee_edit_me] Processing avatar: %s, size: %s, content_type: %s",
+                "[employee_edit_me] Processing avatar: %s, size: %s",
                 avatar_file.name,
                 avatar_file.size,
-                avatar_file.content_type,
             )
             # Конвертируем в data URI для Base64ImageField
             data_uri = _file_to_data_uri(avatar_file)
@@ -614,7 +621,10 @@ def employee_edit_me(request):
         # Отправляем в DRF как JSON (с base64 аватаром)
         try:
             resp = api.patch("v1/employees/me/", json=payload)
-            logger.info(f"[employee_edit_me] API response status: {resp.status}")
+            logger.info(
+                "[employee_edit_me] API response status: %s",
+                resp.status,
+            )
         except Exception as e:
             logger.error(f"[employee_edit_me] API call error: {e}")
             return JsonResponse(

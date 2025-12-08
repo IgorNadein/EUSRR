@@ -268,7 +268,7 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
 class EmployeeSerializer(serializers.ModelSerializer):
     """Полная версия сотрудника для собственных эндпоинтов /employees/."""
 
-    avatar = serializers.ImageField(required=False, allow_null=True)
+    avatar = Base64ImageField(required=False, allow_null=True)
     actions = EmployeeActionSerializer(many=True, read_only=True)
 
     # навыки: читаем красиво, пишем ids
