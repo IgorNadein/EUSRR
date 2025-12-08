@@ -127,21 +127,39 @@ export class RecipientPicker {
     
     if (this.searchQuery) {
       url.searchParams.set('search', this.searchQuery);
+      // При поиске ограничиваем результаты
+      url.searchParams.set('page_size', '20');
+    } else {
+      // Без поиска загружаем все страницы
+      url.searchParams.set('page_size', '100');
+      url.searchParams.set('active', 'true');
     }
     
     url.searchParams.set('ordering', 'last_name,first_name');
-    url.searchParams.set('page_size', '20');
 
     try {
-      const response = await fetch(url.toString(), { headers: this.headers });
+      let allItems = [];
+      let nextUrl = url.toString();
       
-      if (!response.ok) {
-        throw new Error('HTTP ' + response.status);
-      }
+      // Загружаем все страницы пагинации
+      while (nextUrl) {
+        const response = await fetch(nextUrl, { headers: this.headers });
+        
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
 
-      const data = await response.json();
-      const items = Array.isArray(data) ? data : (data.results || []);
-      this._renderResults(items);
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : (data.results || []);
+        allItems.push(...items);
+        
+        // Проверяем наличие следующей страницы
+        // При поиске загружаем только первую страницу
+        nextUrl = (!this.searchQuery && data.next) ? data.next : null;
+      }
+      
+      console.log(`RecipientPickerHandler: Loaded ${allItems.length} employees`);
+      this._renderResults(allItems);
     } catch (error) {
       this.elResults.innerHTML = '<div class="rp-empty">Не удалось загрузить сотрудников</div>';
       console.error('RecipientPicker fetch error:', error);

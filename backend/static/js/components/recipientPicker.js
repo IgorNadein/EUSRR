@@ -52,16 +52,11 @@ export class RecipientPicker {
   async loadData() {
     this.state.loading = true;
     try {
-      const [usersRes, deptsRes] = await Promise.all([
-        fetch(this.options.apiUsersUrl),
-        fetch(this.options.apiDepartmentsUrl)
-      ]);
-
-      if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        this.users = usersData.results || usersData;
-      }
-
+      // Загружаем пользователей с пагинацией (все страницы)
+      this.users = await this.loadAllUsers();
+      
+      // Загружаем отделы
+      const deptsRes = await fetch(this.options.apiDepartmentsUrl);
       if (deptsRes.ok) {
         const deptsData = await deptsRes.json();
         this.departments = deptsData.results || deptsData;
@@ -71,6 +66,37 @@ export class RecipientPicker {
     } finally {
       this.state.loading = false;
     }
+  }
+
+  /**
+   * Загрузка всех пользователей с автоматической обработкой пагинации
+   */
+  async loadAllUsers() {
+    const allUsers = [];
+    let nextUrl = this.options.apiUsersUrl + '?page_size=100&active=true';
+    
+    while (nextUrl) {
+      try {
+        const response = await fetch(nextUrl);
+        if (!response.ok) break;
+        
+        const data = await response.json();
+        const users = data.results || data;
+        
+        if (Array.isArray(users)) {
+          allUsers.push(...users);
+        }
+        
+        // Проверяем наличие следующей страницы
+        nextUrl = data.next || null;
+      } catch (error) {
+        console.error('RecipientPicker: Error loading users page:', error);
+        break;
+      }
+    }
+    
+    console.log(`RecipientPicker: Loaded ${allUsers.length} users`);
+    return allUsers;
   }
 
   render() {
@@ -255,9 +281,17 @@ export class RecipientPicker {
       const displayName = `${user.last_name} ${user.first_name}`;
       const subtitle = user.position || user.email || '';
       
+      // Аватар или инициалы
+      let avatarHtml;
+      if (user.avatar) {
+        avatarHtml = `<img src="${user.avatar}" alt="${displayName}" class="user-avatar-img">`;
+      } else {
+        avatarHtml = `<div class="user-avatar-placeholder">${this.getInitials(user)}</div>`;
+      }
+      
       return `
         <div class="dropdown-item-user" data-action="add-${type}" data-user-id="${user.id}">
-          <div class="user-avatar-small">${this.getInitials(user)}</div>
+          <div class="user-avatar-small">${avatarHtml}</div>
           <div class="user-info">
             <div class="user-name">${displayName}</div>
             ${subtitle ? `<div class="user-subtitle">${subtitle}</div>` : ''}
