@@ -280,20 +280,22 @@ class UserService:
             
             try:
                 if pos_in_payload and (old_pos != new_pos):
-                    # Временное решение - используем методы из DirectoryService
-                    # TODO: убрать после создания PositionService (Сессия 8)
+                    # Используем PositionService для синхронизации должностей
+                    from .position_service import PositionService
                     from ..directory_service import DirectoryService
                     import logging
                     logger = logging.getLogger(__name__)
                     
-                    svc = DirectoryService()
+                    pos_svc = PositionService()
+                    dir_svc = DirectoryService()
+                    
                     if old_pos:
                         old_dn = (old_pos.ldap_group_dn or "").strip()
                         if not old_dn:
-                            maybe = svc.find_group_dn(
+                            maybe = dir_svc.find_group_dn(
                                 conn,
                                 f"POS_{old_pos.name}",
-                                bases=[svc._positions_base()],
+                                bases=[dir_svc._positions_base()],
                             )
                             old_dn = maybe or ""
                         if old_dn:
@@ -302,7 +304,7 @@ class UserService:
                                     f"Removing user {current_dn} "
                                     f"from position group {old_dn}"
                                 )
-                                svc.remove_group_members(
+                                dir_svc.remove_group_members(
                                     conn, old_dn, [current_dn]
                                 )
                             except RuntimeError as e:
@@ -322,8 +324,8 @@ class UserService:
                                     raise
 
                     if new_pos:
-                        pos_dn = svc._ensure_position_group(conn, new_pos)
-                        svc.add_group_members(conn, pos_dn, [current_dn])
+                        pos_dn = pos_svc._ensure_position_group(conn, new_pos)
+                        dir_svc.add_group_members(conn, pos_dn, [current_dn])
             except Exception as e:
                 raise DirectoryLdapError(
                     f"LDAP position membership sync failed: {e}"
