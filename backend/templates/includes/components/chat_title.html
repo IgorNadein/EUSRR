@@ -26,11 +26,6 @@
     {% endif %}
   </a>
   
-  {# Количество сообщений #}
-  <span class="badge bg-light text-dark border">
-    <i class="bi-chat-left-text"></i> {{ chat.messages.count }}
-  </span>
-  
   {# Счётчик непрочитанных #}
   <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
         data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
