@@ -100,6 +100,31 @@ class ChatComposer {
 			this.textarea.addEventListener('input', () => {
 				this.handleTyping();
 			});
+			
+			// Обработка вставки из буфера обмена
+			this.textarea.addEventListener('paste', (e) => {
+				this.handlePaste(e);
+			});
+			
+			// Обработка drag-and-drop
+			this.textarea.addEventListener('dragover', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.textarea.classList.add('drag-over');
+			});
+			
+			this.textarea.addEventListener('dragleave', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.textarea.classList.remove('drag-over');
+			});
+			
+			this.textarea.addEventListener('drop', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.textarea.classList.remove('drag-over');
+				this.handleDrop(e);
+			});
 		}
 
 		window.addEventListener('chat:message-received', this.boundMessageHandler);
@@ -153,6 +178,92 @@ class ChatComposer {
 
 		event.target.value = '';
 		this.renderPreview();
+	}
+
+	/**
+	 * Обработка вставки из буфера обмена
+	 * Поддерживает вставку изображений и файлов
+	 */
+	handlePaste(event) {
+		const clipboardData = event.clipboardData || window.clipboardData;
+		if (!clipboardData) return;
+
+		const items = Array.from(clipboardData.items || []);
+		const files = Array.from(clipboardData.files || []);
+		
+		// Проверяем наличие файлов
+		let hasFiles = false;
+		const pastedFiles = [];
+
+		// Сначала проверяем items (более надежный способ)
+		items.forEach((item) => {
+			if (item.kind === 'file') {
+				const file = item.getAsFile();
+				if (file) {
+					pastedFiles.push(file);
+					hasFiles = true;
+				}
+			}
+		});
+
+		// Если не нашли через items, пробуем files
+		if (!hasFiles && files.length > 0) {
+			pastedFiles.push(...files);
+			hasFiles = true;
+		}
+
+		// Если есть файлы - обрабатываем их
+		if (hasFiles && pastedFiles.length > 0) {
+			console.log('[ChatComposer] Pasted files:', pastedFiles);
+			
+			// Предотвращаем вставку текста/HTML если вставлены файлы
+			event.preventDefault();
+			
+			// Добавляем файлы в selectedFiles
+			pastedFiles.forEach((file) => {
+				const uuidSupported = window.crypto && typeof window.crypto.randomUUID === 'function';
+				const fileId = uuidSupported ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+				this.selectedFiles.push({ id: fileId, file });
+			});
+
+			// Обновляем превью
+			this.renderPreview();
+
+			// Показываем уведомление пользователю
+			const fileCount = pastedFiles.length;
+			const fileWord = fileCount === 1 ? 'файл' : fileCount < 5 ? 'файла' : 'файлов';
+			console.log(`[ChatComposer] Добавлено ${fileCount} ${fileWord} из буфера обмена`);
+		}
+		// Если файлов нет - оставляем стандартное поведение (вставка текста)
+	}
+
+	/**
+	 * Обработка перетаскивания файлов (drag-and-drop)
+	 */
+	handleDrop(event) {
+		const dataTransfer = event.dataTransfer;
+		if (!dataTransfer) return;
+
+		const files = Array.from(dataTransfer.files || []);
+		
+		if (files.length > 0) {
+			console.log('[ChatComposer] Dropped files:', files);
+			
+			// Добавляем файлы в selectedFiles
+			files.forEach((file) => {
+				const uuidSupported = window.crypto && typeof window.crypto.randomUUID === 'function';
+				const fileId = uuidSupported ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+				this.selectedFiles.push({ id: fileId, file });
+			});
+
+			// Обновляем превью
+			this.renderPreview();
+
+			// Показываем уведомление пользователю
+			const fileCount = files.length;
+			const fileWord = fileCount === 1 ? 'файл' : fileCount < 5 ? 'файла' : 'файлов';
+			console.log(`[ChatComposer] Добавлено ${fileCount} ${fileWord} перетаскиванием`);
+		}
 	}
 
 	handleTyping() {
