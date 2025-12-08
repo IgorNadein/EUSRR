@@ -337,8 +337,23 @@ class EmployeeSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         return data
 
+    def validate_avatar(self, value):
+        """
+        Игнорируем пустые строки в поле avatar.
+        Они приходят из FormData без файла.
+        """
+        if value == '':
+            # Пустая строка означает, что файл не выбран
+            return None
+        return value
+
     def update(self, instance, validated_data):
         skills = validated_data.pop("skills_ids", None)
+        
+        # Если avatar=None (пустая строка из FormData), не обновляем его
+        if "avatar" in validated_data and validated_data["avatar"] is None:
+            validated_data.pop("avatar")
+        
         instance = super().update(instance, validated_data)
         if skills is not None:
             instance.skills.set(skills)
