@@ -14,7 +14,12 @@
 <div class="container">
 
   {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-  {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" search_id="docFilter" search_placeholder="Поиск по названию или описанию" has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal="docCreateModal" create_text="Создать документ" %}
+  {# Показываем кнопку создания для: staff ИЛИ тех, у кого есть права на добавление документов #}
+  {% if user.is_staff or perms.documents.add_document %}
+    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" search_id="docFilter" search_placeholder="Поиск по названию или описанию" has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" create_as_card=True create_modal="docCreateModal" create_text="Создать документ" %}
+  {% else %}
+    {% include "includes/components/page_header.html" with icon="bi-file-earmark-text" title="Документы" search_id="docFilter" search_placeholder="Поиск по названию или описанию" has_filters=True filters_target="docFilters" filters_template="documents/_filters.html" %}
+  {% endif %}
 
   {# ===== Tabs для переключения области (Mine/All) ===== #}
   {% if can_manage_documents %}
