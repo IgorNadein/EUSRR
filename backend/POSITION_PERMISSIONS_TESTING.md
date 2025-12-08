@@ -1,6 +1,60 @@
 # Тестирование Прав Доступа Через Должности (Position Permissions)
 
-## Описание Проблемы
+## ✅ РЕШЕНИЕ НАЙДЕНО И ПРИМЕНЕНО
+
+**Дата:** 8 декабря 2025  
+**Статус:** ✅ Исправлено и протестировано
+
+### Корневая Причина
+
+В шаблоне `feed/feed_list.html` проверялись **несуществующие** права:
+```django
+{% if user.is_staff or perms.feed.publish_company_post or perms.feed.publish_department_post %}
+```
+
+Эти права **никогда не создавались** в Django! Правильное право для создания постов:
+```django
+{% if user.is_staff or perms.feed.add_post %}
+```
+
+### Диагностика Production
+
+Запущен отладочный скрипт для пользователя `maze3290@gmail.com`:
+
+```python
+User: maze3290@gmail.com
+Position: СММ специалист
+Position Groups: ['Дизайн СММ Реклама']
+Group Permissions: ['add_post', 'change_post', 'delete_post', 'view_post', ...]
+
+User Permissions (via PositionRoleBackend):
+{'feed.add_post', 'feed.change_post', 'feed.delete_post', ...}
+
+Has feed.publish_company_post: False  # ❌ Несуществующее право!
+Has feed.add_post: True               # ✅ Реальное право!
+```
+
+**Вывод:** PositionRoleBackend работает правильно, проблема была в шаблоне!
+
+### Исправление
+
+**Файл:** `backend/templates/feed/feed_list.html` (строка 19)
+
+```diff
+- {% if user.is_staff or perms.feed.publish_company_post or perms.feed.publish_department_post %}
++ {% if user.is_staff or perms.feed.add_post %}
+```
+
+### Коммиты
+
+1. `769f2ed` - test: add comprehensive position permissions tests
+2. `66406d9` - fix: add is_active check to PositionRoleBackend
+3. `4a6b92f` - docs: add production debugging guide
+4. `6162d9f` - **fix: correct permission check in feed_list.html** ← РЕШЕНИЕ
+
+---
+
+## Описание Проблемы (Оригинал)
 
 ### Исходная Жалоба Пользователя
 > "Ты говорил, что пользователь с должностью получает все права которые есть у групп в этой должности, но по факту кнопка создания публикаций не появляется"
