@@ -64,7 +64,11 @@ export class EmployeeProfile {
       return `
         <img src="${employee.avatar}"
              alt="Аватар ${employee.last_name} ${employee.first_name}"
-             class="ios-ava" style="object-fit:cover;">
+             class="ios-ava" 
+             style="object-fit:cover; cursor: pointer;"
+             data-bs-toggle="modal"
+             data-bs-target="#avatarModal"
+             data-avatar-url="${employee.avatar}">
       `;
     } else {
       const initial = (employee.first_name || employee.last_name || '?').charAt(0).toUpperCase();

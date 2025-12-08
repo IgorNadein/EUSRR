@@ -64,5 +64,20 @@
     if (employeeForm) window.employeeForm = employeeForm;
     if (skillsManager) window.skillsManager = skillsManager;
     if (deptRoleEditor) window.deptRoleEditor = deptRoleEditor;
+
+    // 4. Обработчик клика на аватар для просмотра увеличенной версии
+    const avatarModal = document.getElementById('avatarModal');
+    if (avatarModal) {
+      avatarModal.addEventListener('show.bs.modal', (event) => {
+        // Получаем элемент, который вызвал модалку
+        const button = event.relatedTarget;
+        if (button && button.dataset.avatarUrl) {
+          const modalImage = avatarModal.querySelector('#avatarModalImage');
+          if (modalImage) {
+            modalImage.src = button.dataset.avatarUrl;
+          }
+        }
+      });
+    }
   });
 </script>

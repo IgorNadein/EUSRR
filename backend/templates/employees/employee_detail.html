@@ -32,7 +32,11 @@
               {% if emp.avatar %}
                 <img src="{{ emp.avatar }}"
                      alt="Аватар {{ emp.last_name }} {{ emp.first_name }}"
-                     class="ios-ava" style="object-fit:cover;">
+                     class="ios-ava" 
+                     style="object-fit:cover; cursor: pointer;"
+                     data-bs-toggle="modal"
+                     data-bs-target="#avatarModal"
+                     data-avatar-url="{{ emp.avatar }}">
               {% else %}
                 <div class="ios-ava--ph">
                   {% firstof emp.first_name emp.last_name "?" as initial %}
@@ -428,6 +432,20 @@
 
 <!-- Модальное окно для просмотра публикации -->
 {% include "feed/components/modal_post_detail.html" %}
+
+<!-- Модальное окно для увеличенного просмотра аватара -->
+<div class="modal fade" id="avatarModal" tabindex="-1" aria-labelledby="avatarModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content bg-transparent border-0">
+      <div class="modal-header border-0 pb-0">
+        <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body text-center p-0">
+        <img id="avatarModalImage" src="" alt="Аватар" class="img-fluid rounded" style="max-height: 80vh; object-fit: contain;">
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
