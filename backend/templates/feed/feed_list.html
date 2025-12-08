@@ -15,7 +15,8 @@
       <div class="col-12">
 
         {# ===== НОВАЯ ШАПКА С КОМПОНЕНТОМ ===== #}
-        {% if user.is_authenticated and user.is_staff %}
+        {# Показываем кнопку создания для: staff ИЛИ тех, у кого есть права на публикацию #}
+        {% if user.is_authenticated and user.is_staff or perms.feed.publish_company_post or perms.feed.publish_department_post %}
           {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" search_id="feedFilter" search_placeholder="Поиск по названию, автору или содержанию" create_as_card=True create_modal="createPostModal" create_text="Создать публикацию" %}
         {% else %}
           {% include "includes/components/page_header.html" with icon="bi-megaphone" title="Лента" search_id="feedFilter" search_placeholder="Поиск по названию, автору или содержанию" %}
