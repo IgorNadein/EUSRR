@@ -265,11 +265,22 @@ class RequestWriteSerializer(serializers.ModelSerializer):
             dict[str, Any]: Преобразованные данные для дальнейшей валидации.
         """
         if not self._is_power():
-            # data может быть QueryDict — сделаем копию как обычный dict
-            data = dict(data)
-            data.pop("employee", None)
-            data.pop("status", None)
-            data.pop("approver", None)
+            # ВАЖНО: data может быть QueryDict из DRF
+            # dict(QueryDict) превращает все значения в списки!
+            # Используем _mutable для безопасного удаления полей
+            if hasattr(data, '_mutable'):
+                # Это QueryDict, делаем его mutable
+                data._mutable = True
+                data.pop("employee", None)
+                data.pop("status", None)
+                data.pop("approver", None)
+                data._mutable = False
+            else:
+                # Обычный dict
+                data = dict(data)
+                data.pop("employee", None)
+                data.pop("status", None)
+                data.pop("approver", None)
         
         return super().to_internal_value(data)
     
