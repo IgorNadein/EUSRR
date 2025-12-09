@@ -124,6 +124,7 @@ def request_list(request):
         'scope': scope,
         'filters': filters,
         'can_view_all': user.is_staff or user.headed_departments.exists(),
+        'departments': Department.objects.all().order_by('name'),
     }
     return render(request, 'procurement/request_list.html', context)
 
