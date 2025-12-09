@@ -214,7 +214,9 @@ def request_create(request):
 
 @login_required
 def equipment_list(request):
-    """Список оборудования."""
+    """Список оборудования с группировкой одинаковых позиций."""
+    from collections import defaultdict
+    
     queryset = Equipment.objects.select_related(
         'category', 'department', 'responsible_person'
     )
@@ -239,14 +241,50 @@ def equipment_list(request):
             inventory_number__icontains=search
         )
 
-    queryset = queryset.order_by('-purchase_date')
+    queryset = queryset.order_by('name', '-purchase_date')
+    
+    # Группировка по (название, категория, отдел, статус)
+    grouped_equipment = defaultdict(list)
+    for item in queryset:
+        key = (
+            item.name,
+            item.category_id,
+            item.department_id,
+            item.status
+        )
+        grouped_equipment[key].append(item)
+    
+    # Преобразуем в список групп
+    equipment_groups = []
+    for key, items in grouped_equipment.items():
+        # Первый элемент — представитель группы
+        main_item = items[0]
+        equipment_groups.append({
+            'main': main_item,
+            'items': items,
+            'count': len(items),
+            'is_group': len(items) > 1,
+        })
+    
+    # Сортировка по имени
+    equipment_groups.sort(key=lambda x: x['main'].name.lower())
 
-    # Пагинация
-    paginator = Paginator(queryset, 24)
+    # Пагинация по группам
+    paginator = Paginator(equipment_groups, 24)
     page_obj = paginator.get_page(request.GET.get('page'))
 
+    # Получаем первый активный отдел пользователя
+    user_department = request.user.departments.filter(
+        employeedepartment__is_active=True
+    ).first()
+    
+    # Получаем руководителя отдела (если есть)
+    department_head = None
+    if user_department:
+        department_head = user_department.head
+
     context = {
-        'equipment_list': page_obj,
+        'equipment_groups': page_obj,
         'page_obj': page_obj,
         'filters': filters,
         'categories': EquipmentCategory.objects.all(),
@@ -255,6 +293,8 @@ def equipment_list(request):
             is_active=True
         ).order_by('last_name', 'first_name'),
         'can_manage': request.user.is_staff,
+        'user_department': user_department,
+        'department_head': department_head,
     }
     return render(request, 'procurement/equipment_list.html', context)
 
@@ -266,7 +306,7 @@ def equipment_detail(request, pk):
         Equipment.objects.select_related(
             'category', 'department', 'responsible_person'
         ).prefetch_related(
-            'maintenance_records', 'transfer_logs'
+            'maintenance_history', 'transfer_logs'
         ),
         pk=pk
     )

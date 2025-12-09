@@ -466,6 +466,49 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         permission_classes = [CanManageEquipment]
         return [permission() for permission in permission_classes]
 
+    def create(self, request, *args, **kwargs):
+        """Создание оборудования с поддержкой массового создания.
+        
+        Если передан параметр quantity > 1, создаётся несколько единиц
+        с автоматически сгенерированными инвентарными номерами.
+        """
+        quantity = int(request.data.get('quantity', 1))
+        quantity = max(1, min(quantity, 100))  # Ограничение от 1 до 100
+        
+        if quantity == 1:
+            # Стандартное создание одной единицы
+            return super().create(request, *args, **kwargs)
+        
+        # Массовое создание
+        created_equipment = []
+        errors = []
+        
+        for i in range(quantity):
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                self.perform_create(serializer)
+                created_equipment.append(serializer.data)
+            else:
+                errors.append({'index': i, 'errors': serializer.errors})
+        
+        if errors and not created_equipment:
+            return Response(
+                {
+                    'detail': 'Не удалось создать оборудование',
+                    'errors': errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(
+            {
+                'created_count': len(created_equipment),
+                'equipment': created_equipment,
+                'errors': errors if errors else None
+            },
+            status=status.HTTP_201_CREATED
+        )
+
     @action(detail=False, methods=['get'])
     def my_equipment(self, request):
         """Оборудование, за которое отвечает текущий пользователь."""
@@ -491,6 +534,114 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         )
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='create-options')
+    def create_options(self, request):
+        """Возвращает доступные опции для создания оборудования.
+
+        Определяет уровень прав пользователя и возвращает:
+        - allowed_departments: список отделов для выбора
+        - can_choose_department: может ли пользователь выбирать отдел
+        - can_choose_responsible: может ли выбирать ответственного
+        - default_responsible: ответственный по умолчанию (если нет выбора)
+        """
+        from api.v1.permissions import has_dept_perm
+        from employees.constants import DeptPerm
+        from employees.models import EmployeeDepartment
+
+        user = request.user
+
+        # Определяем уровень прав
+        if user.is_staff or user.is_superuser:
+            perm_level = 'full'
+        elif user.has_perm('procurement.add_equipment'):
+            perm_level = 'full'
+        elif Department.objects.filter(head_id=user.id).exists():
+            perm_level = 'dept_head'
+        else:
+            # Проверяем скоуп-право
+            user_dept_links = EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                is_active=True
+            ).select_related('department')
+
+            has_scoped = False
+            for link in user_dept_links:
+                if has_dept_perm(
+                    user, link.department_id, DeptPerm.MANAGE_EQUIPMENT
+                ):
+                    has_scoped = True
+                    break
+
+            perm_level = 'scoped' if has_scoped else None
+
+        # Формируем ответ в зависимости от уровня прав
+        if perm_level == 'full':
+            # Полный доступ — все отделы
+            departments = Department.objects.all().values('id', 'name')
+            return Response({
+                'allowed_departments': list(departments),
+                'can_choose_department': True,
+                'can_choose_responsible': True,
+                'default_responsible': None,
+                'permission_level': 'full',
+            })
+
+        elif perm_level == 'dept_head':
+            # Начальник — только свои отделы
+            departments = Department.objects.filter(
+                head_id=user.id
+            ).values('id', 'name')
+            return Response({
+                'allowed_departments': list(departments),
+                'can_choose_department': False,
+                'can_choose_responsible': True,
+                'default_responsible': {
+                    'id': user.id,
+                    'name': user.get_full_name(),
+                },
+                'permission_level': 'dept_head',
+            })
+
+        elif perm_level == 'scoped':
+            # Скоуп-право — отделы с правом, ответственный = начальник
+            allowed_depts = []
+            default_responsible = None
+
+            user_dept_links = EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                is_active=True
+            ).select_related('department', 'department__head')
+
+            for link in user_dept_links:
+                if has_dept_perm(
+                    user, link.department_id, DeptPerm.MANAGE_EQUIPMENT
+                ):
+                    dept = link.department
+                    allowed_depts.append({'id': dept.id, 'name': dept.name})
+                    if default_responsible is None and dept.head:
+                        default_responsible = {
+                            'id': dept.head.id,
+                            'name': dept.head.get_full_name(),
+                        }
+
+            return Response({
+                'allowed_departments': allowed_depts,
+                'can_choose_department': False,
+                'can_choose_responsible': False,
+                'default_responsible': default_responsible,
+                'permission_level': 'scoped',
+            })
+
+        else:
+            # Нет прав
+            return Response({
+                'allowed_departments': [],
+                'can_choose_department': False,
+                'can_choose_responsible': False,
+                'default_responsible': None,
+                'permission_level': None,
+            })
 
     @action(detail=True, methods=['post'])
     def transfer(self, request, pk=None):

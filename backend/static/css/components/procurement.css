@@ -261,7 +261,7 @@
   background: var(--bs-body-bg);
   border: 1px solid var(--bs-border-color);
   border-radius: var(--feed-radius, 18px);
-  overflow: hidden;
+  overflow: visible;
   transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
 
@@ -371,6 +371,194 @@
 .proc-eq-status.retired {
   background: color-mix(in srgb, var(--bs-secondary) 15%, transparent);
   color: var(--bs-secondary);
+}
+
+/* ===== Equipment List (Table-like) ===== */
+/* Разрешаем overflow для dropdown меню */
+#equipmentListContent {
+  overflow: visible !important;
+}
+
+
+
+/* Dropdown menu должен быть поверх всех элементов */
+.proc-equipment-actions .dropdown-menu {
+  z-index: 1050;
+}
+
+.proc-equipment-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 120px 140px 100px 50px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.proc-equipment-item {
+  display: grid;
+  grid-template-columns: 1fr 60px 120px 140px 100px 50px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--bs-border-color);
+  transition: background 0.15s ease;
+}
+
+.proc-equipment-item:hover {
+  background: var(--bs-tertiary-bg);
+}
+
+.proc-equipment-item:last-child {
+  border-bottom: none;
+}
+
+.proc-equipment-item.has-children {
+  background: color-mix(in srgb, var(--bs-primary) 3%, transparent);
+  cursor: pointer;
+}
+
+.proc-equipment-item.has-children:hover {
+  background: color-mix(in srgb, var(--bs-primary) 8%, transparent);
+}
+
+/* Кнопка раскрытия группы */
+.proc-expand-btn {
+  color: var(--bs-secondary);
+  transition: transform 0.2s ease;
+}
+
+.proc-expand-btn[aria-expanded="true"] i {
+  transform: rotate(90deg);
+}
+
+/* Вложенные элементы группы */
+.proc-equipment-group {
+  background: var(--bs-tertiary-bg);
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.proc-equipment-subitem {
+  display: grid;
+  grid-template-columns: 1fr 60px 120px 140px 100px 50px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  padding-left: calc(var(--space-3) + 60px);
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+
+.proc-equipment-subitem:last-child {
+  border-bottom: none;
+}
+
+.proc-equipment-subitem:hover {
+  background: color-mix(in srgb, var(--bs-primary) 5%, transparent);
+}
+
+.proc-equipment-subitem .proc-equipment-name {
+  font-weight: 500;
+  font-family: var(--bs-font-monospace);
+  font-size: 0.9rem;
+}
+
+/* Информация об оборудовании в списке */
+.proc-equipment-item .proc-equipment-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.proc-equipment-icon-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bs-primary) 10%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: var(--bs-primary);
+  flex-shrink: 0;
+}
+
+.proc-equipment-details {
+  min-width: 0;
+}
+
+.proc-equipment-item .proc-equipment-name {
+  font-weight: 600;
+  color: var(--bs-body-color);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proc-equipment-item .proc-equipment-name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.proc-equipment-item .proc-equipment-name a:hover {
+  color: var(--bs-primary);
+}
+
+.proc-equipment-item .proc-equipment-inv {
+  font-size: 0.75rem;
+  font-family: var(--bs-font-monospace);
+  color: var(--bs-secondary-color);
+}
+
+/* Колонка количества */
+.proc-equipment-count {
+  text-align: center;
+}
+
+.proc-equipment-category,
+.proc-equipment-dept,
+.proc-equipment-responsible {
+  font-size: 0.875rem;
+  color: var(--bs-body-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proc-equipment-actions {
+  text-align: center;
+}
+
+/* Responsive для списка оборудования */
+@media (max-width: 991.98px) {
+  .proc-table-header {
+    display: block !important;
+    padding: var(--space-2) var(--space-3) !important;
+  }
+  
+  .proc-equipment-row {
+    grid-template-columns: 1fr 60px 100px 50px;
+  }
+  
+  .proc-equipment-item {
+    grid-template-columns: 1fr 60px 100px 50px;
+  }
+  
+  .proc-equipment-subitem {
+    grid-template-columns: 1fr 60px 100px 50px;
+    padding-left: calc(var(--space-3) + 40px);
+  }
+  
+  /* Скрываем категорию и отдел */
+  .proc-equipment-category,
+  .proc-equipment-dept {
+    display: none;
+  }
+  
+  /* Заголовок: скрываем категорию и отдел */
+  .proc-equipment-row .proc-cell:nth-child(3),
+  .proc-equipment-row .proc-cell:nth-child(4) {
+    display: none;
+  }
 }
 
 /* ===== Budget Card ===== */

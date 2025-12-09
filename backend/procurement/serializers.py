@@ -336,12 +336,229 @@ class EquipmentListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'inventory_number',  # Генерируется автоматически
             'category_name',
             'department_name',
             'responsible_name',
             'status_display',
             'is_under_warranty',
         ]
+
+    def create(self, validated_data):
+        """Автоматическая генерация инвентарного номера при создании."""
+        import re
+        from datetime import datetime
+
+        year = datetime.now().year
+        prefix = f"INV-{year}-"
+
+        # Находим максимальный номер с текущим префиксом
+        last_equipment = Equipment.objects.filter(
+            inventory_number__startswith=prefix
+        ).order_by('-inventory_number').first()
+
+        if last_equipment:
+            match = re.search(r'(\d+)$', last_equipment.inventory_number)
+            if match:
+                next_num = int(match.group(1)) + 1
+            else:
+                next_num = 1
+        else:
+            next_num = 1
+
+        validated_data['inventory_number'] = f"{prefix}{next_num:04d}"
+        return super().create(validated_data)
+
+    def _get_user_permission_level(self, user):
+        """Определяет уровень прав пользователя.
+
+        Возвращает:
+            'full' - админ/модельные права (свободный выбор отдела/ответственного)
+            'dept_head' - начальник отдела (свой отдел, выбор ответственного)
+            'scoped' - скоуп-право (свой отдел, ответственный = начальник)
+            None - нет прав на создание
+        """
+        from api.v1.permissions import has_dept_perm
+        from employees.constants import DeptPerm
+        from employees.models import Department, EmployeeDepartment
+
+        if not user or not user.is_authenticated:
+            return None
+
+        # Админ или модельные права = полный доступ
+        if (user.is_staff or user.is_superuser or
+                user.has_perm('procurement.add_equipment')):
+            return 'full'
+
+        # Проверяем, является ли начальником какого-то отдела
+        headed_depts = Department.objects.filter(head_id=user.id)
+        if headed_depts.exists():
+            return 'dept_head'
+
+        # Проверяем скоуп-право в активных отделах
+        user_dept_links = EmployeeDepartment.objects.filter(
+            employee_id=user.id,
+            is_active=True
+        ).select_related('department', 'role')
+
+        for link in user_dept_links:
+            if has_dept_perm(user, link.department_id, DeptPerm.MANAGE_EQUIPMENT):
+                return 'scoped'
+
+        return None
+
+    def _get_user_allowed_departments(self, user, perm_level):
+        """Возвращает отделы, в которых пользователь может создать оборудование."""
+        from employees.models import Department, EmployeeDepartment
+
+        if perm_level == 'full':
+            return list(Department.objects.all())
+
+        if perm_level == 'dept_head':
+            return list(Department.objects.filter(head_id=user.id))
+
+        if perm_level == 'scoped':
+            from api.v1.permissions import has_dept_perm
+            from employees.constants import DeptPerm
+
+            result = []
+            user_dept_links = EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                is_active=True
+            ).select_related('department')
+
+            for link in user_dept_links:
+                if has_dept_perm(
+                    user, link.department_id, DeptPerm.MANAGE_EQUIPMENT
+                ):
+                    result.append(link.department)
+            return result
+
+        return []
+
+    def validate(self, attrs):
+        """Проверка и автозаполнение полей в зависимости от прав.
+
+        Уровни прав:
+        - full (админ/модельные права): свободный выбор отдела и ответственного
+        - dept_head (начальник): только свой отдел, выбор ответственного из отдела
+        - scoped (скоуп-право): только свой отдел, ответственный = начальник
+        """
+        from employees.models import EmployeeDepartment
+
+        request = self.context.get('request')
+        user = request.user if request else None
+
+        # При update (есть instance) используем облегчённую валидацию
+        if self.instance is not None:
+            return self._validate_update(attrs, user)
+
+        # Создание — полная проверка прав
+        perm_level = self._get_user_permission_level(user)
+
+        # Проверяем отдел
+        department = attrs.get('department')
+
+        if perm_level == 'full':
+            # Полный доступ — можно указать любой отдел
+            pass
+
+        elif perm_level == 'dept_head':
+            # Начальник — только свои отделы
+            allowed_depts = self._get_user_allowed_departments(user, perm_level)
+            allowed_ids = [d.id for d in allowed_depts]
+
+            if department and department.id not in allowed_ids:
+                raise serializers.ValidationError({
+                    'department': 'Вы можете создавать оборудование '
+                                  'только в своём отделе.'
+                })
+
+            # Если отдел не указан — берём первый
+            if not department and allowed_depts:
+                attrs['department'] = allowed_depts[0]
+                department = allowed_depts[0]
+
+            # Ответственный по умолчанию — сам начальник
+            resp = attrs.get('responsible_person')
+            if resp is None:
+                attrs['responsible_person'] = user
+
+        elif perm_level == 'scoped':
+            # Скоуп-право — только свой отдел, ответственный = начальник
+            allowed_depts = self._get_user_allowed_departments(user, perm_level)
+            allowed_ids = [d.id for d in allowed_depts]
+
+            if department and department.id not in allowed_ids:
+                raise serializers.ValidationError({
+                    'department': 'Вы можете создавать оборудование '
+                                  'только в своём отделе.'
+                })
+
+            # Если отдел не указан — берём первый
+            if not department and allowed_depts:
+                attrs['department'] = allowed_depts[0]
+                department = allowed_depts[0]
+
+            # Ответственный ВСЕГДА = начальник отдела (без выбора)
+            if department and department.head:
+                attrs['responsible_person'] = department.head
+            else:
+                attrs['responsible_person'] = None
+
+        else:
+            # Нет прав — ошибка
+            raise serializers.ValidationError({
+                'non_field_errors': 'У вас нет прав на создание оборудования.'
+            })
+
+        # Валидация ответственного
+        return self._validate_responsible_in_department(attrs)
+
+    def _validate_update(self, attrs, user):
+        """Валидация при обновлении (облегчённая)."""
+        # При update не проверяем права создания,
+        # только валидацию ответственного если он меняется
+        department = attrs.get('department', self.instance.department)
+        responsible = attrs.get('responsible_person')
+
+        # Если меняется ответственный — проверяем принадлежность к отделу
+        if responsible is not None:
+            attrs['department'] = department  # Для валидации
+            attrs['responsible_person'] = responsible
+            return self._validate_responsible_in_department(attrs)
+
+        return attrs
+
+    def _validate_responsible_in_department(self, attrs):
+        """Проверяет, что ответственный состоит в отделе оборудования."""
+        from employees.models import EmployeeDepartment
+
+        department = attrs.get('department')
+        responsible = attrs.get('responsible_person')
+
+        if department and responsible:
+            # Проверяем, что ответственный в этом отделе
+            is_in_dept = (
+                # Он начальник отдела
+                department.head_id == responsible.id or
+                # Или состоит в отделе
+                EmployeeDepartment.objects.filter(
+                    employee_id=responsible.id,
+                    department_id=department.id,
+                    is_active=True
+                ).exists()
+            )
+
+            if not is_in_dept:
+                raise serializers.ValidationError({
+                    'responsible_person': (
+                        'Ответственный должен состоять в том же отделе, '
+                        'что и оборудование.'
+                    )
+                })
+
+        return attrs
 
 
 class EquipmentDetailSerializer(serializers.ModelSerializer):
