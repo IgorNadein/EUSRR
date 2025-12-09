@@ -1717,7 +1717,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             data_for_serializer = request.data
             if 'avatar' in request.data:
                 avatar_value = request.data.get('avatar')
-                logger.info(f"[ME PATCH] � Проверяем avatar: type={type(avatar_value)}, value={repr(avatar_value)[:100]}")
+                logger.info(f"[ME PATCH] Проверяем avatar: type={type(avatar_value)}, value={repr(avatar_value)[:100]}")
                 
                 # Если avatar - пустая строка, создаем копию данных без него
                 if avatar_value == '':

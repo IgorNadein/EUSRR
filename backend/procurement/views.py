@@ -2,7 +2,7 @@
 ViewSets для API модуля закупок.
 """
 
-from django.db.models import Count, Q
+from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -47,9 +47,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
     queryset = ProcurementRequest.objects.select_related(
         'department', 'requestor'
-    ).prefetch_related('items', 'approvals').annotate(
-        items_count=Count('items')
-    )
+    ).prefetch_related('items', 'approvals')
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,

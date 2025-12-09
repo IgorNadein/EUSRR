@@ -239,15 +239,14 @@ class TestBudgetAPI:
     def test_list_budgets_regular_user(
         self, api_client, user
     ):
-        """Тест: обычный пользователь не видит бюджеты."""
+        """Тест: обычный пользователь не видит бюджеты (нет прав)."""
         api_client.force_authenticate(user=user)
         
         url = reverse('procurement:budget-list')
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_200_OK
-        # Должен вернуть пустой список
-        assert len(response.data['results']) == 0
+        # Обычный пользователь не имеет доступа к бюджетам
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db

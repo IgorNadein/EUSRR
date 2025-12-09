@@ -172,7 +172,7 @@ class CanManageBudget(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return (
                 request.user.is_staff or
-                request.user.led_departments.exists()
+                request.user.headed_departments.exists()
             )
 
         # Создание/изменение - только финансовые менеджеры

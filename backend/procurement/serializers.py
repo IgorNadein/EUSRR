@@ -236,13 +236,18 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProcurementRequest
         fields = [
+            'id',
             'title',
             'description',
             'department',
+            'requestor',
             'urgency',
             'estimated_cost',
             'items',
+            'status',
+            'created_at',
         ]
+        read_only_fields = ['id', 'requestor', 'status', 'created_at']
 
     def create(self, validated_data):
         """Создать заявку с позициями."""
@@ -326,6 +331,7 @@ class EquipmentListSerializer(serializers.ModelSerializer):
             'responsible_person',
             'responsible_name',
             'purchase_date',
+            'purchase_cost',
             'is_under_warranty',
         ]
         read_only_fields = [
