@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Оборудование{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+{% endblock %}
+
+{% block content %}
+
+  {# ===== ШАПКА СТРАНИЦЫ ===== #}
+  {% include "includes/components/page_header.html" with icon="bi-laptop" title="Оборудование" search_id="eqSearch" search_placeholder="Поиск по названию или инв. номеру..." has_filters=True filters_target="eqFilters" filters_template="procurement/_equipment_filters.html" %}
+
+  {# ===== СЕТКА ОБОРУДОВАНИЯ ===== #}
+  <div class="proc-equipment-grid" id="equipmentGrid">
+    {% if equipment_list %}
+      {% for item in equipment_list %}
+      <div class="proc-equipment-card" data-id="{{ item.id }}">
+        <div class="proc-equipment-header">
+          <div class="proc-equipment-icon">
+            {% if item.category.name == 'Компьютеры' or 'ноутбук' in item.name|lower %}
+              <i class="bi-laptop"></i>
+            {% elif 'монитор' in item.name|lower %}
+              <i class="bi-display"></i>
+            {% elif 'принтер' in item.name|lower %}
+              <i class="bi-printer"></i>
+            {% elif 'телефон' in item.name|lower %}
+              <i class="bi-phone"></i>
+            {% elif 'сервер' in item.name|lower %}
+              <i class="bi-hdd-rack"></i>
+            {% else %}
+              <i class="bi-pc-display-horizontal"></i>
+            {% endif %}
+          </div>
+          <div class="proc-equipment-info">
+            <div class="proc-equipment-name">
+              <a href="{% url 'procurement_frontend:equipment_detail' item.id %}" class="text-decoration-none">
+                {{ item.name }}
+              </a>
+            </div>
+            <div class="proc-equipment-inv">{{ item.inventory_number }}</div>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-link text-muted" type="button" data-bs-toggle="dropdown">
+              <i class="bi-three-dots-vertical"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item" href="{% url 'procurement_frontend:equipment_detail' item.id %}">
+                  <i class="bi-eye me-2"></i>Просмотр
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="{% url 'api:v1:equipment-qr-code' item.id %}" target="_blank">
+                  <i class="bi-qr-code me-2"></i>QR-код
+                </a>
+              </li>
+              {% if can_manage %}
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferModal" data-id="{{ item.id }}">
+                  <i class="bi-arrow-left-right me-2"></i>Перевести
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#maintenanceModal" data-id="{{ item.id }}">
+                  <i class="bi-wrench me-2"></i>Обслуживание
+                </a>
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+        
+        <div class="proc-equipment-body">
+          <div class="proc-equipment-meta">
+            {% if item.category %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-tag"></i>
+              <span>{{ item.category.name }}</span>
+            </div>
+            {% endif %}
+            
+            {% if item.department %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-building"></i>
+              <span>{{ item.department.name }}</span>
+            </div>
+            {% endif %}
+            
+            {% if item.responsible_person %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-person"></i>
+              <span>{{ item.responsible_person.get_full_name }}</span>
+            </div>
+            {% endif %}
+            
+            {% if item.location %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-geo-alt"></i>
+              <span>{{ item.location }}</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        
+        <div class="proc-equipment-footer">
+          {% include "procurement/_equipment_status.html" with status=item.status %}
+          
+          <div class="text-muted small">
+            {{ item.purchase_date|date:"d.m.Y" }}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="col-12">
+        <div class="text-center py-5 text-muted">
+          <i class="bi-inbox fs-1 d-block mb-2"></i>
+          <p class="mb-0">Оборудование не найдено</p>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+  
+  {# Пагинация #}
+  {% if page_obj %}
+  <div class="d-flex justify-content-center mt-4">
+    <nav aria-label="Страницы">
+      <ul class="pagination">
+        {% if page_obj.has_previous %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
+              <i class="bi-chevron-left"></i>
+            </a>
+          </li>
+        {% endif %}
+        
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+            <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+          {% endif %}
+        {% endfor %}
+        
+        {% if page_obj.has_next %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}">
+              <i class="bi-chevron-right"></i>
+            </a>
+          </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+
+{# ===== МОДАЛКА ПЕРЕВОДА ===== #}
+<div class="modal fade" id="transferModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="transferForm">
+      {% csrf_token %}
+      <input type="hidden" name="equipment_id" id="transferEquipmentId">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-arrow-left-right me-2"></i>Перевод оборудования
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">В отдел</label>
+          <select name="to_department" class="form-select" id="transferDepartment">
+            <option value="">Без изменений</option>
+            {% for dept in departments %}
+              <option value="{{ dept.id }}">{{ dept.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Новый ответственный</label>
+          <select name="to_person" class="form-select" id="transferPerson">
+            <option value="">Без изменений</option>
+            {# Загружается динамически #}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Причина перевода</label>
+          <textarea name="reason" class="form-control" rows="2" placeholder="Укажите причину..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi-check-lg me-1"></i>Перевести
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ===== МОДАЛКА ОБСЛУЖИВАНИЯ ===== #}
+<div class="modal fade" id="maintenanceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="maintenanceForm">
+      {% csrf_token %}
+      <input type="hidden" name="equipment_id" id="maintenanceEquipmentId">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-wrench me-2"></i>Запись об обслуживании
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Тип обслуживания</label>
+          <select name="type" class="form-select" required>
+            <option value="inspection">Осмотр/проверка</option>
+            <option value="maintenance">Плановое ТО</option>
+            <option value="repair">Ремонт</option>
+            <option value="upgrade">Модернизация</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Описание работ</label>
+          <textarea name="description" class="form-control" rows="3" 
+                    placeholder="Опишите выполненные работы..." required></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Стоимость</label>
+          <div class="input-group">
+            <input type="number" name="cost" class="form-control" placeholder="0" min="0" step="0.01">
+            <span class="input-group-text">₽</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi-check-lg me-1"></i>Сохранить
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Поиск по оборудованию
+  const searchInput = document.getElementById('eqSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', debounce((e) => {
+      const query = e.target.value.toLowerCase();
+      document.querySelectorAll('.proc-equipment-card').forEach(card => {
+        const name = card.querySelector('.proc-equipment-name')?.textContent.toLowerCase() || '';
+        const inv = card.querySelector('.proc-equipment-inv')?.textContent.toLowerCase() || '';
+        const match = name.includes(query) || inv.includes(query);
+        card.style.display = match ? '' : 'none';
+      });
+    }, 300));
+  }
+  
+  // Модалка перевода - заполняем ID
+  document.getElementById('transferModal')?.addEventListener('show.bs.modal', (e) => {
+    const btn = e.relatedTarget;
+    const id = btn?.dataset.id;
+    if (id) document.getElementById('transferEquipmentId').value = id;
+  });
+  
+  // Модалка обслуживания - заполняем ID
+  document.getElementById('maintenanceModal')?.addEventListener('show.bs.modal', (e) => {
+    const btn = e.relatedTarget;
+    const id = btn?.dataset.id;
+    if (id) document.getElementById('maintenanceEquipmentId').value = id;
+  });
+  
+  // Отправка формы перевода
+  document.getElementById('transferForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const id = form.querySelector('#transferEquipmentId').value;
+    const data = {
+      to_department: form.querySelector('#transferDepartment').value || null,
+      to_person: form.querySelector('#transferPerson').value || null,
+      reason: form.querySelector('[name="reason"]').value
+    };
+    
+    try {
+      const resp = await fetch(`/api/procurement/equipment/${id}/transfer/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]').value
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (resp.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('transferModal')).hide();
+        window.location.reload();
+      } else {
+        const err = await resp.json();
+        alert(err.error || 'Ошибка перевода');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сети');
+    }
+  });
+  
+  // Отправка формы обслуживания
+  document.getElementById('maintenanceForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const id = form.querySelector('#maintenanceEquipmentId').value;
+    const data = {
+      type: form.querySelector('[name="type"]').value,
+      description: form.querySelector('[name="description"]').value,
+      cost: form.querySelector('[name="cost"]').value || null
+    };
+    
+    try {
+      const resp = await fetch(`/api/procurement/equipment/${id}/add_maintenance/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]').value
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (resp.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('maintenanceModal')).hide();
+        alert('Запись добавлена');
+        form.reset();
+      } else {
+        const err = await resp.json();
+        alert(err.error || 'Ошибка сохранения');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сети');
+    }
+  });
+</script>
+{% endblock %}

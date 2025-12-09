@@ -1,0 +1,438 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ equipment.name }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+  {# ===== Хлебные крошки ===== #}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:dashboard' %}">Закупки</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:equipment_list' %}">Оборудование</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ equipment.inventory_number }}</li>
+    </ol>
+  </nav>
+
+  <div class="row g-4">
+    {# ===== Основная информация ===== #}
+    <div class="col-lg-8">
+      <div class="card mb-4">
+        <div class="card-body">
+          <div class="d-flex align-items-start gap-3">
+            <div class="proc-equipment-icon" style="width: 64px; height: 64px; font-size: 2rem;">
+              {% if 'ноутбук' in equipment.name|lower or 'laptop' in equipment.name|lower %}
+                <i class="bi-laptop"></i>
+              {% elif 'монитор' in equipment.name|lower or 'display' in equipment.name|lower %}
+                <i class="bi-display"></i>
+              {% elif 'принтер' in equipment.name|lower or 'printer' in equipment.name|lower %}
+                <i class="bi-printer"></i>
+              {% elif 'телефон' in equipment.name|lower or 'phone' in equipment.name|lower %}
+                <i class="bi-phone"></i>
+              {% elif 'сервер' in equipment.name|lower or 'server' in equipment.name|lower %}
+                <i class="bi-hdd-rack"></i>
+              {% else %}
+                <i class="bi-pc-display-horizontal"></i>
+              {% endif %}
+            </div>
+            
+            <div class="flex-grow-1">
+              <h3 class="mb-1">{{ equipment.name }}</h3>
+              <div class="d-flex flex-wrap gap-3 align-items-center">
+                <code class="fs-6">{{ equipment.inventory_number }}</code>
+                {% include "procurement/_equipment_status.html" with status=equipment.status %}
+              </div>
+            </div>
+            
+            <div class="text-end">
+              <a href="/api/procurement/equipment/{{ equipment.id }}/qr_code/" 
+                 target="_blank" 
+                 class="btn btn-outline-primary btn-sm">
+                <i class="bi-qr-code me-1"></i>QR-код
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {# Характеристики #}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi-list-ul me-2"></i>Характеристики</h5>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% if equipment.category %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Категория</span>
+            <span>{{ equipment.category.name }}</span>
+          </li>
+          {% endif %}
+          {% if equipment.serial_number %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Серийный номер</span>
+            <code>{{ equipment.serial_number }}</code>
+          </li>
+          {% endif %}
+          {% if equipment.model %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Модель</span>
+            <span>{{ equipment.model }}</span>
+          </li>
+          {% endif %}
+          {% if equipment.manufacturer %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Производитель</span>
+            <span>{{ equipment.manufacturer }}</span>
+          </li>
+          {% endif %}
+          {% if equipment.location %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Расположение</span>
+            <span>{{ equipment.location }}</span>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+      
+      {# Описание #}
+      {% if equipment.notes %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi-text-paragraph me-2"></i>Примечания</h5>
+        </div>
+        <div class="card-body">
+          <p class="mb-0" style="white-space: pre-wrap;">{{ equipment.notes }}</p>
+        </div>
+      </div>
+      {% endif %}
+      
+      {# История обслуживания #}
+      <div class="card mb-4">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <h5 class="mb-0"><i class="bi-wrench me-2"></i>История обслуживания</h5>
+          {% if can_manage %}
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#maintenanceModal">
+            <i class="bi-plus-lg"></i> Добавить
+          </button>
+          {% endif %}
+        </div>
+        <div class="card-body p-0">
+          {% if equipment.maintenance_records.exists %}
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Дата</th>
+                  <th>Тип</th>
+                  <th>Описание</th>
+                  <th class="text-end">Стоимость</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for record in equipment.maintenance_records.all %}
+                <tr>
+                  <td>{{ record.date|date:"d.m.Y" }}</td>
+                  <td>{{ record.get_type_display }}</td>
+                  <td>{{ record.description|truncatechars:50 }}</td>
+                  <td class="text-end">
+                    {% if record.cost %}{{ record.cost|floatformat:0 }} ₽{% else %}—{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi-inbox fs-3 d-block mb-2"></i>
+            <p class="mb-0">Записей об обслуживании нет</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      
+      {# История передач #}
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi-arrow-left-right me-2"></i>История передач</h5>
+        </div>
+        <div class="card-body p-0">
+          {% if equipment.transfer_logs.exists %}
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Дата</th>
+                  <th>Откуда</th>
+                  <th>Куда</th>
+                  <th>Причина</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for log in equipment.transfer_logs.all %}
+                <tr>
+                  <td>{{ log.created_at|date:"d.m.Y" }}</td>
+                  <td>
+                    {% if log.from_department %}{{ log.from_department.name }}{% endif %}
+                    {% if log.from_person %}({{ log.from_person.get_full_name }}){% endif %}
+                  </td>
+                  <td>
+                    {% if log.to_department %}{{ log.to_department.name }}{% endif %}
+                    {% if log.to_person %}({{ log.to_person.get_full_name }}){% endif %}
+                  </td>
+                  <td>{{ log.reason|truncatechars:40 }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi-inbox fs-3 d-block mb-2"></i>
+            <p class="mb-0">Передач не было</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    
+    {# ===== Боковая панель ===== #}
+    <div class="col-lg-4">
+      {# Действия #}
+      {% if can_manage %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi-gear me-2"></i>Действия</h5>
+        </div>
+        <div class="card-body d-grid gap-2">
+          <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#transferModal">
+            <i class="bi-arrow-left-right me-2"></i>Перевести
+          </button>
+          <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#maintenanceModal">
+            <i class="bi-wrench me-2"></i>Обслуживание
+          </button>
+          {% if equipment.status != 'retired' %}
+          <button class="btn btn-outline-danger" id="writeOffBtn">
+            <i class="bi-x-circle me-2"></i>Списать
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      
+      {# Информация о владении #}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi-person-badge me-2"></i>Владение</h5>
+        </div>
+        <ul class="list-group list-group-flush">
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Отдел</span>
+            <span>{{ equipment.department.name|default:"—" }}</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Ответственный</span>
+            <span>{{ equipment.responsible_person.get_full_name|default:"—" }}</span>
+          </li>
+        </ul>
+      </div>
+      
+      {# Финансовая информация #}
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi-wallet2 me-2"></i>Финансы</h5>
+        </div>
+        <ul class="list-group list-group-flush">
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Дата покупки</span>
+            <span>{{ equipment.purchase_date|date:"d.m.Y" }}</span>
+          </li>
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Стоимость</span>
+            <span class="fw-bold">{{ equipment.purchase_cost|floatformat:0 }} ₽</span>
+          </li>
+          {% if equipment.warranty_until %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Гарантия до</span>
+            <span {% if equipment.is_under_warranty %}class="text-success"{% else %}class="text-danger"{% endif %}>
+              {{ equipment.warranty_until|date:"d.m.Y" }}
+            </span>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ===== Модалки ===== #}
+{% if can_manage %}
+{# Модалка обслуживания #}
+<div class="modal fade" id="maintenanceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="maintenanceForm">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi-wrench me-2"></i>Запись об обслуживании</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Тип обслуживания</label>
+          <select name="type" class="form-select" required>
+            <option value="inspection">Осмотр/проверка</option>
+            <option value="maintenance">Плановое ТО</option>
+            <option value="repair">Ремонт</option>
+            <option value="upgrade">Модернизация</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Описание работ</label>
+          <textarea name="description" class="form-control" rows="3" required></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Стоимость</label>
+          <div class="input-group">
+            <input type="number" name="cost" class="form-control" min="0" step="0.01">
+            <span class="input-group-text">₽</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Модалка перевода #}
+<div class="modal fade" id="transferModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="transferForm">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi-arrow-left-right me-2"></i>Перевод оборудования</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">В отдел</label>
+          <select name="to_department" class="form-select" id="transferDepartment">
+            <option value="">Без изменений</option>
+            {# Заполняется через API #}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Причина</label>
+          <textarea name="reason" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">Перевести</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+{% if can_manage %}
+  // Обслуживание
+  document.getElementById('maintenanceForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const data = {
+      type: form.querySelector('[name="type"]').value,
+      description: form.querySelector('[name="description"]').value,
+      cost: form.querySelector('[name="cost"]').value || null
+    };
+    
+    try {
+      const resp = await fetch('/api/procurement/equipment/{{ equipment.id }}/add_maintenance/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (resp.ok) {
+        window.location.reload();
+      } else {
+        alert('Ошибка сохранения');
+      }
+    } catch (e) {
+      alert('Ошибка сети');
+    }
+  });
+  
+  // Перевод
+  document.getElementById('transferForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const data = {
+      to_department: form.querySelector('[name="to_department"]').value || null,
+      reason: form.querySelector('[name="reason"]').value
+    };
+    
+    try {
+      const resp = await fetch('/api/procurement/equipment/{{ equipment.id }}/transfer/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (resp.ok) {
+        window.location.reload();
+      } else {
+        const err = await resp.json();
+        alert(err.error || 'Ошибка перевода');
+      }
+    } catch (e) {
+      alert('Ошибка сети');
+    }
+  });
+  
+  // Списание
+  document.getElementById('writeOffBtn')?.addEventListener('click', async () => {
+    const reason = prompt('Укажите причину списания:');
+    if (!reason) return;
+    
+    try {
+      const resp = await fetch('/api/procurement/equipment/{{ equipment.id }}/write_off/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ reason })
+      });
+      
+      if (resp.ok) {
+        window.location.reload();
+      } else {
+        const err = await resp.json();
+        alert(err.error || 'Ошибка списания');
+      }
+    } catch (e) {
+      alert('Ошибка сети');
+    }
+  });
+{% endif %}
+</script>
+{% endblock %}

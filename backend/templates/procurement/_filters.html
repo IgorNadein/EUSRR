@@ -1,0 +1,71 @@
+{# Фильтры для списка заявок на закупку #}
+
+<div class="row g-2">
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Статус</label>
+    <select name="status" class="form-select form-select-sm" id="filterStatus">
+      <option value="">Все статусы</option>
+      <option value="draft" {% if filters.status == 'draft' %}selected{% endif %}>Черновик</option>
+      <option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>На согласовании</option>
+      <option value="approved" {% if filters.status == 'approved' %}selected{% endif %}>Одобрено</option>
+      <option value="rejected" {% if filters.status == 'rejected' %}selected{% endif %}>Отклонено</option>
+      <option value="ordered" {% if filters.status == 'ordered' %}selected{% endif %}>Заказано</option>
+      <option value="delivered" {% if filters.status == 'delivered' %}selected{% endif %}>Получено</option>
+      <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>Отменено</option>
+    </select>
+  </div>
+  
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Срочность</label>
+    <select name="urgency" class="form-select form-select-sm" id="filterUrgency">
+      <option value="">Любая</option>
+      <option value="low" {% if filters.urgency == 'low' %}selected{% endif %}>Низкая</option>
+      <option value="medium" {% if filters.urgency == 'medium' %}selected{% endif %}>Средняя</option>
+      <option value="high" {% if filters.urgency == 'high' %}selected{% endif %}>Высокая</option>
+      <option value="critical" {% if filters.urgency == 'critical' %}selected{% endif %}>Критическая</option>
+    </select>
+  </div>
+  
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Период</label>
+    <select name="period" class="form-select form-select-sm" id="filterPeriod">
+      <option value="">Всё время</option>
+      <option value="today" {% if filters.period == 'today' %}selected{% endif %}>Сегодня</option>
+      <option value="week" {% if filters.period == 'week' %}selected{% endif %}>За неделю</option>
+      <option value="month" {% if filters.period == 'month' %}selected{% endif %}>За месяц</option>
+      <option value="quarter" {% if filters.period == 'quarter' %}selected{% endif %}>За квартал</option>
+    </select>
+  </div>
+  
+  <div class="col-md-3 d-flex align-items-end gap-2">
+    <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="applyFilters">
+      <i class="bi-funnel me-1"></i>Применить
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="resetFilters">
+      <i class="bi-x-lg"></i>
+    </button>
+  </div>
+</div>
+
+<script>
+  document.getElementById('applyFilters')?.addEventListener('click', () => {
+    const params = new URLSearchParams(window.location.search);
+    const status = document.getElementById('filterStatus').value;
+    const urgency = document.getElementById('filterUrgency').value;
+    const period = document.getElementById('filterPeriod').value;
+    
+    if (status) params.set('status', status); else params.delete('status');
+    if (urgency) params.set('urgency', urgency); else params.delete('urgency');
+    if (period) params.set('period', period); else params.delete('period');
+    
+    window.location.search = params.toString();
+  });
+  
+  document.getElementById('resetFilters')?.addEventListener('click', () => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('status');
+    params.delete('urgency');
+    params.delete('period');
+    window.location.search = params.toString();
+  });
+</script>

@@ -1,0 +1,67 @@
+{# Фильтры для списка оборудования #}
+
+<div class="row g-2">
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Категория</label>
+    <select name="category" class="form-select form-select-sm" id="filterCategory">
+      <option value="">Все категории</option>
+      {% for cat in categories %}
+        <option value="{{ cat.id }}" {% if filters.category == cat.id|stringformat:"s" %}selected{% endif %}>
+          {{ cat.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Статус</label>
+    <select name="status" class="form-select form-select-sm" id="filterStatus">
+      <option value="">Все статусы</option>
+      <option value="available" {% if filters.status == 'available' %}selected{% endif %}>Доступно</option>
+      <option value="in_use" {% if filters.status == 'in_use' %}selected{% endif %}>В использовании</option>
+      <option value="maintenance" {% if filters.status == 'maintenance' %}selected{% endif %}>На ТО</option>
+      <option value="repair" {% if filters.status == 'repair' %}selected{% endif %}>В ремонте</option>
+      <option value="retired" {% if filters.status == 'retired' %}selected{% endif %}>Списано</option>
+    </select>
+  </div>
+  
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Отдел</label>
+    <select name="department" class="form-select form-select-sm" id="filterDepartment">
+      <option value="">Все отделы</option>
+      {% for dept in departments %}
+        <option value="{{ dept.id }}" {% if filters.department == dept.id|stringformat:"s" %}selected{% endif %}>
+          {{ dept.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  
+  <div class="col-md-3 d-flex align-items-end gap-2">
+    <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="applyEqFilters">
+      <i class="bi-funnel me-1"></i>Применить
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="resetEqFilters">
+      <i class="bi-x-lg"></i>
+    </button>
+  </div>
+</div>
+
+<script>
+  document.getElementById('applyEqFilters')?.addEventListener('click', () => {
+    const params = new URLSearchParams(window.location.search);
+    const category = document.getElementById('filterCategory').value;
+    const status = document.getElementById('filterStatus').value;
+    const department = document.getElementById('filterDepartment').value;
+    
+    if (category) params.set('category', category); else params.delete('category');
+    if (status) params.set('status', status); else params.delete('status');
+    if (department) params.set('department', department); else params.delete('department');
+    
+    window.location.search = params.toString();
+  });
+  
+  document.getElementById('resetEqFilters')?.addEventListener('click', () => {
+    window.location.search = '';
+  });
+</script>

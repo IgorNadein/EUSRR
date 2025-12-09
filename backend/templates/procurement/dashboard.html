@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Закупки{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+{% endblock %}
+
+{% block content %}
+
+  {# ===== ШАПКА СТРАНИЦЫ ===== #}
+  {% include "includes/components/page_header.html" with icon="bi-cart3" title="Закупки" no_search=True create_url=create_url create_text="Новая заявка" %}
+
+  {# ===== СТАТИСТИКА ===== #}
+  <div class="proc-stats">
+    <div class="proc-stat-card">
+      <div class="proc-stat-icon pending">
+        <i class="bi-hourglass-split"></i>
+      </div>
+      <div class="proc-stat-content">
+        <div class="proc-stat-value" id="statPending">{{ stats.pending|default:0 }}</div>
+        <div class="proc-stat-label">На согласовании</div>
+      </div>
+    </div>
+    
+    <div class="proc-stat-card">
+      <div class="proc-stat-icon approved">
+        <i class="bi-check-circle"></i>
+      </div>
+      <div class="proc-stat-content">
+        <div class="proc-stat-value" id="statApproved">{{ stats.approved|default:0 }}</div>
+        <div class="proc-stat-label">Одобрено</div>
+      </div>
+    </div>
+    
+    <div class="proc-stat-card">
+      <div class="proc-stat-icon budget">
+        <i class="bi-wallet2"></i>
+      </div>
+      <div class="proc-stat-content">
+        <div class="proc-stat-value" id="statBudget">
+          {% if budget %}
+            {{ budget.remaining_percent|floatformat:0 }}%
+          {% else %}
+            —
+          {% endif %}
+        </div>
+        <div class="proc-stat-label">Бюджет отдела</div>
+      </div>
+    </div>
+    
+    <div class="proc-stat-card">
+      <div class="proc-stat-icon equipment">
+        <i class="bi-pc-display"></i>
+      </div>
+      <div class="proc-stat-content">
+        <div class="proc-stat-value" id="statEquipment">{{ stats.equipment|default:0 }}</div>
+        <div class="proc-stat-label">Оборудование</div>
+      </div>
+    </div>
+  </div>
+
+  {# ===== БЫСТРЫЕ ДЕЙСТВИЯ ===== #}
+  <div class="row g-3 mb-4">
+    <div class="col-md-6 col-lg-3">
+      <a href="{% url 'procurement_frontend:request_list' %}" class="card text-decoration-none h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi-list-ul text-primary fs-1 mb-2 d-block"></i>
+          <h6 class="mb-1">Заявки</h6>
+          <small class="text-muted">Все заявки на закупку</small>
+        </div>
+      </a>
+    </div>
+    
+    <div class="col-md-6 col-lg-3">
+      <a href="{% url 'procurement_frontend:my_requests' %}" class="card text-decoration-none h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi-person-circle text-info fs-1 mb-2 d-block"></i>
+          <h6 class="mb-1">Мои заявки</h6>
+          <small class="text-muted">Созданные мной</small>
+        </div>
+      </a>
+    </div>
+    
+    <div class="col-md-6 col-lg-3">
+      <a href="{% url 'procurement_frontend:equipment_list' %}" class="card text-decoration-none h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi-laptop text-success fs-1 mb-2 d-block"></i>
+          <h6 class="mb-1">Оборудование</h6>
+          <small class="text-muted">Каталог инвентаря</small>
+        </div>
+      </a>
+    </div>
+    
+    {% if can_approve %}
+    <div class="col-md-6 col-lg-3">
+      <a href="{% url 'procurement_frontend:pending_approvals' %}" class="card text-decoration-none h-100">
+        <div class="card-body text-center py-4">
+          <i class="bi-clipboard-check text-warning fs-1 mb-2 d-block"></i>
+          <h6 class="mb-1">Согласование</h6>
+          <small class="text-muted">Ожидают решения</small>
+        </div>
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ===== МОЙ БЮДЖЕТ (если есть) ===== #}
+  {% if budget %}
+  <div class="card mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">
+        <i class="bi-pie-chart me-2"></i>Бюджет отдела на {{ budget.quarter }} кв. {{ budget.year }}
+      </h5>
+    </div>
+    <div class="card-body">
+      <div class="proc-budget-amounts">
+        <div class="proc-budget-amount">
+          <div class="proc-budget-value text-success">{{ budget.allocated_amount|floatformat:0 }} ₽</div>
+          <div class="proc-budget-label">Выделено</div>
+        </div>
+        <div class="proc-budget-amount">
+          <div class="proc-budget-value text-danger">{{ budget.spent_amount|floatformat:0 }} ₽</div>
+          <div class="proc-budget-label">Потрачено</div>
+        </div>
+        <div class="proc-budget-amount">
+          <div class="proc-budget-value text-warning">{{ budget.reserved_amount|floatformat:0 }} ₽</div>
+          <div class="proc-budget-label">Зарезервировано</div>
+        </div>
+        <div class="proc-budget-amount">
+          <div class="proc-budget-value text-primary">{{ budget.available_amount|floatformat:0 }} ₽</div>
+          <div class="proc-budget-label">Доступно</div>
+        </div>
+      </div>
+      
+      <div class="proc-budget-progress">
+        {% with percent=budget.spent_percent %}
+        <div class="proc-budget-bar {% if percent > 80 %}danger{% elif percent > 60 %}warning{% else %}safe{% endif %}"
+             style="width: {{ percent|floatformat:0 }}%"></div>
+        {% endwith %}
+      </div>
+      <div class="text-end mt-2">
+        <small class="text-muted">
+          Использовано {{ budget.spent_percent|floatformat:0 }}% бюджета
+        </small>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ===== ПОСЛЕДНИЕ ЗАЯВКИ ===== #}
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <h5 class="mb-0">
+        <i class="bi-clock-history me-2"></i>Последние заявки
+      </h5>
+      <a href="{% url 'procurement_frontend:request_list' %}" class="btn btn-sm btn-outline-primary">
+        Все заявки <i class="bi-arrow-right"></i>
+      </a>
+    </div>
+    <div class="card-body p-0">
+      {% if recent_requests %}
+        <div class="proc-table-header d-none d-lg-block">
+          <div class="proc-table-row">
+            <div class="proc-cell"></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Заявка</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Отдел</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Сумма</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Статус</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Дата</h6></div>
+          </div>
+        </div>
+        
+        {% for request in recent_requests %}
+        <div class="proc-request-item">
+          <div class="proc-urgency-icon {{ request.urgency }}">
+            {% if request.urgency == 'critical' %}
+              <i class="bi-exclamation-triangle-fill"></i>
+            {% elif request.urgency == 'high' %}
+              <i class="bi-arrow-up-circle"></i>
+            {% elif request.urgency == 'medium' %}
+              <i class="bi-dash-circle"></i>
+            {% else %}
+              <i class="bi-arrow-down-circle"></i>
+            {% endif %}
+          </div>
+          
+          <div class="proc-request-info">
+            <div class="proc-request-title">
+              <a href="{% url 'procurement_frontend:request_detail' request.id %}">{{ request.title }}</a>
+            </div>
+            <div class="proc-request-desc">{{ request.description|truncatechars:50 }}</div>
+          </div>
+          
+          <div class="proc-request-dept">{{ request.department.name }}</div>
+          
+          <div class="proc-request-amount">{{ request.estimated_cost|floatformat:0 }} ₽</div>
+          
+          <div class="proc-request-status">
+            {% include "procurement/_status_badge.html" with status=request.status %}
+          </div>
+          
+          <div class="proc-request-date">
+            {{ request.created_at|date:"d.m.Y" }}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi-inbox fs-1 d-block mb-2"></i>
+          <p class="mb-0">Заявок пока нет</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Автообновление статистики каждые 60 секунд
+  setInterval(async () => {
+    try {
+      const resp = await fetch('/api/procurement/stats/overview/');
+      if (resp.ok) {
+        const data = await resp.json();
+        document.getElementById('statPending').textContent = data.pending || 0;
+        document.getElementById('statApproved').textContent = data.approved || 0;
+        document.getElementById('statEquipment').textContent = data.equipment || 0;
+      }
+    } catch (e) {
+      console.warn('Stats update failed:', e);
+    }
+  }, 60000);
+</script>
+{% endblock %}

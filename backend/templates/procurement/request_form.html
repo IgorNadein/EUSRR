@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Новая заявка{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+  {# ===== Хлебные крошки ===== #}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:dashboard' %}">Закупки</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:request_list' %}">Заявки</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Новая заявка</li>
+    </ol>
+  </nav>
+
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">
+            <i class="bi-cart-plus me-2"></i>Новая заявка на закупку
+          </h4>
+        </div>
+        
+        <form method="POST" action="{% url 'procurement_frontend:request_create' %}" id="requestForm">
+          {% csrf_token %}
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Название заявки <span class="text-danger">*</span></label>
+                <input type="text" name="title" class="form-control" 
+                       placeholder="Например: Закупка ноутбуков для нового сотрудника" 
+                       required maxlength="255">
+                <div class="form-text">Кратко опишите суть заявки</div>
+              </div>
+              
+              <div class="col-12">
+                <label class="form-label">Обоснование / описание</label>
+                <textarea name="description" class="form-control" rows="4" 
+                          placeholder="Опишите необходимость закупки, для каких целей..." 
+                          maxlength="2000"></textarea>
+              </div>
+              
+              <div class="col-md-6">
+                <label class="form-label">Срочность <span class="text-danger">*</span></label>
+                <select name="urgency" class="form-select" required>
+                  <option value="low">🟢 Низкая — до 30 дней</option>
+                  <option value="medium" selected>🟡 Средняя — до 14 дней</option>
+                  <option value="high">🟠 Высокая — до 7 дней</option>
+                  <option value="critical">🔴 Критическая — до 3 дней</option>
+                </select>
+              </div>
+              
+              <div class="col-md-6">
+                <label class="form-label">Желаемая дата получения</label>
+                <input type="date" name="desired_date" class="form-control">
+              </div>
+              
+              <div class="col-md-6">
+                <label class="form-label">Ориентировочная сумма</label>
+                <div class="input-group">
+                  <input type="number" name="estimated_cost" class="form-control" 
+                         placeholder="0" min="0" step="0.01">
+                  <span class="input-group-text">₽</span>
+                </div>
+                <div class="form-text">Можно указать позже</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card-footer d-flex gap-2 justify-content-between">
+            <a href="{% url 'procurement_frontend:request_list' %}" class="btn btn-outline-secondary">
+              <i class="bi-arrow-left me-1"></i>Отмена
+            </a>
+            <div class="d-flex gap-2">
+              <button type="submit" name="action" value="draft" class="btn btn-outline-primary">
+                <i class="bi-save me-1"></i>Сохранить черновик
+              </button>
+              <button type="submit" name="action" value="submit" class="btn btn-primary">
+                <i class="bi-send me-1"></i>Создать и отправить
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+      
+      <div class="alert alert-info mt-3">
+        <i class="bi-lightbulb me-2"></i>
+        <strong>Подсказка:</strong> После создания заявки вы сможете добавить детальные позиции 
+        (товары с количеством и ценами) на странице заявки.
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,34 @@
+{# Бейдж статуса заявки на закупку #}
+{% load i18n %}
+
+{% if status == 'draft' %}
+  <span class="proc-status draft">
+    <i class="bi-pencil me-1"></i>Черновик
+  </span>
+{% elif status == 'pending' %}
+  <span class="proc-status pending">
+    <i class="bi-hourglass-split me-1"></i>На согласовании
+  </span>
+{% elif status == 'approved' %}
+  <span class="proc-status approved">
+    <i class="bi-check-circle me-1"></i>Одобрено
+  </span>
+{% elif status == 'rejected' %}
+  <span class="proc-status rejected">
+    <i class="bi-x-circle me-1"></i>Отклонено
+  </span>
+{% elif status == 'ordered' %}
+  <span class="proc-status ordered">
+    <i class="bi-truck me-1"></i>Заказано
+  </span>
+{% elif status == 'delivered' %}
+  <span class="proc-status delivered">
+    <i class="bi-box-seam me-1"></i>Получено
+  </span>
+{% elif status == 'cancelled' %}
+  <span class="proc-status cancelled">
+    <i class="bi-slash-circle me-1"></i>Отменено
+  </span>
+{% else %}
+  <span class="proc-status draft">{{ status }}</span>
+{% endif %}

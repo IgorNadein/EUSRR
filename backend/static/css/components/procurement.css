@@ -1,0 +1,504 @@
+/**
+ * Procurement Module Styles (procurement.css)
+ * 
+ * Стили для модуля закупок и инвентаря.
+ * Использует CSS переменные из variables.css и компоненты из card-list.css
+ */
+
+/* ===== Dashboard Cards (Статистика) ===== */
+.proc-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.proc-stat-card {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--feed-radius, 18px);
+  padding: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.proc-stat-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.proc-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.proc-stat-icon.pending {
+  background: color-mix(in srgb, var(--bs-warning) 15%, transparent);
+  color: var(--bs-warning);
+}
+
+.proc-stat-icon.approved {
+  background: color-mix(in srgb, var(--bs-success) 15%, transparent);
+  color: var(--bs-success);
+}
+
+.proc-stat-icon.budget {
+  background: color-mix(in srgb, var(--bs-primary) 15%, transparent);
+  color: var(--bs-primary);
+}
+
+.proc-stat-icon.equipment {
+  background: color-mix(in srgb, var(--bs-info) 15%, transparent);
+  color: var(--bs-info);
+}
+
+.proc-stat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.proc-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--bs-body-color);
+}
+
+.proc-stat-label {
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Request List Table ===== */
+.proc-table-header {
+  background: var(--bs-tertiary-bg);
+  border-bottom: 1px solid var(--bs-border-color);
+  padding: var(--space-2) var(--space-3);
+}
+
+.proc-table-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 140px 100px 120px 100px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.proc-cell {
+  padding: var(--space-1) 0;
+}
+
+.proc-cell h6 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ===== Request Item ===== */
+.proc-request-item {
+  display: grid;
+  grid-template-columns: 50px 1fr 140px 100px 120px 100px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--bs-border-color);
+  transition: background 0.15s ease;
+}
+
+.proc-request-item:hover {
+  background: var(--bs-tertiary-bg);
+}
+
+.proc-request-item:last-child {
+  border-bottom: none;
+}
+
+/* Иконка срочности */
+.proc-urgency-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.proc-urgency-icon.low {
+  background: color-mix(in srgb, var(--bs-secondary) 15%, transparent);
+  color: var(--bs-secondary);
+}
+
+.proc-urgency-icon.medium {
+  background: color-mix(in srgb, var(--bs-info) 15%, transparent);
+  color: var(--bs-info);
+}
+
+.proc-urgency-icon.high {
+  background: color-mix(in srgb, var(--bs-warning) 15%, transparent);
+  color: var(--bs-warning);
+}
+
+.proc-urgency-icon.critical {
+  background: color-mix(in srgb, var(--bs-danger) 15%, transparent);
+  color: var(--bs-danger);
+}
+
+/* Информация о заявке */
+.proc-request-info {
+  min-width: 0;
+}
+
+.proc-request-title {
+  font-weight: 600;
+  color: var(--bs-body-color);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proc-request-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.proc-request-title a:hover {
+  color: var(--bs-primary);
+}
+
+.proc-request-desc {
+  font-size: 0.85rem;
+  color: var(--bs-secondary-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Отдел */
+.proc-request-dept {
+  font-size: 0.875rem;
+  color: var(--bs-body-color);
+}
+
+/* Сумма */
+.proc-request-amount {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--bs-body-color);
+}
+
+/* Дата */
+.proc-request-date {
+  font-size: 0.85rem;
+  color: var(--bs-secondary-color);
+}
+
+/* ===== Status Badges ===== */
+.proc-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.proc-status.draft {
+  background: color-mix(in srgb, var(--bs-secondary) 15%, transparent);
+  color: var(--bs-secondary);
+}
+
+.proc-status.pending {
+  background: color-mix(in srgb, var(--bs-warning) 15%, transparent);
+  color: var(--bs-warning);
+}
+
+.proc-status.approved {
+  background: color-mix(in srgb, var(--bs-success) 15%, transparent);
+  color: var(--bs-success);
+}
+
+.proc-status.rejected {
+  background: color-mix(in srgb, var(--bs-danger) 15%, transparent);
+  color: var(--bs-danger);
+}
+
+.proc-status.ordered {
+  background: color-mix(in srgb, var(--bs-info) 15%, transparent);
+  color: var(--bs-info);
+}
+
+.proc-status.delivered {
+  background: color-mix(in srgb, var(--bs-primary) 15%, transparent);
+  color: var(--bs-primary);
+}
+
+.proc-status.cancelled {
+  background: color-mix(in srgb, var(--bs-dark) 10%, transparent);
+  color: var(--bs-dark);
+}
+
+/* ===== Equipment Grid ===== */
+.proc-equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.proc-equipment-card {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--feed-radius, 18px);
+  overflow: hidden;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.proc-equipment-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.proc-equipment-header {
+  padding: var(--space-3);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.proc-equipment-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bs-primary) 10%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: var(--bs-primary);
+  flex-shrink: 0;
+}
+
+.proc-equipment-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.proc-equipment-name {
+  font-weight: 600;
+  color: var(--bs-body-color);
+  margin-bottom: 4px;
+}
+
+.proc-equipment-inv {
+  font-size: 0.8rem;
+  font-family: var(--bs-font-monospace);
+  color: var(--bs-secondary-color);
+}
+
+.proc-equipment-body {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.proc-equipment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.proc-equipment-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--bs-secondary-color);
+}
+
+.proc-equipment-meta-item i {
+  font-size: 0.9rem;
+}
+
+.proc-equipment-footer {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bs-tertiary-bg);
+  border-top: 1px solid var(--bs-border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Equipment Status */
+.proc-eq-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.proc-eq-status.available {
+  background: color-mix(in srgb, var(--bs-success) 15%, transparent);
+  color: var(--bs-success);
+}
+
+.proc-eq-status.in_use {
+  background: color-mix(in srgb, var(--bs-primary) 15%, transparent);
+  color: var(--bs-primary);
+}
+
+.proc-eq-status.maintenance {
+  background: color-mix(in srgb, var(--bs-warning) 15%, transparent);
+  color: var(--bs-warning);
+}
+
+.proc-eq-status.repair {
+  background: color-mix(in srgb, var(--bs-info) 15%, transparent);
+  color: var(--bs-info);
+}
+
+.proc-eq-status.retired {
+  background: color-mix(in srgb, var(--bs-secondary) 15%, transparent);
+  color: var(--bs-secondary);
+}
+
+/* ===== Budget Card ===== */
+.proc-budget-card {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--feed-radius, 18px);
+  padding: var(--space-3);
+}
+
+.proc-budget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.proc-budget-title {
+  font-weight: 600;
+  color: var(--bs-body-color);
+}
+
+.proc-budget-period {
+  font-size: 0.85rem;
+  color: var(--bs-secondary-color);
+}
+
+.proc-budget-amounts {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.proc-budget-amount {
+  flex: 1;
+  text-align: center;
+}
+
+.proc-budget-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--bs-body-color);
+}
+
+.proc-budget-label {
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+  text-transform: uppercase;
+}
+
+.proc-budget-progress {
+  height: 8px;
+  background: var(--bs-tertiary-bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.proc-budget-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.proc-budget-bar.safe {
+  background: var(--bs-success);
+}
+
+.proc-budget-bar.warning {
+  background: var(--bs-warning);
+}
+
+.proc-budget-bar.danger {
+  background: var(--bs-danger);
+}
+
+/* ===== Mobile Responsive ===== */
+@media (max-width: 991.98px) {
+  .proc-table-header {
+    display: none;
+  }
+  
+  .proc-table-row,
+  .proc-request-item {
+    display: flex;
+    flex-wrap: wrap;
+    grid-template-columns: none;
+  }
+  
+  .proc-request-item {
+    padding: var(--space-2);
+  }
+  
+  .proc-cell.proc-cell-icon,
+  .proc-urgency-icon {
+    order: 1;
+  }
+  
+  .proc-request-info {
+    order: 2;
+    flex: 1;
+  }
+  
+  .proc-request-status,
+  .proc-status {
+    order: 3;
+  }
+  
+  .proc-request-dept,
+  .proc-request-amount,
+  .proc-request-date,
+  .proc-request-actions {
+    order: 4;
+    width: 100%;
+    font-size: 0.8rem;
+    padding-left: calc(36px + var(--space-2));
+  }
+  
+  .proc-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .proc-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .proc-equipment-grid {
+    grid-template-columns: 1fr;
+  }
+}

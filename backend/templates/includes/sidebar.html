@@ -69,6 +69,13 @@
         <span>Финансы</span>
       </a>
       
+      <a href="{% url 'procurement_frontend:dashboard' %}"
+        class="nav-link {% if request.resolver_match.app_name == 'procurement_frontend' %}active{% endif %}"
+        {% if request.resolver_match.app_name == 'procurement_frontend' %}aria-current="page"{% endif %}>
+        <span class="side-icon"><i class="bi-cart3"></i></span>
+        <span>Закупки</span>
+      </a>
+      
     </nav>
 
     <div class="mt-auto pt-3 small">

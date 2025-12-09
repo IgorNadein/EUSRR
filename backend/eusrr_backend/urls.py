@@ -13,10 +13,14 @@ urlpatterns = [
     path("notifications/", include("notifications.urls", namespace="notifications")),
     path("search/", include("search.urls", namespace="search")),
     path("finance/", include("finance.urls", namespace="finance")),
+    path(
+        "procurement/",
+        include("procurement.urls_frontend", namespace="procurement")
+    ),
     path("api/", include(("api.urls", "api"), namespace="api")),
     path(
         "api/procurement/",
-        include("procurement.urls", namespace="procurement")
+        include("procurement.urls", namespace="procurement_api")
     ),
     path("", include("feed.urls_front", namespace="feed")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

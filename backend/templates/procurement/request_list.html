@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Заявки на закупку{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+{% endblock %}
+
+{% block content %}
+
+  {# ===== ШАПКА СТРАНИЦЫ ===== #}
+  {% include "includes/components/page_header.html" with icon="bi-list-ul" title=page_title|default:"Заявки на закупку" search_id="procSearch" search_placeholder="Поиск по названию..." has_filters=True filters_target="procFilters" filters_template="procurement/_filters.html" create_modal="procCreateModal" create_text="Новая заявка" %}
+
+  {# ===== Tabs для переключения области ===== #}
+  {% if can_view_all %}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <ul class="nav nav-pills nav-fill">
+        <li class="nav-item">
+          <a class="nav-link {% if scope == 'mine' %}active{% endif %}" 
+             href="?scope=mine">
+            <i class="bi-person-circle me-1"></i> Мои заявки
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if scope == 'department' %}active{% endif %}" 
+             href="?scope=department">
+            <i class="bi-building me-1"></i> Мой отдел
+          </a>
+        </li>
+        {% if user.is_staff %}
+        <li class="nav-item">
+          <a class="nav-link {% if scope == 'all' %}active{% endif %}" 
+             href="?scope=all">
+            <i class="bi-globe me-1"></i> Все заявки
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ===== СПИСОК ЗАЯВОК ===== #}
+  <div class="card mb-4">
+    <div class="proc-table-header d-none d-lg-block">
+      <div class="proc-table-row">
+        <div class="proc-cell"></div>
+        <div class="proc-cell"><h6 class="mb-0 text-secondary">Заявка</h6></div>
+        <div class="proc-cell"><h6 class="mb-0 text-secondary">Отдел</h6></div>
+        <div class="proc-cell"><h6 class="mb-0 text-secondary">Сумма</h6></div>
+        <div class="proc-cell"><h6 class="mb-0 text-secondary">Статус</h6></div>
+        <div class="proc-cell"><h6 class="mb-0 text-secondary">Дата</h6></div>
+      </div>
+    </div>
+    
+    <div id="procListContent">
+      {% if requests %}
+        {% for request in requests %}
+        <div class="proc-request-item" data-id="{{ request.id }}">
+          <div class="proc-urgency-icon {{ request.urgency }}">
+            {% if request.urgency == 'critical' %}
+              <i class="bi-exclamation-triangle-fill"></i>
+            {% elif request.urgency == 'high' %}
+              <i class="bi-arrow-up-circle"></i>
+            {% elif request.urgency == 'medium' %}
+              <i class="bi-dash-circle"></i>
+            {% else %}
+              <i class="bi-arrow-down-circle"></i>
+            {% endif %}
+          </div>
+          
+          <div class="proc-request-info">
+            <div class="proc-request-title">
+              <a href="{% url 'procurement_frontend:request_detail' request.id %}">{{ request.title }}</a>
+            </div>
+            <div class="proc-request-desc">
+              {{ request.description|truncatechars:60 }}
+              {% if request.items.count > 0 %}
+                <span class="text-muted">({{ request.items.count }} поз.)</span>
+              {% endif %}
+            </div>
+          </div>
+          
+          <div class="proc-request-dept">
+            <i class="bi-building text-muted me-1"></i>
+            {{ request.department.name }}
+          </div>
+          
+          <div class="proc-request-amount">
+            {{ request.estimated_cost|floatformat:0 }} ₽
+          </div>
+          
+          <div class="proc-request-status">
+            {% include "procurement/_status_badge.html" with status=request.status %}
+          </div>
+          
+          <div class="proc-request-date">
+            {{ request.created_at|date:"d.m.Y" }}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi-inbox fs-1 d-block mb-2"></i>
+          <p class="mb-2">Заявок не найдено</p>
+          <a href="#" data-bs-toggle="modal" data-bs-target="#procCreateModal" class="btn btn-primary btn-sm">
+            <i class="bi-plus-lg me-1"></i>Создать заявку
+          </a>
+        </div>
+      {% endif %}
+    </div>
+    
+    {# Пагинация #}
+    {% if page_obj %}
+    <div class="card-footer">
+      <nav aria-label="Страницы">
+        <ul class="pagination pagination-sm justify-content-center mb-0">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.previous_page_number }}&scope={{ scope }}">
+                <i class="bi-chevron-left"></i>
+              </a>
+            </li>
+          {% endif %}
+          
+          {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+              <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+              <li class="page-item"><a class="page-link" href="?page={{ num }}&scope={{ scope }}">{{ num }}</a></li>
+            {% endif %}
+          {% endfor %}
+          
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.next_page_number }}&scope={{ scope }}">
+                <i class="bi-chevron-right"></i>
+              </a>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+
+{# ===== МОДАЛКА СОЗДАНИЯ ===== #}
+<div class="modal fade" id="procCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <form class="modal-content" id="procCreateForm" method="POST" action="{% url 'procurement_frontend:request_create' %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-cart-plus me-2"></i>Новая заявка на закупку
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Название заявки <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control" 
+                   placeholder="Например: Закупка ноутбуков для отдела" required maxlength="255">
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Описание / обоснование</label>
+            <textarea name="description" class="form-control" rows="3" 
+                      placeholder="Опишите необходимость закупки..." maxlength="2000"></textarea>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Срочность <span class="text-danger">*</span></label>
+            <select name="urgency" class="form-select" required>
+              <option value="low">🟢 Низкая</option>
+              <option value="medium" selected>🟡 Средняя</option>
+              <option value="high">🟠 Высокая</option>
+              <option value="critical">🔴 Критическая</option>
+            </select>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Ориентировочная сумма</label>
+            <div class="input-group">
+              <input type="number" name="estimated_cost" class="form-control" 
+                     placeholder="0" min="0" step="0.01">
+              <span class="input-group-text">₽</span>
+            </div>
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Желаемая дата получения</label>
+            <input type="date" name="desired_date" class="form-control">
+          </div>
+        </div>
+        
+        <div class="alert alert-info mt-3 mb-0">
+          <i class="bi-info-circle me-2"></i>
+          После создания вы сможете добавить позиции (товары) в заявку.
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi-check-lg me-1"></i>Создать заявку
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Поиск по заявкам
+  const searchInput = document.getElementById('procSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', debounce((e) => {
+      const query = e.target.value.toLowerCase();
+      document.querySelectorAll('.proc-request-item').forEach(item => {
+        const title = item.querySelector('.proc-request-title')?.textContent.toLowerCase() || '';
+        const desc = item.querySelector('.proc-request-desc')?.textContent.toLowerCase() || '';
+        const match = title.includes(query) || desc.includes(query);
+        item.style.display = match ? '' : 'none';
+      });
+    }, 300));
+  }
+</script>
+{% endblock %}
