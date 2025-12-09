@@ -13,6 +13,15 @@
   {# ===== ШАПКА СТРАНИЦЫ ===== #}
   {% include "includes/components/page_header.html" with icon="bi-laptop" title="Оборудование" search_id="eqSearch" search_placeholder="Поиск по названию или инв. номеру..." has_filters=True filters_target="eqFilters" filters_template="procurement/_equipment_filters.html" create_as_card=True create_modal="equipmentCreateModal" create_text="Добавить оборудование"  %}
 
+  {# ===== КНОПКА УПРАВЛЕНИЯ КАТЕГОРИЯМИ ===== #}
+  {% if can_manage %}
+  <div class="d-flex justify-content-end mb-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#categoryManageModal">
+      <i class="bi-tags me-1"></i>Управление категориями
+    </button>
+  </div>
+  {% endif %}
+
   {# ===== СЕТКА ОБОРУДОВАНИЯ ===== #}
   <div class="proc-equipment-grid" id="equipmentGrid">
     {% if equipment_list %}
@@ -467,6 +476,76 @@
   </div>
 </div>
 
+{# ===== МОДАЛКА УПРАВЛЕНИЯ КАТЕГОРИЯМИ ===== #}
+<div class="modal fade" id="categoryManageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-tags me-2"></i>Управление категориями оборудования
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <div class="modal-body">
+        {# Форма добавления категории #}
+        <div class="card mb-3">
+          <div class="card-header">
+            <h6 class="mb-0">Добавить новую категорию</h6>
+          </div>
+          <div class="card-body">
+            <form id="categoryCreateForm">
+              {% csrf_token %}
+              <div class="row g-2">
+                <div class="col-md-8">
+                  <input type="text" class="form-control form-control-sm" id="catName" 
+                         placeholder="Название категории *" required maxlength="100">
+                </div>
+                <div class="col-md-4">
+                  <input type="text" class="form-control form-control-sm" id="catIcon" 
+                         placeholder="Иконка (bi-*)" maxlength="50">
+                </div>
+                <div class="col-12">
+                  <textarea class="form-control form-control-sm" id="catDescription" rows="2" 
+                            placeholder="Описание (опционально)" maxlength="500"></textarea>
+                </div>
+                <div class="col-12">
+                  <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi-plus-lg me-1"></i>Добавить
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+        
+        {# Список существующих категорий #}
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Существующие категории</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadCategories()">
+              <i class="bi-arrow-clockwise"></i>
+            </button>
+          </div>
+          <div class="card-body p-0">
+            <div id="categoriesList" style="max-height: 300px; overflow-y: auto;">
+              <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                  <span class="visually-hidden">Загрузка...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -705,5 +784,125 @@
       submitBtn.innerHTML = '<i class="bi-check-lg me-1"></i>Сохранить изменения';
     }
   });
+
+  // === УПРАВЛЕНИЕ КАТЕГОРИЯМИ ===
+  // Загрузка списка категорий
+  async function loadCategories() {
+    const list = document.getElementById('categoriesList');
+    list.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
+    
+    try {
+      const resp = await fetch('/api/procurement/equipment-categories/');
+      if (resp.ok) {
+        const categories = await resp.json();
+        
+        if (categories.length === 0) {
+          list.innerHTML = '<div class="text-center text-muted py-3">Категорий пока нет</div>';
+          return;
+        }
+        
+        let html = '<div class="list-group list-group-flush">';
+        categories.forEach(cat => {
+          html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                <i class="${cat.icon || 'bi-tag'}"></i>
+                <strong class="ms-2">${cat.name}</strong>
+                ${cat.description ? `<br><small class="text-muted ms-4">${cat.description}</small>` : ''}
+              </div>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory(${cat.id}, '${cat.name}')">
+                <i class="bi-trash"></i>
+              </button>
+            </div>
+          `;
+        });
+        html += '</div>';
+        list.innerHTML = html;
+      } else {
+        list.innerHTML = '<div class="alert alert-danger m-2">Ошибка загрузки</div>';
+      }
+    } catch (e) {
+      console.error(e);
+      list.innerHTML = '<div class="alert alert-danger m-2">Ошибка сети</div>';
+    }
+  }
+  
+  // Загрузка при открытии модала
+  document.getElementById('categoryManageModal')?.addEventListener('show.bs.modal', loadCategories);
+  
+  // Создание новой категории
+  document.getElementById('categoryCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = document.getElementById('catName').value.trim();
+    const icon = document.getElementById('catIcon').value.trim();
+    const description = document.getElementById('catDescription').value.trim();
+    
+    if (!name) return;
+    
+    const submitBtn = e.target.querySelector('[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Создание...';
+    
+    try {
+      const resp = await fetch('/api/procurement/equipment-categories/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('[name="csrfmiddlewaretoken"]').value
+        },
+        body: JSON.stringify({ name, icon: icon || null, description: description || '' })
+      });
+      
+      if (resp.ok) {
+        // Очистить форму
+        document.getElementById('catName').value = '';
+        document.getElementById('catIcon').value = '';
+        document.getElementById('catDescription').value = '';
+        
+        // Перезагрузить список
+        await loadCategories();
+        
+        // Обновить выпадающие списки категорий в формах
+        location.reload();
+      } else {
+        const err = await resp.json();
+        alert(err.name?.[0] || err.detail || 'Ошибка создания категории');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сети');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="bi-plus-lg me-1"></i>Добавить';
+    }
+  });
+  
+  // Удаление категории
+  async function deleteCategory(id, name) {
+    if (!confirm(`Удалить категорию "${name}"?\n\nВнимание: это возможно только если к категории не привязано оборудование.`)) {
+      return;
+    }
+    
+    try {
+      const resp = await fetch(`/api/procurement/equipment-categories/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRFToken': document.querySelector('[name="csrfmiddlewaretoken"]').value
+        }
+      });
+      
+      if (resp.ok || resp.status === 204) {
+        await loadCategories();
+        alert('Категория удалена');
+      } else {
+        const err = await resp.json();
+        alert(err.detail || 'Ошибка удаления. Возможно, к категории привязано оборудование.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сети');
+    }
+  }
 </script>
 {% endblock %}
