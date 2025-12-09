@@ -384,6 +384,19 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             "type": "unread_count",
             "count": event.get("count", 0)
         })
+
+    # ==================== Обработка событий закупок ====================
+
+    async def procurement_update(self, event):
+        """
+        Обновление заявки на закупку.
+        Вызывается из procurement/signals.py
+        """
+        await self.send_json({
+            "type": "procurement_update",
+            "event": event.get("event", "request_updated"),
+            "data": event.get("data", {})
+        })
     
     # ==================== Обработка действий пользователя ====================
     
