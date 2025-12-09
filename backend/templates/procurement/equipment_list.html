@@ -11,7 +11,7 @@
 {% block content %}
 
   {# ===== ШАПКА СТРАНИЦЫ ===== #}
-  {% include "includes/components/page_header.html" with icon="bi-laptop" title="Оборудование" search_id="eqSearch" search_placeholder="Поиск по названию или инв. номеру..." has_filters=True filters_target="eqFilters" filters_template="procurement/_equipment_filters.html" %}
+  {% include "includes/components/page_header.html" with icon="bi-laptop" title="Оборудование" search_id="eqSearch" search_placeholder="Поиск по названию или инв. номеру..." has_filters=True filters_target="eqFilters" filters_template="procurement/_equipment_filters.html" create_as_card=True create_modal="equipmentCreateModal" create_text="Добавить оборудование"  %}
 
   {# ===== СЕТКА ОБОРУДОВАНИЯ ===== #}
   <div class="proc-equipment-grid" id="equipmentGrid">
@@ -52,6 +52,13 @@
                   <i class="bi-eye me-2"></i>Просмотр
                 </a>
               </li>
+              {% if can_manage %}
+              <li>
+                <a class="dropdown-item edit-equipment-btn" href="#" data-bs-toggle="modal" data-bs-target="#equipmentEditModal" data-id="{{ item.id }}">
+                  <i class="bi-pencil me-2"></i>Редактировать
+                </a>
+              </li>
+              {% endif %}
               <li>
                 <a class="dropdown-item" href="{% url 'api:v1:equipment-qr-code' item.id %}" target="_blank">
                   <i class="bi-qr-code me-2"></i>QR-код
@@ -157,6 +164,219 @@
     </nav>
   </div>
   {% endif %}
+
+{# ===== МОДАЛКА СОЗДАНИЯ ОБОРУДОВАНИЯ ===== #}
+<div class="modal fade" id="equipmentCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <form class="modal-content" id="equipmentCreateForm">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-plus-circle me-2"></i>Добавить оборудование
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label">Название <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" 
+                   placeholder="Например: Ноутбук Dell Latitude 5420" required maxlength="255">
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Категория <span class="text-danger">*</span></label>
+            <select name="category" class="form-select" required>
+              <option value="">Выберите...</option>
+              {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Инвентарный номер <span class="text-danger">*</span></label>
+            <input type="text" name="inventory_number" class="form-control" 
+                   placeholder="INV-2024-0001" required maxlength="50">
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Серийный номер</label>
+            <input type="text" name="serial_number" class="form-control" 
+                   placeholder="SN123456789" maxlength="100">
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Отдел <span class="text-danger">*</span></label>
+            <select name="department" class="form-select" required>
+              <option value="">Выберите...</option>
+              {% for dept in departments %}
+                <option value="{{ dept.id }}">{{ dept.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Ответственный</label>
+            <select name="responsible_person" class="form-select">
+              <option value="">Не назначен</option>
+              {% for user in users %}
+                <option value="{{ user.id }}">{{ user.get_full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Расположение</label>
+            <input type="text" name="location" class="form-control" 
+                   placeholder="Например: Офис 3.14, Стеллаж А-5" maxlength="255">
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Дата покупки <span class="text-danger">*</span></label>
+            <input type="date" name="purchase_date" class="form-control" required>
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Гарантия до</label>
+            <input type="date" name="warranty_until" class="form-control">
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Стоимость <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="number" name="purchase_cost" class="form-control" 
+                     placeholder="0.00" min="0.01" step="0.01" required>
+              <span class="input-group-text">₽</span>
+            </div>
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Примечания</label>
+            <textarea name="notes" class="form-control" rows="2" 
+                      placeholder="Дополнительная информация..."></textarea>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi-check-lg me-1"></i>Добавить
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ===== МОДАЛКА РЕДАКТИРОВАНИЯ ОБОРУДОВАНИЯ ===== #}
+<div class="modal fade" id="equipmentEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <form class="modal-content" id="equipmentEditForm">
+      {% csrf_token %}
+      <input type="hidden" name="equipment_id" id="editEquipmentId">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-pencil me-2"></i>Редактировать оборудование
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label">Название <span class="text-danger">*</span></label>
+            <input type="text" name="name" id="editName" class="form-control" required maxlength="255">
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Категория <span class="text-danger">*</span></label>
+            <select name="category" id="editCategory" class="form-select" required>
+              {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Инвентарный номер <span class="text-danger">*</span></label>
+            <input type="text" name="inventory_number" id="editInventoryNumber" class="form-control" required maxlength="50">
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Серийный номер</label>
+            <input type="text" name="serial_number" id="editSerialNumber" class="form-control" maxlength="100">
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Статус <span class="text-danger">*</span></label>
+            <select name="status" id="editStatus" class="form-select" required>
+              <option value="available">Доступно</option>
+              <option value="in_use">В использовании</option>
+              <option value="maintenance">На обслуживании</option>
+              <option value="retired">Списано</option>
+            </select>
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Отдел <span class="text-danger">*</span></label>
+            <select name="department" id="editDepartment" class="form-select" required>
+              {% for dept in departments %}
+                <option value="{{ dept.id }}">{{ dept.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Ответственный</label>
+            <select name="responsible_person" id="editResponsiblePerson" class="form-select">
+              <option value="">Не назначен</option>
+              {% for user in users %}
+                <option value="{{ user.id }}">{{ user.get_full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Расположение</label>
+            <input type="text" name="location" id="editLocation" class="form-control" maxlength="255">
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Дата покупки <span class="text-danger">*</span></label>
+            <input type="date" name="purchase_date" id="editPurchaseDate" class="form-control" required>
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Гарантия до</label>
+            <input type="date" name="warranty_until" id="editWarrantyUntil" class="form-control">
+          </div>
+          
+          <div class="col-md-4">
+            <label class="form-label">Стоимость <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="number" name="purchase_cost" id="editPurchaseCost" class="form-control" min="0.01" step="0.01" required>
+              <span class="input-group-text">₽</span>
+            </div>
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Примечания</label>
+            <textarea name="notes" id="editNotes" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi-check-lg me-1"></i>Сохранить изменения
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
 {# ===== МОДАЛКА ПЕРЕВОДА ===== #}
 <div class="modal fade" id="transferModal" tabindex="-1" aria-hidden="true">
@@ -345,6 +565,144 @@
     } catch (e) {
       console.error(e);
       alert('Ошибка сети');
+    }
+  });
+
+  // === СОЗДАНИЕ ОБОРУДОВАНИЯ ===
+  document.getElementById('equipmentCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('[type="submit"]');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    // Убираем пустые значения
+    Object.keys(data).forEach(key => {
+      if (data[key] === '') delete data[key];
+    });
+    
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Создание...';
+    
+    try {
+      const resp = await fetch('/api/procurement/equipment/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (resp.ok) {
+        const result = await resp.json();
+        bootstrap.Modal.getInstance(document.getElementById('equipmentCreateModal')).hide();
+        form.reset();
+        // Перезагрузить страницу или добавить в список
+        window.location.href = `/procurement/equipment/${result.id}/`;
+      } else {
+        const err = await resp.json();
+        let errorMsg = 'Ошибка создания';
+        if (err.inventory_number) {
+          errorMsg = 'Инвентарный номер уже существует';
+        } else if (err.detail) {
+          errorMsg = err.detail;
+        }
+        alert(errorMsg);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сети');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="bi-check-lg me-1"></i>Добавить';
+    }
+  });
+
+  // === РЕДАКТИРОВАНИЕ ОБОРУДОВАНИЯ ===
+  // Загрузка данных при открытии модала
+  document.getElementById('equipmentEditModal')?.addEventListener('show.bs.modal', async (e) => {
+    const button = e.relatedTarget;
+    const equipmentId = button.getAttribute('data-id');
+    
+    if (!equipmentId) return;
+    
+    document.getElementById('editEquipmentId').value = equipmentId;
+    
+    try {
+      const resp = await fetch(`/api/procurement/equipment/${equipmentId}/`);
+      if (resp.ok) {
+        const eq = await resp.json();
+        
+        document.getElementById('editName').value = eq.name || '';
+        document.getElementById('editInventoryNumber').value = eq.inventory_number || '';
+        document.getElementById('editSerialNumber').value = eq.serial_number || '';
+        document.getElementById('editCategory').value = eq.category || '';
+        document.getElementById('editStatus').value = eq.status || 'available';
+        document.getElementById('editDepartment').value = eq.department || '';
+        document.getElementById('editResponsiblePerson').value = eq.responsible_person || '';
+        document.getElementById('editLocation').value = eq.location || '';
+        document.getElementById('editPurchaseDate').value = eq.purchase_date || '';
+        document.getElementById('editWarrantyUntil').value = eq.warranty_until || '';
+        document.getElementById('editPurchaseCost').value = eq.purchase_cost || '';
+        document.getElementById('editNotes').value = eq.notes || '';
+      } else {
+        alert('Ошибка загрузки данных');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сети');
+    }
+  });
+
+  // Сохранение изменений
+  document.getElementById('equipmentEditForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('[type="submit"]');
+    const equipmentId = form.querySelector('#editEquipmentId').value;
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    delete data.equipment_id; // Убираем служебное поле
+    
+    // Убираем пустые значения
+    Object.keys(data).forEach(key => {
+      if (data[key] === '') data[key] = null;
+    });
+    
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Сохранение...';
+    
+    try {
+      const resp = await fetch(`/api/procurement/equipment/${equipmentId}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (resp.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('equipmentEditModal')).hide();
+        // Перезагрузить страницу
+        window.location.reload();
+      } else {
+        const err = await resp.json();
+        let errorMsg = 'Ошибка сохранения';
+        if (err.inventory_number) {
+          errorMsg = 'Инвентарный номер уже существует';
+        } else if (err.detail) {
+          errorMsg = err.detail;
+        }
+        alert(errorMsg);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка сети');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="bi-check-lg me-1"></i>Сохранить изменения';
     }
   });
 </script>

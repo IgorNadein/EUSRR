@@ -2,6 +2,7 @@
 HTML Views для модуля закупок (Frontend).
 """
 
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, render, redirect
@@ -15,6 +16,8 @@ from .models import (
     ProcurementRequest,
 )
 from .constants import ProcurementStatus
+
+User = get_user_model()
 
 
 @login_required
@@ -246,6 +249,9 @@ def equipment_list(request):
         'filters': filters,
         'categories': EquipmentCategory.objects.all(),
         'departments': Department.objects.all(),
+        'users': User.objects.filter(
+            is_active=True
+        ).order_by('last_name', 'first_name'),
         'can_manage': request.user.is_staff,
     }
     return render(request, 'procurement/equipment_list.html', context)
