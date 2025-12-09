@@ -242,6 +242,16 @@
                       placeholder="Опишите необходимость закупки..." maxlength="2000"></textarea>
           </div>
           
+          <div class="col-12">
+            <label class="form-label">Отдел <span class="text-danger">*</span></label>
+            <select name="department" class="form-select" required>
+              <option value="">Выберите отдел...</option>
+              {% for dept in departments %}
+                <option value="{{ dept.id }}">{{ dept.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
           <div class="col-md-6">
             <label class="form-label">Срочность <span class="text-danger">*</span></label>
             <select name="urgency" class="form-select" required>
@@ -303,6 +313,7 @@
       const data = {
         title: formData.get('title'),
         description: formData.get('description') || '',
+        department: formData.get('department'),
         urgency: formData.get('urgency'),
         estimated_cost: formData.get('estimated_cost') || null,
         desired_date: formData.get('desired_date') || null,

@@ -231,7 +231,7 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
 class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
     """Сериализатор для создания заявки с позициями."""
 
-    items = ProcurementItemCreateSerializer(many=True)
+    items = ProcurementItemCreateSerializer(many=True, required=False)
 
     class Meta:
         model = ProcurementRequest
@@ -251,7 +251,7 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Создать заявку с позициями."""
-        items_data = validated_data.pop('items')
+        items_data = validated_data.pop('items', [])
         request = self.context['request']
 
         # Создаем заявку
@@ -260,7 +260,7 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # Создаем позиции
+        # Создаем позиции (если они переданы)
         for item_data in items_data:
             ProcurementItem.objects.create(
                 request=procurement_request,

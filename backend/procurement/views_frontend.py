@@ -67,6 +67,7 @@ def dashboard(request):
         'budget': budget,
         'recent_requests': recent_requests,
         'can_approve': can_approve,
+        'departments': Department.objects.all().order_by('name'),
     }
     return render(request, 'procurement/dashboard.html', context)
 
