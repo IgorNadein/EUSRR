@@ -480,6 +480,95 @@ class MaintenanceRecord(models.Model):
         )
 
 
+class EquipmentTransferLog(models.Model):
+    """Лог передачи/перемещения оборудования."""
+    
+    TRANSFER_TYPES = [
+        ('assignment', 'Назначение ответственного'),
+        ('transfer', 'Перемещение'),
+        ('return', 'Возврат'),
+    ]
+    
+    equipment = models.ForeignKey(
+        Equipment,
+        on_delete=models.CASCADE,
+        related_name='transfer_logs',
+        verbose_name='Оборудование'
+    )
+    from_department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_out',
+        verbose_name='Из отдела'
+    )
+    to_department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_in',
+        verbose_name='В отдел'
+    )
+    from_person = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='equipment_given',
+        verbose_name='От кого'
+    )
+    to_person = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='equipment_received',
+        verbose_name='Кому'
+    )
+    from_location = models.CharField(
+        'Откуда',
+        max_length=255,
+        blank=True
+    )
+    to_location = models.CharField(
+        'Куда',
+        max_length=255,
+        blank=True
+    )
+    transfer_type = models.CharField(
+        'Тип передачи',
+        max_length=20,
+        choices=TRANSFER_TYPES,
+        default='transfer'
+    )
+    reason = models.TextField(
+        'Причина/комментарий',
+        blank=True
+    )
+    created_at = models.DateTimeField('Дата передачи', auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_created',
+        verbose_name='Кто оформил'
+    )
+    
+    class Meta:
+        verbose_name = 'Лог передачи'
+        verbose_name_plural = 'Логи передач'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return (
+            f"{self.equipment.inventory_number}: "
+            f"{self.from_person or 'Склад'} → {self.to_person or 'Склад'}"
+        )
+
+
 class Budget(models.Model):
     """Бюджет отдела на квартал."""
     

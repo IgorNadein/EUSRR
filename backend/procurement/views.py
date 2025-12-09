@@ -9,17 +9,19 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from employees.models import Department
-from .constants import ApprovalStatus, ProcurementStatus
+from .constants import ApprovalStatus, ProcurementStatus, EquipmentStatus
 from .models import (
     Approval,
     Budget,
     Equipment,
     EquipmentCategory,
+    EquipmentTransferLog,
     MaintenanceRecord,
     ProcurementItem,
     ProcurementRequest,
     Supplier,
 )
+from .services import QRCodeGenerator
 from .permissions import (
     CanApproveProcurementRequest,
     CanCreateProcurementRequest,
@@ -489,6 +491,162 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         )
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def transfer(self, request, pk=None):
+        """Перевод оборудования в другой отдел или другому пользователю."""
+        equipment = self.get_object()
+
+        to_department_id = request.data.get('to_department')
+        to_person_id = request.data.get('to_person')
+        reason = request.data.get('reason', '')
+
+        if not to_department_id and not to_person_id:
+            return Response(
+                {'error': 'Укажите отдел или ответственного'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Сохраняем старые значения
+        from_department = equipment.department
+        from_person = equipment.responsible_person
+
+        # Обновляем оборудование
+        if to_department_id:
+            try:
+                to_department = Department.objects.get(pk=to_department_id)
+                equipment.department = to_department
+            except Department.DoesNotExist:
+                return Response(
+                    {'error': 'Отдел не найден'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            to_department = from_department
+
+        if to_person_id:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            try:
+                to_person = User.objects.get(pk=to_person_id)
+                equipment.responsible_person = to_person
+            except User.DoesNotExist:
+                return Response(
+                    {'error': 'Пользователь не найден'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            to_person = from_person
+
+        equipment.save()
+
+        # Создаём лог перевода
+        EquipmentTransferLog.objects.create(
+            equipment=equipment,
+            from_department=from_department,
+            to_department=to_department,
+            from_person=from_person,
+            to_person=to_person,
+            reason=reason,
+            created_by=request.user
+        )
+
+        return Response({
+            'status': 'transferred',
+            'equipment_id': equipment.id,
+            'from_department': str(from_department),
+            'to_department': str(to_department)
+        })
+
+    @action(detail=True, methods=['post'])
+    def write_off(self, request, pk=None):
+        """Списание оборудования."""
+        equipment = self.get_object()
+        reason = request.data.get('reason', '')
+
+        if equipment.status == EquipmentStatus.RETIRED:
+            return Response(
+                {'error': 'Оборудование уже списано'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        equipment.status = EquipmentStatus.RETIRED
+        equipment.notes = (equipment.notes or '') + f'\n\nСписано: {reason}'
+        equipment.save()
+
+        return Response({
+            'status': 'written_off',
+            'equipment_id': equipment.id
+        })
+
+    @action(detail=True, methods=['post'])
+    def add_maintenance(self, request, pk=None):
+        """Добавить запись об обслуживании."""
+        from datetime import date
+        equipment = self.get_object()
+
+        maintenance_type = request.data.get('type', 'repair')
+        description = request.data.get('description', '')
+        cost = request.data.get('cost')
+        maintenance_date = request.data.get('date', date.today())
+
+        record = MaintenanceRecord.objects.create(
+            equipment=equipment,
+            type=maintenance_type,
+            description=description,
+            cost=cost,
+            date=maintenance_date,
+            performed_by=request.user
+        )
+
+        return Response({
+            'status': 'created',
+            'maintenance_id': record.id,
+            'equipment_id': equipment.id
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def qr_code(self, request, pk=None):
+        """Получить QR-код для оборудования."""
+        equipment = self.get_object()
+
+        qr_file = QRCodeGenerator.generate_for_equipment(equipment)
+
+        from django.http import HttpResponse
+        response = HttpResponse(qr_file.read(), content_type='image/png')
+        response['Content-Disposition'] = (
+            f'inline; filename="equipment_{equipment.id}_qr.png"'
+        )
+        return response
+
+    @action(detail=True, methods=['get'])
+    def transfer_history(self, request, pk=None):
+        """История переводов оборудования."""
+        equipment = self.get_object()
+
+        logs = EquipmentTransferLog.objects.filter(
+            equipment=equipment
+        ).order_by('-created_at')
+
+        data = [
+            {
+                'id': log.id,
+                'from_department': str(log.from_department),
+                'to_department': str(log.to_department),
+                'from_person': (
+                    str(log.from_person) if log.from_person else None
+                ),
+                'to_person': (
+                    str(log.to_person) if log.to_person else None
+                ),
+                'reason': log.reason,
+                'created_by': str(log.created_by) if log.created_by else None,
+                'date': log.created_at.isoformat()
+            }
+            for log in logs
+        ]
+
+        return Response(data)
 
 
 class MaintenanceRecordViewSet(viewsets.ModelViewSet):

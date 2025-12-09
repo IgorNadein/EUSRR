@@ -1,7 +1,7 @@
 # План Разработки Модуля "Закупки и Инвентарь" (Procurement)
 
-**Дата начала:** 8 декабря 2025  
-**Статус:** 🚀 В разработке  
+**Дата начала:** 8 декабря 2025
+**Статус:** 🚀 В разработке
 **Версия:** 1.0
 
 ---
@@ -30,6 +30,7 @@
 **Обоснование:**
 
 **За использование NotificationService:**
+
 1. ✅ **Уже существует и протестирована** - используется во всех модулях (communications, documents, feed, calendar_app, requests_app)
 2. ✅ **Полнофункциональная** - поддерживает Web (WebSocket), Email (HTML), Telegram, настройки пользователя
 3. ✅ **Простота** - не требует дополнительных процессов и сервисов
@@ -38,22 +39,27 @@
 6. ✅ **Легче debugging** - ошибки в том же процессе и логах
 
 **Против Celery:**
+
 1. ❌ **Усложнение** - +2 процесса в production (worker + beat)
 2. ❌ **Дублирование** - NotificationService уже отправляет email
 3. ❌ **Overkill** - избыточно для текущего масштаба проекта
 4. ❌ **DevOps overhead** - настройка supervisor/systemd, мониторинг workers
 
 **Производительность:**
+
 - SMTP отправка: ~0.5-2 секунды
 - Согласование заявки: редкое действие (1-5 раз/день на отдел)
 - Задержка 2 секунды приемлема для редких critical операций
 
 **Когда пересмотреть:**
-- >500 сотрудников и >50 заявок/день
+
+- > 500 сотрудников и >50 заявок/день
+  >
 - Генерация тяжелых отчётов (PDF >10MB)
 - Нестабильный email-провайдер требует retry логики
 
 **Периодические задачи:** Используется **APScheduler** (уже в requirements.txt) для:
+
 - Дайджесты уведомлений
 - Напоминания о просроченных заявках
 - Очистка старых данных
@@ -63,31 +69,37 @@
 ## Обзор Проекта
 
 ### Цель
+
 Создать систему управления внутренними закупками и инвентарем с автоматизированным workflow согласования заявок и контролем бюджетов отделов.
 
 ### Основные Возможности
 
 **Для сотрудников:**
+
 - ✅ Создание заявок на закупку
 - ✅ Отслеживание статуса своих заявок
 - ✅ Просмотр доступного оборудования
 
 **Для руководителей отделов:**
+
 - ✅ Согласование/отклонение заявок отдела
 - ✅ Просмотр бюджета отдела
 - ✅ Управление инвентарем отдела
 
 **Для финансового отдела:**
+
 - ✅ Контроль бюджетов всех отделов
 - ✅ Финансовое согласование заявок
 - ✅ Формирование отчетов
 
 **Для менеджера закупок:**
+
 - ✅ Исполнение одобренных заявок
 - ✅ Работа с поставщиками
 - ✅ Оприходование закупленного оборудования
 
 **Для завхоза:**
+
 - ✅ Учет всего оборудования
 - ✅ Назначение ответственных
 - ✅ Контроль технического обслуживания
@@ -95,13 +107,13 @@
 
 ### Метрики Успеха
 
-| Метрика | Целевое Значение |
-|---------|------------------|
-| Среднее время согласования | < 3 рабочих дня |
-| Процент заявок без доработок | > 90% |
-| Точность бюджетирования | 95-105% |
-| Удовлетворенность пользователей | > 4.0/5.0 |
-| Критических багов в production | 0 |
+| Метрика                                                | Целевое Значение |
+| ------------------------------------------------------------- | ------------------------------- |
+| Среднее время согласования            | < 3 рабочих дня       |
+| Процент заявок без доработок         | > 90%                           |
+| Точность бюджетирования                 | 95-105%                         |
+| Удовлетворенность пользователей | > 4.0/5.0                       |
+| Критических багов в production               | 0                               |
 
 ---
 
@@ -195,6 +207,7 @@
 ### Модель 1: ProcurementRequest (Заявка на закупку)
 
 **Поля:**
+
 ```python
 title = CharField(max_length=255)              # Название заявки
 description = TextField()                      # Описание/обоснование
@@ -210,6 +223,7 @@ completed_at = DateTimeField(null=True)        # Когда завершена
 ```
 
 **Статусы:**
+
 - `DRAFT` - Черновик (редактируется)
 - `PENDING` - На согласовании
 - `APPROVED` - Одобрено (все согласования пройдены)
@@ -219,6 +233,7 @@ completed_at = DateTimeField(null=True)        # Когда завершена
 - `CANCELLED` - Отменено заявителем
 
 **Методы:**
+
 - `submit()` - отправить на согласование (DRAFT → PENDING)
 - `approve(approver)` - согласовать (PENDING → APPROVED если все ОК)
 - `reject(approver, reason)` - отклонить (PENDING → REJECTED)
@@ -229,6 +244,7 @@ completed_at = DateTimeField(null=True)        # Когда завершена
 - `check_budget_available()` - есть ли бюджет в отделе
 
 **Permissions:**
+
 - `procurement.add_procurementrequest` - создавать заявки
 - `procurement.change_procurementrequest` - редактировать свои
 - `procurement.view_procurementrequest` - просматривать
@@ -238,6 +254,7 @@ completed_at = DateTimeField(null=True)        # Когда завершена
 ### Модель 2: ProcurementItem (Позиция заявки)
 
 **Поля:**
+
 ```python
 request = ForeignKey(ProcurementRequest, related_name='items')
 name = CharField(max_length=255)               # Название товара/услуги
@@ -251,11 +268,13 @@ created_at = DateTimeField(auto_now_add=True)
 ```
 
 **Свойства:**
+
 - `total_price` - quantity × estimated_unit_price
 
 ### Модель 3: Approval (Согласование)
 
 **Поля:**
+
 ```python
 request = ForeignKey(ProcurementRequest, related_name='approvals')
 approver = ForeignKey(User)                    # Кто согласовывает
@@ -267,16 +286,19 @@ updated_at = DateTimeField(auto_now=True)
 ```
 
 **Роли согласующих:**
+
 - `DEPARTMENT_HEAD` - Руководитель отдела
 - `FINANCE_MANAGER` - Финансовый менеджер
 - `DIRECTOR` - Генеральный директор
 
 **Статусы:**
+
 - `PENDING` - Ожидает решения
 - `APPROVED` - Одобрено
 - `REJECTED` - Отклонено
 
 **Логика согласования:**
+
 ```python
 if estimated_cost < 10_000:
     # Только руководитель отдела
@@ -292,6 +314,7 @@ else:
 ### Модель 4: Equipment (Оборудование)
 
 **Поля:**
+
 ```python
 name = CharField(max_length=255)               # Название
 inventory_number = CharField(unique=True)      # Инвентарный номер (INV-2024-0001)
@@ -311,6 +334,7 @@ updated_at = DateTimeField(auto_now=True)
 ```
 
 **Статусы:**
+
 - `AVAILABLE` - Доступно (на складе)
 - `IN_USE` - В использовании
 - `MAINTENANCE` - На обслуживании
@@ -319,6 +343,7 @@ updated_at = DateTimeField(auto_now=True)
 - `LOST` - Утеряно
 
 **Методы:**
+
 - `assign_to(user, location)` - назначить ответственного
 - `send_to_maintenance(description)` - отправить на ТО
 - `retire(reason)` - списать
@@ -327,6 +352,7 @@ updated_at = DateTimeField(auto_now=True)
 ### Модель 5: EquipmentCategory (Категория оборудования)
 
 **Поля:**
+
 ```python
 name = CharField(max_length=100, unique=True)
 parent = ForeignKey('self', null=True)         # Родительская категория
@@ -336,6 +362,7 @@ created_at = DateTimeField(auto_now_add=True)
 ```
 
 **Примеры иерархии:**
+
 ```
 - Компьютерная техника
   ├── Ноутбуки
@@ -358,6 +385,7 @@ created_at = DateTimeField(auto_now_add=True)
 ### Модель 6: MaintenanceRecord (Запись обслуживания)
 
 **Поля:**
+
 ```python
 equipment = ForeignKey(Equipment, related_name='maintenance_history')
 date = DateField()                             # Дата обслуживания
@@ -370,6 +398,7 @@ created_at = DateTimeField(auto_now_add=True)
 ```
 
 **Типы обслуживания:**
+
 - `INSPECTION` - Осмотр/проверка
 - `MAINTENANCE` - Плановое ТО
 - `REPAIR` - Ремонт
@@ -379,6 +408,7 @@ created_at = DateTimeField(auto_now_add=True)
 ### Модель 7: Budget (Бюджет отдела)
 
 **Поля:**
+
 ```python
 department = ForeignKey(Department)
 year = PositiveIntegerField()                  # Год
@@ -393,6 +423,7 @@ class Meta:
 ```
 
 **Методы:**
+
 - `remaining_amount` - остаток бюджета
 - `utilization_percentage` - процент использования
 - `can_spend(amount)` - можно ли потратить сумму
@@ -402,6 +433,7 @@ class Meta:
 ### Модель 8: Supplier (Поставщик)
 
 **Поля:**
+
 ```python
 name = CharField(max_length=255)
 contact_person = CharField(max_length=255, blank=True)
@@ -423,6 +455,7 @@ created_at = DateTimeField(auto_now_add=True)
 ### Django Model Permissions
 
 **Автоматические (создаются Django):**
+
 - `procurement.add_procurementrequest`
 - `procurement.change_procurementrequest`
 - `procurement.delete_procurementrequest`
@@ -433,6 +466,7 @@ created_at = DateTimeField(auto_now_add=True)
 - `procurement.view_equipment`
 
 **Кастомные (добавляем вручную):**
+
 ```python
 class ProcurementRequest(models.Model):
     class Meta:
@@ -449,7 +483,7 @@ class ProcurementRequest(models.Model):
 ```python
 class DeptPerm:
     # ... существующие права ...
-    
+  
     # Новые права для Procurement
     CREATE_PROCUREMENT = "create_procurement_request"
     APPROVE_PROCUREMENT = "approve_procurement_request"
@@ -459,23 +493,23 @@ class DeptPerm:
 
 ### Матрица Прав Доступа
 
-| Действие | Сотрудник | Рук. Отдела | Финансы | Закупки | Завхоз | Admin |
-|----------|-----------|-------------|---------|---------|--------|-------|
-| Создать заявку | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Просмотреть свои заявки | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Просмотреть заявки отдела | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Просмотреть все заявки | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ |
-| Согласовать (1 уровень) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Согласовать (финансы) | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
-| Согласовать (директор) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Исполнить заявку | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Просмотр оборудования | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Добавить оборудование | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Управление инвентарем отдела | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Управление всем инвентарем | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| Списание оборудования | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| Просмотр бюджета отдела | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Управление бюджетами | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Действие                                       | Сотрудник | Рук. Отдела | Финансы | Закупки | Завхоз | Admin |
+| ------------------------------------------------------ | ------------------ | -------------------- | -------------- | -------------- | ------------ | ----- |
+| Создать заявку                            | ✅                 | ✅                   | ✅             | ✅             | ✅           | ✅    |
+| Просмотреть свои заявки           | ✅                 | ✅                   | ✅             | ✅             | ✅           | ✅    |
+| Просмотреть заявки отдела       | ❌                 | ✅                   | ❌             | ❌             | ❌           | ✅    |
+| Просмотреть все заявки             | ❌                 | ❌                   | ✅             | ✅             | ❌           | ✅    |
+| Согласовать (1 уровень)              | ❌                 | ✅                   | ❌             | ❌             | ❌           | ✅    |
+| Согласовать (финансы)                | ❌                 | ❌                   | ✅             | ❌             | ❌           | ✅    |
+| Согласовать (директор)              | ❌                 | ❌                   | ❌             | ❌             | ❌           | ✅    |
+| Исполнить заявку                        | ❌                 | ❌                   | ❌             | ✅             | ❌           | ✅    |
+| Просмотр оборудования              | ✅                 | ✅                   | ✅             | ✅             | ✅           | ✅    |
+| Добавить оборудование              | ❌                 | ❌                   | ❌             | ✅             | ✅           | ✅    |
+| Управление инвентарем отдела | ❌                 | ✅                   | ❌             | ❌             | ✅           | ✅    |
+| Управление всем инвентарем     | ❌                 | ❌                   | ❌             | ❌             | ✅           | ✅    |
+| Списание оборудования              | ❌                 | ❌                   | ❌             | ❌             | ✅           | ✅    |
+| Просмотр бюджета отдела           | ❌                 | ✅                   | ✅             | ❌             | ❌           | ✅    |
+| Управление бюджетами                | ❌                 | ❌                   | ✅             | ❌             | ❌           | ✅    |
 
 ### Permission Classes для API
 
@@ -497,7 +531,7 @@ class CanApproveProcurement(BasePermission):
         # Логика проверки роли и суммы
         required_approvals = obj.get_required_approvals()
         # ... проверка текущей роли пользователя
-        
+      
 class CanManageEquipment(BasePermission):
     """Может управлять оборудованием"""
     def has_permission(self, request, view):
@@ -518,17 +552,17 @@ stateDiagram-v2
     [*] --> DRAFT
     DRAFT --> PENDING: submit()
     DRAFT --> CANCELLED: cancel()
-    
+  
     PENDING --> APPROVED: approve()
     PENDING --> REJECTED: reject()
     PENDING --> CANCELLED: cancel()
-    
+  
     APPROVED --> IN_PROGRESS: start_execution()
     APPROVED --> CANCELLED: cancel()
-    
+  
     IN_PROGRESS --> COMPLETED: complete()
     IN_PROGRESS --> CANCELLED: cancel()
-    
+  
     COMPLETED --> [*]
     REJECTED --> [*]
     CANCELLED --> [*]
@@ -536,44 +570,52 @@ stateDiagram-v2
 
 ### Правила Согласования по Сумме
 
-| Сумма заявки | Необходимые согласования | Примерный срок |
-|--------------|--------------------------|----------------|
-| < 10,000₽ | Руководитель отдела | 1-2 дня |
-| 10,000 - 100,000₽ | Руководитель отдела + Финансы | 2-3 дня |
-| > 100,000₽ | Руководитель отдела + Финансы + Директор | 3-5 дней |
+| Сумма заявки | Необходимые согласования                           | Примерный срок |
+| ----------------------- | ------------------------------------------------------------------------- | --------------------------- |
+| < 10,000₽              | Руководитель отдела                                     | 1-2 дня                  |
+| 10,000 - 100,000₽      | Руководитель отдела + Финансы                    | 2-3 дня                  |
+| > 100,000₽             | Руководитель отдела + Финансы + Директор | 3-5 дней                |
 
 ### Уведомления
 
 **При создании заявки:**
+
 - ✉️ Email руководителю отдела: "Новая заявка требует вашего согласования"
 
 **При согласовании:**
+
 - ✉️ Email следующему согласующему (если требуется)
 - ✉️ Email автору заявки: "Ваша заявка согласована [Роль]"
 
 **При полном согласовании:**
+
 - ✉️ Email менеджеру закупок: "Заявка одобрена, можно приступать к исполнению"
 - ✉️ Email автору: "Ваша заявка полностью одобрена и передана в работу"
 
 **При отклонении:**
+
 - ✉️ Email автору: "Ваша заявка отклонена. Причина: ..."
 
 **При завершении:**
+
 - ✉️ Email автору: "Ваша заявка выполнена"
 - ✉️ Email руководителю отдела: "Заявка выполнена, оборудование оприходовано"
 
 ### Автоматические Проверки
 
 **Перед отправкой на согласование (submit):**
+
 - ✅ Есть хотя бы одна позиция в заявке
 - ✅ Указана предполагаемая стоимость
 - ✅ Заполнены обязательные поля
 
 **Перед финансовым согласованием:**
+
 - ✅ В бюджете отдела достаточно средств
 - ✅ Если бюджета нет → алерт финансовому директору
 
 **Перед завершением:**
+
 - ✅ Указана фактическая стоимость
 - ✅ Все позиции оприходованы (если оборудование)
 
@@ -582,6 +624,7 @@ stateDiagram-v2
 ## API Endpoints
 
 ### Базовый URL
+
 ```
 /api/v1/procurement/
 ```
@@ -589,10 +632,13 @@ stateDiagram-v2
 ### Заявки (Requests)
 
 #### Список и создание
+
 ```http
 GET /api/v1/procurement/requests/
 ```
+
 **Query Parameters:**
+
 - `status` - фильтр по статусу (draft, pending, approved, etc.)
 - `department` - ID отдела
 - `requestor` - ID заявителя
@@ -605,6 +651,7 @@ GET /api/v1/procurement/requests/
 - `ordering` - сортировка (created_at, estimated_cost, -created_at)
 
 **Response:**
+
 ```json
 {
   "count": 42,
@@ -645,7 +692,9 @@ GET /api/v1/procurement/requests/
 ```http
 POST /api/v1/procurement/requests/
 ```
+
 **Request Body:**
+
 ```json
 {
   "title": "Новые мониторы",
@@ -666,6 +715,7 @@ POST /api/v1/procurement/requests/
 ```
 
 #### Детали, обновление, удаление
+
 ```http
 GET /api/v1/procurement/requests/{id}/
 PATCH /api/v1/procurement/requests/{id}/
@@ -675,14 +725,17 @@ DELETE /api/v1/procurement/requests/{id}/
 #### Actions (Действия над заявкой)
 
 **Отправить на согласование:**
+
 ```http
 POST /api/v1/procurement/requests/{id}/submit/
 ```
 
 **Согласовать:**
+
 ```http
 POST /api/v1/procurement/requests/{id}/approve/
 ```
+
 ```json
 {
   "comment": "Одобрено. Необходимо для работы."
@@ -690,9 +743,11 @@ POST /api/v1/procurement/requests/{id}/approve/
 ```
 
 **Отклонить:**
+
 ```http
 POST /api/v1/procurement/requests/{id}/reject/
 ```
+
 ```json
 {
   "reason": "Недостаточно бюджета в этом квартале",
@@ -701,14 +756,17 @@ POST /api/v1/procurement/requests/{id}/reject/
 ```
 
 **Начать исполнение:**
+
 ```http
 POST /api/v1/procurement/requests/{id}/start_execution/
 ```
 
 **Завершить:**
+
 ```http
 POST /api/v1/procurement/requests/{id}/complete/
 ```
+
 ```json
 {
   "actual_cost": "740000.00",
@@ -717,9 +775,11 @@ POST /api/v1/procurement/requests/{id}/complete/
 ```
 
 **Отменить:**
+
 ```http
 POST /api/v1/procurement/requests/{id}/cancel/
 ```
+
 ```json
 {
   "reason": "Больше не актуально"
@@ -727,9 +787,11 @@ POST /api/v1/procurement/requests/{id}/cancel/
 ```
 
 **Добавить позицию:**
+
 ```http
 POST /api/v1/procurement/requests/{id}/add_item/
 ```
+
 ```json
 {
   "name": "Клавиатура механическая",
@@ -742,12 +804,14 @@ POST /api/v1/procurement/requests/{id}/add_item/
 ### Оборудование (Equipment)
 
 #### Список и создание
+
 ```http
 GET /api/v1/procurement/equipment/
 POST /api/v1/procurement/equipment/
 ```
 
 **Query Parameters:**
+
 - `status` - статус оборудования
 - `category` - ID категории
 - `department` - ID отдела
@@ -757,6 +821,7 @@ POST /api/v1/procurement/equipment/
 - `ordering` - сортировка
 
 **Response:**
+
 ```json
 {
   "count": 156,
@@ -793,9 +858,11 @@ POST /api/v1/procurement/equipment/
 #### Actions
 
 **Назначить ответственного:**
+
 ```http
 POST /api/v1/procurement/equipment/{id}/assign/
 ```
+
 ```json
 {
   "responsible_person": 15,
@@ -804,9 +871,11 @@ POST /api/v1/procurement/equipment/{id}/assign/
 ```
 
 **Добавить запись обслуживания:**
+
 ```http
 POST /api/v1/procurement/equipment/{id}/maintenance/
 ```
+
 ```json
 {
   "date": "2025-12-08",
@@ -817,9 +886,11 @@ POST /api/v1/procurement/equipment/{id}/maintenance/
 ```
 
 **Списать:**
+
 ```http
 POST /api/v1/procurement/equipment/{id}/retire/
 ```
+
 ```json
 {
   "reason": "Устарело морально и физически",
@@ -828,9 +899,11 @@ POST /api/v1/procurement/equipment/{id}/retire/
 ```
 
 **История:**
+
 ```http
 GET /api/v1/procurement/equipment/{id}/history/
 ```
+
 ```json
 {
   "equipment": {...},
@@ -855,6 +928,7 @@ PATCH /api/v1/procurement/budgets/{id}/
 ```
 
 **Response (my_department):**
+
 ```json
 {
   "department": {
@@ -884,6 +958,7 @@ PATCH /api/v1/procurement/budgets/{id}/
 ```http
 GET /api/v1/procurement/stats/overview/
 ```
+
 ```json
 {
   "total_requests": 124,
@@ -911,6 +986,7 @@ GET /api/v1/procurement/stats/overview/
 ```http
 GET /api/v1/procurement/stats/by_department/
 ```
+
 ```json
 [
   {
@@ -929,6 +1005,7 @@ GET /api/v1/procurement/stats/by_department/
 ### 1. Дашборд (`/procurement/`)
 
 **Элементы:**
+
 - 📊 Карточки со статистикой (всего заявок, ожидают согласования, одобрено, потрачено)
 - 📈 График расходов по месяцам (Chart.js)
 - 🔍 Быстрые фильтры (статус, отдел, период)
@@ -936,6 +1013,7 @@ GET /api/v1/procurement/stats/by_department/
 - 🎯 Кнопка "Создать заявку" (если есть права)
 
 **Макет:**
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ 📊 Дашборд Закупок                         [+ Создать]  │
@@ -960,11 +1038,13 @@ GET /api/v1/procurement/stats/by_department/
 ### 2. Форма Создания Заявки (`/procurement/requests/create/`)
 
 **Шаги:**
+
 1. Основная информация (название, описание, срочность)
 2. Добавление позиций (таблица с возможностью добавления строк)
 3. Проверка и отправка
 
 **JavaScript функционал:**
+
 - Динамическое добавление/удаление позиций
 - Автоматический расчет общей суммы
 - Проверка остатка бюджета (AJAX запрос)
@@ -973,6 +1053,7 @@ GET /api/v1/procurement/stats/by_department/
 ### 3. Детальная Страница Заявки (`/procurement/requests/{id}/`)
 
 **Секции:**
+
 - Заголовок с бейджем статуса
 - Основная информация (автор, отдел, даты)
 - Таблица позиций с итоговой суммой
@@ -983,6 +1064,7 @@ GET /api/v1/procurement/stats/by_department/
 ### 4. Каталог Оборудования (`/procurement/equipment/`)
 
 **Элементы:**
+
 - Карточки оборудования с фото (если есть)
 - Фильтры: статус, категория, отдел, ответственный
 - Поиск по названию/инв. номеру
@@ -992,6 +1074,7 @@ GET /api/v1/procurement/stats/by_department/
 ### 5. Карточка Оборудования (`/procurement/equipment/{id}/`)
 
 **Секции:**
+
 - QR-код (для сканирования)
 - Основная информация
 - Текущий статус и местоположение
@@ -1003,6 +1086,7 @@ GET /api/v1/procurement/stats/by_department/
 ### 6. Управление Бюджетом (`/procurement/budgets/`)
 
 **Элементы:**
+
 - Таблица бюджетов по отделам
 - Визуализация использования (progress bars)
 - Алерты при превышении 90%
@@ -1018,7 +1102,8 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Создать приложение и определить все модели без сложной логики
 
 **Задачи:**
-- [x] Создать Django app `procurement`
+
+- [X] Создать Django app `procurement`
 - [ ] Определить все модели в `models.py`
   - [ ] ProcurementRequest
   - [ ] ProcurementItem
@@ -1041,6 +1126,7 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Создать REST API со всеми CRUD операциями и правами доступа
 
 **Задачи:**
+
 - [ ] Создать `api/v1/procurement/serializers.py`
   - [ ] ProcurementRequestSerializer (read/write versions)
   - [ ] EquipmentSerializer
@@ -1066,6 +1152,7 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Реализовать state machine и автоматическую логику согласования
 
 **Задачи:**
+
 - [ ] Установить `django-fsm`
 - [ ] Добавить FSM transitions в ProcurementRequest:
   - [ ] `submit()` - отправка на согласование
@@ -1081,10 +1168,10 @@ GET /api/v1/procurement/stats/by_department/
   - [ ] `/requests/{id}/complete/`
   - [ ] `/requests/{id}/cancel/`
 - [ ] Добавить проверки budget при согласовании
-- [x] Интеграция с NotificationService:
-  - [x] Создание типов уведомлений (procurement_*)
-  - [x] Signals для автоматических уведомлений
-  - [x] Web + Email + Telegram каналы
+- [X] Интеграция с NotificationService:
+  - [X] Создание типов уведомлений (procurement_*)
+  - [X] Signals для автоматических уведомлений
+  - [X] Web + Email + Telegram каналы
 - [ ] Написать тесты workflow
 
 **Результат:** Заявки проходят полный цикл согласования с автоматическими проверками и уведомлениями
@@ -1094,6 +1181,7 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Контроль бюджетов и автоматические алерты
 
 **Задачи:**
+
 - [ ] Реализовать методы модели Budget:
   - [ ] `remaining_amount`
   - [ ] `utilization_percentage`
@@ -1113,6 +1201,7 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Полноценный учет оборудования с QR-кодами
 
 **Задачи:**
+
 - [ ] Реализовать генерацию inventory_number (INV-YYYY-NNNN)
 - [ ] Добавить методы Equipment:
   - [ ] `assign_to(user, location)`
@@ -1135,6 +1224,7 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Создать все UI компоненты
 
 **Подэтап 6.1: Дашборд и Списки**
+
 - [ ] Создать `templates/procurement/dashboard.html`
 - [ ] Создать `static/js/procurement/dashboard.js` (загрузка stats)
 - [ ] Интегрировать Chart.js для графиков
@@ -1142,6 +1232,7 @@ GET /api/v1/procurement/stats/by_department/
 - [ ] Создать `static/js/procurement/requestList.js` (фильтры, пагинация)
 
 **Подэтап 6.2: Форма Создания Заявки**
+
 - [ ] Создать `templates/procurement/request_create.html`
 - [ ] Создать `static/js/procurement/requestForm.js`:
   - [ ] Динамическое добавление позиций
@@ -1150,6 +1241,7 @@ GET /api/v1/procurement/stats/by_department/
   - [ ] Валидация перед отправкой
 
 **Подэтап 6.3: Детальная Страница Заявки**
+
 - [ ] Создать `templates/procurement/request_detail.html`
 - [ ] Создать `static/js/procurement/approvalFlow.js`:
   - [ ] Кнопки approve/reject с модальными окнами
@@ -1157,12 +1249,14 @@ GET /api/v1/procurement/stats/by_department/
   - [ ] Real-time обновления (WebSocket)
 
 **Подэтап 6.4: Инвентарь**
+
 - [ ] Создать `templates/procurement/equipment_list.html`
 - [ ] Создать `templates/procurement/equipment_detail.html`
 - [ ] Создать `static/js/procurement/equipmentList.js`
 - [ ] Добавить QR code scanner (jsQR или quagga.js)
 
 **Подэтап 6.5: Мобильная Адаптация**
+
 - [ ] Адаптировать все страницы под мобильные
 - [ ] Тестировать на разных разрешениях
 
@@ -1173,6 +1267,7 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Интеграция с другими модулями и внешними системами
 
 **Задачи:**
+
 - [ ] Email уведомления (django.core.mail):
   - [ ] При создании заявки
   - [ ] При согласовании/отклонении
@@ -1186,11 +1281,11 @@ GET /api/v1/procurement/stats/by_department/
 - [ ] Интеграция с модулем сотрудников:
   - [ ] Использование Position для прав
   - [ ] Department head автоопределение
-- [x] Интеграция с системой уведомлений (NotificationService):
-  - [x] Web уведомления через WebSocket
-  - [x] Email уведомления с HTML шаблонами
-  - [x] Telegram уведомления через Bot API
-  - [x] Настройки пользователя для каналов доставки
+- [X] Интеграция с системой уведомлений (NotificationService):
+  - [X] Web уведомления через WebSocket
+  - [X] Email уведомления с HTML шаблонами
+  - [X] Telegram уведомления через Bot API
+  - [X] Настройки пользователя для каналов доставки
 - [ ] Периодические задачи (APScheduler):
   - [ ] Напоминания о просроченных заявках
   - [ ] Дайджесты уведомлений
@@ -1203,6 +1298,7 @@ GET /api/v1/procurement/stats/by_department/
 **Цель:** Достичь высокого покрытия тестами и создать документацию
 
 **Задачи:**
+
 - [ ] Unit тесты (coverage > 80%):
   - [ ] Модели
   - [ ] Сериализаторы
@@ -1233,40 +1329,40 @@ GET /api/v1/procurement/stats/by_department/
 
 ### Backend
 
-| Компонент | Технология | Версия | Назначение |
-|-----------|------------|--------|------------|
-| Framework | Django | 5.2+ | Основной фреймворк |
-| API | Django REST Framework | 3.14+ | REST API |
-| Database | PostgreSQL | 14+ | Основная БД |
-| State Machine | django-fsm | 2.8+ | Workflow статусов |
-| Notifications | NotificationService | - | Встроенная система уведомлений |
-| Scheduler | APScheduler | 3.11+ | Периодические задачи |
-| Message Broker | Redis | 7+ | Cache + Channels |
-| WebSocket | Django Channels | 4+ | Real-time updates |
-| Export | reportlab | 4+ | PDF генерация |
-| Barcodes | python-barcode | 0.15+ | Штрихкоды |
-| QR Codes | qrcode | 7.4+ | QR-коды |
+| Компонент | Технология  | Версия | Назначение                                       |
+| ------------------ | --------------------- | ------------ | ---------------------------------------------------------- |
+| Framework          | Django                | 5.2+         | Основной фреймворк                        |
+| API                | Django REST Framework | 3.14+        | REST API                                                   |
+| Database           | PostgreSQL            | 14+          | Основная БД                                      |
+| State Machine      | django-fsm            | 2.8+         | Workflow статусов                                  |
+| Notifications      | NotificationService   | -            | Встроенная система уведомлений |
+| Scheduler          | APScheduler           | 3.11+        | Периодические задачи                    |
+| Message Broker     | Redis                 | 7+           | Cache + Channels                                           |
+| WebSocket          | Django Channels       | 4+           | Real-time updates                                          |
+| Export             | reportlab             | 4+           | PDF генерация                                     |
+| Barcodes           | python-barcode        | 0.15+        | Штрихкоды                                         |
+| QR Codes           | qrcode                | 7.4+         | QR-коды                                                |
 
 ### Frontend
 
-| Компонент | Технология | Версия | Назначение |
-|-----------|------------|--------|------------|
-| Framework | Vanilla JS | ES6+ | Логика |
-| CSS Framework | Bootstrap | 5.3+ | Стили |
-| Charts | Chart.js | 4+ | Графики |
-| QR Scanner | jsQR | 1.4+ | Сканирование QR |
-| Icons | Bootstrap Icons | 1.11+ | Иконки |
-| HTTP Client | Fetch API | - | AJAX запросы |
+| Компонент | Технология | Версия | Назначение        |
+| ------------------ | -------------------- | ------------ | --------------------------- |
+| Framework          | Vanilla JS           | ES6+         | Логика                |
+| CSS Framework      | Bootstrap            | 5.3+         | Стили                  |
+| Charts             | Chart.js             | 4+           | Графики              |
+| QR Scanner         | jsQR                 | 1.4+         | Сканирование QR |
+| Icons              | Bootstrap Icons      | 1.11+        | Иконки                |
+| HTTP Client        | Fetch API            | -            | AJAX запросы         |
 
 ### DevOps
 
-| Компонент | Технология | Назначение |
-|-----------|------------|------------|
-| Testing | pytest + pytest-django | Unit/Integration тесты |
-| E2E Testing | Playwright | End-to-end тесты |
-| Coverage | coverage.py | Покрытие кода |
-| Code Quality | flake8, black | Линтинг, форматирование |
-| CI/CD | GitHub Actions | Автоматизация |
+| Компонент | Технология   | Назначение                         |
+| ------------------ | ---------------------- | -------------------------------------------- |
+| Testing            | pytest + pytest-django | Unit/Integration тесты                  |
+| E2E Testing        | Playwright             | End-to-end тесты                        |
+| Coverage           | coverage.py            | Покрытие кода                    |
+| Code Quality       | flake8, black          | Линтинг, форматирование |
+| CI/CD              | GitHub Actions         | Автоматизация                   |
 
 ---
 
@@ -1274,75 +1370,75 @@ GET /api/v1/procurement/stats/by_department/
 
 ### Подготовка
 
-- [x] Создать ветку `feature/procurement-module`
-- [x] Настроить окружение (установить зависимости)
-- [x] Создать документ с требованиями
+- [X] Создать ветку `feature/procurement-module`
+- [X] Настроить окружение (установить зависимости)
+- [X] Создать документ с требованиями
 
 ### Этап 1: Модели ✅ ЗАВЕРШЕН
 
-- [x] Создать app: `python manage.py startapp procurement`
-- [x] Добавить в `INSTALLED_APPS`
-- [x] Создать `procurement/constants.py`
-- [x] Создать модели:
-  - [x] ProcurementRequest (с FSM)
-  - [x] ProcurementItem
-  - [x] Approval
-  - [x] Equipment
-  - [x] EquipmentCategory
-  - [x] MaintenanceRecord
-  - [x] Budget
-  - [x] Supplier
-- [x] Создать миграции: `python manage.py makemigrations`
-- [x] Применить: `python manage.py migrate`
-- [x] Настроить admin.py для всех моделей
-- [x] Создать тестовые данные через админку
-- [x] Написать тесты моделей (20/20 PASSED)
-- [x] Коммит: "feat: add procurement app with basic models"
+- [X] Создать app: `python manage.py startapp procurement`
+- [X] Добавить в `INSTALLED_APPS`
+- [X] Создать `procurement/constants.py`
+- [X] Создать модели:
+  - [X] ProcurementRequest (с FSM)
+  - [X] ProcurementItem
+  - [X] Approval
+  - [X] Equipment
+  - [X] EquipmentCategory
+  - [X] MaintenanceRecord
+  - [X] Budget
+  - [X] Supplier
+- [X] Создать миграции: `python manage.py makemigrations`
+- [X] Применить: `python manage.py migrate`
+- [X] Настроить admin.py для всех моделей
+- [X] Создать тестовые данные через админку
+- [X] Написать тесты моделей (20/20 PASSED)
+- [X] Коммит: "feat: add procurement app with basic models"
 
 ### Этап 2: API ✅ ЗАВЕРШЕН (95%)
 
-- [x] Создать `procurement/` структуру (без api/v1)
-- [x] Написать сериализаторы (9 сериализаторов)
-- [x] Создать ViewSets (7 ViewSets)
-- [x] Настроить URL routing
-- [x] Создать permission classes (9 классов)
-- [x] Добавить департаментные права
-- [x] Написать API тесты (12/12 PASSED)
-- [x] Протестировать endpoints (50+ endpoints)
-- [x] Коммит: "feat: add procurement API endpoints"
+- [X] Создать `procurement/` структуру (без api/v1)
+- [X] Написать сериализаторы (9 сериализаторов)
+- [X] Создать ViewSets (7 ViewSets)
+- [X] Настроить URL routing
+- [X] Создать permission classes (9 классов)
+- [X] Добавить департаментные права
+- [X] Написать API тесты (12/12 PASSED)
+- [X] Протестировать endpoints (50+ endpoints)
+- [X] Коммит: "feat: add procurement API endpoints"
 - [ ] ⚠️ Исправить: баг items_count (property vs annotate) - ИСПРАВЛЕН
 
 ### Этап 3: Workflow ✅ ЗАВЕРШЕН (100%)
 
-- [x] Установить django-fsm: `pip install django-fsm==3.0.1`
-- [x] Добавить FSM в ProcurementRequest
-- [x] Реализовать transitions (submit, approve, reject)
-- [x] Создать actions в API (@action decorators)
-- [x] Добавить проверки бюджета (check_budget_available)
-- [x] Настроить signals (post_save для уведомлений)
-- [x] Интеграция с NotificationService (вместо Celery)
-- [x] Написать workflow тесты (9/9 PASSED)
-- [x] Коммит: "feat: add procurement approval workflow"
-- [x] Исправить queryset для approvers (41/41 тестов PASSED)
+- [X] Установить django-fsm: `pip install django-fsm==3.0.1`
+- [X] Добавить FSM в ProcurementRequest
+- [X] Реализовать transitions (submit, approve, reject)
+- [X] Создать actions в API (@action decorators)
+- [X] Добавить проверки бюджета (check_budget_available)
+- [X] Настроить signals (post_save для уведомлений)
+- [X] Интеграция с NotificationService (вместо Celery)
+- [X] Написать workflow тесты (9/9 PASSED)
+- [X] Коммит: "feat: add procurement approval workflow"
+- [X] Исправить queryset для approvers (41/41 тестов PASSED)
 
 ### Этап 4: Бюджеты ✅ ЗАВЕРШЕН (100%)
 
-- [x] Реализовать методы Budget (reserved_amount, available_amount)
-- [x] Добавить проверки (is_staff/headed_departments)
-- [x] Создать алерты (_check_budget_alert при < 20% и < 10%)
-- [x] Добавить endpoints статистики (/stats/overview/, /stats/by-department/)
-- [x] Добавить my-department endpoint
-- [x] Написать тесты (11/11 PASSED)
-- [x] Коммит: "feat: add budget control and alerts"
+- [X] Реализовать методы Budget (reserved_amount, available_amount)
+- [X] Добавить проверки (is_staff/headed_departments)
+- [X] Создать алерты (_check_budget_alert при < 20% и < 10%)
+- [X] Добавить endpoints статистики (/stats/overview/, /stats/by-department/)
+- [X] Добавить my-department endpoint
+- [X] Написать тесты (11/11 PASSED)
+- [X] Коммит: "feat: add budget control and alerts"
 
 ### Этап 5: Инвентарь
 
-- [ ] Установить barcode библиотеки
-- [ ] Реализовать генерацию номеров
-- [ ] Добавить методы Equipment
-- [ ] Создать actions в API
-- [ ] Реализовать QR-коды
-- [ ] Написать тесты
+- [X] Установить barcode библиотеки (qrcode[pil])
+- [X] Реализовать генерацию номеров (InventoryNumberGenerator)
+- [X] Добавить EquipmentTransferLog модель
+- [X] Создать actions в API (transfer, write_off, add_maintenance, qr_code, transfer_history)
+- [X] Реализовать QR-коды (QRCodeGenerator)
+- [X] Написать тесты (14/14 PASSED)
 - [ ] Коммит: "feat: add equipment management with QR codes"
 
 ### Этап 6: Frontend
@@ -1358,7 +1454,7 @@ GET /api/v1/procurement/stats/by_department/
 
 ### Этап 7: Интеграции
 
-- [x] Интеграция с NotificationService (система уведомлений)
+- [X] Интеграция с NotificationService (система уведомлений)
 - [ ] WebSocket обновления для real-time статусов
 - [ ] Экспорт отчетов (PDF/Excel)
 - [ ] APScheduler для периодических задач
@@ -1384,32 +1480,35 @@ GET /api/v1/procurement/stats/by_department/
 
 ## Риски и Митигация
 
-| Риск | Вероятность | Влияние | Митигация |
-|------|-------------|---------|-----------|
-| Сложность workflow | Высокая | Высокое | Начать с простого (2 уровня), расширять постепенно |
-| Производительность при большой нагрузке | Средняя | Среднее | Индексы БД, кэширование, пагинация |
-| Конфликты бюджетов | Средняя | Высокое | Pessimistic locking, транзакции |
-| Миграция данных | Низкая | Среднее | Хорошо протестировать скрипты миграции |
-| Недостаточное покрытие тестами | Средняя | Высокое | CI/CD с проверкой coverage, code review |
-| Сопротивление пользователей | Средняя | Среднее | Обучение, простой UI, постепенное внедрение |
+| Риск                                                                    | Вероятность | Влияние | Митигация                                                                         |
+| --------------------------------------------------------------------------- | ---------------------- | -------------- | ------------------------------------------------------------------------------------------ |
+| Сложность workflow                                                 | Высокая         | Высокое | Начать с простого (2 уровня), расширять постепенно |
+| Производительность при большой нагрузке | Средняя         | Среднее | Индексы БД, кэширование, пагинация                            |
+| Конфликты бюджетов                                         | Средняя         | Высокое | Pessimistic locking, транзакции                                                  |
+| Миграция данных                                               | Низкая           | Среднее | Хорошо протестировать скрипты миграции                  |
+| Недостаточное покрытие тестами                  | Средняя         | Высокое | CI/CD с проверкой coverage, code review                                          |
+| Сопротивление пользователей                       | Средняя         | Среднее | Обучение, простой UI, постепенное внедрение             |
 
 ---
 
 ## 🎯 Результаты Тестирования
 
-**Последнее тестирование:** 9 декабря 2025  
+**Последнее тестирование:** 9 декабря 2025
 **Статус:** ✅ ВСЕ ТЕСТЫ ПРОХОДЯТ
 
 ### Итоговая статистика:
+
 ```
-✅ 52/52 PASSED (100%)
+✅ 66/66 PASSED (100%)
   ├─ 20/20 Model tests ✅
   ├─ 12/12 API tests ✅
   ├─ 9/9 Workflow tests ✅
-  └─ 11/11 Budget tests ✅ (NEW)
+  ├─ 11/11 Budget tests ✅
+  └─ 14/14 Inventory tests ✅ (NEW)
 ```
 
 ### Основные исправления:
+
 1. ✅ Исправлен `led_departments` → `headed_departments`
 2. ✅ Удален конфликт `items_count` (annotate vs @property)
 3. ✅ Создан `settings_test.py` с InMemoryChannelLayer
@@ -1419,6 +1518,7 @@ GET /api/v1/procurement/stats/by_department/
 7. ✅ **Расширен queryset для approvers** - ключевое исправление!
 
 ### Техническая инфраструктура:
+
 - **Git cleanup:** localcerts_backup.zip удален из истории (279 коммитов)
 - **Test settings:** InMemoryChannelLayer вместо Redis
 - **Notifications:** NotificationService интегрирован (вместо Celery)
@@ -1428,6 +1528,7 @@ GET /api/v1/procurement/stats/by_department/
 ## Следующие Шаги
 
 **Завершено:**
+
 1. ✅ Создать данную документацию
 2. ✅ Создать ветку `feature/procurement-module`
 3. ✅ Завершить **Этап 1: Базовая Структура** (100%)
@@ -1436,13 +1537,16 @@ GET /api/v1/procurement/stats/by_department/
 6. ✅ Завершить **Этап 4: Бюджеты** (100%)
 
 **Следующий шаг:**
+
 - ⏭️ Начать **Этап 5: Инвентарь** - управление оборудованием с QR-кодами
 
 **Через 1 месяц:**
+
 - Завершить Этапы 5-6 (Инвентарь, Frontend)
 - Иметь полнофункциональный модуль с UI
 
 **Через 2 месяца:**
+
 - Завершить все 8 этапов
 - Готовый модуль к production deploy
 
@@ -1450,14 +1554,15 @@ GET /api/v1/procurement/stats/by_department/
 
 ## Контакты и Вопросы
 
-**Ответственный за разработку:** [Ваше имя]  
-**Дата последнего обновления:** 9 декабря 2025  
-**Версия документа:** 1.2
+**Ответственный за разработку:** [Ваше имя]
+**Дата последнего обновления:** 9 декабря 2025
+**Версия документа:** 1.3
 
 **Вопросы и предложения:**
+
 - Создавайте issues в репозитории
 - Обсуждайте в команде
 
 ---
 
-**Статус:** 🎉 Этапы 1-4 завершены! Готовы к Этапу 5 (Инвентарь)!
+**Статус:** 🎉 Этапы 1-5 завершены! Готовы к Этапу 6 (Frontend)!
