@@ -2,6 +2,7 @@
 HTML Views для модуля закупок (Frontend).
 """
 
+from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -9,6 +10,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 
 from employees.models import Department
+from .forms import ProcurementRequestForm
 from .models import (
     Budget,
     Equipment,
@@ -204,11 +206,32 @@ def request_detail(request, pk):
 def request_create(request):
     """Страница/обработка создания заявки."""
     if request.method == 'POST':
-        # Обработка формы - для простоты перенаправляем на API
-        # В реальности можно обработать здесь или использовать Django Forms
-        pass
+        form = ProcurementRequestForm(request.POST, user=request.user)
+        if form.is_valid():
+            # Создаём заявку
+            procurement_request = form.save(commit=False)
+            procurement_request.requestor = request.user
+            procurement_request.status = ProcurementStatus.DRAFT
+            procurement_request.save()
 
-    context = {}
+            messages.success(
+                request,
+                f'Заявка "{procurement_request.title}" создана. '
+                'Добавьте позиции и отправьте на согласование.'
+            )
+            return redirect(
+                'procurement:request_detail',
+                pk=procurement_request.pk
+            )
+        else:
+            messages.error(request, 'Пожалуйста, исправьте ошибки в форме.')
+    else:
+        form = ProcurementRequestForm(user=request.user)
+
+    context = {
+        'form': form,
+        'page_title': 'Новая заявка',
+    }
     return render(request, 'procurement/request_form.html', context)
 
 

@@ -201,6 +201,24 @@
             </button>
           {% endif %}
           
+          {% if request_obj.requestor == request.user and request_obj.status == 'approved' %}
+            <button class="btn btn-primary" id="startWorkBtn">
+              <i class="bi-play-fill me-2"></i>Начать работу
+            </button>
+          {% endif %}
+          
+          {% if request_obj.requestor == request.user and request_obj.status == 'in_progress' %}
+            <button class="btn btn-success" id="completeBtn">
+              <i class="bi-check-circle me-2"></i>Завершить
+            </button>
+          {% endif %}
+          
+          {% if request_obj.requestor == request.user and request_obj.status not in 'completed,cancelled' %}
+            <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#cancelModal">
+              <i class="bi-x-circle me-2"></i>Отменить заявку
+            </button>
+          {% endif %}
+          
           <a href="{% url 'procurement_frontend:request_list' %}" class="btn btn-outline-secondary">
             <i class="bi-arrow-left me-2"></i>К списку
           </a>
@@ -244,29 +262,195 @@
 
 {% endblock %}
 
+{# ===== Модальные окна ===== #}
+
+{# Модальное окно одобрения #}
+{% if can_approve and request_obj.status == 'pending' %}
+<div class="modal fade" id="approveModal" tabindex="-1" aria-labelledby="approveModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title" id="approveModalLabel">
+          <i class="bi-check-lg me-2"></i>Одобрить заявку
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <p>Вы собираетесь одобрить заявку <strong>"{{ request_obj.title }}"</strong></p>
+        <p>Сумма: <strong>{{ request_obj.estimated_cost|floatformat:2 }} ₽</strong></p>
+        <div class="mb-3">
+          <label for="approveComment" class="form-label">Комментарий (необязательно)</label>
+          <textarea class="form-control" id="approveComment" rows="3" placeholder="Ваш комментарий..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-success" id="confirmApprove">
+          <i class="bi-check-lg me-2"></i>Одобрить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Модальное окно отклонения #}
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="rejectModalLabel">
+          <i class="bi-x-lg me-2"></i>Отклонить заявку
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <p>Вы собираетесь отклонить заявку <strong>"{{ request_obj.title }}"</strong></p>
+        <div class="mb-3">
+          <label for="rejectComment" class="form-label">Причина отклонения <span class="text-danger">*</span></label>
+          <textarea class="form-control" id="rejectComment" rows="3" placeholder="Укажите причину отклонения..." required></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-danger" id="confirmReject">
+          <i class="bi-x-lg me-2"></i>Отклонить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# Модальное окно отмены заявки #}
+{% if request_obj.requestor == request.user %}
+<div class="modal fade" id="cancelModal" tabindex="-1" aria-labelledby="cancelModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning">
+        <h5 class="modal-title" id="cancelModalLabel">
+          <i class="bi-x-circle me-2"></i>Отменить заявку
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <p>Вы собираетесь отменить заявку <strong>"{{ request_obj.title }}"</strong></p>
+        <p class="text-muted">Это действие нельзя отменить.</p>
+        <div class="mb-3">
+          <label for="cancelReason" class="form-label">Причина отмены</label>
+          <textarea class="form-control" id="cancelReason" rows="3" placeholder="Укажите причину отмены..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Назад</button>
+        <button type="button" class="btn btn-danger" id="confirmCancel">
+          <i class="bi-x-circle me-2"></i>Отменить заявку
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% block extra_js %}
 <script>
+  const csrfToken = '{{ csrf_token }}';
+  const requestId = {{ request_obj.id }};
+  
+  // Утилита для API вызовов
+  async function apiCall(endpoint, method = 'POST', data = null) {
+    const options = {
+      method,
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json'
+      }
+    };
+    if (data) {
+      options.body = JSON.stringify(data);
+    }
+    
+    const resp = await fetch(`/api/procurement/requests/${requestId}/${endpoint}/`, options);
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'Ошибка запроса');
+    }
+    return resp.json();
+  }
+  
   // Отправка на согласование
   document.getElementById('submitRequest')?.addEventListener('click', async () => {
     if (!confirm('Отправить заявку на согласование?')) return;
     
     try {
-      const resp = await fetch('/api/procurement/requests/{{ request_obj.id }}/submit/', {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': '{{ csrf_token }}'
-        }
-      });
-      
-      if (resp.ok) {
-        window.location.reload();
-      } else {
-        const err = await resp.json();
-        alert(err.error || 'Ошибка отправки');
-      }
+      await apiCall('submit');
+      window.location.reload();
     } catch (e) {
-      console.error(e);
-      alert('Ошибка сети');
+      alert(e.message);
+    }
+  });
+  
+  // Одобрение
+  document.getElementById('confirmApprove')?.addEventListener('click', async () => {
+    const comment = document.getElementById('approveComment')?.value || '';
+    
+    try {
+      await apiCall('approve', 'POST', { comment });
+      window.location.reload();
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+  
+  // Отклонение
+  document.getElementById('confirmReject')?.addEventListener('click', async () => {
+    const comment = document.getElementById('rejectComment')?.value || '';
+    
+    if (!comment.trim()) {
+      alert('Укажите причину отклонения');
+      return;
+    }
+    
+    try {
+      await apiCall('reject', 'POST', { comment });
+      window.location.reload();
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+  
+  // Начать работу
+  document.getElementById('startWorkBtn')?.addEventListener('click', async () => {
+    if (!confirm('Начать работу над заявкой?')) return;
+    
+    try {
+      await apiCall('start_work');
+      window.location.reload();
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+  
+  // Завершить
+  document.getElementById('completeBtn')?.addEventListener('click', async () => {
+    if (!confirm('Завершить заявку? Это действие нельзя отменить.')) return;
+    
+    try {
+      await apiCall('complete');
+      window.location.reload();
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+  
+  // Отмена заявки
+  document.getElementById('confirmCancel')?.addEventListener('click', async () => {
+    const reason = document.getElementById('cancelReason')?.value || '';
+    
+    try {
+      await apiCall('cancel', 'POST', { reason });
+      window.location.reload();
+    } catch (e) {
+      alert(e.message);
     }
   });
 </script>

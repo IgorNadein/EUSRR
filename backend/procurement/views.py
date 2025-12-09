@@ -65,7 +65,10 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         """Выбрать сериализатор в зависимости от действия."""
         if self.action == 'create':
             return ProcurementRequestCreateSerializer
-        elif self.action in ['retrieve', 'submit', 'approve', 'reject']:
+        elif self.action in [
+            'retrieve', 'submit', 'approve', 'reject',
+            'start_work', 'complete', 'cancel'
+        ]:
             return ProcurementRequestDetailSerializer
         return ProcurementRequestListSerializer
 
@@ -388,6 +391,137 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'])
+    def start_work(self, request, pk=None):
+        """Начать работу над заявкой (перевод в статус IN_PROGRESS)."""
+        procurement_request = self.get_object()
+
+        # Только автор заявки может начать работу
+        if procurement_request.requestor != request.user:
+            return Response(
+                {'error': 'Только автор заявки может начать работу'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Проверяем текущий статус
+        if procurement_request.status != ProcurementStatus.APPROVED:
+            return Response(
+                {'error': 'Только одобренные заявки можно взять в работу'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Меняем статус
+        procurement_request.status = ProcurementStatus.IN_PROGRESS
+        procurement_request.save()
+
+        # Уведомляем согласующих о начале работы
+        for approval in procurement_request.approvals.filter(
+            status=ApprovalStatus.APPROVED
+        ):
+            NotificationService.create_notification(
+                recipient=approval.approver,
+                notification_type_code='procurement_in_progress',
+                title="Заявка взята в работу",
+                message=(
+                    f'Заявка "{procurement_request.title}" '
+                    f'взята в работу пользователем '
+                    f'{request.user.get_full_name()}.'
+                ),
+                action_url=f'/procurement/requests/{procurement_request.id}/',
+                send_immediately=True,
+            )
+
+        serializer = self.get_serializer(procurement_request)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """Завершить заявку (перевод в статус COMPLETED)."""
+        procurement_request = self.get_object()
+
+        # Только автор заявки может завершить её
+        if procurement_request.requestor != request.user:
+            return Response(
+                {'error': 'Только автор заявки может завершить её'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Проверяем текущий статус
+        if procurement_request.status != ProcurementStatus.IN_PROGRESS:
+            return Response(
+                {'error': 'Только заявки в работе можно завершить'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Меняем статус
+        procurement_request.status = ProcurementStatus.COMPLETED
+        procurement_request.save()
+
+        # Уведомляем согласующих о завершении
+        for approval in procurement_request.approvals.filter(
+            status=ApprovalStatus.APPROVED
+        ):
+            NotificationService.create_notification(
+                recipient=approval.approver,
+                notification_type_code='procurement_completed',
+                title="Заявка завершена",
+                message=(
+                    f'Заявка "{procurement_request.title}" '
+                    f'успешно завершена.'
+                ),
+                action_url=f'/procurement/requests/{procurement_request.id}/',
+                send_immediately=True,
+            )
+
+        serializer = self.get_serializer(procurement_request)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Отменить заявку."""
+        procurement_request = self.get_object()
+
+        # Только автор заявки может отменить её
+        if procurement_request.requestor != request.user:
+            return Response(
+                {'error': 'Только автор заявки может отменить её'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Нельзя отменить уже завершённую или отменённую заявку
+        if procurement_request.status in [
+            ProcurementStatus.COMPLETED,
+            ProcurementStatus.CANCELLED,
+        ]:
+            return Response(
+                {'error': 'Эту заявку нельзя отменить'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        reason = request.data.get('reason', '')
+
+        # Меняем статус
+        procurement_request.status = ProcurementStatus.CANCELLED
+        procurement_request.save()
+
+        # Уведомляем согласующих об отмене
+        for approval in procurement_request.approvals.all():
+            NotificationService.create_notification(
+                recipient=approval.approver,
+                notification_type_code='procurement_cancelled',
+                title="Заявка отменена",
+                message=(
+                    f'Заявка "{procurement_request.title}" '
+                    f'была отменена автором. '
+                    f'Причина: {reason or "не указана"}'
+                ),
+                action_url=f'/procurement/requests/{procurement_request.id}/',
+                send_immediately=True,
+            )
+
+        serializer = self.get_serializer(procurement_request)
+        return Response(serializer.data)
+
 
 class ProcurementItemViewSet(viewsets.ModelViewSet):
     """ViewSet для позиций заявок."""
@@ -405,6 +539,106 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         else:
             permission_classes = [CanCreateProcurementRequest]
         return [permission() for permission in permission_classes]
+
+    @action(detail=True, methods=['post'])
+    def create_equipment(self, request, pk=None):
+        """Создать оборудование из позиции закупки.
+        
+        Эндпоинт для ручного создания оборудования после получения товара.
+        Требуется: inventory_number, category, department.
+        Опционально: serial_number, location, warranty_until, responsible.
+        """
+        item = self.get_object()
+        
+        # Проверяем, что заявка завершена
+        if item.request.status != ProcurementStatus.COMPLETED:
+            return Response(
+                {'error': 'Оборудование можно создать только из '
+                          'завершённой заявки'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверяем, что оборудование еще не создано
+        if item.equipment is not None:
+            return Response(
+                {'error': 'Оборудование для этой позиции уже создано'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Получаем данные из запроса
+        inventory_number = request.data.get('inventory_number')
+        category_id = request.data.get('category')
+        department_id = request.data.get('department')
+        serial_number = request.data.get('serial_number', '')
+        location = request.data.get('location', '')
+        warranty_until = request.data.get('warranty_until')
+        responsible_person_id = request.data.get('responsible_person')
+        
+        # Валидация обязательных полей
+        if not inventory_number:
+            return Response(
+                {'error': 'Укажите инвентарный номер'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not category_id:
+            return Response(
+                {'error': 'Укажите категорию оборудования'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not department_id:
+            return Response(
+                {'error': 'Укажите отдел'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверяем уникальность инвентарного номера
+        exists = Equipment.objects.filter(
+            inventory_number=inventory_number
+        ).exists()
+        if exists:
+            return Response(
+                {'error': f'Инвентарный номер "{inventory_number}" '
+                          'уже используется'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Создаем оборудование
+        from django.utils import timezone
+        try:
+            equipment = Equipment.objects.create(
+                name=item.name,
+                inventory_number=inventory_number,
+                serial_number=serial_number,
+                category_id=category_id,
+                department_id=department_id,
+                status=EquipmentStatus.AVAILABLE,
+                responsible_person_id=responsible_person_id,
+                location=location,
+                purchase_date=timezone.now().date(),
+                warranty_until=warranty_until,
+                purchase_cost=item.estimated_unit_price,
+                notes=item.description,  # description -> notes
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка создания оборудования: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Связываем оборудование с позицией закупки
+        item.equipment = equipment
+        item.save()
+        
+        return Response({
+            'message': 'Оборудование успешно создано',
+            'equipment': {
+                'id': equipment.id,
+                'name': equipment.name,
+                'inventory_number': equipment.inventory_number,
+            }
+        }, status=status.HTTP_201_CREATED)
 
 
 class EquipmentCategoryViewSet(viewsets.ModelViewSet):
