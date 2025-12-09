@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "widget_tweaks",
     "simple_history",
     "rest_framework",
+    "django_filters",
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
     "hikcentral.apps.HikcentralConfig",
@@ -48,6 +49,7 @@ INSTALLED_APPS = [
     "search.apps.SearchConfig",
     "bots",
     "finance.apps.FinanceConfig",
+    "procurement.apps.ProcurementConfig",
 ]
 
 MIDDLEWARE = [
