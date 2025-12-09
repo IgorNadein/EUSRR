@@ -64,7 +64,6 @@ def dashboard(request):
         'budget': budget,
         'recent_requests': recent_requests,
         'can_approve': can_approve,
-        'create_url': 'procurement:request_create',
     }
     return render(request, 'procurement/dashboard.html', context)
 

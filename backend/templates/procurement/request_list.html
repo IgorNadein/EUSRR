@@ -150,7 +150,7 @@
 {# ===== МОДАЛКА СОЗДАНИЯ ===== #}
 <div class="modal fade" id="procCreateModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
-    <form class="modal-content" id="procCreateForm" method="POST" action="{% url 'procurement_frontend:request_create' %}">
+    <form class="modal-content" id="procCreateForm">
       {% csrf_token %}
       <div class="modal-header">
         <h5 class="modal-title">
@@ -218,6 +218,58 @@
 
 {% block extra_js %}
 <script>
+  // Обработка создания заявки
+  document.getElementById('procCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Создание...';
+    
+    try {
+      const formData = new FormData(form);
+      const data = {
+        title: formData.get('title'),
+        description: formData.get('description') || '',
+        urgency: formData.get('urgency'),
+        estimated_cost: formData.get('estimated_cost') || null,
+        desired_date: formData.get('desired_date') || null,
+      };
+      
+      const resp = await fetch('/api/procurement/requests/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || JSON.stringify(err));
+      }
+      
+      const request = await resp.json();
+      
+      // Закрыть модалку
+      const modal = bootstrap.Modal.getInstance(document.querySelector('#procCreateModal'));
+      modal?.hide();
+      
+      // Перейти к заявке
+      window.location.href = `/procurement/requests/${request.id}/`;
+      
+    } catch (error) {
+      console.error('Error creating request:', error);
+      alert('Ошибка создания заявки: ' + error.message);
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  });
+  
   // Поиск по заявкам
   const searchInput = document.getElementById('procSearch');
   if (searchInput) {

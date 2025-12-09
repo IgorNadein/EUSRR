@@ -11,7 +11,7 @@
 {% block content %}
 
   {# ===== ШАПКА СТРАНИЦЫ ===== #}
-  {% include "includes/components/page_header.html" with icon="bi-cart3" title="Закупки" no_search=True create_url=create_url create_text="Новая заявка" %}
+  {% include "includes/components/page_header.html" with icon="bi-cart3" title="Закупки" no_search=True create_as_card=True create_modal="procCreateModal" create_text="Новая заявка" %}
 
   {# ===== СТАТИСТИКА ===== #}
   <div class="proc-stats">
@@ -218,8 +218,127 @@
 
 {% endblock %}
 
+{# ===== МОДАЛКА СОЗДАНИЯ ===== #}
+<div class="modal fade" id="procCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <form class="modal-content" id="procCreateForm">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-cart-plus me-2"></i>Новая заявка на закупку
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Название заявки <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control" 
+                   placeholder="Например: Закупка ноутбуков для отдела" required maxlength="255">
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Описание / обоснование</label>
+            <textarea name="description" class="form-control" rows="3" 
+                      placeholder="Опишите необходимость закупки..." maxlength="2000"></textarea>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Срочность <span class="text-danger">*</span></label>
+            <select name="urgency" class="form-select" required>
+              <option value="low">🟢 Низкая</option>
+              <option value="medium" selected>🟡 Средняя</option>
+              <option value="high">🟠 Высокая</option>
+              <option value="critical">🔴 Критическая</option>
+            </select>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Ориентировочная сумма</label>
+            <div class="input-group">
+              <input type="number" name="estimated_cost" class="form-control" 
+                     placeholder="0" min="0" step="0.01">
+              <span class="input-group-text">₽</span>
+            </div>
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Желаемая дата получения</label>
+            <input type="date" name="desired_date" class="form-control">
+          </div>
+        </div>
+        
+        <div class="alert alert-info mt-3 mb-0">
+          <i class="bi-info-circle me-2"></i>
+          После создания вы сможете добавить позиции (товары) в заявку.
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi-check-lg me-1"></i>Создать заявку
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 {% block extra_js %}
 <script>
+  // Обработка создания заявки
+  document.getElementById('procCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Создание...';
+    
+    try {
+      const formData = new FormData(form);
+      const data = {
+        title: formData.get('title'),
+        description: formData.get('description') || '',
+        urgency: formData.get('urgency'),
+        estimated_cost: formData.get('estimated_cost') || null,
+        desired_date: formData.get('desired_date') || null,
+      };
+      
+      const resp = await fetch('/api/procurement/requests/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || JSON.stringify(err));
+      }
+      
+      const request = await resp.json();
+      
+      // Закрыть модалку
+      const modal = bootstrap.Modal.getInstance(document.querySelector('#procCreateModal'));
+      modal?.hide();
+      
+      // Перейти к заявке
+      window.location.href = `/procurement/requests/${request.id}/`;
+      
+    } catch (error) {
+      console.error('Error creating request:', error);
+      alert('Ошибка создания заявки: ' + error.message);
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  });
+  
   // Автообновление статистики каждые 60 секунд
   setInterval(async () => {
     try {
