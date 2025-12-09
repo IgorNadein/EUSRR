@@ -463,6 +463,16 @@ class BudgetSerializer(serializers.ModelSerializer):
         decimal_places=2,
         read_only=True
     )
+    reserved_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        read_only=True
+    )
+    available_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        read_only=True
+    )
     utilization_percentage = serializers.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -482,6 +492,8 @@ class BudgetSerializer(serializers.ModelSerializer):
             'allocated_amount',
             'spent_amount',
             'remaining_amount',
+            'reserved_amount',
+            'available_amount',
             'utilization_percentage',
             'created_at',
             'updated_at',
@@ -491,12 +503,32 @@ class BudgetSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'remaining_amount',
+            'reserved_amount',
+            'available_amount',
             'utilization_percentage',
         ]
 
     def get_quarter_display(self, obj):
         """Отображение квартала."""
         return f"Q{obj.quarter} {obj.year}"
+
+
+class BudgetDetailSerializer(BudgetSerializer):
+    """Расширенный сериализатор для my_department с pending заявками."""
+
+    pending_requests = serializers.SerializerMethodField()
+
+    class Meta(BudgetSerializer.Meta):
+        fields = BudgetSerializer.Meta.fields + ['pending_requests']
+
+    def get_pending_requests(self, obj):
+        """Получить список pending заявок этого бюджета."""
+        pending = obj.department.procurement_requests.filter(
+            status='pending',
+            created_at__year=obj.year,
+            created_at__month__in=obj._quarter_months()
+        ).values('id', 'title', 'estimated_cost', 'status')[:10]
+        return list(pending)
 
 
 class SupplierSerializer(serializers.ModelSerializer):

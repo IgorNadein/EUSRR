@@ -532,6 +532,31 @@ class Budget(models.Model):
         return self.allocated_amount - self.spent_amount
     
     @property
+    def reserved_amount(self):
+        """Сумма зарезервированная pending заявками."""
+        from django.db.models import Sum
+        pending_sum = self.department.procurement_requests.filter(
+            status=ProcurementStatus.PENDING,
+            created_at__year=self.year,
+            created_at__month__in=self._quarter_months()
+        ).aggregate(total=Sum('estimated_cost'))['total']
+        return pending_sum or Decimal('0.00')
+    
+    @property
+    def available_amount(self):
+        """Доступный бюджет (с учётом резерва)."""
+        return self.remaining_amount - self.reserved_amount
+    
+    def _quarter_months(self):
+        """Получить месяцы квартала."""
+        return {
+            1: [1, 2, 3],
+            2: [4, 5, 6],
+            3: [7, 8, 9],
+            4: [10, 11, 12],
+        }[self.quarter]
+    
+    @property
     def utilization_percentage(self):
         """Процент использования бюджета."""
         if self.allocated_amount == 0:

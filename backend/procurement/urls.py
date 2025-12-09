@@ -12,6 +12,7 @@ from .views import (
     MaintenanceRecordViewSet,
     ProcurementItemViewSet,
     ProcurementRequestViewSet,
+    ProcurementStatsViewSet,
     SupplierViewSet,
 )
 
@@ -52,6 +53,11 @@ router.register(
     r'suppliers',
     SupplierViewSet,
     basename='supplier'
+)
+router.register(
+    r'stats',
+    ProcurementStatsViewSet,
+    basename='stats'
 )
 
 urlpatterns = [

@@ -4,10 +4,11 @@ ViewSets для API модуля закупок.
 
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from employees.models import Department
 from .constants import ApprovalStatus, ProcurementStatus
 from .models import (
     Approval,
@@ -92,6 +93,65 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             Q(department__in=user.departments.all()) |
             Q(approvals__approver=user)
         ).distinct()
+
+    def _check_budget_alert(self, procurement_request):
+        """Проверяет бюджет и отправляет алерт если низкий остаток."""
+        from django.utils import timezone
+        from decimal import Decimal
+        
+        department = procurement_request.department
+        now = timezone.now()
+        quarter = (now.month - 1) // 3 + 1
+        
+        try:
+            budget = Budget.objects.get(
+                department=department,
+                year=now.year,
+                quarter=quarter
+            )
+        except Budget.DoesNotExist:
+            return  # Нет бюджета - не отправляем алерт
+        
+        # Пороговые значения для алертов
+        LOW_BUDGET_THRESHOLD = Decimal('0.20')  # 20% остатка
+        CRITICAL_BUDGET_THRESHOLD = Decimal('0.10')  # 10% остатка
+        
+        utilization = budget.utilization_percentage / 100
+        remaining_ratio = 1 - utilization
+        
+        # Получаем руководителя отдела
+        dept_head = department.head
+        if not dept_head:
+            return
+        
+        if remaining_ratio <= CRITICAL_BUDGET_THRESHOLD:
+            # Критический уровень - менее 10%
+            NotificationService.create_notification(
+                recipient=dept_head,
+                notification_type_code='budget_critical',
+                title="⚠️ Критически низкий бюджет!",
+                message=(
+                    f'Бюджет отдела "{department.name}" почти исчерпан! '
+                    f'Остаток: {budget.remaining_amount}₽ '
+                    f'({remaining_ratio*100:.1f}%)'
+                ),
+                action_url='/procurement/budgets/',
+                send_immediately=True,
+            )
+        elif remaining_ratio <= LOW_BUDGET_THRESHOLD:
+            # Низкий уровень - менее 20%
+            NotificationService.create_notification(
+                recipient=dept_head,
+                notification_type_code='budget_low',
+                title="Низкий остаток бюджета",
+                message=(
+                    f'Бюджет отдела "{department.name}" снижается. '
+                    f'Остаток: {budget.remaining_amount}₽ '
+                    f'({remaining_ratio*100:.1f}%)'
+                ),
+                action_url='/procurement/budgets/',
+                send_immediately=True,
+            )
 
     @action(detail=True, methods=['post'])
     def submit(self, request, pk=None):
@@ -247,6 +307,9 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 action_url=f'/procurement/requests/{procurement_request.id}/',
                 send_immediately=True,
             )
+
+            # Проверяем бюджет и отправляем алерт если низкий
+            self._check_budget_alert(procurement_request)
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -460,7 +523,11 @@ class BudgetViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """Права доступа."""
-        permission_classes = [CanManageBudget]
+        if self.action == 'my_department':
+            # my_department доступен любому авторизованному пользователю
+            permission_classes = [permissions.IsAuthenticated]
+        else:
+            permission_classes = [CanManageBudget]
         return [permission() for permission in permission_classes]
 
     def get_queryset(self):
@@ -472,9 +539,9 @@ class BudgetViewSet(viewsets.ModelViewSet):
             return queryset
 
         # Руководители видят бюджеты своих отделов
-        if user.led_departments.exists():
+        if user.headed_departments.exists():
             return queryset.filter(
-                department__in=user.led_departments.all()
+                department__in=user.headed_departments.all()
             )
 
         return queryset.none()
@@ -491,6 +558,46 @@ class BudgetViewSet(viewsets.ModelViewSet):
             quarter=quarter
         )
         serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='my-department')
+    def my_department(self, request):
+        """Получить бюджет текущего квартала для отдела пользователя."""
+        from django.utils import timezone
+        from .serializers import BudgetDetailSerializer
+        
+        user = request.user
+        now = timezone.now()
+        quarter = (now.month - 1) // 3 + 1
+        
+        # Получаем отдел пользователя
+        user_departments = user.departments.all()
+        if not user_departments.exists():
+            return Response(
+                {'detail': 'Вы не состоите ни в одном отделе.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Берём первый отдел (основной)
+        department = user_departments.first()
+        
+        try:
+            budget = Budget.objects.get(
+                department=department,
+                year=now.year,
+                quarter=quarter
+            )
+        except Budget.DoesNotExist:
+            msg = (
+                f'Бюджет для {department.name} '
+                f'на Q{quarter} {now.year} не найден.'
+            )
+            return Response(
+                {'detail': msg},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = BudgetDetailSerializer(budget)
         return Response(serializer.data)
 
 
@@ -523,4 +630,122 @@ class SupplierViewSet(viewsets.ModelViewSet):
         ).order_by('-rating')[:10]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class ProcurementStatsViewSet(viewsets.ViewSet):
+    """ViewSet для статистики закупок."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    def overview(self, request):
+        """Общая статистика закупок."""
+        from django.db.models import Sum, Count
+        from django.utils import timezone
+
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0)
+        year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+
+        user = request.user
+        
+        # Базовый queryset зависит от прав пользователя
+        if user.is_superuser or user.is_staff:
+            base_qs = ProcurementRequest.objects.all()
+        else:
+            base_qs = ProcurementRequest.objects.filter(
+                Q(requestor=user) |
+                Q(department__in=user.departments.all())
+            )
+
+        # Подсчёт по статусам
+        by_status = dict(
+            base_qs.values('status').annotate(
+                count=Count('id')
+            ).values_list('status', 'count')
+        )
+
+        # Подсчёт по срочности
+        by_urgency = dict(
+            base_qs.values('urgency').annotate(
+                count=Count('id')
+            ).values_list('urgency', 'count')
+        )
+
+        # Общие метрики
+        total = base_qs.count()
+        pending = base_qs.filter(status=ProcurementStatus.PENDING).count()
+        approved_month = base_qs.filter(
+            status=ProcurementStatus.APPROVED,
+            updated_at__gte=month_start
+        ).count()
+        completed_month = base_qs.filter(
+            status=ProcurementStatus.COMPLETED,
+            completed_at__gte=month_start
+        ).count()
+        
+        # Сумма потраченного за год
+        spent_year = base_qs.filter(
+            status=ProcurementStatus.COMPLETED,
+            completed_at__gte=year_start
+        ).aggregate(total=Sum('actual_cost'))['total'] or 0
+
+        return Response({
+            'total_requests': total,
+            'pending_requests': pending,
+            'approved_this_month': approved_month,
+            'completed_this_month': completed_month,
+            'total_spent_this_year': str(spent_year),
+            'by_status': by_status,
+            'by_urgency': by_urgency,
+        })
+
+    @action(detail=False, methods=['get'], url_path='by-department')
+    def by_department(self, request):
+        """Статистика по отделам."""
+        from django.db.models import Sum
+
+        user = request.user
+        
+        # Только для staff/superuser или руководителей
+        if not (user.is_superuser or user.is_staff):
+            if not user.headed_departments.exists():
+                return Response(
+                    {'detail': 'Нет доступа к статистике по отделам.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            departments = user.headed_departments.all()
+        else:
+            departments = Department.objects.all()
+
+        result = []
+        for dept in departments:
+            requests = ProcurementRequest.objects.filter(department=dept)
+            total = requests.count()
+            spent = requests.filter(
+                status=ProcurementStatus.COMPLETED
+            ).aggregate(total=Sum('actual_cost'))['total'] or 0
+            
+            # Получаем текущий бюджет
+            from django.utils import timezone
+            now = timezone.now()
+            quarter = (now.month - 1) // 3 + 1
+            try:
+                budget = Budget.objects.get(
+                    department=dept,
+                    year=now.year,
+                    quarter=quarter
+                )
+                utilization = float(budget.utilization_percentage)
+            except Budget.DoesNotExist:
+                utilization = 0.0
+
+            result.append({
+                'department': {'id': dept.id, 'name': dept.name},
+                'total_requests': total,
+                'total_spent': str(spent),
+                'budget_utilization': utilization,
+            })
+
+        return Response(result)
 
