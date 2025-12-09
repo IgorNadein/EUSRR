@@ -144,10 +144,13 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             elif role == ApprovalRole.FINANCE_MANAGER:
                 # Найдем первого пользователя с правом на бюджеты
                 from employees.models import Employee
+                from django.db.models import Q
                 approver = Employee.objects.filter(
-                    is_active=True,
-                    groups__permissions__codename='change_budget'
-                ).first()
+                    is_active=True
+                ).filter(
+                    Q(groups__permissions__codename='change_budget') |
+                    Q(user_permissions__codename='change_budget')
+                ).distinct().first()
             elif role == ApprovalRole.DIRECTOR:
                 # Найдем директора (суперпользователя)
                 from employees.models import Employee
