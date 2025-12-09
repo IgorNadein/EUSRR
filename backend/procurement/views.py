@@ -39,11 +39,7 @@ from .serializers import (
     ProcurementRequestListSerializer,
     SupplierSerializer,
 )
-from .tasks import (
-    send_approval_notification_email,
-    send_approval_request_email,
-    send_status_change_email,
-)
+from notifications.services import NotificationService
 
 
 class ProcurementRequestViewSet(viewsets.ModelViewSet):
@@ -170,11 +166,19 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 )
                 created_approvals.append(approval)
 
-        # Отправляем уведомления согласующим асинхронно
+        # Отправляем уведомления согласующим через NotificationService
         for approval in created_approvals:
-            send_approval_request_email.delay(
-                procurement_request.id,
-                approval.approver.id
+            NotificationService.create_notification(
+                recipient=approval.approver,
+                notification_type_code='procurement_pending_approval',
+                title="Требуется согласование заявки",
+                message=(
+                    f'Заявка "{procurement_request.title}" '
+                    f'ожидает вашего согласования. '
+                    f'Сумма: {procurement_request.estimated_cost}₽'
+                ),
+                action_url=f'/procurement/requests/{procurement_request.id}/',
+                send_immediately=True,
             )
 
         serializer = self.get_serializer(procurement_request)
@@ -206,7 +210,17 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         approval.save()
 
         # Отправляем уведомление о согласовании
-        send_approval_notification_email.delay(approval.id)
+        NotificationService.create_notification(
+            recipient=procurement_request.requestor,
+            notification_type_code='procurement_stage_approved',
+            title="Этап согласования пройден",
+            message=(
+                f'{request.user.get_full_name()} одобрил '
+                f'заявку "{procurement_request.title}".'
+            ),
+            action_url=f'/procurement/requests/{procurement_request.id}/',
+            send_immediately=True,
+        )
 
         # Проверяем, все ли одобрили
         pending_approvals = procurement_request.approvals.filter(
@@ -219,9 +233,16 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             procurement_request.save()
 
             # Отправляем уведомление о полном одобрении
-            send_status_change_email.delay(
-                procurement_request.id,
-                'approved'
+            NotificationService.create_notification(
+                recipient=procurement_request.requestor,
+                notification_type_code='procurement_approved',
+                title="Заявка одобрена",
+                message=(
+                    f'Ваша заявка "{procurement_request.title}" '
+                    f'была полностью одобрена. Можно приступать к закупке.'
+                ),
+                action_url=f'/procurement/requests/{procurement_request.id}/',
+                send_immediately=True,
             )
 
         serializer = self.get_serializer(procurement_request)
@@ -257,8 +278,18 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         procurement_request.save()
 
         # Отправляем уведомление об отклонении
-        send_approval_notification_email.delay(approval.id)
-        send_status_change_email.delay(procurement_request.id, 'rejected')
+        NotificationService.create_notification(
+            recipient=procurement_request.requestor,
+            notification_type_code='procurement_rejected',
+            title="Заявка отклонена",
+            message=(
+                f'{request.user.get_full_name()} отклонил '
+                f'заявку "{procurement_request.title}". '
+                f'Причина: {approval.comment}'
+            ),
+            action_url=f'/procurement/requests/{procurement_request.id}/',
+            send_immediately=True,
+        )
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
