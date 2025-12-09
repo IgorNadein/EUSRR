@@ -11,7 +11,7 @@
 {% block content %}
 
   {# ===== ШАПКА СТРАНИЦЫ ===== #}
-  {% include "includes/components/page_header.html" with icon="bi-cart3" title="Закупки" no_search=True create_as_card=True create_modal="procCreateModal" create_text="Новая заявка" %}
+  {% include "includes/components/page_header.html" with icon="bi-cart3" title="Закупки" no_search=True create_as_card=True create_modal="procCreateModal" create_text="Создать заявку" %}
 
   {# ===== СТАТИСТИКА ===== #}
   <div class="proc-stats">
@@ -216,8 +216,6 @@
     </div>
   </div>
 
-{% endblock %}
-
 {# ===== МОДАЛКА СОЗДАНИЯ ===== #}
 <div class="modal fade" id="procCreateModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -284,6 +282,8 @@
     </form>
   </div>
 </div>
+
+{% endblock %}
 
 {% block extra_js %}
 <script>

@@ -11,7 +11,7 @@
 {% block content %}
 
   {# ===== ШАПКА СТРАНИЦЫ ===== #}
-  {% include "includes/components/page_header.html" with icon="bi-list-ul" title=page_title|default:"Заявки на закупку" search_id="procSearch" search_placeholder="Поиск по названию..." has_filters=True filters_target="procFilters" filters_template="procurement/_filters.html" create_modal="procCreateModal" create_text="Новая заявка" %}
+  {% include "includes/components/page_header.html" with icon="bi-list-ul" title=page_title|default:"Заявки на закупку" search_id="procSearch" search_placeholder="Поиск по названию..." has_filters=True filters_target="procFilters" filters_template="procurement/_filters.html" create_as_card=True create_modal="procCreateModal" create_text="Создать заявку" %}
 
   {# ===== Tabs для переключения области ===== #}
   {% if can_view_all %}
