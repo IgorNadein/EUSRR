@@ -86,10 +86,12 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         if user.is_superuser or user.is_staff:
             return queryset
 
-        # Показываем: свои заявки + заявки своего отдела
+        # Показываем: свои заявки + заявки отдела + где я approver
         return queryset.filter(
-            Q(requestor=user) | Q(department__in=user.departments.all())
-        )
+            Q(requestor=user) |
+            Q(department__in=user.departments.all()) |
+            Q(approvals__approver=user)
+        ).distinct()
 
     @action(detail=True, methods=['post'])
     def submit(self, request, pk=None):
