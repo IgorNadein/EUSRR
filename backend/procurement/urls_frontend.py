@@ -22,6 +22,7 @@ urlpatterns = [
     ),
     path('orders/create/', views.request_create, name='request_create'),
     path('orders/<int:pk>/', views.request_detail, name='request_detail'),
+    path('orders/<int:pk>/edit/', views.request_edit, name='request_edit'),
 
     # Оборудование
     path('equipment/', views.equipment_list, name='equipment_list'),

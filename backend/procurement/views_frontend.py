@@ -144,6 +144,22 @@ def request_create(request):
 
 
 @login_required
+def request_edit(request, pk):
+    """Страница редактирования заявки.
+    
+    Данные загружаются через API:
+    - /api/v1/procurement/requests/{pk}/ — данные заявки
+    - /api/v1/departments/ — список отделов
+    Обновление через:
+    - PATCH /api/v1/procurement/requests/{pk}/
+    """
+    return render(request, 'procurement/request_form.html', {
+        'page_title': 'Редактирование заявки',
+        'request_id': pk,
+    })
+
+
+@login_required
 def equipment_list(request):
     """Список оборудования.
     
