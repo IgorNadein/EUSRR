@@ -11,14 +11,6 @@
 {% block content %}
 
 <div class="container">
-  {# ===== Хлебные крошки ===== #}
-  <nav aria-label="breadcrumb" class="mb-3">
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:dashboard' %}">Закупки</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:request_list' %}">Заявки</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Новая заявка</li>
-    </ol>
-  </nav>
 
   <div class="row justify-content-center">
     <div class="col-lg-8">
@@ -101,6 +93,15 @@
 
   // Загрузка данных при старте
   document.addEventListener('DOMContentLoaded', async () => {
+    console.log('[Init] Page loaded, requestId:', requestId);
+    
+    // Проверяем наличие элемента select
+    const select = document.getElementById('departmentSelect');
+    if (!select) {
+      console.error('[Init] Element #departmentSelect not found!');
+      return;
+    }
+    
     await loadDepartments();
     
     if (isEdit) {
@@ -109,28 +110,50 @@
   });
 
   async function loadDepartments() {
+    const select = document.getElementById('departmentSelect');
+    
     try {
+      console.log('[Departments] Loading from /api/v1/departments/');
       const resp = await fetch('/api/v1/departments/');
-      if (resp.ok) {
-        const departments = await resp.json();
-        const select = document.getElementById('departmentSelect');
-        select.innerHTML = '<option value="">Выберите отдел...</option>';
-        
-        departments.forEach(dept => {
-          const option = document.createElement('option');
-          option.value = dept.id;
-          option.textContent = dept.name;
-          
-          // Автовыбор отдела текущего пользователя, если он один
-          if (!isEdit && departments.length === 1) {
-            option.selected = true;
-          }
-          
-          select.appendChild(option);
-        });
+      console.log('[Departments] Response status:', resp.status);
+      
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error('[Departments] Error response:', errorText);
+        select.innerHTML = '<option value="">Ошибка загрузки отделов</option>';
+        alert('Не удалось загрузить список отделов. Проверьте консоль.');
+        return;
       }
+      
+      const departments = await resp.json();
+      console.log('[Departments] Loaded:', departments.length, 'departments');
+      
+      if (!departments || departments.length === 0) {
+        select.innerHTML = '<option value="">Нет доступных отделов</option>';
+        return;
+      }
+      
+      select.innerHTML = '<option value="">Выберите отдел...</option>';
+      
+      departments.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept.id;
+        option.textContent = dept.name;
+        
+        // Автовыбор отдела текущего пользователя, если он один
+        if (!isEdit && departments.length === 1) {
+          option.selected = true;
+        }
+        
+        select.appendChild(option);
+      });
+      
+      console.log('[Departments] Select populated successfully');
+      
     } catch (e) {
-      console.error('Error loading departments:', e);
+      console.error('[Departments] Error loading departments:', e);
+      select.innerHTML = '<option value="">Ошибка сети</option>';
+      alert('Ошибка загрузки отделов: ' + e.message);
     }
   }
 
