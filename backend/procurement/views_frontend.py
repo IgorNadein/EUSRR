@@ -93,6 +93,15 @@ def request_detail(request, pk):
     """Детальная страница заявки.
     
     Загружает данные из БД и передаёт в шаблон.
+    
+    Права на редактирование (can_edit):
+    - Админы/Staff → любая заявка в DRAFT
+    - Модельные права (change_procurementrequest) → любая заявка в DRAFT
+    - Автор заявки → своя заявка в DRAFT
+    - Начальник отдела → заявки своего отдела в DRAFT
+    
+    Права на согласование (can_approve):
+    - Пользователи с активным approval для этой заявки
     """
     from django.shortcuts import get_object_or_404
     from procurement.models import ProcurementRequest
@@ -106,11 +115,21 @@ def request_detail(request, pk):
     
     user = request.user
     
-    # Проверяем права на редактирование
-    can_edit = (
-        request_obj.requestor == user and 
-        request_obj.status == 'draft'
-    )
+    # Проверяем права на редактирование (синхронизировано с API)
+    can_edit = False
+    if request_obj.is_editable:  # Только DRAFT
+        # Админы могут редактировать
+        if user.is_superuser or user.is_staff:
+            can_edit = True
+        # Модельные права
+        elif user.has_perm('procurement.change_procurementrequest'):
+            can_edit = True
+        # Автор заявки
+        elif request_obj.requestor == user:
+            can_edit = True
+        # Начальник отдела
+        elif request_obj.department.head == user:
+            can_edit = True
     
     # Проверяем права на согласование
     can_approve = (

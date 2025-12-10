@@ -688,57 +688,100 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
     
     def perform_create(self, serializer):
-        """Проверяем права при создании позиции."""
+        """Проверяем права при создании позиции.
+        
+        Логика соответствует CanManageProcurementRequest:
+        - Админы/Staff могут добавлять в любые заявки в DRAFT
+        - Модельные права (change_procurementrequest) → любые заявки в DRAFT
+        - Автор заявки → свои заявки в DRAFT
+        - Начальник отдела → заявки своего отдела в DRAFT
+        """
+        from rest_framework.exceptions import PermissionDenied
+        
         procurement_request = serializer.validated_data.get('request')
+        user = self.request.user
         
-        # Проверяем, что пользователь - создатель заявки
-        if procurement_request.requestor != self.request.user:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied(
-                "Вы можете добавлять позиции только в свои заявки"
-            )
-        
-        # Проверяем, что заявка редактируема
+        # Проверяем, что заявка в DRAFT
         if not procurement_request.is_editable:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError(
-                "Нельзя добавлять позиции в заявку не в статусе черновика"
+            raise PermissionDenied(
+                "Нельзя добавлять позиции в заявку со статусом '{}'".format(
+                    procurement_request.get_status_display()
+                )
             )
         
-        serializer.save()
+        # Админы могут редактировать
+        if user.is_superuser or user.is_staff:
+            serializer.save()
+            return
+        
+        # Модельные права
+        if user.has_perm('procurement.change_procurementrequest'):
+            serializer.save()
+            return
+        
+        # Автор заявки
+        if procurement_request.requestor == user:
+            serializer.save()
+            return
+        
+        # Начальник отдела
+        if procurement_request.department.head == user:
+            serializer.save()
+            return
+        
+        # Нет прав
+        raise PermissionDenied(
+            "Вы не можете добавлять позиции в эту заявку"
+        )
+    
+    def _check_item_edit_permission(self, item):
+        """Проверка прав на редактирование позиции.
+        
+        Вынесена в отдельный метод для переиспользования.
+        """
+        from rest_framework.exceptions import PermissionDenied
+        
+        user = self.request.user
+        procurement_request = item.request
+        
+        # Проверяем, что заявка в DRAFT
+        if not procurement_request.is_editable:
+            raise PermissionDenied(
+                "Нельзя изменять позиции в заявке со статусом '{}'".format(
+                    procurement_request.get_status_display()
+                )
+            )
+        
+        # Админы могут редактировать
+        if user.is_superuser or user.is_staff:
+            return True
+        
+        # Модельные права
+        if user.has_perm('procurement.change_procurementrequest'):
+            return True
+        
+        # Автор заявки
+        if procurement_request.requestor == user:
+            return True
+        
+        # Начальник отдела
+        if procurement_request.department.head == user:
+            return True
+        
+        # Нет прав
+        raise PermissionDenied(
+            "Вы не можете изменять позиции в этой заявке"
+        )
     
     def perform_update(self, serializer):
         """Проверяем права при обновлении позиции."""
         item = self.get_object()
-        
-        if item.request.requestor != self.request.user:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied(
-                "Вы можете изменять только позиции своих заявок"
-            )
-        
-        if not item.request.is_editable:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError(
-                "Нельзя изменять позиции в заявке не в статусе черновика"
-            )
-        
+        self._check_item_edit_permission(item)
         serializer.save()
     
     def perform_destroy(self, instance):
         """Проверяем права при удалении позиции."""
-        if instance.request.requestor != self.request.user:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied(
-                "Вы можете удалять только позиции своих заявок"
-            )
-        
-        if not instance.request.is_editable:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError(
-                "Нельзя удалять позиции из заявки не в статусе черновика"
-            )
-        
+        self._check_item_edit_permission(instance)
         instance.delete()
 
     @action(detail=True, methods=['post'])
