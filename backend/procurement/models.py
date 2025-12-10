@@ -618,7 +618,8 @@ class Budget(models.Model):
     @property
     def remaining_amount(self):
         """Остаток бюджета."""
-        return self.allocated_amount - self.spent_amount
+        allocated = self.allocated_amount or Decimal('0.00')
+        return allocated - self.spent_amount
     
     @property
     def reserved_amount(self):
@@ -648,10 +649,11 @@ class Budget(models.Model):
     @property
     def utilization_percentage(self):
         """Процент использования бюджета."""
-        if self.allocated_amount == 0:
+        allocated = self.allocated_amount or Decimal('0.00')
+        if allocated == 0:
             return Decimal('0.00')
         return (
-            self.spent_amount / self.allocated_amount * 100
+            self.spent_amount / allocated * 100
         ).quantize(Decimal('0.01'))
     
     def can_spend(self, amount):

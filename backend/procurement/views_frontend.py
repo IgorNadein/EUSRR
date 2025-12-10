@@ -180,7 +180,7 @@ def request_detail(request, pk):
         ProcurementRequest.objects.select_related(
             'department', 'requestor'
         ).prefetch_related(
-            'items__supplier',
+            'items',
             'approvals__approver'
         ),
         pk=pk

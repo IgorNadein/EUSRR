@@ -335,7 +335,7 @@ class BudgetAdmin(admin.ModelAdmin):
         "quarter",
         "allocated_amount",
         "spent_amount",
-        "remaining_amount",
+        "get_remaining_amount",
         "utilization_badge",
     ]
     list_filter = ["year", "quarter", "department"]
@@ -343,9 +343,19 @@ class BudgetAdmin(admin.ModelAdmin):
     readonly_fields = [
         "created_at",
         "updated_at",
-        "remaining_amount",
-        "utilization_percentage",
+        "get_remaining_amount",
+        "get_utilization_percentage",
     ]
+
+    def get_remaining_amount(self, obj):
+        """Остаток бюджета (для отображения в админке)."""
+        return obj.remaining_amount
+    get_remaining_amount.short_description = "Остаток"
+
+    def get_utilization_percentage(self, obj):
+        """Процент использования (для отображения в админке)."""
+        return f"{obj.utilization_percentage}%"
+    get_utilization_percentage.short_description = "Использовано"
 
     def utilization_badge(self, obj):
         """Цветной бадж использования бюджета."""
