@@ -50,7 +50,7 @@ class ProcurementRequestAdmin(admin.ModelAdmin):
         "requestor",
         "status_badge",
         "urgency_badge",
-        "estimated_cost",
+        "get_total_cost",
         "created_at",
     ]
     list_filter = ["status", "urgency", "department", "created_at"]
@@ -60,6 +60,7 @@ class ProcurementRequestAdmin(admin.ModelAdmin):
         "updated_at",
         "submitted_at",
         "completed_at",
+        "get_total_cost",
     ]
     date_hierarchy = "created_at"
     inlines = [ProcurementItemInline, ApprovalInline]
@@ -75,7 +76,7 @@ class ProcurementRequestAdmin(admin.ModelAdmin):
                 "fields": (
                     "status",
                     "urgency",
-                    "estimated_cost",
+                    "get_total_cost",
                     "actual_cost",
                 )
             },
@@ -132,6 +133,12 @@ class ProcurementRequestAdmin(admin.ModelAdmin):
         )
 
     urgency_badge.short_description = "Срочность"
+
+    def get_total_cost(self, obj):
+        """Сумма заявки из позиций."""
+        return f"{obj.total_cost:,.2f} ₽"
+
+    get_total_cost.short_description = "Сумма"
 
 
 @admin.register(ProcurementItem)

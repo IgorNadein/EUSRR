@@ -119,6 +119,16 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
         read_only=True
     )
     items_count = serializers.IntegerField(read_only=True)
+    total_cost = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+    executor_name = serializers.CharField(
+        source='executor.get_full_name',
+        read_only=True,
+        allow_null=True
+    )
 
     class Meta:
         model = ProcurementRequest
@@ -129,25 +139,42 @@ class ProcurementRequestListSerializer(serializers.ModelSerializer):
             'department_name',
             'requestor',
             'requestor_name',
+            'executor',
+            'executor_name',
             'status',
             'status_display',
             'urgency',
             'urgency_display',
-            'estimated_cost',
+            'total_cost',
             'items_count',
             'created_at',
             'submitted_at',
+            'started_at',
         ]
         read_only_fields = [
             'id',
             'created_at',
             'submitted_at',
+            'started_at',
             'department_name',
             'requestor_name',
+            'executor_name',
             'status_display',
             'urgency_display',
             'items_count',
+            'total_cost',
         ]
+
+    def update(self, instance, validated_data):
+        """
+        При обновлении заявки запрещаем изменение requestor и department.
+        Эти поля игнорируются при обновлении.
+        """
+        # Игнорируем попытки изменить requestor
+        validated_data.pop('requestor', None)
+        # Игнорируем попытки изменить department
+        validated_data.pop('department', None)
+        return super().update(instance, validated_data)
 
 
 class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
@@ -165,12 +192,22 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
         source='requestor.email',
         read_only=True
     )
+    executor_name = serializers.CharField(
+        source='executor.get_full_name',
+        read_only=True,
+        allow_null=True
+    )
     status_display = serializers.CharField(
         source='get_status_display',
         read_only=True
     )
     urgency_display = serializers.CharField(
         source='get_urgency_display',
+        read_only=True
+    )
+    total_cost = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         read_only=True
     )
     items = ProcurementItemSerializer(many=True, read_only=True)
@@ -193,11 +230,13 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             'requestor',
             'requestor_name',
             'requestor_email',
+            'executor',
+            'executor_name',
             'status',
             'status_display',
             'urgency',
             'urgency_display',
-            'estimated_cost',
+            'total_cost',
             'actual_cost',
             'items',
             'approvals',
@@ -207,6 +246,7 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'submitted_at',
+            'started_at',
             'completed_at',
         ]
         read_only_fields = [
@@ -214,9 +254,12 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'submitted_at',
+            'started_at',
             'completed_at',
             'is_editable',
             'budget_available',
+            'total_cost',
+            'executor_name',
         ]
 
     def get_budget_available(self, obj):
@@ -242,7 +285,6 @@ class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
             'department',
             'requestor',
             'urgency',
-            'estimated_cost',
             'items',
             'status',
             'created_at',
@@ -744,8 +786,16 @@ class BudgetDetailSerializer(BudgetSerializer):
             status='pending',
             created_at__year=obj.year,
             created_at__month__in=obj._quarter_months()
-        ).values('id', 'title', 'estimated_cost', 'status')[:10]
-        return list(pending)
+        )[:10]
+        return [
+            {
+                'id': req.id,
+                'title': req.title,
+                'total_cost': str(req.total_cost),
+                'status': req.status
+            }
+            for req in pending
+        ]
 
 
 class SupplierSerializer(serializers.ModelSerializer):

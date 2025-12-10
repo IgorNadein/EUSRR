@@ -78,7 +78,7 @@ def notify_on_request_status_change(sender, instance, created, **kwargs):
                 title="Новая заявка на закупку",
                 message=(
                     f'Создана заявка "{instance.title}" '
-                    f'на сумму {instance.estimated_cost}₽'
+                    f'на сумму {instance.total_cost}₽'
                 ),
                 action_url=f'/procurement/requests/{instance.id}/',
                 send_immediately=True,
@@ -187,7 +187,7 @@ def notify_approver(approval):
         message=(
             f'Заявка "{approval.request.title}" '
             f'ожидает вашего согласования. '
-            f'Сумма: {approval.request.estimated_cost}₽'
+            f'Сумма: {approval.request.total_cost}₽'
         ),
         action_url=f'/procurement/requests/{approval.request.id}/',
         send_immediately=True,

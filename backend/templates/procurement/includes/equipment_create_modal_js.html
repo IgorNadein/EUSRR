@@ -1,0 +1,217 @@
+{#
+  JavaScript для модала создания оборудования (включаемый шаблон)
+  
+  Требуемый контекст:
+  - user_department: отдел текущего пользователя (опционально)
+  - dept_head_id: ID руководителя отдела (опционально)
+  
+  Параметры из Django шаблона:
+  - prefill_item_id: для связи с позицией заявки
+#}
+
+<script>
+(function() {
+  'use strict';
+  
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+  const form = document.getElementById('equipmentCreateForm');
+  const modal = document.getElementById('equipmentCreateModal');
+  
+  if (!form || !modal) {
+    console.warn('[Equipment Create] Modal or form not found');
+    return;
+  }
+  
+  // Данные из Django шаблона для предзаполнения
+  const userDeptId = {{ user_department.id|default:'null' }};
+  const deptHeadId = {{ dept_head_id|default:'null' }};
+  
+  // Инициализация при открытии модала
+  modal.addEventListener('show.bs.modal', async () => {
+    console.log('[Equipment Create] Modal opening...');
+    
+    // Устанавливаем сегодняшнюю дату покупки если не заполнена
+    const purchaseDateInput = form.querySelector('[name="purchase_date"]');
+    if (purchaseDateInput && !purchaseDateInput.value) {
+      purchaseDateInput.value = new Date().toISOString().split('T')[0];
+    }
+    
+    // Сбрасываем количество на 1
+    const qtyInput = form.querySelector('[name="quantity"]');
+    if (qtyInput) qtyInput.value = '1';
+    
+    // Устанавливаем отдел пользователя если не выбран
+    const deptSelect = form.querySelector('[name="department"]');
+    if (deptSelect && !deptSelect.value && userDeptId) {
+      deptSelect.value = userDeptId;
+      // Устанавливаем ответственного - руководителя отдела
+      if (deptHeadId) {
+        const responsibleSelect = form.querySelector('[name="responsible_person"]');
+        if (responsibleSelect) {
+          responsibleSelect.value = deptHeadId;
+        }
+      }
+    }
+  });
+  
+  // Обработчик смены отдела - загружаем руководителя
+  const deptSelect = form.querySelector('[name="department"]');
+  if (deptSelect) {
+    deptSelect.addEventListener('change', async (e) => {
+      const departmentId = e.target.value;
+      if (!departmentId) return;
+      
+      try {
+        const resp = await fetch(`/api/employees/departments/${departmentId}/`);
+        if (resp.ok) {
+          const dept = await resp.json();
+          if (dept.head) {
+            const responsibleSelect = form.querySelector('[name="responsible_person"]');
+            if (responsibleSelect) {
+              responsibleSelect.value = dept.head;
+              console.log('[Equipment Create] Set responsible to dept head:', dept.head);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Equipment Create] Error loading department:', err);
+      }
+    });
+  }
+  
+  // Обработка отправки формы
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    const quantity = parseInt(data.quantity) || 1;
+    const fromItemId = data.from_item_id || null;
+    
+    // Удаляем служебные поля из данных
+    delete data.csrfmiddlewaretoken;
+    delete data.quantity;
+    delete data.from_item_id;
+    
+    // Преобразуем пустые строки в null
+    Object.keys(data).forEach(key => {
+      if (data[key] === '') data[key] = null;
+    });
+    
+    console.log('[Equipment Create] Submitting:', data, 'Quantity:', quantity, 'FromItem:', fromItemId);
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Создание...';
+    
+    try {
+      let resp;
+      let result;
+      
+      if (fromItemId) {
+        // Создание из позиции заявки - используем специальный endpoint
+        // Сначала генерируем инвентарный номер
+        const invResp = await fetch('/api/procurement/equipment/generate-inventory-number/');
+        const invData = await invResp.json();
+        
+        resp = await fetch(`/api/procurement/items/${fromItemId}/create_equipment/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+          },
+          body: JSON.stringify({
+            inventory_number: invData.inventory_number,
+            category: data.category,
+            department: data.department,
+            serial_number: data.serial_number,
+            location: data.location,
+            responsible_person: data.responsible_person,
+            warranty_until: data.warranty_until,
+            purchase_date: data.purchase_date,
+            purchase_cost: data.purchase_cost,
+            notes: data.notes,
+          }),
+        });
+        
+        result = await resp.json();
+        
+        if (resp.ok) {
+          // Закрываем модал и перенаправляем на оборудование
+          bootstrap.Modal.getInstance(modal).hide();
+          
+          if (result.equipment && result.equipment.id) {
+            window.location.href = `/procurement/equipment/${result.equipment.id}/`;
+          } else {
+            // Обновляем текущую страницу
+            window.location.reload();
+          }
+          return;
+        }
+      } else {
+        // Обычное создание оборудования
+        for (let i = 0; i < quantity; i++) {
+          resp = await fetch('/api/procurement/equipment/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(data),
+          });
+          
+          result = await resp.json();
+          
+          if (!resp.ok) break;
+        }
+        
+        if (resp.ok) {
+          bootstrap.Modal.getInstance(modal).hide();
+          form.reset();
+          
+          // Обновляем страницу или таблицу
+          if (typeof window.loadEquipmentTable === 'function') {
+            window.loadEquipmentTable();
+          } else {
+            window.location.reload();
+          }
+          
+          // Показываем уведомление
+          const message = quantity > 1 
+            ? `Создано ${quantity} единиц оборудования`
+            : 'Оборудование успешно добавлено';
+          
+          if (typeof showToast === 'function') {
+            showToast(message, 'success');
+          }
+          return;
+        }
+      }
+      
+      // Обработка ошибок
+      let errorMsg = 'Ошибка создания оборудования';
+      if (result.error) {
+        errorMsg = result.error;
+      } else if (result.detail) {
+        errorMsg = result.detail;
+      } else if (typeof result === 'object') {
+        errorMsg = Object.entries(result)
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+          .join('; ');
+      }
+      
+      alert(errorMsg);
+      
+    } catch (err) {
+      console.error('[Equipment Create] Error:', err);
+      alert('Ошибка сети при создании оборудования');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  });
+  
+  console.log('[Equipment Create] Module initialized');
+})();
+</script>

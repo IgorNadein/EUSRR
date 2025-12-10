@@ -30,4 +30,9 @@ urlpatterns = [
         views.equipment_detail,
         name='equipment_detail'
     ),
+
+    # Бюджеты
+    path('budgets/', views.budget_list, name='budget_list'),
+    path('budgets/create/', views.budget_create, name='budget_create'),
+    path('budgets/<int:pk>/edit/', views.budget_edit, name='budget_edit'),
 ]

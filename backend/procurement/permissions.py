@@ -130,6 +130,183 @@ class CanApproveProcurementRequest(permissions.BasePermission):
         return False
 
 
+class CanManageProcurementRequest(permissions.BasePermission):
+    """Комплексная проверка прав на заявки закупок.
+
+    Логика доступа:
+    - Просмотр (SAFE_METHODS): любой аутентифицированный (фильтрация в queryset)
+    
+    - Создание:
+        - admin/staff/superuser → любой отдел
+        - модельные права (add_procurementrequest) → любой отдел
+        - сотрудник отдела → только свой отдел
+        - без отдела → запрещено
+    
+    - Изменение:
+        - admin/staff/superuser → любая заявка в DRAFT
+        - модельные права (change_procurementrequest) → любая заявка в DRAFT
+        - автор заявки → своя заявка в DRAFT
+        - начальник отдела → заявки своего отдела в DRAFT
+    
+    - Удаление:
+        - admin/staff/superuser → любая заявка
+        - модельные права (delete_procurementrequest) → любая заявка
+        - автор заявки → своя заявка в DRAFT
+        - начальник отдела → заявки своего отдела в DRAFT
+    """
+
+    def _is_admin(self, user) -> bool:
+        """Проверяет, является ли пользователь админом."""
+        return (
+            getattr(user, 'is_superuser', False) or
+            getattr(user, 'is_staff', False)
+        )
+
+    def _has_model_perm(self, user, action: str) -> bool:
+        """Проверяет модельные права на заявки."""
+        perm_map = {
+            'create': 'procurement.add_procurementrequest',
+            'update': 'procurement.change_procurementrequest',
+            'partial_update': 'procurement.change_procurementrequest',
+            'destroy': 'procurement.delete_procurementrequest',
+        }
+        perm = perm_map.get(action)
+        return perm and user.has_perm(perm)
+
+    def _get_user_departments(self, user) -> list[int]:
+        """Возвращает список ID отделов, где пользователь состоит."""
+        return list(
+            EmployeeDepartment.objects.filter(
+                employee_id=user.id,
+                is_active=True
+            ).values_list('department_id', flat=True)
+        )
+
+    def _get_dept_id_from_request(self, request) -> int | None:
+        """Извлекает ID отдела из данных запроса."""
+        dept_id = request.data.get('department')
+        if dept_id is not None:
+            try:
+                return int(dept_id)
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def _is_dept_head(self, user, dept_id: int) -> bool:
+        """Проверяет, является ли пользователь начальником отдела."""
+        return Department.objects.filter(id=dept_id, head_id=user.id).exists()
+
+    def has_permission(self, request, view) -> bool:
+        """Проверка доступа на уровне запроса."""
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        # Чтение доступно всем аутентифицированным
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Админы могут всё
+        if self._is_admin(user):
+            return True
+
+        action = getattr(view, 'action', None)
+
+        # Модельные права дают полный доступ
+        if self._has_model_perm(user, action):
+            return True
+
+        # Для создания проверяем отдел
+        if action == 'create':
+            dept_id = self._get_dept_id_from_request(request)
+            if dept_id is None:
+                return False
+
+            # Пользователь должен состоять в указанном отделе
+            user_depts = self._get_user_departments(user)
+            if not user_depts:
+                # Пользователь без отдела не может создавать
+                return False
+
+            if dept_id not in user_depts:
+                # Нельзя создавать заявку в чужом отделе
+                return False
+
+            return True
+
+        # Для update/delete проверка на уровне объекта
+        if action in ('update', 'partial_update', 'destroy'):
+            return True
+
+        return True
+
+    def has_object_permission(self, request, view, obj) -> bool:
+        """Проверка доступа к конкретному объекту."""
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        # Чтение доступно всем
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Админы могут всё
+        if self._is_admin(user):
+            return True
+
+        action = getattr(view, 'action', None)
+
+        # Модельные права
+        if self._has_model_perm(user, action):
+            return True
+
+        dept_id = obj.department_id
+
+        # Submit (отправка на согласование) - только владелец
+        if action == 'submit':
+            return obj.requestor == user
+
+        # Cancel (отмена заявки) - только владелец
+        if action == 'cancel':
+            return obj.requestor == user
+
+        # Start_work (взять в работу) - любой авторизованный
+        if action == 'start_work':
+            return True
+
+        # Complete (завершить) - только исполнитель
+        if action == 'complete':
+            return obj.executor == user
+
+        # Удаление
+        if action == 'destroy':
+            # Автор может удалить свою заявку в DRAFT
+            if obj.requestor == user and obj.is_editable:
+                return True
+            # Начальник отдела может удалить заявку отдела в DRAFT
+            if self._is_dept_head(user, dept_id) and obj.is_editable:
+                return True
+            return False
+
+        # Изменение
+        if action in ('update', 'partial_update'):
+            # Заявка должна быть редактируемой (DRAFT)
+            if not obj.is_editable:
+                return False
+
+            # Автор может редактировать свою заявку
+            if obj.requestor == user:
+                return True
+
+            # Начальник отдела может редактировать заявки отдела
+            if self._is_dept_head(user, dept_id):
+                return True
+
+            return False
+
+        return False
+
+
 class CanManageEquipment(permissions.BasePermission):
     """Проверка права на управление оборудованием.
 

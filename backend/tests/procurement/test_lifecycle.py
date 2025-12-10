@@ -114,7 +114,6 @@ class TestRequestLifecycle:
             requestor=self.requestor,
             status=request_status,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=5000,
         )
         ProcurementItem.objects.create(
             request=request,
@@ -149,8 +148,8 @@ class TestRequestLifecycle:
         request.refresh_from_db()
         assert request.status == ProcurementStatus.IN_PROGRESS
 
-    def test_start_work_forbidden_for_non_requestor(self):
-        """Только автор заявки может начать работу."""
+    def test_start_work_by_another_user(self):
+        """Любой авторизованный пользователь может взять заявку в работу."""
         request = self._create_request(ProcurementStatus.APPROVED)
 
         self.client.force_authenticate(user=self.other_user)
@@ -159,7 +158,11 @@ class TestRequestLifecycle:
             f'/api/procurement/requests/{request.id}/start_work/'
         )
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Любой авторизованный может взять в работу
+        assert response.status_code == status.HTTP_200_OK
+        request.refresh_from_db()
+        assert request.status == ProcurementStatus.IN_PROGRESS
+        assert request.executor == self.other_user
 
     def test_start_work_wrong_status(self):
         """Нельзя начать работу над неодобренной заявкой."""
@@ -177,8 +180,11 @@ class TestRequestLifecycle:
     # ===== complete tests =====
 
     def test_complete_success(self):
-        """Тест завершения заявки в работе."""
+        """Тест завершения заявки исполнителем."""
         request = self._create_request(ProcurementStatus.IN_PROGRESS)
+        # Устанавливаем исполнителя
+        request.executor = self.requestor
+        request.save()
 
         Approval.objects.create(
             request=request,
@@ -197,9 +203,12 @@ class TestRequestLifecycle:
         request.refresh_from_db()
         assert request.status == ProcurementStatus.COMPLETED
 
-    def test_complete_forbidden_for_non_requestor(self):
-        """Только автор заявки может завершить её."""
+    def test_complete_forbidden_for_non_executor(self):
+        """Только исполнитель может завершить заявку."""
         request = self._create_request(ProcurementStatus.IN_PROGRESS)
+        # Исполнитель - requestor, но пытается завершить other_user
+        request.executor = self.requestor
+        request.save()
 
         self.client.force_authenticate(user=self.other_user)
 
@@ -212,6 +221,9 @@ class TestRequestLifecycle:
     def test_complete_wrong_status(self):
         """Нельзя завершить заявку, которая не в работе."""
         request = self._create_request(ProcurementStatus.APPROVED)
+        # Даже с исполнителем, если статус неверный - ошибка
+        request.executor = self.requestor
+        request.save()
 
         self.client.force_authenticate(user=self.requestor)
 
@@ -349,7 +361,6 @@ class TestCreateEquipmentFromItem:
             requestor=self.requestor,
             status=ProcurementStatus.COMPLETED,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=50000,
         )
         item = ProcurementItem.objects.create(
             request=request,
@@ -452,7 +463,6 @@ class TestCreateEquipmentFromItem:
             requestor=self.requestor,
             status=ProcurementStatus.IN_PROGRESS,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=10000,
         )
         item = ProcurementItem.objects.create(
             request=request,

@@ -126,7 +126,6 @@ class TestProcurementSignals:
             description="Описание",
             department=department_with_head,
             requestor=requestor,
-            estimated_cost=Decimal('5000.00'),
         )
 
         # Проверяем уведомление руководителю
@@ -147,7 +146,6 @@ class TestProcurementSignals:
             title="Заявка на согласование",
             department=department_with_head,
             requestor=requestor,
-            estimated_cost=Decimal('5000.00'),
         )
 
         # Добавляем позицию
@@ -238,7 +236,6 @@ class TestApprovalNotifications:
             department=department_with_head,
             requestor=requestor,
             status=ProcurementStatus.PENDING,
-            estimated_cost=Decimal('5000.00'),
         )
 
         approval = Approval.objects.create(
@@ -271,7 +268,6 @@ class TestApprovalNotifications:
             department=department_with_head,
             requestor=requestor,
             status=ProcurementStatus.PENDING,
-            estimated_cost=Decimal('5000.00'),
         )
 
         approval = Approval.objects.create(

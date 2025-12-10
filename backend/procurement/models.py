@@ -18,6 +18,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import Sum
 from django.utils import timezone
 from employees.models import Department
 
@@ -63,6 +64,15 @@ class ProcurementRequest(models.Model):
         related_name='procurement_requests',
         verbose_name='Заявитель'
     )
+    executor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='executing_procurements',
+        verbose_name='Исполнитель',
+        help_text='Кто взял заявку в работу'
+    )
     status = models.CharField(
         'Статус',
         max_length=20,
@@ -74,13 +84,6 @@ class ProcurementRequest(models.Model):
         max_length=20,
         choices=UrgencyLevel.choices,
         default=UrgencyLevel.MEDIUM
-    )
-    estimated_cost = models.DecimalField(
-        'Предполагаемая стоимость',
-        max_digits=12,
-        decimal_places=2,
-        default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.01'))]
     )
     actual_cost = models.DecimalField(
         'Фактическая стоимость',
@@ -102,6 +105,11 @@ class ProcurementRequest(models.Model):
     )
     submitted_at = models.DateTimeField(
         'Отправлено на согласование',
+        null=True,
+        blank=True
+    )
+    started_at = models.DateTimeField(
+        'Взято в работу',
         null=True,
         blank=True
     )
@@ -132,7 +140,7 @@ class ProcurementRequest(models.Model):
         - 10,000 - 100,000₽: руководитель + финансовый менеджер
         - > 100,000₽: руководитель + финансы + директор
         """
-        cost = self.estimated_cost or Decimal('0')
+        cost = self.total_cost
         
         if cost < APPROVAL_THRESHOLD_LOW:
             return [ApprovalRole.DEPARTMENT_HEAD]
@@ -165,9 +173,20 @@ class ProcurementRequest(models.Model):
                 quarter=quarter
             )
             remaining = budget.remaining_amount
-            return (remaining >= self.estimated_cost, remaining)
+            return (remaining >= self.total_cost, remaining)
         except Budget.DoesNotExist:
             return (False, Decimal('0'))
+    
+    @property
+    def total_cost(self):
+        """Общая стоимость заявки (сумма всех позиций)."""
+        total = self.items.aggregate(
+            total=Sum(
+                models.F('estimated_unit_price') * models.F('quantity'),
+                output_field=models.DecimalField()
+            )
+        )['total']
+        return total or Decimal('0.00')
     
     @property
     def items_count(self):
@@ -624,13 +643,17 @@ class Budget(models.Model):
     @property
     def reserved_amount(self):
         """Сумма зарезервированная pending заявками."""
-        from django.db.models import Sum
-        pending_sum = self.department.procurement_requests.filter(
+        # Суммируем total_cost всех pending заявок через их позиции
+        pending_requests = self.department.procurement_requests.filter(
             status=ProcurementStatus.PENDING,
             created_at__year=self.year,
             created_at__month__in=self._quarter_months()
-        ).aggregate(total=Sum('estimated_cost'))['total']
-        return pending_sum or Decimal('0.00')
+        )
+        
+        total = Decimal('0.00')
+        for req in pending_requests:
+            total += req.total_cost
+        return total
     
     @property
     def available_amount(self):

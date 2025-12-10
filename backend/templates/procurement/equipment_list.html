@@ -13,240 +13,157 @@
   {# ===== ШАПКА СТРАНИЦЫ ===== #}
   {% include "includes/components/page_header.html" with icon="bi-laptop" title="Оборудование" search_id="eqSearch" search_placeholder="Поиск по названию или инв. номеру..." has_filters=True filters_target="eqFilters" filters_template="procurement/_equipment_filters.html" create_as_card=True create_modal="equipmentCreateModal" create_text="Добавить оборудование"  %}
 
-  {# ===== КНОПКА УПРАВЛЕНИЯ КАТЕГОРИЯМИ ===== #}
-  {% if can_manage %}
-  <div class="d-flex justify-content-end mb-2">
-    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#categoryManageModal">
-      <i class="bi-tags me-1"></i>Управление категориями
-    </button>
-  </div>
-  {% endif %}
-
-  {# ===== СПИСОК ОБОРУДОВАНИЯ ===== #}
-  <div class="card mb-4">
-    <div class="proc-table-header d-none d-lg-block">
-      <div class="proc-equipment-row">
-        <div class="proc-cell"><h6 class="mb-0 text-secondary">Оборудование</h6></div>
-        <div class="proc-cell"><h6 class="mb-0 text-secondary">Кол-во</h6></div>
-        <div class="proc-cell"><h6 class="mb-0 text-secondary">Категория</h6></div>
-        <div class="proc-cell"><h6 class="mb-0 text-secondary">Отдел</h6></div>
-        <div class="proc-cell"><h6 class="mb-0 text-secondary">Статус</h6></div>
-        <div class="proc-cell"></div>
-      </div>
-    </div>
-    
-    <div id="equipmentListContent">
-      {% if equipment_groups %}
-        {% for group in equipment_groups %}
-        {# Основная строка группы #}
-        <div class="proc-equipment-item {% if group.is_group %}has-children{% endif %}" data-id="{{ group.main.id }}">
+  {# ===== СЕТКА ОБОРУДОВАНИЯ ===== #}
+  <div class="proc-equipment-grid" id="equipmentGrid">
+    {% if equipment_list %}
+      {% for item in equipment_list %}
+      <div class="proc-equipment-card" data-id="{{ item.id }}">
+        <div class="proc-equipment-header">
+          <div class="proc-equipment-icon">
+            {% if item.category.name == 'Компьютеры' or 'ноутбук' in item.name|lower %}
+              <i class="bi-laptop"></i>
+            {% elif 'монитор' in item.name|lower %}
+              <i class="bi-display"></i>
+            {% elif 'принтер' in item.name|lower %}
+              <i class="bi-printer"></i>
+            {% elif 'телефон' in item.name|lower %}
+              <i class="bi-phone"></i>
+            {% elif 'сервер' in item.name|lower %}
+              <i class="bi-hdd-rack"></i>
+            {% else %}
+              <i class="bi-pc-display-horizontal"></i>
+            {% endif %}
+          </div>
           <div class="proc-equipment-info">
-            {% if group.is_group %}
-            <button class="btn btn-sm btn-link p-0 me-1 proc-expand-btn" type="button" data-bs-toggle="collapse" data-bs-target="#group-{{ group.main.id }}">
-              <i class="bi-chevron-right"></i>
+            <div class="proc-equipment-name">
+              <a href="{% url 'procurement_frontend:equipment_detail' item.id %}" class="text-decoration-none">
+                {{ item.name }}
+              </a>
+            </div>
+            <div class="proc-equipment-inv">{{ item.inventory_number }}</div>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-link text-muted" type="button" data-bs-toggle="dropdown">
+              <i class="bi-three-dots-vertical"></i>
             </button>
-            {% endif %}
-            <div class="proc-equipment-icon-sm">
-              {% if group.main.category.icon %}
-                <i class="{{ group.main.category.icon }}"></i>
-              {% else %}
-                <i class="bi-box-seam"></i>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item" href="{% url 'procurement_frontend:equipment_detail' item.id %}">
+                  <i class="bi-eye me-2"></i>Просмотр
+                </a>
+              </li>
+              {% if can_manage %}
+              <li>
+                <a class="dropdown-item edit-equipment-btn" href="#" data-bs-toggle="modal" data-bs-target="#equipmentEditModal" data-id="{{ item.id }}">
+                  <i class="bi-pencil me-2"></i>Редактировать
+                </a>
+              </li>
               {% endif %}
+              <li>
+                <a class="dropdown-item" href="{% url 'api:v1:equipment-qr-code' item.id %}" target="_blank">
+                  <i class="bi-qr-code me-2"></i>QR-код
+                </a>
+              </li>
+              {% if can_manage %}
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferModal" data-id="{{ item.id }}">
+                  <i class="bi-arrow-left-right me-2"></i>Перевести
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#maintenanceModal" data-id="{{ item.id }}">
+                  <i class="bi-wrench me-2"></i>Обслуживание
+                </a>
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+        
+        <div class="proc-equipment-body">
+          <div class="proc-equipment-meta">
+            {% if item.category %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-tag"></i>
+              <span>{{ item.category.name }}</span>
             </div>
-            <div class="proc-equipment-details">
-              <div class="proc-equipment-name">
-                {% if group.is_group %}
-                  {{ group.main.name }}
-                {% else %}
-                  <a href="{% url 'procurement_frontend:equipment_detail' group.main.id %}">{{ group.main.name }}</a>
-                {% endif %}
-              </div>
-              <div class="proc-equipment-inv">
-                {% if group.is_group %}
-                  {{ group.count }} единиц
-                {% else %}
-                  {{ group.main.inventory_number }}
-                {% endif %}
-              </div>
+            {% endif %}
+            
+            {% if item.department %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-building"></i>
+              <span>{{ item.department.name }}</span>
             </div>
-          </div>
-          
-          <div class="proc-equipment-count">
-            <span class="badge {% if group.count > 1 %}bg-primary{% else %}bg-secondary{% endif %}">{{ group.count }}</span>
-          </div>
-          
-          <div class="proc-equipment-category">
-            {% if group.main.category %}
-              {{ group.main.category.name }}
-            {% else %}
-              <span class="text-muted">—</span>
             {% endif %}
-          </div>
-          
-          <div class="proc-equipment-dept">
-            {% if group.main.department %}
-              {{ group.main.department.name }}
-            {% else %}
-              <span class="text-muted">—</span>
+            
+            {% if item.responsible_person %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-person"></i>
+              <span>{{ item.responsible_person.get_full_name }}</span>
+            </div>
             {% endif %}
-          </div>
-          
-          <div class="proc-equipment-status">
-            {% include "procurement/_equipment_status.html" with status=group.main.status %}
-          </div>
-          
-          <div class="proc-equipment-actions">
-            {% if not group.is_group %}
-            <div class="dropdown">
-              <button class="btn btn-sm btn-link text-muted p-0" type="button" data-bs-toggle="dropdown" data-bs-auto-close="true">
-                <i class="bi-three-dots-vertical"></i>
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end" style="position: absolute;">
-                <li>
-                  <a class="dropdown-item" href="{% url 'procurement_frontend:equipment_detail' group.main.id %}">
-                    <i class="bi-eye me-2"></i>Просмотр
-                  </a>
-                </li>
-                {% if can_manage %}
-                <li>
-                  <a class="dropdown-item edit-equipment-btn" href="#" data-bs-toggle="modal" data-bs-target="#equipmentEditModal" data-id="{{ group.main.id }}">
-                    <i class="bi-pencil me-2"></i>Редактировать
-                  </a>
-                </li>
-                {% endif %}
-                <li>
-                  <a class="dropdown-item" href="{% url 'procurement:equipment-qr-code' group.main.id %}" target="_blank">
-                    <i class="bi-qr-code me-2"></i>QR-код
-                  </a>
-                </li>
-                {% if can_manage %}
-                <li><hr class="dropdown-divider"></li>
-                <li>
-                  <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferModal" data-id="{{ group.main.id }}">
-                    <i class="bi-arrow-left-right me-2"></i>Перевести
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#maintenanceModal" data-id="{{ group.main.id }}">
-                    <i class="bi-wrench me-2"></i>Обслуживание
-                  </a>
-                </li>
-                {% endif %}
-              </ul>
+            
+            {% if item.location %}
+            <div class="proc-equipment-meta-item">
+              <i class="bi-geo-alt"></i>
+              <span>{{ item.location }}</span>
             </div>
             {% endif %}
           </div>
         </div>
         
-        {# Развёрнутый список единиц группы #}
-        {% if group.is_group %}
-        <div class="collapse proc-equipment-group" id="group-{{ group.main.id }}">
-          {% for item in group.items %}
-          <div class="proc-equipment-subitem" data-id="{{ item.id }}">
-            <div class="proc-equipment-info">
-              <div class="proc-equipment-details">
-                <div class="proc-equipment-name">
-                  <a href="{% url 'procurement_frontend:equipment_detail' item.id %}">{{ item.inventory_number }}</a>
-                </div>
-                <div class="proc-equipment-inv">
-                  {% if item.responsible_person %}{{ item.responsible_person.get_full_name }}{% else %}Не назначен{% endif %}
-                </div>
-              </div>
-            </div>
-            
-            <div class="proc-equipment-count"></div>
-            <div class="proc-equipment-category"></div>
-            <div class="proc-equipment-dept"></div>
-            <div class="proc-equipment-status"></div>
-            
-            <div class="proc-equipment-actions">
-              <div class="dropdown">
-                <button class="btn btn-sm btn-link text-muted p-0" type="button" data-bs-toggle="dropdown" data-bs-auto-close="true">
-                  <i class="bi-three-dots-vertical"></i>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end" style="position: absolute;">
-                  <li>
-                    <a class="dropdown-item" href="{% url 'procurement_frontend:equipment_detail' item.id %}">
-                      <i class="bi-eye me-2"></i>Просмотр
-                    </a>
-                  </li>
-                  {% if can_manage %}
-                  <li>
-                    <a class="dropdown-item edit-equipment-btn" href="#" data-bs-toggle="modal" data-bs-target="#equipmentEditModal" data-id="{{ item.id }}">
-                      <i class="bi-pencil me-2"></i>Редактировать
-                    </a>
-                  </li>
-                  {% endif %}
-                  <li>
-                    <a class="dropdown-item" href="{% url 'procurement:equipment-qr-code' item.id %}" target="_blank">
-                      <i class="bi-qr-code me-2"></i>QR-код
-                    </a>
-                  </li>
-                  {% if can_manage %}
-                  <li><hr class="dropdown-divider"></li>
-                  <li>
-                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferModal" data-id="{{ item.id }}">
-                      <i class="bi-arrow-left-right me-2"></i>Перевести
-                    </a>
-                  </li>
-                  <li>
-                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#maintenanceModal" data-id="{{ item.id }}">
-                      <i class="bi-wrench me-2"></i>Обслуживание
-                    </a>
-                  </li>
-                  {% endif %}
-                </ul>
-              </div>
-            </div>
+        <div class="proc-equipment-footer">
+          {% include "procurement/_equipment_status.html" with status=item.status %}
+          
+          <div class="text-muted small">
+            {{ item.purchase_date|date:"d.m.Y" }}
           </div>
-          {% endfor %}
         </div>
-        {% endif %}
-        {% endfor %}
-      {% else %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="col-12">
         <div class="text-center py-5 text-muted">
           <i class="bi-inbox fs-1 d-block mb-2"></i>
-          <p class="mb-2">Оборудование не найдено</p>
-          <a href="#" data-bs-toggle="modal" data-bs-target="#equipmentCreateModal" class="btn btn-primary btn-sm">
-            <i class="bi-plus-lg me-1"></i>Добавить оборудование
-          </a>
+          <p class="mb-0">Оборудование не найдено</p>
         </div>
-      {% endif %}
-    </div>
-    
-    {# Пагинация #}
-    {% if page_obj %}
-    <div class="card-footer">
-      <nav aria-label="Страницы">
-        <ul class="pagination pagination-sm justify-content-center mb-0">
-          {% if page_obj.has_previous %}
-            <li class="page-item">
-              <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
-                <i class="bi-chevron-left"></i>
-              </a>
-            </li>
-          {% endif %}
-          
-          {% for num in page_obj.paginator.page_range %}
-            {% if page_obj.number == num %}
-              <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-              <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
-            {% endif %}
-          {% endfor %}
-          
-          {% if page_obj.has_next %}
-            <li class="page-item">
-              <a class="page-link" href="?page={{ page_obj.next_page_number }}">
-                <i class="bi-chevron-right"></i>
-              </a>
-            </li>
-          {% endif %}
-        </ul>
-      </nav>
-    </div>
+      </div>
     {% endif %}
   </div>
+  
+  {# Пагинация #}
+  {% if page_obj %}
+  <div class="d-flex justify-content-center mt-4">
+    <nav aria-label="Страницы">
+      <ul class="pagination">
+        {% if page_obj.has_previous %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
+              <i class="bi-chevron-left"></i>
+            </a>
+          </li>
+        {% endif %}
+        
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+            <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+          {% endif %}
+        {% endfor %}
+        
+        {% if page_obj.has_next %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}">
+              <i class="bi-chevron-right"></i>
+            </a>
+          </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
 
 {# ===== МОДАЛКА СОЗДАНИЯ ОБОРУДОВАНИЯ ===== #}
 <div class="modal fade" id="equipmentCreateModal" tabindex="-1" aria-hidden="true">
@@ -270,7 +187,7 @@
           
           <div class="col-md-4">
             <label class="form-label">Категория <span class="text-danger">*</span></label>
-            <select name="category" id="eqCategory" class="form-select" required>
+            <select name="category" class="form-select" required>
               <option value="">Выберите...</option>
               {% for cat in categories %}
                 <option value="{{ cat.id }}">{{ cat.name }}</option>
@@ -278,11 +195,10 @@
             </select>
           </div>
           
-          <div class="col-md-4">
-            <label class="form-label">Количество</label>
-            <input type="number" name="quantity" id="createQuantity" class="form-control" 
-                   value="1" min="1" max="100">
-            <small class="text-muted">При значении > 1 создаётся несколько единиц</small>
+          <div class="col-md-6">
+            <label class="form-label">Инвентарный номер <span class="text-danger">*</span></label>
+            <input type="text" name="inventory_number" class="form-control" 
+                   placeholder="INV-2024-0001" required maxlength="50">
           </div>
           
           <div class="col-md-6">
@@ -384,9 +300,8 @@
           </div>
           
           <div class="col-md-6">
-            <label class="form-label">Инвентарный номер</label>
-            <input type="text" name="inventory_number" id="editInventoryNumber" class="form-control" readonly>
-            <small class="text-muted">Назначается автоматически при создании</small>
+            <label class="form-label">Инвентарный номер <span class="text-danger">*</span></label>
+            <input type="text" name="inventory_number" id="editInventoryNumber" class="form-control" required maxlength="50">
           </div>
           
           <div class="col-md-6">
@@ -552,123 +467,20 @@
   </div>
 </div>
 
-{# ===== МОДАЛКА УПРАВЛЕНИЯ КАТЕГОРИЯМИ ===== #}
-<div class="modal fade" id="categoryManageModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">
-          <i class="bi-tags me-2"></i>Управление категориями оборудования
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
-      </div>
-      
-      <div class="modal-body">
-        {# Форма добавления категории #}
-        <div class="card mb-3">
-          <div class="card-header">
-            <h6 class="mb-0">Добавить новую категорию</h6>
-          </div>
-          <div class="card-body">
-            <form id="categoryCreateForm" onsubmit="handleCategoryCreate(event); return false;">
-              {% csrf_token %}
-              <div class="row g-2">
-                <div class="col-md-8">
-                  <input type="text" class="form-control form-control-sm" id="catName" 
-                         placeholder="Название категории *" required maxlength="100">
-                </div>
-                <div class="col-md-4">
-                  <input type="text" class="form-control form-control-sm" id="catIcon" 
-                         placeholder="Иконка (по умолчанию: bi-tag)" maxlength="50">
-                </div>
-                <div class="col-12">
-                  <textarea class="form-control form-control-sm" id="catDescription" rows="2" 
-                            placeholder="Описание (опционально)" maxlength="500"></textarea>
-                </div>
-                <div class="col-12">
-                  <button type="submit" class="btn btn-sm btn-primary" id="catSubmitBtn">
-                    <i class="bi-plus-lg me-1"></i>Добавить
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-        
-        {# Список существующих категорий #}
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0">Существующие категории</h6>
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadCategories()">
-              <i class="bi-arrow-clockwise"></i>
-            </button>
-          </div>
-          <div class="card-body p-0">
-            <div id="categoriesList" style="max-height: 300px; overflow-y: auto;">
-              <div class="text-center py-3">
-                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                  <span class="visually-hidden">Загрузка...</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
-  // Утилита debounce для задержки выполнения функции
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
-
-  // Обработка раскрытия групп оборудования
-  document.querySelectorAll('.proc-expand-btn').forEach(btn => {
-    const collapseEl = document.querySelector(btn.dataset.bsTarget);
-    if (collapseEl) {
-      collapseEl.addEventListener('show.bs.collapse', () => {
-        btn.setAttribute('aria-expanded', 'true');
-      });
-      collapseEl.addEventListener('hide.bs.collapse', () => {
-        btn.setAttribute('aria-expanded', 'false');
-      });
-    }
-  });
-
   // Поиск по оборудованию
   const searchInput = document.getElementById('eqSearch');
   if (searchInput) {
     searchInput.addEventListener('input', debounce((e) => {
       const query = e.target.value.toLowerCase();
-      document.querySelectorAll('.proc-equipment-item').forEach(item => {
-        const name = item.querySelector('.proc-equipment-name')?.textContent.toLowerCase() || '';
-        const inv = item.querySelector('.proc-equipment-inv')?.textContent.toLowerCase() || '';
+      document.querySelectorAll('.proc-equipment-card').forEach(card => {
+        const name = card.querySelector('.proc-equipment-name')?.textContent.toLowerCase() || '';
+        const inv = card.querySelector('.proc-equipment-inv')?.textContent.toLowerCase() || '';
         const match = name.includes(query) || inv.includes(query);
-        item.style.display = match ? '' : 'none';
-        
-        // Скрываем связанную группу если основной элемент скрыт
-        const groupId = item.dataset.id;
-        const groupEl = document.getElementById('group-' + groupId);
-        if (groupEl) {
-          groupEl.style.display = match ? '' : 'none';
-        }
+        card.style.display = match ? '' : 'none';
       });
     }, 300));
   }
@@ -757,79 +569,6 @@
   });
 
   // === СОЗДАНИЕ ОБОРУДОВАНИЯ ===
-
-  // Автоматическое заполнение отдела и ответственного при открытии модала
-  document.getElementById('equipmentCreateModal')?.addEventListener('show.bs.modal', async () => {
-    console.log('[Equipment Create] Modal opening...');
-    const form = document.getElementById('equipmentCreateForm');
-    if (!form) {
-      console.error('[Equipment Create] Form not found!');
-      return;
-    }
-    
-    // Сбрасываем количество на 1
-    const qtyInput = document.getElementById('createQuantity');
-    if (qtyInput) qtyInput.value = '1';
-    
-    {% if user_department %}
-      // Устанавливаем отдел пользователя
-      const deptSelect = form.querySelector('[name="department"]');
-      if (deptSelect) {
-        deptSelect.value = '{{ user_department.id }}';
-        console.log('[Equipment Create] Set department to:', '{{ user_department.id }}', '({{ user_department.name }})');
-      }
-    {% else %}
-      console.log('[Equipment Create] No user department found');
-    {% endif %}
-    
-    {% if department_head %}
-      // Устанавливаем руководителя отдела как ответственного
-      const respSelect = form.querySelector('[name="responsible_person"]');
-      if (respSelect) {
-        respSelect.value = '{{ department_head.id }}';
-        console.log('[Equipment Create] Set responsible to:', '{{ department_head.id }}', '({{ department_head.get_full_name }})');
-      }
-    {% else %}
-      console.log('[Equipment Create] No department head found');
-    {% endif %}
-  });
-
-  // Обработчик смены отдела - автоматически меняем ответственного на руководителя отдела
-  const createDeptSelect = document.querySelector('#equipmentCreateForm [name="department"]');
-  if (createDeptSelect) {
-    createDeptSelect.addEventListener('change', async (e) => {
-      const departmentId = e.target.value;
-      console.log('[Equipment Create] Department changed to:', departmentId);
-      
-      if (!departmentId) return;
-      
-      const respSelect = document.querySelector('#equipmentCreateForm [name="responsible_person"]');
-      if (!respSelect) return;
-      
-      try {
-        // Получаем информацию об отделе
-        const resp = await fetch(`/api/v1/departments/${departmentId}/`);
-        if (resp.ok) {
-          const dept = await resp.json();
-          console.log('[Equipment Create] Department data:', dept);
-          
-          if (dept.head) {
-            // API может возвращать либо ID, либо объект с информацией о руководителе
-            const headId = typeof dept.head === 'object' ? dept.head.id : dept.head;
-            respSelect.value = headId;
-            console.log('[Equipment Create] Set responsible to department head:', headId);
-          } else {
-            // Если в отделе нет руководителя, очищаем поле ответственного
-            respSelect.value = '';
-            console.log('[Equipment Create] Department has no head, clearing responsible');
-          }
-        }
-      } catch (e) {
-        console.error('[Equipment Create] Error fetching department:', e);
-      }
-    });
-  }
-
   document.getElementById('equipmentCreateForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
@@ -837,17 +576,10 @@
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
     
-    // Убираем CSRF токен из данных, он будет в заголовке
-    const csrfToken = data.csrfmiddlewaretoken;
-    delete data.csrfmiddlewaretoken;
-    
     // Убираем пустые значения
     Object.keys(data).forEach(key => {
       if (data[key] === '') delete data[key];
     });
-    
-    const quantity = parseInt(data.quantity) || 1;
-    console.log('[Equipment Create] Submitting data:', data, 'Quantity:', quantity);
     
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Создание...';
@@ -857,7 +589,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRFToken': csrfToken
+          'X-CSRFToken': formData.get('csrfmiddlewaretoken')
         },
         body: JSON.stringify(data)
       });
@@ -866,33 +598,15 @@
         const result = await resp.json();
         bootstrap.Modal.getInstance(document.getElementById('equipmentCreateModal')).hide();
         form.reset();
-        
-        // Если создано несколько единиц (массовое создание)
-        if (result.created_count && result.created_count > 1) {
-          alert(`Успешно создано ${result.created_count} единиц оборудования!`);
-          window.location.reload();
-        } else {
-          // Одна единица - переходим к ней
-          const equipmentId = result.id || (result.equipment && result.equipment[0]?.id);
-          if (equipmentId) {
-            window.location.href = `/procurement/equipment/${equipmentId}/`;
-          } else {
-            window.location.reload();
-          }
-        }
+        // Перезагрузить страницу или добавить в список
+        window.location.href = `/procurement/equipment/${result.id}/`;
       } else {
         const err = await resp.json();
-        let errorMsg = 'Ошибка создания:\n';
-        if (typeof err === 'object') {
-          Object.entries(err).forEach(([field, messages]) => {
-            if (Array.isArray(messages)) {
-              errorMsg += `${field}: ${messages.join(', ')}\n`;
-            } else {
-              errorMsg += `${field}: ${messages}\n`;
-            }
-          });
-        } else {
-          errorMsg = err.detail || JSON.stringify(err);
+        let errorMsg = 'Ошибка создания';
+        if (err.inventory_number) {
+          errorMsg = 'Инвентарный номер уже существует';
+        } else if (err.detail) {
+          errorMsg = err.detail;
         }
         alert(errorMsg);
       }
@@ -991,327 +705,5 @@
       submitBtn.innerHTML = '<i class="bi-check-lg me-1"></i>Сохранить изменения';
     }
   });
-
-  // === УПРАВЛЕНИЕ КАТЕГОРИЯМИ ===
-  // Загрузка списка категорий
-  // Обновление всех выпадающих списков категорий на странице
-  async function updateCategorySelects() {
-    console.log('[updateCategorySelects] Starting...');
-    try {
-      const resp = await fetch('/api/procurement/equipment-categories/');
-      if (resp.ok) {
-        const data = await resp.json();
-        const categories = Array.isArray(data) ? data : (data.results || []);
-        console.log('[updateCategorySelects] Loaded categories:', categories.length);
-        
-        // Найти все селекты категорий на странице
-        const selects = document.querySelectorAll('#eqCategory, #editCategory');
-        console.log('[updateCategorySelects] Found selects:', selects.length);
-        
-        selects.forEach((select, index) => {
-          console.log(`[updateCategorySelects] Updating select ${index + 1}:`, select.id);
-          const currentValue = select.value;
-          
-          // Очистить и заново заполнить
-          select.innerHTML = '<option value="">-- Выберите категорию --</option>';
-          categories.forEach(cat => {
-            const option = document.createElement('option');
-            option.value = cat.id;
-            option.textContent = cat.name;
-            if (cat.id == currentValue) {
-              option.selected = true;
-            }
-            select.appendChild(option);
-          });
-        });
-        console.log('[updateCategorySelects] Successfully updated all selects');
-      }
-    } catch (e) {
-      console.error('[updateCategorySelects] Error:', e);
-    }
-  }
-
-  async function loadCategories() {
-    console.log('[loadCategories] Starting...');
-    const list = document.getElementById('categoriesList');
-    if (!list) {
-      console.error('[loadCategories] Element categoriesList not found!');
-      return;
-    }
-    
-    list.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
-    
-    try {
-      console.log('[loadCategories] Fetching from API...');
-      const resp = await fetch('/api/procurement/equipment-categories/');
-      console.log('[loadCategories] Response status:', resp.status);
-      
-      if (resp.ok) {
-        const data = await resp.json();
-        console.log('[loadCategories] Data received:', data);
-        
-        // API может возвращать либо массив, либо объект с results
-        const categories = Array.isArray(data) ? data : (data.results || []);
-        console.log('[loadCategories] Categories count:', categories.length);
-        
-        if (categories.length === 0) {
-          list.innerHTML = '<div class="text-center text-muted py-3">Категорий пока нет</div>';
-          return;
-        }
-        
-        let html = '<div class="list-group list-group-flush">';
-        categories.forEach(cat => {
-          html += `
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-              <div class="flex-grow-1" style="cursor: pointer;" onclick="editCategory(${cat.id}, '${cat.name.replace(/'/g, "\\'")}', '${cat.icon || 'bi-tag'}', '${(cat.description || '').replace(/'/g, "\\'")}')">
-                <i class="${cat.icon || 'bi-tag'}"></i>
-                <strong class="ms-2">${cat.name}</strong>
-                ${cat.description ? `<br><small class="text-muted ms-4">${cat.description}</small>` : ''}
-              </div>
-              <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-primary" onclick="editCategory(${cat.id}, '${cat.name.replace(/'/g, "\\'")}', '${cat.icon || 'bi-tag'}', '${(cat.description || '').replace(/'/g, "\\'")}')">
-                  <i class="bi-pencil"></i>
-                </button>
-                <button class="btn btn-outline-danger" onclick="deleteCategory(${cat.id}, '${cat.name.replace(/'/g, "\\'")}')">
-                  <i class="bi-trash"></i>
-                </button>
-              </div>
-            </div>
-          `;
-        });
-        html += '</div>';
-        list.innerHTML = html;
-        console.log('[loadCategories] Categories rendered successfully');
-      } else {
-        console.error('[loadCategories] Response not OK:', resp.status);
-        list.innerHTML = '<div class="alert alert-danger m-2">Ошибка загрузки</div>';
-      }
-    } catch (e) {
-      console.error('[loadCategories] Error:', e);
-      list.innerHTML = '<div class="alert alert-danger m-2">Ошибка сети</div>';
-    }
-  }
-  
-  // Загрузка при открытии модала
-  console.log('[Init] Setting up modal event listener...');
-  const categoryModal = document.getElementById('categoryManageModal');
-  console.log('[Init] Modal element:', categoryModal);
-  
-  if (categoryModal) {
-    categoryModal.addEventListener('show.bs.modal', () => {
-      console.log('[Modal Event] show.bs.modal fired!');
-      loadCategories();
-    });
-    console.log('[Init] Event listener attached successfully');
-  } else {
-    console.error('[Init] Modal element not found!');
-  }
-
-  // Обработчик создания категории (вызывается из onsubmit формы)
-  async function handleCategoryCreate(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const name = document.getElementById('catName').value.trim();
-    const icon = document.getElementById('catIcon').value.trim();
-    const description = document.getElementById('catDescription').value.trim();
-    
-    if (!name) return false;
-    
-    const submitBtn = document.getElementById('catSubmitBtn');
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Создание...';
-    
-    try {
-      const csrfToken = document.querySelector('[name="csrfmiddlewaretoken"]').value;
-      // Если иконка не указана, используем стандартную
-      const payload = { 
-        name, 
-        icon: icon || 'bi-tag', 
-        description: description || '' 
-      };
-      
-      console.log('Creating category:', payload);
-      console.log('CSRF Token:', csrfToken);
-      
-      const resp = await fetch('/api/procurement/equipment-categories/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrfToken
-        },
-        body: JSON.stringify(payload)
-      });
-      
-      console.log('Response status:', resp.status);
-      
-      if (resp.ok) {
-        // Очистить форму
-        document.getElementById('catName').value = '';
-        document.getElementById('catIcon').value = '';
-        document.getElementById('catDescription').value = '';
-        
-        // Перезагрузить список в модале
-        await loadCategories();
-        
-        // Обновить все выпадающие списки на странице
-        await updateCategorySelects();
-        
-        // Показать сообщение об успехе
-        alert('Категория успешно создана и добавлена в формы!');
-      } else {
-        const err = await resp.json();
-        console.error('Server error:', err);
-        alert(err.name?.[0] || err.detail || JSON.stringify(err));
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Ошибка сети');
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = '<i class="bi-plus-lg me-1"></i>Добавить';
-    }
-    
-    return false;
-  }
-
-  // Редактирование категории
-  function editCategory(id, name, icon, description) {
-    // Заполняем форму данными категории
-    document.getElementById('catName').value = name;
-    document.getElementById('catIcon').value = icon;
-    document.getElementById('catDescription').value = description;
-    
-    // Меняем заголовок и кнопку
-    const form = document.getElementById('categoryCreateForm');
-    const submitBtn = document.getElementById('catSubmitBtn');
-    const cardHeader = form.closest('.card').querySelector('.card-header h6');
-    
-    cardHeader.textContent = 'Редактировать категорию';
-    submitBtn.innerHTML = '<i class="bi-check-lg me-1"></i>Сохранить';
-    
-    // Меняем обработчик формы на обновление
-    form.onsubmit = async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const newName = document.getElementById('catName').value.trim();
-      const newIcon = document.getElementById('catIcon').value.trim();
-      const newDescription = document.getElementById('catDescription').value.trim();
-      
-      if (!newName) return false;
-      
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Обновление...';
-      
-      try {
-        const csrfToken = document.querySelector('[name="csrfmiddlewaretoken"]').value;
-        const payload = { 
-          name: newName, 
-          icon: newIcon || 'bi-tag', 
-          description: newDescription || '' 
-        };
-        
-        const resp = await fetch(`/api/procurement/equipment-categories/${id}/`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken
-          },
-          body: JSON.stringify(payload)
-        });
-        
-        if (resp.ok) {
-          // Сбросить форму
-          cancelEdit();
-          
-          // Перезагрузить список в модале
-          await loadCategories();
-          
-          // Обновить все выпадающие списки на странице
-          await updateCategorySelects();
-          
-          alert('Категория успешно обновлена!');
-        } else {
-          const err = await resp.json();
-          console.error('Server error:', err);
-          alert(err.name?.[0] || err.detail || JSON.stringify(err));
-        }
-      } catch (e) {
-        console.error(e);
-        alert('Ошибка сети');
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="bi-check-lg me-1"></i>Сохранить';
-      }
-      
-      return false;
-    };
-    
-    // Добавляем кнопку отмены если её ещё нет
-    if (!document.getElementById('catCancelBtn')) {
-      const cancelBtn = document.createElement('button');
-      cancelBtn.type = 'button';
-      cancelBtn.id = 'catCancelBtn';
-      cancelBtn.className = 'btn btn-sm btn-secondary ms-2';
-      cancelBtn.innerHTML = '<i class="bi-x-lg me-1"></i>Отмена';
-      cancelBtn.onclick = cancelEdit;
-      submitBtn.parentNode.appendChild(cancelBtn);
-    }
-  }
-
-  // Отмена редактирования
-  function cancelEdit() {
-    const form = document.getElementById('categoryCreateForm');
-    const submitBtn = document.getElementById('catSubmitBtn');
-    const cardHeader = form.closest('.card').querySelector('.card-header h6');
-    const cancelBtn = document.getElementById('catCancelBtn');
-    
-    // Очистить форму
-    document.getElementById('catName').value = '';
-    document.getElementById('catIcon').value = '';
-    document.getElementById('catDescription').value = '';
-    
-    // Вернуть заголовок и кнопку
-    cardHeader.textContent = 'Добавить новую категорию';
-    submitBtn.innerHTML = '<i class="bi-plus-lg me-1"></i>Добавить';
-    
-    // Удалить кнопку отмены
-    if (cancelBtn) {
-      cancelBtn.remove();
-    }
-    
-    // Вернуть оригинальный обработчик
-    form.onsubmit = (e) => handleCategoryCreate(e);
-  }
-
-  
-  // Удаление категории
-  async function deleteCategory(id, name) {
-    if (!confirm(`Удалить категорию "${name}"?\n\nВнимание: это возможно только если к категории не привязано оборудование.`)) {
-      return;
-    }
-    
-    try {
-      const resp = await fetch(`/api/procurement/equipment-categories/${id}/`, {
-        method: 'DELETE',
-        headers: {
-          'X-CSRFToken': document.querySelector('[name="csrfmiddlewaretoken"]').value
-        }
-      });
-      
-      if (resp.ok || resp.status === 204) {
-        await loadCategories();
-        await updateCategorySelects(); // Обновить выпадающие списки
-        alert('Категория удалена');
-      } else {
-        const err = await resp.json();
-        alert(err.detail || 'Ошибка удаления. Возможно, к категории привязано оборудование.');
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Ошибка сети');
-    }
-  }
 </script>
 {% endblock %}

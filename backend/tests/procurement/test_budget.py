@@ -11,6 +11,7 @@ from rest_framework import status
 from procurement.models import (
     Budget,
     ProcurementRequest,
+    ProcurementItem,
 )
 from procurement.constants import ProcurementStatus, UrgencyLevel
 
@@ -47,24 +48,37 @@ class TestBudgetReservedAmount:
 
     def test_reserved_amount_with_pending(self):
         """Тест: reserved_amount считает сумму pending заявок."""
-        # Создаём pending заявку
-        ProcurementRequest.objects.create(
+        # Создаём pending заявки с позициями
+        request1 = ProcurementRequest.objects.create(
             title='Заявка 1',
             description='Описание',
             department=self.department,
             requestor=self.user,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.LOW,
-            estimated_cost=Decimal('5000.00'),
         )
-        ProcurementRequest.objects.create(
+        ProcurementItem.objects.create(
+            request=request1,
+            name='Товар 1',
+            quantity=1,
+            unit='шт',
+            estimated_unit_price=Decimal('5000.00'),
+        )
+        
+        request2 = ProcurementRequest.objects.create(
             title='Заявка 2',
             description='Описание',
             department=self.department,
             requestor=self.user,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=Decimal('3000.00'),
+        )
+        ProcurementItem.objects.create(
+            request=request2,
+            name='Товар 2',
+            quantity=1,
+            unit='шт',
+            estimated_unit_price=Decimal('3000.00'),
         )
         
         # reserved должен быть 8000
@@ -72,14 +86,20 @@ class TestBudgetReservedAmount:
 
     def test_available_amount(self):
         """Тест: available_amount = remaining - reserved."""
-        ProcurementRequest.objects.create(
+        request = ProcurementRequest.objects.create(
             title='Pending заявка',
             description='Описание',
             department=self.department,
             requestor=self.user,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.LOW,
-            estimated_cost=Decimal('10000.00'),
+        )
+        ProcurementItem.objects.create(
+            request=request,
+            name='Товар',
+            quantity=1,
+            unit='шт',
+            estimated_unit_price=Decimal('10000.00'),
         )
         
         # remaining = 100000 - 20000 = 80000
@@ -201,7 +221,6 @@ class TestProcurementStatsEndpoints:
                 requestor=self.user,
                 status=ProcurementStatus.PENDING,
                 urgency=UrgencyLevel.MEDIUM,
-                estimated_cost=Decimal('5000.00'),
             )
 
     def test_stats_overview(self):

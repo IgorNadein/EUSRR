@@ -72,7 +72,6 @@ def procurement_request(db, department, user):
         requestor=user,
         status=ProcurementStatus.DRAFT,
         urgency=UrgencyLevel.MEDIUM,
-        estimated_cost=Decimal("50000.00"),
     )
 
 
@@ -98,8 +97,13 @@ class TestProcurementRequestAPI:
         assert len(response.data['results']) == 1
         assert response.data['results'][0]['title'] == "Тестовая заявка"
 
-    def test_create_request(self, api_client, user, department):
+    def test_create_request(
+        self, api_client, user, department, link_factory
+    ):
         """Тест: создание заявки."""
+        # Связываем пользователя с отделом (необходимо для создания заявки)
+        link_factory(user, department, is_active=True)
+        
         api_client.force_authenticate(user=user)
         url = reverse('procurement:procurementrequest-list')
         
@@ -108,7 +112,6 @@ class TestProcurementRequestAPI:
             'description': 'Нужны компьютеры',
             'department': department.id,
             'urgency': UrgencyLevel.HIGH,
-            'estimated_cost': '100000.00',
             'items': [
                 {
                     'name': 'Ноутбук',

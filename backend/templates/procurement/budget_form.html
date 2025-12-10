@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if budget_id %}Редактирование бюджета{% else %}Создание бюджета{% endif %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+<style>
+  .skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+  }
+  @keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+  {# ===== ШАПКА СТРАНИЦЫ ===== #}
+  <div class="page-header d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex align-items-center gap-3">
+      <a href="/procurement/budgets/" class="btn btn-outline-secondary btn-icon">
+        <i class="bi-arrow-left"></i>
+      </a>
+      <div class="page-header-icon">
+        <i class="bi-wallet2"></i>
+      </div>
+      <div>
+        <h1 class="page-header-title mb-0" id="pageTitle">
+          {% if budget_id %}Редактирование бюджета{% else %}Создание бюджета{% endif %}
+        </h1>
+        <p class="text-muted mb-0" id="pageSubtitle">
+          {% if budget_id %}Загрузка...{% else %}Новый бюджет для отдела{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {# ===== ФОРМА ===== #}
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="bi-cash-stack me-2"></i>Параметры бюджета
+          </h5>
+        </div>
+        <div class="card-body">
+          <form id="budgetForm">
+            {% csrf_token %}
+            
+            {# Ошибки формы #}
+            <div id="formErrors" class="alert alert-danger d-none"></div>
+
+            <div class="row g-3">
+              {# Отдел #}
+              <div class="col-md-12">
+                <label for="department" class="form-label">
+                  Отдел <span class="text-danger">*</span>
+                </label>
+                <select id="department" name="department" class="form-select" required>
+                  <option value="">Выберите отдел...</option>
+                </select>
+                <div id="departmentError" class="invalid-feedback"></div>
+              </div>
+
+              {# Год #}
+              <div class="col-md-6">
+                <label for="year" class="form-label">
+                  Год <span class="text-danger">*</span>
+                </label>
+                <input type="number" id="year" name="year" class="form-control" 
+                       min="2020" max="2100" required>
+                <div id="yearError" class="invalid-feedback"></div>
+              </div>
+
+              {# Квартал #}
+              <div class="col-md-6">
+                <label for="quarter" class="form-label">
+                  Квартал <span class="text-danger">*</span>
+                </label>
+                <select id="quarter" name="quarter" class="form-select" required>
+                  <option value="1">Q1 (Январь - Март)</option>
+                  <option value="2">Q2 (Апрель - Июнь)</option>
+                  <option value="3">Q3 (Июль - Сентябрь)</option>
+                  <option value="4">Q4 (Октябрь - Декабрь)</option>
+                </select>
+                <div id="quarterError" class="invalid-feedback"></div>
+              </div>
+
+              {# Сумма #}
+              <div class="col-md-12">
+                <label for="allocated_amount" class="form-label">
+                  Выделенная сумма (₽) <span class="text-danger">*</span>
+                </label>
+                <div class="input-group">
+                  <input type="number" id="allocated_amount" name="allocated_amount" 
+                         class="form-control" min="0" step="0.01" required>
+                  <span class="input-group-text">₽</span>
+                </div>
+                <div id="allocated_amountError" class="invalid-feedback"></div>
+                <div class="form-text">Общая сумма бюджета на указанный квартал</div>
+              </div>
+            </div>
+
+            {# Кнопки #}
+            <div class="d-flex gap-2 mt-4">
+              <button type="submit" class="btn btn-primary" id="submitBtn">
+                <i class="bi-check-lg me-2"></i>
+                <span id="submitBtnText">{% if budget_id %}Сохранить{% else %}Создать{% endif %}</span>
+              </button>
+              <a href="/procurement/budgets/" class="btn btn-outline-secondary">
+                Отмена
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {# Подсказка #}
+    <div class="col-lg-4">
+      <div class="card border-info">
+        <div class="card-header bg-info bg-opacity-10">
+          <h6 class="card-title mb-0 text-info">
+            <i class="bi-info-circle me-2"></i>Справка
+          </h6>
+        </div>
+        <div class="card-body small">
+          <p class="mb-2">
+            <strong>Бюджет отдела</strong> — это сумма, выделенная отделу на закупки 
+            в определённом квартале.
+          </p>
+          <p class="mb-2">
+            При создании заявок на закупку система проверяет остаток бюджета 
+            и предупреждает о превышении.
+          </p>
+          <p class="mb-0">
+            <strong>Потраченная сумма</strong> обновляется автоматически 
+            при завершении заявок.
+          </p>
+        </div>
+      </div>
+
+      <div id="budgetStatusCard" class="card mt-3 d-none">
+        <div class="card-header">
+          <h6 class="card-title mb-0">Текущее состояние</h6>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted">Выделено:</span>
+            <span id="statusAllocated" class="fw-bold">0 ₽</span>
+          </div>
+          <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted">Потрачено:</span>
+            <span id="statusSpent" class="fw-bold text-danger">0 ₽</span>
+          </div>
+          <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted">Остаток:</span>
+            <span id="statusRemaining" class="fw-bold text-success">0 ₽</span>
+          </div>
+          <hr>
+          <div class="d-flex justify-content-between">
+            <span class="text-muted">Использовано:</span>
+            <span id="statusPercent" class="fw-bold">0%</span>
+          </div>
+          <div class="progress mt-2" style="height: 8px;">
+            <div id="statusProgress" class="progress-bar bg-success" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // === СОСТОЯНИЕ ===
+  const budgetId = {{ budget_id|default:"null" }};
+  let departments = [];
+  let budgetData = null;
+  
+  // === ИНИЦИАЛИЗАЦИЯ ===
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadDepartments();
+    
+    if (budgetId) {
+      await loadBudget();
+    } else {
+      // Установить текущий год и квартал по умолчанию
+      const now = new Date();
+      document.getElementById('year').value = now.getFullYear();
+      document.getElementById('quarter').value = Math.ceil((now.getMonth() + 1) / 3);
+    }
+    
+    setupEventListeners();
+  });
+  
+  // === ЗАГРУЗКА ОТДЕЛОВ ===
+  async function loadDepartments() {
+    try {
+      const resp = await fetch('/api/employees/departments/');
+      if (resp.ok) {
+        departments = await resp.json();
+        
+        const select = document.getElementById('department');
+        departments.forEach(dept => {
+          select.insertAdjacentHTML('beforeend', 
+            `<option value="${dept.id}">${dept.name}</option>`);
+        });
+      }
+    } catch (e) {
+      console.error('Error loading departments:', e);
+    }
+  }
+  
+  // === ЗАГРУЗКА БЮДЖЕТА ===
+  async function loadBudget() {
+    try {
+      const resp = await fetch(`/api/procurement/budgets/${budgetId}/`);
+      if (!resp.ok) {
+        if (resp.status === 404) {
+          showError('Бюджет не найден');
+          return;
+        }
+        throw new Error('Ошибка загрузки');
+      }
+      
+      budgetData = await resp.json();
+      
+      // Заполняем форму
+      const deptId = typeof budgetData.department === 'object' 
+        ? budgetData.department.id 
+        : budgetData.department;
+      const deptName = typeof budgetData.department === 'object'
+        ? budgetData.department.name
+        : (departments.find(d => d.id == deptId)?.name || 'Отдел');
+      
+      document.getElementById('department').value = deptId;
+      document.getElementById('year').value = budgetData.year;
+      document.getElementById('quarter').value = budgetData.quarter;
+      document.getElementById('allocated_amount').value = budgetData.allocated_amount;
+      
+      // Обновляем заголовок
+      document.getElementById('pageSubtitle').textContent = 
+        `${deptName} — ${budgetData.year} Q${budgetData.quarter}`;
+      
+      // Показываем карточку статуса
+      renderStatusCard();
+      
+    } catch (e) {
+      console.error('Error loading budget:', e);
+      showError('Ошибка загрузки бюджета');
+    }
+  }
+  
+  // === РЕНДЕРИНГ СТАТУСА ===
+  function renderStatusCard() {
+    if (!budgetData) return;
+    
+    const card = document.getElementById('budgetStatusCard');
+    card.classList.remove('d-none');
+    
+    document.getElementById('statusAllocated').textContent = 
+      formatNumber(budgetData.allocated_amount) + ' ₽';
+    document.getElementById('statusSpent').textContent = 
+      formatNumber(budgetData.spent_amount) + ' ₽';
+    document.getElementById('statusRemaining').textContent = 
+      formatNumber(budgetData.remaining_amount) + ' ₽';
+    
+    const pct = budgetData.utilization_percentage || 0;
+    document.getElementById('statusPercent').textContent = Math.round(pct * 10) / 10 + '%';
+    
+    const progressBar = document.getElementById('statusProgress');
+    progressBar.style.width = pct + '%';
+    progressBar.className = 'progress-bar ' + 
+      (pct > 90 ? 'bg-danger' : pct > 70 ? 'bg-warning' : 'bg-success');
+  }
+  
+  // === ОТПРАВКА ФОРМЫ ===
+  async function submitForm(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = document.getElementById('submitBtnText').textContent;
+    
+    // Сброс ошибок
+    clearErrors();
+    
+    submitBtn.disabled = true;
+    document.getElementById('submitBtnText').textContent = 'Сохранение...';
+    
+    try {
+      const data = {
+        department: document.getElementById('department').value,
+        year: parseInt(document.getElementById('year').value),
+        quarter: parseInt(document.getElementById('quarter').value),
+        allocated_amount: parseFloat(document.getElementById('allocated_amount').value)
+      };
+      
+      const url = budgetId 
+        ? `/api/procurement/budgets/${budgetId}/`
+        : '/api/procurement/budgets/';
+      
+      const method = budgetId ? 'PATCH' : 'POST';
+      
+      const resp = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (!resp.ok) {
+        const err = await resp.json();
+        handleErrors(err);
+        return;
+      }
+      
+      // Успех - перенаправляем на список
+      window.location.href = '/procurement/budgets/';
+      
+    } catch (e) {
+      console.error('Error saving budget:', e);
+      showError('Ошибка сохранения: ' + e.message);
+    } finally {
+      submitBtn.disabled = false;
+      document.getElementById('submitBtnText').textContent = originalText;
+    }
+  }
+  
+  // === ОБРАБОТКА ОШИБОК ===
+  function handleErrors(errors) {
+    if (typeof errors === 'string') {
+      showError(errors);
+      return;
+    }
+    
+    if (errors.detail) {
+      showError(errors.detail);
+      return;
+    }
+    
+    // Ошибки полей
+    const fields = ['department', 'year', 'quarter', 'allocated_amount'];
+    fields.forEach(field => {
+      if (errors[field]) {
+        const input = document.getElementById(field);
+        const errorDiv = document.getElementById(field + 'Error');
+        
+        input.classList.add('is-invalid');
+        errorDiv.textContent = Array.isArray(errors[field]) 
+          ? errors[field].join(', ') 
+          : errors[field];
+        errorDiv.classList.add('d-block');
+      }
+    });
+    
+    // Общие ошибки
+    if (errors.non_field_errors) {
+      showError(errors.non_field_errors.join(', '));
+    }
+  }
+  
+  function showError(message) {
+    const errorDiv = document.getElementById('formErrors');
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('d-none');
+  }
+  
+  function clearErrors() {
+    document.getElementById('formErrors').classList.add('d-none');
+    
+    const fields = ['department', 'year', 'quarter', 'allocated_amount'];
+    fields.forEach(field => {
+      const input = document.getElementById(field);
+      const errorDiv = document.getElementById(field + 'Error');
+      
+      input.classList.remove('is-invalid');
+      errorDiv.textContent = '';
+      errorDiv.classList.remove('d-block');
+    });
+  }
+  
+  // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+  function formatNumber(num) {
+    return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2 }).format(num);
+  }
+  
+  function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+           document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+  }
+  
+  // === ОБРАБОТЧИКИ СОБЫТИЙ ===
+  function setupEventListeners() {
+    document.getElementById('budgetForm').addEventListener('submit', submitForm);
+  }
+</script>
+{% endblock %}

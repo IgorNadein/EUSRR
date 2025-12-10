@@ -78,7 +78,6 @@ class TestProcurementRequest:
             requestor=user,
             status=ProcurementStatus.DRAFT,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=Decimal("250000.00"),
         )
 
         assert request.id is not None
@@ -92,7 +91,6 @@ class TestProcurementRequest:
             title="Канцтовары",
             department=department,
             requestor=user,
-            estimated_cost=Decimal("5000.00"),
         )
 
         approvals = request.get_required_approvals()
@@ -100,12 +98,19 @@ class TestProcurementRequest:
         assert ApprovalRole.DEPARTMENT_HEAD in approvals
 
     def test_get_required_approvals_medium(self, department, user):
-        """Тест получения уровней согласования для средней суммы."""
+        """Тест получения уровней согласования для средней суммы (10k-50k)."""
         request = ProcurementRequest.objects.create(
             title="Оргтехника",
             department=department,
             requestor=user,
-            estimated_cost=Decimal("30000.00"),
+        )
+        # Добавляем позицию для средней суммы (30000)
+        ProcurementItem.objects.create(
+            request=request,
+            name='Принтер',
+            quantity=1,
+            unit='шт',
+            estimated_unit_price=Decimal('30000.00'),
         )
 
         approvals = request.get_required_approvals()
@@ -114,12 +119,19 @@ class TestProcurementRequest:
         assert ApprovalRole.FINANCE_MANAGER in approvals
 
     def test_get_required_approvals_high(self, department, user):
-        """Тест получения уровней согласования для большой суммы."""
+        """Тест получения уровней согласования для большой суммы (>50k)."""
         request = ProcurementRequest.objects.create(
             title="Серверное оборудование",
             department=department,
             requestor=user,
-            estimated_cost=Decimal("500000.00"),
+        )
+        # Добавляем позицию для большой суммы (500000)
+        ProcurementItem.objects.create(
+            request=request,
+            name='Сервер',
+            quantity=1,
+            unit='шт',
+            estimated_unit_price=Decimal('500000.00'),
         )
 
         approvals = request.get_required_approvals()
@@ -134,7 +146,6 @@ class TestProcurementRequest:
             title="Покупка",
             department=department,
             requestor=user,
-            estimated_cost=Decimal("50000.00"),
         )
 
         available, remaining = request.check_budget_available()

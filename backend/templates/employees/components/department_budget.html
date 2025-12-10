@@ -1,0 +1,68 @@
+{# --- Виджет бюджета отдела --- #}
+{% if department_budget or user.is_staff %}
+<section class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h6 class="mb-0">
+      <i class="bi-wallet2 me-2 text-primary"></i>Бюджет Q{{ budget_quarter }} {{ budget_year }}
+    </h6>
+    {% if user.is_staff %}
+    <a href="{% url 'procurement_frontend:budget_list' %}?department={{ dept.id }}" 
+       class="btn btn-sm btn-outline-primary">
+      <i class="bi-gear me-1"></i>Управление
+    </a>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if department_budget %}
+      {# Показываем данные бюджета #}
+      <div class="d-flex justify-content-between mb-2">
+        <span class="text-muted small">Выделено:</span>
+        <span class="fw-bold">{{ department_budget.allocated_amount|floatformat:0 }} ₽</span>
+      </div>
+      <div class="d-flex justify-content-between mb-2">
+        <span class="text-muted small">Потрачено:</span>
+        <span class="fw-bold text-danger">{{ department_budget.spent_amount|floatformat:0 }} ₽</span>
+      </div>
+      <div class="d-flex justify-content-between mb-3">
+        <span class="text-muted small">Остаток:</span>
+        <span class="fw-bold text-success">{{ department_budget.remaining_amount|floatformat:0 }} ₽</span>
+      </div>
+      
+      {# Прогресс-бар использования #}
+      {% with util=department_budget.utilization_percentage|default:0 %}
+      <div class="progress" style="height: 8px;">
+        <div class="progress-bar {% if util > 90 %}bg-danger{% elif util > 70 %}bg-warning{% else %}bg-success{% endif %}" 
+             role="progressbar"
+             style="width: {{ util }}%"
+             aria-valuenow="{{ util }}"
+             aria-valuemin="0"
+             aria-valuemax="100"></div>
+      </div>
+      <div class="text-center small text-muted mt-1">
+        Использовано {{ util|floatformat:1 }}%
+      </div>
+      {% endwith %}
+      
+      {# Ссылка на заявки отдела #}
+      <div class="mt-3 pt-2 border-top">
+        <a href="{% url 'procurement_frontend:request_list' %}?department={{ dept.id }}" 
+           class="btn btn-sm btn-outline-secondary w-100">
+          <i class="bi-file-text me-1"></i>Заявки отдела
+        </a>
+      </div>
+    {% else %}
+      {# Бюджет не создан #}
+      <div class="text-center text-muted py-2">
+        <i class="bi-exclamation-circle fs-4 d-block mb-2"></i>
+        <p class="small mb-2">Бюджет на {{ budget_quarter }} квартал не задан</p>
+        {% if user.is_staff %}
+        <a href="{% url 'procurement_frontend:budget_create' %}?department={{ dept.id }}" 
+           class="btn btn-sm btn-primary">
+          <i class="bi-plus-lg me-1"></i>Создать бюджет
+        </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

@@ -160,7 +160,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.DRAFT,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=15000,
         )
         ProcurementItem.objects.create(
             request=request,
@@ -197,7 +196,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.DRAFT,
             urgency=UrgencyLevel.LOW,
-            estimated_cost=0,
         )
 
         self.client.force_authenticate(user=self.requestor)
@@ -219,7 +217,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.DRAFT,
             urgency=UrgencyLevel.HIGH,
-            estimated_cost=200000,
         )
         ProcurementItem.objects.create(
             request=request,
@@ -248,7 +245,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=3000,
         )
         ProcurementItem.objects.create(
             request=request,
@@ -293,7 +289,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.LOW,
-            estimated_cost=5000,
         )
 
         Approval.objects.create(
@@ -331,7 +326,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=45000,
         )
         ProcurementItem.objects.create(
             request=request,
@@ -391,7 +385,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.LOW,
-            estimated_cost=5000,
         )
 
         Approval.objects.create(
@@ -425,7 +418,6 @@ class TestProcurementWorkflow:
             requestor=self.requestor,
             status=ProcurementStatus.PENDING,
             urgency=UrgencyLevel.MEDIUM,
-            estimated_cost=10000,
         )
 
         assert request.is_editable is False
