@@ -309,7 +309,7 @@
     const html = requests.map(req => {
       const urgIcon = urgencyIcons[req.urgency] || 'bi-dash-circle';
       const date = new Date(req.created_at).toLocaleDateString('ru-RU');
-      const cost = req.estimated_cost ? `${parseFloat(req.estimated_cost).toLocaleString('ru-RU')} ₽` : '—';
+      const cost = req.total_cost ? `${parseFloat(req.total_cost).toLocaleString('ru-RU')} ₽` : '—';
       const deptName = req.department_name || req.department?.name || '—';
       
       return `
