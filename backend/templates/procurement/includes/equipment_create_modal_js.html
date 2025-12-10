@@ -112,10 +112,10 @@
       if (fromItemId) {
         // Создание из позиции заявки - используем специальный endpoint
         // Сначала генерируем инвентарный номер
-        const invResp = await fetch('/api/procurement/equipment/generate-inventory-number/');
+        const invResp = await fetch('/api/v1/procurement/equipment/generate-inventory-number/');
         const invData = await invResp.json();
         
-        resp = await fetch(`/api/procurement/items/${fromItemId}/create_equipment/`, {
+        resp = await fetch(`/api/v1/procurement/items/${fromItemId}/create_equipment/`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -152,7 +152,7 @@
       } else {
         // Обычное создание оборудования
         for (let i = 0; i < quantity; i++) {
-          resp = await fetch('/api/procurement/equipment/', {
+          resp = await fetch('/api/v1/procurement/equipment/', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}{{ equipment.name }}{% endblock %}
+{% block title %}Оборудование{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
@@ -51,7 +51,7 @@
             </div>
             
             <div class="text-end">
-              <a href="/api/procurement/equipment/{{ equipment.id }}/qr_code/" 
+              <a href="/api/v1/procurement/equipment/{{ equipment.id }}/qr_code/" 
                  target="_blank" 
                  class="btn btn-outline-primary btn-sm">
                 <i class="bi-qr-code me-1"></i>QR-код
@@ -347,6 +347,43 @@
 
 {% block extra_js %}
 <script>
+  // Получаем ID оборудования из URL
+  const equipmentId = window.location.pathname.split('/').filter(x => x && !isNaN(x))[0];
+
+  // Загрузка данных при старте
+  document.addEventListener('DOMContentLoaded', () => {
+    if (equipmentId) {
+      loadEquipmentDetail();
+    }
+  });
+
+  async function loadEquipmentDetail() {
+    try {
+      const resp = await fetch(`/api/v1/procurement/equipment/${equipmentId}/`);
+      if (!resp.ok) {
+        throw new Error('Equipment not found');
+      }
+      
+      const equipment = await resp.json();
+      document.title = equipment.name;
+      
+      // Обновляем хлебные крошки
+      const breadcrumb = document.querySelector('.breadcrumb-item.active');
+      if (breadcrumb) {
+        breadcrumb.textContent = equipment.inventory_number;
+      }
+      
+    } catch (e) {
+      console.error('Error loading equipment:', e);
+      document.querySelector('.container').innerHTML = `
+        <div class="alert alert-danger">
+          <i class="bi-exclamation-triangle me-2"></i>
+          Ошибка загрузки оборудования
+        </div>
+      `;
+    }
+  }
+
 {% if can_manage %}
   // Обслуживание
   document.getElementById('maintenanceForm')?.addEventListener('submit', async (e) => {
@@ -359,11 +396,11 @@
     };
     
     try {
-      const resp = await fetch('/api/procurement/equipment/{{ equipment.id }}/add_maintenance/', {
+      const resp = await fetch(`/api/v1/procurement/equipment/${equipmentId}/add_maintenance/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRFToken': '{{ csrf_token }}'
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}'
         },
         body: JSON.stringify(data)
       });
@@ -388,7 +425,7 @@
     };
     
     try {
-      const resp = await fetch('/api/procurement/equipment/{{ equipment.id }}/transfer/', {
+      const resp = await fetch('/api/v1/procurement/equipment/{{ equipment.id }}/transfer/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -414,7 +451,7 @@
     if (!reason) return;
     
     try {
-      const resp = await fetch('/api/procurement/equipment/{{ equipment.id }}/write_off/', {
+      const resp = await fetch('/api/v1/procurement/equipment/{{ equipment.id }}/write_off/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

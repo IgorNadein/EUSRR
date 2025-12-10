@@ -15,12 +15,8 @@ urlpatterns = [
     path("finance/", include("finance.urls", namespace="finance")),
     path(
         "procurement/",
-        include("procurement.urls_frontend", namespace="procurement")
+        include("procurement.urls_frontend", namespace="procurement_frontend")
     ),
     path("api/", include(("api.urls", "api"), namespace="api")),
-    path(
-        "api/procurement/",
-        include("procurement.urls", namespace="procurement_api")
-    ),
     path("", include("feed.urls_front", namespace="feed")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -20,7 +20,7 @@
         <i class="bi-hourglass-split"></i>
       </div>
       <div class="proc-stat-content">
-        <div class="proc-stat-value" id="statPending">{{ stats.pending|default:0 }}</div>
+        <div class="proc-stat-value" id="statPending">0</div>
         <div class="proc-stat-label">На согласовании</div>
       </div>
     </div>
@@ -30,7 +30,7 @@
         <i class="bi-check-circle"></i>
       </div>
       <div class="proc-stat-content">
-        <div class="proc-stat-value" id="statApproved">{{ stats.approved|default:0 }}</div>
+        <div class="proc-stat-value" id="statApproved">0</div>
         <div class="proc-stat-label">Одобрено</div>
       </div>
     </div>
@@ -40,13 +40,7 @@
         <i class="bi-wallet2"></i>
       </div>
       <div class="proc-stat-content">
-        <div class="proc-stat-value" id="statBudget">
-          {% if budget %}
-            {{ budget.remaining_percent|floatformat:0 }}%
-          {% else %}
-            —
-          {% endif %}
-        </div>
+        <div class="proc-stat-value" id="statBudget">—</div>
         <div class="proc-stat-label">Бюджет отдела</div>
       </div>
     </div>
@@ -56,7 +50,7 @@
         <i class="bi-pc-display"></i>
       </div>
       <div class="proc-stat-content">
-        <div class="proc-stat-value" id="statEquipment">{{ stats.equipment|default:0 }}</div>
+        <div class="proc-stat-value" id="statEquipment">0</div>
         <div class="proc-stat-label">Оборудование</div>
       </div>
     </div>
@@ -94,8 +88,7 @@
       </a>
     </div>
     
-    {% if can_approve %}
-    <div class="col-md-6 col-lg-3">
+    <div class="col-md-6 col-lg-3" id="approvalsCard" style="display:none;">
       <a href="{% url 'procurement_frontend:pending_approvals' %}" class="card text-decoration-none h-100">
         <div class="card-body text-center py-4">
           <i class="bi-clipboard-check text-warning fs-1 mb-2 d-block"></i>
@@ -104,51 +97,7 @@
         </div>
       </a>
     </div>
-    {% endif %}
   </div>
-
-  {# ===== МОЙ БЮДЖЕТ (если есть) ===== #}
-  {% if budget %}
-  <div class="card mb-4">
-    <div class="card-header">
-      <h5 class="mb-0">
-        <i class="bi-pie-chart me-2"></i>Бюджет отдела на {{ budget.quarter }} кв. {{ budget.year }}
-      </h5>
-    </div>
-    <div class="card-body">
-      <div class="proc-budget-amounts">
-        <div class="proc-budget-amount">
-          <div class="proc-budget-value text-success">{{ budget.allocated_amount|floatformat:0 }} ₽</div>
-          <div class="proc-budget-label">Выделено</div>
-        </div>
-        <div class="proc-budget-amount">
-          <div class="proc-budget-value text-danger">{{ budget.spent_amount|floatformat:0 }} ₽</div>
-          <div class="proc-budget-label">Потрачено</div>
-        </div>
-        <div class="proc-budget-amount">
-          <div class="proc-budget-value text-warning">{{ budget.reserved_amount|floatformat:0 }} ₽</div>
-          <div class="proc-budget-label">Зарезервировано</div>
-        </div>
-        <div class="proc-budget-amount">
-          <div class="proc-budget-value text-primary">{{ budget.available_amount|floatformat:0 }} ₽</div>
-          <div class="proc-budget-label">Доступно</div>
-        </div>
-      </div>
-      
-      <div class="proc-budget-progress">
-        {% with percent=budget.spent_percent %}
-        <div class="proc-budget-bar {% if percent > 80 %}danger{% elif percent > 60 %}warning{% else %}safe{% endif %}"
-             style="width: {{ percent|floatformat:0 }}%"></div>
-        {% endwith %}
-      </div>
-      <div class="text-end mt-2">
-        <small class="text-muted">
-          Использовано {{ budget.spent_percent|floatformat:0 }}% бюджета
-        </small>
-      </div>
-    </div>
-  </div>
-  {% endif %}
 
   {# ===== ПОСЛЕДНИЕ ЗАЯВКИ ===== #}
   <div class="card mb-4">
@@ -160,59 +109,11 @@
         Все заявки <i class="bi-arrow-right"></i>
       </a>
     </div>
-    <div class="card-body p-0">
-      {% if recent_requests %}
-        <div class="proc-table-header d-none d-lg-block">
-          <div class="proc-table-row">
-            <div class="proc-cell"></div>
-            <div class="proc-cell"><h6 class="mb-0 text-secondary">Заявка</h6></div>
-            <div class="proc-cell"><h6 class="mb-0 text-secondary">Отдел</h6></div>
-            <div class="proc-cell"><h6 class="mb-0 text-secondary">Сумма</h6></div>
-            <div class="proc-cell"><h6 class="mb-0 text-secondary">Статус</h6></div>
-            <div class="proc-cell"><h6 class="mb-0 text-secondary">Дата</h6></div>
-          </div>
-        </div>
-        
-        {% for request in recent_requests %}
-        <div class="proc-request-item">
-          <div class="proc-urgency-icon {{ request.urgency }}">
-            {% if request.urgency == 'critical' %}
-              <i class="bi-exclamation-triangle-fill"></i>
-            {% elif request.urgency == 'high' %}
-              <i class="bi-arrow-up-circle"></i>
-            {% elif request.urgency == 'medium' %}
-              <i class="bi-dash-circle"></i>
-            {% else %}
-              <i class="bi-arrow-down-circle"></i>
-            {% endif %}
-          </div>
-          
-          <div class="proc-request-info">
-            <div class="proc-request-title">
-              <a href="{% url 'procurement_frontend:request_detail' request.id %}">{{ request.title }}</a>
-            </div>
-            <div class="proc-request-desc">{{ request.description|truncatechars:50 }}</div>
-          </div>
-          
-          <div class="proc-request-dept">{{ request.department.name }}</div>
-          
-          <div class="proc-request-amount">{{ request.estimated_cost|floatformat:0 }} ₽</div>
-          
-          <div class="proc-request-status">
-            {% include "procurement/_status_badge.html" with status=request.status %}
-          </div>
-          
-          <div class="proc-request-date">
-            {{ request.created_at|date:"d.m.Y" }}
-          </div>
-        </div>
-        {% endfor %}
-      {% else %}
-        <div class="text-center py-5 text-muted">
-          <i class="bi-inbox fs-1 d-block mb-2"></i>
-          <p class="mb-0">Заявок пока нет</p>
-        </div>
-      {% endif %}
+    <div class="card-body p-0" id="recentRequestsContainer">
+      <div class="text-center py-4 text-muted">
+        <div class="spinner-border spinner-border-sm"></div>
+        <p class="mb-0 mt-2">Загрузка...</p>
+      </div>
     </div>
   </div>
 
@@ -244,11 +145,8 @@
           
           <div class="col-12">
             <label class="form-label">Отдел <span class="text-danger">*</span></label>
-            <select name="department" class="form-select" required>
+            <select name="department" id="createDepartment" class="form-select" required>
               <option value="">Выберите отдел...</option>
-              {% for dept in departments %}
-                <option value="{{ dept.id }}">{{ dept.name }}</option>
-              {% endfor %}
             </select>
           </div>
           
@@ -311,6 +209,132 @@
 
 {% block extra_js %}
 <script>
+  // === ЗАГРУЗКА ДАННЫХ ПРИ СТАРТЕ ===
+  document.addEventListener('DOMContentLoaded', () => {
+    loadDashboardData();
+    loadDepartments();
+  });
+
+  async function loadDashboardData() {
+    try {
+      // Загрузка статистики
+      const statsResp = await fetch('/api/v1/procurement/stats/overview/');
+      if (statsResp.ok) {
+        const stats = await statsResp.json();
+        document.getElementById('statPending').textContent = stats.pending || 0;
+        document.getElementById('statApproved').textContent = stats.approved || 0;
+        document.getElementById('statEquipment').textContent = stats.equipment_count || 0;
+      }
+
+      // Загрузка бюджета
+      const budgetResp = await fetch('/api/v1/procurement/budgets/my-department/');
+      if (budgetResp.ok) {
+        const budget = await budgetResp.json();
+        if (budget && budget.remaining_percent !== undefined) {
+          document.getElementById('statBudget').textContent = Math.round(budget.remaining_percent) + '%';
+        }
+      }
+
+      // Загрузка последних заявок
+      const reqResp = await fetch('/api/v1/procurement/requests/?ordering=-created_at&page_size=5');
+      if (reqResp.ok) {
+        const data = await reqResp.json();
+        renderRecentRequests(data.results || data);
+      }
+    } catch (e) {
+      console.error('Error loading dashboard:', e);
+    }
+  }
+
+  // Функция для генерации HTML статуса (аналогично _status_badge.html)
+  function getStatusBadgeHTML(status) {
+    const statusConfig = {
+      draft: { icon: 'bi-pencil', text: 'Черновик', class: 'draft' },
+      pending: { icon: 'bi-hourglass-split', text: 'На согласовании', class: 'pending' },
+      approved: { icon: 'bi-check-circle', text: 'Одобрено', class: 'approved' },
+      rejected: { icon: 'bi-x-circle', text: 'Отклонено', class: 'rejected' },
+      in_progress: { icon: 'bi-truck', text: 'Заказано', class: 'in_progress' },
+      completed: { icon: 'bi-check-all', text: 'Завершено', class: 'completed' },
+      cancelled: { icon: 'bi-slash-circle', text: 'Отменено', class: 'cancelled' }
+    };
+
+    const config = statusConfig[status] || statusConfig.draft;
+    return `<span class="proc-status ${config.class}"><i class="${config.icon} me-1"></i>${config.text}</span>`;
+  }
+
+  function renderRecentRequests(requests) {
+    const container = document.getElementById('recentRequestsContainer');
+    if (!container) return;
+    
+    if (!requests || !requests.length) {
+      container.innerHTML = '<div class="text-center py-4 text-muted"><i class="bi-inbox fs-1 d-block mb-2"></i><p>Заявок пока нет</p></div>';
+      return;
+    }
+
+    const urgencyIcons = {
+      critical: 'bi-exclamation-triangle-fill',
+      high: 'bi-arrow-up-circle',
+      medium: 'bi-dash-circle',
+      low: 'bi-arrow-down-circle'
+    };
+
+    let html = '<div class="proc-table-header d-none d-lg-block"><div class="proc-table-row">';
+    html += '<div class="proc-cell"></div>';
+    html += '<div class="proc-cell"><h6 class="mb-0 text-secondary">Заявка</h6></div>';
+    html += '<div class="proc-cell"><h6 class="mb-0 text-secondary">Отдел</h6></div>';
+    html += '<div class="proc-cell"><h6 class="mb-0 text-secondary">Сумма</h6></div>';
+    html += '<div class="proc-cell"><h6 class="mb-0 text-secondary">Статус</h6></div>';
+    html += '<div class="proc-cell"><h6 class="mb-0 text-secondary">Дата</h6></div>';
+    html += '</div></div>';
+
+    requests.forEach(r => {
+      const urgIcon = urgencyIcons[r.urgency] || 'bi-dash-circle';
+      const deptName = r.department_name || r.department?.name || '—';
+      const cost = (r.total_cost || 0).toLocaleString('ru-RU');
+      const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '—';
+
+      html += `<div class="proc-request-item">`;
+      html += `<div class="proc-urgency-icon ${r.urgency}"><i class="${urgIcon}"></i></div>`;
+      html += `<div class="proc-request-info">`;
+      html += `<div class="proc-request-title"><a href="/procurement/orders/${r.id}/">${escapeHtml(r.title)}</a></div>`;
+      html += `<div class="proc-request-desc">${escapeHtml((r.description || '').substring(0, 50))}</div>`;
+      html += `</div>`;
+      html += `<div class="proc-request-dept">${escapeHtml(deptName)}</div>`;
+      html += `<div class="proc-request-amount">${cost} ₽</div>`;
+      html += `<div class="proc-request-status">${getStatusBadgeHTML(r.status)}</div>`;
+      html += `<div class="proc-request-date">${date}</div>`;
+      html += `</div>`;
+    });
+
+    container.innerHTML = html;
+  }
+
+  async function loadDepartments() {
+    try {
+      const resp = await fetch('/api/v1/departments/');
+      if (resp.ok) {
+        const depts = await resp.json();
+        const select = document.getElementById('createDepartment');
+        if (select) {
+          depts.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.textContent = d.name;
+            select.appendChild(opt);
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error loading departments:', e);
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
   // === УПРАВЛЕНИЕ ПОЗИЦИЯМИ В ЗАЯВКЕ ===
   let itemIndex = 0;
   
@@ -418,7 +442,7 @@
         data.items = items;
       }
       
-      const resp = await fetch('/api/procurement/requests/', {
+      const resp = await fetch('/api/v1/procurement/requests/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -444,7 +468,7 @@
       modal?.hide();
       
       // Перейти к заявке
-      window.location.href = `/procurement/requests/${request.id}/`;
+      window.location.href = `/procurement/orders/${request.id}/`;
       
     } catch (error) {
       console.error('Error creating request:', error);
@@ -457,7 +481,7 @@
   // Автообновление статистики каждые 60 секунд
   setInterval(async () => {
     try {
-      const resp = await fetch('/api/procurement/stats/overview/');
+      const resp = await fetch('/api/v1/procurement/stats/overview/');
       if (resp.ok) {
         const data = await resp.json();
         document.getElementById('statPending').textContent = data.pending || 0;

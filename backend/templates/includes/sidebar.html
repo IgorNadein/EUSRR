@@ -33,8 +33,8 @@
         <span>Отделы</span>
       </a>
       <a href="{% url 'requests:request_list' %}"
-        class="nav-link {% if request.resolver_match.url_name == 'request_list' %}active{% endif %}"
-        {% if request.resolver_match.url_name == 'request_list' %}aria-current="page"{% endif %}>
+        class="nav-link {% if request.resolver_match.app_name == 'requests' %}active{% endif %}"
+        {% if request.resolver_match.app_name == 'requests' %}aria-current="page"{% endif %}>
         <span class="side-icon"><i class="bi-clipboard-check"></i></span>
         <span>Заявления</span>
       </a>

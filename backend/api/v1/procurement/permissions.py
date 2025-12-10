@@ -6,7 +6,7 @@ from rest_framework import permissions
 
 from api.v1.permissions import has_dept_perm
 from employees.constants import DeptPerm
-from employees.models import Department, Employee, EmployeeDepartment
+from employees.models import Department, EmployeeDepartment
 
 
 class IsDepartmentHead(permissions.BasePermission):
@@ -56,6 +56,8 @@ class CanCreateProcurementRequest(permissions.BasePermission):
     """Проверка права на создание заявки на закупку."""
 
     def has_permission(self, request, view):
+        from employees.models import Employee
+
         if not request.user or not request.user.is_authenticated:
             return False
 

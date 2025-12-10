@@ -4,7 +4,7 @@
 
 from rest_framework import serializers
 
-from .models import (
+from procurement.models import (
     Approval,
     Budget,
     Equipment,
@@ -344,6 +344,11 @@ class EquipmentListSerializer(serializers.ModelSerializer):
         source='category.name',
         read_only=True
     )
+    category_icon = serializers.CharField(
+        source='category.icon',
+        read_only=True,
+        default='bi-box-seam'
+    )
     department_name = serializers.CharField(
         source='department.name',
         read_only=True
@@ -366,6 +371,7 @@ class EquipmentListSerializer(serializers.ModelSerializer):
             'inventory_number',
             'category',
             'category_name',
+            'category_icon',
             'status',
             'status_display',
             'department',
@@ -380,6 +386,7 @@ class EquipmentListSerializer(serializers.ModelSerializer):
             'id',
             'inventory_number',  # Генерируется автоматически
             'category_name',
+            'category_icon',
             'department_name',
             'responsible_name',
             'status_display',
@@ -444,13 +451,15 @@ class EquipmentListSerializer(serializers.ModelSerializer):
         ).select_related('department', 'role')
 
         for link in user_dept_links:
-            if has_dept_perm(user, link.department_id, DeptPerm.MANAGE_EQUIPMENT):
+            if has_dept_perm(
+                user, link.department_id, DeptPerm.MANAGE_EQUIPMENT
+            ):
                 return 'scoped'
 
         return None
 
     def _get_user_allowed_departments(self, user, perm_level):
-        """Возвращает отделы, в которых пользователь может создать оборудование."""
+        """Возвращает отделы, где пользователь может создать оборудование."""
         from employees.models import Department, EmployeeDepartment
 
         if perm_level == 'full':
@@ -507,7 +516,9 @@ class EquipmentListSerializer(serializers.ModelSerializer):
 
         elif perm_level == 'dept_head':
             # Начальник — только свои отделы
-            allowed_depts = self._get_user_allowed_departments(user, perm_level)
+            allowed_depts = self._get_user_allowed_departments(
+                user, perm_level
+            )
             allowed_ids = [d.id for d in allowed_depts]
 
             if department and department.id not in allowed_ids:
@@ -528,7 +539,9 @@ class EquipmentListSerializer(serializers.ModelSerializer):
 
         elif perm_level == 'scoped':
             # Скоуп-право — только свой отдел, ответственный = начальник
-            allowed_depts = self._get_user_allowed_departments(user, perm_level)
+            allowed_depts = self._get_user_allowed_departments(
+                user, perm_level
+            )
             allowed_ids = [d.id for d in allowed_depts]
 
             if department and department.id not in allowed_ids:

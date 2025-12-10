@@ -159,5 +159,10 @@ urlpatterns = [
         get_poll_results,
         name="poll_results"
     ),
+    # Procurement API
+    path(
+        "procurement/",
+        include("api.v1.procurement.urls", namespace="procurement")
+    ),
     path("", include(router.urls)),
 ]

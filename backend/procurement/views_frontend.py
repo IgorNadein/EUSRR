@@ -30,13 +30,30 @@ def request_list(request):
     - /api/v1/departments/ — для фильтра по отделам
     """
     scope = request.GET.get('scope', 'mine')
+    user = request.user
+    
+    # Читаем фильтры из GET параметров
+    filters = {
+        'status': request.GET.get('status', ''),
+        'urgency': request.GET.get('urgency', ''),
+        'period': request.GET.get('period', ''),
+    }
+    
+    # Определяем доступные представления
+    can_view_department = user.departments.exists()
+    can_view_all = (
+        user.is_staff or user.is_superuser or
+        user.has_perm('procurement.view_procurementrequest') or
+        user.has_perm('procurement.change_procurementrequest')
+    )
     
     return render(request, 'procurement/request_list.html', {
         'scope': scope,
         'show_tabs': True,
+        'can_view_department': can_view_department,
+        'can_view_all': can_view_all,
+        'filters': filters,
     })
-
-
 @login_required
 def my_requests(request):
     """Мои заявки — редирект на request_list."""
@@ -51,24 +68,63 @@ def pending_approvals(request):
     Данные загружаются через API:
     - /api/procurement/requests/pending_approvals/
     """
+    user = request.user
+    
+    # Определяем доступные представления
+    can_view_department = user.departments.exists()
+    can_view_all = (
+        user.is_staff or user.is_superuser or
+        user.has_perm('procurement.view_procurementrequest') or
+        user.has_perm('procurement.change_procurementrequest')
+    )
+    
     return render(request, 'procurement/request_list.html', {
         'scope': 'pending',
         'page_title': 'На согласовании',
         'show_tabs': True,
+        'can_view_department': can_view_department,
+        'can_view_all': can_view_all,
     })
 
 
 @login_required
+@login_required
 def request_detail(request, pk):
     """Детальная страница заявки.
     
-    Данные загружаются через API:
-    - /api/procurement/requests/{pk}/
-    - /api/procurement/equipment/create-options/ — при создании оборудования
-    - /api/procurement/equipment-categories/ — категории
+    Загружает данные из БД и передаёт в шаблон.
     """
+    from django.shortcuts import get_object_or_404
+    from procurement.models import ProcurementRequest
+    
+    request_obj = get_object_or_404(
+        ProcurementRequest.objects.select_related(
+            'department', 'requestor', 'executor'
+        ).prefetch_related('items', 'approvals__approver'),
+        pk=pk
+    )
+    
+    user = request.user
+    
+    # Проверяем права на редактирование
+    can_edit = (
+        request_obj.requestor == user and 
+        request_obj.status == 'draft'
+    )
+    
+    # Проверяем права на согласование
+    can_approve = (
+        request_obj.approvals.filter(
+            approver=user,
+            status='pending'
+        ).exists()
+    )
+    
     return render(request, 'procurement/request_detail.html', {
         'request_id': pk,
+        'request_obj': request_obj,
+        'can_edit': can_edit,
+        'can_approve': can_approve,
     })
 
 

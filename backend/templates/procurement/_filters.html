@@ -54,18 +54,30 @@
     const urgency = document.getElementById('filterUrgency').value;
     const period = document.getElementById('filterPeriod').value;
     
+    // Сохраняем scope если он есть
+    const scope = params.get('scope');
+    
     if (status) params.set('status', status); else params.delete('status');
     if (urgency) params.set('urgency', urgency); else params.delete('urgency');
     if (period) params.set('period', period); else params.delete('period');
+    
+    // Восстанавливаем scope
+    if (scope) params.set('scope', scope);
     
     window.location.search = params.toString();
   });
   
   document.getElementById('resetFilters')?.addEventListener('click', () => {
     const params = new URLSearchParams(window.location.search);
+    const scope = params.get('scope');
+    
     params.delete('status');
     params.delete('urgency');
     params.delete('period');
+    
+    // Восстанавливаем scope
+    if (scope) params.set('scope', scope);
+    
     window.location.search = params.toString();
   });
 </script>

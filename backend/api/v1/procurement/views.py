@@ -12,8 +12,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from employees.models import Department
-from .constants import ApprovalStatus, ProcurementStatus, EquipmentStatus
-from .models import (
+from procurement.constants import ApprovalStatus, ProcurementStatus, EquipmentStatus
+from procurement.models import (
     Approval,
     Budget,
     Equipment,
@@ -24,7 +24,7 @@ from .models import (
     ProcurementRequest,
     Supplier,
 )
-from .services import QRCodeGenerator
+from procurement.services import QRCodeGenerator
 from .permissions import (
     CanApproveProcurementRequest,
     CanManageBudget,
@@ -34,6 +34,7 @@ from .permissions import (
 )
 from .serializers import (
     BudgetSerializer,
+    BudgetDetailSerializer,
     EquipmentCategorySerializer,
     EquipmentDetailSerializer,
     EquipmentListSerializer,
@@ -84,26 +85,66 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
     def get_queryset(self):
-        """Фильтровать заявки в зависимости от роли пользователя."""
+        """Фильтровать заявки в зависимости от роли пользователя и scope."""
+        from datetime import timedelta
+        from django.utils import timezone
+        
         queryset = super().get_queryset()
         user = self.request.user
+        scope = self.request.query_params.get('scope', None)
+        period = self.request.query_params.get('period', None)
 
-        # Админы и пользователи с модельными правами видят все
-        if user.is_superuser or user.is_staff:
-            return queryset
+        # Обработка scope параметра
+        if scope == 'mine':
+            # Только мои заявки (где я автор)
+            queryset = queryset.filter(requestor=user)
+        elif scope == 'department':
+            # Заявки моего отдела
+            queryset = queryset.filter(department__in=user.departments.all())
+        elif scope == 'my_work':
+            # Заявки, которые я взял в работу (где я исполнитель)
+            queryset = queryset.filter(executor=user)
+        elif scope == 'available':
+            # Доступные заявки - со статусом "Согласовано"
+            queryset = queryset.filter(status='approved')
+        elif scope == 'all':
+            # Все заявки - применяем стандартную логику прав
+            pass
+        else:
+            # Если scope не указан, применяем стандартную логику
+            # Админы и пользователи с модельными правами видят все
+            if user.is_superuser or user.is_staff:
+                pass
+            # Пользователи с любыми модельными правами на заявки видят все
+            elif (user.has_perm('procurement.view_procurementrequest') or
+                  user.has_perm('procurement.change_procurementrequest') or
+                  user.has_perm('procurement.delete_procurementrequest')):
+                pass
+            else:
+                # Показываем: свои заявки + заявки отдела + где я approver
+                queryset = queryset.filter(
+                    Q(requestor=user) |
+                    Q(department__in=user.departments.all()) |
+                    Q(approvals__approver=user)
+                )
         
-        # Пользователи с любыми модельными правами на заявки видят все
-        if (user.has_perm('procurement.view_procurementrequest') or
-            user.has_perm('procurement.change_procurementrequest') or
-            user.has_perm('procurement.delete_procurementrequest')):
-            return queryset
+        # Фильтрация по периоду
+        if period:
+            now = timezone.now()
+            if period == 'today':
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                queryset = queryset.filter(created_at__gte=start_date)
+            elif period == 'week':
+                start_date = now - timedelta(days=7)
+                queryset = queryset.filter(created_at__gte=start_date)
+            elif period == 'month':
+                start_date = now - timedelta(days=30)
+                queryset = queryset.filter(created_at__gte=start_date)
+            elif period == 'quarter':
+                start_date = now - timedelta(days=90)
+                queryset = queryset.filter(created_at__gte=start_date)
 
-        # Показываем: свои заявки + заявки отдела + где я approver
-        return queryset.filter(
-            Q(requestor=user) |
-            Q(department__in=user.departments.all()) |
-            Q(approvals__approver=user)
-        ).distinct()
+        return queryset.distinct()
 
     def _check_budget_alert(self, procurement_request):
         """Проверяет бюджет и отправляет алерт если низкий остаток."""
@@ -248,7 +289,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'ожидает вашего согласования. '
                     f'Сумма: {procurement_request.total_cost}₽'
                 ),
-                action_url=f'/procurement/requests/{procurement_request.id}/',
+                action_url=f'/procurement/orders/{procurement_request.id}/',
                 send_immediately=True,
             )
 
@@ -289,7 +330,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 f'{request.user.get_full_name()} одобрил '
                 f'заявку "{procurement_request.title}".'
             ),
-            action_url=f'/procurement/requests/{procurement_request.id}/',
+            action_url=f'/procurement/orders/{procurement_request.id}/',
             send_immediately=True,
         )
 
@@ -312,7 +353,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'Ваша заявка "{procurement_request.title}" '
                     f'была полностью одобрена. Можно приступать к закупке.'
                 ),
-                action_url=f'/procurement/requests/{procurement_request.id}/',
+                action_url=f'/procurement/orders/{procurement_request.id}/',
                 send_immediately=True,
             )
 
@@ -361,7 +402,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 f'заявку "{procurement_request.title}". '
                 f'Причина: {approval.comment}'
             ),
-            action_url=f'/procurement/requests/{procurement_request.id}/',
+            action_url=f'/procurement/orders/{procurement_request.id}/',
             send_immediately=True,
         )
 
@@ -472,7 +513,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'взята в работу пользователем '
                     f'{request.user.get_full_name()}.'
                 ),
-                action_url=f'/procurement/requests/{procurement_request.id}/',
+                action_url=f'/procurement/orders/{procurement_request.id}/',
                 send_immediately=True,
             )
 
@@ -489,7 +530,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'взята в работу пользователем '
                     f'{request.user.get_full_name()}.'
                 ),
-                action_url=f'/procurement/requests/{procurement_request.id}/',
+                action_url=f'/procurement/orders/{procurement_request.id}/',
                 send_immediately=True,
             )
 
@@ -535,7 +576,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'Заявка "{procurement_request.title}" '
                     f'успешно завершена.'
                 ),
-                action_url=f'/procurement/requests/{procurement_request.id}/',
+                action_url=f'/procurement/orders/{procurement_request.id}/',
                 send_immediately=True,
             )
 
@@ -618,7 +659,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'была отменена автором. '
                     f'Причина: {reason or "не указана"}'
                 ),
-                action_url=f'/procurement/requests/{procurement_request.id}/',
+                action_url=f'/procurement/orders/{procurement_request.id}/',
                 send_immediately=True,
             )
 
@@ -859,6 +900,7 @@ class ProcurementItemViewSet(viewsets.ModelViewSet):
                 'inventory_number': equipment.inventory_number,
             }
         }, status=status.HTTP_200_OK)
+
 
 class EquipmentCategoryViewSet(viewsets.ModelViewSet):
     """ViewSet для категорий оборудования."""
@@ -1334,7 +1376,6 @@ class BudgetViewSet(viewsets.ModelViewSet):
     def my_department(self, request):
         """Получить бюджет текущего квартала для отдела пользователя."""
         from django.utils import timezone
-        from .serializers import BudgetDetailSerializer
         
         user = request.user
         now = timezone.now()
@@ -1518,4 +1559,3 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
             })
 
         return Response(result)
-

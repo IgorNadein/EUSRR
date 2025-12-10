@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Заявка #{{ request_obj.id }}{% endblock %}
+{% block title %}Заявка{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
@@ -11,15 +11,6 @@
 {% block content %}
 
 <div class="container">
-  {# ===== Хлебные крошки ===== #}
-  <nav aria-label="breadcrumb" class="mb-3">
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:dashboard' %}">Закупки</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:request_list' %}">Заявки</a></li>
-      <li class="breadcrumb-item active" aria-current="page">#{{ request_obj.id }}</li>
-    </ol>
-  </nav>
-
   {# ===== Заголовок ===== #}
   <div class="card mb-4">
     <div class="card-body">
@@ -47,7 +38,7 @@
         
         <div class="text-end">
           {% include "procurement/_status_badge.html" with status=request_obj.status %}
-          <div class="mt-2 h4 mb-0">{{ request_obj.estimated_cost|floatformat:0 }} ₽</div>
+          <div class="mt-2 h4 mb-0">{{ request_obj.total_cost|floatformat:0 }} ₽</div>
         </div>
       </div>
     </div>
@@ -80,57 +71,72 @@
           </button>
           {% endif %}
         </div>
-        <div class="card-body p-0">
-          {% if request_obj.items.exists %}
-          <div class="table-responsive">
-            <table class="table table-hover mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>Наименование</th>
-                  <th class="text-center" style="width: 80px;">Кол-во</th>
-                  <th class="text-end" style="width: 120px;">Цена</th>
-                  <th class="text-end" style="width: 120px;">Сумма</th>
-                  <th style="width: 60px;"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for item in request_obj.items.all %}
-                <tr>
-                  <td>
-                    <div class="fw-medium">{{ item.name }}</div>
-                    {% if item.specifications %}
-                    <small class="text-muted">{{ item.specifications|truncatechars:50 }}</small>
-                    {% endif %}
-                  </td>
-                  <td class="text-center">{{ item.quantity }}</td>
-                  <td class="text-end">{{ item.unit_price|floatformat:0 }} ₽</td>
-                  <td class="text-end fw-medium">{{ item.total_price|floatformat:0 }} ₽</td>
-                  <td>
-                    {% if can_edit %}
-                    <button class="btn btn-sm btn-link text-danger p-0" title="Удалить">
-                      <i class="bi-trash"></i>
-                    </button>
-                    {% endif %}
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-              <tfoot class="table-light">
-                <tr>
-                  <td colspan="3" class="text-end fw-bold">Итого:</td>
-                  <td class="text-end fw-bold">{{ request_obj.total_amount|floatformat:0 }} ₽</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+        
+        {% if request_obj.items.exists %}
+        <div class="proc-table-header d-none d-lg-block">
+          <div class="proc-table-row">
+            <div class="proc-cell" style="flex: 3;"><h6 class="mb-0 text-secondary">Наименование</h6></div>
+            <div class="proc-cell" style="flex: 1;"><h6 class="mb-0 text-secondary text-center">Кол-во</h6></div>
+            <div class="proc-cell" style="flex: 1;"><h6 class="mb-0 text-secondary text-end">Цена</h6></div>
+            <div class="proc-cell" style="flex: 1;"><h6 class="mb-0 text-secondary text-end">Сумма</h6></div>
+            {% if can_edit %}
+            <div class="proc-cell" style="width: 50px;"></div>
+            {% endif %}
           </div>
-          {% else %}
+        </div>
+        
+        <div class="card-body p-0">
+          {% for item in request_obj.items.all %}
+          <div class="proc-request-item">
+            <div class="proc-cell" style="flex: 3;">
+              <div class="fw-medium">{{ item.name }}</div>
+              {% if item.description %}
+              <small class="text-muted d-block mt-1">{{ item.description|truncatechars:80 }}</small>
+              {% endif %}
+            </div>
+            <div class="proc-cell text-center" style="flex: 1;">
+              <span class="d-lg-none text-muted small">Количество: </span>
+              {{ item.quantity }} {{ item.unit }}
+            </div>
+            <div class="proc-cell text-end" style="flex: 1;">
+              <span class="d-lg-none text-muted small">Цена: </span>
+              {{ item.estimated_unit_price|floatformat:0 }} ₽
+            </div>
+            <div class="proc-cell text-end" style="flex: 1;">
+              <span class="d-lg-none text-muted small">Сумма: </span>
+              <strong>{{ item.total_price|floatformat:0 }} ₽</strong>
+            </div>
+            {% if can_edit %}
+            <div class="proc-cell text-center" style="width: 50px;">
+              <button class="btn btn-sm btn-link text-danger p-0" title="Удалить" onclick="deleteItem({{ item.id }})">
+                <i class="bi-trash"></i>
+              </button>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        
+        {# Итого #}
+        <div class="proc-table-header border-top">
+          <div class="proc-table-row">
+            <div class="proc-cell" style="flex: 3;"></div>
+            <div class="proc-cell" style="flex: 1;"></div>
+            <div class="proc-cell text-end" style="flex: 1;"><h6 class="mb-0 text-secondary">Итого:</h6></div>
+            <div class="proc-cell text-end" style="flex: 1;"><h6 class="mb-0 fw-bold">{{ request_obj.total_cost|floatformat:0 }} ₽</h6></div>
+            {% if can_edit %}
+            <div class="proc-cell" style="width: 50px;"></div>
+            {% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="card-body">
           <div class="text-center py-4 text-muted">
             <i class="bi-inbox fs-3 d-block mb-2"></i>
             <p class="mb-0">Позиции не добавлены</p>
           </div>
-          {% endif %}
         </div>
+        {% endif %}
       </div>
       
       {# История согласования #}
@@ -155,8 +161,12 @@
               <div>
                 <div class="fw-medium">{{ approval.approver.get_full_name }}</div>
                 <div class="text-muted small">
-                  {% if approval.decided_at %}
-                    {{ approval.decided_at|date:"d.m.Y H:i" }}
+                  {% if approval.status == 'approved' %}
+                    Одобрено
+                    {% if approval.decided_at %} — {{ approval.decided_at|date:"d.m.Y H:i" }}{% endif %}
+                  {% elif approval.status == 'rejected' %}
+                    Отклонено
+                    {% if approval.decided_at %} — {{ approval.decided_at|date:"d.m.Y H:i" }}{% endif %}
                   {% else %}
                     Ожидает решения
                   {% endif %}
@@ -222,10 +232,14 @@
               {% else %}🟢 Низкая{% endif %}
             </span>
           </li>
-          {% if request_obj.desired_date %}
           <li class="list-group-item d-flex justify-content-between">
-            <span class="text-muted">Желаемая дата</span>
-            <span>{{ request_obj.desired_date|date:"d.m.Y" }}</span>
+            <span class="text-muted">Статус</span>
+            <span>{% include "procurement/_status_badge.html" with status=request_obj.status %}</span>
+          </li>
+          {% if request_obj.executor %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Исполнитель</span>
+            <span>{{ request_obj.executor.get_full_name }}</span>
           </li>
           {% endif %}
           <li class="list-group-item d-flex justify-content-between">
@@ -236,6 +250,24 @@
             <span class="text-muted">Обновлено</span>
             <span>{{ request_obj.updated_at|date:"d.m.Y H:i" }}</span>
           </li>
+          {% if request_obj.submitted_at %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Отправлено на согласование</span>
+            <span>{{ request_obj.submitted_at|date:"d.m.Y H:i" }}</span>
+          </li>
+          {% endif %}
+          {% if request_obj.started_at %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Взято в работу</span>
+            <span>{{ request_obj.started_at|date:"d.m.Y H:i" }}</span>
+          </li>
+          {% endif %}
+          {% if request_obj.completed_at %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span class="text-muted">Завершено</span>
+            <span>{{ request_obj.completed_at|date:"d.m.Y H:i" }}</span>
+          </li>
+          {% endif %}
         </ul>
       </div>
     </div>
@@ -246,15 +278,68 @@
 
 {% block extra_js %}
 <script>
+  // Получаем ID заявки из URL
+  const requestId = window.location.pathname.split('/').filter(x => x && !isNaN(x))[0];
+  let requestData = null;
+
+  // Загрузка данных при старте
+  document.addEventListener('DOMContentLoaded', () => {
+    if (requestId) {
+      loadRequestDetail();
+    }
+  });
+
+  async function loadRequestDetail() {
+    try {
+      const resp = await fetch(`/api/v1/procurement/requests/${requestId}/`);
+      if (!resp.ok) {
+        throw new Error('Request not found');
+      }
+      
+      requestData = await resp.json();
+      renderRequestDetail(requestData);
+      
+    } catch (e) {
+      console.error('Error loading request:', e);
+      document.querySelector('.container').innerHTML = `
+        <div class="alert alert-danger">
+          <i class="bi-exclamation-triangle me-2"></i>
+          Ошибка загрузки заявки
+        </div>
+      `;
+    }
+  }
+
+  function renderRequestDetail(req) {
+    // Обновляем title страницы
+    document.title = `Заявка #${req.id}`;
+    
+    // Рендерим контент (упрощённая версия - можно расширить)
+    // Основные элементы уже есть в шаблоне, просто обновляем их содержимое
+    
+    // Обновляем иконку срочности
+    const urgencyIcon = document.querySelector('.proc-urgency-icon');
+    if (urgencyIcon) {
+      urgencyIcon.className = `proc-urgency-icon ${req.urgency}`;
+      const icons = {
+        critical: 'bi-exclamation-triangle-fill',
+        high: 'bi-arrow-up-circle',
+        medium: 'bi-dash-circle',
+        low: 'bi-arrow-down-circle'
+      };
+      urgencyIcon.innerHTML = `<i class="${icons[req.urgency] || 'bi-dash-circle'}"></i>`;
+    }
+  }
+
   // Отправка на согласование
   document.getElementById('submitRequest')?.addEventListener('click', async () => {
     if (!confirm('Отправить заявку на согласование?')) return;
     
     try {
-      const resp = await fetch('/api/procurement/requests/{{ request_obj.id }}/submit/', {
+      const resp = await fetch(`/api/v1/procurement/requests/${requestId}/submit/`, {
         method: 'POST',
         headers: {
-          'X-CSRFToken': '{{ csrf_token }}'
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}'
         }
       });
       

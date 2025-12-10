@@ -12,16 +12,16 @@ urlpatterns = [
     # Дашборд
     path('', views.dashboard, name='dashboard'),
 
-    # Заявки на закупку
-    path('requests/', views.request_list, name='request_list'),
-    path('requests/my/', views.my_requests, name='my_requests'),
+    # Заявки на закупку (orders - чтобы не путать с заявлениями requests)
+    path('orders/', views.request_list, name='request_list'),
+    path('orders/my/', views.my_requests, name='my_requests'),
     path(
-        'requests/pending/',
+        'orders/pending/',
         views.pending_approvals,
         name='pending_approvals'
     ),
-    path('requests/create/', views.request_create, name='request_create'),
-    path('requests/<int:pk>/', views.request_detail, name='request_detail'),
+    path('orders/create/', views.request_create, name='request_create'),
+    path('orders/<int:pk>/', views.request_detail, name='request_detail'),
 
     # Оборудование
     path('equipment/', views.equipment_list, name='equipment_list'),

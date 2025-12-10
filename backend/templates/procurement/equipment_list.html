@@ -13,157 +13,15 @@
   {# ===== ШАПКА СТРАНИЦЫ ===== #}
   {% include "includes/components/page_header.html" with icon="bi-laptop" title="Оборудование" search_id="eqSearch" search_placeholder="Поиск по названию или инв. номеру..." has_filters=True filters_target="eqFilters" filters_template="procurement/_equipment_filters.html" create_as_card=True create_modal="equipmentCreateModal" create_text="Добавить оборудование"  %}
 
-  {# ===== СЕТКА ОБОРУДОВАНИЯ ===== #}
-  <div class="proc-equipment-grid" id="equipmentGrid">
-    {% if equipment_list %}
-      {% for item in equipment_list %}
-      <div class="proc-equipment-card" data-id="{{ item.id }}">
-        <div class="proc-equipment-header">
-          <div class="proc-equipment-icon">
-            {% if item.category.name == 'Компьютеры' or 'ноутбук' in item.name|lower %}
-              <i class="bi-laptop"></i>
-            {% elif 'монитор' in item.name|lower %}
-              <i class="bi-display"></i>
-            {% elif 'принтер' in item.name|lower %}
-              <i class="bi-printer"></i>
-            {% elif 'телефон' in item.name|lower %}
-              <i class="bi-phone"></i>
-            {% elif 'сервер' in item.name|lower %}
-              <i class="bi-hdd-rack"></i>
-            {% else %}
-              <i class="bi-pc-display-horizontal"></i>
-            {% endif %}
-          </div>
-          <div class="proc-equipment-info">
-            <div class="proc-equipment-name">
-              <a href="{% url 'procurement_frontend:equipment_detail' item.id %}" class="text-decoration-none">
-                {{ item.name }}
-              </a>
-            </div>
-            <div class="proc-equipment-inv">{{ item.inventory_number }}</div>
-          </div>
-          <div class="dropdown">
-            <button class="btn btn-sm btn-link text-muted" type="button" data-bs-toggle="dropdown">
-              <i class="bi-three-dots-vertical"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li>
-                <a class="dropdown-item" href="{% url 'procurement_frontend:equipment_detail' item.id %}">
-                  <i class="bi-eye me-2"></i>Просмотр
-                </a>
-              </li>
-              {% if can_manage %}
-              <li>
-                <a class="dropdown-item edit-equipment-btn" href="#" data-bs-toggle="modal" data-bs-target="#equipmentEditModal" data-id="{{ item.id }}">
-                  <i class="bi-pencil me-2"></i>Редактировать
-                </a>
-              </li>
-              {% endif %}
-              <li>
-                <a class="dropdown-item" href="{% url 'api:v1:equipment-qr-code' item.id %}" target="_blank">
-                  <i class="bi-qr-code me-2"></i>QR-код
-                </a>
-              </li>
-              {% if can_manage %}
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferModal" data-id="{{ item.id }}">
-                  <i class="bi-arrow-left-right me-2"></i>Перевести
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#maintenanceModal" data-id="{{ item.id }}">
-                  <i class="bi-wrench me-2"></i>Обслуживание
-                </a>
-              </li>
-              {% endif %}
-            </ul>
-          </div>
-        </div>
-        
-        <div class="proc-equipment-body">
-          <div class="proc-equipment-meta">
-            {% if item.category %}
-            <div class="proc-equipment-meta-item">
-              <i class="bi-tag"></i>
-              <span>{{ item.category.name }}</span>
-            </div>
-            {% endif %}
-            
-            {% if item.department %}
-            <div class="proc-equipment-meta-item">
-              <i class="bi-building"></i>
-              <span>{{ item.department.name }}</span>
-            </div>
-            {% endif %}
-            
-            {% if item.responsible_person %}
-            <div class="proc-equipment-meta-item">
-              <i class="bi-person"></i>
-              <span>{{ item.responsible_person.get_full_name }}</span>
-            </div>
-            {% endif %}
-            
-            {% if item.location %}
-            <div class="proc-equipment-meta-item">
-              <i class="bi-geo-alt"></i>
-              <span>{{ item.location }}</span>
-            </div>
-            {% endif %}
-          </div>
-        </div>
-        
-        <div class="proc-equipment-footer">
-          {% include "procurement/_equipment_status.html" with status=item.status %}
-          
-          <div class="text-muted small">
-            {{ item.purchase_date|date:"d.m.Y" }}
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div class="col-12">
-        <div class="text-center py-5 text-muted">
-          <i class="bi-inbox fs-1 d-block mb-2"></i>
-          <p class="mb-0">Оборудование не найдено</p>
-        </div>
-      </div>
-    {% endif %}
+  {# ===== СПИСОК ОБОРУДОВАНИЯ ===== #}
+  <div id="equipmentGrid">
+    <div class="text-center py-5 w-100">
+      <div class="spinner-border text-primary"></div>
+      <p class="mt-2">Загрузка...</p>
+    </div>
   </div>
-  
-  {# Пагинация #}
-  {% if page_obj %}
-  <div class="d-flex justify-content-center mt-4">
-    <nav aria-label="Страницы">
-      <ul class="pagination">
-        {% if page_obj.has_previous %}
-          <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
-              <i class="bi-chevron-left"></i>
-            </a>
-          </li>
-        {% endif %}
-        
-        {% for num in page_obj.paginator.page_range %}
-          {% if page_obj.number == num %}
-            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-            <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
-          {% endif %}
-        {% endfor %}
-        
-        {% if page_obj.has_next %}
-          <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.next_page_number }}">
-              <i class="bi-chevron-right"></i>
-            </a>
-          </li>
-        {% endif %}
-      </ul>
-    </nav>
-  </div>
-  {% endif %}
+
+  {# Модалки и формы ниже #}
 
 {# ===== МОДАЛКА СОЗДАНИЯ ОБОРУДОВАНИЯ ===== #}
 <div class="modal fade" id="equipmentCreateModal" tabindex="-1" aria-hidden="true">
@@ -471,16 +329,310 @@
 
 {% block extra_js %}
 <script>
+  // === ЗАГРУЗКА ОБОРУДОВАНИЯ ===
+  document.addEventListener('DOMContentLoaded', () => {
+    loadEquipment();
+  });
+
+  async function loadEquipment() {
+    try {
+      const resp = await fetch('/api/v1/procurement/equipment/');
+      if (!resp.ok) throw new Error('Failed to load equipment');
+      
+      const equipment = await resp.json();
+      renderEquipment(equipment.results || equipment);
+      
+    } catch (e) {
+      console.error('Error loading equipment:', e);
+      document.getElementById('equipmentGrid').innerHTML = `
+        <div class="text-center py-5 text-danger w-100">
+          <i class="bi-exclamation-triangle fs-1 d-block mb-2"></i>
+          <p>Ошибка загрузки оборудования</p>
+        </div>
+      `;
+    }
+  }
+
+  function renderEquipment(items) {
+    const grid = document.getElementById('equipmentGrid');
+    
+    if (!items || !items.length) {
+      grid.innerHTML = `
+        <div class="text-center py-5 text-muted w-100">
+          <i class="bi-inbox fs-1 d-block mb-2"></i>
+          <p class="mb-0">Оборудование не найдено</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Группируем оборудование по названию
+    const groups = {};
+    items.forEach(item => {
+      const key = item.name;
+      if (!groups[key]) {
+        groups[key] = {
+          main: item,
+          items: [],
+          count: 0
+        };
+      }
+      groups[key].items.push(item);
+      groups[key].count++;
+    });
+
+    // Преобразуем в массив и определяем is_group
+    const equipmentGroups = Object.values(groups).map(g => ({
+      ...g,
+      is_group: g.count > 1
+    }));
+
+    // Статусы
+    const statusMap = {
+      available: { label: 'Доступно', class: 'success' },
+      in_use: { label: 'В использовании', class: 'primary' },
+      maintenance: { label: 'На обслуживании', class: 'warning' },
+      retired: { label: 'Списано', class: 'secondary' }
+    };
+
+    // Заголовок таблицы
+    let html = `
+      <div class="card mb-4">
+        <div class="proc-table-header d-none d-lg-block">
+          <div class="proc-equipment-row">
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Оборудование</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Кол-во</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Категория</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Отдел</h6></div>
+            <div class="proc-cell"><h6 class="mb-0 text-secondary">Статус</h6></div>
+            <div class="proc-cell"></div>
+          </div>
+        </div>
+        <div id="equipmentListContent">
+    `;
+
+    equipmentGroups.forEach(group => {
+      const main = group.main;
+      const icon = main.category_icon || 'bi-box-seam';
+      const statusInfo = statusMap[main.status] || { label: main.status_display || main.status, class: 'secondary' };
+
+      // Основная строка группы
+      html += `
+        <div class="proc-equipment-item ${group.is_group ? 'has-children' : ''}" data-id="${main.id}">
+          <div class="proc-equipment-info">
+            ${group.is_group ? `
+            <button class="btn btn-sm btn-link p-0 me-1 proc-expand-btn" type="button" 
+                    data-bs-toggle="collapse" data-bs-target="#group-${main.id}" aria-expanded="false">
+              <i class="bi-chevron-right"></i>
+            </button>
+            ` : ''}
+            <div class="proc-equipment-icon-sm">
+              <i class="${escapeHtml(icon)}"></i>
+            </div>
+            <div class="proc-equipment-details">
+              <div class="proc-equipment-name">
+                ${group.is_group 
+                  ? escapeHtml(main.name)
+                  : `<a href="/procurement/equipment/${main.id}/">${escapeHtml(main.name)}</a>`
+                }
+              </div>
+              <div class="proc-equipment-inv">
+                ${group.is_group 
+                  ? `${group.count} единиц`
+                  : escapeHtml(main.inventory_number)
+                }
+              </div>
+            </div>
+          </div>
+          
+          <div class="proc-equipment-count">
+            <span class="badge ${group.count > 1 ? 'bg-primary' : 'bg-secondary'}">${group.count}</span>
+          </div>
+          
+          <div class="proc-equipment-category">
+            ${main.category_name ? escapeHtml(main.category_name) : '<span class="text-muted">—</span>'}
+          </div>
+          
+          <div class="proc-equipment-dept">
+            ${main.department_name ? escapeHtml(main.department_name) : '<span class="text-muted">—</span>'}
+          </div>
+          
+          <div class="proc-equipment-status">
+            <span class="badge bg-${statusInfo.class}">${statusInfo.label}</span>
+          </div>
+          
+          <div class="proc-equipment-actions">
+            ${!group.is_group ? `
+            <div class="dropdown">
+              <button class="btn btn-sm btn-link text-muted p-0" type="button" data-bs-toggle="dropdown" data-bs-auto-close="true">
+                <i class="bi-three-dots-vertical"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" style="position: absolute;">
+                <li>
+                  <a class="dropdown-item" href="/procurement/equipment/${main.id}/">
+                    <i class="bi-eye me-2"></i>Просмотр
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item edit-equipment-btn" href="#" data-bs-toggle="modal" data-bs-target="#equipmentEditModal" data-id="${main.id}">
+                    <i class="bi-pencil me-2"></i>Редактировать
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/api/v1/procurement/equipment/${main.id}/qr-code/" target="_blank">
+                    <i class="bi-qr-code me-2"></i>QR-код
+                  </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferModal" data-id="${main.id}">
+                    <i class="bi-arrow-left-right me-2"></i>Перевести
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#maintenanceModal" data-id="${main.id}">
+                    <i class="bi-wrench me-2"></i>Обслуживание
+                  </a>
+                </li>
+              </ul>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      // Развёрнутый список единиц группы
+      if (group.is_group) {
+        html += `
+          <div class="collapse proc-equipment-group" id="group-${main.id}">
+        `;
+        
+        group.items.forEach(item => {
+          const itemStatusInfo = statusMap[item.status] || { label: item.status_display || item.status, class: 'secondary' };
+          
+          html += `
+            <div class="proc-equipment-subitem" data-id="${item.id}">
+              <div class="proc-equipment-info">
+                <div class="proc-equipment-details">
+                  <div class="proc-equipment-name">
+                    <a href="/procurement/equipment/${item.id}/">${escapeHtml(item.inventory_number)}</a>
+                  </div>
+                  <div class="proc-equipment-inv">
+                    ${item.responsible_name ? escapeHtml(item.responsible_name) : 'Не назначен'}
+                  </div>
+                </div>
+              </div>
+              
+              <div class="proc-equipment-count"></div>
+              <div class="proc-equipment-category"></div>
+              <div class="proc-equipment-dept"></div>
+              <div class="proc-equipment-status">
+                <span class="badge bg-${itemStatusInfo.class}">${itemStatusInfo.label}</span>
+              </div>
+              
+              <div class="proc-equipment-actions">
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-link text-muted p-0" type="button" data-bs-toggle="dropdown" data-bs-auto-close="true">
+                    <i class="bi-three-dots-vertical"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end" style="position: absolute;">
+                    <li>
+                      <a class="dropdown-item" href="/procurement/equipment/${item.id}/">
+                        <i class="bi-eye me-2"></i>Просмотр
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item edit-equipment-btn" href="#" data-bs-toggle="modal" data-bs-target="#equipmentEditModal" data-id="${item.id}">
+                        <i class="bi-pencil me-2"></i>Редактировать
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="/api/v1/procurement/equipment/${item.id}/qr-code/" target="_blank">
+                        <i class="bi-qr-code me-2"></i>QR-код
+                      </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                      <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#transferModal" data-id="${item.id}">
+                        <i class="bi-arrow-left-right me-2"></i>Перевести
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#maintenanceModal" data-id="${item.id}">
+                        <i class="bi-wrench me-2"></i>Обслуживание
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        
+        html += `</div>`;
+      }
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+
+    grid.innerHTML = html;
+
+    // Инициализируем обработчики раскрытия групп после рендеринга
+    initExpandButtons();
+  }
+
+  function initExpandButtons() {
+    document.querySelectorAll('.proc-expand-btn').forEach(btn => {
+      const collapseEl = document.querySelector(btn.dataset.bsTarget);
+      if (collapseEl) {
+        collapseEl.addEventListener('show.bs.collapse', () => {
+          btn.setAttribute('aria-expanded', 'true');
+        });
+        collapseEl.addEventListener('hide.bs.collapse', () => {
+          btn.setAttribute('aria-expanded', 'false');
+        });
+      }
+    });
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
   // Поиск по оборудованию
   const searchInput = document.getElementById('eqSearch');
   if (searchInput) {
     searchInput.addEventListener('input', debounce((e) => {
       const query = e.target.value.toLowerCase();
-      document.querySelectorAll('.proc-equipment-card').forEach(card => {
-        const name = card.querySelector('.proc-equipment-name')?.textContent.toLowerCase() || '';
-        const inv = card.querySelector('.proc-equipment-inv')?.textContent.toLowerCase() || '';
+      document.querySelectorAll('.proc-equipment-item').forEach(item => {
+        const name = item.querySelector('.proc-equipment-name')?.textContent.toLowerCase() || '';
+        const inv = item.querySelector('.proc-equipment-inv')?.textContent.toLowerCase() || '';
         const match = name.includes(query) || inv.includes(query);
-        card.style.display = match ? '' : 'none';
+        item.style.display = match ? '' : 'none';
+        
+        // Скрываем/показываем связанную группу
+        const groupId = item.dataset.id;
+        const groupEl = document.getElementById('group-' + groupId);
+        if (groupEl) {
+          groupEl.style.display = match ? '' : 'none';
+        }
       });
     }, 300));
   }
@@ -511,7 +663,7 @@
     };
     
     try {
-      const resp = await fetch(`/api/procurement/equipment/${id}/transfer/`, {
+      const resp = await fetch(`/api/v1/procurement/equipment/${id}/transfer/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -545,7 +697,7 @@
     };
     
     try {
-      const resp = await fetch(`/api/procurement/equipment/${id}/add_maintenance/`, {
+      const resp = await fetch(`/api/v1/procurement/equipment/${id}/add_maintenance/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -585,7 +737,7 @@
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Создание...';
     
     try {
-      const resp = await fetch('/api/procurement/equipment/', {
+      const resp = await fetch('/api/v1/procurement/equipment/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -630,7 +782,7 @@
     document.getElementById('editEquipmentId').value = equipmentId;
     
     try {
-      const resp = await fetch(`/api/procurement/equipment/${equipmentId}/`);
+      const resp = await fetch(`/api/v1/procurement/equipment/${equipmentId}/`);
       if (resp.ok) {
         const eq = await resp.json();
         
@@ -674,7 +826,7 @@
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Сохранение...';
     
     try {
-      const resp = await fetch(`/api/procurement/equipment/${equipmentId}/`, {
+      const resp = await fetch(`/api/v1/procurement/equipment/${equipmentId}/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

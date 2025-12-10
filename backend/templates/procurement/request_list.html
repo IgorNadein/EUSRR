@@ -14,26 +14,50 @@
   {% include "includes/components/page_header.html" with icon="bi-list-ul" title=page_title|default:"Заявки на закупку" search_id="procSearch" search_placeholder="Поиск по названию..." has_filters=True filters_target="procFilters" filters_template="procurement/_filters.html" create_as_card=True create_modal="procCreateModal" create_text="Создать заявку" %}
 
   {# ===== Tabs для переключения области ===== #}
-  {% if can_view_all %}
+  {% if show_tabs %}
   <div class="card mb-3">
     <div class="card-body py-2">
-      <ul class="nav nav-pills nav-fill">
+      <ul class="nav nav-pills nav-fill" id="scopeTabs">
         <li class="nav-item">
           <a class="nav-link {% if scope == 'mine' %}active{% endif %}" 
-             href="?scope=mine">
+             href="#" 
+             data-scope="mine"
+             role="button">
             <i class="bi-person-circle me-1"></i> Мои заявки
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if scope == 'my_work' %}active{% endif %}" 
+             href="#"
+             data-scope="my_work"
+             role="button">
+            <i class="bi-briefcase me-1"></i> Взял в работу
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if scope == 'available' %}active{% endif %}" 
+             href="#"
+             data-scope="available"
+             role="button">
+            <i class="bi-check2-circle me-1"></i> Доступные
+          </a>
+        </li>
+        {% if can_view_department %}
+        <li class="nav-item">
           <a class="nav-link {% if scope == 'department' %}active{% endif %}" 
-             href="?scope=department">
+             href="#"
+             data-scope="department"
+             role="button">
             <i class="bi-building me-1"></i> Мой отдел
           </a>
         </li>
-        {% if user.is_staff %}
+        {% endif %}
+        {% if can_view_all %}
         <li class="nav-item">
           <a class="nav-link {% if scope == 'all' %}active{% endif %}" 
-             href="?scope=all">
+             href="#"
+             data-scope="all"
+             role="button">
             <i class="bi-globe me-1"></i> Все заявки
           </a>
         </li>
@@ -57,94 +81,11 @@
     </div>
     
     <div id="procListContent">
-      {% if requests %}
-        {% for request in requests %}
-        <div class="proc-request-item" data-id="{{ request.id }}">
-          <div class="proc-urgency-icon {{ request.urgency }}">
-            {% if request.urgency == 'critical' %}
-              <i class="bi-exclamation-triangle-fill"></i>
-            {% elif request.urgency == 'high' %}
-              <i class="bi-arrow-up-circle"></i>
-            {% elif request.urgency == 'medium' %}
-              <i class="bi-dash-circle"></i>
-            {% else %}
-              <i class="bi-arrow-down-circle"></i>
-            {% endif %}
-          </div>
-          
-          <div class="proc-request-info">
-            <div class="proc-request-title">
-              <a href="{% url 'procurement_frontend:request_detail' request.id %}">{{ request.title }}</a>
-            </div>
-            <div class="proc-request-desc">
-              {{ request.description|truncatechars:60 }}
-              {% if request.items.count > 0 %}
-                <span class="text-muted">({{ request.items.count }} поз.)</span>
-              {% endif %}
-            </div>
-          </div>
-          
-          <div class="proc-request-dept">
-            <i class="bi-building text-muted me-1"></i>
-            {{ request.department.name }}
-          </div>
-          
-          <div class="proc-request-amount">
-            {{ request.estimated_cost|floatformat:0 }} ₽
-          </div>
-          
-          <div class="proc-request-status">
-            {% include "procurement/_status_badge.html" with status=request.status %}
-          </div>
-          
-          <div class="proc-request-date">
-            {{ request.created_at|date:"d.m.Y" }}
-          </div>
-        </div>
-        {% endfor %}
-      {% else %}
-        <div class="text-center py-5 text-muted">
-          <i class="bi-inbox fs-1 d-block mb-2"></i>
-          <p class="mb-2">Заявок не найдено</p>
-          <a href="#" data-bs-toggle="modal" data-bs-target="#procCreateModal" class="btn btn-primary btn-sm">
-            <i class="bi-plus-lg me-1"></i>Создать заявку
-          </a>
-        </div>
-      {% endif %}
+      <div class="text-center py-5 text-muted">
+        <div class="spinner-border text-primary"></div>
+        <p class="mt-2">Загрузка...</p>
+      </div>
     </div>
-    
-    {# Пагинация #}
-    {% if page_obj %}
-    <div class="card-footer">
-      <nav aria-label="Страницы">
-        <ul class="pagination pagination-sm justify-content-center mb-0">
-          {% if page_obj.has_previous %}
-            <li class="page-item">
-              <a class="page-link" href="?page={{ page_obj.previous_page_number }}&scope={{ scope }}">
-                <i class="bi-chevron-left"></i>
-              </a>
-            </li>
-          {% endif %}
-          
-          {% for num in page_obj.paginator.page_range %}
-            {% if page_obj.number == num %}
-              <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-              <li class="page-item"><a class="page-link" href="?page={{ num }}&scope={{ scope }}">{{ num }}</a></li>
-            {% endif %}
-          {% endfor %}
-          
-          {% if page_obj.has_next %}
-            <li class="page-item">
-              <a class="page-link" href="?page={{ page_obj.next_page_number }}&scope={{ scope }}">
-                <i class="bi-chevron-right"></i>
-              </a>
-            </li>
-          {% endif %}
-        </ul>
-      </nav>
-    </div>
-    {% endif %}
   </div>
 
 {# ===== МОДАЛКА СОЗДАНИЯ ===== #}
@@ -177,9 +118,7 @@
             <label class="form-label">Отдел <span class="text-danger">*</span></label>
             <select name="department" class="form-select" required>
               <option value="">Выберите отдел...</option>
-              {% for dept in departments %}
-                <option value="{{ dept.id }}">{{ dept.name }}</option>
-              {% endfor %}
+              <!-- Загрузится через JS -->
             </select>
           </div>
           
@@ -242,6 +181,223 @@
 
 {% block extra_js %}
 <script>
+  // === ЗАГРУЗКА СПИСКА ЗАЯВОК ===
+  let currentPage = 1;
+  let currentScope = '{{ scope|default:"mine" }}';
+  
+  // Читаем фильтры из URL
+  function getCurrentFilters() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+      status: urlParams.get('status') || '',
+      urgency: urlParams.get('urgency') || '',
+      period: urlParams.get('period') || ''
+    };
+  }
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    loadRequests();
+    loadDepartmentsForCreate();
+    initScopeTabs();
+  });
+  
+  // === ПЕРЕКЛЮЧЕНИЕ ТАБОВ БЕЗ ПЕРЕЗАГРУЗКИ ===
+  function initScopeTabs() {
+    const tabs = document.querySelectorAll('#scopeTabs .nav-link');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        e.preventDefault();
+        const newScope = tab.dataset.scope;
+        
+        // Обновляем активный таб
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Обновляем текущий scope и перезагружаем список
+        currentScope = newScope;
+        currentPage = 1;
+        loadRequests();
+        
+        // Обновляем URL без перезагрузки страницы
+        const url = new URL(window.location);
+        url.searchParams.set('scope', newScope);
+        window.history.pushState({}, '', url);
+      });
+    });
+  }
+  
+  async function loadRequests(page = 1) {
+    try {
+      const params = new URLSearchParams({
+        page: page,
+        page_size: 20,
+        ordering: '-created_at'
+      });
+      
+      // Добавляем фильтр по scope
+      if (currentScope === 'mine') {
+        params.append('scope', 'mine');
+      } else if (currentScope === 'department') {
+        params.append('scope', 'department');
+      } else if (currentScope === 'my_work') {
+        params.append('scope', 'my_work');
+      } else if (currentScope === 'available') {
+        params.append('scope', 'available');
+      }
+      // Для 'all' не добавляем scope
+      
+      // Добавляем фильтры из URL
+      const filters = getCurrentFilters();
+      if (filters.status) params.append('status', filters.status);
+      if (filters.urgency) params.append('urgency', filters.urgency);
+      if (filters.period) params.append('period', filters.period);
+      
+      const resp = await fetch(`/api/v1/procurement/requests/?${params}`);
+      if (!resp.ok) throw new Error('Failed to load requests');
+      
+      const data = await resp.json();
+      renderRequests(data.results || []);
+      renderPagination(data);
+      
+    } catch (e) {
+      console.error('Error loading requests:', e);
+      document.getElementById('procListContent').innerHTML = `
+        <div class="text-center py-5 text-danger">
+          <i class="bi-exclamation-triangle fs-1 d-block mb-2"></i>
+          <p>Ошибка загрузки заявок</p>
+        </div>
+      `;
+    }
+  }
+  
+  // Функция для генерации HTML статуса (аналогично _status_badge.html)
+  function getStatusBadgeHTML(status) {
+    const statusConfig = {
+      draft: { icon: 'bi-pencil', text: 'Черновик', class: 'draft' },
+      pending: { icon: 'bi-hourglass-split', text: 'На согласовании', class: 'pending' },
+      approved: { icon: 'bi-check-circle', text: 'Одобрено', class: 'approved' },
+      rejected: { icon: 'bi-x-circle', text: 'Отклонено', class: 'rejected' },
+      in_progress: { icon: 'bi-truck', text: 'Заказано', class: 'in_progress' },
+      completed: { icon: 'bi-check-all', text: 'Завершено', class: 'completed' },
+      cancelled: { icon: 'bi-slash-circle', text: 'Отменено', class: 'cancelled' }
+    };
+
+    const config = statusConfig[status] || statusConfig.draft;
+    return `<span class="proc-status ${config.class}"><i class="${config.icon} me-1"></i>${config.text}</span>`;
+  }
+  
+  function renderRequests(requests) {
+    const container = document.getElementById('procListContent');
+    
+    if (!requests || !requests.length) {
+      container.innerHTML = `
+        <div class="text-center py-5 text-muted">
+          <i class="bi-inbox fs-1 d-block mb-2"></i>
+          <p>Заявок пока нет</p>
+        </div>
+      `;
+      return;
+    }
+    
+    const urgencyIcons = {
+      low: 'bi-arrow-down-circle',
+      medium: 'bi-dash-circle',
+      high: 'bi-arrow-up-circle',
+      critical: 'bi-exclamation-triangle-fill'
+    };
+    
+    const html = requests.map(req => {
+      const urgIcon = urgencyIcons[req.urgency] || 'bi-dash-circle';
+      const date = new Date(req.created_at).toLocaleDateString('ru-RU');
+      const cost = req.estimated_cost ? `${parseFloat(req.estimated_cost).toLocaleString('ru-RU')} ₽` : '—';
+      const deptName = req.department_name || req.department?.name || '—';
+      
+      return `
+        <div class="proc-request-item" data-id="${req.id}">
+          <div class="proc-urgency-icon ${req.urgency}">
+            <i class="${urgIcon}"></i>
+          </div>
+          
+          <div class="proc-request-info">
+            <div class="proc-request-title">
+              <a href="/procurement/orders/${req.id}/">${escapeHtml(req.title)}</a>
+            </div>
+            <div class="proc-request-desc">${escapeHtml((req.description || '').substring(0, 60))}</div>
+          </div>
+          
+          <div class="proc-request-dept">
+            <i class="bi-building text-muted me-1"></i>
+            ${escapeHtml(deptName)}
+          </div>
+          
+          <div class="proc-request-amount">
+            ${cost}
+          </div>
+          
+          <div class="proc-request-status">
+            ${getStatusBadgeHTML(req.status)}
+          </div>
+          
+          <div class="proc-request-date">
+            ${date}
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    container.innerHTML = html;
+  }
+  
+  function renderPagination(data) {
+    // TODO: Добавить пагинацию если нужно
+    currentPage = data.page || 1;
+  }
+  
+  async function loadDepartmentsForCreate() {
+    try {
+      const resp = await fetch('/api/v1/departments/');
+      if (resp.ok) {
+        const depts = await resp.json();
+        const select = document.querySelector('#procCreateModal select[name="department"]');
+        if (select) {
+          // Очистим существующие опции кроме placeholder
+          select.innerHTML = '<option value="">Выберите отдел...</option>';
+          depts.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.textContent = d.name;
+            select.appendChild(opt);
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error loading departments:', e);
+    }
+  }
+  
+  function escapeHtml(text) {
+    const map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+  }
+  
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
   // === УПРАВЛЕНИЕ ПОЗИЦИЯМИ В ЗАЯВКЕ (для request_list) ===
   let itemIndexReq = 0;
   
@@ -349,7 +505,7 @@
         data.items = items;
       }
       
-      const resp = await fetch('/api/procurement/requests/', {
+      const resp = await fetch('/api/v1/procurement/requests/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -375,7 +531,7 @@
       modal?.hide();
       
       // Перейти к заявке
-      window.location.href = `/procurement/requests/${request.id}/`;
+      window.location.href = `/procurement/orders/${request.id}/`;
       
     } catch (error) {
       console.error('Error creating request:', error);
@@ -384,6 +540,7 @@
       submitBtn.innerHTML = originalText;
     }
   });
+  
   
   // Поиск по заявкам
   const searchInput = document.getElementById('procSearch');

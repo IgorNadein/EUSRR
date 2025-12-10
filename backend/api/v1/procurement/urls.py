@@ -2,7 +2,6 @@
 URL конфигурация для API модуля закупок.
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
@@ -60,6 +59,4 @@ router.register(
     basename='stats'
 )
 
-urlpatterns = [
-    path('', include(router.urls)),
-]
+urlpatterns = router.urls

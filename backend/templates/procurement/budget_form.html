@@ -224,7 +224,7 @@
   // === ЗАГРУЗКА БЮДЖЕТА ===
   async function loadBudget() {
     try {
-      const resp = await fetch(`/api/procurement/budgets/${budgetId}/`);
+      const resp = await fetch(`/api/v1/procurement/budgets/${budgetId}/`);
       if (!resp.ok) {
         if (resp.status === 404) {
           showError('Бюджет не найден');
@@ -307,8 +307,8 @@
       };
       
       const url = budgetId 
-        ? `/api/procurement/budgets/${budgetId}/`
-        : '/api/procurement/budgets/';
+        ? `/api/v1/procurement/budgets/${budgetId}/`
+        : '/api/v1/procurement/budgets/';
       
       const method = budgetId ? 'PATCH' : 'POST';
       

@@ -235,12 +235,12 @@
   color: var(--bs-danger);
 }
 
-.proc-status.ordered {
+.proc-status.in_progress {
   background: color-mix(in srgb, var(--bs-info) 15%, transparent);
   color: var(--bs-info);
 }
 
-.proc-status.delivered {
+.proc-status.completed {
   background: color-mix(in srgb, var(--bs-primary) 15%, transparent);
   color: var(--bs-primary);
 }

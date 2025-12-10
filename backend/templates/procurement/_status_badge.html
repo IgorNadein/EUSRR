@@ -17,13 +17,13 @@
   <span class="proc-status rejected">
     <i class="bi-x-circle me-1"></i>Отклонено
   </span>
-{% elif status == 'ordered' %}
-  <span class="proc-status ordered">
+{% elif status == 'in_progress' %}
+  <span class="proc-status in_progress">
     <i class="bi-truck me-1"></i>Заказано
   </span>
-{% elif status == 'delivered' %}
-  <span class="proc-status delivered">
-    <i class="bi-box-seam me-1"></i>Получено
+{% elif status == 'completed' %}
+  <span class="proc-status completed">
+    <i class="bi-check-all me-1"></i>Завершено
   </span>
 {% elif status == 'cancelled' %}
   <span class="proc-status cancelled">
