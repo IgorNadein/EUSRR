@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib import admin
 from django.utils.html import format_html
 
@@ -346,6 +348,122 @@ class BudgetAdmin(admin.ModelAdmin):
         "get_remaining_amount",
         "get_utilization_percentage",
     ]
+    actions = ["create_next_quarter_budgets", "copy_selected_budgets"]
+
+    def create_next_quarter_budgets(self, request, queryset):
+        """Создать бюджеты на следующий квартал для всех отделов."""
+        from django.utils import timezone
+        from employees.models import Department
+        
+        now = timezone.now()
+        current_quarter = (now.month - 1) // 3 + 1
+        
+        # Определяем следующий квартал
+        if current_quarter == 4:
+            next_quarter = 1
+            next_year = now.year + 1
+        else:
+            next_quarter = current_quarter + 1
+            next_year = now.year
+        
+        # Получаем все активные отделы
+        departments = Department.objects.all()
+        created_count = 0
+        skipped_count = 0
+        
+        for dept in departments:
+            # Проверяем существует ли уже бюджет
+            exists = Budget.objects.filter(
+                department=dept,
+                year=next_year,
+                quarter=next_quarter
+            ).exists()
+            
+            if exists:
+                skipped_count += 1
+                continue
+            
+            # Пытаемся скопировать бюджет из текущего квартала
+            try:
+                current_budget = Budget.objects.get(
+                    department=dept,
+                    year=now.year,
+                    quarter=current_quarter
+                )
+                allocated = current_budget.allocated_amount
+            except Budget.DoesNotExist:
+                # Если нет текущего бюджета - ставим 0
+                allocated = Decimal('0.00')
+            
+            Budget.objects.create(
+                department=dept,
+                year=next_year,
+                quarter=next_quarter,
+                allocated_amount=allocated,
+                spent_amount=Decimal('0.00')
+            )
+            created_count += 1
+        
+        self.message_user(
+            request,
+            f"Создано {created_count} бюджетов на "
+            f"{next_year} Q{next_quarter}. "
+            f"Пропущено (уже существуют): {skipped_count}."
+        )
+    
+    create_next_quarter_budgets.short_description = (
+        "🔄 Создать бюджеты на следующий квартал для всех отделов"
+    )
+
+    def copy_selected_budgets(self, request, queryset):
+        """Копировать выбранные бюджеты в следующий квартал."""
+        from django.utils import timezone
+        
+        now = timezone.now()
+        current_quarter = (now.month - 1) // 3 + 1
+        
+        # Определяем следующий квартал
+        if current_quarter == 4:
+            next_quarter = 1
+            next_year = now.year + 1
+        else:
+            next_quarter = current_quarter + 1
+            next_year = now.year
+        
+        created_count = 0
+        skipped_count = 0
+        
+        for budget in queryset:
+            # Проверяем существует ли уже бюджет
+            exists = Budget.objects.filter(
+                department=budget.department,
+                year=next_year,
+                quarter=next_quarter
+            ).exists()
+            
+            if exists:
+                skipped_count += 1
+                continue
+            
+            Budget.objects.create(
+                department=budget.department,
+                year=next_year,
+                quarter=next_quarter,
+                allocated_amount=budget.allocated_amount,
+                spent_amount=Decimal('0.00')
+            )
+            created_count += 1
+        
+        self.message_user(
+            request,
+            f"Скопировано {created_count} бюджетов в "
+            f"{next_year} Q{next_quarter}. "
+            f"Пропущено (уже существуют): {skipped_count}."
+        )
+    
+    copy_selected_budgets.short_description = (
+        "📋 Скопировать выбранные бюджеты в следующий квартал"
+    )
 
     def get_remaining_amount(self, obj):
         """Остаток бюджета (для отображения в админке)."""
