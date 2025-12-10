@@ -126,22 +126,26 @@
       }
       
       const departments = await resp.json();
-      console.log('[Departments] Loaded:', departments.length, 'departments');
+      console.log('[Departments] Raw response:', departments);
       
-      if (!departments || departments.length === 0) {
+      // API может вернуть массив или объект с пагинацией {results: [...]}
+      const departmentsList = Array.isArray(departments) ? departments : (departments.results || []);
+      console.log('[Departments] Loaded:', departmentsList.length, 'departments');
+      
+      if (!departmentsList || departmentsList.length === 0) {
         select.innerHTML = '<option value="">Нет доступных отделов</option>';
         return;
       }
       
       select.innerHTML = '<option value="">Выберите отдел...</option>';
       
-      departments.forEach(dept => {
+      departmentsList.forEach(dept => {
         const option = document.createElement('option');
         option.value = dept.id;
         option.textContent = dept.name;
         
         // Автовыбор отдела текущего пользователя, если он один
-        if (!isEdit && departments.length === 1) {
+        if (!isEdit && departmentsList.length === 1) {
           option.selected = true;
         }
         
@@ -179,8 +183,15 @@
       }
       
       // Обновляем заголовок
-      document.querySelector('.card-header h4').innerHTML = '<i class="bi-pencil me-2"></i>Редактирование заявки #' + requestId;
-      document.querySelector('.breadcrumb-item.active').textContent = 'Редактирование заявки';
+      const cardHeader = document.querySelector('.card-header h4');
+      if (cardHeader) {
+        cardHeader.innerHTML = '<i class="bi-pencil me-2"></i>Редактирование заявки #' + requestId;
+      }
+      
+      const breadcrumbItem = document.querySelector('.breadcrumb-item.active');
+      if (breadcrumbItem) {
+        breadcrumbItem.textContent = 'Редактирование заявки';
+      }
       
       // Скрываем кнопку "Создать и отправить" для редактирования
       const submitBtn = document.querySelector('[name="action"][value="submit"]');
