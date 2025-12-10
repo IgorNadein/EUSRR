@@ -369,11 +369,12 @@ class BudgetAdmin(admin.ModelAdmin):
         else:
             color = "#dc3545"
 
+        percentage_str = f"{float(percentage):.1f}"
         return format_html(
             '<span style="background-color: {}; color: white; '
-            'padding: 3px 10px; border-radius: 3px;">{:.1f}%</span>',
+            'padding: 3px 10px; border-radius: 3px;">{}%</span>',
             color,
-            percentage,
+            percentage_str,
         )
 
     utilization_badge.short_description = "Использовано"
