@@ -195,11 +195,48 @@ def equipment_list(request):
 def equipment_detail(request, pk):
     """Детальная страница оборудования.
     
-    Данные загружаются через API:
-    - /api/procurement/equipment/{pk}/
+    Загружает данные из БД и передаёт в шаблон.
+    
+    Права на управление (can_manage):
+    - Админы/Staff → любое оборудование
+    - Начальник отдела → оборудование своего отдела
+    - Ответственный за оборудование → своё оборудование
     """
+    from django.shortcuts import get_object_or_404
+    from procurement.models import Equipment
+    
+    equipment = get_object_or_404(
+        Equipment.objects.select_related(
+            'department',
+            'department__head',
+            'category',
+            'responsible_person',
+            'procurement_item',
+            'procurement_item__request'
+        ).prefetch_related(
+            'maintenance_records',
+            'transfer_logs__from_department',
+            'transfer_logs__to_department',
+            'transfer_logs__from_person',
+            'transfer_logs__to_person'
+        ),
+        pk=pk
+    )
+    
+    user = request.user
+    
+    # Проверяем права на управление
+    can_manage = False
+    if user.is_superuser or user.is_staff:
+        can_manage = True
+    elif equipment.department and equipment.department.head == user:
+        can_manage = True
+    elif equipment.responsible_person == user:
+        can_manage = True
+    
     return render(request, 'procurement/equipment_detail.html', {
-        'equipment_id': pk,
+        'equipment': equipment,
+        'can_manage': can_manage,
     })
 
 
