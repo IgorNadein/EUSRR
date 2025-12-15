@@ -11,14 +11,6 @@
 {% block content %}
 
 <div class="container">
-  {# ===== Хлебные крошки ===== #}
-  <nav aria-label="breadcrumb" class="mb-3">
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:dashboard' %}">Закупки</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'procurement_frontend:equipment_list' %}">Оборудование</a></li>
-      <li class="breadcrumb-item active" aria-current="page">{{ equipment.inventory_number }}</li>
-    </ol>
-  </nav>
 
   <div class="row g-4">
     {# ===== Основная информация ===== #}
@@ -122,39 +114,47 @@
           </button>
           {% endif %}
         </div>
-        <div class="card-body p-0">
-          {% if equipment.maintenance_records.exists %}
-          <div class="table-responsive">
-            <table class="table table-hover mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>Дата</th>
-                  <th>Тип</th>
-                  <th>Описание</th>
-                  <th class="text-end">Стоимость</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for record in equipment.maintenance_records.all %}
-                <tr>
-                  <td>{{ record.date|date:"d.m.Y" }}</td>
-                  <td>{{ record.get_type_display }}</td>
-                  <td>{{ record.description|truncatechars:50 }}</td>
-                  <td class="text-end">
-                    {% if record.cost %}{{ record.cost|floatformat:0 }} ₽{% else %}—{% endif %}
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+        
+        {% if equipment.maintenance_history.exists %}
+        <div class="proc-table-header d-none d-lg-block">
+          <div class="proc-table-row">
+            <div class="proc-cell" style="flex: 1.5;"><h6 class="mb-0 text-secondary">Дата</h6></div>
+            <div class="proc-cell" style="flex: 2;"><h6 class="mb-0 text-secondary">Тип</h6></div>
+            <div class="proc-cell" style="flex: 4;"><h6 class="mb-0 text-secondary">Описание</h6></div>
+            <div class="proc-cell" style="flex: 1.5;"><h6 class="mb-0 text-secondary text-end">Стоимость</h6></div>
           </div>
-          {% else %}
+        </div>
+        
+        <div class="card-body p-0">
+          {% for record in equipment.maintenance_history.all %}
+          <div class="proc-request-item">
+            <div class="proc-cell" style="flex: 1.5;">
+              <span class="d-lg-none text-muted small">Дата: </span>
+              {{ record.date|date:"d.m.Y" }}
+            </div>
+            <div class="proc-cell" style="flex: 2;">
+              <span class="d-lg-none text-muted small">Тип: </span>
+              {{ record.get_type_display }}
+            </div>
+            <div class="proc-cell" style="flex: 4;">
+              <span class="d-lg-none text-muted small">Описание: </span>
+              {{ record.description|truncatechars:80 }}
+            </div>
+            <div class="proc-cell text-end" style="flex: 1.5;">
+              <span class="d-lg-none text-muted small">Стоимость: </span>
+              {% if record.cost %}{{ record.cost|floatformat:0 }} ₽{% else %}—{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card-body">
           <div class="text-center py-4 text-muted">
             <i class="bi-inbox fs-3 d-block mb-2"></i>
             <p class="mb-0">Записей об обслуживании нет</p>
           </div>
-          {% endif %}
         </div>
+        {% endif %}
       </div>
       
       {# История передач #}
@@ -162,43 +162,53 @@
         <div class="card-header">
           <h5 class="mb-0"><i class="bi-arrow-left-right me-2"></i>История передач</h5>
         </div>
-        <div class="card-body p-0">
-          {% if equipment.transfer_logs.exists %}
-          <div class="table-responsive">
-            <table class="table table-hover mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>Дата</th>
-                  <th>Откуда</th>
-                  <th>Куда</th>
-                  <th>Причина</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for log in equipment.transfer_logs.all %}
-                <tr>
-                  <td>{{ log.created_at|date:"d.m.Y" }}</td>
-                  <td>
-                    {% if log.from_department %}{{ log.from_department.name }}{% endif %}
-                    {% if log.from_person %}({{ log.from_person.get_full_name }}){% endif %}
-                  </td>
-                  <td>
-                    {% if log.to_department %}{{ log.to_department.name }}{% endif %}
-                    {% if log.to_person %}({{ log.to_person.get_full_name }}){% endif %}
-                  </td>
-                  <td>{{ log.reason|truncatechars:40 }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+        
+        {% if equipment.transfer_logs.exists %}
+        <div class="proc-table-header d-none d-lg-block">
+          <div class="proc-table-row">
+            <div class="proc-cell" style="flex: 1.5;"><h6 class="mb-0 text-secondary">Дата</h6></div>
+            <div class="proc-cell" style="flex: 3;"><h6 class="mb-0 text-secondary">Откуда</h6></div>
+            <div class="proc-cell" style="flex: 3;"><h6 class="mb-0 text-secondary">Куда</h6></div>
+            <div class="proc-cell" style="flex: 3;"><h6 class="mb-0 text-secondary">Причина</h6></div>
           </div>
-          {% else %}
+        </div>
+        
+        <div class="card-body p-0">
+          {% for log in equipment.transfer_logs.all %}
+          <div class="proc-request-item">
+            <div class="proc-cell" style="flex: 1.5;">
+              <span class="d-lg-none text-muted small">Дата: </span>
+              {{ log.created_at|date:"d.m.Y" }}
+            </div>
+            <div class="proc-cell" style="flex: 3;">
+              <span class="d-lg-none text-muted small">Откуда: </span>
+              <div>
+                {% if log.from_department %}{{ log.from_department.name }}{% endif %}
+                {% if log.from_person %}<small class="text-muted d-block">({{ log.from_person.get_full_name }})</small>{% endif %}
+              </div>
+            </div>
+            <div class="proc-cell" style="flex: 3;">
+              <span class="d-lg-none text-muted small">Куда: </span>
+              <div>
+                {% if log.to_department %}{{ log.to_department.name }}{% endif %}
+                {% if log.to_person %}<small class="text-muted d-block">({{ log.to_person.get_full_name }})</small>{% endif %}
+              </div>
+            </div>
+            <div class="proc-cell" style="flex: 3;">
+              <span class="d-lg-none text-muted small">Причина: </span>
+              {{ log.reason|truncatechars:60 }}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card-body">
           <div class="text-center py-4 text-muted">
             <i class="bi-inbox fs-3 d-block mb-2"></i>
             <p class="mb-0">Передач не было</p>
           </div>
-          {% endif %}
         </div>
+        {% endif %}
       </div>
     </div>
     

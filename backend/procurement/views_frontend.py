@@ -214,7 +214,7 @@ def equipment_detail(request, pk):
             'procurement_item',
             'procurement_item__request'
         ).prefetch_related(
-            'maintenance_records',
+            'maintenance_history',
             'transfer_logs__from_department',
             'transfer_logs__to_department',
             'transfer_logs__from_person',
