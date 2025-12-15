@@ -129,7 +129,7 @@ class QRCodeGenerator:
         Формат: URL с параметрами для быстрого доступа.
         """
         # Формируем URL на страницу оборудования
-        base_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+        base_url = getattr(settings, 'SITE_URL', 'http://corp.robotail.pro')
         equipment_url = f'{base_url}/procurement/equipment/{equipment.id}/'
         
         # Можно также добавить vCard или JSON формат
