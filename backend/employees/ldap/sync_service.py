@@ -256,7 +256,10 @@ def export_users_update_profile(
                 avatar_bytes = avatar_field.read()
             if avatar_bytes:
                 try:
-                    avatar_bytes = normalize_avatar_to_jpeg(avatar_bytes)
+                    # Увеличен размер до 384px для максимального качества в LDAP
+                    avatar_bytes = normalize_avatar_to_jpeg(
+                        avatar_bytes, size_px=384, max_kb=100
+                    )
                 except Exception as exc:
                     logger.warning(
                         "[WARN] avatar: не удалось нормализовать для %s: %s",
