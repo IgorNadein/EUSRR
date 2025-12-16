@@ -26,6 +26,10 @@ def compress_image(
     в системах распознавания лиц. Размер 512x512 обеспечивает достаточное
     качество для нейросетей при разумном размере файла.
 
+    ВАЖНО: Автоматически применяет EXIF-ориентацию перед обработкой.
+    Это предотвращает "переворачивание" фотографий, сделанных на телефоны
+    в портретной или перевёрнутой ориентации.
+
     Args:
         data: Входные данные изображения (любой формат, поддерживаемый PIL)
         max_width: Максимальная ширина в пикселях (по умолчанию 512)
@@ -35,7 +39,7 @@ def compress_image(
         format: Формат выходного файла (по умолчанию JPEG)
 
     Returns:
-        bytes: Сжатые данные изображения
+        bytes: Сжатые данные изображения с правильной ориентацией
 
     Raises:
         RuntimeError: Если Pillow не установлен или ошибка обработки
@@ -52,6 +56,26 @@ def compress_image(
     try:
         # Открываем изображение
         img = Image.open(io.BytesIO(data))
+
+        # ИСПРАВЛЕНИЕ: Применяем EXIF-ориентацию перед обработкой
+        # Это предотвращает "поворот" фотографий с телефонов
+        try:
+            # Получаем EXIF данные
+            exif = img.getexif()
+            # Тег 274 = Orientation
+            orientation = exif.get(0x0112) if exif else None
+            
+            if orientation:
+                # Применяем поворот согласно EXIF
+                if orientation == 3:
+                    img = img.rotate(180, expand=True)
+                elif orientation == 6:
+                    img = img.rotate(270, expand=True)
+                elif orientation == 8:
+                    img = img.rotate(90, expand=True)
+        except (AttributeError, KeyError, IndexError):
+            # Если EXIF недоступен или повреждён - продолжаем без ротации
+            pass
 
         # Конвертируем в RGB (для JPEG)
         if img.mode in ("RGBA", "LA", "P"):
