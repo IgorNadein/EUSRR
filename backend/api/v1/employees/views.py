@@ -2731,19 +2731,68 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     # --- бизнес-эффекты после записи события ---
     def _apply_effects(self, action_obj: EmployeeAction):
         emp = action_obj.employee
+        ldap_enabled = _is_ldap_enabled()
+        
         if action_obj.action == ACTION_DISMISSED:
-            # деактивируем сотрудника и связи
+            # деактивируем сотрудника и связи в БД
             EmployeeDepartment.objects.filter(employee=emp, is_active=True).update(
                 is_active=False, date_to=timezone.now().date()
             )
             if emp.is_active:
                 emp.is_active = False
                 emp.save(update_fields=["is_active"])
+            
+            # синхронизируем с LDAP (disable учётной записи)
+            if ldap_enabled:
+                try:
+                    svc = DirectoryService()
+                    # Проверяем, есть ли у пользователя ldap_dn
+                    from employees.models import LdapSyncState
+                    has_ldap_dn = LdapSyncState.objects.filter(
+                        model='employee',
+                        object_pk=str(emp.pk),
+                        ldap_dn__isnull=False
+                    ).exists()
+                    
+                    if has_ldap_dn:
+                        # Обновляем is_active в LDAP (установит userAccountControl=514)
+                        svc.update_user(emp, changes={"is_active": False})
+                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                    # Логируем ошибку, но не прерываем процесс
+                    # БД-изменения уже применены
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(
+                        f"Failed to disable user in LDAP during dismissal: "
+                        f"employee_id={emp.id}, error={e}"
+                    )
         else:
-            # любое иное событие делает сотрудника активным
+            # любое иное событие делает сотрудника активным в БД
             if not emp.is_active:
                 emp.is_active = True
                 emp.save(update_fields=["is_active"])
+            
+            # синхронизируем с LDAP (enable учётной записи)
+            if ldap_enabled:
+                try:
+                    svc = DirectoryService()
+                    from employees.models import LdapSyncState
+                    has_ldap_dn = LdapSyncState.objects.filter(
+                        model='employee',
+                        object_pk=str(emp.pk),
+                        ldap_dn__isnull=False
+                    ).exists()
+                    
+                    if has_ldap_dn:
+                        # Обновляем is_active в LDAP (установит userAccountControl=512)
+                        svc.update_user(emp, changes={"is_active": True})
+                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(
+                        f"Failed to enable user in LDAP during action: "
+                        f"employee_id={emp.id}, action={action_obj.action}, error={e}"
+                    )
 
     @transaction.atomic
     def perform_create(self, serializer):
