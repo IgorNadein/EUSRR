@@ -209,6 +209,15 @@ def employee_list(request):
     
     Для HTML страницы - данные загружаются через JavaScript на клиенте.
     """
+    # Если параметр active отсутствует и это HTML-запрос, 
+    # редиректим с active=true по умолчанию
+    if request.GET.get("format") != "json" and "active" not in request.GET:
+        params = request.GET.copy()
+        params["active"] = "true"
+        from django.http import QueryDict
+        query_string = params.urlencode()
+        return redirect(f"{request.path}?{query_string}")
+    
     api = get_api_client(request)
 
     # JSON-ветка для автокомплита

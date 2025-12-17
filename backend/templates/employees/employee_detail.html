@@ -238,7 +238,7 @@
 
                                     {% if a.history and a.history|length %}
                                       <details class="mt-2 small">
-                                        <summary class="text-secondary">История</summary>
+                                        <summary class="text-secondary">Подробнее</summary>
                                         <div class="mt-2">
                                           {% for h in a.history %}
                                             {% with new_action=h.changes.action.new|default:a.action %}
@@ -309,6 +309,75 @@
                   {% endif %}
                 {% endwith %}
               {% endwith %}
+            {% endif %}
+
+            {# === УПРАВЛЕНИЕ КАДРОВЫМИ СОБЫТИЯМИ === #}
+            {% if request.user.is_authenticated and not is_me %}
+              {% if perms.employees.add_employeeaction or request.user.is_staff or request.user.is_superuser %}
+                <div class="mt-3 text-start">
+                  <div class="ios-acc">
+                    <button class="ios-collapse-trigger" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#actionsManageCollapse"
+                            aria-expanded="false" aria-controls="actionsManageCollapse">
+                      <span class="title"><i class="bi-clipboard-plus me-1"></i>Управление событиями</span>
+                      <i class="bi-chevron-down ios-collapse-caret"></i>
+                    </button>
+
+                    <div id="actionsManageCollapse" class="collapse">
+                      <div class="ios-acc-body">
+                        <form id="employeeActionForm" class="p-2">
+                          {% csrf_token %}
+                          <input type="hidden" name="employee" value="{{ emp.id }}">
+                          
+                          <div class="mb-3">
+                            <label for="actionType" class="form-label">Тип события</label>
+                            <select class="form-select" id="actionType" name="action" required>
+                              <option value="">Выберите событие</option>
+                              <option value="hired">📋 Принят на работу</option>
+                              <option value="dismissed">👋 Уволен</option>
+                              <option value="transferred">🔄 Переведен</option>
+                              <option value="on_leave">🏖️ В отпуске</option>
+                              <option value="returned_from_leave">↩️ Вернулся из отпуска</option>
+                              <option value="on_maternity">👶 В декрете</option>
+                              <option value="returned_from_maternity">↩️ Вернулся из декрета</option>
+                              <option value="rehired">🔄 Восстановлен</option>
+                            </select>
+                          </div>
+
+                          <div class="mb-3">
+                            <label for="actionDate" class="form-label">Дата события</label>
+                            <input type="datetime-local" class="form-control" id="actionDate" name="date" required>
+                          </div>
+
+                          <div class="mb-3">
+                            <label for="actionComment" class="form-label">Комментарий/причина</label>
+                            <textarea class="form-control" id="actionComment" name="comment" rows="3" placeholder="Опционально"></textarea>
+                          </div>
+
+                          <div class="alert alert-warning d-none" id="dismissalWarning">
+                            <i class="bi-exclamation-triangle-fill me-2"></i>
+                            <strong>Внимание:</strong> Увольнение деактивирует сотрудника в системе и LDAP (если настроено).
+                          </div>
+
+                          <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                              <i class="bi-check-lg me-1"></i>Сохранить событие
+                            </button>
+                            <button type="button" class="btn btn-ghost" data-bs-toggle="collapse" data-bs-target="#actionsManageCollapse">
+                              Отмена
+                            </button>
+                          </div>
+
+                          <div class="mt-2">
+                            <div class="alert alert-success d-none" id="actionSuccess"></div>
+                            <div class="alert alert-danger d-none" id="actionError"></div>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
             {% endif %}
 
             {# ====== НАВЫКИ ====== #}

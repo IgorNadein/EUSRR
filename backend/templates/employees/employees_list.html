@@ -86,6 +86,17 @@
       debounceMs: 300
     });
     
+    // Обработка изменения фильтра активности
+    const activeFilter = document.getElementById('activeFilter');
+    if (activeFilter) {
+      activeFilter.addEventListener('change', (e) => {
+        const form = e.target.closest('form');
+        if (form) {
+          form.submit();
+        }
+      });
+    }
+    
     // Инициализация модала создания сотрудника
     initCreateEmployeeModal({
       submitUrl: '{% url "employees:employee_create_modal" %}'

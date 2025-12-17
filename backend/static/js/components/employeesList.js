@@ -26,7 +26,8 @@ export class EmployeesList {
       search: urlParams.get('q') || '',
       department: urlParams.get('department') || '',
       position: urlParams.get('position') || '',
-      is_active: urlParams.get('is_active') || ''
+      // По умолчанию показываем только активных сотрудников
+      active: urlParams.get('active') !== null ? urlParams.get('active') : 'true'
     };
     
     // Intersection Observer для бесконечной прокрутки
