@@ -21,7 +21,7 @@ const DEFAULT_CONFIG = {
   
   // Настройки Cropper.js
   cropperOptions: {
-    aspectRatio: 1, // Квадратное фото
+    aspectRatio: 3 / 4, // Портретное фото 3:4
     viewMode: 2, // Ограничить canvas областью контейнера
     dragMode: 'move', // Перемещение изображения
     autoCropArea: 0.8, // Начальный размер области обрезки (80%)
@@ -33,12 +33,13 @@ const DEFAULT_CONFIG = {
     cropBoxResizable: true,
     toggleDragModeOnDblclick: false,
     minCropBoxWidth: 200,
-    minCropBoxHeight: 200,
+    minCropBoxHeight: 266, // 200 * 4/3 для сохранения пропорций
   },
   
   // Требования для FaceID
-  minOutputSize: 600, // Минимальный размер выходного изображения
-  outputSize: 800, // Рекомендуемый размер выходного изображения
+  minOutputSize: 600, // Минимальный размер выходного изображения (по меньшей стороне)
+  outputWidth: 600, // Ширина выходного изображения (3:4)
+  outputHeight: 800, // Высота выходного изображения (3:4)
   outputQuality: 0.92, // Качество JPEG (0.0 - 1.0)
   outputFormat: 'image/jpeg', // Формат выходного файла
   
@@ -49,12 +50,13 @@ const DEFAULT_CONFIG = {
       <div class="alert alert-info mb-3">
         <h6 class="mb-2"><i class="bi-info-circle me-2"></i>Требования для системы распознавания лиц:</h6>
         <ul class="mb-0 small">
-          <li><strong>Совместите голову и плечи с контуром</strong></li>
-          <li>Лицо должно занимать 70-80% кадра</li>
-          <li>Расположите лицо в центре рамки</li>
+          <li><strong>Совместите тело с зелёным контуром (голова, плечи, торс)</strong></li>
+          <li>Лицо должно занимать верхнюю треть кадра</li>
+          <li>Расположите лицо в центре по вертикальной линии</li>
           <li>Избегайте теней и бликов</li>
           <li>Смотрите прямо в камеру</li>
           <li>Нейтральное выражение лица</li>
+          <li>Формат: портретное фото 3:4</li>
         </ul>
       </div>
     `,
@@ -111,36 +113,41 @@ export class AvatarCropper {
               <div class="cropper-container-wrapper position-relative" style="max-height: 500px; overflow: hidden;">
                 <img id="cropperImage" style="max-width: 100%; display: block;">
                 
-                <!-- SVG оверлей с контуром человека -->
-                <svg id="humanOverlay" class="position-absolute top-0 start-0 w-100 h-100" 
+                <!-- SVG оверлей с контуром человека (3:4 пропорции) -->
+                <svg id="humanOverlay" class="position-absolute" 
                      style="pointer-events: none; z-index: 1000; display: none;" 
-                     viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
+                     viewBox="0 0 300 400" preserveAspectRatio="none">
                   <!-- Контур головы и плеч -->
                   <g fill="none" stroke="#00ff00" stroke-width="3" stroke-opacity="0.8" stroke-dasharray="8,4">
-                    <!-- Голова (эллипс) -->
-                    <ellipse cx="200" cy="140" rx="85" ry="105"/>
+                    <!-- Голова (эллипс) - увеличена для портретного формата -->
+                    <ellipse cx="150" cy="120" rx="75" ry="95"/>
                     
                     <!-- Шея -->
-                    <path d="M 160 230 L 160 260 M 240 230 L 240 260"/>
+                    <path d="M 115 200 L 115 230 M 185 200 L 185 230"/>
                     
                     <!-- Плечи -->
-                    <path d="M 90 340 Q 160 260, 200 260 Q 240 260, 310 340"/>
+                    <path d="M 40 320 Q 115 230, 150 230 Q 185 230, 260 320"/>
+                    
+                    <!-- Туловище (контур до пояса) -->
+                    <path d="M 40 320 L 60 400 M 260 320 L 240 400"/>
                   </g>
                   
                   <!-- Направляющие линии -->
                   <g stroke="#00ff00" stroke-width="1" stroke-opacity="0.4" stroke-dasharray="4,4">
                     <!-- Вертикальная центральная линия -->
-                    <line x1="200" y1="0" x2="200" y2="400"/>
+                    <line x1="150" y1="0" x2="150" y2="400"/>
                     <!-- Горизонтальная линия глаз -->
-                    <line x1="0" y1="140" x2="400" y2="140"/>
+                    <line x1="0" y1="120" x2="300" y2="120"/>
+                    <!-- Горизонтальная линия плеч -->
+                    <line x1="0" y1="230" x2="300" y2="230"/>
                   </g>
                   
                   <!-- Подсказки -->
-                  <text x="200" y="30" text-anchor="middle" fill="#00ff00" font-size="14" font-weight="bold">
+                  <text x="150" y="25" text-anchor="middle" fill="#00ff00" font-size="16" font-weight="bold">
                     ↓ Верх головы
                   </text>
-                  <text x="200" y="390" text-anchor="middle" fill="#00ff00" font-size="14" font-weight="bold">
-                    ↑ Плечи
+                  <text x="150" y="385" text-anchor="middle" fill="#00ff00" font-size="16" font-weight="bold">
+                    ↑ Пояс
                   </text>
                 </svg>
               </div>
@@ -321,6 +328,15 @@ export class AvatarCropper {
         this.updateSizeIndicator(event.detail);
         this.updateOverlayPosition();
       },
+      cropstart: () => {
+        this.updateOverlayPosition();
+      },
+      cropmove: () => {
+        this.updateOverlayPosition();
+      },
+      cropend: () => {
+        this.updateOverlayPosition();
+      },
       zoom: () => {
         this.updateOverlayPosition();
       }
@@ -409,10 +425,10 @@ export class AvatarCropper {
       applyBtn.disabled = true;
       applyBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Обработка...';
       
-      // Получаем обрезанное изображение
+      // Получаем обрезанное изображение в пропорциях 3:4
       const canvas = this.cropper.getCroppedCanvas({
-        width: this.config.outputSize,
-        height: this.config.outputSize,
+        width: this.config.outputWidth,
+        height: this.config.outputHeight,
         imageSmoothingEnabled: true,
         imageSmoothingQuality: 'high',
       });
