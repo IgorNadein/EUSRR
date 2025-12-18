@@ -2734,13 +2734,15 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
         
         if action_obj.action == ACTION_DISMISSED:
-            # деактивируем сотрудника и связи в БД
-            EmployeeDepartment.objects.filter(employee=emp, is_active=True).update(
-                is_active=False, date_to=timezone.now().date()
-            )
+            # ВАЖНО: сначала деактивируем сотрудника (чтобы get_base_dn_for_employee работал правильно)
             if emp.is_active:
                 emp.is_active = False
                 emp.save(update_fields=["is_active"])
+            
+            # деактивируем связи с отделами в БД
+            EmployeeDepartment.objects.filter(employee=emp, is_active=True).update(
+                is_active=False, date_to=timezone.now().date()
+            )
             
             # синхронизируем с LDAP (disable учётной записи)
             if ldap_enabled:
@@ -2757,6 +2759,23 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                     if has_ldap_dn:
                         # Обновляем is_active в LDAP (установит userAccountControl=514)
                         svc.update_user(emp, changes={"is_active": False})
+                        
+                        # Удаляем из всех отделов (это переместит в OU=Dismissed)
+                        active_departments = EmployeeDepartment.objects.filter(
+                            employee=emp
+                        ).select_related('department')
+                        
+                        for emp_dept in active_departments:
+                            try:
+                                svc.remove_member(emp_dept.department, emp)
+                            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                                # Логируем ошибку удаления из конкретного отдела
+                                import logging
+                                logger = logging.getLogger(__name__)
+                                logger.error(
+                                    f"Failed to remove dismissed employee from department: "
+                                    f"employee_id={emp.id}, department_id={emp_dept.department.id}, error={e}"
+                                )
                 except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
                     # Логируем ошибку, но не прерываем процесс
                     # БД-изменения уже применены
@@ -2768,7 +2787,8 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                     )
         else:
             # любое иное событие делает сотрудника активным в БД
-            if not emp.is_active:
+            was_inactive = not emp.is_active
+            if was_inactive:
                 emp.is_active = True
                 emp.save(update_fields=["is_active"])
             
@@ -2786,6 +2806,47 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                     if has_ldap_dn:
                         # Обновляем is_active в LDAP (установит userAccountControl=512)
                         svc.update_user(emp, changes={"is_active": True})
+                        
+                        # Если сотрудник был неактивен (восстановление из увольнения),
+                        # перемещаем из OU=Dismissed в OU=Users
+                        if was_inactive:
+                            try:
+                                sync_state = LdapSyncState.objects.get(
+                                    model='employee',
+                                    object_pk=str(emp.pk)
+                                )
+                                current_dn = sync_state.ldap_dn
+                                dismissed_base = getattr(settings, "LDAP_DISMISSED_BASE", "")
+                                
+                                # Проверяем, находится ли сотрудник в OU=Dismissed
+                                if dismissed_base and current_dn.lower().endswith(dismissed_base.lower()):
+                                    users_base = getattr(settings, "LDAP_USERS_BASE", None) or getattr(
+                                        settings, "LDAP_USER_BASE", None
+                                    )
+                                    if users_base:
+                                        from employees.ldap.infrastructure.connections import _ldap
+                                        from employees.ldap.repositories.ldap_repository import ensure_container_exists
+                                        
+                                        with _ldap() as conn:
+                                            ensure_container_exists(conn, users_base)
+                                            # Используем внутренний метод UserService
+                                            new_dn = svc._user_service._move_user_to_base(
+                                                conn, current_dn, users_base
+                                            )
+                                            sync_state.touch(ldap_dn=new_dn, sync_dir="ldap")
+                                            import logging
+                                            logger = logging.getLogger(__name__)
+                                            logger.info(
+                                                f"Restored employee moved from Dismissed to Users: "
+                                                f"employee_id={emp.id}, new_dn={new_dn}"
+                                            )
+                            except Exception as e:
+                                import logging
+                                logger = logging.getLogger(__name__)
+                                logger.error(
+                                    f"Failed to move restored employee from Dismissed to Users: "
+                                    f"employee_id={emp.id}, error={e}"
+                                )
                 except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
                     import logging
                     logger = logging.getLogger(__name__)

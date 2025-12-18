@@ -436,15 +436,17 @@ class DepartmentService:
                 pass
 
             if emp_dn:
-                users_base = getattr(
-                    settings, "LDAP_USERS_BASE", None
-                ) or getattr(settings, "LDAP_USER_BASE", None)
-                if not users_base:
-                    raise RuntimeError("LDAP_USERS_BASE is not configured")
+                from ..utils.ldap_utils import get_base_dn_for_employee
+                
                 try:
-                    ensure_container_exists(conn, users_base)
+                    target_base = get_base_dn_for_employee(employee)
+                except RuntimeError as e:
+                    raise DirectoryLdapError(str(e)) from e
+                
+                try:
+                    ensure_container_exists(conn, target_base)
                     new_dn = self._user_service._move_user_to_base(
-                        conn, emp_dn, users_base
+                        conn, emp_dn, target_base
                     )
                     self._touch_state(
                         model="employee",
@@ -453,8 +455,9 @@ class DepartmentService:
                         sync_dir="ldap",
                     )
                 except Exception as e:
+                    target_name = "Dismissed OU" if not employee.is_active else "Users OU"
                     raise DirectoryLdapError(
-                        f"LDAP move to Users OU failed: {e}"
+                        f"LDAP move to {target_name} failed: {e}"
                     ) from e
 
             try:

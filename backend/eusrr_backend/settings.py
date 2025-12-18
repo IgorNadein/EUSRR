@@ -424,6 +424,9 @@ LDAP_USER_BASE = os.getenv("LDAP_USER_BASE")
 LDAP_DEPARTMENTS_BASE = os.getenv(
     "LDAP_DEPARTMENTS_BASE", "OU=Departments,OU=company,DC=robotail,DC=local"
 )
+LDAP_DISMISSED_BASE = os.getenv(
+    "LDAP_DISMISSED_BASE", "OU=Dismissed,OU=company,DC=robotail,DC=local"
+)
 LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE")
 
 LDAP_AUTO_CREATE = os.getenv("LDAP_AUTO_CREATE", "False")
