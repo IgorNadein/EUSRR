@@ -2073,6 +2073,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             # Получаем навыки
             skills = ", ".join([s.name for s in emp.skills.all()])
             
+            # Форматируем телефон (PhoneNumber -> строка)
+            phone_str = ''
+            if emp.phone_number:
+                try:
+                    from phonenumbers import format_number, PhoneNumberFormat
+                    phone_str = format_number(emp.phone_number, PhoneNumberFormat.INTERNATIONAL)
+                except:
+                    phone_str = str(emp.phone_number)
+            
             # Данные строки
             row_data = [
                 emp.id,
@@ -2080,7 +2089,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 emp.first_name or '',
                 emp.patronymic or '',
                 emp.email or '',
-                str(emp.phone_number) if emp.phone_number else '',
+                phone_str,
                 emp.position.name if emp.position else '',
                 dept_names,
                 emp.birth_date.strftime('%d.%m.%Y') if emp.birth_date else '',
