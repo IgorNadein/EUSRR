@@ -67,3 +67,7 @@ gunicorn==23.0.0
 # Utilities
 beautifulsoup4==4.13.4
 python-dateutil==2.9.0.post0
+
+# Excel Export
+openpyxl==3.1.5
+

@@ -1998,6 +1998,133 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             {"ok": True, "removed": {"id": sk.id, "name": sk.name}}, status=200
         )
 
+    @action(detail=False, methods=["get"], url_path="export-excel")
+    def export_excel(self, request):
+        """
+        GET /api/v1/employees/export-excel/
+        
+        Экспортирует всех сотрудников в Excel формат.
+        
+        Параметры:
+            - Применяются все фильтры из queryset (department, position, active и т.д.)
+        
+        Возвращает:
+            - Excel файл (.xlsx) с данными сотрудников
+        """
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill
+        from django.http import HttpResponse
+        from datetime import datetime
+        
+        # Получаем отфильтрованный queryset
+        queryset = self.filter_queryset(self.get_queryset())
+        queryset = queryset.select_related('position').prefetch_related(
+            'skills',
+            'departments_links__department',
+            'departments_links__role'
+        ).order_by('last_name', 'first_name')
+        
+        # Создаём Excel файл
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Сотрудники"
+        
+        # Заголовки
+        headers = [
+            'ID',
+            'Фамилия',
+            'Имя',
+            'Отчество',
+            'Email',
+            'Телефон',
+            'Должность',
+            'Отделы',
+            'Дата рождения',
+            'Дата регистрации',
+            'Активен',
+            'Email подтвержден',
+            'Навыки',
+            'Telegram',
+            'WhatsApp',
+            'WeChat'
+        ]
+        
+        # Стиль заголовков
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        # Записываем заголовки
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+        
+        # Записываем данные
+        for row_num, emp in enumerate(queryset, 2):
+            # Получаем отделы
+            departments = emp.departments_links.filter(is_active=True)
+            dept_names = ", ".join([
+                f"{d.department.name}" + (f" ({d.role.name})" if d.role else "")
+                for d in departments
+            ])
+            
+            # Получаем навыки
+            skills = ", ".join([s.name for s in emp.skills.all()])
+            
+            # Данные строки
+            row_data = [
+                emp.id,
+                emp.last_name or '',
+                emp.first_name or '',
+                emp.patronymic or '',
+                emp.email or '',
+                str(emp.phone_number) if emp.phone_number else '',
+                emp.position.name if emp.position else '',
+                dept_names,
+                emp.birth_date.strftime('%d.%m.%Y') if emp.birth_date else '',
+                emp.created_at.strftime('%d.%m.%Y %H:%M') if emp.created_at else '',
+                'Да' if emp.is_active else 'Нет',
+                'Да' if emp.email_verified else 'Нет',
+                skills,
+                emp.telegram or '',
+                emp.whatsapp or '',
+                emp.wechat or ''
+            ]
+            
+            for col_num, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_num, column=col_num, value=value)
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+        
+        # Автоподбор ширины колонок
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)  # Максимум 50
+            ws.column_dimensions[column].width = adjusted_width
+        
+        # Закрепляем первую строку (заголовки)
+        ws.freeze_panes = 'A2'
+        
+        # Создаём HTTP ответ
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"employees_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        # Сохраняем в response
+        wb.save(response)
+        
+        return response
+
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         if getattr(self, "action", None) in {"retrieve", "me"}:
