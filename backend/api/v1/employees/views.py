@@ -2073,14 +2073,23 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             # Получаем навыки
             skills = ", ".join([s.name for s in emp.skills.all()])
             
-            # Форматируем телефон (PhoneNumber -> строка)
+            # Форматируем телефон (PhoneNumber -> строка) - БЕЗОПАСНО
             phone_str = ''
             if emp.phone_number:
                 try:
                     from phonenumbers import format_number, PhoneNumberFormat
                     phone_str = format_number(emp.phone_number, PhoneNumberFormat.INTERNATIONAL)
-                except:
-                    phone_str = str(emp.phone_number)
+                except Exception:
+                    try:
+                        # Fallback 1: str()
+                        phone_str = str(emp.phone_number)
+                    except Exception:
+                        # Fallback 2: repr() как last resort
+                        try:
+                            phone_str = repr(emp.phone_number)
+                        except Exception:
+                            # Полный fallback - пустая строка
+                            phone_str = '[invalid phone]'
             
             # Данные строки
             row_data = [
