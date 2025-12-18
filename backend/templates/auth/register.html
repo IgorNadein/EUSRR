@@ -115,7 +115,14 @@
             </div>
             <div class="col">
               {% bootstrap_field form.avatar %}
-              <small class="text-muted">Рекомендуемый размер: 200×200 px</small>
+              <small class="text-muted d-block">
+                <i class="bi-camera-fill me-1"></i>
+                <strong>Требования для системы распознавания лиц (FaceID):</strong><br>
+                • Портретное фото (пропорции 3:4)<br>
+                • Совместите тело с контуром (голова, плечи, торс)<br>
+                • Минимальный размер: 600x800px<br>
+                • Форматы: JPG, PNG, GIF. Максимум 10 МБ
+              </small>
             </div>
           </div>
 
@@ -133,20 +140,25 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Cropper.js для обрезки аватара -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" integrity="sha512-hvNR0F/e2J7zPPfLC9auFe3/SE0yG4aJCOd/qxew74NN7eyiSKjr7xJJMu1Jy2wf7FXITpWS1E/RY8yzuXN7VA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js" integrity="sha512-9KkIqdfN7ipEW6B6k+Aq20PV31bjODg4AA52W+tYtAE0jE0kMx49bjJ3FgvS56wzmyfMUHbQ4Km2b7l9+Y/+Eg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
 <script type="module">
   import { initPasswordToggle } from "{% static 'js/components/passwordToggleHandler.js' %}";
-  import { initAvatarPreview } from "{% static 'js/components/avatarPreviewHandler.js' %}";
+  import { initAvatarCropper } from "{% static 'js/components/avatarCropperHandler.js' %}";
   import { initLiveValidation } from "{% static 'js/components/liveValidationHandler.js' %}";
 
   document.addEventListener('DOMContentLoaded', function () {
     // Переключение видимости пароля
     initPasswordToggle();
 
-    // Превью аватара
-    initAvatarPreview({
+    // Avatar Cropper для FaceID (заменяет простое превью)
+    initAvatarCropper({
       fileInputSelector: 'input[type="file"][name="{{ form.avatar.html_name }}"]',
       previewImageId: 'avatarPreview',
-      placeholderId: 'avatarPlaceholder'
+      placeholderId: 'avatarPlaceholder',
+      modalId: 'avatarCropperModal'
     });
 
     // Live validation - валидация в реальном времени
