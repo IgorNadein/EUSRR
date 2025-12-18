@@ -2073,23 +2073,22 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             # Получаем навыки
             skills = ", ".join([s.name for s in emp.skills.all()])
             
-            # Форматируем телефон (PhoneNumber -> строка) - БЕЗОПАСНО
-            phone_str = ''
-            if emp.phone_number:
+            # Конвертируем PhoneNumber поля в строки
+            def safe_phone_str(phone_field):
+                """Безопасная конвертация PhoneNumber в строку"""
+                if not phone_field:
+                    return ''
                 try:
                     from phonenumbers import format_number, PhoneNumberFormat
-                    phone_str = format_number(emp.phone_number, PhoneNumberFormat.INTERNATIONAL)
+                    return format_number(phone_field, PhoneNumberFormat.INTERNATIONAL)
                 except Exception:
                     try:
-                        # Fallback 1: str()
-                        phone_str = str(emp.phone_number)
+                        return str(phone_field)
                     except Exception:
-                        # Fallback 2: repr() как last resort
-                        try:
-                            phone_str = repr(emp.phone_number)
-                        except Exception:
-                            # Полный fallback - пустая строка
-                            phone_str = '[invalid phone]'
+                        return ''
+            
+            phone_str = safe_phone_str(emp.phone_number)
+            whatsapp_str = safe_phone_str(emp.whatsapp)
             
             # Данные строки
             row_data = [
@@ -2107,7 +2106,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 'Да' if emp.email_verified else 'Нет',
                 skills,
                 emp.telegram or '',
-                emp.whatsapp or '',
+                whatsapp_str,
                 emp.wechat or ''
             ]
             
