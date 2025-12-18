@@ -548,3 +548,61 @@ def test_restoration_moves_from_dismissed_to_users(
     # Проверяем, что был вызван _move_user_to_base (через mock LDAP)
     # Это косвенная проверка - мы мокнули _ldap(), так что код выполнился
 
+
+@pytest.mark.django_db
+@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('employees.ldap.infrastructure.connections._ldap')
+@patch('employees.ldap.directory_service.DirectoryService.update_user')
+def test_dismissal_without_department_moves_to_dismissed(
+    mock_update, mock_ldap_ctx, mock_is_enabled, api_client, settings
+):
+    """Проверяет перемещение в OU=Dismissed при увольнении сотрудника без отдела."""
+    from employees.models import LdapSyncState
+    from unittest.mock import MagicMock
+
+    mock_is_enabled.return_value = True
+    settings.LDAP_DISMISSED_BASE = "OU=Dismissed,DC=example,DC=com"
+    settings.LDAP_USERS_BASE = "OU=Users,DC=example,DC=com"
+
+    # Мокаем LDAP соединение
+    mock_conn = MagicMock()
+    mock_ldap_ctx.return_value.__enter__.return_value = mock_conn
+    mock_ldap_ctx.return_value.__exit__.return_value = False
+
+    staff = _user(staff=True)
+    api_client.force_authenticate(user=staff)
+    emp = _user()
+
+    # Сотрудник НЕ состоит ни в одном отделе (нет EmployeeDepartment записей)
+    # Создаём запись LdapSyncState - сотрудник в OU=Users
+    sync_state = LdapSyncState.objects.create(
+        model='employee',
+        object_pk=str(emp.pk),
+        ldap_dn=f'CN={emp.email},OU=Users,DC=example,DC=com',
+        last_sync_dir='ldap'
+    )
+
+    url = reverse("api:v1:employee-actions-list")
+    resp = api_client.post(
+        url,
+        {
+            "employee": emp.id,
+            "action": ACTION_DISMISSED,
+            "date": timezone.now().isoformat(),
+        },
+        format="json",
+    )
+
+    assert resp.status_code == 201
+    emp.refresh_from_db()
+    assert emp.is_active is False
+
+    # Проверяем вызов update_user (деактивация в LDAP)
+    mock_update.assert_called_once()
+    call_args = mock_update.call_args
+    assert call_args[0][0].id == emp.id
+    assert call_args[1]['changes'] == {'is_active': False}
+
+    # Проверяем, что LDAP соединение было создано (для перемещения в OU=Dismissed)
+    assert mock_ldap_ctx.called, "LDAP connection should be established for moving to OU=Dismissed"
+

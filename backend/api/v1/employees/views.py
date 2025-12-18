@@ -2765,9 +2765,11 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                             employee=emp
                         ).select_related('department')
                         
+                        departments_processed = False
                         for emp_dept in active_departments:
                             try:
                                 svc.remove_member(emp_dept.department, emp)
+                                departments_processed = True
                             except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
                                 # Логируем ошибку удаления из конкретного отдела
                                 import logging
@@ -2775,6 +2777,45 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                                 logger.error(
                                     f"Failed to remove dismissed employee from department: "
                                     f"employee_id={emp.id}, department_id={emp_dept.department.id}, error={e}"
+                                )
+                        
+                        # Если сотрудник не состоял ни в одном отделе, вручную перемещаем в OU=Dismissed
+                        if not departments_processed:
+                            try:
+                                from employees.ldap.utils.ldap_utils import get_base_dn_for_employee
+                                from employees.ldap.infrastructure.connections import _ldap
+                                from employees.ldap.repositories.ldap_repository import ensure_container_exists
+                                from employees.models import LdapSyncState
+                                
+                                sync_state = LdapSyncState.objects.filter(
+                                    model='employee',
+                                    object_pk=str(emp.pk)
+                                ).first()
+                                
+                                if sync_state and sync_state.ldap_dn:
+                                    target_base = get_base_dn_for_employee(emp)
+                                    current_dn = sync_state.ldap_dn
+                                    
+                                    # Проверяем, нужно ли перемещение
+                                    if not current_dn.lower().endswith(target_base.lower()):
+                                        with _ldap() as conn:
+                                            ensure_container_exists(conn, target_base)
+                                            new_dn = svc._user_service._move_user_to_base(
+                                                conn, current_dn, target_base
+                                            )
+                                            sync_state.touch(ldap_dn=new_dn, sync_dir="ldap")
+                                            import logging
+                                            logger = logging.getLogger(__name__)
+                                            logger.info(
+                                                f"Dismissed employee without department moved to OU=Dismissed: "
+                                                f"employee_id={emp.id}, new_dn={new_dn}"
+                                            )
+                            except Exception as e:
+                                import logging
+                                logger = logging.getLogger(__name__)
+                                logger.error(
+                                    f"Failed to move dismissed employee without department to OU=Dismissed: "
+                                    f"employee_id={emp.id}, error={e}"
                                 )
                 except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
                     # Логируем ошибку, но не прерываем процесс
