@@ -49,6 +49,7 @@ const DEFAULT_CONFIG = {
       <div class="alert alert-info mb-3">
         <h6 class="mb-2"><i class="bi-info-circle me-2"></i>Требования для системы распознавания лиц:</h6>
         <ul class="mb-0 small">
+          <li><strong>Совместите голову и плечи с контуром</strong></li>
           <li>Лицо должно занимать 70-80% кадра</li>
           <li>Расположите лицо в центре рамки</li>
           <li>Избегайте теней и бликов</li>
@@ -107,14 +108,53 @@ export class AvatarCropper {
               ${this.config.texts.instructions}
               
               <!-- Контейнер для Cropper.js -->
-              <div class="cropper-container-wrapper" style="max-height: 500px; overflow: hidden;">
+              <div class="cropper-container-wrapper position-relative" style="max-height: 500px; overflow: hidden;">
                 <img id="cropperImage" style="max-width: 100%; display: block;">
+                
+                <!-- SVG оверлей с контуром человека -->
+                <svg id="humanOverlay" class="position-absolute top-0 start-0 w-100 h-100" 
+                     style="pointer-events: none; z-index: 1000; display: none;" 
+                     viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
+                  <!-- Контур головы и плеч -->
+                  <g fill="none" stroke="#00ff00" stroke-width="3" stroke-opacity="0.8" stroke-dasharray="8,4">
+                    <!-- Голова (эллипс) -->
+                    <ellipse cx="200" cy="140" rx="85" ry="105"/>
+                    
+                    <!-- Шея -->
+                    <path d="M 160 230 L 160 260 M 240 230 L 240 260"/>
+                    
+                    <!-- Плечи -->
+                    <path d="M 90 340 Q 160 260, 200 260 Q 240 260, 310 340"/>
+                  </g>
+                  
+                  <!-- Направляющие линии -->
+                  <g stroke="#00ff00" stroke-width="1" stroke-opacity="0.4" stroke-dasharray="4,4">
+                    <!-- Вертикальная центральная линия -->
+                    <line x1="200" y1="0" x2="200" y2="400"/>
+                    <!-- Горизонтальная линия глаз -->
+                    <line x1="0" y1="140" x2="400" y2="140"/>
+                  </g>
+                  
+                  <!-- Подсказки -->
+                  <text x="200" y="30" text-anchor="middle" fill="#00ff00" font-size="14" font-weight="bold">
+                    ↓ Верх головы
+                  </text>
+                  <text x="200" y="390" text-anchor="middle" fill="#00ff00" font-size="14" font-weight="bold">
+                    ↑ Плечи
+                  </text>
+                </svg>
               </div>
               
-              <!-- Индикатор размера -->
-              <div class="mt-3 text-center">
+              <!-- Индикатор размера и контроль оверлея -->
+              <div class="mt-3 d-flex justify-content-between align-items-center">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="toggleHumanOverlay" checked>
+                  <label class="form-check-label" for="toggleHumanOverlay">
+                    <small><i class="bi-person-bounding-box me-1"></i>Показать контур человека</small>
+                  </label>
+                </div>
                 <small class="text-muted" id="cropperSizeIndicator">
-                  Размер обрезанного фото: <span class="fw-bold">-</span>
+                  Размер: <span class="fw-bold">-</span>
                 </small>
               </div>
             </div>
@@ -160,6 +200,12 @@ export class AvatarCropper {
     const cropperImage = document.getElementById('cropperImage');
     if (cropperImage) {
       cropperImage.addEventListener('crop', (e) => this.updateSizeIndicator(e.detail));
+    }
+    
+    // Обработчик переключения контура человека
+    const toggleOverlay = document.getElementById('toggleHumanOverlay');
+    if (toggleOverlay) {
+      toggleOverlay.addEventListener('change', (e) => this.toggleHumanOverlay(e.target.checked));
     }
   }
   
@@ -268,11 +314,58 @@ export class AvatarCropper {
       ready: () => {
         console.log('[AvatarCropper] Cropper ready');
         this.updateSizeIndicator();
+        this.updateOverlayPosition();
+        this.showHumanOverlay();
       },
       crop: (event) => {
         this.updateSizeIndicator(event.detail);
+        this.updateOverlayPosition();
+      },
+      zoom: () => {
+        this.updateOverlayPosition();
       }
     });
+  }
+  
+  /**
+   * Показывает контур человека
+   */
+  showHumanOverlay() {
+    const overlay = document.getElementById('humanOverlay');
+    const toggle = document.getElementById('toggleHumanOverlay');
+    
+    if (overlay && toggle && toggle.checked) {
+      overlay.style.display = 'block';
+    }
+  }
+  
+  /**
+   * Переключает видимость контура человека
+   */
+  toggleHumanOverlay(show) {
+    const overlay = document.getElementById('humanOverlay');
+    if (overlay) {
+      overlay.style.display = show ? 'block' : 'none';
+    }
+  }
+  
+  /**
+   * Обновляет позицию оверлея в соответствии с crop box
+   */
+  updateOverlayPosition() {
+    if (!this.cropper) return;
+    
+    const overlay = document.getElementById('humanOverlay');
+    if (!overlay) return;
+    
+    const cropBoxData = this.cropper.getCropBoxData();
+    const containerData = this.cropper.getContainerData();
+    
+    // Позиционируем SVG оверлей точно над crop box
+    overlay.style.left = cropBoxData.left + 'px';
+    overlay.style.top = cropBoxData.top + 'px';
+    overlay.style.width = cropBoxData.width + 'px';
+    overlay.style.height = cropBoxData.height + 'px';
   }
   
   /**
