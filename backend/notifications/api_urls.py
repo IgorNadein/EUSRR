@@ -33,4 +33,20 @@ urlpatterns = [
         api_views.update_category_settings,
         name='category_settings_update'
     ),
+    # Telegram integration
+    path(
+        'notifications/telegram/status/',
+        api_views.get_telegram_link_status,
+        name='telegram_status'
+    ),
+    path(
+        'notifications/telegram/generate-code/',
+        api_views.generate_telegram_link_code,
+        name='telegram_generate_code'
+    ),
+    path(
+        'notifications/telegram/unlink/',
+        api_views.unlink_telegram,
+        name='telegram_unlink'
+    ),
 ]

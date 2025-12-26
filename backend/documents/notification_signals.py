@@ -342,7 +342,7 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
                 f'"{document.title}"'
             ),
             content_object=document,
-            action_url=f'/documents/{document.id}/',
+            action_url='/documents/',
             metadata={
                 'document_id': document.id,
                 'total_recipients': total_recipients,
@@ -461,7 +461,7 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
             f'Требуется ознакомление.'
         ),
         content_object=document,
-        action_url=f'/documents/{document.id}/',
+        action_url='/documents/',
         metadata={
             'document_id': document.id,
             'uploaded_by_id': (
