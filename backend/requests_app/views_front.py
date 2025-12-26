@@ -396,3 +396,25 @@ def request_comment_add(request: HttpRequest, pk: int) -> JsonResponse:
     if not ok and st != 201:
         return JsonResponse(data or {"detail": f"HTTP {st}"}, status=st)
     return JsonResponse(data, status=201)
+
+def request_comment_delete(request: HttpRequest, pk: int, comment_id: int) -> JsonResponse:
+    """Прокси: удаление комментария.
+    
+    DELETE /api/v1/requests/{pk}/comments/{comment_id}/
+    
+    Требует авторизации и проверяет права (только автор может удалить свой комментарий).
+    """
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    api = get_api_client(request)
+    ok, data, st = _api_unpack(
+        api.delete(f"v1/requests/{pk}/comments/{comment_id}/")
+    )
+    
+    if not ok:
+        return JsonResponse(data or {"detail": f"HTTP {st}"}, status=st)
+    
+    return JsonResponse({"detail": "Comment deleted"}, status=204)

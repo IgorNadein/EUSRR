@@ -5,6 +5,7 @@ from .views_front import (
     RequestDetailView,
     request_comments,
     request_comment_add,
+    request_comment_delete,
 )
 
 app_name = "requests"
@@ -18,4 +19,8 @@ urlpatterns = [
         request_comment_add,
         name="request_comment_add",
     ),
+    path(
+        "comments/<int:pk>/delete/<int:comment_id>/",
+        request_comment_delete,
+        name="request_comment_delete",    ),
 ]
