@@ -8,7 +8,22 @@
   <div class="row gx-0">
      <div class="col-12">
 
-      {# — Шапка — #}
+      {% if error %}
+        {# — Ошибка при загрузке — #}
+        <div class="alert alert-danger mb-3" role="alert">
+          <i class="bi-exclamation-circle"></i>
+          {% if error_code == 404 %}
+            <strong>Заявление не найдено.</strong> Возможно, оно было удалено.
+          {% elif error_code == 403 %}
+            <strong>Доступ запрещен.</strong> Вы не можете просмотреть это заявление.
+          {% else %}
+            <strong>Ошибка при загрузке.</strong> {{ error }}
+          {% endif %}
+        </div>
+        <a href="{% url 'requests:request_list' %}" class="btn btn-secondary">
+          <i class="bi-arrow-left"></i> К списку заявлений
+        </a>
+      {% elif request_obj %}
       <div class="section-header">
         <i class="bi-file-earmark-text fs-2 text-primary"></i>
         <h2 class="title mb-0">Детали заявления</h2>
@@ -150,7 +165,12 @@
             </div>
           </form>
         </div>
-      </article> -->
+      </article>
+      {% else %}
+        <div class="alert alert-info mb-3" role="alert">
+          Загрузка...
+        </div>
+      {% endif %}
 
     </div>
   </div>

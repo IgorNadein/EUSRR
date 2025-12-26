@@ -274,6 +274,81 @@ class RequestsView(LoginRequiredMixin, TemplateView):
         return ctx
 
 
+class RequestDetailView(LoginRequiredMixin, TemplateView):
+    """
+    Детальный просмотр заявления.
+    
+    Загружает одно заявление и его комментарии через API.
+    Может быть использовано как для отдельной страницы, так и для модального окна.
+    
+    GET /requests/{pk}/:
+        - Загружает заявление через GET /api/v1/requests/{pk}/
+        - Загружает комментарии через GET /api/v1/requests/{pk}/comments/
+        - Проверяет права доступа (делает ошибку если нет прав)
+    
+    Контекст:
+        - request_obj: dict с данными заявления
+        - comments: list[dict] с комментариями
+        - can_process: bool - может ли пользователь обрабатывать заявку
+        - error: str - описание ошибки (если она была)
+        - error_code: int - HTTP код ошибки
+    """
+    
+    template_name = "requests_app/request_detail.html"
+    
+    def get_context_data(self, pk: int, **kwargs: Any) -> Dict[str, Any]:
+        """
+        Загружает данные заявления и комментарии.
+        
+        Args:
+            pk: ID заявления
+            
+        Returns:
+            Dict с контекстом для шаблона
+        """
+        ctx = super().get_context_data(**kwargs)
+        request = self.request
+        api = get_api_client(request)
+        
+        # Загружаем основные данные заявления
+        ok, data, status = _api_unpack(api.get(f"v1/requests/{pk}/"))
+        
+        if not ok:
+            # Обработка ошибок (404, 403 и т.д.)
+            error_msg = data.get("detail", f"HTTP {status}")
+            if isinstance(error_msg, list):
+                error_msg = "; ".join(str(e) for e in error_msg)
+            
+            ctx.update({
+                "request_obj": None,
+                "comments": [],
+                "can_process": _user_can_process_requests(request.user),
+                "error": error_msg,
+                "error_code": status,
+            })
+            return ctx
+        
+        request_data = data
+        
+        # Загружаем комментарии
+        comments = []
+        ok_c, data_c, st_c = _api_unpack(api.get(f"v1/requests/{pk}/comments/"))
+        if ok_c:
+            results_c, _, _, _ = _parse_page_payload(data_c)
+            comments = _format_datetime_fields(
+                results_c,
+                fields=("created_at", "updated_at")
+            )
+        
+        ctx.update({
+            "request_obj": _format_datetime_fields([request_data], fields=("created_at", "updated_at", "decided_at"))[0],
+            "comments": comments,
+            "can_process": _user_can_process_requests(request.user),
+        })
+        
+        return ctx
+
+
 def request_comments(request: HttpRequest, pk: int) -> JsonResponse:
     """Прокси: список комментариев (JSON) для заявки.
     Требует авторизации (используем ту же обёртку клиента, что и основная вью).
