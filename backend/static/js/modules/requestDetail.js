@@ -120,6 +120,12 @@ export class RequestDetailModal {
       });
     }
 
+    // Обработчик для кнопок смены статуса
+    const statusForm = this.container?.querySelector('.request-status-form');
+    if (statusForm) {
+      statusForm.addEventListener('submit', (e) => this.handleStatusChange(e));
+    }
+
     // Инициализация emoji picker если доступна
     this.initEmojiPicker();
 
@@ -277,6 +283,108 @@ export class RequestDetailModal {
     if (commentsContainer && countSpan) {
       const commentCount = commentsContainer.querySelectorAll('.bg-body-tertiary.border').length;
       countSpan.textContent = commentCount;
+    }
+  }
+
+  /**
+   * Обработчик изменения статуса заявления
+   */
+  async handleStatusChange(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const selectField = form.querySelector('select[name="status"]');
+    const newStatus = selectField?.value;
+
+    if (!newStatus) {
+      alert('Пожалуйста, выберите новый статус');
+      return;
+    }
+
+    const confirmMsg = form.dataset.confirmMsg || 
+      `Вы уверены, что хотите изменить статус на "${form.querySelector(`option[value="${newStatus}"]`)?.textContent}"?`;
+    
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    // Показать состояние загрузки
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn?.textContent || 'Применить';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Обновление...';
+    }
+
+    try {
+      // Использовать правильный endpoint для изменения статуса
+      const action = newStatus === 'approved' ? 'approve' : 
+                     newStatus === 'rejected' ? 'reject' : 
+                     newStatus === 'cancelled' ? 'cancel' : null;
+
+      if (!action) {
+        throw new Error('Неподдерживаемый статус');
+      }
+
+      const response = await fetch(
+        `/api/v1/requests/${this.currentRequestId}/${action}/`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]')?.value || ''
+          },
+          credentials: 'same-origin'
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      // Показать успешное сообщение
+      if (submitBtn) {
+        const originalClass = submitBtn.className;
+        submitBtn.className = submitBtn.className.replace('btn-primary', 'btn-success');
+        submitBtn.innerHTML = '<i class="bi-check-circle me-2"></i>Статус обновлен!';
+        
+        // Вернуть кнопку в исходное состояние
+        setTimeout(() => {
+          submitBtn.className = originalClass;
+          submitBtn.innerHTML = originalBtnText;
+          submitBtn.disabled = false;
+        }, 2000);
+      }
+      
+      // Перезагрузить содержимое модали
+      if (this.currentRequestId) {
+        setTimeout(() => {
+          this.loadData(this.currentRequestId);
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Error changing status:', error);
+      
+      // Восстановить кнопку при ошибке
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnText;
+      }
+      
+      // Показать ошибку в UI
+      const alertDiv = form.querySelector('.alert');
+      if (alertDiv) {
+        alertDiv.remove();
+      }
+      
+      const errorAlert = document.createElement('div');
+      errorAlert.className = 'alert alert-danger alert-dismissible fade show mb-2';
+      errorAlert.innerHTML = `
+        <strong>Ошибка:</strong> ${error.message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      `;
+      form.parentNode.insertBefore(errorAlert, form);
     }
   }
 

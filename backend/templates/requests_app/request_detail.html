@@ -85,6 +85,26 @@
               <i class="bi-x-circle"></i> Отозвать
             </a>
           {% endif %}
+
+          {# Форма смены статуса — для администраторов #}
+          {% if can_process %}
+            <form class="request-status-form ms-auto d-flex gap-2" method="post">
+              {% csrf_token %}
+              <select class="form-select form-select-sm" name="status" style="max-width: 200px;">
+                <option value="">Изменить статус...</option>
+                {% if request_obj.status == 'pending' %}
+                  <option value="approved">✓ Одобрить</option>
+                  <option value="rejected">✗ Отклонить</option>
+                {% endif %}
+                {% if not request_obj.is_final %}
+                  <option value="cancelled">⊗ Отменить</option>
+                {% endif %}
+              </select>
+              <button type="submit" class="btn btn-sm btn-primary" {% if not request_obj.status == 'pending' and request_obj.is_final %}disabled{% endif %}>
+                Применить
+              </button>
+            </form>
+          {% endif %}
         </header>
 
         <div class="card-body pt-0">
