@@ -359,6 +359,23 @@
 
 {% endblock %}
 
+<!-- Request Detail Modal -->
+<div class="modal fade" id="requestDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-file-earmark-text me-2"></i>Детали заявления
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body" id="requestDetailContent">
+        <!-- Содержимое загружается здесь -->
+      </div>
+    </div>
+  </div>
+</div>
+
 {% block extra_js %}
 <script>
   // Передаем данные для инициализации страницы
@@ -367,7 +384,9 @@
 </script>
 <script type="module">
   import { initRequestListPage } from "{% static 'js/pages/requestList.js' %}";
+  import { initRequestDetailModal } from "{% static 'js/modules/requestDetail.js' %}";
 
+  // Инициализировать список заявлений
   initRequestListPage({
     apiListUrl: "{% url 'api:v1:request-list' %}",
     apiDetailBase: "{% url 'api:v1:request-list' %}",
@@ -376,6 +395,9 @@
     autoShowComments: {% if comments_for %}true{% else %}false{% endif %},
     useAjaxList: true  // Включаем AJAX режим для списка
   });
+
+  // Инициализировать модальное окно для detail view
+  const requestDetailModal = initRequestDetailModal();
 </script>
 <script src="{% static 'js/components/requestComments.js' %}"></script>
 <!-- Emoji Picker Library -->
