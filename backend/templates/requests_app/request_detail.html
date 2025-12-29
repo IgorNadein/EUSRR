@@ -65,13 +65,14 @@
             </div>
           </div>
 
-          {# Отозвать — только если можно (ожидание и не финальное) #}
+          {# Отозвать — временно отключено (TODO: добавить в urls_front.py)
           {% if request_obj.status == 'pending' and not request_obj.is_final %}
             <a href="{% url 'requests_app:request_cancel' request_obj.id %}"
                class="btn btn-ghost ms-auto">
               <i class="bi-x-circle"></i> Отозвать
             </a>
           {% endif %}
+          #}
         </header>
 
         <div class="card-body">
