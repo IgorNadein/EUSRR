@@ -141,13 +141,13 @@
                 <div class="bg-body-tertiary border rounded p-2">
                   <div class="small d-flex justify-content-between align-items-start">
                     <div>
-                      <span class="fw-semibold">{{ c.author.full_name|default:c.author_name }}</span>
+                      <span class="fw-semibold">{{ c.author.full_name|default:c.author.display_name }}</span>
                       <span class="text-secondary">·</span>
                       <time class="text-muted">{{ c.created_at }}</time>
                     </div>
 
                     {# удалить — только автору комментария (права дополнительно проверяются во вьюхе) #}
-                    {% if c.author_id == request.user.id %}
+                    {% if c.author.id == request.user.id %}
                       <form method="post" action="{% url 'requests_app:request_comment_delete' request_obj.pk c.id %}">
                         {% csrf_token %}
                         <button class="btn btn-sm btn-ghost text-danger" type="submit" title="Удалить">
