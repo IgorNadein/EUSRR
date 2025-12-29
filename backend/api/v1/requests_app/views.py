@@ -223,13 +223,25 @@ class RequestViewSet(viewsets.ModelViewSet):
 
             qs = qs.filter(scope).distinct()
 
-        # Применяем фильтры type/status для всех пользователей
+        # Применяем фильтры type/status/employee_id/date_from/date_to для всех пользователей
         t = (params.get("type") or "").strip()
         s = (params.get("status") or "").strip()
+        employee_id = (params.get("employee_id") or "").strip()
+        date_from = (params.get("date_from") or "").strip()
+        date_to = (params.get("date_to") or "").strip()
+        
         if t:
             qs = qs.filter(type=t)
         if s:
             qs = qs.filter(status=s)
+        if employee_id and employee_id.isdigit():
+            qs = qs.filter(employee_id=int(employee_id))
+        if date_from:
+            # Фильтр по дате создания (created_at >= указанной даты)
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            # Фильтр по дате создания (created_at <= указанной даты)
+            qs = qs.filter(created_at__date__lte=date_to)
 
         return qs
 
