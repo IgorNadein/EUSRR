@@ -267,7 +267,7 @@ class RequestsView(LoginRequiredMixin, TemplateView):
             
             # Загружаем список сотрудников для фильтра
             employees = []
-            ok_emp, data_emp, _ = _api_unpack(api.get("v1/employees/", params={"page_size": 1000}))
+            ok_emp, data_emp, _ = _api_unpack(api.get("v1/employees/", params={"page_size": 10000}))
             if ok_emp:
                 employees_results, _, _, _ = _parse_page_payload(data_emp)
                 employees = employees_results
@@ -297,7 +297,7 @@ class RequestsView(LoginRequiredMixin, TemplateView):
 
         # Загружаем список сотрудников для фильтра
         employees = []
-        ok_emp, data_emp, _ = _api_unpack(api.get("v1/employees/", params={"page_size": 1000}))
+        ok_emp, data_emp, _ = _api_unpack(api.get("v1/employees/", params={"page_size": 10000}))
         if ok_emp:
             employees_results, _, _, _ = _parse_page_payload(data_emp)
             employees = employees_results
