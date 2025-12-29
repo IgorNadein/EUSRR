@@ -30,8 +30,17 @@ def create_request_notifications(sender, instance, created, **kwargs):
     """
     request_obj = instance
 
+    # Логирование для отладки
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"[SIGNAL] create_request_notifications: created={created}, "
+        f"status={request_obj.status}, id={request_obj.id}"
+    )
+
     if created and request_obj.status != "draft":
         # Новая заявка - уведомляем ответственных
+        logger.info(f"[SIGNAL] Вызываем notify_new_request для заявления #{request_obj.id}")
         notify_new_request(request_obj)
     elif not created:
         # Проверяем изменение статуса через сохраненный атрибут _old_status
@@ -147,15 +156,20 @@ def notify_new_request(request_obj):
 
     При sent_to_all_department=True отправляет всем сотрудникам отделов
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     recipients_set = set()
 
     # 1. Основные получатели
     for recipient in request_obj.recipients.filter(is_active=True):
         recipients_set.add(recipient)
+        logger.info(f"[notify_new_request] Добавлен основной получатель: {recipient.username}")
 
     # 2. Копия (CC)
     for cc_user in request_obj.cc_users.filter(is_active=True):
         recipients_set.add(cc_user)
+        logger.info(f"[notify_new_request] Добавлен CC: {cc_user.username}")
 
     # 3. Если sent_to_all_department - все сотрудники отделов
     if request_obj.sent_to_all_department:
@@ -204,6 +218,13 @@ def notify_new_request(request_obj):
 
         recipients_set.update(dept_processors)
 
+    # Логирование итогового списка получателей
+    logger.info(
+        f"[notify_new_request] Всего получателей для заявления #{request_obj.id}: {len(recipients_set)}"
+    )
+    for r in recipients_set:
+        logger.info(f"  - {r.username} (ID: {r.id})")
+
     # Определяем тип уведомления для каждого получателя
     author_name = request_obj.employee.get_full_name() or request_obj.employee.username
     request_type = request_obj.get_type_display()
@@ -214,6 +235,11 @@ def notify_new_request(request_obj):
         is_primary = request_obj.recipients.filter(id=recipient.id).exists()
         is_cc = request_obj.cc_users.filter(id=recipient.id).exists()
         is_approver = request_obj.approver_id == recipient.id
+
+        logger.info(
+            f"[notify_new_request] Отправка уведомления для {recipient.username}: "
+            f"primary={is_primary}, cc={is_cc}, approver={is_approver}"
+        )
 
         # Формируем заголовок и сообщение с учетом роли
         if is_primary:
