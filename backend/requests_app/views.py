@@ -128,7 +128,11 @@ COMMENTS_PREFETCH = Prefetch(
 )
 
 BASE_REQUEST_QS = Request.objects.select_related("employee", "approver", "department")
-DETAIL_REQUEST_QS = BASE_REQUEST_QS.prefetch_related(COMMENTS_PREFETCH)
+DETAIL_REQUEST_QS = BASE_REQUEST_QS.prefetch_related(
+    COMMENTS_PREFETCH,
+    "recipients",
+    "cc_users"
+)
 
 
 # ---------- Права ----------
@@ -288,6 +292,7 @@ def request_detail(request, pk):
     
     return render(request, "requests_app/request_detail.html", {
         "request_obj": req,
+        "comments": req.comments.all(),
         "can_process": user_can_process
     })
 
