@@ -191,7 +191,7 @@
             {% endfor %}
           </div>
 
-          
+
           <form class="mt-2 request-comment-form"
                 method="post"
                 action="{% url 'requests_app:request_comment_add' request_obj.pk %}?next={{ request.get_full_path|urlencode }}#comments">
@@ -260,13 +260,13 @@
 
         // Получаем обновленное содержимое
         const html = await response.text();
-        
+
         // Заменяем контент страницы
         const parser = new DOMParser();
         const newDoc = parser.parseFromString(html, 'text/html');
         const newContent = newDoc.querySelector('[role="main"]') || newDoc.body;
         const currentContent = document.querySelector('[role="main"]') || document.body;
-        
+
         currentContent.innerHTML = newContent.innerHTML;
 
         // Показываем успех

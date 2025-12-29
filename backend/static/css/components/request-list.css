@@ -1,6 +1,6 @@
 /**
  * request-list.css
- * 
+ *
  * Настоящий табличный вид списка заявлений.
  * Все поля идут в одну строку с фиксированной шириной и переносом текста.
  */
@@ -72,7 +72,7 @@
 /* Табличная сетка */
 #reqList .req-table-row {
   display: grid;
-  grid-template-columns: 
+  grid-template-columns:
     48px           /* Иконка */
     minmax(200px, 2fr)  /* Заголовок (расширяемая) */
     minmax(120px, 1fr)  /* Автор */
@@ -185,7 +185,7 @@
 @media (max-width: 992px) {
   #reqList .req-table-header .req-table-row,
   #reqList .req-table-row {
-    grid-template-columns: 
+    grid-template-columns:
       42px           /* Иконка */
       minmax(150px, 2fr)  /* Заголовок */
       minmax(100px, 1fr)  /* Автор */
@@ -193,12 +193,12 @@
       100px          /* Статус */
       70px;          /* Создано */
   }
-  
+
   /* На планшетах скрываем колонку действий как отдельное поле */
   #reqList .req-table-header .req-cell-actions {
     display: none;
   }
-  
+
   /* Но сами кнопки остаются видимыми */
   #reqList .req-cell-actions {
     grid-column: 6;
@@ -245,7 +245,7 @@
     width: 32px;
     height: 32px;
   }
-  
+
   /* Основной контент - заголовок занимает полную ширину минус иконка */
   #reqList .req-cell-title {
     flex: 1 1 calc(100% - 48px);
@@ -269,7 +269,7 @@
     font-size: 0.8rem;
     margin-top: 0.25rem;
   }
-  
+
   /* Остальная информация - автор, даты, статус */
   #reqList .req-cell-author,
   #reqList .req-cell-dates,
@@ -300,12 +300,12 @@
     padding: 0.25rem 0.5rem;
     white-space: nowrap;
   }
-  
+
   /* Скрываем дату создания на мобильных */
   #reqList .req-cell-created {
     display: none;
   }
-  
+
   /* Кнопки действий занимают полную строку */
   #reqList .req-cell-actions {
     display: flex !important;
@@ -327,7 +327,7 @@
     padding: 0.5rem 0.75rem;
     font-size: 0.85rem;
   }
-  
+
   /* Футер с комментариями занимает полную ширину */
   #reqList .req-footer {
     flex: 1 1 100%;
@@ -343,7 +343,7 @@
     padding: 0.4rem 0.6rem;
     font-size: 0.8rem;
   }
-  
+
   /* Блок комментариев */
   #reqList .comments-block {
     margin-left: 0;
@@ -370,15 +370,15 @@
   #reqList .req-table-row {
     padding: 0.625rem;
   }
-  
+
   #reqList .req-cell-title .small {
     display: none; /* Скрываем превью комментария */
   }
-  
+
   #reqList .req-cell-dates br {
     display: none; /* Даты в одну строку */
   }
-  
+
   #reqList .req-cell-dates .req-cell-content::after {
     content: ' — ';
   }

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any, List, Optional  # было: Any, Dict, List, Type
 
-from django.db.models import Q, QuerySet, Count
+from django.db.models import Count, Q, QuerySet
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
-from employees.models import EmployeeDepartment, Department  # добавлен Department
+from employees.models import Department, EmployeeDepartment  # добавлен Department
+from requests_app.enums import RequestStatus
 from requests_app.models import Request as EmployeeRequest
 from requests_app.models import RequestComment
-from requests_app.enums import RequestStatus
 
 # from django.shortcuts import get_object_or_404  # <- не используется
 from rest_framework import status, viewsets
@@ -58,11 +58,11 @@ class RequestViewSet(viewsets.ModelViewSet):
         PermissionDenied: При нарушении правил доступа.
     """
 
-    queryset = EmployeeRequest.objects.select_related(
-        "employee", "approver", "department"
-    ).annotate(
-        comments_count=Count('comments')
-    ).order_by('-created_at')
+    queryset = (
+        EmployeeRequest.objects.select_related("employee", "approver", "department")
+        .annotate(comments_count=Count("comments"))
+        .order_by("-created_at")
+    )
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     # Используем глобальную пагинацию из settings (PageNumberPagination, PAGE_SIZE=20)
 
@@ -136,7 +136,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         want_mine = (params.get("view") == "mine") or (
             mine_raw in {"1", "true", "yes", "on"}
         )
-        
+
         # Новый параметр для фильтрации "мне адресовано"
         addressed_to_me = params.get("addressed_to_me") == "true"
 
@@ -146,38 +146,30 @@ class RequestViewSet(viewsets.ModelViewSet):
             elif addressed_to_me:
                 # Заявки, где я получатель
                 my_dept_ids = EmployeeDepartment.objects.filter(
-                    employee=user,
-                    is_active=True
-                ).values_list('department_id', flat=True)
-                
+                    employee=user, is_active=True
+                ).values_list("department_id", flat=True)
+
                 scope = (
-                    Q(recipients=user) | 
-                    Q(cc_users=user) |
-                    Q(
-                        sent_to_all_department=True,
-                        departments__in=my_dept_ids
-                    )
+                    Q(recipients=user)
+                    | Q(cc_users=user)
+                    | Q(sent_to_all_department=True, departments__in=my_dept_ids)
                 )
                 qs = qs.filter(scope).distinct()
         else:
             # Обычный пользователь
             scope = Q(employee_id=user.id)  # Свои заявки
-            
+
             # Заявки, где я получатель (основной или CC)
             scope |= Q(recipients=user) | Q(cc_users=user)
-            
+
             # Заявки отделов с sent_to_all_department
             my_dept_ids = EmployeeDepartment.objects.filter(
-                employee=user,
-                is_active=True
-            ).values_list('department_id', flat=True)
-            
+                employee=user, is_active=True
+            ).values_list("department_id", flat=True)
+
             if my_dept_ids:
-                scope |= Q(
-                    sent_to_all_department=True,
-                    departments__in=my_dept_ids
-                )
-            
+                scope |= Q(sent_to_all_department=True, departments__in=my_dept_ids)
+
             # Департаментные права (как было)
             view_dept_ids = (
                 EmployeeDepartment.objects.filter(
@@ -197,18 +189,16 @@ class RequestViewSet(viewsets.ModelViewSet):
                 .values_list("department_id", flat=True)
                 .distinct()
             )
-            head_dept_ids = Department.objects.filter(
-                head_id=user.id
-            ).values_list("id", flat=True)
-            
-            combined_ids = (
-                set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
+            head_dept_ids = Department.objects.filter(head_id=user.id).values_list(
+                "id", flat=True
             )
+
+            combined_ids = set(view_dept_ids) | set(proc_dept_ids) | set(head_dept_ids)
 
             if combined_ids:
                 # Заявки этих отделов (новое поле departments)
                 scope |= Q(departments__in=combined_ids)
-                
+
                 # Заявки сотрудников этих отделов
                 dept_emp_ids = (
                     EmployeeDepartment.objects.filter(
@@ -220,19 +210,17 @@ class RequestViewSet(viewsets.ModelViewSet):
                 )
                 if dept_emp_ids:
                     scope |= Q(employee_id__in=list(dept_emp_ids))
-            
+
             # Фильтр "только адресованные мне"
             if addressed_to_me:
                 scope = (
-                    Q(recipients=user) | Q(cc_users=user) |
-                    Q(
-                        sent_to_all_department=True, 
-                        departments__in=my_dept_ids
-                    )
+                    Q(recipients=user)
+                    | Q(cc_users=user)
+                    | Q(sent_to_all_department=True, departments__in=my_dept_ids)
                 )
             elif want_mine:
                 scope = Q(employee_id=user.id)
-            
+
             qs = qs.filter(scope).distinct()
 
         # Применяем фильтры type/status для всех пользователей
@@ -271,7 +259,9 @@ class RequestViewSet(viewsets.ModelViewSet):
         }:
             lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
             lookup_value = self.kwargs[lookup_url_kwarg]
-            base = EmployeeRequest.objects.select_related("employee", "approver", "department")
+            base = EmployeeRequest.objects.select_related(
+                "employee", "approver", "department"
+            )
             obj = get_object_or_404(base, **{self.lookup_field: lookup_value})
             self.check_object_permissions(self.request, obj)
             return obj
@@ -289,7 +279,9 @@ class RequestViewSet(viewsets.ModelViewSet):
         extra = {"employee": user} if not is_power else {}
         save_as = (self.request.query_params.get("save_as") or "").strip().lower()
         if save_as == "draft":
-            extra["status"] = RequestStatus.DRAFT  # ✅ обычному пользователю поле в payload всё равно бы «очистили»
+            extra["status"] = (
+                RequestStatus.DRAFT
+            )  # ✅ обычному пользователю поле в payload всё равно бы «очистили»
 
         serializer.save(**extra)
 
@@ -398,50 +390,34 @@ class RequestViewSet(viewsets.ModelViewSet):
         отвечаем read-сериализатором.
         """
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         logger.info(
             f"[RequestViewSet.create] User: {request.user.id}, "
             f"Content-Type: {request.content_type}"
         )
-        logger.info(
-            f"[RequestViewSet.create] POST keys: {list(request.POST.keys())}"
-        )
-        logger.info(
-            f"[RequestViewSet.create] FILES keys: {list(request.FILES.keys())}"
-        )
-        logger.info(
-            f"[RequestViewSet.create] Data keys: {list(request.data.keys())}"
-        )
-        
+        logger.info(f"[RequestViewSet.create] POST keys: {list(request.POST.keys())}")
+        logger.info(f"[RequestViewSet.create] FILES keys: {list(request.FILES.keys())}")
+        logger.info(f"[RequestViewSet.create] Data keys: {list(request.data.keys())}")
+
         # Логируем значения для отладки
-        for key in ['type', 'title', 'date_from', 'date_to', 'comment']:
+        for key in ["type", "title", "date_from", "date_to", "comment"]:
             value = request.data.get(key)
             logger.info(
-                f"[RequestViewSet.create] {key}: {value} "
-                f"(type: {type(value).__name__})"
+                f"[RequestViewSet.create] {key}: {value} (type: {type(value).__name__})"
             )
-        
+
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             logger.error(
-                f"[RequestViewSet.create] Validation errors: "
-                f"{serializer.errors}"
+                f"[RequestViewSet.create] Validation errors: {serializer.errors}"
             )
-            logger.error(
-                f"[RequestViewSet.create] Request data: {request.data}"
-            )
-        
+            logger.error(f"[RequestViewSet.create] Request data: {request.data}")
+
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         instance = serializer.instance
-        read = RequestReadSerializer(
-            instance,
-            context=self.get_serializer_context()
-        )
+        read = RequestReadSerializer(instance, context=self.get_serializer_context())
         headers = self.get_success_headers(read.data)
-        return Response(
-            read.data,
-            status=status.HTTP_201_CREATED,
-            headers=headers
-        )
+        return Response(read.data, status=status.HTTP_201_CREATED, headers=headers)

@@ -4,34 +4,34 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from api.v1.permissions import AdminOrDeptAllowed
-from rest_framework.permissions import BasePermission
-from rest_framework.request import Request
 from employees.constants import DeptPerm
 from employees.models import Department
+from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
 
 
 class IsRecipientOfRequest(BasePermission):
     """Проверяет, что пользователь является получателем заявки.
-    
+
     Доступ разрешается только если пользователь указан в recipients
     данной заявки. Это базовая проверка которая должна комбинироваться
     с проверкой прав (AdminOrActionOrModelPerms или DeptCanProcess).
-    
+
     Для staff/superuser проверка пропускается (они могут обрабатывать любые заявки).
     """
-    
+
     message = "Вы не являетесь получателем этой заявки."
-    
+
     def has_permission(self, request: Request, view: Any) -> bool:
         return bool(getattr(request.user, "is_authenticated", False))
-    
+
     def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
         user = request.user
-        
+
         # Staff/superuser могут обрабатывать любые заявки
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return True
-        
+
         # Проверяем, является ли пользователь получателем заявки
         # (только recipients, не cc_users - люди в копии не принимают решения)
         return obj.recipients.filter(id=user.id).exists()

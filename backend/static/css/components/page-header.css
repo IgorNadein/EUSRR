@@ -1,6 +1,6 @@
 /**
  * Page Header Component
- * 
+ *
  * Универсальная шапка для страниц списков с:
  * - Полупрозрачным фоном (sticky positioning)
  * - Иконкой и заголовком
@@ -9,7 +9,7 @@
  * - Кнопкой фильтров
  * - Кнопкой создания (вытянутая на десктопе, иконка на мобильных)
  * - Поиском iOS-стиль
- * 
+ *
  * Использование:
  * {% include "includes/components/page_header.html" with ... %}
  * <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
@@ -22,7 +22,7 @@
   z-index: 10;
   padding: var(--space-2) 0;  /* 8px сверху/снизу */
   margin-bottom: var(--space-3); /* 12px отступ снизу */
-  
+
   /* Полупрозрачный фон с градиентом */
   background: linear-gradient(
     to bottom,
@@ -32,9 +32,9 @@
     color-mix(in srgb, var(--bs-body-bg) 40%, transparent) 70%,
     transparent 100%
   );
-  
+
   /* Убрана border-bottom - линия не нужна */
-  
+
   /* Анимация появления при скролле */
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
@@ -191,7 +191,7 @@
     margin-top: var(--space-2);
     order: 10;
   }
-  
+
   /* Кнопка фильтров переносится под поиск и прижимается к правому краю */
   .page-filter-toggle {
     order: 11;
@@ -199,7 +199,7 @@
     margin-left: auto;
     margin-right: 0 !important;
   }
-  
+
   /* Родительский контейнер должен переносить элементы */
   .page-header .d-flex.align-items-center {
     flex-wrap: wrap;
@@ -249,7 +249,7 @@
   .page-title {
     font-size: 1.5rem;
   }
-  
+
   .page-header {
     padding: var(--space-2) 0;
   }
@@ -262,16 +262,16 @@
     padding: var(--space-1) 0;
     top: var(--navbar-h, 60px);
   }
-  
+
   .page-title {
     font-size: 1.125rem;
     font-weight: 700;
   }
-  
+
   .page-count {
     font-size: 0.7rem;
   }
-  
+
   .page-scope-switch {
     gap: 0.25rem;
   }
@@ -374,7 +374,7 @@
     );
     border-bottom-color: color-mix(in srgb, var(--bs-border-color), transparent 60%);
   }
-  
+
   .page-header.scrolled {
     background: linear-gradient(
       to bottom,
@@ -385,7 +385,7 @@
       transparent 100%
     );
   }
-  
+
   .page-filters {
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   }
