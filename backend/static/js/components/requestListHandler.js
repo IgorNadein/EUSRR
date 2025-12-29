@@ -35,6 +35,9 @@ export function initRequestListHandler(options) {
   let currentView = urlParams.get("view") || ""; // 'mine' | 'addressed' | ''
   let currentType = urlParams.get("type") || "";
   let currentStatus = urlParams.get("status") || "";
+  let currentEmployeeId = urlParams.get("employee_id") || "";
+  let currentDateFrom = urlParams.get("date_from") || "";
+  let currentDateTo = urlParams.get("date_to") || "";
   let searchQuery = ""; // Поисковый запрос
   let allRequests = []; // Все загруженные заявления
   let loading = false;
@@ -48,7 +51,13 @@ export function initRequestListHandler(options) {
     "type =",
     currentType,
     "status =",
-    currentStatus
+    currentStatus,
+    "employee_id =",
+    currentEmployeeId,
+    "date_from =",
+    currentDateFrom,
+    "date_to =",
+    currentDateTo
   );
 
   // Intersection Observer для бесконечной прокрутки
@@ -113,6 +122,15 @@ export function initRequestListHandler(options) {
         }
         if (currentStatus) {
           params.append("status", currentStatus);
+        }
+        if (currentEmployeeId) {
+          params.append("employee_id", currentEmployeeId);
+        }
+        if (currentDateFrom) {
+          params.append("date_from", currentDateFrom);
+        }
+        if (currentDateTo) {
+          params.append("date_to", currentDateTo);
         }
 
         url = `${apiListUrl}?${params}`;

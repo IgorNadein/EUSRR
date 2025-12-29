@@ -5,7 +5,7 @@
     <input type="hidden" name="view" value="{{ filters.view }}">
   {% endif %}
   
-  <div class="col-12 col-sm-4">
+  <div class="col-12 col-sm-6 col-md-3">
     <label class="form-label mb-1">Тип</label>
     <select name="type" class="form-select">
       <option value="">— Любой —</option>
@@ -17,7 +17,7 @@
       <option value="other"       {% if filters.type == 'other' %}selected{% endif %}>Другое</option>
     </select>
   </div>
-  <div class="col-12 col-sm-4">
+  <div class="col-12 col-sm-6 col-md-3">
     <label class="form-label mb-1">Статус</label>
     <select name="status" class="form-select">
       <option value="">— Любой —</option>
@@ -28,8 +28,27 @@
       <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>Отменено</option>
     </select>
   </div>
-  <div class="col-12 d-flex justify-content-end gap-2 mt-2">
-    <button class="btn btn-outline-primary d-flex align-items-center justify-content-center gap-1" type="submit">
+  <div class="col-12 col-sm-6 col-md-3">
+    <label class="form-label mb-1">Сотрудник</label>
+    <select name="employee_id" class="form-select">
+      <option value="">— Любой —</option>
+      {% for emp in employees %}
+        <option value="{{ emp.id }}" {% if filters.employee_id|stringformat:"s" == emp.id|stringformat:"s" %}selected{% endif %}>
+          {{ emp.full_name|default:emp.display_name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-12 col-sm-6 col-md-3">
+    <label class="form-label mb-1">Период с</label>
+    <input type="date" name="date_from" class="form-control" value="{{ filters.date_from|default:'' }}">
+  </div>
+  <div class="col-12 col-sm-6 col-md-3">
+    <label class="form-label mb-1">Период по</label>
+    <input type="date" name="date_to" class="form-control" value="{{ filters.date_to|default:'' }}">
+  </div>
+  <div class="col-12 col-sm-6 col-md-3 d-flex align-items-end gap-2">
+    <button class="btn btn-outline-primary d-flex align-items-center justify-content-center gap-1 flex-fill" type="submit">
       <i class="bi-funnel"></i><span>Применить</span>
     </button>
     <a class="btn btn-outline-secondary d-flex align-items-center justify-content-center" href="?" title="Сбросить фильтры">

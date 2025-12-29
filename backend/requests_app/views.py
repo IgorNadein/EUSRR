@@ -239,10 +239,20 @@ class RequestsView(LoginRequiredMixin, TemplateView):
 
         type_ = (request.GET.get("type") or "").strip()
         status_ = (request.GET.get("status") or "").strip()
+        employee_id = (request.GET.get("employee_id") or "").strip()
+        date_from = (request.GET.get("date_from") or "").strip()
+        date_to = (request.GET.get("date_to") or "").strip()
+        
         if type_:
             params["type"] = type_
         if status_:
             params["status"] = status_
+        if employee_id:
+            params["employee_id"] = employee_id
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
 
         # NB: в API сортировки нет — параметр `ordering` не прокидываем.
 
@@ -254,6 +264,14 @@ class RequestsView(LoginRequiredMixin, TemplateView):
                 data.get("detail")
                 or f"Не удалось загрузить список заявлений (HTTP {status}).",
             )
+            
+            # Загружаем список сотрудников для фильтра
+            employees = []
+            ok_emp, data_emp, _ = _api_unpack(api.get("v1/employees/", params={"page_size": 1000}))
+            if ok_emp:
+                employees_results, _, _, _ = _parse_page_payload(data_emp)
+                employees = employees_results
+            
             ctx.update(
                 {
                     "requests": [],
@@ -262,16 +280,27 @@ class RequestsView(LoginRequiredMixin, TemplateView):
                     "count": None,
                     "scope": scope,
                     "can_process": _user_can_process_requests(request.user),
+                    "employees": employees,
                     "filters": {
                         "type": type_,
                         "status": status_,
                         "view": scope,
+                        "employee_id": employee_id,
+                        "date_from": date_from,
+                        "date_to": date_to,
                     },
                 }
             )
             return ctx
 
         results, next_url, prev_url, count = _parse_page_payload(data)
+
+        # Загружаем список сотрудников для фильтра
+        employees = []
+        ok_emp, data_emp, _ = _api_unpack(api.get("v1/employees/", params={"page_size": 1000}))
+        if ok_emp:
+            employees_results, _, _, _ = _parse_page_payload(data_emp)
+            employees = employees_results
 
         ctx.update(
             {
@@ -281,10 +310,14 @@ class RequestsView(LoginRequiredMixin, TemplateView):
                 "count": count,
                 "scope": scope,
                 "can_process": _user_can_process_requests(request.user),
+                "employees": employees,
                 "filters": {
                     "type": type_,
                     "status": status_,
                     "view": scope,
+                    "employee_id": employee_id,
+                    "date_from": date_from,
+                    "date_to": date_to,
                 },
             }
         )
