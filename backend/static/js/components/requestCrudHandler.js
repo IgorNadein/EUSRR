@@ -320,8 +320,19 @@ export function initRequestCrudHandler(options) {
       }
 
       await response.json();
-      alert("Заявление одобрено.");
-      window.location.reload();
+      
+      // Закрываем модальное окно
+      const modal = document.getElementById('reqApproveModal');
+      if (modal) {
+        const bsModal = bootstrap.Modal.getInstance(modal);
+        if (bsModal) bsModal.hide();
+      }
+      
+      // Отправляем событие для обновления списка
+      document.dispatchEvent(new CustomEvent('request:updated', { 
+        detail: { action: 'approve', id: reqId } 
+      }));
+      
     } catch (error) {
       alert("Не удалось одобрить заявление: " + error.message);
     }
@@ -351,8 +362,19 @@ export function initRequestCrudHandler(options) {
       }
 
       await response.json();
-      alert("Заявление отклонено.");
-      window.location.reload();
+      
+      // Закрываем модальное окно
+      const modal = document.getElementById('reqRejectModal');
+      if (modal) {
+        const bsModal = bootstrap.Modal.getInstance(modal);
+        if (bsModal) bsModal.hide();
+      }
+      
+      // Отправляем событие для обновления списка
+      document.dispatchEvent(new CustomEvent('request:updated', { 
+        detail: { action: 'reject', id: reqId } 
+      }));
+      
     } catch (error) {
       alert("Не удалось отклонить заявление: " + error.message);
     }

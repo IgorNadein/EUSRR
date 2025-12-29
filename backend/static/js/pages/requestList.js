@@ -112,4 +112,12 @@ export function initRequestListPage(config) {
     apiDetailBase,
     headers
   });
+
+  // Слушаем события обновления заявлений (approve/reject)
+  document.addEventListener('request:updated', function(event) {
+    console.log('Request updated:', event.detail);
+    // Перезагружаем страницу для обновления списка
+    // TODO: в будущем можно заменить на AJAX обновление конкретной карточки
+    setTimeout(() => window.location.reload(), 500);
+  });
 }
