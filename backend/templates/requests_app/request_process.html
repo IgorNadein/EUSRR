@@ -230,4 +230,67 @@
 <script src="{% static 'js/components/requestComments.js' %}"></script>
 <!-- Emoji Picker Library -->
 <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+
+<script>
+  // Обработка формы решения без перезагрузки страницы
+  document.addEventListener('DOMContentLoaded', function() {
+    const decisionForm = document.querySelector('form[enctype="multipart/form-data"]');
+    if (!decisionForm) return;
+
+    decisionForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const formData = new FormData(this);
+      const submitBtn = this.querySelector('button[type="submit"]');
+      const originalText = submitBtn.innerHTML;
+
+      try {
+        // Показываем что загружаем
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сохранение...';
+
+        const response = await fetch(this.action || '', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+
+        // Получаем обновленное содержимое
+        const html = await response.text();
+        
+        // Заменяем контент страницы
+        const parser = new DOMParser();
+        const newDoc = parser.parseFromString(html, 'text/html');
+        const newContent = newDoc.querySelector('[role="main"]') || newDoc.body;
+        const currentContent = document.querySelector('[role="main"]') || document.body;
+        
+        currentContent.innerHTML = newContent.innerHTML;
+
+        // Показываем успех
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi-check-circle"></i> ✓ Сохранено';
+        submitBtn.classList.add('btn-success');
+        submitBtn.classList.remove('btn-primary');
+
+        // Возвращаем кнопку в исходное состояние через 2 секунды
+        setTimeout(() => {
+          submitBtn.innerHTML = originalText;
+          submitBtn.classList.remove('btn-success');
+          submitBtn.classList.add('btn-primary');
+        }, 2000);
+
+        // Прокручиваем вверх к результату
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      } catch (error) {
+        alert('Ошибка при сохранении: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+      }
+    });
+  });
+</script>
 {% endblock %}
