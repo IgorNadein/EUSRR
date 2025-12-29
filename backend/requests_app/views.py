@@ -385,7 +385,15 @@ def request_process(request, pk):
             if not status_changed and not soft_updates:
                 messages.info(request, "Изменений не обнаружено.")
 
-            return redirect("requests:request_list")
+            # Возвращаем обновленную страницу вместо редиректа
+            # (AJAX форма перезагружает контент на месте)
+            req.refresh_from_db()
+            form = RequestStatusForm(instance=req, user=request.user)
+            return render(
+                request,
+                "requests_app/request_process.html",
+                {"request_obj": req, "form": form, "can_cancel": is_hr(request.user)},
+            )
 
     # GET
     req = get_object_or_404(allowed_qs.prefetch_related(COMMENTS_PREFETCH), pk=pk)
