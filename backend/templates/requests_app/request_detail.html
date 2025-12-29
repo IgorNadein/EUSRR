@@ -46,7 +46,7 @@
           <div class="card-meta flex-grow-1">
             <div class="d-flex align-items-center gap-2 flex-wrap">
               <span class="card-title">
-                {{ request_obj.employee.get_full_name|default:request_obj.employee.username }}
+                {{ request_obj.employee.full_name|default:request_obj.employee.display_name }}
               </span>
 
               {# статус — бейдж #}
