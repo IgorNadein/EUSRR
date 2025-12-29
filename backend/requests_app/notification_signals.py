@@ -2,11 +2,11 @@
 Signals для автоматической генерации уведомлений в модуле Requests.
 
 Обрабатывает события:
-- Новая заявка (для ответственных/руководителей)
-- Одобрение заявки
-- Отклонение заявки
-- Комментарий к заявке
-- Изменение статуса заявки
+- Новое заявление (для ответственных/руководителей)
+- Одобрение заявления
+- Отклонение заявления
+- Комментарий к заявлению
+- Изменение статуса заявления
 """
 
 from django.contrib.auth import get_user_model
@@ -22,10 +22,10 @@ Employee = get_user_model()
 @receiver(post_save, sender=Request)
 def create_request_notifications(sender, instance, created, **kwargs):
     """
-    Создает уведомления при создании или изменении заявки.
+    Создает уведомления при создании или изменении заявления.
 
     Обрабатывает:
-    1. Новая заявка - уведомление руководителю/ответственным
+    1. Новое заявление - уведомление руководителю/ответственным
     2. Изменение статуса - уведомление автору
     """
     request_obj = instance
@@ -60,9 +60,9 @@ def track_status_change(sender, instance, **kwargs):
 @receiver(post_save, sender=RequestComment)
 def create_comment_notification(sender, instance, created, **kwargs):
     """
-    Создает уведомление при добавлении комментария к заявке.
+    Создает уведомление при добавлении комментария к заявлению.
     Уведомляет:
-    - Автора заявки
+    - Автора заявления
     - Всех получателей
     - Всех в копии
     - Согласующего
@@ -109,14 +109,18 @@ def create_comment_notification(sender, instance, created, **kwargs):
         recipients_set.update(dept_employees)
 
     # Отправляем уведомления
+    author_name = author.get_full_name() or author.username
+    request_type = request_obj.get_type_display()
+    employee_name = request_obj.employee.get_full_name() or request_obj.employee.username
+    
     for recipient in recipients_set:
         NotificationService.create_notification(
             recipient=recipient,
             notification_type_code="request_comment",
-            title="Новый комментарий к заявке",
+            title=f"💬 Новый комментарий к заявлению от {employee_name}",
             message=(
-                f"{author.get_full_name() or author.username} "
-                f"прокомментировал заявку: {comment.text[:100]}"
+                f"{author_name} прокомментировал заявление "
+                f'"{request_type}": {comment.text[:100]}'
             ),
             content_object=request_obj,
             action_url=f"/requests/{request_obj.id}/",
@@ -134,9 +138,9 @@ def create_comment_notification(sender, instance, created, **kwargs):
 
 def notify_new_request(request_obj):
     """
-    Отправляет уведомление о новой заявке:
-    - Всем основным получателям (recipients)
-    - Всем в копии (cc_users)
+    Отправляет уведомление о новом заявлении:
+    - Всем основным получателям (recipients) - адресованное им
+    - Всем в копии (cc_users) - с пометкой "в копии"
     - Согласующему (approver)
     - Руководителям отделов
     - Пользователям с правом can_process_requests
@@ -202,6 +206,8 @@ def notify_new_request(request_obj):
 
     # Определяем тип уведомления для каждого получателя
     author_name = request_obj.employee.get_full_name() or request_obj.employee.username
+    request_type = request_obj.get_type_display()
+    comment_preview = request_obj.comment[:150] if request_obj.comment else "Без комментария"
 
     for recipient in recipients_set:
         # Определяем роль получателя
@@ -209,24 +215,26 @@ def notify_new_request(request_obj):
         is_cc = request_obj.cc_users.filter(id=recipient.id).exists()
         is_approver = request_obj.approver_id == recipient.id
 
-        # Формируем заголовок и сообщение
-        if is_approver:
-            title = f"Новая заявка на согласование от {author_name}"
-            notification_type = "request_new"
-        elif is_primary:
-            title = f"Вам адресована заявка от {author_name}"
-            notification_type = "request_new"
+        # Формируем заголовок и сообщение с учетом роли
+        if is_primary:
+            # Основной получатель - требует действия
+            title = f"📩 Вам адресовано заявление от {author_name}"
+            message = f'Тип: "{request_type}". {comment_preview}'
+            notification_type = "request_new_primary"
         elif is_cc:
-            title = f"Вы в копии заявки от {author_name}"
-            notification_type = "request_new"
+            # Копия - информирование
+            title = f"📋 Вы в копии заявления от {author_name}"
+            message = f'Тип: "{request_type}". {comment_preview}'
+            notification_type = "request_new_cc"
+        elif is_approver:
+            title = f"✅ Новое заявление на согласование от {author_name}"
+            message = f'Тип: "{request_type}". {comment_preview}'
+            notification_type = "request_new_approver"
         else:
-            title = f"Новая заявка в отделе от {author_name}"
-            notification_type = "request_new"
-
-        message = (
-            f"Тип: {request_obj.get_type_display()}. "
-            f"{request_obj.comment[:100] if request_obj.comment else ''}"
-        )
+            # Руководитель отдела или обработчик
+            title = f"📝 Новое заявление в отделе от {author_name}"
+            message = f'Тип: "{request_type}". {comment_preview}'
+            notification_type = "request_new_dept"
 
         NotificationService.create_notification(
             recipient=recipient,
@@ -239,6 +247,7 @@ def notify_new_request(request_obj):
                 "request_id": request_obj.id,
                 "request_type": request_obj.type,
                 "employee_id": request_obj.employee.id,
+                "employee_name": author_name,
                 "is_primary_recipient": is_primary,
                 "is_cc": is_cc,
                 "is_approver": is_approver,
@@ -300,38 +309,36 @@ def notify_status_change(request_obj, old_status, new_status):
 
         recipients_to_notify.update(dept_employees)
 
-    # Формируем уведомления
+    # Формируем уведомления с подробной информацией
+    request_type = request_obj.get_type_display()
+    employee_name = request_obj.employee.get_full_name() or request_obj.employee.username
+    approver_name = (
+        request_obj.approver.get_full_name()
+        if request_obj.approver
+        else "Руководитель"
+    )
+    
     for recipient in recipients_to_notify:
         if new_status == "approved":
             notification_type = "request_approved"
-            title = "Заявка одобрена"
-            approver_name = (
-                request_obj.approver.get_full_name()
-                if request_obj.approver
-                else "Руководитель"
-            )
+            title = f"✅ Заявление одобрено: {request_type}"
             message = (
-                f'Заявка "{request_obj.get_type_display()}" '
-                f"одобрена пользователем {approver_name}"
+                f'Заявление от {employee_name} "{request_type}" '
+                f"одобрено пользователем {approver_name}"
             )
         elif new_status == "rejected":
             notification_type = "request_rejected"
-            title = "Заявка отклонена"
-            approver_name = (
-                request_obj.approver.get_full_name()
-                if request_obj.approver
-                else "Руководитель"
-            )
+            title = f"❌ Заявление отклонено: {request_type}"
             message = (
-                f'Заявка "{request_obj.get_type_display()}" '
-                f"отклонена пользователем {approver_name}"
+                f'Заявление от {employee_name} "{request_type}" '
+                f"отклонено пользователем {approver_name}"
             )
         else:
             # Общее уведомление об изменении статуса
             notification_type = "request_status_changed"
-            title = "Статус заявки изменен"
+            title = f"🔄 Статус заявления изменен: {request_type}"
             message = (
-                f'Статус заявки "{request_obj.get_type_display()}" '
+                f'Статус заявления от {employee_name} "{request_type}" '
                 f"изменен: {old_status} → {new_status}"
             )
 
@@ -345,10 +352,13 @@ def notify_status_change(request_obj, old_status, new_status):
             metadata={
                 "request_id": request_obj.id,
                 "request_type": request_obj.type,
+                "employee_id": request_obj.employee.id,
+                "employee_name": employee_name,
                 "old_status": old_status,
                 "new_status": new_status,
                 "approver_id": (
                     request_obj.approver.id if request_obj.approver else None
                 ),
+                "approver_name": approver_name,
             },
         )
