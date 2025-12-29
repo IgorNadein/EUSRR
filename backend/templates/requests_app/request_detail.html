@@ -80,7 +80,7 @@
 
           {# Отозвать — только если можно (ожидание и не финальное) #}
           {% if request_obj.status == 'pending' and not request_obj.is_final %}
-            <a href="{% url 'requests_app:request_cancel' request_obj.pk %}"
+            <a href="{% url 'requests:request_cancel' request_obj.pk %}"
                class="btn btn-ghost ms-auto">
               <i class="bi-x-circle"></i> Отозвать
             </a>
@@ -148,7 +148,7 @@
 
                     {# удалить — только автору комментария (права дополнительно проверяются во вьюхе) #}
                     {% if c.author.id == request.user.id %}
-                      <form method="post" action="{% url 'requests_app:request_comment_delete' request_obj.pk c.id %}">
+                      <form method="post" action="{% url 'requests:request_comment_delete' request_obj.pk c.id %}">
                         {% csrf_token %}
                         <button class="btn btn-sm btn-ghost text-danger" type="submit" title="Удалить">
                           <i class="bi-trash"></i>
@@ -165,7 +165,7 @@
           {% endif %}
 
           {# Добавить комментарий — #}
-          <form class="mt-2 request-comment-form" method="post" action="{% url 'requests_app:request_comment_add' request_obj.pk %}">
+          <form class="mt-2 request-comment-form" method="post" action="{% url 'requests:request_comment_add' request_obj.pk %}">
             {% csrf_token %}
             <div class="message-field message-field--compact">
               <!-- Кнопка выбора эмодзи -->
