@@ -202,11 +202,139 @@
 
 {% block extra_js %}
 <script type="module">
-  import { initRequestDetailModal } from '{% static "js/modules/requestDetail.js" %}';
+  // Обработка формы добавления комментария
+  const commentForm = document.querySelector('.request-comment-form');
+  if (commentForm) {
+    commentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const textarea = commentForm.querySelector('textarea[name="text"]');
+      const text = textarea.value.trim();
+      
+      if (!text) {
+        alert('Пожалуйста, введите текст комментария');
+        return;
+      }
+      
+      const submitBtn = commentForm.querySelector('button[type="submit"]');
+      const originalBtnContent = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      
+      try {
+        const response = await fetch(commentForm.action, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': commentForm.querySelector('[name="csrfmiddlewaretoken"]').value
+          },
+          body: JSON.stringify({ text: text })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        // Перезагрузить страницу для отображения нового комментария
+        window.location.reload();
+        
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Ошибка при добавлении комментария: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnContent;
+      }
+    });
+  }
   
-  // Если это модальное окно, не инициализируем
-  if (!window.location.pathname.includes('/requests/')) {
-    // Страница используется в модальном окне
+  // Обработка форм удаления комментариев
+  document.querySelectorAll('form[action*="request_comment_delete"]').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      if (!confirm('Вы уверены, что хотите удалить этот комментарий?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]').value
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        // Перезагрузить страницу
+        window.location.reload();
+        
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Ошибка при удалении комментария: ' + error.message);
+      }
+    });
+  });
+  
+  // Обработка формы изменения статуса
+  const statusForm = document.querySelector('.request-status-form');
+  if (statusForm) {
+    statusForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const selectField = statusForm.querySelector('select[name="status"]');
+      const newStatus = selectField.value;
+      
+      if (!newStatus) {
+        alert('Пожалуйста, выберите новый статус');
+        return;
+      }
+      
+      const confirmMsg = `Вы уверены, что хотите изменить статус?`;
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+      
+      const submitBtn = statusForm.querySelector('button[type="submit"]');
+      const originalBtnContent = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      
+      try {
+        const action = newStatus === 'approved' ? 'approve' : 
+                       newStatus === 'rejected' ? 'reject' : 
+                       newStatus === 'cancelled' ? 'cancel' : null;
+        
+        if (!action) {
+          throw new Error('Неподдерживаемый статус');
+        }
+        
+        const requestId = window.location.pathname.split('/').filter(p => p)[1];
+        const response = await fetch(`/api/v1/requests/${requestId}/${action}/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': statusForm.querySelector('[name="csrfmiddlewaretoken"]').value
+          }
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+        
+        // Перезагрузить страницу
+        window.location.reload();
+        
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Ошибка при изменении статуса: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnContent;
+      }
+    });
   }
 </script>
 {% endblock %}
