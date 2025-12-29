@@ -278,7 +278,18 @@ def my_requests(request):
 @login_required
 def request_detail(request, pk):
     req = get_object_or_404(DETAIL_REQUEST_QS, pk=pk, employee=request.user)
-    return render(request, "requests_app/request_detail.html", {"request_obj": req})
+    
+    # Проверяем, может ли пользователь обрабатывать заявления
+    # (является получателем этого заявления или имеет права)
+    user_can_process = (
+        request.user in req.recipients.all() or
+        can_process_requests(request.user)
+    )
+    
+    return render(request, "requests_app/request_detail.html", {
+        "request_obj": req,
+        "can_process": user_can_process
+    })
 
 
 @login_required
