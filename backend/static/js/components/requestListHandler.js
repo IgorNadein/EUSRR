@@ -413,7 +413,7 @@ export function initRequestListHandler(options) {
       actionButtons = `
         <a href="${approverUrl}" class="text-decoration-none d-block">
           <span class="badge ${req.status === "approved" ? "text-bg-success" : req.status === "rejected" ? "text-bg-danger" : "text-bg-secondary"}" style="word-break: break-word; white-space: normal;">
-            ${approverLabel}: ${escapeHtml(approverName)}
+            ${escapeHtml(approverName)}
           </span>
         </a>
       `;
@@ -466,7 +466,9 @@ export function initRequestListHandler(options) {
           <!-- Заголовок и тип -->
           <div class="req-cell req-cell-title">
             <div class="req-cell-content">
-              <strong>${escapeHtml(req.title || "Без заголовка")}</strong>
+              <a href="/requests/${req.id}/" class="text-decoration-none">
+                <strong>${escapeHtml(req.title || "Без заголовка")}</strong>
+              </a>
               ${
                 type
                   ? `<span class="badge text-bg-light ms-1">${typeText}</span>`
