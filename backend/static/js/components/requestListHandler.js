@@ -401,7 +401,25 @@ export function initRequestListHandler(options) {
 
     // Кнопки действий
     let actionButtons = "";
-    if (req.employee?.id !== userId && canProcess) {
+
+    // Если уже принято решение (не pending), показываем ссылку на того кто принял решение
+    if (req.status !== "pending" && req.approver) {
+      const approverName = req.approver.full_name || req.approver.display_name || "Пользователь";
+      const approverUrl = `/employees/${req.approver.id}/`;
+      let approverLabel = "";
+
+
+
+      actionButtons = `
+        <small class="text-body-secondary">${approverLabel}:</small>
+        <a href="${approverUrl}" class="text-decoration-none d-block">
+          <span class="badge ${req.status === "approved" ? "text-bg-success" : req.status === "rejected" ? "text-bg-danger" : "text-bg-secondary"}" style="word-break: break-word; white-space: normal;">
+            ${escapeHtml(approverName)}
+          </span>
+        </a>
+      `;
+    } else if (req.employee?.id !== userId && canProcess && req.status === "pending") {
+      // Если pending и не автор и есть права - показываем кнопки действий
       actionButtons = `
         <button type="button" class="btn btn-ghost btn-sm text-success"
                 data-bs-toggle="modal" data-bs-target="#reqApproveModal"
@@ -415,6 +433,7 @@ export function initRequestListHandler(options) {
         </button>
       `;
     } else if (req.employee?.id === userId) {
+      // Если автор - показываем кнопки Изменить/Отменить
       actionButtons = `
         <button type="button" class="btn btn-ghost btn-sm text-primary"
                 data-bs-toggle="modal" data-bs-target="#reqEditModal"
