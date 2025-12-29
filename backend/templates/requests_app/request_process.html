@@ -62,15 +62,15 @@
             </div>
 
             <div class="card-subtitle mt-1">
-              {# Дата создания — ISO в datetime для машин, формат для людей #}
-              <time datetime="{{ request_obj.created_at|date:'c' }}">
-                {{ request_obj.created_at|date:"d.m.Y H:i" }}
+              {# Дата создания #}
+              <time datetime="">
+                {{ request_obj.created_at }}
               </time>
               {# Период, если указан #}
               {% if request_obj.date_from or request_obj.date_to %}
                 · Период:
-                {{ request_obj.date_from|date:'d.m.Y' }}
-                {% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+                {{ request_obj.date_from }}
+                {% if request_obj.date_to %} — {{ request_obj.date_to }}{% endif %}
               {% endif %}
             </div>
           </div>
@@ -171,7 +171,7 @@
                       {{ c.author.get_full_name|default:c.author.username }}
                     </span>
                     <span class="text-secondary">·</span>
-                    <time class="text-muted">{{ c.created_at|date:"d.m.Y H:i" }}</time>
+                    <time class="text-muted">{{ c.created_at }}</time>
                   </div>
 
                   <form method="post"
