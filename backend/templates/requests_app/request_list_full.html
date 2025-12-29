@@ -21,6 +21,29 @@
     {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_as_card=True create_modal="reqCreateModal" create_text="Создать заявление" %}
   {% endif %}
 
+  {# ===== Nav Pills для области ===== #}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <ul class="nav nav-pills nav-fill">
+        <li class="nav-item">
+          <a class="nav-link {% if not filters.view or filters.view == '' %}active{% endif %}" href="?{% if filters.type %}type={{ filters.type }}&{% endif %}{% if filters.status %}status={{ filters.status }}{% endif %}">
+            <i class="bi-folder"></i> Все доступные
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if filters.view == 'mine' %}active{% endif %}" href="?view=mine{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}">
+            <i class="bi-person-circle"></i> Мои заявления
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if filters.view == 'addressed' %}active{% endif %}" href="?view=addressed{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}">
+            <i class="bi-inbox"></i> Адресованные мне
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
   {# ===== Список ===== #}
   {# DEBUG: Фильтры - type: {{ filters.type }}, status: {{ filters.status }}, count: {{ requests|length }} #}
   <div id="reqList" class="card mb-3">

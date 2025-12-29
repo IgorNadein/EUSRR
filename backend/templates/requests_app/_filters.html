@@ -1,14 +1,11 @@
 {# Фильтры для страницы заявлений #}
 <form method="get" class="row g-2 align-items-end">
-  <div class="col-12 col-sm-3">
-    <label class="form-label mb-1">Область</label>
-    <select name="view" class="form-select">
-      <option value="" {% if not filters.view or filters.view == '' %}selected{% endif %}>Все доступные</option>
-      <option value="mine" {% if filters.view == 'mine' %}selected{% endif %}>Мои заявления</option>
-      <option value="addressed" {% if filters.view == 'addressed' %}selected{% endif %}>Мне адресовано</option>
-    </select>
-  </div>
-  <div class="col-12 col-sm-3">
+  {# Сохраняем текущий view при применении фильтров #}
+  {% if filters.view %}
+    <input type="hidden" name="view" value="{{ filters.view }}">
+  {% endif %}
+  
+  <div class="col-12 col-sm-4">
     <label class="form-label mb-1">Тип</label>
     <select name="type" class="form-select">
       <option value="">— Любой —</option>
@@ -20,7 +17,7 @@
       <option value="other"       {% if filters.type == 'other' %}selected{% endif %}>Другое</option>
     </select>
   </div>
-  <div class="col-12 col-sm-3">
+  <div class="col-12 col-sm-4">
     <label class="form-label mb-1">Статус</label>
     <select name="status" class="form-select">
       <option value="">— Любой —</option>
@@ -31,7 +28,7 @@
       <option value="cancelled" {% if filters.status == 'cancelled' %}selected{% endif %}>Отменено</option>
     </select>
   </div>
-  <div class="col-12 col-sm-3 d-flex justify-content-end gap-2">
+  <div class="col-12 d-flex justify-content-end gap-2 mt-2">
     <button class="btn btn-outline-primary d-flex align-items-center justify-content-center gap-1" type="submit">
       <i class="bi-funnel"></i><span>Применить</span>
     </button>
