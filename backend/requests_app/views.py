@@ -144,13 +144,42 @@ def is_hr_or_head(user) -> bool:
     return is_hr(user) or is_department_head(user)
 
 
+def can_process_requests(user) -> bool:
+    """Проверяет, может ли пользователь обрабатывать заявки вообще.
+    
+    True если: HR/staff, руководитель отдела, или есть модельное право.
+    """
+    if is_hr(user):
+        return True
+    if is_department_head(user):
+        return True
+    if user.has_perm('requests_app.can_process_requests'):
+        return True
+    return False
+
+
 def get_allowed_request_qs(user):
-    """HR — все; руководитель — заявки сотрудников своих отделов."""
+    """Возвращает заявки, которые пользователь может обрабатывать.
+    
+    HR/staff — все заявки;
+    Руководитель отдела — заявки сотрудников своих отделов;
+    Получатель — заявки, где он указан как recipient.
+    
+    Финальная проверка в request_process дополнительно проверяет,
+    что пользователь является получателем конкретной заявки.
+    """
     if is_hr(user):
         return BASE_REQUEST_QS
-    return BASE_REQUEST_QS.filter(
-        employee__departments_links__department__head=user
-    ).distinct()
+    
+    from django.db.models import Q
+    
+    # Заявки от сотрудников отделов, где пользователь руководитель
+    dept_head_qs = Q(employee__departments_links__department__head=user)
+    
+    # Заявки где пользователь указан как получатель
+    recipient_qs = Q(recipients=user)
+    
+    return BASE_REQUEST_QS.filter(dept_head_qs | recipient_qs).distinct()
 
 
 # ---------- Утилиты ----------
@@ -311,7 +340,7 @@ def all_requests(request):
     )
 
 
-@user_passes_test(is_hr_or_head)
+@user_passes_test(can_process_requests)
 @require_http_methods(["GET", "POST"])
 def request_process(request, pk):
     allowed_qs = get_allowed_request_qs(request.user)
@@ -320,6 +349,10 @@ def request_process(request, pk):
         with transaction.atomic():
             req = get_object_or_404(allowed_qs.select_for_update(), pk=pk)
             req.refresh_from_db()
+            
+            # Проверка: не-staff должен быть получателем заявки
+            if not is_hr(request.user) and not req.recipients.filter(id=request.user.id).exists():
+                raise PermissionDenied("Вы не являетесь получателем этой заявки.")
 
             post = request.POST.copy()
             # Фоллбек: если status отсутствует (или кнопка без JS), используем имя кнопки

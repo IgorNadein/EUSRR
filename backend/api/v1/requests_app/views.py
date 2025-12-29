@@ -32,6 +32,7 @@ from .permissions import (
     DeptChangeRequest,
     DeptComments,
     DeptViewRequest,
+    IsRecipientOfRequest,
     NotFinalOrStaff,
 )
 from .serializers import (
@@ -86,7 +87,12 @@ class RequestViewSet(viewsets.ModelViewSet):
         if self.action == "comments":
             return [(CommentsPermission | DeptComments)()]
         if self.action in {"approve", "reject"}:
-            return [(AdminOrActionOrModelPerms | DeptCanProcess)()]
+            # Права на обработку + обязательно должен быть получателем заявки
+            # (staff/superuser пропускаются в IsRecipientOfRequest)
+            return [
+                (AdminOrActionOrModelPerms | DeptCanProcess)(),
+                IsRecipientOfRequest(),
+            ]
         if self.action == "cancel":
             return [IsSelfOrStaff()]
         if self.action == "retrieve":
