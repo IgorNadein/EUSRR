@@ -1,7 +1,7 @@
 # Руководство: Requests Detail View
 
-**Дата создания:** 26 декабря 2025 г.  
-**Версия:** 1.0  
+**Дата создания:** 26 декабря 2025 г.
+**Версия:** 1.0
 **Статус:** ✅ Готово к использованию
 
 ---
@@ -25,7 +25,7 @@
 class RequestDetailView(LoginRequiredMixin, TemplateView):
     """Детальный просмотр заявления с комментариями"""
     template_name = "requests_app/request_detail.html"
-    
+
     def get_context_data(self, pk: int, **kwargs):
         # Загружает заявление и комментарии из API
         # Проверяет права доступа
@@ -155,10 +155,10 @@ detailModal.close();
 <!-- Подключить JavaScript модуль -->
 <script type="module">
   import { initRequestDetailModal } from '/static/js/modules/requestDetail.js';
-  
+
   // Инициализировать модаль
   const modal = initRequestDetailModal();
-  
+
   // Открыть при клике
   document.getElementById('my-btn').addEventListener('click', () => {
     modal.open(requestId);
@@ -369,6 +369,6 @@ backend/
 
 ---
 
-**Дата обновления:** 26 декабря 2025 г.  
-**Версия документации:** 1.0  
+**Дата обновления:** 26 декабря 2025 г.
+**Версия документации:** 1.0
 **Автор:** Development Team

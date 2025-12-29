@@ -1,7 +1,7 @@
 # Прогресс: Requests Detail View
 
-**Ветка:** `feature/requests-detail-view`  
-**Статус:** ✅ 8 этапов из 8 завершены (100%)  
+**Ветка:** `feature/requests-detail-view`
+**Статус:** ✅ 8 этапов из 8 завершены (100%)
 **Дата обновления:** 26 декабря 2025 г.
 **Последний коммит:** 465bcad (stage 7-8)
 
@@ -28,7 +28,7 @@
 class RequestDetailView(LoginRequiredMixin, TemplateView):
     """Детальный просмотр заявления через модальное окно"""
     template_name = "requests_app/request_detail.html"
-    
+
     def get_context_data(self, pk: int, **kwargs):
         # Загружает заявление через API
         # Загружает комментарии
@@ -170,15 +170,15 @@ export function initRequestDetailModal() {
 ## 📝 Файлы изменены/созданы
 
 ### Созданы:
-✅ `docs/in-progress/REQUESTS_DETAIL_VIEW_PLAN.md` - Подробный план (326 строк)  
-✅ `docs/in-progress/REQUESTS_DETAIL_ANALYSIS.md` - Анализ кода (337 строк)  
-✅ `backend/static/js/modules/requestDetail.js` - JavaScript модуль (200 строк)  
+✅ `docs/in-progress/REQUESTS_DETAIL_VIEW_PLAN.md` - Подробный план (326 строк)
+✅ `docs/in-progress/REQUESTS_DETAIL_ANALYSIS.md` - Анализ кода (337 строк)
+✅ `backend/static/js/modules/requestDetail.js` - JavaScript модуль (200 строк)
 
 ### Изменены:
-✅ `backend/requests_app/views_front.py` - Добавлен RequestDetailView (80 строк)  
-✅ `backend/requests_app/urls_front.py` - Добавлен маршрут  
-✅ `backend/templates/requests_app/request_detail.html` - Раскомментированы комментарии  
-✅ `backend/templates/requests_app/request_list_full.html` - Добавлена модаль + JS инициализация  
+✅ `backend/requests_app/views_front.py` - Добавлен RequestDetailView (80 строк)
+✅ `backend/requests_app/urls_front.py` - Добавлен маршрут
+✅ `backend/templates/requests_app/request_detail.html` - Раскомментированы комментарии
+✅ `backend/templates/requests_app/request_list_full.html` - Добавлена модаль + JS инициализация
 
 ---
 
@@ -398,8 +398,8 @@ c14ee74 feat: requests detail view - stage 2: backend разработка
 
 ---
 
-**Дата:** 26 декабря 2025 г.  
-**Время разработки:** ~2.5 часа  
+**Дата:** 26 декабря 2025 г.
+**Время разработки:** ~2.5 часа
 **Статус:** ✅ Завершено
 **Прогресс:** 8/8 этапов (100%)
 
@@ -418,7 +418,7 @@ c14ee74 feat: requests detail view - stage 2: backend разработка
    ```bash
    git push origin feature/requests-detail-view
    ```
-   
+
 2. **Code Review:** Запросить проверку кода у team lead
 
 3. **Merge в master:**

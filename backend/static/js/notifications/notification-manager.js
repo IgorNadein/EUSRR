@@ -390,9 +390,16 @@ class NotificationManager {
                 // Отметить как прочитанное
                 this.markAsRead(notification.id);
                 
-                // Перейти по ссылке
+                // Перейти по ссылке ТОЛЬКО если это не текущая страница
+                // (избегаем ненужной перезагрузки при клике на уведомление о решении заявления)
                 if (notification.action_url) {
-                    window.location.href = notification.action_url;
+                    const currentPath = window.location.pathname;
+                    const notificationPath = new URL(notification.action_url, window.location.origin).pathname;
+                    
+                    // Если это уже текущая страница, просто закрываем уведомление
+                    if (currentPath !== notificationPath) {
+                        window.location.href = notification.action_url;
+                    }
                 }
                 
                 browserNotification.close();

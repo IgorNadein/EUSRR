@@ -229,14 +229,14 @@ def get_chat_url(chat_id, message_id=None):
 def test_notification_urls_are_valid():
     """Проверяет, что URL в уведомлениях существуют"""
     from django.urls import resolve, Resolver404
-    
+
     test_urls = [
         '/post/1/',
         '/documents/',
         '/requests/1/',
         '/communications/chats/1/',
     ]
-    
+
     for url in test_urls:
         try:
             resolve(url)
@@ -285,7 +285,7 @@ def test_notification_urls_are_valid():
 
 ---
 
-**Итого найдено проблем:** 2 критичные (✅ исправлены), 1 предупреждение  
-**Проверено модулей:** 5  
-**Статус реализации:** ✅ Все URLs корректны, новые разработки интегрированы  
+**Итого найдено проблем:** 2 критичные (✅ исправлены), 1 предупреждение
+**Проверено модулей:** 5
+**Статус реализации:** ✅ Все URLs корректны, новые разработки интегрированы
 **Общий статус:** ✅ **Все критичные проблемы исправлены**

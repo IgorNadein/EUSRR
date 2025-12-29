@@ -1,11 +1,12 @@
 # urls.py
 from django.urls import path
+
 from .views_front import (
-    RequestsView,
     RequestDetailView,
-    request_comments,
+    RequestsView,
     request_comment_add,
     request_comment_delete,
+    request_comments,
 )
 
 app_name = "requests"
@@ -22,5 +23,6 @@ urlpatterns = [
     path(
         "comments/<int:pk>/delete/<int:comment_id>/",
         request_comment_delete,
-        name="request_comment_delete",    ),
+        name="request_comment_delete",
+    ),
 ]

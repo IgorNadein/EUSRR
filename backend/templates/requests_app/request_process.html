@@ -118,7 +118,7 @@
         </header>
 
         <div class="card-body pt-0">
-          <form method="post" enctype="multipart/form-data">
+          <form method="post" enctype="multipart/form-data" id="decisionForm">
             {% csrf_token %}
 
             {# Неформатные ошибки формы (например, запрет смены финального статуса) #}
@@ -234,7 +234,7 @@
 <script>
   // Обработка формы решения без перезагрузки страницы
   document.addEventListener('DOMContentLoaded', function() {
-    const decisionForm = document.querySelector('form[enctype="multipart/form-data"]');
+    const decisionForm = document.getElementById('decisionForm');
     if (!decisionForm) return;
 
     decisionForm.addEventListener('submit', async function(e) {

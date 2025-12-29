@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from api.client import get_api_client
@@ -7,11 +8,11 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import AbstractBaseUser
 from django.http import HttpRequest, JsonResponse
+from django.utils.dateparse import parse_datetime
 from django.utils.decorators import method_decorator
+from django.utils.timezone import localtime
 from django.views.decorators.csrf import csrf_protect
 from django.views.generic import TemplateView
-from django.utils.dateparse import parse_datetime
-from django.utils.timezone import localtime
 from employees.models import Department, EmployeeDepartment  # добавлены импорты
 
 
@@ -95,8 +96,8 @@ def _parse_page_payload(
     payload: Any,
 ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], Optional[int]]:
     """Нормализует ответ API к (results, next, previous, count). Поддерживает:
-       - DRF-страницу {"count","next","previous","results":[...]}
-       - непагинированный список [...]."""
+    - DRF-страницу {"count","next","previous","results":[...]}
+    - непагинированный список [...]."""
     # 1) Непагинированный список
     if isinstance(payload, list):
         results = _format_datetime_fields(payload)
@@ -107,7 +108,12 @@ def _parse_page_payload(
         if "results" in payload:
             raw = payload.get("results") or []
             results = _format_datetime_fields(list(raw))
-            return results, payload.get("next"), payload.get("previous"), payload.get("count")
+            return (
+                results,
+                payload.get("next"),
+                payload.get("previous"),
+                payload.get("count"),
+            )
         # словарь, но не страница — пустой список
         return [], None, None, None
 
@@ -187,7 +193,7 @@ class RequestsView(LoginRequiredMixin, TemplateView):
         params: Dict[str, Any] = {}
         scope = (request.GET.get("view") or "").lower().strip()
         mine_raw = (request.GET.get("mine") or "").strip().lower()
-        
+
         if scope == "mine" or mine_raw in {"1", "true", "yes", "on"}:
             params["view"] = "mine"
             scope = "mine"
@@ -277,15 +283,15 @@ class RequestsView(LoginRequiredMixin, TemplateView):
 class RequestDetailView(LoginRequiredMixin, TemplateView):
     """
     Детальный просмотр заявления.
-    
+
     Загружает одно заявление и его комментарии через API.
     Может быть использовано как для отдельной страницы, так и для модального окна.
-    
+
     GET /requests/{pk}/:
         - Загружает заявление через GET /api/v1/requests/{pk}/
         - Загружает комментарии через GET /api/v1/requests/{pk}/comments/
         - Проверяет права доступа (делает ошибку если нет прав)
-    
+
     Контекст:
         - request_obj: dict с данными заявления
         - comments: list[dict] с комментариями
@@ -293,59 +299,64 @@ class RequestDetailView(LoginRequiredMixin, TemplateView):
         - error: str - описание ошибки (если она была)
         - error_code: int - HTTP код ошибки
     """
-    
+
     template_name = "requests_app/request_detail.html"
-    
+
     def get_context_data(self, pk: int, **kwargs: Any) -> Dict[str, Any]:
         """
         Загружает данные заявления и комментарии.
-        
+
         Args:
             pk: ID заявления
-            
+
         Returns:
             Dict с контекстом для шаблона
         """
         ctx = super().get_context_data(**kwargs)
         request = self.request
         api = get_api_client(request)
-        
+
         # Загружаем основные данные заявления
         ok, data, status = _api_unpack(api.get(f"v1/requests/{pk}/"))
-        
+
         if not ok:
             # Обработка ошибок (404, 403 и т.д.)
             error_msg = data.get("detail", f"HTTP {status}")
             if isinstance(error_msg, list):
                 error_msg = "; ".join(str(e) for e in error_msg)
-            
-            ctx.update({
-                "request_obj": None,
-                "comments": [],
-                "can_process": _user_can_process_requests(request.user),
-                "error": error_msg,
-                "error_code": status,
-            })
+
+            ctx.update(
+                {
+                    "request_obj": None,
+                    "comments": [],
+                    "can_process": _user_can_process_requests(request.user),
+                    "error": error_msg,
+                    "error_code": status,
+                }
+            )
             return ctx
-        
+
         request_data = data
-        
+
         # Загружаем комментарии
         comments = []
         ok_c, data_c, st_c = _api_unpack(api.get(f"v1/requests/{pk}/comments/"))
         if ok_c:
             results_c, _, _, _ = _parse_page_payload(data_c)
             comments = _format_datetime_fields(
-                results_c,
-                fields=("created_at", "updated_at")
+                results_c, fields=("created_at", "updated_at")
             )
-        
-        ctx.update({
-            "request_obj": _format_datetime_fields([request_data], fields=("created_at", "updated_at", "decided_at"))[0],
-            "comments": comments,
-            "can_process": _user_can_process_requests(request.user),
-        })
-        
+
+        ctx.update(
+            {
+                "request_obj": _format_datetime_fields(
+                    [request_data], fields=("created_at", "updated_at", "decided_at")
+                )[0],
+                "comments": comments,
+                "can_process": _user_can_process_requests(request.user),
+            }
+        )
+
         return ctx
 
 
@@ -379,6 +390,7 @@ def request_comment_add(request: HttpRequest, pk: int) -> JsonResponse:
     if ct == "application/json":
         try:
             import json as _json
+
             payload = _json.loads(request.body or b"{}")
             text = (payload.get("text") or "").strip()
         except Exception:
@@ -397,11 +409,14 @@ def request_comment_add(request: HttpRequest, pk: int) -> JsonResponse:
         return JsonResponse(data or {"detail": f"HTTP {st}"}, status=st)
     return JsonResponse(data, status=201)
 
-def request_comment_delete(request: HttpRequest, pk: int, comment_id: int) -> JsonResponse:
+
+def request_comment_delete(
+    request: HttpRequest, pk: int, comment_id: int
+) -> JsonResponse:
     """Прокси: удаление комментария.
-    
+
     DELETE /api/v1/requests/{pk}/comments/{comment_id}/
-    
+
     Требует авторизации и проверяет права (только автор может удалить свой комментарий).
     """
     if request.method != "POST":
@@ -410,11 +425,9 @@ def request_comment_delete(request: HttpRequest, pk: int, comment_id: int) -> Js
         return JsonResponse({"detail": "Authentication required"}, status=401)
 
     api = get_api_client(request)
-    ok, data, st = _api_unpack(
-        api.delete(f"v1/requests/{pk}/comments/{comment_id}/")
-    )
-    
+    ok, data, st = _api_unpack(api.delete(f"v1/requests/{pk}/comments/{comment_id}/"))
+
     if not ok:
         return JsonResponse(data or {"detail": f"HTTP {st}"}, status=st)
-    
+
     return JsonResponse({"detail": "Comment deleted"}, status=204)

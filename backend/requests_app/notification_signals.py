@@ -243,15 +243,19 @@ def notify_new_request(request_obj):
 def notify_status_change(request_obj, old_status, new_status):
     """
     Уведомляет о изменении статуса:
-    - Автора
     - Всех получателей (recipients)
     - Всех в копии (cc_users)
     - Сотрудников отделов (если sent_to_all_department)
+    
+    ВАЖНО: автор не получает уведомление о решении (approve/reject), 
+    так как он видит результат на странице request_process.html
     """
     recipients_to_notify = set()
     
-    # 1. Автор
-    recipients_to_notify.add(request_obj.employee)
+    # 1. Автор - НЕ уведомляем при approved/rejected
+    # (автор видит результат прямо на странице)
+    if new_status not in ('approved', 'rejected'):
+        recipients_to_notify.add(request_obj.employee)
     
     # 2. Основные получатели
     recipients_to_notify.update(

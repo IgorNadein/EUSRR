@@ -1,9 +1,9 @@
 # План: Создание Detail View для заявлений
 
-**Статус:** 🔨 В разработке  
-**Приоритет:** Высокий  
-**Сложность:** Средняя  
-**Время:** ~4-6 часов  
+**Статус:** 🔨 В разработке
+**Приоритет:** Высокий
+**Сложность:** Средняя
+**Время:** ~4-6 часов
 **Ветка:** `feature/requests-detail-view`
 
 ---
@@ -48,12 +48,12 @@
   - Загружать данные о заявлении через API
   - Получать также комментарии
   - Проверять права доступа пользователя
-  
+
 - [ ] Логика:
   ```python
   class RequestDetailView(LoginRequiredMixin, TemplateView):
       template_name = 'requests/request_detail.html'
-      
+
       def get_context_data(self, **kwargs):
           # 1. Получить ID заявления из URL
           # 2. Загрузить данные через API
@@ -321,6 +321,6 @@ git push origin feature/requests-detail-view
 
 ---
 
-**Дата создания плана:** 26 декабря 2025 г.  
-**Автор:** GitHub Copilot  
+**Дата создания плана:** 26 декабря 2025 г.
+**Автор:** GitHub Copilot
 **Контакт:** Igor Nadein

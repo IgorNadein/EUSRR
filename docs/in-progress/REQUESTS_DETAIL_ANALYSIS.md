@@ -1,7 +1,7 @@
 # Анализ существующего кода для Detail View
 
-**Статус:** 📋 Анализ  
-**Дата:** 26 декабря 2025 г.  
+**Статус:** 📋 Анализ
+**Дата:** 26 декабря 2025 г.
 **Задача:** feature/requests-detail-view - Этап 1
 
 ---
@@ -39,7 +39,7 @@ response = client.get('/api/v1/requests/', params={...})
 def request_comments(request: HttpRequest, pk: int) -> JsonResponse:
     """Загружает комментарии к заявке"""
     # Возвращает JSON с комментариями
-    
+
 def request_comment_add(request: HttpRequest, pk: int) -> JsonResponse:
     """Добавляет комментарий к заявке"""
     # POST запрос с текстом комментария
@@ -161,9 +161,9 @@ def request_comment_add(request: HttpRequest, pk: int) -> JsonResponse:
 // Экспортирование как ES6 модулей
 export class RequestDetailManager {
     constructor() { }
-    
+
     init() { }
-    
+
     openModal(id) { }
     loadData(id) { }
     // ...
@@ -174,7 +174,7 @@ export class RequestDetailManager {
 ```html
 <script type="module">
     import { RequestDetailManager } from '/static/js/modules/requestDetail.js';
-    
+
     const manager = new RequestDetailManager();
     manager.init();
 </script>
@@ -258,20 +258,20 @@ class RequestDetailView(LoginRequiredMixin, TemplateView):
     Может быть как отдельная страница, так и содержимое модали.
     """
     template_name = 'requests/request_detail.html'
-    
+
     def get_context_data(self, pk, **kwargs):
         context = super().get_context_data(**kwargs)
-        
+
         # Загрузить заявление через API
         client = get_api_client(self.request)
         response = client.get(f'/api/v1/requests/{pk}/')
-        
+
         if response.ok:
             context['request_obj'] = response.json()
         else:
             # Обработать ошибку (404, 403 и т.д.)
             pass
-        
+
         return context
 ```
 
@@ -284,17 +284,17 @@ export class RequestDetailModal {
         this.container = document.getElementById(containerId);
         this.init();
     }
-    
+
     init() {
         // Добавить обработчики событий
         // Инициализировать элементы
     }
-    
+
     open(requestId) {
         this.loadData(requestId)
             .then(() => this.modal.show());
     }
-    
+
     loadData(requestId) {
         // Загрузить данные через API
         // Обновить содержимое модали
