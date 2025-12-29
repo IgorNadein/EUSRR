@@ -363,6 +363,9 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         cc_user_ids = validated_data.pop('cc_user_ids', [])
         departments = validated_data.pop('departments', [])
 
+        # Отладка: проверяем что передается
+        print(f"📝 [SERIALIZER] create: recipient_ids={recipient_ids}, cc_user_ids={cc_user_ids}")
+
         if not self._is_power():
             # обычный пользователь: запрещённые поля убираем/переписываем
             validated_data.pop("status", None)
@@ -379,6 +382,7 @@ class RequestWriteSerializer(serializers.ModelSerializer):
 
         # Создаем заявку
         request_obj = super().create(validated_data)
+        print(f"✅ [SERIALIZER] Заявление #{request_obj.id} создано, устанавливаем recipients...")
         
         # Устанавливаем связи ManyToMany
         if departments:
@@ -386,6 +390,11 @@ class RequestWriteSerializer(serializers.ModelSerializer):
         
         self._set_recipients(request_obj, recipient_ids, is_cc=False)
         self._set_recipients(request_obj, cc_user_ids, is_cc=True)
+        
+        # Проверяем что сохранилось
+        recipients_count = request_obj.recipients.count()
+        cc_count = request_obj.cc_users.count()
+        print(f"✅ [SERIALIZER] Recipients установлены: {recipients_count} основных, {cc_count} в копии")
         
         return request_obj
     
