@@ -48,7 +48,7 @@
         </div>
       </div>
     </div>
-    
+
     {# Контейнер для данных заявлений #}
     <div id="reqListContent">
       {# Список загружается через JavaScript из requestListHandler.js #}
@@ -86,6 +86,7 @@
             <option value="" selected disabled>Выберите тип…</option>
             <option value="vacation">📅 Отпуск</option>
             <option value="sick_leave">🏥 Больничный</option>
+            <option value="day_off">🏖️ Отгул</option>
             <option value="transfer">↔️ Перевод</option>
             <option value="dismissal">👋 Увольнение</option>
             <option value="other">📋 Другое</option>
@@ -94,7 +95,7 @@
 
         <div class="mb-3">
           <label class="form-label">Тема</label>
-          <input type="text" name="title" class="form-control" 
+          <input type="text" name="title" class="form-control"
                  placeholder="Краткое описание заявления..." maxlength="255">
         </div>
 
@@ -174,6 +175,7 @@
             <option value="" disabled>Выберите тип…</option>
             <option value="vacation">📅 Отпуск</option>
             <option value="sick_leave">🏥 Больничный</option>
+            <option value="day_off">🏖️ Отгул</option>
             <option value="transfer">↔️ Перевод</option>
             <option value="dismissal">👋 Увольнение</option>
             <option value="other">📋 Другое</option>

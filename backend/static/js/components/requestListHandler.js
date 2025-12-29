@@ -47,6 +47,18 @@ export function initRequestListHandler(options) {
   // Intersection Observer для бесконечной прокрутки
   let observerTarget = null;
   let observer = null;
+  
+  // Мобильная оптимизация: слушаем сетевые события
+  let isOnline = navigator.onLine;
+  window.addEventListener('online', () => {
+    isOnline = true;
+    console.log('Network restored');
+  });
+  window.addEventListener('offline', () => {
+    isOnline = false;
+    console.log('Network lost');
+    listElement.innerHTML = '<div class="p-4 text-center text-warning">Потеряна связь с интернетом</div>';
+  });
 
   /**
    * Загружает заявления с API
@@ -56,6 +68,13 @@ export function initRequestListHandler(options) {
   async function loadRequests(append = false) {
     if (loading || (append && !hasMore)) {
       console.log('loadRequests: skipped', { loading, append, hasMore });
+      return [];
+    }
+
+    // Проверка сети на мобильных
+    if (!isOnline) {
+      console.warn('loadRequests: offline');
+      listElement.innerHTML = '<div class="p-4 text-center text-warning">Нет интернет-соединения. Проверьте подключение.</div>';
       return [];
     }
     
@@ -91,7 +110,17 @@ export function initRequestListHandler(options) {
         console.log('loadRequests: initial load', url);
       }
       
-      const response = await fetch(url, { headers });
+      const controller = new AbortController();
+      // На мобильных устройствах увеличиваем таймаут до 15 секунд
+      const timeoutMs = /iPhone|iPad|Android|Mobile/.test(navigator.userAgent) ? 15000 : 10000;
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      const response = await fetch(url, { 
+        headers,
+        signal: controller.signal 
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         throw new Error('HTTP ' + response.status);
@@ -128,7 +157,21 @@ export function initRequestListHandler(options) {
       console.error('Ошибка загрузки заявлений:', error);
       loading = false;
       hideLoadingSpinner();
-      listElement.innerHTML = '<div class="p-4 text-center text-danger">Не удалось загрузить заявления</div>';
+      
+      // Более информативное сообщение об ошибке
+      let errorMsg = 'Не удалось загрузить заявления';
+      if (error.name === 'AbortError') {
+        errorMsg = 'Время ожидания истекло. Проверьте интернет-соединение.';
+      } else if (!navigator.onLine) {
+        errorMsg = 'Нет интернет-соединения.';
+      }
+      
+      listElement.innerHTML = `
+        <div class="p-4 text-center">
+          <div class="text-danger mb-2">${errorMsg}</div>
+          <small class="text-body-secondary d-block">Попробуйте обновить страницу</small>
+        </div>
+      `;
       return [];
     }
   }
@@ -190,18 +233,22 @@ export function initRequestListHandler(options) {
   function setupInfiniteScroll() {
     if (!observerTarget) return;
     
-    // Создаем observer
+    // Создаем observer с адаптивными параметрами для мобильных
+    const isMobile = /iPhone|iPad|Android|Mobile/.test(navigator.userAgent);
+    const rootMargin = isMobile ? '200px' : '100px'; // На мобильных загружаем раньше
+    
     observer = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting && hasMore && !loading) {
+            console.log('Intersection observer: triggering loadMore');
             loadMore();
           }
         });
       },
       {
         root: null,
-        rootMargin: '100px',
+        rootMargin,
         threshold: 0.01
       }
     );
@@ -293,6 +340,7 @@ export function initRequestListHandler(options) {
     let typeIcon = 'bi-clipboard-check text-secondary';
     if (type === 'vacation') typeIcon = 'bi-calendar-check text-primary';
     else if (type === 'sick_leave') typeIcon = 'bi-capsule text-danger';
+    else if (type === 'day_off') typeIcon = 'bi-umbrella-fill text-info';
     else if (type === 'transfer') typeIcon = 'bi-box-arrow-right text-info';
     else if (type === 'dismissal') typeIcon = 'bi-door-open text-warning';
     
@@ -300,6 +348,7 @@ export function initRequestListHandler(options) {
     const typeText = {
       'vacation': 'Отпуск',
       'sick_leave': 'Больничный',
+      'day_off': 'Отгул',
       'transfer': 'Перевод',
       'dismissal': 'Увольнение',
       'other': 'Другое'
@@ -315,7 +364,7 @@ export function initRequestListHandler(options) {
     else if (status === 'cancelled') { statusBadgeClass = 'text-bg-secondary'; statusText = 'Отменено'; }
     
     // URL для сотрудника
-    const employeeUrl = req.employee?.id === userId ? '/employees/profile/' : `/employees/${req.employee?.id}/`;
+    const employeeUrl = `/employees/${req.employee?.id}/`;
     const employeeName = req.employee?.id === userId ? 'Вы' : (req.employee?.full_name || req.employee?.display_name || 'Сотрудник');
     
     // Кнопки действий

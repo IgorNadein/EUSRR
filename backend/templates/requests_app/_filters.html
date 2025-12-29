@@ -14,6 +14,7 @@
       <option value="">— Любой —</option>
       <option value="vacation"    {% if filters.type == 'vacation' %}selected{% endif %}>Отпуск</option>
       <option value="sick_leave"  {% if filters.type == 'sick_leave' %}selected{% endif %}>Больничный</option>
+      <option value="day_off"     {% if filters.type == 'day_off' %}selected{% endif %}>Отгул</option>
       <option value="transfer"    {% if filters.type == 'transfer' %}selected{% endif %}>Перевод</option>
       <option value="dismissal"   {% if filters.type == 'dismissal' %}selected{% endif %}>Увольнение</option>
       <option value="other"       {% if filters.type == 'other' %}selected{% endif %}>Другое</option>

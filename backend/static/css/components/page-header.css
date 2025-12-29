@@ -257,18 +257,60 @@
 
 /* Мобильные */
 @media (max-width: 575.98px) {
+  .page-header {
+    margin-bottom: var(--space-2);
+    padding: var(--space-1) 0;
+    top: var(--navbar-h, 60px);
+  }
+  
   .page-title {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
+    font-weight: 700;
   }
   
   .page-count {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
   }
   
+  .page-scope-switch {
+    gap: 0.25rem;
+  }
+
   .page-scope-switch .btn {
-    min-width: 50px;
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
+    min-width: auto;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  .page-filters {
+    margin-top: 0.5rem;
+  }
+
+  .page-filters .btn {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .page-search {
+    margin-top: 0.5rem;
+  }
+
+  /* Скрываем счётчик на очень маленьких экранах */
+  @media (max-width: 480px) {
+    .page-count {
+      display: none;
+    }
+
+    .page-header .card {
+      margin-top: 0;
+      width: 100%;
+    }
+
+    .page-header .card button.dept-row,
+    .page-header .card a.dept-row {
+      padding: var(--space-1) var(--space-1);
+      font-size: 0.9rem;
+    }
   }
 }
 

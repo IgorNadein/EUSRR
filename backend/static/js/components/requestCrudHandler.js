@@ -303,7 +303,11 @@ export function initRequestCrudHandler(options) {
     try {
       const response = await fetch(`${apiDetailBase}${reqId}/approve/`, {
         method: 'POST',
-        headers: headers
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
       });
 
       if (!response.ok) {
@@ -330,7 +334,11 @@ export function initRequestCrudHandler(options) {
     try {
       const response = await fetch(`${apiDetailBase}${reqId}/reject/`, {
         method: 'POST',
-        headers: headers
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
       });
 
       if (!response.ok) {
@@ -361,7 +369,11 @@ export function initRequestCrudHandler(options) {
     try {
       const response = await fetch(`${apiDetailBase}${reqId}/cancel/`, {
         method: 'POST',
-        headers: headers
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
       });
 
       if (!response.ok) {

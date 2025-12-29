@@ -191,19 +191,19 @@
       minmax(100px, 1fr)  /* Автор */
       90px           /* Даты */
       100px          /* Статус */
-      70px;          /* Создано + Действия объединены */
+      70px;          /* Создано */
   }
   
-  /* Прячем отдельную колонку действий */
-  #reqList .req-table-header .req-cell-actions,
-  #reqList .req-cell-actions {
+  /* На планшетах скрываем колонку действий как отдельное поле */
+  #reqList .req-table-header .req-cell-actions {
     display: none;
   }
   
-  /* Добавляем действия в строку заголовка */
-  #reqList .req-cell-title .req-cell-content::after {
-    content: '';
-    display: block;
+  /* Но сами кнопки остаются видимыми */
+  #reqList .req-cell-actions {
+    grid-column: 6;
+    display: flex !important;
+    justify-content: flex-end;
   }
 }
 
@@ -213,56 +213,155 @@
   #reqList .req-table-header {
     display: none;
   }
-  
+
+  /* Переходим на flexbox layout */
   #reqList .req-table-row {
-    grid-template-columns: 36px 1fr;
-    gap: 0.5rem;
-    padding: 0.75rem;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 1rem 0.75rem;
+    gap: 0.75rem;
+    align-items: flex-start;
   }
-  
-  /* Все ячейки в две колонки */
+
+  /* Сброс для всех ячеек */
+  #reqList .req-cell {
+    display: block;
+    min-width: 0;
+  }
+
+  /* Сброс для контента внутри ячеек */
+  #reqList .req-cell-content {
+    width: 100%;
+  }
+
+  /* Иконка слева сверху */
   #reqList .req-cell-icon {
-    grid-row: 1 / span 3;
-    align-self: start;
+    flex: 0 0 36px;
+    padding-top: 0.25rem;
   }
-  
+
   #reqList .req-cell-icon .card-icon {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
   }
   
+  /* Основной контент - заголовок занимает полную ширину минус иконка */
   #reqList .req-cell-title {
-    grid-column: 2;
+    flex: 1 1 calc(100% - 48px);
     font-size: 0.9rem;
   }
-  
-  #reqList .req-cell-author {
-    grid-column: 2;
+
+  #reqList .req-cell-title strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.95rem;
+  }
+
+  #reqList .req-cell-title .badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  #reqList .req-cell-title .small {
+    display: block;
     font-size: 0.8rem;
-    margin-top: -0.25rem;
-  }
-  
-  #reqList .req-cell-dates,
-  #reqList .req-cell-status,
-  #reqList .req-cell-created {
-    grid-column: 2;
-    font-size: 0.75rem;
-  }
-  
-  #reqList .req-cell-actions {
-    grid-column: 2;
-    justify-content: flex-start;
     margin-top: 0.25rem;
   }
   
-  #reqList .req-footer {
-    margin-left: calc(36px + 0.5rem);
-    padding: 0.5rem 0.75rem;
+  /* Остальная информация - автор, даты, статус */
+  #reqList .req-cell-author,
+  #reqList .req-cell-dates,
+  #reqList .req-cell-status {
+    flex: 0 1 auto;
+    font-size: 0.8rem;
+  }
+
+  #reqList .req-cell-author {
+    flex: 0 1 auto;
+  }
+
+  #reqList .req-cell-dates {
+    flex: 0 1 auto;
+    white-space: nowrap;
+  }
+
+  #reqList .req-cell-dates br {
+    display: none;
+  }
+
+  #reqList .req-cell-status {
+    flex: 0 1 auto;
+  }
+
+  #reqList .req-cell-status .badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    white-space: nowrap;
   }
   
+  /* Скрываем дату создания на мобильных */
+  #reqList .req-cell-created {
+    display: none;
+  }
+  
+  /* Кнопки действий занимают полную строку */
+  #reqList .req-cell-actions {
+    display: flex !important;
+    flex: 1 1 100%;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+    margin: 0;
+  }
+
+  #reqList .req-cell-actions .req-cell-content {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  #reqList .req-cell-actions .btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+  
+  /* Футер с комментариями занимает полную ширину */
+  #reqList .req-footer {
+    flex: 1 1 100%;
+    margin-left: 0;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--bs-border-color-translucent);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  #reqList .req-footer .btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+  
+  /* Блок комментариев */
   #reqList .comments-block {
     margin-left: 0;
     padding: 0.75rem;
+  }
+
+  /* Строка заявления */
+  #reqList .req-row {
+    padding: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 50%);
+  }
+
+  #reqList .req-row:hover {
+    background-color: transparent;
+  }
+
+  #reqList .req-row:last-child {
+    border-bottom: 0;
   }
 }
 

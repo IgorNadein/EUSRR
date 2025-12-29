@@ -7,6 +7,7 @@ class RequestType(TextChoices):
 
     VACATION = "vacation", "Отпуск"
     SICK_LEAVE = "sick_leave", "Больничный"
+    DAY_OFF = "day_off", "Отгул"
     TRANSFER = "transfer", "Перевод"
     DISMISSAL = "dismissal", "Увольнение"
     OTHER = "other", "Другое"
