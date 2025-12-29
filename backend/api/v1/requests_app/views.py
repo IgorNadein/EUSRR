@@ -27,6 +27,7 @@ from rest_framework.serializers import (
 
 from ..permissions import AdminOrActionOrModelPerms, AdminOrDeptAllowed, IsSelfOrStaff
 from .permissions import (
+    CanViewRequest,
     CommentsPermission,
     DeptCanProcess,
     DeptChangeRequest,
@@ -96,7 +97,14 @@ class RequestViewSet(viewsets.ModelViewSet):
         if self.action == "cancel":
             return [IsSelfOrStaff()]
         if self.action == "retrieve":
-            return [(IsSelfOrStaff | DeptViewRequest | AdminOrActionOrModelPerms)()]
+            # Автор, получатель, в копии, по отделу, staff/admin
+            return [
+                (
+                    CanViewRequest
+                    | DeptViewRequest
+                    | AdminOrActionOrModelPerms
+                )()
+            ]
         if self.action == "destroy":
             return [
                 (IsSelfOrStaff | AdminOrActionOrModelPerms | DeptChangeRequest)(),

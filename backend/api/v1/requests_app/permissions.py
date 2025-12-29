@@ -37,6 +37,43 @@ class IsRecipientOfRequest(BasePermission):
         return obj.recipients.filter(id=user.id).exists()
 
 
+class CanViewRequest(BasePermission):
+    """Проверяет, может ли пользователь просматривать заявку.
+
+    Доступ разрешается если пользователь:
+    - staff/superuser
+    - автор заявки (employee)
+    - получатель заявки (recipients)
+    - в копии заявки (cc_users)
+    """
+
+    message = "У вас нет доступа к этой заявке."
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        return bool(getattr(request.user, "is_authenticated", False))
+
+    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+        user = request.user
+
+        # Staff/superuser могут просматривать любые заявки
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return True
+
+        # Автор заявки
+        if getattr(obj, "employee_id", None) == user.id:
+            return True
+
+        # Получатель заявки (recipients)
+        if obj.recipients.filter(id=user.id).exists():
+            return True
+
+        # В копии заявки (cc_users)
+        if obj.cc_users.filter(id=user.id).exists():
+            return True
+
+        return False
+
+
 class CommentsPermission(BasePermission):
     """Комментарии: модельные права, staff, head.
 
