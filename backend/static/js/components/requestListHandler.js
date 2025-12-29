@@ -411,10 +411,9 @@ export function initRequestListHandler(options) {
 
 
       actionButtons = `
-        <small class="text-body-secondary">${approverLabel}:</small>
         <a href="${approverUrl}" class="text-decoration-none d-block">
           <span class="badge ${req.status === "approved" ? "text-bg-success" : req.status === "rejected" ? "text-bg-danger" : "text-bg-secondary"}" style="word-break: break-word; white-space: normal;">
-            ${escapeHtml(approverName)}
+            ${approverLabel}: ${escapeHtml(approverName)}
           </span>
         </a>
       `;
