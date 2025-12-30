@@ -117,14 +117,16 @@ def sync_user_groups_by_cns(
     )
     current_dns = _read_user_memberof_dns(conn, user_dn)
 
-    # ограничим удаление только «наших» веток (Groups/OU=Roles),
+    # ограничим удаление только «наших» веток (Groups, OU отделов с ROLE_*),
     # как и в батч-логике
     groups_base = getattr(settings, "LDAP_GROUPS_BASE", "")
+    depts_base = getattr(settings, "LDAP_DEPARTMENTS_BASE", "")
     to_add = desired_dns - current_dns
     to_del = {
         dn
         for dn in (current_dns - desired_dns)
-        if (groups_base and dn.endswith(groups_base)) or "OU=Roles," in dn
+        if (groups_base and dn.endswith(groups_base)) 
+           or (depts_base and dn.endswith(depts_base) and "CN=ROLE_" in dn)
     }
 
     added = removed = 0

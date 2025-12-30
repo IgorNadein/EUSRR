@@ -219,9 +219,11 @@ import { norm } from '{% static "js/utils/stringUtils.js" %}';
 })();
 </script>
 
-{# ===== Модал «Назначить роль»: подстановка empId в action ===== #}
+{# ===== Модал «Назначить роль»: AJAX-поиск по всем сотрудникам ===== #}
 <script type="module">
-import { norm } from '{% static "js/utils/stringUtils.js" %}';
+{% url 'employees:employees_list' as employees_list_url %}
+import { esc } from '{% static "js/utils/stringUtils.js" %}';
+import { debounce } from '{% static "js/utils/timing.js" %}';
 
 (function(){
   const modal   = document.getElementById('setRoleModal-{{ dept.id }}');
@@ -229,12 +231,15 @@ import { norm } from '{% static "js/utils/stringUtils.js" %}';
 
   const form    = modal.querySelector('form');
   const actionTpl = form ? form.getAttribute('data-action-template') : null;
-  const input   = document.getElementById('setRoleSearch-{{ dept.id }}');
-  const listBox = document.getElementById('setRoleResults-{{ dept.id }}');
+  const input   = modal.querySelector('[data-set-role-q]');
+  const listEl  = modal.querySelector('[data-set-role-list]');
+  const tpl     = modal.querySelector('#setRoleItemTpl-{{ dept.id }}');
   const hidden  = document.getElementById('setRoleChosen-{{ dept.id }}');
   const select  = document.getElementById('setRoleSelect-{{ dept.id }}');
   const submit  = document.getElementById('setRoleSubmit-{{ dept.id }}');
-  if (!form || !input || !listBox || !hidden || !select || !submit) return;
+  if (!form || !input || !listEl || !tpl || !hidden || !select || !submit) return;
+
+  let aborter = null;
 
   function setAction(empId){
     if (!actionTpl) return;
@@ -243,43 +248,83 @@ import { norm } from '{% static "js/utils/stringUtils.js" %}';
     form.setAttribute('action', newAction);
   }
 
-  function clearActive(){ listBox.querySelectorAll('.active').forEach(el => el.classList.remove('active')); }
-  function matches(item, q){
-    const name  = norm(item.getAttribute('data-name') || '');
-       const email = norm(item.getAttribute('data-email') || '');
-    const id    = String(item.getAttribute('data-id') || '');
-    return !q || name.includes(q) || email.includes(q) || id.includes(q);
+  async function searchEmployees(q){
+    if (aborter) aborter.abort();
+    aborter = new AbortController();
+
+    const params = new URLSearchParams({
+      format: 'json',
+      q: q,
+      limit: '20'
+    });
+
+    const r = await fetch('{{ employees_list_url }}?' + params.toString(), {
+      credentials: 'same-origin',
+      signal: aborter.signal
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(()=>({results:[]}));
+    return Array.isArray(data) ? data : (data.results || []);
   }
-  function applyFilter(){
-    const q = norm(input.value);
-    listBox.querySelectorAll('.list-group-item, .list-group-item-action').forEach(it => {
-      const ok = matches(it, q);
-      it.classList.toggle('d-none', !ok);
+
+  function render(items){
+    listEl.innerHTML = '';
+    if (!items.length){
+      const empty = document.createElement('div');
+      empty.className = 'list-group-item text-muted small py-3';
+      empty.textContent = 'Ничего не найдено';
+      listEl.appendChild(empty);
+      return;
+    }
+    items.forEach(e => {
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.dataset.id = e.id;
+      const ava = node.querySelector('.card-icon');
+      if (ava){
+        ava.innerHTML = e.avatar
+          ? `<img src="${esc(e.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+          : '<i class="bi-person"></i>';
+      }
+      const nameEl = node.querySelector('.js-name');
+      if (nameEl){
+        nameEl.textContent = e.display_name || (e.last_name ? (e.last_name + (e.first_name ? ' ' + e.first_name : '')) : ('Сотрудник #' + e.id));
+      }
+      const emailEl = node.querySelector('.js-email');
+      if (emailEl) emailEl.textContent = e.email || '';
+
+      node.addEventListener('click', () => {
+        listEl.querySelectorAll('.list-group-item').forEach(li => li.classList.remove('active'));
+        node.classList.add('active');
+        hidden.value = String(e.id);
+        setAction(e.id);
+        submit.disabled = false;
+        submit.removeAttribute('disabled');
+      });
+      listEl.appendChild(node);
     });
   }
 
-  input.addEventListener('input', applyFilter);
-
-  listBox.addEventListener('click', (e) => {
-    const it = e.target.closest('[data-id]');
-    if (!it) return;
-    clearActive();
-    it.classList.add('active');
-    const empId = it.getAttribute('data-id') || '';
-    hidden.value = empId;
-    if (empId) {
-      setAction(empId);
-      submit.disabled = false;
-      submit.removeAttribute('disabled');
-    } else {
-      submit.disabled = true;
+  const run = debounce(async (q) => {
+    submit.disabled = true;
+    hidden.value = '';
+    if (!q || q.length < 2) {
+      listEl.innerHTML = '<div class="list-group-item text-muted small py-3">Введите минимум 2 символа для поиска…</div>';
+      return;
     }
-  });
+    listEl.innerHTML = '<div class="list-group-item text-muted small py-3"><span class="spinner-border spinner-border-sm me-2"></span>Поиск...</div>';
+    try { render(await searchEmployees(q)); }
+    catch (err) { 
+      if (err.name !== 'AbortError') {
+        listEl.innerHTML = '<div class="list-group-item text-muted small py-3">Ошибка загрузки</div>'; 
+      }
+    }
+  }, 300);
+
+  input.addEventListener('input', () => run(input.value.trim()));
 
   modal.addEventListener('shown.bs.modal', () => {
     input.value = '';
-    clearActive();
-    applyFilter();
+    listEl.innerHTML = '<div class="list-group-item text-muted small py-3">Начните вводить для поиска…</div>';
     hidden.value = '';
     submit.disabled = true;
     input.focus();

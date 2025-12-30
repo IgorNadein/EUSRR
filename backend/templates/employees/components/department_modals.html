@@ -140,32 +140,29 @@
             <div class="modal-body">
               <div class="row g-3">
                 <div class="col-md-6">
-                  <label for="setRoleSearch-{{ dept.id }}" class="form-label">Участник</label>
+                  <label for="setRoleSearch-{{ dept.id }}" class="form-label">Сотрудник</label>
                   <input id="setRoleSearch-{{ dept.id }}" type="search"
-                         class="form-control" placeholder="Поиск по ФИО или email" autocomplete="off">
+                         class="form-control" placeholder="Поиск по ФИО или email" autocomplete="off"
+                         data-set-role-q>
+                  <div class="form-text">Можно назначить роль любому сотруднику компании.</div>
                   <div id="setRoleResults-{{ dept.id }}"
-                       class="list-group list-group-flush border rounded mt-2" style="max-height:320px;overflow:auto;">
-                    {% for li in links %}
-                      {% with emp=li.employee %}
-                        <button type="button"
-                                class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2"
-                                data-id="{{ emp.id }}"
-                                data-name="{{ emp.display_name|default:emp.last_name }}"
-                                data-email="{{ emp.email|default:'' }}">
-                          <span class="card-icon"
-                                style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
-                            {% if emp.avatar %}<img src="{{ emp.avatar }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}<i class="bi-person"></i>{% endif %}
-                          </span>
-                          <span class="d-flex flex-column text-start">
-                            <span class="fw-semibold">{{ emp.display_name|default:emp.last_name }}</span>
-                            {% if emp.email %}<span class="text-muted small">{{ emp.email }}</span>{% endif %}
-                          </span>
-                        </button>
-                      {% endwith %}
-                    {% empty %}
-                      <div class="list-group-item text-secondary small py-3">В отделе пока нет участников.</div>
-                    {% endfor %}
+                       class="list-group list-group-flush border rounded mt-2" 
+                       style="max-height:320px;overflow:auto;"
+                       data-set-role-list>
+                    <div class="list-group-item text-muted small py-3">Начните вводить для поиска…</div>
                   </div>
+                  
+                  <template id="setRoleItemTpl-{{ dept.id }}">
+                    <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2" data-id="">
+                      <span class="card-icon" style="width:32px;height:32px;flex:0 0 32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                        <i class="bi-person"></i>
+                      </span>
+                      <span class="d-flex flex-column text-start">
+                        <span class="fw-semibold js-name"></span>
+                        <span class="text-muted small js-email"></span>
+                      </span>
+                    </button>
+                  </template>
                 </div>
                 <div class="col-md-6">
                   <label for="setRoleSelect-{{ dept.id }}" class="form-label">Роль</label>

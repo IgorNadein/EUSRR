@@ -302,7 +302,8 @@ def export_users_sync_groups(*, cfg: SyncConfig) -> Tuple[int, int]:
             dept_for_roles = target_dept or current_dept
             if dept_for_roles:
                 dept_base = getattr(settings, "LDAP_DEPARTMENTS_BASE", "")
-                extra_bases.append(f"OU=Roles,OU={dept_for_roles},{dept_base}")
+                # NOTE: Группы ролей теперь лежат прямо в OU отдела (не в OU=Roles)
+                extra_bases.append(f"OU={dept_for_roles},{dept_base}")
 
             added, removed = sync_user_groups_by_cns(
                 conn,
