@@ -138,7 +138,8 @@
                             <div class="ios-cell dept-item"
                                  data-dept-id="{{ d.id|default:'' }}"
                                  data-role-id="{{ d.role_id|default:'' }}"
-                                 data-is-head="{{ d.is_head|yesno:'1,0' }}">
+                                 data-is-head="{{ d.is_head|yesno:'1,0' }}"
+                                 data-via-assignment="{{ d.via_assignment|yesno:'1,0' }}">
                               <div class="dept-line">
                                 {% if d.id %}
                                   <a class="text-decoration-none dept-name" href="{% url 'employees:department_detail' d.id %}">{{ d.name }}</a>
@@ -148,6 +149,13 @@
                                 <span class="dept-role">
                                   {% if d.role_name %}— {{ d.role_name }}{% endif %}
                                 </span>
+                                {% if d.via_assignment %}
+                                  <span class="badge bg-info text-white ms-2" style="font-size: 0.7rem;" 
+                                        data-bs-toggle="tooltip" 
+                                        data-bs-title="Роль назначена без членства в отделе">
+                                    <i class="bi-link-45deg me-1"></i>внешняя роль
+                                  </span>
+                                {% endif %}
                               </div>
 
                               <div class="d-flex align-items-center gap-2">

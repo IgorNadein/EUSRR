@@ -28,7 +28,7 @@ from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
 from employees.ldap.infrastructure.connections import _conn
 from employees.models import (Department, DepartmentPermission, DepartmentRole,
                               DeptPerm, EmployeeAction, EmployeeDepartment,
-                              LdapSyncState, Position, Skill)
+                              LdapSyncState, Position, RoleAssignment, Skill)
 from employees.utils import (_build_links_for_dept, _detect_phone_field,
                              _ensure_department_permissions,
                              _head_choices_for_dept, _normalize_phone,
@@ -955,16 +955,18 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def set_member_role(self, request, pk=None):
         """
-        Назначает/снимает РОЛЬ существующему участнику отдела.
-        Не создаёт членство и не меняет is_active.
+        Назначает/снимает РОЛЬ сотруднику в контексте отдела.
+        
+        Если сотрудник — член отдела, обновляет EmployeeDepartment.role.
+        Если нет — создаёт/обновляет RoleAssignment (новая логика: роли можно
+        назначать любому сотруднику компании).
 
         Тело:
             { "employee_id": <int>, "role_id": <int|null> }
         Права:
             AssignRolePerm (DeptPerm.ASSIGN_ROLE)
         Ответ:
-            200 {"employee_id":..., "role_id": <int|null>, "is_active": <bool>}
-            404 если сотрудник не состоит в отделе
+            200 {"employee_id":..., "role_id": <int|null>, "is_active": <bool>, "via_assignment": <bool>}
             400 если роль не принадлежит отделу
         """
         dept = self.get_object()
@@ -987,47 +989,85 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     status=400,
                 )
 
-        svc = DirectoryService() if _is_ldap_enabled() else None
+        # Проверяем, является ли сотрудник членом отдела
+        link = EmployeeDepartment.objects.filter(
+            employee_id=emp_id, department_id=dept.id
+        ).first()
         
-        if svc:
-            # Режим с LDAP: синхронизируем роли
-            try:
-                # внутри: проверяет наличие линка, меняет роль, (опц.) LDAP-группу
-                svc.set_member_role(dept, employee, role)
-                link = EmployeeDepartment.objects.get(
-                    employee_id=emp_id, department_id=dept.id
-                )
-            except EmployeeDepartment.DoesNotExist:
-                return Response(
-                    {"detail": "Employee is not a member of this department."}, status=404
-                )
-            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
-                return Response(
-                    {"detail": str(e)},
-                    status=(
-                        502
-                        if isinstance(e, DirectoryLdapError)
-                        else 400 if isinstance(e, DirectoryServiceError) else 500
-                    ),
-                )
-        else:
-            # Режим без LDAP: просто обновляем роль в линке
-            try:
-                link = EmployeeDepartment.objects.get(
-                    employee_id=emp_id, department_id=dept.id
-                )
+        via_assignment = False
+        
+        if link:
+            # Сотрудник — член отдела: обновляем роль в линке (старая логика)
+            svc = DirectoryService() if _is_ldap_enabled() else None
+            
+            if svc:
+                try:
+                    svc.set_member_role(dept, employee, role)
+                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                    return Response(
+                        {"detail": str(e)},
+                        status=(
+                            502
+                            if isinstance(e, DirectoryLdapError)
+                            else 400 if isinstance(e, DirectoryServiceError) else 500
+                        ),
+                    )
+            else:
                 link.role = role
                 link.save(update_fields=["role"])
-            except EmployeeDepartment.DoesNotExist:
-                return Response(
-                    {"detail": "Employee is not a member of this department."}, status=404
+            
+            # Также создаём/обновляем RoleAssignment для консистентности
+            if role:
+                RoleAssignment.objects.update_or_create(
+                    employee_id=emp_id,
+                    role=role,
+                    defaults={"is_active": True, "assigned_by": request.user}
                 )
+            else:
+                # Снятие роли — деактивируем все назначения этой роли для сотрудника
+                RoleAssignment.objects.filter(
+                    employee_id=emp_id,
+                    role__department=dept,
+                    is_active=True
+                ).update(is_active=False)
+        else:
+            # Сотрудник НЕ член отдела: используем только RoleAssignment
+            via_assignment = True
+            
+            if role:
+                # Назначаем роль через RoleAssignment
+                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.group_service import GroupService
+                from employees.ldap.services.user_service import UserService
+                
+                if _is_ldap_enabled():
+                    try:
+                        group_service = GroupService()
+                        user_service = UserService(group_service)
+                        dept_service = DepartmentService(group_service, user_service)
+                        dept_service.assign_role(employee, role, request.user)
+                    except Exception as e:
+                        return Response({"detail": str(e)}, status=400)
+                else:
+                    RoleAssignment.objects.update_or_create(
+                        employee=employee,
+                        role=role,
+                        defaults={"is_active": True, "assigned_by": request.user}
+                    )
+            else:
+                # Снятие всех ролей отдела для этого сотрудника
+                RoleAssignment.objects.filter(
+                    employee_id=emp_id,
+                    role__department=dept,
+                    is_active=True
+                ).update(is_active=False)
 
         return Response(
             {
                 "employee_id": emp_id,
                 "role_id": (role.id if role else None),
-                "is_active": link.is_active,
+                "is_active": link.is_active if link else True,
+                "via_assignment": via_assignment,
             },
             status=status.HTTP_200_OK,
         )
@@ -1443,7 +1483,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         qp = self.request.query_params
 
-        # по отделу: связи + руководитель
+        # по отделу: связи + руководитель + сотрудники с ролями через RoleAssignment
         dep = qp.get("department")
         if dep:
             try:
@@ -1451,11 +1491,49 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 dep_id = None
             if dep_id:
+                # Члены отдела
                 member_ids = EmployeeDepartment.objects.filter(
                     department_id=dep_id
                 ).values("employee_id")
+                # Руководитель
                 head_ids = Department.objects.filter(id=dep_id).values("head_id")
-                qs = qs.filter(Q(id__in=member_ids) | Q(id__in=head_ids))
+                # Сотрудники с ролями через RoleAssignment (не члены отдела)
+                role_assignment_ids = RoleAssignment.objects.filter(
+                    role__department_id=dep_id,
+                    is_active=True
+                ).values("employee_id")
+                
+                qs = qs.filter(
+                    Q(id__in=member_ids) | Q(id__in=head_ids) | Q(id__in=role_assignment_ids)
+                ).distinct()
+                
+                # Аннотируем тип связи с отделом для каждого сотрудника
+                # is_dept_member: True если член отдела, False если только роль
+                qs = qs.annotate(
+                    _is_dept_member=Exists(
+                        EmployeeDepartment.objects.filter(
+                            employee_id=OuterRef("pk"),
+                            department_id=dep_id,
+                            is_active=True
+                        )
+                    ),
+                    _is_dept_head=Exists(
+                        Department.objects.filter(
+                            id=dep_id,
+                            head_id=OuterRef("pk")
+                        )
+                    ),
+                    _has_role_assignment=Exists(
+                        RoleAssignment.objects.filter(
+                            employee_id=OuterRef("pk"),
+                            role__department_id=dep_id,
+                            is_active=True
+                        )
+                    )
+                )
+                
+                # Сохраняем dep_id в request для использования в сериализаторе
+                self.request._department_filter_id = dep_id
 
         # по должности
         position = qp.get("position")
@@ -2598,6 +2676,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
             "partial_update",
             "destroy",
             "set_perms",
+            "assign",
+            "revoke",
         }:
             return [self.AssignRolePerm()]
         return [IsAuthenticated()]
@@ -2677,6 +2757,131 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         role.scoped_permissions.set(list(qs))
         ser = self.get_serializer(role)
         return Response(ser.data, status=200)
+
+    @action(detail=True, methods=["get"])
+    def assignments(self, request, pk=None):
+        """
+        Возвращает список назначений роли (RoleAssignment).
+        
+        Query params:
+          - ?active=true/false — фильтр по is_active (по умолчанию только активные)
+        """
+        role = self.get_object()
+        qs = RoleAssignment.objects.filter(role=role).select_related(
+            "employee", "assigned_by"
+        )
+        
+        active = request.query_params.get("active", "true").lower()
+        if active == "true":
+            qs = qs.filter(is_active=True)
+        elif active == "false":
+            qs = qs.filter(is_active=False)
+        
+        data = [
+            {
+                "id": a.id,
+                "employee_id": a.employee_id,
+                "employee_name": str(a.employee) if a.employee else None,
+                "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+                "assigned_by_id": a.assigned_by_id,
+                "assigned_by_name": str(a.assigned_by) if a.assigned_by else None,
+                "is_active": a.is_active,
+            }
+            for a in qs.order_by("-assigned_at")
+        ]
+        return Response({"count": len(data), "results": data}, status=200)
+
+    @action(detail=True, methods=["post"])
+    def assign(self, request, pk=None):
+        """
+        Назначает роль сотруднику (не требует членства в отделе).
+        
+        Тело запроса:
+          - employee_id: int — ID сотрудника
+        
+        Требуется право DeptPerm.ASSIGN_ROLE в отделе роли.
+        """
+        role = self.get_object()
+        employee_id = request.data.get("employee_id")
+        
+        if not employee_id:
+            return Response(
+                {"detail": "employee_id is required."}, status=400
+            )
+        
+        try:
+            employee = Employee.objects.get(id=employee_id)
+        except Employee.DoesNotExist:
+            return Response(
+                {"detail": "Сотрудник не найден."}, status=404
+            )
+        
+        # Получаем assigned_by из текущего пользователя
+        # В этом проекте User == Employee (кастомная модель)
+        assigned_by = request.user if request.user.is_authenticated else None
+        
+        # Используем DepartmentService для назначения с LDAP-синхронизацией
+        try:
+            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.group_service import GroupService
+            from employees.ldap.services.user_service import UserService
+            
+            group_service = GroupService()
+            user_service = UserService(group_service)
+            dept_service = DepartmentService(group_service, user_service)
+            
+            assignment = dept_service.assign_role(employee, role, assigned_by)
+            
+            return Response({
+                "id": assignment.id,
+                "employee_id": assignment.employee_id,
+                "role_id": assignment.role_id,
+                "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+                "is_active": assignment.is_active,
+            }, status=201)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=400)
+
+    @action(detail=True, methods=["post"])
+    def revoke(self, request, pk=None):
+        """
+        Отзывает роль у сотрудника.
+        
+        Тело запроса:
+          - employee_id: int — ID сотрудника
+        
+        Требуется право DeptPerm.ASSIGN_ROLE в отделе роли.
+        """
+        role = self.get_object()
+        employee_id = request.data.get("employee_id")
+        
+        if not employee_id:
+            return Response(
+                {"detail": "employee_id is required."}, status=400
+            )
+        
+        try:
+            employee = Employee.objects.get(id=employee_id)
+        except Employee.DoesNotExist:
+            return Response(
+                {"detail": "Сотрудник не найден."}, status=404
+            )
+        
+        # Используем DepartmentService для отзыва с LDAP-синхронизацией
+        try:
+            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.group_service import GroupService
+            from employees.ldap.services.user_service import UserService
+            
+            group_service = GroupService()
+            user_service = UserService(group_service)
+            dept_service = DepartmentService(group_service, user_service)
+            
+            dept_service.revoke_role(employee, role)
+            
+            return Response(status=204)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=400)
 
 
 class SkillViewSet(viewsets.ModelViewSet):

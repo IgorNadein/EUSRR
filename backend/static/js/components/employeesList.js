@@ -332,7 +332,12 @@ export class EmployeesList {
       return '';
     }
     
-    return emp.departments
+    // Проверяем department_relation для пометки "внешняя роль"
+    const relation = emp.department_relation;
+    const hasRoleOnly = relation && relation.has_role_only;
+    const roleNames = relation && relation.role_names ? relation.role_names.join(', ') : '';
+    
+    let deptHtml = emp.departments
       .filter(d => d.name)
       .map(d => {
         if (d.id) {
@@ -341,6 +346,13 @@ export class EmployeesList {
         return this.escapeHtml(d.name);
       })
       .join(', ');
+    
+    // Добавляем пометку если сотрудник имеет только роль (не член отдела)
+    if (hasRoleOnly && roleNames) {
+      deptHtml += ` <span class="badge bg-info text-white" style="font-size: 0.7rem;" title="Роль назначена без членства в отделе"><i class="bi-link-45deg me-1"></i>${this.escapeHtml(roleNames)}</span>`;
+    }
+    
+    return deptHtml;
   }
 
   /**

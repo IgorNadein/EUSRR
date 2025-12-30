@@ -360,14 +360,28 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return instance
 
     def get_departments(self, obj):
+        """
+        Возвращает список отделов сотрудника.
+        
+        Включает:
+        1. Отделы через EmployeeDepartment (членство)
+        2. Отделы через RoleAssignment (роли без членства) — помечены via_assignment=True
+        """
+        from employees.models import RoleAssignment
+        
+        # 1. Отделы через членство (EmployeeDepartment)
         links = getattr(obj, "dept_links", None)
         if links is None:
             links = EmployeeDepartment.objects.select_related(
                 "department", "role"
             ).filter(employee=obj, is_active=True)
+        
         out = []
+        member_dept_ids = set()
+        
         for link in links:
             dept = link.department
+            member_dept_ids.add(link.department_id)
             out.append(
                 {
                     "id": link.department_id,
@@ -375,8 +389,38 @@ class EmployeeSerializer(serializers.ModelSerializer):
                     "role_id": link.role_id,
                     "role_name": link.role.name if link.role_id else None,
                     "is_head": (dept.head_id == obj.id),
+                    "via_assignment": False,  # через членство
                 }
             )
+        
+        # 2. Роли через RoleAssignment (без членства в отделе)
+        role_assignments = RoleAssignment.objects.select_related(
+            "role__department"
+        ).filter(employee=obj, is_active=True)
+        
+        for ra in role_assignments:
+            dept = ra.role.department
+            # Пропускаем отделы, где сотрудник уже член
+            if dept.id in member_dept_ids:
+                continue
+            
+            # Проверяем, не добавлен ли уже этот отдел через другую роль
+            existing = next((d for d in out if d["id"] == dept.id and d.get("via_assignment")), None)
+            if existing:
+                # Добавляем роль к существующей записи (несколько ролей в одном отделе)
+                existing["role_name"] = f"{existing['role_name']}, {ra.role.name}" if existing.get("role_name") else ra.role.name
+            else:
+                out.append(
+                    {
+                        "id": dept.id,
+                        "name": dept.name,
+                        "role_id": ra.role_id,
+                        "role_name": ra.role.name,
+                        "is_head": False,
+                        "via_assignment": True,  # через RoleAssignment (не член отдела)
+                    }
+                )
+        
         return out
 
     def get_fields(self):
@@ -512,6 +556,8 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     departments = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
     skills = SkillSerializer(many=True, read_only=True)
+    # Поля для фильтра по отделу — информация о типе связи
+    department_relation = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -529,7 +575,50 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             "skills",
             "created_at",
             "display_name",
+            "department_relation",
         )
+
+    def get_department_relation(self, obj):
+        """
+        Возвращает информацию о типе связи сотрудника с отфильтрованным отделом.
+        
+        Поля:
+          - is_member: True если член отдела через EmployeeDepartment
+          - is_head: True если руководитель отдела
+          - has_role_only: True если только роль через RoleAssignment (не член)
+          - role_names: список названий ролей через RoleAssignment
+        
+        Возвращает None если не применён фильтр по отделу.
+        """
+        # Проверяем аннотации от фильтра по отделу
+        is_member = getattr(obj, "_is_dept_member", None)
+        is_head = getattr(obj, "_is_dept_head", None)
+        has_role = getattr(obj, "_has_role_assignment", None)
+        
+        # Если аннотаций нет — фильтр по отделу не применён
+        if is_member is None:
+            return None
+        
+        # Получаем названия ролей через RoleAssignment
+        role_names = []
+        request = self.context.get("request")
+        dept_id = getattr(request, "_department_filter_id", None) if request else None
+        
+        if dept_id and has_role:
+            from employees.models import RoleAssignment
+            assignments = RoleAssignment.objects.filter(
+                employee=obj,
+                role__department_id=dept_id,
+                is_active=True
+            ).select_related("role")
+            role_names = [a.role.name for a in assignments]
+        
+        return {
+            "is_member": bool(is_member),
+            "is_head": bool(is_head),
+            "has_role_only": bool(has_role) and not bool(is_member),
+            "role_names": role_names,
+        }
 
     def get_departments(self, obj):
         links = getattr(obj, "dept_links", None)
