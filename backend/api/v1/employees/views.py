@@ -13,27 +13,57 @@ from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import FieldError
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
-                              Prefetch, Q, Subquery, Value, When)
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
-from employees.ldap.directory_service import (DirectoryDepartmentDTO,
-                                              DirectoryService,
-                                              DirectoryUserDTO)
-from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
-                                   DirectoryServiceError)
+from employees.ldap.directory_service import (
+    DirectoryDepartmentDTO,
+    DirectoryService,
+    DirectoryUserDTO,
+)
+from employees.ldap.errors import (
+    DirectoryDbError,
+    DirectoryLdapError,
+    DirectoryServiceError,
+)
 from employees.ldap.infrastructure.connections import _conn
-from employees.models import (Department, DepartmentPermission, DepartmentRole,
-                              DeptPerm, EmployeeAction, EmployeeDepartment,
-                              LdapSyncState, Position, RoleAssignment, Skill)
-from employees.utils import (_build_links_for_dept, _detect_phone_field,
-                             _ensure_department_permissions,
-                             _head_choices_for_dept, _normalize_phone,
-                             _perm_choices_synced, _to_bool,
-                             _validate_head_active)
+from employees.models import (
+    Department,
+    DepartmentPermission,
+    DepartmentRole,
+    DeptPerm,
+    EmployeeAction,
+    EmployeeDepartment,
+    LdapSyncState,
+    Position,
+    RoleAssignment,
+    Skill,
+)
+from employees.utils import (
+    _build_links_for_dept,
+    _detect_phone_field,
+    _ensure_department_permissions,
+    _head_choices_for_dept,
+    _normalize_phone,
+    _perm_choices_synced,
+    _to_bool,
+    _validate_head_active,
+)
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -42,16 +72,31 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
 
-from ..permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
-                           IsSelfOrStaff, has_dept_perm)
-from .serializers import (AddMemberInput, DepartmentBriefSerializer,
-                          DepartmentRoleSerializer, DepartmentSerializer,
-                          EmailSerializer, EmailVerifySerializer,
-                          EmployeeActionSerializer, EmployeeBriefSerializer,
-                          EmployeeListSerializer, EmployeeSerializer,
-                          GroupSerializer, PositionSerializer,
-                          RegisterSerializer, RemoveMemberInput, SetHeadInput,
-                          SetMemberRoleInput, SkillSerializer)
+from ..permissions import (
+    AdminOrActionOrModelPerms,
+    AdminOrDeptAllowed,
+    IsSelfOrStaff,
+    has_dept_perm,
+)
+from .serializers import (
+    AddMemberInput,
+    DepartmentBriefSerializer,
+    DepartmentRoleSerializer,
+    DepartmentSerializer,
+    EmailSerializer,
+    EmailVerifySerializer,
+    EmployeeActionSerializer,
+    EmployeeBriefSerializer,
+    EmployeeListSerializer,
+    EmployeeSerializer,
+    GroupSerializer,
+    PositionSerializer,
+    RegisterSerializer,
+    RemoveMemberInput,
+    SetHeadInput,
+    SetMemberRoleInput,
+    SkillSerializer,
+)
 
 Employee = get_user_model()
 
@@ -66,12 +111,12 @@ def _is_ldap_enabled():
 
 def _ldap_try(fn):
     """Выполняет функцию, которая работает с LDAP, и обрабатывает ошибки.
-    
+
     Если LDAP отключен, функция не выполняется и возвращается None.
     """
     if not _is_ldap_enabled():
         return None
-    
+
     try:
         fn()
         return None
@@ -83,27 +128,30 @@ def _ldap_try(fn):
 
 def _with_ldap_service(operation_name="LDAP operation"):
     """Декоратор для методов, которые используют DirectoryService.
-    
+
     Пропускает выполнение LDAP-операций если LDAP отключен.
     При ошибках LDAP возвращает Response с кодом 502.
-    
+
     Args:
         operation_name: Название операции для логирования
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             if not _is_ldap_enabled():
                 # LDAP отключен - пропускаем операцию
                 return None
-            
+
             try:
                 return func(*args, **kwargs)
             except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
                 return Response(
                     {"detail": f"{operation_name} failed: {e}"},
-                    status=status.HTTP_502_BAD_GATEWAY
+                    status=status.HTTP_502_BAD_GATEWAY,
                 )
+
         return wrapper
+
     return decorator
 
 
@@ -210,7 +258,7 @@ class VerifyEmailAPIView(APIView):
 
     def post(self, request):
         """Подтверждает email и активирует пользователя.
-        
+
         В режиме с LDAP активирует запись в LDAP.
         В режиме без LDAP просто активирует пользователя в БД.
         """
@@ -242,29 +290,30 @@ class VerifyEmailAPIView(APIView):
             # Режим с LDAP: активируем запись в LDAP
             try:
                 from employees.models import LdapSyncState
+
                 svc = DirectoryService()
-                
+
                 # Проверяем наличие LDAP-идентификаторов в LdapSyncState
                 sync_state = LdapSyncState.objects.filter(
-                    model="employee",
-                    object_pk=str(user.pk)
+                    model="employee", object_pk=str(user.pk)
                 ).first()
-                
+
                 has_ldap = sync_state and (sync_state.ldap_dn or sync_state.ldap_guid)
-                
+
                 if has_ldap:
                     # Запись существует - активируем через DirectoryService
                     user = svc.update_user(user, {"is_active": True})
                 else:
                     # LDAP запись не найдена - активируем только в БД
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.warning(
                         f"User {email} has no LDAP sync state, activating in DB only"
                     )
                     user.is_active = True
                     user.save(update_fields=["is_active"])
-                
+
                 # Убеждаемся, что БД тоже активна
                 if not user.is_active:
                     user.is_active = True
@@ -272,6 +321,7 @@ class VerifyEmailAPIView(APIView):
             except DirectoryLdapError as e:
                 # Если LDAP недоступен, всё равно активируем в БД
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"LDAP error during activation for {email}: {e}, activating in DB"
@@ -285,6 +335,7 @@ class VerifyEmailAPIView(APIView):
             except DirectoryServiceError as e:
                 # При ошибке сервиса тоже активируем в БД
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Service error during activation for {email}: {e}, activating in DB"
@@ -310,12 +361,13 @@ class RegisterAPIView(APIView):
     @transaction.atomic
     def post(self, request):
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         # Логируем входящие данные для диагностики
         logger.warning(f"[REGISTER] Received data: {request.data}")
         logger.warning(f"[REGISTER] Content-Type: {request.content_type}")
-        
+
         # 0) хотя бы один контакт
         if not (
             request.data.get("telegram")
@@ -434,22 +486,22 @@ class RegisterAPIView(APIView):
                 emp.avatar.save(avatar_name, ContentFile(avatar_bytes), save=False)
             except Exception:
                 pass
-        
+
         emp.telegram = v.get("telegram", "")
         emp.whatsapp = v.get("whatsapp", "")
         emp.wechat = v.get("wechat", "")
         emp.birth_date = v["birth_date"]
         emp.gender = v["gender"]  # обязательное поле
-        
+
         if v.get("patronymic"):
             emp.patronymic = v["patronymic"]
-        
+
         pos_id = v.get("position")
         if pos_id and Position.objects.filter(pk=pos_id).exists():
             emp.position_id = pos_id
-        
+
         emp.save()
-        
+
         skills_ids = v.get("skills") or []
         if skills_ids:
             emp.skills.set(Skill.objects.filter(pk__in=skills_ids))
@@ -787,7 +839,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                         "[ERROR:partial_update] update_department LDAP FAILED:",
                         {"message": str(e), "trace": traceback.format_exc()},
                     )
-                    return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+                    return Response(
+                        {"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY
+                    )
                 except DirectoryDbError as e:
                     print(
                         "[ERROR:partial_update] update_department DB FAILED:",
@@ -898,7 +952,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
         # --- применение ---
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: применяем через DirectoryService
             svc = DirectoryService()
@@ -932,7 +986,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 )
                 print(
                     "[ERROR:set_head] apply FAILED:",
-                    {"type": type(e).__name__, "status": status_code, "message": str(e)},
+                    {
+                        "type": type(e).__name__,
+                        "status": status_code,
+                        "message": str(e),
+                    },
                 )
                 return Response({"detail": str(e)}, status=status_code)
         else:
@@ -956,7 +1014,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def set_member_role(self, request, pk=None):
         """
         Назначает/снимает РОЛЬ сотруднику в контексте отдела.
-        
+
         Если сотрудник — член отдела, обновляет EmployeeDepartment.role.
         Если нет — создаёт/обновляет RoleAssignment (новая логика: роли можно
         назначать любому сотруднику компании).
@@ -970,9 +1028,10 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             400 если роль не принадлежит отделу
         """
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"[set_member_role] request.data = {request.data}")
-        
+
         dept = self.get_object()
         payload = SetMemberRoleInput(data=request.data)
         if not payload.is_valid():
@@ -998,73 +1057,88 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         link = EmployeeDepartment.objects.filter(
             employee_id=emp_id, department_id=dept.id
         ).first()
-        
+        logger.warning(f"[set_member_role] emp={emp_id}, dept={dept.id}, role={role_id}, link={link}")
+
         via_assignment = False
-        
+
         if link:
             # Сотрудник — член отдела: обновляем роль в линке (старая логика)
             svc = DirectoryService() if _is_ldap_enabled() else None
-            
+            logger.warning(f"[set_member_role] member branch, svc={type(svc).__name__ if svc else None}")
+
             if svc:
                 try:
+                    logger.warning(f"[set_member_role] calling svc.set_member_role")
                     svc.set_member_role(dept, employee, role)
-                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                    logger.warning(f"[set_member_role] svc.set_member_role OK")
+                except (
+                    DirectoryLdapError,
+                    DirectoryDbError,
+                    DirectoryServiceError,
+                ) as e:
+                    logger.error(f"[set_member_role] svc.set_member_role FAILED: {type(e).__name__}: {e}")
+                    import traceback
+                    logger.error(f"[set_member_role] traceback:\n{traceback.format_exc()}")
                     return Response(
                         {"detail": str(e)},
                         status=(
                             502
                             if isinstance(e, DirectoryLdapError)
-                            else 400 if isinstance(e, DirectoryServiceError) else 500
+                            else 400
+                            if isinstance(e, DirectoryServiceError)
+                            else 500
                         ),
                     )
             else:
                 link.role = role
                 link.save(update_fields=["role"])
-            
+
             # Также создаём/обновляем RoleAssignment для консистентности
             if role:
                 RoleAssignment.objects.update_or_create(
                     employee_id=emp_id,
                     role=role,
-                    defaults={"is_active": True, "assigned_by": request.user}
+                    defaults={"is_active": True, "assigned_by": request.user},
                 )
             else:
                 # Снятие роли — деактивируем все назначения этой роли для сотрудника
                 RoleAssignment.objects.filter(
-                    employee_id=emp_id,
-                    role__department=dept,
-                    is_active=True
+                    employee_id=emp_id, role__department=dept, is_active=True
                 ).update(is_active=False)
         else:
             # Сотрудник НЕ член отдела: используем только RoleAssignment
             via_assignment = True
-            
+            logger.warning(f"[set_member_role] via_assignment branch: emp={emp_id}, role={role_id}")
+
             if role:
                 # Назначаем роль через RoleAssignment
                 from employees.ldap.services.department_service import DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
-                
+
                 if _is_ldap_enabled():
                     try:
+                        logger.warning(f"[set_member_role] calling assign_role via LDAP")
                         group_service = GroupService()
                         user_service = UserService(group_service)
                         dept_service = DepartmentService(group_service, user_service)
                         dept_service.assign_role(employee, role, request.user)
+                        logger.warning(f"[set_member_role] assign_role OK")
                     except Exception as e:
+                        logger.error(f"[set_member_role] assign_role FAILED: {type(e).__name__}: {e}")
+                        import traceback
+                        logger.error(f"[set_member_role] traceback:\n{traceback.format_exc()}")
                         return Response({"detail": str(e)}, status=400)
                 else:
                     RoleAssignment.objects.update_or_create(
                         employee=employee,
                         role=role,
-                        defaults={"is_active": True, "assigned_by": request.user}
+                        defaults={"is_active": True, "assigned_by": request.user},
                     )
             else:
                 # Снятие всех ролей отдела для этого сотрудника
                 RoleAssignment.objects.filter(
-                    employee_id=emp_id,
-                    role__department=dept,
-                    is_active=True
+                    employee_id=emp_id, role__department=dept, is_active=True
                 ).update(is_active=False)
 
         return Response(
@@ -1172,7 +1246,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         employee = get_object_or_404(employee_model, id=emp_id)
 
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: добавляем через DirectoryService
             svc = DirectoryService()
@@ -1210,14 +1284,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         else:
             # Режим без LDAP: создаём/активируем линк напрямую
             link, created = EmployeeDepartment.objects.get_or_create(
-                employee_id=emp_id,
-                department_id=dept.id,
-                defaults={"is_active": True}
+                employee_id=emp_id, department_id=dept.id, defaults={"is_active": True}
             )
             if not created and not link.is_active:
                 link.is_active = True
                 link.save(update_fields=["is_active"])
-            
+
             return Response(
                 {
                     "employee_id": emp_id,
@@ -1247,7 +1319,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             )
 
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: удаляем через DirectoryService
             svc = DirectoryService()
@@ -1263,15 +1335,16 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     status=(
                         502
                         if isinstance(e, DirectoryLdapError)
-                        else 400 if isinstance(e, DirectoryServiceError) else 500
+                        else 400
+                        if isinstance(e, DirectoryServiceError)
+                        else 500
                     ),
                 )
         else:
             # Режим без LDAP: деактивируем линк напрямую
             try:
                 link = EmployeeDepartment.objects.get(
-                    employee_id=emp_id,
-                    department_id=dept.id
+                    employee_id=emp_id, department_id=dept.id
                 )
                 link.is_active = False
                 link.save(update_fields=["is_active"])
@@ -1331,7 +1404,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             head = get_object_or_404(employee_model, id=head_id)
 
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: создаём через DirectoryService
             dto = DirectoryDepartmentDTO(
@@ -1370,9 +1443,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         print("[DEBUG] Начало удаления отдела.")
         dept = self.get_object()
         print("[DEBUG] Удаляемый отдел:", dept)
-        
+
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: удаляем через DirectoryService
             svc = DirectoryService()
@@ -1504,14 +1577,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 head_ids = Department.objects.filter(id=dep_id).values("head_id")
                 # Сотрудники с ролями через RoleAssignment (не члены отдела)
                 role_assignment_ids = RoleAssignment.objects.filter(
-                    role__department_id=dep_id,
-                    is_active=True
+                    role__department_id=dep_id, is_active=True
                 ).values("employee_id")
-                
+
                 qs = qs.filter(
-                    Q(id__in=member_ids) | Q(id__in=head_ids) | Q(id__in=role_assignment_ids)
+                    Q(id__in=member_ids)
+                    | Q(id__in=head_ids)
+                    | Q(id__in=role_assignment_ids)
                 ).distinct()
-                
+
                 # Аннотируем тип связи с отделом для каждого сотрудника
                 # is_dept_member: True если член отдела, False если только роль
                 qs = qs.annotate(
@@ -1519,24 +1593,21 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         EmployeeDepartment.objects.filter(
                             employee_id=OuterRef("pk"),
                             department_id=dep_id,
-                            is_active=True
+                            is_active=True,
                         )
                     ),
                     _is_dept_head=Exists(
-                        Department.objects.filter(
-                            id=dep_id,
-                            head_id=OuterRef("pk")
-                        )
+                        Department.objects.filter(id=dep_id, head_id=OuterRef("pk"))
                     ),
                     _has_role_assignment=Exists(
                         RoleAssignment.objects.filter(
                             employee_id=OuterRef("pk"),
                             role__department_id=dep_id,
-                            is_active=True
+                            is_active=True,
                         )
-                    )
+                    ),
                 )
-                
+
                 # Сохраняем dep_id в request для использования в сериализаторе
                 self.request._department_filter_id = dep_id
 
@@ -1761,20 +1832,23 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         # PATCH
         import logging
         import traceback
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             old_email = instance.email  # Сохраняем старый email
-            
+
             # Логируем для отладки
-            logger.info(f"[ME PATCH] START - user_id={instance.id}, email={instance.email}")
+            logger.info(
+                f"[ME PATCH] START - user_id={instance.id}, email={instance.email}"
+            )
             logger.info(f"[ME PATCH] request.data keys: {list(request.data.keys())}")
             logger.info(f"[ME PATCH] request.FILES keys: {list(request.FILES.keys())}")
             logger.info(f"[ME PATCH] Content-Type: {request.content_type}")
-            
+
             # ДЕТАЛЬНАЯ ДИАГНОСТИКА АВАТАРА
-            if 'avatar' in request.data:
-                avatar_data = request.data['avatar']
+            if "avatar" in request.data:
+                avatar_data = request.data["avatar"]
                 avatar_type = type(avatar_data).__name__
                 logger.info(f"[ME PATCH] ⚠️ avatar В request.data:")
                 logger.info(f"  - type: {avatar_type}")
@@ -1782,52 +1856,62 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 logger.info(f"  - is empty string: {avatar_data == ''}")
                 logger.info(f"  - is None: {avatar_data is None}")
                 logger.info(f"  - bool(avatar_data): {bool(avatar_data)}")
-                if hasattr(avatar_data, '__len__'):
+                if hasattr(avatar_data, "__len__"):
                     logger.info(f"  - length: {len(avatar_data) if avatar_data else 0}")
             else:
                 logger.info(f"[ME PATCH] ✓ avatar НЕТ в request.data")
-                
-            if 'avatar' in request.FILES:
-                avatar_file = request.FILES['avatar']
+
+            if "avatar" in request.FILES:
+                avatar_file = request.FILES["avatar"]
                 logger.info(f"[ME PATCH] ⚠️ avatar В request.FILES:")
                 logger.info(f"  - name: {avatar_file.name}")
                 logger.info(f"  - size: {avatar_file.size}")
                 logger.info(f"  - content_type: {avatar_file.content_type}")
             else:
                 logger.info(f"[ME PATCH] ✓ avatar НЕТ в request.FILES")
-            
+
             # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: удаляем пустое поле avatar ДО валидации
             data_for_serializer = request.data
-            if 'avatar' in request.data:
-                avatar_value = request.data.get('avatar')
-                logger.info(f"[ME PATCH] � Проверяем avatar: type={type(avatar_value)}, value={repr(avatar_value)[:100]}")
-                
+            if "avatar" in request.data:
+                avatar_value = request.data.get("avatar")
+                logger.info(
+                    f"[ME PATCH] � Проверяем avatar: type={type(avatar_value)}, value={repr(avatar_value)[:100]}"
+                )
+
                 # Если avatar - пустая строка, создаем копию данных без него
-                if avatar_value == '':
-                    logger.warning(f"[ME PATCH] 🔧 Удаляем пустое поле avatar из данных")
-                    data_for_serializer = {k: v for k, v in request.data.items() if k != 'avatar'}
-            
+                if avatar_value == "":
+                    logger.warning(
+                        f"[ME PATCH] 🔧 Удаляем пустое поле avatar из данных"
+                    )
+                    data_for_serializer = {
+                        k: v for k, v in request.data.items() if k != "avatar"
+                    }
+
             logger.info("[ME PATCH] Step 1: Validating serializer...")
-            logger.info(f"[ME PATCH] Step 1: Передаем в сериализатор data с ключами: {list(data_for_serializer.keys())}")
-            
+            logger.info(
+                f"[ME PATCH] Step 1: Передаем в сериализатор data с ключами: {list(data_for_serializer.keys())}"
+            )
+
             try:
-                ser = self.get_serializer(instance, data=data_for_serializer, partial=True)
+                ser = self.get_serializer(
+                    instance, data=data_for_serializer, partial=True
+                )
                 ser.is_valid(raise_exception=True)
                 logger.info("[ME PATCH] Step 1: ✓ Serializer validated successfully")
             except ValidationError as ve:
                 logger.error(f"[ME PATCH] Step 1: ❌ Serializer validation FAILED:")
                 logger.error(f"  - error detail: {ve.detail}")
                 logger.error(f"  - error detail type: {type(ve.detail)}")
-                if hasattr(ve.detail, 'items'):
+                if hasattr(ve.detail, "items"):
                     for field, errors in ve.detail.items():
                         logger.error(f"  - field '{field}': {errors}")
                 raise
-                
+
             vd = dict(ser.validated_data)
-            
+
             logger.info(f"[ME PATCH] Step 2: validated_data keys: {list(vd.keys())}")
-            if 'avatar' in vd:
-                avatar_obj = vd.get('avatar')
+            if "avatar" in vd:
+                avatar_obj = vd.get("avatar")
                 logger.info(f"[ME PATCH] Step 2: avatar В validated_data:")
                 logger.info(f"  - type: {type(avatar_obj)}")
                 logger.info(f"  - hasattr read: {hasattr(avatar_obj, 'read')}")
@@ -1871,12 +1955,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 "phone_number",
                 "is_active",
             }
-            ldap_changes = {
-                k: vd.pop(k)
-                for k in list(vd.keys())
-                if k in ldap_keys
-            }
-            logger.info(f"[ME PATCH] Step 6: ldap_changes keys: {list(ldap_changes.keys())}")
+            ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
+            logger.info(
+                f"[ME PATCH] Step 6: ldap_changes keys: {list(ldap_changes.keys())}"
+            )
 
             svc_changes = dict(ldap_changes)
             pos_key_present = ("position" in request.data) or (
@@ -1895,61 +1977,94 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
             move_to_department_dn = request.data.get("department_dn")
             group_cns = request.data.get("group_cns")
-            logger.info(f"[ME PATCH] Step 7: move_to_department_dn={move_to_department_dn}, group_cns={group_cns}")
-            
+            logger.info(
+                f"[ME PATCH] Step 7: move_to_department_dn={move_to_department_dn}, group_cns={group_cns}"
+            )
+
             # Проверяем аватар в validated_data (base64) или в FILES (FormData)
             logger.info("[ME PATCH] Step 8: Processing avatar...")
-            avatar_file = ser.validated_data.get("avatar") or request.FILES.get("avatar")
-            logger.info(f"[ME PATCH] Step 8: avatar_file={avatar_file}, type={type(avatar_file) if avatar_file else None}")
+            avatar_file = ser.validated_data.get("avatar") or request.FILES.get(
+                "avatar"
+            )
+            logger.info(
+                f"[ME PATCH] Step 8: avatar_file={avatar_file}, type={type(avatar_file) if avatar_file else None}"
+            )
             if avatar_file and hasattr(avatar_file, "read"):
                 try:
                     logger.info("[ME PATCH] Step 8: Reading avatar bytes...")
                     svc_changes["avatar_bytes"] = avatar_file.read()
-                    logger.info(f"[ME PATCH] Step 8: avatar_bytes read successfully, length={len(svc_changes['avatar_bytes'])}")
+                    logger.info(
+                        f"[ME PATCH] Step 8: avatar_bytes read successfully, length={len(svc_changes['avatar_bytes'])}"
+                    )
                 except Exception as e:
-                    logger.error(f"[ME PATCH] Step 8: Error reading avatar: {e}", exc_info=True)
+                    logger.error(
+                        f"[ME PATCH] Step 8: Error reading avatar: {e}", exc_info=True
+                    )
 
-            logger.info(f"[ME PATCH] Step 9: svc_changes keys: {list(svc_changes.keys())}")
+            logger.info(
+                f"[ME PATCH] Step 9: svc_changes keys: {list(svc_changes.keys())}"
+            )
 
             # Проверяем, есть ли у пользователя ldap_dn
             has_ldap_dn = False
             if ldap_enabled:
                 from employees.models import LdapSyncState
-                has_ldap_dn = (
-                    LdapSyncState.objects.filter(
-                        model='employee',
-                        object_pk=str(instance.pk),
-                        ldap_dn__isnull=False
-                    ).exists()
-                    or (hasattr(instance, 'ldap_dn') and instance.ldap_dn)
-                )
-                logger.info(f"[ME PATCH] Step 9.5: LDAP enabled, user has ldap_dn: {has_ldap_dn}")
 
-            if ldap_enabled and has_ldap_dn and (svc_changes or move_to_department_dn or group_cns is not None):
+                has_ldap_dn = LdapSyncState.objects.filter(
+                    model="employee", object_pk=str(instance.pk), ldap_dn__isnull=False
+                ).exists() or (hasattr(instance, "ldap_dn") and instance.ldap_dn)
+                logger.info(
+                    f"[ME PATCH] Step 9.5: LDAP enabled, user has ldap_dn: {has_ldap_dn}"
+                )
+
+            if (
+                ldap_enabled
+                and has_ldap_dn
+                and (svc_changes or move_to_department_dn or group_cns is not None)
+            ):
                 # Режим с LDAP: обновляем через DirectoryService (только для пользователей с ldap_dn)
-                logger.info("[ME PATCH] Step 10: LDAP mode - updating via DirectoryService...")
-                logger.info(f"[ME PATCH] Step 10: DirectoryService params - svc_changes={list(svc_changes.keys())}, move_to_department_dn={move_to_department_dn}, group_cns={group_cns}")
+                logger.info(
+                    "[ME PATCH] Step 10: LDAP mode - updating via DirectoryService..."
+                )
+                logger.info(
+                    f"[ME PATCH] Step 10: DirectoryService params - svc_changes={list(svc_changes.keys())}, move_to_department_dn={move_to_department_dn}, group_cns={group_cns}"
+                )
                 svc = DirectoryService()
                 try:
-                    logger.info(f"[ME PATCH] Step 10: Calling svc.update_user(instance.id={instance.id}, changes={svc_changes}, group_cns={group_cns}, move_to_department_dn={move_to_department_dn})")
+                    logger.info(
+                        f"[ME PATCH] Step 10: Calling svc.update_user(instance.id={instance.id}, changes={svc_changes}, group_cns={group_cns}, move_to_department_dn={move_to_department_dn})"
+                    )
                     instance = svc.update_user(
                         instance,
                         changes=svc_changes,
                         group_cns=group_cns if group_cns is not None else None,
                         move_to_department_dn=move_to_department_dn,
                     )
-                    logger.info(f"[ME PATCH] Step 10: DirectoryService update successful - updated instance.id={instance.id}")
-                    if 'avatar_bytes' in svc_changes:
-                        logger.info(f"[ME PATCH] Step 10: Avatar updated in LDAP, new path={instance.avatar.name if instance.avatar else 'None'}")
-                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
-                    logger.error(f"[ME PATCH] Step 10: DirectoryService error: type={type(e).__name__}, message={e}", exc_info=True)
+                    logger.info(
+                        f"[ME PATCH] Step 10: DirectoryService update successful - updated instance.id={instance.id}"
+                    )
+                    if "avatar_bytes" in svc_changes:
+                        logger.info(
+                            f"[ME PATCH] Step 10: Avatar updated in LDAP, new path={instance.avatar.name if instance.avatar else 'None'}"
+                        )
+                except (
+                    DirectoryLdapError,
+                    DirectoryDbError,
+                    DirectoryServiceError,
+                ) as e:
+                    logger.error(
+                        f"[ME PATCH] Step 10: DirectoryService error: type={type(e).__name__}, message={e}",
+                        exc_info=True,
+                    )
                     return Response(
                         {"detail": str(e)},
                         status=502 if isinstance(e, DirectoryLdapError) else 500,
                     )
             elif (not ldap_enabled or not has_ldap_dn) and svc_changes:
                 # Режим без LDAP или пользователь без ldap_dn: обновляем напрямую в БД
-                logger.info(f"[ME PATCH] Step 10: LDAP disabled or no ldap_dn, updating DB directly with: {list(svc_changes.keys())}")
+                logger.info(
+                    f"[ME PATCH] Step 10: LDAP disabled or no ldap_dn, updating DB directly with: {list(svc_changes.keys())}"
+                )
                 for k, v in svc_changes.items():
                     if k != "position" and k != "avatar_bytes":
                         setattr(instance, k, v)
@@ -1965,21 +2080,31 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                             ContentFile(v),
                             save=False,
                         )
-                        logger.info(f"[ME PATCH] Step 10: Avatar saved as {filename}, path={instance.avatar.name if instance.avatar else 'None'}")
+                        logger.info(
+                            f"[ME PATCH] Step 10: Avatar saved as {filename}, path={instance.avatar.name if instance.avatar else 'None'}"
+                        )
                 logger.info("[ME PATCH] Step 10: Saving instance to DB...")
                 instance.save()
-                logger.info(f"[ME PATCH] Step 10: Instance saved, avatar path={instance.avatar.name if instance.avatar else 'None'}")
+                logger.info(
+                    f"[ME PATCH] Step 10: Instance saved, avatar path={instance.avatar.name if instance.avatar else 'None'}"
+                )
 
             # DB-only
-            logger.info(f"[ME PATCH] Step 11: Processing DB-only fields, vd keys: {list(vd.keys())}")
-            
+            logger.info(
+                f"[ME PATCH] Step 11: Processing DB-only fields, vd keys: {list(vd.keys())}"
+            )
+
             # КРИТИЧНО: удаляем avatar из vd, т.к. он уже обработан выше
-            if 'avatar' in vd:
-                logger.info("[ME PATCH] Step 11: Removing avatar from vd (already processed)")
-                vd.pop('avatar')
-            
+            if "avatar" in vd:
+                logger.info(
+                    "[ME PATCH] Step 11: Removing avatar from vd (already processed)"
+                )
+                vd.pop("avatar")
+
             if vd:
-                logger.info("[ME PATCH] Step 11: Validating and saving DB-only fields...")
+                logger.info(
+                    "[ME PATCH] Step 11: Validating and saving DB-only fields..."
+                )
                 ser_db = self.get_serializer(instance, data=vd, partial=True)
                 try:
                     ser_db.is_valid(raise_exception=True)
@@ -1993,11 +2118,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             else:
                 logger.info("[ME PATCH] Step 11: No DB-only fields to save")
                 data = self.get_serializer(instance).data
-            
-            logger.info(f"[ME PATCH] Step 12: Final response data keys: {list(data.keys())}")
-            if 'avatar' in data:
-                avatar_preview = data['avatar'][:100] if data['avatar'] else None
-                logger.info(f"[ME PATCH] Step 12: avatar in response: {avatar_preview}...")
+
+            logger.info(
+                f"[ME PATCH] Step 12: Final response data keys: {list(data.keys())}"
+            )
+            if "avatar" in data:
+                avatar_preview = data["avatar"][:100] if data["avatar"] else None
+                logger.info(
+                    f"[ME PATCH] Step 12: avatar in response: {avatar_preview}..."
+                )
 
             # Сброс email_verified при изменении email
             if email_changed:
@@ -2015,25 +2144,27 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         subject="Подтверждение нового email",
                         to=[instance.email],
                         template_base="emails/registration_verify_code",
-                        context={"code": instance.email_activation_code, "user": instance},
+                        context={
+                            "code": instance.email_activation_code,
+                            "user": instance,
+                        },
                     )
                     logger.info("[ME PATCH] Step 13: Email verification sent")
                 except Exception as email_err:
-                    logger.warning(f"[ME PATCH] Step 13: Failed to send email: {email_err}")
+                    logger.warning(
+                        f"[ME PATCH] Step 13: Failed to send email: {email_err}"
+                    )
 
                 # Обновляем данные в ответе
                 data["email_verified"] = False
 
             logger.info("[ME PATCH] SUCCESS - returning response")
             return Response(data, status=200)
-            
+
         except Exception as e:
             logger.error(f"[ME PATCH] FATAL ERROR: {e}", exc_info=True)
             logger.error(f"[ME PATCH] Traceback:\n{traceback.format_exc()}")
-            return Response(
-                {"detail": f"Internal server error: {str(e)}"},
-                status=500
-            )
+            return Response({"detail": f"Internal server error: {str(e)}"}, status=500)
 
     @action(detail=True, methods=["post"])
     def add_skill(self, request, pk=None):
@@ -2085,12 +2216,12 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def export_excel(self, request):
         """
         GET /api/v1/employees/export-excel/
-        
+
         Экспортирует всех сотрудников в Excel формат.
-        
+
         Параметры:
             - Применяются все фильтры из queryset (department, position, active и т.д.)
-        
+
         Возвращает:
             - Excel файл (.xlsx) с данными сотрудников
         """
@@ -2098,105 +2229,114 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         from openpyxl.styles import Font, Alignment, PatternFill
         from django.http import HttpResponse
         from datetime import datetime
-        
+
         # Получаем отфильтрованный queryset
         queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.select_related('position').prefetch_related(
-            'skills',
-            'departments_links__department',
-            'departments_links__role'
-        ).order_by('last_name', 'first_name')
-        
+        queryset = (
+            queryset.select_related("position")
+            .prefetch_related(
+                "skills", "departments_links__department", "departments_links__role"
+            )
+            .order_by("last_name", "first_name")
+        )
+
         # Создаём Excel файл
         wb = Workbook()
         ws = wb.active
         ws.title = "Сотрудники"
-        
+
         # Заголовки
         headers = [
-            'ID',
-            'Фамилия',
-            'Имя',
-            'Отчество',
-            'Email',
-            'Телефон',
-            'Должность',
-            'Отделы',
-            'Дата рождения',
-            'Дата регистрации',
-            'Активен',
-            'Email подтвержден',
-            'Навыки',
-            'Telegram',
-            'WhatsApp',
-            'WeChat'
+            "ID",
+            "Фамилия",
+            "Имя",
+            "Отчество",
+            "Email",
+            "Телефон",
+            "Должность",
+            "Отделы",
+            "Дата рождения",
+            "Дата регистрации",
+            "Активен",
+            "Email подтвержден",
+            "Навыки",
+            "Telegram",
+            "WhatsApp",
+            "WeChat",
         ]
-        
+
         # Стиль заголовков
         header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        
+        header_fill = PatternFill(
+            start_color="4472C4", end_color="4472C4", fill_type="solid"
+        )
+        header_alignment = Alignment(
+            horizontal="center", vertical="center", wrap_text=True
+        )
+
         # Записываем заголовки
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_alignment
-        
+
         # Записываем данные
         for row_num, emp in enumerate(queryset, 2):
             # Получаем отделы
             departments = emp.departments_links.filter(is_active=True)
-            dept_names = ", ".join([
-                f"{d.department.name}" + (f" ({d.role.name})" if d.role else "")
-                for d in departments
-            ])
-            
+            dept_names = ", ".join(
+                [
+                    f"{d.department.name}" + (f" ({d.role.name})" if d.role else "")
+                    for d in departments
+                ]
+            )
+
             # Получаем навыки
             skills = ", ".join([s.name for s in emp.skills.all()])
-            
+
             # Конвертируем PhoneNumber поля в строки
             def safe_phone_str(phone_field):
                 """Безопасная конвертация PhoneNumber в строку"""
                 if not phone_field:
-                    return ''
+                    return ""
                 try:
                     from phonenumbers import format_number, PhoneNumberFormat
+
                     return format_number(phone_field, PhoneNumberFormat.INTERNATIONAL)
                 except Exception:
                     try:
                         return str(phone_field)
                     except Exception:
-                        return ''
-            
+                        return ""
+
             phone_str = safe_phone_str(emp.phone_number)
             whatsapp_str = safe_phone_str(emp.whatsapp)
-            
+
             # Данные строки
             row_data = [
                 emp.id,
-                emp.last_name or '',
-                emp.first_name or '',
-                emp.patronymic or '',
-                emp.email or '',
+                emp.last_name or "",
+                emp.first_name or "",
+                emp.patronymic or "",
+                emp.email or "",
                 phone_str,
-                emp.position.name if emp.position else '',
+                emp.position.name if emp.position else "",
                 dept_names,
-                emp.birth_date.strftime('%d.%m.%Y') if emp.birth_date else '',
-                emp.created_at.strftime('%d.%m.%Y %H:%M') if emp.created_at else '',
-                'Да' if emp.is_active else 'Нет',
-                'Да' if emp.email_verified else 'Нет',
+                emp.birth_date.strftime("%d.%m.%Y") if emp.birth_date else "",
+                emp.created_at.strftime("%d.%m.%Y %H:%M") if emp.created_at else "",
+                "Да" if emp.is_active else "Нет",
+                "Да" if emp.email_verified else "Нет",
                 skills,
-                emp.telegram or '',
+                emp.telegram or "",
                 whatsapp_str,
-                emp.wechat or ''
+                emp.wechat or "",
             ]
-            
+
             for col_num, value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_num, column=col_num, value=value)
                 cell.alignment = Alignment(vertical="top", wrap_text=True)
-        
+
         # Автоподбор ширины колонок
         for col in ws.columns:
             max_length = 0
@@ -2209,20 +2349,20 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     pass
             adjusted_width = min(max_length + 2, 50)  # Максимум 50
             ws.column_dimensions[column].width = adjusted_width
-        
+
         # Закрепляем первую строку (заголовки)
-        ws.freeze_panes = 'A2'
-        
+        ws.freeze_panes = "A2"
+
         # Создаём HTTP ответ
         response = HttpResponse(
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         filename = f"employees_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
         # Сохраняем в response
         wb.save(response)
-        
+
         return response
 
     def get_serializer_context(self):
@@ -2284,10 +2424,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         if "avatar" in vd:
             avatar_vd = vd["avatar"]
             print(
-                (
-                    "[EMP PATCH] avatar in validated_data: type=%s, "
-                    "hasattr read=%s"
-                )
+                ("[EMP PATCH] avatar in validated_data: type=%s, hasattr read=%s")
                 % (type(avatar_vd), hasattr(avatar_vd, "read"))
             )
             if hasattr(avatar_vd, "name"):
@@ -2311,19 +2448,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             "phone_number",
             "is_active",
         }
-        ldap_changes = {
-            k: vd.pop(k)
-            for k in list(vd.keys())
-            if k in ldap_keys
-        }
+        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
 
         svc_changes = dict(ldap_changes)
         pos_key_present = ("position" in data) or ("position_id" in data)
         if pos_key_present:
             pos_raw = (
-                data.get("position")
-                if "position" in data
-                else data.get("position_id")
+                data.get("position") if "position" in data else data.get("position_id")
             )
             svc_changes["position"] = pos_raw  # None допустим
             vd.pop("position", None)
@@ -2355,14 +2486,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         has_ldap_dn = False
         if ldap_enabled:
             from employees.models import LdapSyncState
-            has_ldap_dn = (
-                LdapSyncState.objects.filter(
-                    model='employee',
-                    object_pk=str(emp.pk),
-                    ldap_dn__isnull=False
-                ).exists()
-                or (hasattr(emp, 'ldap_dn') and emp.ldap_dn)
-            )
+
+            has_ldap_dn = LdapSyncState.objects.filter(
+                model="employee", object_pk=str(emp.pk), ldap_dn__isnull=False
+            ).exists() or (hasattr(emp, "ldap_dn") and emp.ldap_dn)
             print(f"[EMP PATCH] LDAP enabled, user has ldap_dn: {has_ldap_dn}")
 
         if ldap_enabled and has_ldap_dn:
@@ -2383,15 +2510,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 ) as e:
                     return Response(
                         {"detail": str(e)},
-                        status=(
-                            502 if isinstance(e, DirectoryLdapError) else 500
-                        ),
+                        status=(502 if isinstance(e, DirectoryLdapError) else 500),
                     )
         else:
             # Non-LDAP mode or user without ldap_dn: direct DB updates
             # Restore ldap_changes back to vd for DB-only save
             vd.update(ldap_changes)
-            
+
             # Handle position update in non-LDAP mode
             if pos_key_present:
                 pos_raw = (
@@ -2435,26 +2560,20 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     )
                     vd.pop("avatar", None)
                     print(
-                        (
-                            "[EMP PATCH] Avatar saved to model field, "
-                            "current path=%s"
-                        )
+                        ("[EMP PATCH] Avatar saved to model field, current path=%s")
                         % (emp.avatar.name if emp.avatar else None)
                     )
                 except Exception as exc:
-                    print(
-                        "[EMP PATCH] Error while saving avatar in DB mode: %s"
-                        % exc
-                    )
+                    print("[EMP PATCH] Error while saving avatar in DB mode: %s" % exc)
 
         # --- DB-only часть ---
         # Обновляем только оставшиеся поля, чтобы не перетирать работу сервиса
-        
+
         # КРИТИЧНО: удаляем avatar из vd, т.к. он уже обработан выше
-        if 'avatar' in vd:
+        if "avatar" in vd:
             print("[EMP PATCH] Removing avatar from vd (already processed)")
-            vd.pop('avatar')
-        
+            vd.pop("avatar")
+
         if vd:
             ser_db = self.get_serializer(emp, data=vd, partial=True)
             try:
@@ -2470,10 +2589,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         print(f"[EMP PATCH] Final response keys: {list(data.keys())}")
         if isinstance(data, dict) and data.get("avatar"):
-            print(
-                "[EMP PATCH] avatar preview in response: %s..."
-                % data["avatar"][:80]
-            )
+            print("[EMP PATCH] avatar preview in response: %s..." % data["avatar"][:80])
 
         # Сброс email_verified при изменении email
         if email_changed:
@@ -2537,9 +2653,7 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
             )
         qs = Group.objects.filter(id__in=ids)
         if qs.count() != len(set(ids)):
-            return None, Response(
-                {"detail": "Некоторые группы не найдены"}, status=400
-            )
+            return None, Response({"detail": "Некоторые группы не найдены"}, status=400)
         return qs, None
 
     def get_permissions(self):
@@ -2649,13 +2763,13 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
 class DepartmentRoleViewSet(viewsets.ModelViewSet):
     """
-        Роли отдела:
-            - list/retrieve с фильтром ?department=<id>
-            - create/update/destroy → требуется право DeptPerm.ASSIGN_ROLE
-                в рамках отдела роли
-      - GET  /department-roles/perm_choices/
-      - GET  /department-roles/{id}/perms/
-      - POST /department-roles/{id}/set_perms  (ids или codes; полная замена)
+      Роли отдела:
+          - list/retrieve с фильтром ?department=<id>
+          - create/update/destroy → требуется право DeptPerm.ASSIGN_ROLE
+              в рамках отдела роли
+    - GET  /department-roles/perm_choices/
+    - GET  /department-roles/{id}/perms/
+    - POST /department-roles/{id}/set_perms  (ids или codes; полная замена)
     """
 
     queryset = (
@@ -2710,29 +2824,29 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         """Создание роли: сначала группа в LDAP → затем запись в БД (если LDAP включен)."""
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        
+
         dept_id = ser.validated_data.get("department")
         if isinstance(dept_id, Department):
             dept = dept_id
         else:
             dept = get_object_or_404(Department, id=dept_id)
-        
+
         name = ser.validated_data["name"]
         codes = ser.validated_data.pop("scoped_permission_codes", None)
         perms = ser.validated_data.pop("scoped_permissions", None)
-        
+
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: создаём через DepartmentService
             from employees.ldap.services.department_service import DepartmentService
             from employees.ldap.services.group_service import GroupService
             from employees.ldap.services.user_service import UserService
-            
+
             group_service = GroupService()
             user_service = UserService(group_service)
             dept_service = DepartmentService(group_service, user_service)
-            
+
             # Подготавливаем scoped_permissions (codes имеют приоритет над ids)
             scoped_permissions = None
             if codes is not None:
@@ -2741,7 +2855,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 )
             elif perms is not None:
                 scoped_permissions = list(perms)
-            
+
             try:
                 role = dept_service.create_role(
                     department=dept,
@@ -2771,7 +2885,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 role.scoped_permissions.set(list(qs))
             elif perms is not None:
                 role.scoped_permissions.set(perms)
-            
+
             return Response(
                 self.get_serializer(role).data, status=status.HTTP_201_CREATED
             )
@@ -2782,27 +2896,29 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         ser = self.get_serializer(instance, data=request.data, partial=partial)
         ser.is_valid(raise_exception=True)
-        
+
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: обновляем через DepartmentService
             from employees.ldap.services.department_service import DepartmentService
             from employees.ldap.services.group_service import GroupService
             from employees.ldap.services.user_service import UserService
-            
+
             group_service = GroupService()
             user_service = UserService(group_service)
             dept_service = DepartmentService(group_service, user_service)
-            
+
             changes = {}
             if "name" in ser.validated_data:
                 changes["name"] = ser.validated_data["name"]
             if "scoped_permissions" in ser.validated_data:
                 changes["scoped_permissions"] = ser.validated_data["scoped_permissions"]
             if "scoped_permission_codes" in ser.validated_data:
-                changes["scoped_permission_codes"] = ser.validated_data["scoped_permission_codes"]
-            
+                changes["scoped_permission_codes"] = ser.validated_data[
+                    "scoped_permission_codes"
+                ]
+
             try:
                 role = dept_service.update_role(instance, changes)
                 return Response(self.get_serializer(role).data)
@@ -2827,19 +2943,19 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Удаление роли: сначала группа из LDAP → затем запись из БД (если LDAP включен)."""
         instance = self.get_object()
-        
+
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: удаляем через DepartmentService
             from employees.ldap.services.department_service import DepartmentService
             from employees.ldap.services.group_service import GroupService
             from employees.ldap.services.user_service import UserService
-            
+
             group_service = GroupService()
             user_service = UserService(group_service)
             dept_service = DepartmentService(group_service, user_service)
-            
+
             try:
                 dept_service.delete_role(instance)
                 return Response(status=status.HTTP_204_NO_CONTENT)
@@ -2917,7 +3033,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
     def assignments(self, request, pk=None):
         """
         Возвращает список назначений роли (RoleAssignment).
-        
+
         Query params:
           - ?active=true/false — фильтр по is_active (по умолчанию только активные)
         """
@@ -2925,13 +3041,13 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         qs = RoleAssignment.objects.filter(role=role).select_related(
             "employee", "assigned_by"
         )
-        
+
         active = request.query_params.get("active", "true").lower()
         if active == "true":
             qs = qs.filter(is_active=True)
         elif active == "false":
             qs = qs.filter(is_active=False)
-        
+
         data = [
             {
                 "id": a.id,
@@ -2950,52 +3066,53 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
     def assign(self, request, pk=None):
         """
         Назначает роль сотруднику (не требует членства в отделе).
-        
+
         Тело запроса:
           - employee_id: int — ID сотрудника
-        
+
         Требуется право DeptPerm.ASSIGN_ROLE в отделе роли.
         При включенном LDAP: сначала добавляет в группу LDAP, потом в БД.
         """
         role = self.get_object()
         employee_id = request.data.get("employee_id")
-        
+
         if not employee_id:
-            return Response(
-                {"detail": "employee_id is required."}, status=400
-            )
-        
+            return Response({"detail": "employee_id is required."}, status=400)
+
         try:
             employee = Employee.objects.get(id=employee_id)
         except Employee.DoesNotExist:
-            return Response(
-                {"detail": "Сотрудник не найден."}, status=404
-            )
-        
+            return Response({"detail": "Сотрудник не найден."}, status=404)
+
         assigned_by = request.user if request.user.is_authenticated else None
-        
+
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: через DepartmentService (сначала LDAP, потом БД)
             try:
                 from employees.ldap.services.department_service import DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
-                
+
                 group_service = GroupService()
                 user_service = UserService(group_service)
                 dept_service = DepartmentService(group_service, user_service)
-                
+
                 assignment = dept_service.assign_role(employee, role, assigned_by)
-                
-                return Response({
-                    "id": assignment.id,
-                    "employee_id": assignment.employee_id,
-                    "role_id": assignment.role_id,
-                    "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
-                    "is_active": assignment.is_active,
-                }, status=201)
+
+                return Response(
+                    {
+                        "id": assignment.id,
+                        "employee_id": assignment.employee_id,
+                        "role_id": assignment.role_id,
+                        "assigned_at": assignment.assigned_at.isoformat()
+                        if assignment.assigned_at
+                        else None,
+                        "is_active": assignment.is_active,
+                    },
+                    status=201,
+                )
             except DirectoryLdapError as e:
                 return Response(
                     {"detail": f"LDAP error: {e}"}, status=status.HTTP_502_BAD_GATEWAY
@@ -3012,57 +3129,58 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 defaults={
                     "is_active": True,
                     "assigned_by": assigned_by,
-                }
+                },
             )
-            return Response({
-                "id": assignment.id,
-                "employee_id": assignment.employee_id,
-                "role_id": assignment.role_id,
-                "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
-                "is_active": assignment.is_active,
-            }, status=201)
+            return Response(
+                {
+                    "id": assignment.id,
+                    "employee_id": assignment.employee_id,
+                    "role_id": assignment.role_id,
+                    "assigned_at": assignment.assigned_at.isoformat()
+                    if assignment.assigned_at
+                    else None,
+                    "is_active": assignment.is_active,
+                },
+                status=201,
+            )
 
     @action(detail=True, methods=["post"])
     def revoke(self, request, pk=None):
         """
         Отзывает роль у сотрудника.
-        
+
         Тело запроса:
           - employee_id: int — ID сотрудника
-        
+
         Требуется право DeptPerm.ASSIGN_ROLE в отделе роли.
         При включенном LDAP: сначала удаляет из группы LDAP, потом из БД.
         """
         role = self.get_object()
         employee_id = request.data.get("employee_id")
-        
+
         if not employee_id:
-            return Response(
-                {"detail": "employee_id is required."}, status=400
-            )
-        
+            return Response({"detail": "employee_id is required."}, status=400)
+
         try:
             employee = Employee.objects.get(id=employee_id)
         except Employee.DoesNotExist:
-            return Response(
-                {"detail": "Сотрудник не найден."}, status=404
-            )
-        
+            return Response({"detail": "Сотрудник не найден."}, status=404)
+
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # Режим с LDAP: через DepartmentService (сначала LDAP, потом БД)
             try:
                 from employees.ldap.services.department_service import DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
-                
+
                 group_service = GroupService()
                 user_service = UserService(group_service)
                 dept_service = DepartmentService(group_service, user_service)
-                
+
                 dept_service.revoke_role(employee, role)
-                
+
                 return Response(status=204)
             except DirectoryLdapError as e:
                 return Response(
@@ -3070,10 +3188,9 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 )
         else:
             # Режим без LDAP: деактивируем RoleAssignment напрямую
-            RoleAssignment.objects.filter(
-                employee=employee,
-                role=role
-            ).update(is_active=False)
+            RoleAssignment.objects.filter(employee=employee, role=role).update(
+                is_active=False
+            )
             return Response(status=204)
 
 
@@ -3274,79 +3391,95 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     def _apply_effects(self, action_obj: EmployeeAction):
         emp = action_obj.employee
         ldap_enabled = _is_ldap_enabled()
-        
+
         if action_obj.action == ACTION_DISMISSED:
             # ВАЖНО: сначала деактивируем сотрудника (чтобы get_base_dn_for_employee работал правильно)
             if emp.is_active:
                 emp.is_active = False
                 emp.save(update_fields=["is_active"])
-            
+
             # деактивируем связи с отделами в БД
             EmployeeDepartment.objects.filter(employee=emp, is_active=True).update(
                 is_active=False, date_to=timezone.now().date()
             )
-            
+
             # синхронизируем с LDAP (disable учётной записи)
             if ldap_enabled:
                 try:
                     svc = DirectoryService()
                     # Проверяем, есть ли у пользователя ldap_dn
                     from employees.models import LdapSyncState
+
                     has_ldap_dn = LdapSyncState.objects.filter(
-                        model='employee',
-                        object_pk=str(emp.pk),
-                        ldap_dn__isnull=False
+                        model="employee", object_pk=str(emp.pk), ldap_dn__isnull=False
                     ).exists()
-                    
+
                     if has_ldap_dn:
                         # Обновляем is_active в LDAP (установит userAccountControl=514)
                         svc.update_user(emp, changes={"is_active": False})
-                        
+
                         # Удаляем из всех отделов (это переместит в OU=Dismissed)
                         active_departments = EmployeeDepartment.objects.filter(
                             employee=emp
-                        ).select_related('department')
-                        
+                        ).select_related("department")
+
                         departments_processed = False
                         for emp_dept in active_departments:
                             try:
                                 svc.remove_member(emp_dept.department, emp)
                                 departments_processed = True
-                            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                            except (
+                                DirectoryLdapError,
+                                DirectoryDbError,
+                                DirectoryServiceError,
+                            ) as e:
                                 # Логируем ошибку удаления из конкретного отдела
                                 import logging
+
                                 logger = logging.getLogger(__name__)
                                 logger.error(
                                     f"Failed to remove dismissed employee from department: "
                                     f"employee_id={emp.id}, department_id={emp_dept.department.id}, error={e}"
                                 )
-                        
+
                         # Если сотрудник не состоял ни в одном отделе, вручную перемещаем в OU=Dismissed
                         if not departments_processed:
                             try:
-                                from employees.ldap.utils.ldap_utils import get_base_dn_for_employee
-                                from employees.ldap.infrastructure.connections import _ldap
-                                from employees.ldap.repositories.ldap_repository import ensure_container_exists
+                                from employees.ldap.utils.ldap_utils import (
+                                    get_base_dn_for_employee,
+                                )
+                                from employees.ldap.infrastructure.connections import (
+                                    _ldap,
+                                )
+                                from employees.ldap.repositories.ldap_repository import (
+                                    ensure_container_exists,
+                                )
                                 from employees.models import LdapSyncState
-                                
+
                                 sync_state = LdapSyncState.objects.filter(
-                                    model='employee',
-                                    object_pk=str(emp.pk)
+                                    model="employee", object_pk=str(emp.pk)
                                 ).first()
-                                
+
                                 if sync_state and sync_state.ldap_dn:
                                     target_base = get_base_dn_for_employee(emp)
                                     current_dn = sync_state.ldap_dn
-                                    
+
                                     # Проверяем, нужно ли перемещение
-                                    if not current_dn.lower().endswith(target_base.lower()):
+                                    if not current_dn.lower().endswith(
+                                        target_base.lower()
+                                    ):
                                         with _ldap() as conn:
                                             ensure_container_exists(conn, target_base)
-                                            new_dn = svc._user_service._move_user_to_base(
-                                                conn, current_dn, target_base
+                                            new_dn = (
+                                                svc._user_service._move_user_to_base(
+                                                    conn, current_dn, target_base
+                                                )
                                             )
-                                            sync_state.touch(ldap_dn=new_dn, sync_dir="ldap")
+                                            sync_state.touch(
+                                                ldap_dn=new_dn, sync_dir="ldap"
+                                            )
                                             import logging
+
                                             logger = logging.getLogger(__name__)
                                             logger.info(
                                                 f"Dismissed employee without department moved to OU=Dismissed: "
@@ -3354,15 +3487,21 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                                             )
                             except Exception as e:
                                 import logging
+
                                 logger = logging.getLogger(__name__)
                                 logger.error(
                                     f"Failed to move dismissed employee without department to OU=Dismissed: "
                                     f"employee_id={emp.id}, error={e}"
                                 )
-                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                except (
+                    DirectoryLdapError,
+                    DirectoryDbError,
+                    DirectoryServiceError,
+                ) as e:
                     # Логируем ошибку, но не прерываем процесс
                     # БД-изменения уже применены
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.error(
                         f"Failed to disable user in LDAP during dismissal: "
@@ -3374,50 +3513,61 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
             if was_inactive:
                 emp.is_active = True
                 emp.save(update_fields=["is_active"])
-            
+
             # синхронизируем с LDAP (enable учётной записи)
             if ldap_enabled:
                 try:
                     svc = DirectoryService()
                     from employees.models import LdapSyncState
+
                     has_ldap_dn = LdapSyncState.objects.filter(
-                        model='employee',
-                        object_pk=str(emp.pk),
-                        ldap_dn__isnull=False
+                        model="employee", object_pk=str(emp.pk), ldap_dn__isnull=False
                     ).exists()
-                    
+
                     if has_ldap_dn:
                         # Обновляем is_active в LDAP (установит userAccountControl=512)
                         svc.update_user(emp, changes={"is_active": True})
-                        
+
                         # Если сотрудник был неактивен (восстановление из увольнения),
                         # перемещаем из OU=Dismissed в OU=Users
                         if was_inactive:
                             try:
                                 sync_state = LdapSyncState.objects.get(
-                                    model='employee',
-                                    object_pk=str(emp.pk)
+                                    model="employee", object_pk=str(emp.pk)
                                 )
                                 current_dn = sync_state.ldap_dn
-                                dismissed_base = getattr(settings, "LDAP_DISMISSED_BASE", "")
-                                
+                                dismissed_base = getattr(
+                                    settings, "LDAP_DISMISSED_BASE", ""
+                                )
+
                                 # Проверяем, находится ли сотрудник в OU=Dismissed
-                                if dismissed_base and current_dn.lower().endswith(dismissed_base.lower()):
-                                    users_base = getattr(settings, "LDAP_USERS_BASE", None) or getattr(
-                                        settings, "LDAP_USER_BASE", None
-                                    )
+                                if dismissed_base and current_dn.lower().endswith(
+                                    dismissed_base.lower()
+                                ):
+                                    users_base = getattr(
+                                        settings, "LDAP_USERS_BASE", None
+                                    ) or getattr(settings, "LDAP_USER_BASE", None)
                                     if users_base:
-                                        from employees.ldap.infrastructure.connections import _ldap
-                                        from employees.ldap.repositories.ldap_repository import ensure_container_exists
-                                        
+                                        from employees.ldap.infrastructure.connections import (
+                                            _ldap,
+                                        )
+                                        from employees.ldap.repositories.ldap_repository import (
+                                            ensure_container_exists,
+                                        )
+
                                         with _ldap() as conn:
                                             ensure_container_exists(conn, users_base)
                                             # Используем внутренний метод UserService
-                                            new_dn = svc._user_service._move_user_to_base(
-                                                conn, current_dn, users_base
+                                            new_dn = (
+                                                svc._user_service._move_user_to_base(
+                                                    conn, current_dn, users_base
+                                                )
                                             )
-                                            sync_state.touch(ldap_dn=new_dn, sync_dir="ldap")
+                                            sync_state.touch(
+                                                ldap_dn=new_dn, sync_dir="ldap"
+                                            )
                                             import logging
+
                                             logger = logging.getLogger(__name__)
                                             logger.info(
                                                 f"Restored employee moved from Dismissed to Users: "
@@ -3425,13 +3575,19 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                                             )
                             except Exception as e:
                                 import logging
+
                                 logger = logging.getLogger(__name__)
                                 logger.error(
                                     f"Failed to move restored employee from Dismissed to Users: "
                                     f"employee_id={emp.id}, error={e}"
                                 )
-                except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
+                except (
+                    DirectoryLdapError,
+                    DirectoryDbError,
+                    DirectoryServiceError,
+                ) as e:
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.error(
                         f"Failed to enable user in LDAP during action: "
@@ -3577,7 +3733,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         """
         if not _is_ldap_enabled():
             return None
-        
+
         base = getattr(settings, "LDAP_GROUPS_BASE", "") or None
         svc = DirectoryService()
         try:
@@ -3607,17 +3763,19 @@ class GroupViewSet(viewsets.ModelViewSet):
         if isinstance(ids, list) and ids:
             if _is_ldap_enabled():
                 svc = DirectoryService()
-                dns.extend(svc.employee_ids_to_dns([i for i in ids if isinstance(i, int)]))
+                dns.extend(
+                    svc.employee_ids_to_dns([i for i in ids if isinstance(i, int)])
+                )
 
         uniq, seen = [], set()
         for d in dns:
             if d and d not in seen:
                 uniq.append(d)
                 seen.add(d)
-        
+
         if not _is_ldap_enabled():
             return []  # В non-LDAP режиме возвращаем пустой список
-            
+
         if not uniq:
             raise ValueError("Не переданы корректные member_dns или member_ids")
         return uniq
@@ -3743,7 +3901,8 @@ class GroupViewSet(viewsets.ModelViewSet):
             dn = self._resolve_group_dn(grp)
             if not dn:
                 return Response(
-                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                    {"detail": "Группа не найдена в LDAP"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
 
             svc = DirectoryService()
@@ -3787,7 +3946,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                             {"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY
                         )
                     # мягко логируем и продолжаем удаление из БД
-        
+
         return super().destroy(request, *args, **kwargs)
 
     def list(self, request, *args, **kwargs) -> Response:
@@ -3904,12 +4063,13 @@ class GroupViewSet(viewsets.ModelViewSet):
             )
 
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             dn = self._resolve_group_dn(grp)
             if not dn:
                 return Response(
-                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                    {"detail": "Группа не найдена в LDAP"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
 
             svc = DirectoryService()
@@ -3917,7 +4077,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                 svc.group_rename(dn, new_name)
             except Exception as e:
                 return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
-        
+
         # Update DB
         grp.name = new_name
         grp.save(update_fields=["name"])
@@ -3934,11 +4094,11 @@ class GroupViewSet(viewsets.ModelViewSet):
             Response: {"ok": True}
         """
         grp = self.get_object()
-        
+
         if not _is_ldap_enabled():
             # Non-LDAP mode: description stored only in LDAP, so just return OK
             return Response({"ok": True}, status=status.HTTP_200_OK)
-        
+
         dn = self._resolve_group_dn(grp)
         if not dn:
             return Response(
@@ -3960,7 +4120,7 @@ class GroupViewSet(viewsets.ModelViewSet):
             Response: {"dns": list[str], "employees": list[dict]}
         """
         grp = self.get_object()
-        
+
         if not _is_ldap_enabled():
             # Non-LDAP mode: return DB members only
             users = grp.user_set.all()
@@ -3973,8 +4133,10 @@ class GroupViewSet(viewsets.ModelViewSet):
                 }
                 for u in users
             ]
-            return Response({"dns": [], "employees": employees}, status=status.HTTP_200_OK)
-        
+            return Response(
+                {"dns": [], "employees": employees}, status=status.HTTP_200_OK
+            )
+
         dn = self._resolve_group_dn(grp)
         if not dn:
             return Response(
@@ -4009,13 +4171,14 @@ class GroupViewSet(viewsets.ModelViewSet):
         """
         grp = self.get_object()
         ldap_enabled = _is_ldap_enabled()
-        
+
         if ldap_enabled:
             # LDAP mode: sync with LDAP first
             dn = self._resolve_group_dn(grp)
             if not dn:
                 return Response(
-                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                    {"detail": "Группа не найдена в LDAP"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
             try:
                 member_dns = self._members_payload_to_dns(request.data)
@@ -4059,9 +4222,10 @@ class GroupViewSet(viewsets.ModelViewSet):
             member_ids = request.data.get("member_ids") or []
             if not isinstance(member_ids, list):
                 return Response(
-                    {"detail": "member_ids must be a list"}, status=status.HTTP_400_BAD_REQUEST
+                    {"detail": "member_ids must be a list"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            
+
             users = Employee.objects.filter(id__in=member_ids)
             try:
                 with transaction.atomic():
@@ -4071,7 +4235,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                     {"detail": f"DB error: {e}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
-            
+
             ok_user_ids = [u.id for u in users]
             return Response(
                 {
@@ -4106,7 +4270,8 @@ class GroupViewSet(viewsets.ModelViewSet):
             dn = self._resolve_group_dn(grp)
             if not dn:
                 return Response(
-                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                    {"detail": "Группа не найдена в LDAP"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
             try:
                 member_dns = self._members_payload_to_dns(request.data)
@@ -4150,9 +4315,10 @@ class GroupViewSet(viewsets.ModelViewSet):
             member_ids = request.data.get("member_ids") or []
             if not isinstance(member_ids, list):
                 return Response(
-                    {"detail": "member_ids must be a list"}, status=status.HTTP_400_BAD_REQUEST
+                    {"detail": "member_ids must be a list"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            
+
             users = Employee.objects.filter(id__in=member_ids)
             try:
                 with transaction.atomic():
@@ -4162,7 +4328,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                     {"detail": f"DB error: {e}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
-            
+
             ok_user_ids = [u.id for u in users]
             return Response(
                 {
@@ -4197,7 +4363,8 @@ class GroupViewSet(viewsets.ModelViewSet):
             dn = self._resolve_group_dn(grp)
             if not dn:
                 return Response(
-                    {"detail": "Группа не найдена в LDAP"}, status=status.HTTP_404_NOT_FOUND
+                    {"detail": "Группа не найдена в LDAP"},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
             try:
                 desired_dns = self._members_payload_to_dns(request.data)
@@ -4247,9 +4414,10 @@ class GroupViewSet(viewsets.ModelViewSet):
             member_ids = request.data.get("member_ids") or []
             if not isinstance(member_ids, list):
                 return Response(
-                    {"detail": "member_ids must be a list"}, status=status.HTTP_400_BAD_REQUEST
+                    {"detail": "member_ids must be a list"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            
+
             users = Employee.objects.filter(id__in=member_ids)
             try:
                 with transaction.atomic():
@@ -4259,7 +4427,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                     {"detail": f"DB error: {e}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
-            
+
             ok_user_ids = [u.id for u in users]
             return Response(
                 {
