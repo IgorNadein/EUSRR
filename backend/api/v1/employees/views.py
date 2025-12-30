@@ -1137,9 +1137,28 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     )
             else:
                 # Снятие всех ролей отдела для этого сотрудника
-                RoleAssignment.objects.filter(
+                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.group_service import GroupService
+                from employees.ldap.services.user_service import UserService
+                
+                # Находим активные роли сотрудника в этом отделе
+                active_assignments = RoleAssignment.objects.filter(
                     employee_id=emp_id, role__department=dept, is_active=True
-                ).update(is_active=False)
+                ).select_related('role')
+                
+                if _is_ldap_enabled():
+                    # Удаляем из LDAP-групп для каждой роли
+                    try:
+                        group_service = GroupService()
+                        user_service = UserService(group_service)
+                        dept_service = DepartmentService(group_service, user_service)
+                        for assignment in active_assignments:
+                            dept_service.revoke_role(employee, assignment.role)
+                    except Exception as e:
+                        logger.error(f"[set_member_role] revoke_role FAILED: {type(e).__name__}: {e}")
+                        return Response({"detail": str(e)}, status=400)
+                else:
+                    active_assignments.update(is_active=False)
 
         return Response(
             {
