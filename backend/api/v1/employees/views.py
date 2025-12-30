@@ -2701,6 +2701,156 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
             qs = qs.order_by(*self.ordering)
         return qs
 
+    def create(self, request, *args, **kwargs):
+        """Создание роли: сначала группа в LDAP → затем запись в БД (если LDAP включен)."""
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        
+        dept_id = ser.validated_data.get("department")
+        if isinstance(dept_id, Department):
+            dept = dept_id
+        else:
+            dept = get_object_or_404(Department, id=dept_id)
+        
+        name = ser.validated_data["name"]
+        codes = ser.validated_data.pop("scoped_permission_codes", None)
+        perms = ser.validated_data.pop("scoped_permissions", None)
+        
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: создаём через DepartmentService
+            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.group_service import GroupService
+            from employees.ldap.services.user_service import UserService
+            
+            group_service = GroupService()
+            user_service = UserService(group_service)
+            dept_service = DepartmentService(group_service, user_service)
+            
+            # Подготавливаем scoped_permissions (codes имеют приоритет над ids)
+            scoped_permissions = None
+            if codes is not None:
+                scoped_permissions = list(
+                    DepartmentPermission.objects.filter(code__in=codes)
+                )
+            elif perms is not None:
+                scoped_permissions = list(perms)
+            
+            try:
+                role = dept_service.create_role(
+                    department=dept,
+                    name=name,
+                    scoped_permissions=scoped_permissions,
+                )
+                return Response(
+                    self.get_serializer(role).data, status=status.HTTP_201_CREATED
+                )
+            except DirectoryLdapError as e:
+                return Response(
+                    {"detail": f"LDAP error: {e}"}, status=status.HTTP_502_BAD_GATEWAY
+                )
+            except DirectoryDbError as e:
+                return Response(
+                    {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # Режим без LDAP: создаём напрямую через сериализатор
+            role = DepartmentRole.objects.create(
+                department=dept,
+                name=name,
+            )
+            # codes имеют приоритет над ids (как в сериализаторе)
+            if codes is not None:
+                qs = DepartmentPermission.objects.filter(code__in=codes)
+                role.scoped_permissions.set(list(qs))
+            elif perms is not None:
+                role.scoped_permissions.set(perms)
+            
+            return Response(
+                self.get_serializer(role).data, status=status.HTTP_201_CREATED
+            )
+
+    def update(self, request, *args, **kwargs):
+        """Обновление роли: сначала LDAP → затем БД (если LDAP включен)."""
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        ser = self.get_serializer(instance, data=request.data, partial=partial)
+        ser.is_valid(raise_exception=True)
+        
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: обновляем через DepartmentService
+            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.group_service import GroupService
+            from employees.ldap.services.user_service import UserService
+            
+            group_service = GroupService()
+            user_service = UserService(group_service)
+            dept_service = DepartmentService(group_service, user_service)
+            
+            changes = {}
+            if "name" in ser.validated_data:
+                changes["name"] = ser.validated_data["name"]
+            if "scoped_permissions" in ser.validated_data:
+                changes["scoped_permissions"] = ser.validated_data["scoped_permissions"]
+            if "scoped_permission_codes" in ser.validated_data:
+                changes["scoped_permission_codes"] = ser.validated_data["scoped_permission_codes"]
+            
+            try:
+                role = dept_service.update_role(instance, changes)
+                return Response(self.get_serializer(role).data)
+            except DirectoryLdapError as e:
+                return Response(
+                    {"detail": f"LDAP error: {e}"}, status=status.HTTP_502_BAD_GATEWAY
+                )
+            except DirectoryDbError as e:
+                return Response(
+                    {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # Режим без LDAP: обновляем через сериализатор
+            self.perform_update(ser)
+            return Response(ser.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Частичное обновление роли."""
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """Удаление роли: сначала группа из LDAP → затем запись из БД (если LDAP включен)."""
+        instance = self.get_object()
+        
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: удаляем через DepartmentService
+            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.group_service import GroupService
+            from employees.ldap.services.user_service import UserService
+            
+            group_service = GroupService()
+            user_service = UserService(group_service)
+            dept_service = DepartmentService(group_service, user_service)
+            
+            try:
+                dept_service.delete_role(instance)
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            except DirectoryLdapError as e:
+                return Response(
+                    {"detail": f"LDAP error: {e}"}, status=status.HTTP_502_BAD_GATEWAY
+                )
+            except DirectoryDbError as e:
+                return Response(
+                    {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # Режим без LDAP: удаляем напрямую
+            instance.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=False, methods=["get"])
     def perm_choices(self, request):
         """
@@ -2800,6 +2950,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
           - employee_id: int — ID сотрудника
         
         Требуется право DeptPerm.ASSIGN_ROLE в отделе роли.
+        При включенном LDAP: сначала добавляет в группу LDAP, потом в БД.
         """
         role = self.get_object()
         employee_id = request.data.get("employee_id")
@@ -2816,22 +2967,48 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 {"detail": "Сотрудник не найден."}, status=404
             )
         
-        # Получаем assigned_by из текущего пользователя
-        # В этом проекте User == Employee (кастомная модель)
         assigned_by = request.user if request.user.is_authenticated else None
         
-        # Используем DepartmentService для назначения с LDAP-синхронизацией
-        try:
-            from employees.ldap.services.department_service import DepartmentService
-            from employees.ldap.services.group_service import GroupService
-            from employees.ldap.services.user_service import UserService
-            
-            group_service = GroupService()
-            user_service = UserService(group_service)
-            dept_service = DepartmentService(group_service, user_service)
-            
-            assignment = dept_service.assign_role(employee, role, assigned_by)
-            
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: через DepartmentService (сначала LDAP, потом БД)
+            try:
+                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.group_service import GroupService
+                from employees.ldap.services.user_service import UserService
+                
+                group_service = GroupService()
+                user_service = UserService(group_service)
+                dept_service = DepartmentService(group_service, user_service)
+                
+                assignment = dept_service.assign_role(employee, role, assigned_by)
+                
+                return Response({
+                    "id": assignment.id,
+                    "employee_id": assignment.employee_id,
+                    "role_id": assignment.role_id,
+                    "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+                    "is_active": assignment.is_active,
+                }, status=201)
+            except DirectoryLdapError as e:
+                return Response(
+                    {"detail": f"LDAP error: {e}"}, status=status.HTTP_502_BAD_GATEWAY
+                )
+            except DirectoryDbError as e:
+                return Response(
+                    {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # Режим без LDAP: создаём RoleAssignment напрямую
+            assignment, created = RoleAssignment.objects.update_or_create(
+                employee=employee,
+                role=role,
+                defaults={
+                    "is_active": True,
+                    "assigned_by": assigned_by,
+                }
+            )
             return Response({
                 "id": assignment.id,
                 "employee_id": assignment.employee_id,
@@ -2839,8 +3016,6 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
                 "is_active": assignment.is_active,
             }, status=201)
-        except Exception as e:
-            return Response({"detail": str(e)}, status=400)
 
     @action(detail=True, methods=["post"])
     def revoke(self, request, pk=None):
@@ -2851,6 +3026,7 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
           - employee_id: int — ID сотрудника
         
         Требуется право DeptPerm.ASSIGN_ROLE в отделе роли.
+        При включенном LDAP: сначала удаляет из группы LDAP, потом из БД.
         """
         role = self.get_object()
         employee_id = request.data.get("employee_id")
@@ -2867,21 +3043,33 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 {"detail": "Сотрудник не найден."}, status=404
             )
         
-        # Используем DepartmentService для отзыва с LDAP-синхронизацией
-        try:
-            from employees.ldap.services.department_service import DepartmentService
-            from employees.ldap.services.group_service import GroupService
-            from employees.ldap.services.user_service import UserService
-            
-            group_service = GroupService()
-            user_service = UserService(group_service)
-            dept_service = DepartmentService(group_service, user_service)
-            
-            dept_service.revoke_role(employee, role)
-            
+        ldap_enabled = _is_ldap_enabled()
+        
+        if ldap_enabled:
+            # Режим с LDAP: через DepartmentService (сначала LDAP, потом БД)
+            try:
+                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.group_service import GroupService
+                from employees.ldap.services.user_service import UserService
+                
+                group_service = GroupService()
+                user_service = UserService(group_service)
+                dept_service = DepartmentService(group_service, user_service)
+                
+                dept_service.revoke_role(employee, role)
+                
+                return Response(status=204)
+            except DirectoryLdapError as e:
+                return Response(
+                    {"detail": f"LDAP error: {e}"}, status=status.HTTP_502_BAD_GATEWAY
+                )
+        else:
+            # Режим без LDAP: деактивируем RoleAssignment напрямую
+            RoleAssignment.objects.filter(
+                employee=employee,
+                role=role
+            ).update(is_active=False)
             return Response(status=204)
-        except Exception as e:
-            return Response({"detail": str(e)}, status=400)
 
 
 class SkillViewSet(viewsets.ModelViewSet):
