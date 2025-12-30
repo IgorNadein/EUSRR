@@ -969,9 +969,14 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             200 {"employee_id":..., "role_id": <int|null>, "is_active": <bool>, "via_assignment": <bool>}
             400 если роль не принадлежит отделу
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[set_member_role] request.data = {request.data}")
+        
         dept = self.get_object()
         payload = SetMemberRoleInput(data=request.data)
         if not payload.is_valid():
+            logger.warning(f"[set_member_role] validation errors = {payload.errors}")
             return Response(payload.errors, status=400)
 
         emp_id = payload.validated_data["employee_id"]
