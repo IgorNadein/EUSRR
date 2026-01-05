@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from typing import Any, Dict, List, Optional
 
 from django import forms
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordResetForm
 from django.core.files.uploadedfile import UploadedFile
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
 class EmailOrPhoneAuthenticationForm(AuthenticationForm):
@@ -315,3 +318,36 @@ class RegistrationForm(forms.Form):
 class VerifyEmailForm(forms.Form):
     email = forms.EmailField(label="Email")
     code = forms.CharField(max_length=32, label="Код из письма")
+
+class CustomPasswordResetForm(PasswordResetForm):
+    """Кастомная форма восстановления пароля с логированием"""
+    
+    def save(self, *args, **kwargs):
+        """Переопределяем save для логирования процесса отправки"""
+        email = self.cleaned_data["email"]
+        
+        logger.info(
+            f"\n{'='*80}\n"
+            f"[CustomPasswordResetForm.save] 🔐 СОХРАНЕНИЕ ФОРМЫ ВОССТАНОВЛЕНИЯ ПАРОЛЯ\n"
+            f"  Email: {email}\n"
+            f"{'='*80}"
+        )
+        
+        # Используем встроенный метод get_users - это не статический метод, 
+        # а внутренний механизм Django для получения пользователей
+        logger.info(
+            f"[CustomPasswordResetForm.save] ➡️ Вызов super().save() для отправки emails..."
+        )
+        
+        try:
+            result = super().save(*args, **kwargs)
+            logger.info(
+                f"[CustomPasswordResetForm.save] ✅ super().save() успешно завершен"
+            )
+            return result
+        except Exception as e:
+            logger.error(
+                f"[CustomPasswordResetForm.save] ❌ Ошибка в super().save(): {type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise

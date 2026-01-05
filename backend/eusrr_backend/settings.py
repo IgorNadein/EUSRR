@@ -208,6 +208,10 @@ LOGGING = {
         "documents": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "bots": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "notifications": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "requests_app": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "employees": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "common": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "aiogram": {"handlers": ["console"], "level": "INFO", "propagate": False},
         # полезно видеть ошибки и отладку ldap3

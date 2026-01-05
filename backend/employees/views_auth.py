@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from api.client import ApiClient, get_api_client
 from django.contrib import messages
 from django.contrib.auth import logout
@@ -20,7 +21,9 @@ from django.views import View
 from django.views.decorators.http import require_http_methods
 
 from .forms_auth import (EmailOrPhoneAuthenticationForm, RegistrationForm,
-                         VerifyEmailForm)
+                         VerifyEmailForm, CustomPasswordResetForm)
+
+logger = logging.getLogger(__name__)
 
 
 def _apply_api_errors_to_form(form, data: dict):
@@ -65,9 +68,6 @@ def register_view(request):
     Страница регистрации: показываем Django-форму и шлём валидные данные в /api/v1/auth/register/
     (аватар пока локально, в API не отправляем — загрузим после верификации).
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     api = get_api_client(request)
 
     if request.method == "GET":
@@ -220,6 +220,27 @@ class PasswordResetView(DjangoPasswordResetView):
     html_email_template_name = "emails/password_reset_email.html"
     subject_template_name = "auth/password_reset_subject.txt"
     success_url = "/auth/password-reset/done/"
+    form_class = CustomPasswordResetForm
+    
+    def post(self, request, *args, **kwargs):
+        """Переопределяем post для логирования"""
+        logger.info(
+            f"\n{'='*80}\n"
+            f"[PasswordResetView.post] 🔑 ЗАПРОС НА ВОССТАНОВЛЕНИЕ ПАРОЛЯ\n"
+            f"  Email/телефон: {request.POST.get('email', '?')}\n"
+            f"  IP: {request.META.get('REMOTE_ADDR')}\n"
+            f"{'='*80}"
+        )
+        
+        return super().post(request, *args, **kwargs)
+    
+    def form_valid(self, form):
+        """Логирование успешной валидации формы"""
+        logger.info(
+            f"[PasswordResetView.form_valid] ✅ Форма валидна, email={form.cleaned_data.get('email')}"
+        )
+        
+        return super().form_valid(form)
 
 
 class PasswordResetDoneView(DjangoPasswordResetDoneView):
