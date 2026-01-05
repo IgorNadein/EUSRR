@@ -135,21 +135,30 @@ export function initRequestCrudHandler(options) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        console.error("[requestCrudHandler] Validation error:", error);
-
-        // Показываем детали ошибки
         let errorMessage = "Не удалось создать заявление:\n";
-        if (error.detail) {
-          errorMessage += error.detail;
-        } else if (typeof error === "object") {
-          // Форматируем ошибки валидации
-          for (const [field, messages] of Object.entries(error)) {
-            const fieldMessages = Array.isArray(messages)
-              ? messages.join(", ")
-              : messages;
-            errorMessage += `\n${field}: ${fieldMessages}`;
+        
+        // Пытаемся получить JSON, но если не получается - читаем как текст
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const error = await response.json();
+          console.error("[requestCrudHandler] Validation error:", error);
+
+          if (error.detail) {
+            errorMessage += error.detail;
+          } else if (typeof error === "object") {
+            // Форматируем ошибки валидации
+            for (const [field, messages] of Object.entries(error)) {
+              const fieldMessages = Array.isArray(messages)
+                ? messages.join(", ")
+                : messages;
+              errorMessage += `\n${field}: ${fieldMessages}`;
+            }
           }
+        } else {
+          // Сервер вернул не JSON (возможно HTML страницу ошибки)
+          const text = await response.text();
+          console.error("[requestCrudHandler] Server error (non-JSON):", response.status, text.substring(0, 500));
+          errorMessage += `Ошибка сервера (${response.status})`;
         }
 
         throw new Error(errorMessage);
