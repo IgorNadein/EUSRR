@@ -355,15 +355,14 @@ def notify_status_change(request_obj, old_status, new_status):
     # ID пользователей которых НЕ нужно уведомлять при approve/reject
     exclude_ids = set()
     if new_status in ("approved", "rejected"):
-        # Не уведомляем автора заявки (он видит результат на странице)
-        exclude_ids.add(request_obj.employee.id)
-        # Не уведомляем того кто принял решение (он сам нажал кнопку)
+        # ВАЖНО: Уведомляем автора заявки о решении - это единственный способ
+        # информировать его, так как alert() был убран из UI (коммит 935c12a)
+        # Не уведомляем только того кто принял решение (он сам нажал кнопку)
         if request_obj.approver_id:
             exclude_ids.add(request_obj.approver_id)
 
-    # 1. Автор - НЕ уведомляем при approved/rejected
-    if new_status not in ("approved", "rejected"):
-        recipients_to_notify.add(request_obj.employee)
+    # 1. Автор - УВЕДОМЛЯЕМ всегда (даже при approved/rejected, это важно!)
+    recipients_to_notify.add(request_obj.employee)
 
     # 2. Основные получатели (исключая тех кто в exclude_ids)
     recipients_to_notify.update(
