@@ -341,20 +341,30 @@ class RequestViewSet(viewsets.ModelViewSet):
         GET: список комментариев (staff, владелец или право view_requestcomment).
         POST: создание {"text": "..."} (staff, владелец или право add_requestcomment).
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         req_obj = self.get_object()
+        logger.info(
+            f"[RequestViewSet.comments] user={request.user.id}, request_id={req_obj.id}, "
+            f"method={request.method}"
+        )
 
         if request.method in {"GET", "HEAD"}:
             qs = RequestComment.objects.filter(request=req_obj).select_related("author")
             ser = RequestCommentSerializer(
                 qs, many=True, context=self.get_serializer_context()
             )
+            logger.info(f"[RequestViewSet.comments] GET: returning {qs.count()} comments")
             return Response(ser.data)
 
+        logger.info(f"[RequestViewSet.comments] POST: creating comment with data={request.data}")
         ser = RequestCommentSerializer(
             data=request.data, context=self.get_serializer_context()
         )
         ser.is_valid(raise_exception=True)
-        ser.save(request=req_obj, author=request.user)
+        saved = ser.save(request=req_obj, author=request.user)
+        logger.info(f"[RequestViewSet.comments] POST: comment created id={saved.id}")
         return Response(ser.data, status=status.HTTP_201_CREATED)
 
     # ---------- Экшены статусов (только бизнес-валидация) ----------

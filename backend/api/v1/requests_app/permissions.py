@@ -123,16 +123,45 @@ class CommentsPermission(BasePermission):
         return False
 
     def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         user = request.user
+        
+        # Логируем начало проверки
+        logger.info(
+            f"[CommentsPermission] Проверка доступа: "
+            f"user={user.id}, request_id={getattr(obj, 'id', '?')}, "
+            f"method={request.method}"
+        )
+        
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: staff/superuser")
             return True
+            
         # Участник заявки (владелец, получатель, cc, approver)
         if self._is_participant(user, obj):
+            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: участник заявки")
             return True
+            
         if self._is_head_for_request(user, obj):
+            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: head отдела")
             return True
+            
         code = self._required_perm(request)
-        return bool(code and user.has_perm(code))
+        has_perm = bool(code and user.has_perm(code))
+        logger.info(
+            f"[CommentsPermission] Проверка модельных прав: "
+            f"perm={code}, has_perm={has_perm}"
+        )
+        
+        if not has_perm:
+            logger.warning(
+                f"[CommentsPermission] ❌ Доступ запрещен: "
+                f"user={user.id}, request_id={getattr(obj, 'id', '?')}"
+            )
+        
+        return has_perm
 
 
 class NotFinalOrStaff(BasePermission):
