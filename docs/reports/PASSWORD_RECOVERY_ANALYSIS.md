@@ -1,7 +1,7 @@
 # 🔍 Анализ: Восстановление пароля не отправляет email
 
-**Дата:** 5 января 2026  
-**Статус:** ⚠️ Email не отправляется при восстановлении пароля  
+**Дата:** 5 января 2026
+**Статус:** ⚠️ Email не отправляется при восстановлении пароля
 **Тип:** Логика фильтрации пользователей в Django PasswordResetForm
 
 ## 📋 Проблема
@@ -43,7 +43,7 @@ class PasswordResetView(DjangoPasswordResetView):
 ```python
 def get_users(self, email):
     """Given an email, return matching user(s) who should receive a reset.
-    
+
     This allows subclasses to more easily customize the default policies
     that prevent inactive users and users with unusable passwords from
     resetting their password.
@@ -196,21 +196,21 @@ from django.contrib.auth import get_user_model
 
 class CustomPasswordResetForm(DjangoPasswordResetForm):
     """Форма сброса пароля, разрешающая сброс для неактивных пользователей"""
-    
+
     def get_users(self, email):
         """Находит пользователей по email, включая неактивных.
-        
+
         Отличие от Django: не фильтрует по is_active=True,
         чтобы пользователи могли восстановить пароль до верификации email.
         """
         UserModel = get_user_model()
         email_field_name = UserModel.get_email_field_name()
-        
+
         # Убираем фильтр is_active=True
         users = UserModel._default_manager.filter(
             **{f"{email_field_name}__iexact": email}
         )
-        
+
         return (
             u for u in users
             if u.has_usable_password()
@@ -259,10 +259,10 @@ emp = Employee.objects.create(
 ```python
 class EmailVerificationRequiredMiddleware:
     """Блокирует доступ пользователям без верификации email"""
-    
+
     def __init__(self, get_response):
         self.get_response = get_response
-    
+
     def __call__(self, request):
         if request.user.is_authenticated:
             if not request.user.email_verified:
@@ -274,7 +274,7 @@ class EmailVerificationRequiredMiddleware:
                 ]
                 if not any(request.path.startswith(p) for p in allowed):
                     return redirect('auth_front:verify_email')
-        
+
         return self.get_response(request)
 ```
 
@@ -370,5 +370,5 @@ send_mail(
 
 ---
 
-**Приоритет:** 🔴 ВЫСОКИЙ - пользователи не могут восстановить доступ  
+**Приоритет:** 🔴 ВЫСОКИЙ - пользователи не могут восстановить доступ
 **Трудозатраты:** ⚡ 10-15 минут на реализацию Варианта 1

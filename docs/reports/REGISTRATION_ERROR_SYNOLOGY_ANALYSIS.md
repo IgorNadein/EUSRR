@@ -1,7 +1,7 @@
 # 🔴 КРИТИЧЕСКАЯ ОШИБКА: Регистрация падает с IntegrityError
 
-**Дата:** 5 января 2026  
-**Статус:** 🚨 БЛОКИРУЕТ регистрацию пользователей  
+**Дата:** 5 января 2026
+**Статус:** 🚨 БЛОКИРУЕТ регистрацию пользователей
 **Тип:** Синхронизация БД и модели - несоответствие
 
 ## 📋 Проблема
@@ -35,7 +35,7 @@ PRAGMA table_info(employees_employee);
 
 **Пояснение колонок (слева направо):**
 - `0` = порядковый номер
-- `'synology_username'` = название колонки  
+- `'synology_username'` = название колонки
 - `'varchar(100)'` = тип данных
 - `1` = NOT NULL constraint (1 = есть constraint, 0 = нет)
 - `None` = default значение
@@ -46,7 +46,7 @@ PRAGMA table_info(employees_employee);
 ```python
 class Employee(AbstractUser):
     # ... другие поля ...
-    
+
     # ❌ SYNOLOGY ПОЛЕЙ НЕТ!
     # synology_user_id - не определено
     # synology_username - не определено
@@ -138,10 +138,10 @@ class Migration(migrations.Migration):
 ```python
 class Employee(AbstractUser):
     # ... другие поля ...
-    
+
     synology_user_id = models.IntegerField(null=True, blank=True)
     synology_username = models.CharField(
-        max_length=100, 
+        max_length=100,
         blank=True,
         null=True,  # ← Чтобы Django мог вставлять NULL
         verbose_name="Synology Username"
@@ -149,7 +149,7 @@ class Employee(AbstractUser):
     synology_session_expires = models.DateTimeField(null=True, blank=True)
     synology_session_id = models.CharField(
         max_length=255,
-        blank=True, 
+        blank=True,
         null=True,  # ← Чтобы Django мог вставлять NULL
         verbose_name="Synology Session ID"
     )
@@ -183,7 +183,7 @@ rm backend/db.sqlite3
 
 Эта ошибка влияет на:
 - ❌ **Регистрация пользователей** (новые пользователи не могут зарегистрироваться)
-- ❌ **API endpoint** `/api/v1/auth/register/` 
+- ❌ **API endpoint** `/api/v1/auth/register/`
 - ❌ **Фронт-end регистрация** (через views_auth.py)
 - ✅ Всё остальное (логин, профиль) работает нормально
 
@@ -202,5 +202,5 @@ pytest tests/api/auth/test_auth_and_registration.py::test_register_success_sends
 
 ---
 
-**Приоритет:** 🔴 КРИТИЧЕСКИЙ - блокирует основной функционал  
+**Приоритет:** 🔴 КРИТИЧЕСКИЙ - блокирует основной функционал
 **Трудозатраты:** ⚡ 5-10 минут на реализацию + 2-3 минуты на тестирование

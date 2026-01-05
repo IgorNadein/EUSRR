@@ -1,6 +1,6 @@
 # 🔍 Подробный отчет: Проблемы с тестами аутентификации
 
-**Дата:** 5 января 2026  
+**Дата:** 5 января 2026
 **Файл:** `tests/api/auth/test_auth_and_registration.py`
 
 ## 📊 Статистика
@@ -19,12 +19,12 @@
 #### ✅ Модель Employee (models.py:162-165):
 ```python
 gender = models.PositiveSmallIntegerField(
-    "Пол", choices=GENDER_CHOICES, 
+    "Пол", choices=GENDER_CHOICES,
     default=0,      # ✅ Есть дефолт
     blank=True      # ✅ НЕОБЯЗАТЕЛЬНОЕ
 )
 avatar = models.ImageField(
-    "Фото", upload_to="users/avatars", 
+    "Фото", upload_to="users/avatars",
     blank=True,     # ✅ НЕОБЯЗАТЕЛЬНОЕ
     null=True       # ✅ НЕОБЯЗАТЕЛЬНОЕ
 )
@@ -34,9 +34,9 @@ avatar = models.ImageField(
 ```python
 class RegisterSerializer(serializers.Serializer):
     # ... другие поля ...
-    
+
     avatar = Base64ImageField(required=True)  # ❌ ОБЯЗАТЕЛЬНОЕ (противоречие!)
-    
+
     gender = serializers.ChoiceField(
         required=True,  # ❌ ОБЯЗАТЕЛЬНОЕ (противоречие!)
         choices=((1, "Мужской"), (2, "Женский")),
@@ -57,9 +57,9 @@ class RegisterSerializer(serializers.Serializer):
 ```python
 class RegisterSerializer(serializers.Serializer):
     # ... другие поля ...
-    
+
     avatar = Base64ImageField(required=True)  # ❌ ОБЯЗАТЕЛЬНОЕ
-    
+
     gender = serializers.ChoiceField(
         required=True,  # ❌ ОБЯЗАТЕЛЬНОЕ
         choices=((1, "Мужской"), (2, "Женский")),
@@ -105,15 +105,15 @@ def register_payload(**overrides):
 ## 📋 Детальный список проваленных тестов
 
 ### 1. ❌ test_register_success_sends_email_and_user_inactive
-**Цель:** Проверка успешной регистрации с отправкой email  
+**Цель:** Проверка успешной регистрации с отправкой email
 **Проблема:** Не передает `avatar` и `gender`
 
 ### 2. ❌ test_register_duplicate_email_phone
-**Цель:** Проверка дубликатов email/phone  
+**Цель:** Проверка дубликатов email/phone
 **Проблема:** Не может создать первого пользователя (нет `avatar`, `gender`)
 
 ### 3. ❌ test_register_accepts_optional_fields
-**Цель:** Проверка опциональных полей (patronymic, whatsapp)  
+**Цель:** Проверка опциональных полей (patronymic, whatsapp)
 **Проблема:** Передает `gender=1`, но **не передает `avatar`**
 
 ```python
@@ -175,7 +175,7 @@ gender = serializers.ChoiceField(
 )
 ```
 
-**Плюсы:** Упрощает регистрацию  
+**Плюсы:** Упрощает регистрацию
 **Минусы:** Может нарушить бизнес-логику
 
 #### Вариант B: Исправить тесты (добавить поля)
@@ -195,7 +195,7 @@ def register_payload(**overrides):
     return data
 ```
 
-**Плюсы:** Соответствует текущей бизнес-логике  
+**Плюсы:** Соответствует текущей бизнес-логике
 **Минусы:** Нужно обновить все тесты
 
 ## 🎯 Рекомендации
@@ -209,14 +209,14 @@ def register_payload(**overrides):
 ```python
 class RegisterSerializer(serializers.Serializer):
     # ... другие поля ...
-    
+
     # Было:
     # avatar = Base64ImageField(required=True)
     # gender = serializers.ChoiceField(required=True, ...)
-    
+
     # Стало:
     avatar = Base64ImageField(required=False, allow_null=True)  # ✅ Соответствует модели
-    
+
     gender = serializers.ChoiceField(
         required=False,  # ✅ Соответствует модели
         choices=((1, "Мужской"), (2, "Женский"), (0, "Не указано")),
@@ -246,7 +246,7 @@ def register_payload(**overrides):
         "data:image/png;base64,"
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     )
-    
+
     data = {
         "first_name": "Иван",
         "last_name": "Иванов",

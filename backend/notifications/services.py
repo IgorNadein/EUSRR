@@ -54,8 +54,11 @@ class NotificationService:
             Созданное уведомление или None если тип не найден
         """
         logger.info(
-            f"[create_notification] Starting for recipient={recipient.id} "
-            f"type={notification_type_code} send_immediately={send_immediately}"
+            f"[NotificationService.create_notification] НАЧАЛО: "
+            f"recipient={recipient.id} ({recipient.email}), "
+            f"type={notification_type_code}, "
+            f"send_immediately={send_immediately}, "
+            f"title='{title[:50]}...'"
         )
         
         try:
@@ -63,9 +66,14 @@ class NotificationService:
                 code=notification_type_code,
                 is_active=True
             )
+            logger.info(
+                f"[NotificationService.create_notification] Тип уведомления найден: "
+                f"{notification_type.name} (category={notification_type.category.code})"
+            )
         except NotificationType.DoesNotExist:
-            logger.warning(
-                f"[create_notification] Type {notification_type_code} not found"
+            logger.error(
+                f"[NotificationService.create_notification] ❌ ОШИБКА: "
+                f"Тип уведомления '{notification_type_code}' не найден или неактивен!"
             )
             return None
 
@@ -73,10 +81,19 @@ class NotificationService:
         settings = NotificationService.get_user_settings(
             recipient, notification_type
         )
+        
+        logger.info(
+            f"[NotificationService.create_notification] Настройки пользователя: "
+            f"enabled={settings.is_enabled}, "
+            f"web={settings.send_web}, "
+            f"email={settings.send_email}, "
+            f"telegram={settings.send_telegram}"
+        )
 
         if not settings.is_enabled:
-            logger.info(
-                f"[create_notification] Skipped - disabled for user {recipient.id}"
+            logger.warning(
+                f"[NotificationService.create_notification] ⏭️ ПРОПУСК: "
+                f"Уведомления отключены для user={recipient.id}"
             )
             return None
 
@@ -95,10 +112,23 @@ class NotificationService:
             action_text=action_text,
             metadata=metadata or {},
         )
+        
+        logger.info(
+            f"[NotificationService.create_notification] ✅ Уведомление создано: "
+            f"id={notification.id}, "
+            f"action_url={action_url}"
+        )
 
         # Отправить если нужно
         if send_immediately:
+            logger.info(
+                f"[NotificationService.create_notification] ➡️ Немедленная отправка notification_id={notification.id}"
+            )
             NotificationService.send_notification(notification, settings)
+        else:
+            logger.info(
+                f"[NotificationService.create_notification] ⏸️ Отложенная отправка notification_id={notification.id}"
+            )
 
         return notification
 
@@ -109,7 +139,13 @@ class NotificationService:
     ):
         """Отправить уведомление по всем каналам"""
         logger.info(
-            f"[send_notification] Starting for notification={notification.id}"
+            f"\n{'='*80}\n"
+            f"[NotificationService.send_notification] 📤 НАЧАЛО ОТПРАВКИ\n"
+            f"  notification_id={notification.id}\n"
+            f"  recipient={notification.recipient.id} ({notification.recipient.email})\n"
+            f"  type={notification.notification_type.code}\n"
+            f"  title='{notification.title}'\n"
+            f"{'='*80}"
         )
         
         if settings is None:
@@ -119,20 +155,44 @@ class NotificationService:
             )
 
         logger.info(
-            f"[send_notification] Channels: web={settings.send_web} "
-            f"email={settings.send_email} telegram={settings.send_telegram}"
+            f"[NotificationService.send_notification] Активные каналы: "
+            f"{'✅' if settings.send_web else '❌'} Web, "
+            f"{'✅' if settings.send_email else '❌'} Email, "
+            f"{'✅' if settings.send_telegram else '❌'} Telegram"
         )
 
         # Отправить на веб (WebSocket)
         if settings.send_web:
-            NotificationService.send_web_notification(notification)
-            notification.sent_web = True
+            logger.info(
+                f"[NotificationService.send_notification] 🌐 Отправка через WebSocket..."
+            )
+            try:
+                NotificationService.send_web_notification(notification)
+                notification.sent_web = True
+                logger.info(
+                    f"[NotificationService.send_notification] ✅ WebSocket: успешно отправлено"
+                )
+            except Exception as e:
+                logger.error(
+                    f"[NotificationService.send_notification] ❌ WebSocket: ошибка - {e}",
+                    exc_info=True
+                )
+        else:
+            logger.info(
+                f"[NotificationService.send_notification] ⏭️ WebSocket: канал отключен"
+            )
 
         # Отправить на email
         if settings.send_email:
+            logger.info(
+                f"[NotificationService.send_notification] 📧 Отправка Email..."
+            )
             try:
                 recipient_email = notification.recipient.email
                 if recipient_email:
+                    logger.info(
+                        f"[NotificationService.send_notification] Email адрес: {recipient_email}"
+                    )
                     success = EmailNotificationSender.send_notification_email(
                         notification=notification,
                         recipient_email=recipient_email,
@@ -140,25 +200,35 @@ class NotificationService:
                     notification.sent_email = success
                     if success:
                         logger.info(
-                            f"Email отправлен для уведомления {notification.id}"
+                            f"[NotificationService.send_notification] ✅ Email: успешно отправлено на {recipient_email}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[NotificationService.send_notification] ⚠️ Email: отправка вернула False"
                         )
                 else:
                     notification.sent_email = False
                     logger.warning(
-                        f"У пользователя {notification.recipient} нет email"
+                        f"[NotificationService.send_notification] ⚠️ Email: у пользователя {notification.recipient} нет email адреса"
                     )
             except Exception as e:
                 notification.sent_email = False
                 logger.error(
-                    f"Ошибка отправки email для {notification.id}: {e}",
+                    f"[NotificationService.send_notification] ❌ Email: ошибка отправки - {e}",
                     exc_info=True
                 )
+        else:
+            logger.info(
+                f"[NotificationService.send_notification] ⏭️ Email: канал отключен"
+            )
 
         # Отправить в Telegram
         if settings.send_telegram:
             logger.info(
-                f"[Telegram] Attempting to send for notification {notification.id} "
-                f"to user {notification.recipient.id}"
+                f"[NotificationService.send_notification] 💬 Отправка в Telegram..."
+            )
+            logger.info(
+                f"[NotificationService.send_notification] Получатель: user_id={notification.recipient.id}"
             )
             try:
                 # Проверяем наличие Telegram Chat ID в профиле
@@ -169,8 +239,7 @@ class NotificationService:
                     telegram_chat_id = telegram_chat_id.strip()
                 
                 logger.info(
-                    f"[Telegram] Chat ID for user {notification.recipient.id}: "
-                    f"'{telegram_chat_id}'"
+                    f"[NotificationService.send_notification] Telegram Chat ID: '{telegram_chat_id}'"
                 )
                 
                 if telegram_chat_id:
@@ -183,8 +252,7 @@ class NotificationService:
                     )
                     
                     logger.info(
-                        f"[Telegram] Sending via TelegramNotificationSender "
-                        f"to chat_id={telegram_chat_id}"
+                        f"[NotificationService.send_notification] ➡️ Вызов TelegramNotificationSender.send_notification"
                     )
                     
                     # Отправляем через Bot API по chat_id
@@ -198,27 +266,28 @@ class NotificationService:
                     
                     if success:
                         logger.info(
-                            f"[Telegram] Successfully sent notification "
-                            f"{notification.id}"
+                            f"[NotificationService.send_notification] ✅ Telegram: успешно отправлено (chat_id={telegram_chat_id})"
                         )
                     else:
                         logger.warning(
-                            f"[Telegram] Failed to send notification "
-                            f"{notification.id}"
+                            f"[NotificationService.send_notification] ⚠️ Telegram: отправка вернула False"
                         )
                 else:
                     notification.sent_telegram = False
-                    logger.debug(
-                        f"[Telegram] Chat ID empty for user "
-                        f"{notification.recipient.id}"
+                    logger.warning(
+                        f"[NotificationService.send_notification] ⚠️ Telegram: у пользователя нет Chat ID"
                     )
                     
             except Exception as e:
                 notification.sent_telegram = False
                 logger.error(
-                    f"[Telegram] Error sending notification {notification.id}: {e}",
+                    f"[NotificationService.send_notification] ❌ Telegram: ошибка - {e}",
                     exc_info=True
                 )
+        else:
+            logger.info(
+                f"[NotificationService.send_notification] ⏭️ Telegram: канал отключен"
+            )
 
         # Обновить время отправки
         notification.sent_at = timezone.now()
@@ -230,10 +299,27 @@ class NotificationService:
             'sent_wechat',
             'sent_at'
         ])
+        
+        logger.info(
+            f"\n{'='*80}\n"
+            f"[NotificationService.send_notification] 🎯 ЗАВЕРШЕНО\n"
+            f"  notification_id={notification.id}\n"
+            f"  Результаты: "
+            f"Web={'\u2705' if notification.sent_web else '\u274c'}, "
+            f"Email={'\u2705' if notification.sent_email else '\u274c'}, "
+            f"Telegram={'\u2705' if notification.sent_telegram else '\u274c'}\n"
+            f"{'='*80}"
+        )
 
     @staticmethod
     def send_web_notification(notification: Notification):
         """Отправить уведомление через WebSocket"""
+        logger.info(
+            f"[NotificationService.send_web_notification] НАЧАЛО: "
+            f"notification_id={notification.id}, "
+            f"recipient={notification.recipient.id}"
+        )
+        
         channel_layer = get_channel_layer()
         notification_data = {
             'id': notification.id,
@@ -248,13 +334,22 @@ class NotificationService:
             'action_text': notification.action_text,
             'created_at': notification.created_at.isoformat(),
         }
+        
+        group_name = f'notifications_{notification.recipient.id}'
+        logger.info(
+            f"[NotificationService.send_web_notification] Отправка в группу: {group_name}"
+        )
 
         async_to_sync(channel_layer.group_send)(
-            f'notifications_{notification.recipient.id}',
+            group_name,
             {
                 'type': 'notification_new',
                 'notification': notification_data
             }
+        )
+        
+        logger.info(
+            f"[NotificationService.send_web_notification] ✅ Уведомление отправлено в WebSocket"
         )
 
         # Обновить счетчик
@@ -263,13 +358,21 @@ class NotificationService:
             is_read=False,
             is_archived=False
         ).count()
+        
+        logger.info(
+            f"[NotificationService.send_web_notification] Обновление счетчика: {unread_count} непрочитанных"
+        )
 
         async_to_sync(channel_layer.group_send)(
-            f'notifications_{notification.recipient.id}',
+            group_name,
             {
                 'type': 'notification_count_update',
                 'count': unread_count
             }
+        )
+        
+        logger.info(
+            f"[NotificationService.send_web_notification] ✅ Счетчик обновлен"
         )
 
     @staticmethod
