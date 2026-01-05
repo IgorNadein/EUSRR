@@ -480,9 +480,7 @@ class NotificationService:
                 )
                 
                 success_count += 1
-                subscription.error_count = 0
-                subscription.last_error = None
-                subscription.save(update_fields=['error_count', 'last_error', 'updated_at'])
+                subscription.reset_errors()
                 
             except WebPushException as e:
                 logger.warning(

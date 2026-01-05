@@ -476,7 +476,7 @@ def subscribe_push(request):
                 'device_name': device_name,
                 'is_active': True,
                 'error_count': 0,
-                'last_error': None,
+                'last_error': '',
             }
         )
         
