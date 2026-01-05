@@ -320,7 +320,7 @@ class VerifyEmailForm(forms.Form):
     code = forms.CharField(max_length=32, label="Код из письма")
 
 class CustomPasswordResetForm(PasswordResetForm):
-    """Кастомная форма восстановления пароля с логированием"""
+    """Кастомная форма восстановления пароля с логирование"""
     
     def save(self, *args, **kwargs):
         """Переопределяем save для логирования процесса отправки"""
@@ -333,8 +333,6 @@ class CustomPasswordResetForm(PasswordResetForm):
             f"{'='*80}"
         )
         
-        # Используем встроенный метод get_users - это не статический метод, 
-        # а внутренний механизм Django для получения пользователей
         logger.info(
             f"[CustomPasswordResetForm.save] ➡️ Вызов super().save() для отправки emails..."
         )
@@ -348,6 +346,41 @@ class CustomPasswordResetForm(PasswordResetForm):
         except Exception as e:
             logger.error(
                 f"[CustomPasswordResetForm.save] ❌ Ошибка в super().save(): {type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
+    
+    def send_mail(self, subject_template_name, email_template_name, context, 
+                  from_email, to_email, html_email_template_name=None, **kwargs):
+        """Переопределяем send_mail для логирования отправки каждого письма"""
+        logger.info(
+            f"\n{'='*80}\n"
+            f"[CustomPasswordResetForm.send_mail] 📧 ОТПРАВКА EMAIL\n"
+            f"  To: {to_email}\n"
+            f"  Subject template: {subject_template_name}\n"
+            f"  Email template: {email_template_name}\n"
+            f"  HTML template: {html_email_template_name}\n"
+            f"{'='*80}"
+        )
+        
+        try:
+            # Вызываем родительский метод
+            result = super().send_mail(
+                subject_template_name=subject_template_name,
+                email_template_name=email_template_name,
+                context=context,
+                from_email=from_email,
+                to_email=to_email,
+                html_email_template_name=html_email_template_name,
+                **kwargs
+            )
+            logger.info(
+                f"[CustomPasswordResetForm.send_mail] ✅ EMAIL УСПЕШНО ОТПРАВЛЕН на {to_email}"
+            )
+            return result
+        except Exception as e:
+            logger.error(
+                f"[CustomPasswordResetForm.send_mail] ❌ ОШИБКА ОТПРАВКИ EMAIL: {type(e).__name__}: {e}",
                 exc_info=True
             )
             raise
