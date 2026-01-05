@@ -466,6 +466,14 @@ class WebPushSubscription(models.Model):
     )
     
     # Информация о браузере/устройстве
+    device_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        verbose_name='Название устройства',
+        help_text='iOS Device, Windows (Chrome), macOS (Safari), и т.д.'
+    )
+    
     user_agent = models.TextField(
         blank=True,
         verbose_name='User Agent',
