@@ -92,8 +92,8 @@ class PushNotificationsManager {
      * @private
      */
     async _registerServiceWorker() {
-        // Service Worker должен быть в корне для максимального scope
-        this.swRegistration = await navigator.serviceWorker.register('/static/sw.js', {
+        // Service Worker находится в корне для правильного scope
+        this.swRegistration = await navigator.serviceWorker.register('/sw.js', {
             scope: '/'
         });
         

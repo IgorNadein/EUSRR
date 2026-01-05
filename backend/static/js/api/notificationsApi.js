@@ -63,7 +63,7 @@ export async function getNotifications(params = {}, ttl = 10000) {
   return dataManager.fetch(
     key,
     async () => {
-      const url = new URL('/api/notifications/', window.location.origin);
+      const url = new URL('/api/v1/notifications/', window.location.origin);
       Object.keys(defaultParams).forEach(k => {
         if (defaultParams[k] != null) {
           url.searchParams.set(k, String(defaultParams[k]));
@@ -113,7 +113,7 @@ export async function getUnreadCount(ttl = 5000) {
  * @returns {Promise<void>}
  */
 export async function markAsRead(notificationId) {
-  const url = `/api/notifications/${notificationId}/mark-read/`;
+  const url = `/api/v1/notifications/${notificationId}/read/`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -137,7 +137,7 @@ export async function markAsRead(notificationId) {
  * @returns {Promise<void>}
  */
 export async function markAllAsRead() {
-  const url = '/api/notifications/mark-all-read/';
+  const url = '/api/v1/notifications/read-all/';
   const response = await fetch(url, {
     method: 'POST',
     headers: authHeaders()
