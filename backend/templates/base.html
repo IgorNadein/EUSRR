@@ -137,6 +137,34 @@
 
   <!-- Notification Manager -->
   <script type="module" src="{% static 'js/notifications/notification-manager.js' %}"></script>
+  
+  <!-- Web Push Notifications -->
+  <script type="module">
+    import { pushNotifications } from "{% static 'js/notifications/push-notifications.js' %}";
+    
+    // Инициализация Web Push после загрузки страницы
+    document.addEventListener('DOMContentLoaded', async () => {
+      const initialized = await pushNotifications.init();
+      
+      if (initialized) {
+        console.log('[WebPush] Инициализирован, подписка:', pushNotifications.isSubscribed);
+        
+        // Если разрешение еще не спрошено и пользователь не подписан - 
+        // можно показать промо для подписки (опционально)
+        if (pushNotifications.getPermissionStatus() === 'default' && !pushNotifications.isSubscribed) {
+          // Автоматически не подписываем, ждем явного действия пользователя
+          // Можно добавить кнопку в UI для подписки
+          console.log('[WebPush] Пользователь еще не подписан на push-уведомления');
+        }
+        
+        // Если разрешение дано, но нет подписки - подписываем
+        if (pushNotifications.getPermissionStatus() === 'granted' && !pushNotifications.isSubscribed) {
+          console.log('[WebPush] Разрешение есть, подписываемся...');
+          await pushNotifications.subscribe();
+        }
+      }
+    });
+  </script>
   {% endif %}
 
   {% block extra_js %}{% endblock %}

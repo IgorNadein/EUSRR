@@ -49,4 +49,25 @@ urlpatterns = [
         api_views.unlink_telegram,
         name='telegram_unlink'
     ),
+    # Web Push integration
+    path(
+        'notifications/push/vapid-key/',
+        api_views.get_vapid_public_key,
+        name='push_vapid_key'
+    ),
+    path(
+        'notifications/push/subscribe/',
+        api_views.subscribe_push,
+        name='push_subscribe'
+    ),
+    path(
+        'notifications/push/unsubscribe/',
+        api_views.unsubscribe_push,
+        name='push_unsubscribe'
+    ),
+    path(
+        'notifications/push/subscriptions/',
+        api_views.get_push_subscriptions,
+        name='push_subscriptions'
+    ),
 ]

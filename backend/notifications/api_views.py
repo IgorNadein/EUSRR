@@ -410,3 +410,166 @@ def unlink_telegram(request):
             'message': 'Telegram аккаунт не привязан'
         }, status=status.HTTP_404_NOT_FOUND)
 
+
+# ============================================
+# Web Push API (для браузерных уведомлений)
+# ============================================
+
+from django.conf import settings
+from .models import WebPushSubscription
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_vapid_public_key(request):
+    """
+    Получить публичный VAPID ключ для подписки на push-уведомления.
+    Этот ключ нужен браузеру для создания подписки.
+    """
+    return Response({
+        'vapid_public_key': settings.VAPID_PUBLIC_KEY
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def subscribe_push(request):
+    """
+    Подписаться на Web Push уведомления.
+    
+    Ожидаемые данные:
+    {
+        "endpoint": "https://fcm.googleapis.com/...",
+        "keys": {
+            "p256dh": "...",
+            "auth": "..."
+        },
+        "user_agent": "...",  // опционально
+        "device_name": "..."  // опционально
+    }
+    """
+    try:
+        endpoint = request.data.get('endpoint')
+        keys = request.data.get('keys', {})
+        p256dh_key = keys.get('p256dh')
+        auth_key = keys.get('auth')
+        user_agent = request.data.get('user_agent', '')
+        device_name = request.data.get('device_name', '')
+        
+        if not endpoint or not p256dh_key or not auth_key:
+            return Response({
+                'status': 'error',
+                'message': 'Отсутствуют обязательные поля: endpoint, keys.p256dh, keys.auth'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Обновляем или создаем подписку
+        subscription, created = WebPushSubscription.objects.update_or_create(
+            user=request.user,
+            endpoint=endpoint,
+            defaults={
+                'p256dh_key': p256dh_key,
+                'auth_key': auth_key,
+                'user_agent': user_agent,
+                'device_name': device_name,
+                'is_active': True,
+                'error_count': 0,
+                'last_error': None,
+            }
+        )
+        
+        logger.info(
+            f"[WebPush] {'Created' if created else 'Updated'} subscription for user {request.user.id} "
+            f"(endpoint: {endpoint[:50]}...)"
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Подписка на push-уведомления активирована',
+            'created': created
+        })
+        
+    except Exception as e:
+        logger.exception(f"[WebPush] Error subscribing user {request.user.id}: {e}")
+        return Response({
+            'status': 'error',
+            'message': 'Ошибка при создании подписки'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def unsubscribe_push(request):
+    """
+    Отписаться от Web Push уведомлений.
+    
+    Ожидаемые данные:
+    {
+        "endpoint": "https://fcm.googleapis.com/..."
+    }
+    
+    Если endpoint не указан - отписывает от всех подписок пользователя.
+    """
+    try:
+        endpoint = request.data.get('endpoint')
+        
+        if endpoint:
+            # Удаляем конкретную подписку
+            deleted, _ = WebPushSubscription.objects.filter(
+                user=request.user,
+                endpoint=endpoint
+            ).delete()
+            
+            if deleted:
+                logger.info(f"[WebPush] Deleted subscription for user {request.user.id} (endpoint: {endpoint[:50]}...)")
+                return Response({
+                    'status': 'success',
+                    'message': 'Подписка удалена'
+                })
+            else:
+                return Response({
+                    'status': 'error',
+                    'message': 'Подписка не найдена'
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # Удаляем все подписки пользователя
+            deleted, _ = WebPushSubscription.objects.filter(user=request.user).delete()
+            logger.info(f"[WebPush] Deleted all ({deleted}) subscriptions for user {request.user.id}")
+            return Response({
+                'status': 'success',
+                'message': f'Удалено подписок: {deleted}'
+            })
+            
+    except Exception as e:
+        logger.exception(f"[WebPush] Error unsubscribing user {request.user.id}: {e}")
+        return Response({
+            'status': 'error',
+            'message': 'Ошибка при удалении подписки'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_push_subscriptions(request):
+    """
+    Получить список активных push-подписок пользователя.
+    """
+    subscriptions = WebPushSubscription.objects.filter(
+        user=request.user,
+        is_active=True
+    ).order_by('-updated_at')
+    
+    return Response({
+        'subscriptions': [
+            {
+                'id': sub.id,
+                'device_name': sub.device_name or 'Неизвестное устройство',
+                'user_agent': sub.user_agent[:100] if sub.user_agent else '',
+                'created_at': sub.created_at.isoformat(),
+                'updated_at': sub.updated_at.isoformat(),
+            }
+            for sub in subscriptions
+        ]
+    })

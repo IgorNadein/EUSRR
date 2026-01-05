@@ -447,3 +447,16 @@ BRAND_LOGO = "img/logo.png"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "eusrr_bot")
+
+# Web Push Notifications (VAPID)
+# Ключи для авторизации push-уведомлений
+# Для генерации новых ключей: python -c "from py_vapid import Vapid; v = Vapid(); v.generate_keys(); v.save_key('private_key.pem'); v.save_public_key('public_key.pem')"
+VAPID_PUBLIC_KEY = os.getenv(
+    "VAPID_PUBLIC_KEY",
+    "BG3WGJZH3bCPtZ1yRjXywfGsHoRT4MZ7npk25twmBireG_Di5-1FBn1ChblWCDicienEr07y4k7R7_A5IjbfjRA="
+)
+VAPID_PRIVATE_KEY = os.getenv(
+    "VAPID_PRIVATE_KEY",
+    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgIYJXs5gLYLtLpWO0cr6prv4jHJT28_hvG1BFyjcIMZKhRANCAARt1hiWR92wj7WdckY18sHxrB6EU-DGe56ZNubcJgYq3hvw4uftRQZ9QoW5Vgg4nInpxK9O8uJO0e_wOSI2340Q"
+)
+VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "admin@example.com")
