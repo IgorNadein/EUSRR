@@ -17,7 +17,7 @@ class NotificationSettingsManager {
         if (!container) return;
         
         try {
-            const response = await fetch('/api/notifications/settings/', {
+            const response = await fetch('/api/v1/notifications/settings/', {
                 credentials: 'same-origin',
                 headers: {
                     'Accept': 'application/json',
@@ -211,7 +211,7 @@ class NotificationSettingsManager {
     
     async updateSetting(category, field, value) {
         try {
-            const response = await fetch('/api/notifications/settings/category/update/', {
+            const response = await fetch('/api/v1/notifications/settings/category/update/', {
                 method: 'PUT',
                 credentials: 'same-origin',
                 headers: {

@@ -35,32 +35,36 @@ def create_request_notifications(sender, instance, created, **kwargs):
     1. Новое заявление - помечаем для отправки уведомлений после установки recipients
     2. Изменение статуса - уведомление автору
     """
-    request_obj = instance
+    try:
+        request_obj = instance
 
-    # Логирование для отладки
-    print(
-        f"🔔 [SIGNAL] create_request_notifications: created={created}, status={request_obj.status}, id={request_obj.id}"
-    )
-
-    if created and request_obj.status != "draft":
-        # Помечаем заявление как ожидающее отправки уведомлений
-        # Уведомления будут отправлены после установки recipients через m2m_changed
+        # Логирование для отладки
         print(
-            f"📌 [SIGNAL] Помечаем заявление #{request_obj.id} для отправки уведомлений после установки recipients"
+            f"🔔 [SIGNAL] create_request_notifications: created={created}, status={request_obj.status}, id={request_obj.id}"
         )
-        _pending_new_requests.add(request_obj.id)
-    else:
-        print(f"⏭️  [SIGNAL] Пропускаем: created={created}, status={request_obj.status}")
 
-    if not created:
-        # Проверяем изменение статуса через сохраненный атрибут _old_status
-        if hasattr(request_obj, "_old_status"):
-            old_status = request_obj._old_status
-            new_status = request_obj.status
+        if created and request_obj.status != "draft":
+            # Помечаем заявление как ожидающее отправки уведомлений
+            # Уведомления будут отправлены после установки recipients через m2m_changed
+            print(
+                f"📌 [SIGNAL] Помечаем заявление #{request_obj.id} для отправки уведомлений после установки recipients"
+            )
+            _pending_new_requests.add(request_obj.id)
+        else:
+            print(f"⏭️  [SIGNAL] Пропускаем: created={created}, status={request_obj.status}")
 
-            if old_status != new_status:
-                # Передаем текущий request_obj с актуальным approver_id
-                notify_status_change(request_obj, old_status, new_status)
+        if not created:
+            # Проверяем изменение статуса через сохраненный атрибут _old_status
+            if hasattr(request_obj, "_old_status"):
+                old_status = request_obj._old_status
+                new_status = request_obj.status
+
+                if old_status != new_status:
+                    # Передаем текущий request_obj с актуальным approver_id
+                    notify_status_change(request_obj, old_status, new_status)
+    except Exception as e:
+        logger.exception(f"[SIGNAL ERROR] create_request_notifications: {e}")
+        print(f"❌ [SIGNAL ERROR] create_request_notifications: {e}")
 
 
 @receiver(pre_save, sender=Request)
@@ -83,13 +87,17 @@ def notify_on_recipients_changed(sender, instance, action, **kwargs):
 
     Срабатывает когда recipients устанавливаются через .set(), .add() и т.д.
     """
-    # Проверяем что это завершение операции установки recipients
-    if action == "post_add" and instance.id in _pending_new_requests:
-        print(
-            f"🎯 [M2M_SIGNAL] Recipients установлены для заявления #{instance.id}, отправляем уведомления"
-        )
-        _pending_new_requests.discard(instance.id)
-        notify_new_request(instance)
+    try:
+        # Проверяем что это завершение операции установки recipients
+        if action == "post_add" and instance.id in _pending_new_requests:
+            print(
+                f"🎯 [M2M_SIGNAL] Recipients установлены для заявления #{instance.id}, отправляем уведомления"
+            )
+            _pending_new_requests.discard(instance.id)
+            notify_new_request(instance)
+    except Exception as e:
+        logger.exception(f"[SIGNAL ERROR] notify_on_recipients_changed: {e}")
+        print(f"❌ [SIGNAL ERROR] notify_on_recipients_changed: {e}")
 
 
 @receiver(m2m_changed, sender=Request.cc_users.through)
@@ -100,15 +108,19 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
     Если recipients не были установлены, но установлены cc_users,
     также отправляем уведомления.
     """
-    # Если это завершение добавления cc_users И заявление все еще ожидает уведомлений
-    if action == "post_add" and instance.id in _pending_new_requests:
-        # Проверяем что recipients пусты (значит уведомления еще не отправлены)
-        if instance.recipients.count() == 0:
-            print(
-                f"🎯 [M2M_SIGNAL] CC users установлены для заявления #{instance.id} (без recipients), отправляем уведомления"
-            )
-            _pending_new_requests.discard(instance.id)
-            notify_new_request(instance)
+    try:
+        # Если это завершение добавления cc_users И заявление все еще ожидает уведомлений
+        if action == "post_add" and instance.id in _pending_new_requests:
+            # Проверяем что recipients пусты (значит уведомления еще не отправлены)
+            if instance.recipients.count() == 0:
+                print(
+                    f"🎯 [M2M_SIGNAL] CC users установлены для заявления #{instance.id} (без recipients), отправляем уведомления"
+                )
+                _pending_new_requests.discard(instance.id)
+                notify_new_request(instance)
+    except Exception as e:
+        logger.exception(f"[SIGNAL ERROR] notify_on_cc_users_changed: {e}")
+        print(f"❌ [SIGNAL ERROR] notify_on_cc_users_changed: {e}")
 
 
 @receiver(post_save, sender=RequestComment)

@@ -508,7 +508,7 @@ class NotificationManager {
   async markAsRead(notificationId) {
     try {
       const response = await fetch(
-        `/api/notifications/${notificationId}/read/`,
+        `/api/v1/notifications/${notificationId}/read/`,
         {
           method: "POST",
           headers: {
@@ -528,7 +528,7 @@ class NotificationManager {
 
   async markAllAsRead() {
     try {
-      const response = await fetch("/api/notifications/read-all/", {
+      const response = await fetch("/api/v1/notifications/read-all/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

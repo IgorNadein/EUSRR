@@ -101,7 +101,7 @@ class NotificationListManager {
                 params.append('search', this.currentFilter.search);
             }
             
-            const response = await fetch(`/api/notifications/?${params}`, {
+            const response = await fetch(`/api/v1/notifications/?${params}`, {
                 credentials: 'same-origin',
                 headers: {
                     'Accept': 'application/json',
@@ -318,7 +318,7 @@ class NotificationListManager {
     
     async markAsRead(id) {
         try {
-            const response = await fetch(`/api/notifications/${id}/read/`, {
+            const response = await fetch(`/api/v1/notifications/${id}/read/`, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
@@ -359,7 +359,7 @@ class NotificationListManager {
         }
         
         try {
-            const response = await fetch('/api/notifications/read-all/', {
+            const response = await fetch('/api/v1/notifications/read-all/', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
@@ -385,7 +385,7 @@ class NotificationListManager {
     
     async deleteNotification(id) {
         try {
-            const response = await fetch(`/api/notifications/${id}/`, {
+            const response = await fetch(`/api/v1/notifications/${id}/`, {
                 method: 'DELETE',
                 credentials: 'same-origin',
                 headers: {
