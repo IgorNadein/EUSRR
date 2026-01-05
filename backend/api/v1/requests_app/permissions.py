@@ -75,10 +75,10 @@ class CanViewRequest(BasePermission):
 
 
 class CommentsPermission(BasePermission):
-    """Комментарии: модельные права, staff, head.
+    """Комментарии: владелец, получатель, модельные права, staff, head.
 
-    GET/HEAD: view_requestcomment OR staff OR head (прямой/по сотруднику).
-    POST: add_requestcomment OR staff OR head (прямой/по сотруднику).
+    GET/HEAD: владелец, получатель, cc, view_requestcomment OR staff OR head.
+    POST: владелец, получатель, cc, add_requestcomment OR staff OR head.
     """
 
     message = "Недостаточно прав для доступа к комментариям."
@@ -106,9 +106,28 @@ class CommentsPermission(BasePermission):
             employeedepartment__is_active=True,
         ).exists()
 
+    def _is_participant(self, user, obj) -> bool:
+        """Проверяет, является ли пользователь участником заявки."""
+        # Владелец заявки
+        if getattr(obj, "employee_id", None) == user.id:
+            return True
+        # Получатель заявки
+        if hasattr(obj, "recipients") and obj.recipients.filter(id=user.id).exists():
+            return True
+        # В копии
+        if hasattr(obj, "cc_users") and obj.cc_users.filter(id=user.id).exists():
+            return True
+        # Согласующий
+        if getattr(obj, "approver_id", None) == user.id:
+            return True
+        return False
+
     def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
         user = request.user
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return True
+        # Участник заявки (владелец, получатель, cc, approver)
+        if self._is_participant(user, obj):
             return True
         if self._is_head_for_request(user, obj):
             return True
