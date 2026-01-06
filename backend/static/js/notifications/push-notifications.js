@@ -116,6 +116,7 @@ class PushNotificationsManager {
     
     /**
      * Проверяет текущий статус подписки
+     * ТОЛЬКО ЧТЕНИЕ - не модифицирует подписку
      * @private
      */
     async _checkSubscription() {
@@ -123,40 +124,9 @@ class PushNotificationsManager {
         this.isSubscribed = subscription !== null;
         
         if (this.isSubscribed) {
-            // Проверяем, нужна ли синхронизация с сервером
-            const lastEndpoint = localStorage.getItem('push_endpoint');
-            const currentEndpoint = subscription.endpoint;
-            
-            // Отправляем на сервер только если endpoint изменился или не сохранён
-            if (lastEndpoint !== currentEndpoint) {
-                try {
-                    await this._sendSubscriptionToServer(subscription);
-                    localStorage.setItem('push_endpoint', currentEndpoint);
-                } catch (error) {
-                    console.warn('[PushNotifications] Ошибка синхронизации, переподписываемся:', error);
-                    
-                    // Если ошибка - возможно VAPID ключи изменились
-                    // Удаляем старую подписку и создаём новую
-                    try {
-                        await subscription.unsubscribe();
-                        console.log('[PushNotifications] Старая подписка удалена');
-                        
-                        // Создаём новую подписку с новыми VAPID ключами
-                        const newSubscription = await this.swRegistration.pushManager.subscribe({
-                            userVisibleOnly: true,
-                            applicationServerKey: this._urlBase64ToUint8Array(this.vapidPublicKey)
-                        });
-                        
-                        await this._sendSubscriptionToServer(newSubscription);
-                        localStorage.setItem('push_endpoint', newSubscription.endpoint);
-                        console.log('[PushNotifications] ✅ Автоматически переподписались');
-                        this.isSubscribed = true;
-                    } catch (resubscribeError) {
-                        console.error('[PushNotifications] Ошибка переподписки:', resubscribeError);
-                        this.isSubscribed = false;
-                    }
-                }
-            }
+            console.log('[PushNotifications] ✅ Активная подписка найдена');
+        } else {
+            console.log('[PushNotifications] ℹ️ Подписка отсутствует');
         }
     }
     
@@ -219,28 +189,39 @@ class PushNotificationsManager {
             }
         }
         
+        // Проверяем, не подписаны ли уже
+        if (this.isSubscribed) {
+            console.log('[PushNotifications] ℹ️ Уже подписан, пропускаем');
+            return true;
+        }
+        
         try {
-            // Удаляем старую подписку, если есть
-            const existingSubscription = await this.swRegistration.pushManager.getSubscription();
-            if (existingSubscription) {
-                await existingSubscription.unsubscribe();
-            }
-            
-            // Создаем новую подписку
+            // Создаем push-подписку (браузер сам управляет существующими подписками)
             const subscription = await this.swRegistration.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: this._urlBase64ToUint8Array(this.vapidPublicKey)
             });
             
-            // Отправляем подписку на сервер
+            console.log('[PushNotifications] ✅ Push-подписка создана:', subscription.endpoint.substring(0, 50) + '...');
+            
+            // Отправляем подписку на сервер (update_or_create)
             await this._sendSubscriptionToServer(subscription);
             
             this.isSubscribed = true;
-            console.log('[PushNotifications] ✅ Подписка успешна');
             return true;
             
         } catch (error) {
-            console.error('[PushNotifications] Ошибка подписки:', error);
+            console.error('[PushNotifications] ❌ Ошибка подписки:', error.name, error.message);
+            
+            // Если AbortError - показываем инструкцию по recovery
+            if (error.name === 'AbortError') {
+                console.error(
+                    '[PushNotifications] ⚠️ AbortError обнаружен!\n' +
+                    'Это означает конфликт с предыдущей подпиской.\n' +
+                    'Решение: вызовите window.pushNotifications.resetEverything() и обновите страницу.'
+                );
+            }
+            
             return false;
         }
     }
@@ -367,6 +348,79 @@ class PushNotificationsManager {
         
         if (!response.ok) {
             console.warn('[PushNotifications] Не удалось удалить подписку с сервера');
+        }
+    }
+    
+    /**
+     * 🔄 ПОЛНАЯ ОЧИСТКА Service Worker и подписок
+     * 
+     * Используйте ТОЛЬКО для recovery после критических ошибок:
+     * - AbortError при подписке
+     * - Конфликт VAPID ключей
+     * - Некорректное состояние Service Worker
+     * 
+     * После вызова ОБЯЗАТЕЛЬНО обновите страницу: location.reload()
+     * 
+     * @returns {Promise<boolean>}
+     */
+    async resetEverything() {
+        try {
+            console.log('[PushNotifications] 🔄 ПОЛНАЯ ОЧИСТКА начата...');
+            console.log('[PushNotifications] Это действие удалит Service Worker и все подписки');
+            
+            // 1. Удаляем подписку из браузера
+            if (this.swRegistration) {
+                try {
+                    const subscription = await this.swRegistration.pushManager.getSubscription();
+                    if (subscription) {
+                        await subscription.unsubscribe();
+                        console.log('[PushNotifications] ✅ Подписка удалена из браузера');
+                    }
+                } catch (e) {
+                    console.warn('[PushNotifications] ⚠️ Не удалось удалить подписку:', e.message);
+                }
+                
+                // 2. Удаляем Service Worker
+                try {
+                    const unregistered = await this.swRegistration.unregister();
+                    if (unregistered) {
+                        console.log('[PushNotifications] ✅ Service Worker удален');
+                    }
+                } catch (e) {
+                    console.warn('[PushNotifications] ⚠️ Не удалось удалить Service Worker:', e.message);
+                }
+            }
+            
+            // 3. Очищаем localStorage
+            localStorage.removeItem('push_endpoint');
+            console.log('[PushNotifications] ✅ localStorage очищен');
+            
+            // 4. Ждем 2 секунды для обработки Push Service
+            console.log('[PushNotifications] ⏳ Ожидание 2 сек для обработки Push Service...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // 5. Перерегистрируем Service Worker
+            try {
+                await this._registerServiceWorker();
+                console.log('[PushNotifications] ✅ Service Worker перерегистрирован');
+            } catch (e) {
+                console.error('[PushNotifications] ❌ Не удалось перерегистрировать Service Worker:', e);
+                throw e;
+            }
+            
+            this.isSubscribed = false;
+            this.swRegistration = await navigator.serviceWorker.getRegistration('/');
+            
+            console.log('[PushNotifications] ✅ Полная очистка завершена!');
+            console.log('[PushNotifications] 📍 ОБНОВИТЕ СТРАНИЦУ (F5) и попробуйте подписаться снова');
+            
+            return true;
+            
+        } catch (error) {
+            console.error('[PushNotifications] ❌ Критическая ошибка при сбросе:', error);
+            console.error('[PushNotifications] Попробуйте очистить данные сайта вручную:');
+            console.error('[PushNotifications] DevTools → Application → Clear storage → Clear site data');
+            return false;
         }
     }
     
