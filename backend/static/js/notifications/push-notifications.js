@@ -134,26 +134,27 @@ class PushNotificationsManager {
                     localStorage.setItem('push_endpoint', currentEndpoint);
                 } catch (error) {
                     console.warn('[PushNotifications] Ошибка синхронизации, переподписываемся:', error);
-                
-                // Если ошибка - возможно VAPID ключи изменились
-                // Удаляем старую подписку и создаём новую
-                try {
-                    await subscription.unsubscribe();
-                    console.log('[PushNotifications] Старая подписка удалена');
                     
-                    // Создаём новую подписку с новыми VAPID ключами
-                    const newSubscription = await this.swRegistration.pushManager.subscribe({
-                        userVisibleOnly: true,
-                        applicationServerKey: this._urlBase64ToUint8Array(this.vapidPublicKey)
-                    });
-                    
-                    await this._sendSubscriptionToServer(newSubscription);
-                    localStorage.setItem('push_endpoint', newSubscription.endpoint);
-                    console.log('[PushNotifications] ✅ Автоматически переподписались');
-                    this.isSubscribed = true;
-                } catch (resubscribeError) {
-                    console.error('[PushNotifications] Ошибка переподписки:', resubscribeError);
-                    this.isSubscribed = false;
+                    // Если ошибка - возможно VAPID ключи изменились
+                    // Удаляем старую подписку и создаём новую
+                    try {
+                        await subscription.unsubscribe();
+                        console.log('[PushNotifications] Старая подписка удалена');
+                        
+                        // Создаём новую подписку с новыми VAPID ключами
+                        const newSubscription = await this.swRegistration.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: this._urlBase64ToUint8Array(this.vapidPublicKey)
+                        });
+                        
+                        await this._sendSubscriptionToServer(newSubscription);
+                        localStorage.setItem('push_endpoint', newSubscription.endpoint);
+                        console.log('[PushNotifications] ✅ Автоматически переподписались');
+                        this.isSubscribed = true;
+                    } catch (resubscribeError) {
+                        console.error('[PushNotifications] Ошибка переподписки:', resubscribeError);
+                        this.isSubscribed = false;
+                    }
                 }
             }
         }
