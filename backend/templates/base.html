@@ -149,18 +149,24 @@
       if (initialized) {
         console.log('[WebPush] Инициализирован, подписка:', pushNotifications.isSubscribed);
         
-        // Если разрешение еще не спрошено и пользователь не подписан - 
-        // можно показать промо для подписки (опционально)
-        if (pushNotifications.getPermissionStatus() === 'default' && !pushNotifications.isSubscribed) {
-          // Автоматически не подписываем, ждем явного действия пользователя
-          // Можно добавить кнопку в UI для подписки
-          console.log('[WebPush] Пользователь еще не подписан на push-уведомления');
-        }
-        
-        // Если разрешение дано, но нет подписки - подписываем
-        if (pushNotifications.getPermissionStatus() === 'granted' && !pushNotifications.isSubscribed) {
-          console.log('[WebPush] Разрешение есть, подписываемся...');
-          await pushNotifications.subscribe();
+        // Если разрешение дано - всегда переподписываем при входе
+        // Это гарантирует, что подписка привязана к текущему пользователю
+        if (pushNotifications.getPermissionStatus() === 'granted') {
+          console.log('[WebPush] Разрешение есть, переподписываемся...');
+          
+          // Очищаем старый endpoint из localStorage
+          localStorage.removeItem('push_endpoint');
+          
+          // Подписываемся (метод subscribe сам удалит старую подписку)
+          const subscribed = await pushNotifications.subscribe();
+          
+          if (subscribed) {
+            console.log('[WebPush] ✅ Успешно подписан');
+          } else {
+            console.warn('[WebPush] ⚠️ Не удалось подписаться');
+          }
+        } else if (pushNotifications.getPermissionStatus() === 'default') {
+          console.log('[WebPush] Пользователь еще не дал разрешение на уведомления');
         }
       }
     });

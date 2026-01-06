@@ -48,6 +48,33 @@ export function initLogoutModal(options) {
   }
 
   /**
+   * Отписывается от push-уведомлений перед выходом
+   */
+  async function unsubscribeFromPush() {
+    if (window.pushNotifications && typeof window.pushNotifications.unsubscribe === 'function') {
+      try {
+        await window.pushNotifications.unsubscribe();
+        console.log('[Logout] Push подписка удалена');
+      } catch (error) {
+        console.error('[Logout] Ошибка отписки:', error);
+      }
+    }
+    // Очищаем localStorage
+    localStorage.removeItem('push_endpoint');
+  }
+
+  /**
+   * Обработчик отправки формы logout
+   */
+  function handleLogoutSubmit(event) {
+    // Не preventDefault - позволяем форме отправиться
+    // Но сначала отписываемся асинхронно
+    unsubscribeFromPush().catch(err => {
+      console.error('[Logout] Unsubscribe error:', err);
+    });
+  }
+
+  /**
    * Возврат на предыдущую страницу или указанный URL.
    */
   function goBack() {
@@ -117,6 +144,12 @@ export function initLogoutModal(options) {
   cancelButton.addEventListener('click', handleCancelClick);
   overlay.addEventListener('click', handleOverlayClick);
   window.addEventListener('keydown', handleKeyDown);
+  
+  // Добавляем обработчик на форму logout
+  const logoutForm = confirmButton.closest('form');
+  if (logoutForm) {
+    logoutForm.addEventListener('submit', handleLogoutSubmit);
+  }
 
   // Автофокус на кнопке подтверждения после небольшой задержки
   setTimeout(() => {
