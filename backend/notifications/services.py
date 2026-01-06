@@ -161,13 +161,14 @@ class NotificationService:
             f"{'✅' if settings.send_telegram else '❌'} Telegram"
         )
 
-        # Отправить на веб (WebSocket)
+        # Отправить на веб (WebSocket) - для онлайн пользователей
         if settings.send_web:
             logger.info(
                 f"[NotificationService.send_notification] 🌐 Отправка через WebSocket..."
             )
             try:
-                NotificationService.send_web_notification(notification)
+                # Отправляем WebSocket только для онлайн уведомлений (не push)
+                NotificationService.send_web_socket(notification)
                 notification.sent_web = True
                 logger.info(
                     f"[NotificationService.send_notification] ✅ WebSocket: успешно отправлено"
@@ -180,6 +181,29 @@ class NotificationService:
         else:
             logger.info(
                 f"[NotificationService.send_notification] ⏭️ WebSocket: канал отключен"
+            )
+        
+        # Отправить Web Push (для offline пользователей)
+        # ВАЖНО: отправляем независимо от send_web настройки,
+        # если есть активные push-подписки
+        if settings.send_web:
+            logger.info(
+                f"[NotificationService.send_notification] 📲 Отправка Web Push (offline)..."
+            )
+            try:
+                push_count = NotificationService.send_web_push_notification(notification)
+                if push_count > 0:
+                    logger.info(
+                        f"[NotificationService.send_notification] ✅ Web Push: отправлено на {push_count} устройств"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[NotificationService.send_notification] ❌ Web Push: ошибка - {e}",
+                    exc_info=True
+                )
+        else:
+            logger.info(
+                f"[NotificationService.send_notification] ⏭️ Web Push: канал отключен"
             )
 
         # Отправить на email
@@ -312,10 +336,13 @@ class NotificationService:
         )
 
     @staticmethod
-    def send_web_notification(notification: Notification):
-        """Отправить уведомление через WebSocket"""
+    def send_web_socket(notification: Notification):
+        """
+        Отправить уведомление через WebSocket (только для онлайн пользователей).
+        Переименовано из send_web_notification для ясности.
+        """
         logger.info(
-            f"[NotificationService.send_web_notification] НАЧАЛО: "
+            f"[NotificationService.send_web_socket] НАЧАЛО: "
             f"notification_id={notification.id}, "
             f"recipient={notification.recipient.id}"
         )
@@ -337,7 +364,7 @@ class NotificationService:
         
         group_name = f'notifications_{notification.recipient.id}'
         logger.info(
-            f"[NotificationService.send_web_notification] Отправка в группу: {group_name}"
+            f"[NotificationService.send_web_socket] Отправка в группу: {group_name}"
         )
 
         async_to_sync(channel_layer.group_send)(
@@ -349,7 +376,7 @@ class NotificationService:
         )
         
         logger.info(
-            f"[NotificationService.send_web_notification] ✅ Уведомление отправлено в WebSocket"
+            f"[NotificationService.send_web_socket] ✅ Уведомление отправлено в WebSocket"
         )
 
         # Обновить счетчик
@@ -360,7 +387,7 @@ class NotificationService:
         ).count()
         
         logger.info(
-            f"[NotificationService.send_web_notification] Обновление счетчика: {unread_count} непрочитанных"
+            f"[NotificationService.send_web_socket] Обновление счетчика: {unread_count} непрочитанных"
         )
 
         async_to_sync(channel_layer.group_send)(
@@ -372,11 +399,8 @@ class NotificationService:
         )
         
         logger.info(
-            f"[NotificationService.send_web_notification] ✅ Счетчик обновлен"
+            f"[NotificationService.send_web_socket] ✅ Счетчик обновлен"
         )
-        
-        # Также отправляем Web Push для offline уведомлений
-        NotificationService.send_web_push_notification(notification)
 
     @staticmethod
     def send_web_push_notification(notification: Notification) -> int:
@@ -450,10 +474,6 @@ class NotificationService:
             )
             return 0
         
-        vapid_claims = {
-            'sub': f'mailto:{vapid_email}'
-        }
-        
         success_count = 0
         failed_subscriptions = []
         
@@ -467,25 +487,29 @@ class NotificationService:
                     }
                 }
                 
-                logger.debug(
-                    f"[NotificationService.send_web_push_notification] "
-                    f"Отправка на endpoint: {subscription.endpoint[:50]}..."
-                )
+                # Извлекаем origin из endpoint для поля 'aud' в VAPID claims
+                from urllib.parse import urlparse
+                parsed_url = urlparse(subscription.endpoint)
+                audience = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                
+                vapid_claims = {
+                    'sub': f'mailto:{vapid_email}',
+                    'aud': audience
+                }
                 
                 webpush(
                     subscription_info=subscription_info,
                     data=json.dumps(payload),
                     vapid_private_key=vapid_private_key,
-                    vapid_claims=vapid_claims
+                    vapid_claims=vapid_claims,
+                    ttl=86400  # 24 часа
                 )
                 
                 success_count += 1
                 subscription.reset_errors()
                 
             except WebPushException as e:
-                logger.warning(
-                    f"[NotificationService.send_web_push_notification] ⚠️ WebPush ошибка: {e}"
-                )
+                logger.warning(f"[WebPush] Error: {e}")
                 
                 # Обрабатываем ошибки
                 subscription.error_count += 1
@@ -494,26 +518,17 @@ class NotificationService:
                 # Если подписка устарела (410 Gone) или недействительна - деактивируем
                 if e.response and e.response.status_code in [404, 410]:
                     subscription.is_active = False
-                    logger.info(
-                        f"[NotificationService.send_web_push_notification] "
-                        f"Подписка деактивирована: {subscription.id}"
-                    )
+                    logger.info(f"[WebPush] Subscription {subscription.id} deactivated (expired)")
                 
                 # Если слишком много ошибок - деактивируем
                 if subscription.error_count >= 5:
                     subscription.is_active = False
-                    logger.info(
-                        f"[NotificationService.send_web_push_notification] "
-                        f"Подписка деактивирована (много ошибок): {subscription.id}"
-                    )
+                    logger.info(f"[WebPush] Subscription {subscription.id} deactivated (too many errors)")
                 
                 subscription.save(update_fields=['error_count', 'last_error', 'is_active', 'updated_at'])
                 
             except Exception as e:
-                logger.error(
-                    f"[NotificationService.send_web_push_notification] ❌ Ошибка: {e}",
-                    exc_info=True
-                )
+                logger.error(f"[WebPush] Unexpected error: {e}")
         
         logger.info(
             f"[NotificationService.send_web_push_notification] ✅ Завершено: "

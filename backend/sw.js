@@ -12,7 +12,6 @@ const SW_VERSION = '1.0.0';
 // Настройки по умолчанию для уведомлений
 const DEFAULT_NOTIFICATION_OPTIONS = {
     icon: '/static/img/logo-192.png',
-    badge: '/static/img/badge-72.png',
     vibrate: [100, 50, 100],
     requireInteraction: false,
     renotify: true,
@@ -55,7 +54,8 @@ self.addEventListener('activate', (event) => {
  * }
  */
 self.addEventListener('push', (event) => {
-    console.log('[SW] Push received:', event);
+    console.log('[SW] 🔔 Push received:', event);
+    console.log('[SW] 🔔 Has data:', !!event.data);
     
     let notificationData = {
         title: 'Новое уведомление',
@@ -67,7 +67,7 @@ self.addEventListener('push', (event) => {
     if (event.data) {
         try {
             const payload = event.data.json();
-            console.log('[SW] Push payload:', payload);
+            console.log('[SW] 🔔 Push payload:', payload);
             
             notificationData = {
                 ...notificationData,
@@ -97,6 +97,8 @@ self.addEventListener('push', (event) => {
         }
     }
     
+    console.log('[SW] 🔔 Showing notification:', notificationData.title);
+    
     // Показываем уведомление
     const promiseChain = self.registration.showNotification(
         notificationData.title,
@@ -112,7 +114,11 @@ self.addEventListener('push', (event) => {
             image: notificationData.image,
             actions: notificationData.actions,
         }
-    );
+    ).then(() => {
+        console.log('[SW] ✅ Notification shown successfully:', notificationData.title);
+    }).catch((error) => {
+        console.error('[SW] ❌ Failed to show notification:', error);
+    });
     
     event.waitUntil(promiseChain);
 });

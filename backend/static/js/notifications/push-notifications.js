@@ -74,17 +74,29 @@ class PushNotificationsManager {
      * @private
      */
     async _fetchVapidKey() {
+        console.log('[PushNotifications][DEBUG] 🔍 Запрос VAPID ключа с сервера...');
+        
         const response = await fetch('/api/v1/notifications/push/vapid-key/', {
             credentials: 'include'
         });
         
+        console.log('[PushNotifications][DEBUG] 📡 Ответ сервера:', response.status, response.statusText);
+        
         if (!response.ok) {
-            throw new Error('Не удалось получить VAPID ключ');
+            throw new Error(`Не удалось получить VAPID ключ: ${response.status}`);
         }
         
         const data = await response.json();
+        console.log('[PushNotifications][DEBUG] 📦 Данные от сервера:', data);
+        
         this.vapidPublicKey = data.vapid_public_key;
-        console.log('[PushNotifications] VAPID ключ получен');
+        
+        if (!this.vapidPublicKey) {
+            throw new Error('VAPID ключ отсутствует в ответе сервера');
+        }
+        
+        console.log('[PushNotifications][DEBUG] ✅ VAPID ключ получен, длина:', this.vapidPublicKey.length);
+        console.log('[PushNotifications][DEBUG] 🔑 VAPID ключ:', this.vapidPublicKey.substring(0, 20) + '...');
     }
     
     /**
@@ -120,7 +132,39 @@ class PushNotificationsManager {
         this.isSubscribed = subscription !== null;
         
         if (this.isSubscribed) {
-            console.log('[PushNotifications] Активная подписка найдена');
+            // Проверяем, нужна ли синхронизация с сервером
+            const lastEndpoint = localStorage.getItem('push_endpoint');
+            const currentEndpoint = subscription.endpoint;
+            
+            // Отправляем на сервер только если endpoint изменился или не сохранён
+            if (lastEndpoint !== currentEndpoint) {
+                try {
+                    await this._sendSubscriptionToServer(subscription);
+                    localStorage.setItem('push_endpoint', currentEndpoint);
+                } catch (error) {
+                    console.warn('[PushNotifications] Ошибка синхронизации, переподписываемся:', error);
+                
+                // Если ошибка - возможно VAPID ключи изменились
+                // Удаляем старую подписку и создаём новую
+                try {
+                    await subscription.unsubscribe();
+                    console.log('[PushNotifications] Старая подписка удалена');
+                    
+                    // Создаём новую подписку с новыми VAPID ключами
+                    const newSubscription = await this.swRegistration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: this._urlBase64ToUint8Array(this.vapidPublicKey)
+                    });
+                    
+                    await this._sendSubscriptionToServer(newSubscription);
+                    localStorage.setItem('push_endpoint', newSubscription.endpoint);
+                    console.log('[PushNotifications] ✅ Автоматически переподписались');
+                    this.isSubscribed = true;
+                } catch (resubscribeError) {
+                    console.error('[PushNotifications] Ошибка переподписки:', resubscribeError);
+                    this.isSubscribed = false;
+                }
+            }
         }
     }
     
@@ -131,17 +175,32 @@ class PushNotificationsManager {
      * @private
      */
     _urlBase64ToUint8Array(base64String) {
+        console.log('[PushNotifications][DEBUG] 🔧 _urlBase64ToUint8Array вход:', {
+            length: base64String.length,
+            first20: base64String.substring(0, 20),
+            last20: base64String.substring(base64String.length - 20)
+        });
+        
         const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        console.log('[PushNotifications][DEBUG] 🔧 Добавлено паддинга:', padding.length);
+        
         const base64 = (base64String + padding)
             .replace(/-/g, '+')
             .replace(/_/g, '/');
         
+        console.log('[PushNotifications][DEBUG] 🔧 После замены символов, длина:', base64.length);
+        
         const rawData = window.atob(base64);
+        console.log('[PushNotifications][DEBUG] 🔧 После atob, длина:', rawData.length);
+        
         const outputArray = new Uint8Array(rawData.length);
         
         for (let i = 0; i < rawData.length; ++i) {
             outputArray[i] = rawData.charCodeAt(i);
         }
+        
+        console.log('[PushNotifications][DEBUG] 🔧 Uint8Array готов, длина:', outputArray.length);
+        console.log('[PushNotifications][DEBUG] 🔧 Первые 10 байт:', Array.from(outputArray.slice(0, 10)));
         
         return outputArray;
     }
@@ -165,41 +224,94 @@ class PushNotificationsManager {
      * @returns {Promise<boolean>} Успешность подписки
      */
     async subscribe() {
+        console.log('[PushNotifications][DEBUG] 🚀 Начало процесса подписки');
+        
         if (!this.isSupported || !this.swRegistration || !this.vapidPublicKey) {
-            console.error('[PushNotifications] Менеджер не инициализирован');
+            console.error('[PushNotifications][DEBUG] ❌ Менеджер не инициализирован:', {
+                isSupported: this.isSupported,
+                swRegistration: !!this.swRegistration,
+                vapidPublicKey: !!this.vapidPublicKey
+            });
             return false;
         }
         
         // Проверяем разрешение
+        console.log('[PushNotifications][DEBUG] 🔐 Проверка разрешений, текущее:', Notification.permission);
+        
         if (Notification.permission === 'denied') {
-            console.warn('[PushNotifications] Уведомления заблокированы пользователем');
+            console.warn('[PushNotifications][DEBUG] ❌ Уведомления заблокированы пользователем');
             return false;
         }
         
         if (Notification.permission === 'default') {
+            console.log('[PushNotifications][DEBUG] ❓ Запрос разрешения у пользователя...');
             const permission = await this.requestPermission();
             if (permission !== 'granted') {
+                console.log('[PushNotifications][DEBUG] ❌ Разрешение не получено:', permission);
                 return false;
             }
         }
         
         try {
+            // Удаляем старую подписку, если есть (на случай смены VAPID ключей)
+            const existingSubscription = await this.swRegistration.pushManager.getSubscription();
+            console.log('[PushNotifications][DEBUG] 🔍 Существующая подписка:', existingSubscription ? 'найдена' : 'отсутствует');
+            
+            if (existingSubscription) {
+                console.log('[PushNotifications][DEBUG] 🗑️ Удаляем старую подписку:', existingSubscription.endpoint.substring(0, 50) + '...');
+                await existingSubscription.unsubscribe();
+                console.log('[PushNotifications][DEBUG] ✅ Старая подписка удалена');
+            }
+            
+            // Конвертируем VAPID ключ
+            console.log('[PushNotifications][DEBUG] 🔄 Конвертация VAPID ключа в Uint8Array...');
+            const applicationServerKey = this._urlBase64ToUint8Array(this.vapidPublicKey);
+            console.log('[PushNotifications][DEBUG] ✅ Uint8Array создан, длина:', applicationServerKey.length);
+            console.log('[PushNotifications][DEBUG] 🔢 Первые байты:', Array.from(applicationServerKey.slice(0, 5)));
+            
             // Создаем push-подписку
-            const subscription = await this.swRegistration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: this._urlBase64ToUint8Array(this.vapidPublicKey)
+            console.log('[PushNotifications][DEBUG] 📝 Создание новой подписки...');
+            console.log('[PushNotifications][DEBUG] 🌐 Push Manager:', this.swRegistration.pushManager);
+            
+            // Проверяем поддерживаемые функции
+            const pushManager = this.swRegistration.pushManager;
+            console.log('[PushNotifications][DEBUG] 🔍 Push Manager возможности:', {
+                hasGetSubscription: typeof pushManager.getSubscription === 'function',
+                hasSubscribe: typeof pushManager.subscribe === 'function',
+                hasPermissionState: typeof pushManager.permissionState === 'function'
             });
             
-            console.log('[PushNotifications] Push-подписка создана:', subscription.endpoint);
+            const subscription = await this.swRegistration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: applicationServerKey
+            });
+            
+            console.log('[PushNotifications][DEBUG] ✅ Push-подписка создана успешно!');
+            console.log('[PushNotifications][DEBUG] 🌐 Endpoint:', subscription.endpoint.substring(0, 70) + '...');
+            console.log('[PushNotifications][DEBUG] 🔑 Keys:', Object.keys(subscription.toJSON().keys));
             
             // Отправляем подписку на сервер
+            console.log('[PushNotifications][DEBUG] 📤 Отправка подписки на сервер...');
             await this._sendSubscriptionToServer(subscription);
             
             this.isSubscribed = true;
+            console.log('[PushNotifications][DEBUG] 🎉 Подписка завершена успешно!');
             return true;
             
         } catch (error) {
-            console.error('[PushNotifications] Ошибка подписки:', error);
+            console.error('[PushNotifications][DEBUG] ❌ ОШИБКА ПОДПИСКИ:', error);
+            console.error('[PushNotifications][DEBUG] 📋 Тип ошибки:', error.name);
+            console.error('[PushNotifications][DEBUG] 💬 Сообщение:', error.message);
+            console.error('[PushNotifications][DEBUG] 📚 Stack:', error.stack);
+            
+            // Дополнительная диагностика
+            if (error.name === 'AbortError') {
+                console.error('[PushNotifications][DEBUG] 🔍 AbortError обычно означает:');
+                console.error('[PushNotifications][DEBUG] 1. Невалидный VAPID ключ');
+                console.error('[PushNotifications][DEBUG] 2. Проблема с push-сервисом (FCM/Mozilla)');
+                console.error('[PushNotifications][DEBUG] 3. Неправильный формат applicationServerKey');
+            }
+            
             return false;
         }
     }

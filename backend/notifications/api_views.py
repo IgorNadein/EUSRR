@@ -480,10 +480,9 @@ def subscribe_push(request):
             }
         )
         
-        logger.info(
-            f"[WebPush] {'Created' if created else 'Updated'} subscription for user {request.user.id} "
-            f"(endpoint: {endpoint[:50]}...)"
-        )
+        # Логируем только создание новой подписки, не обновление
+        if created:
+            logger.info(f"[WebPush] New subscription for user {request.user.id}")
         
         return Response({
             'status': 'success',

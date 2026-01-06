@@ -120,7 +120,7 @@ def notify_specific_recipients(sender, instance, action, pk_set, **kwargs):
                     )
                     
                     if settings.send_web:
-                        NotificationService.send_web_notification(notification)
+                        NotificationService.send_web_socket(notification)
                         notification.sent_web = True
                         notification.save(update_fields=['sent_web'])
                 except Exception as e:
@@ -256,7 +256,7 @@ def notify_department_employees(sender, instance, action, pk_set, **kwargs):
                     )
                     
                     if settings_obj.send_web:
-                        NotificationService.send_web_notification(notification)
+                        NotificationService.send_web_socket(notification)
                         notification.sent_web = True
                         notification.save(update_fields=['sent_web'])
                 except Exception as e:
@@ -397,7 +397,7 @@ def notify_all_employees(document):
                     
                     # Только веб
                     if settings.send_web:
-                        NotificationService.send_web_notification(notification)
+                        NotificationService.send_web_socket(notification)
                         notification.sent_web = True
                         notification.save(update_fields=['sent_web'])
                 except Exception as e:
