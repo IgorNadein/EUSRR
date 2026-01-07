@@ -371,6 +371,8 @@ LDAP_ATTR_MAIL = os.getenv("LDAP_ATTR_MAIL", "mail")
 LDAP_ATTR_GIVENNAME = os.getenv("LDAP_ATTR_GIVENNAME", "givenName")
 LDAP_ATTR_SN = os.getenv("LDAP_ATTR_SN", "sn")
 LDAP_ATTR_PHONE = os.getenv("LDAP_ATTR_PHONE", "telephoneNumber")
+# Атрибут LDAP для хранения Django pk сотрудника (employeeNumber по RFC 2798, employeeID для AD)
+LDAP_EMPLOYEE_ID_ATTR = os.getenv("LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
 LDAP_PHONE_ATTRS = tuple(
     _split_env_list(os.getenv("LDAP_PHONE_ATTRS", "mobile,telephoneNumber"))
 )

@@ -119,6 +119,14 @@ class UserService:
                         last_django_modify_ts=timezone.now(),
                     )
 
+                    # Записываем Django PK в LDAP employeeNumber для связки
+                    employee_id_attr = getattr(
+                        settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
+                    )
+                    modify_user_attrs(
+                        conn, dn, {employee_id_attr: str(emp.pk)}, do_write=True
+                    )
+
                     # Временно импортируем для совместимости
                     # TODO: Убрать после полного рефакторинга
                     if dto.department_dn and hasattr(emp, "set_active_department"):
