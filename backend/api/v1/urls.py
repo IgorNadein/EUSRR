@@ -23,6 +23,7 @@ from .communications.views import (
     load_chat_messages,
     pin_chat,
     remove_reaction,
+    toggle_chat_notifications,
     upload_message_with_attachments,
 )
 from .communications.poll_views import (
@@ -97,6 +98,11 @@ urlpatterns = [
         "communications/chats/<int:chat_id>/pin/",
         pin_chat,
         name="pin_chat"
+    ),
+    path(
+        "communications/chats/<int:chat_id>/notifications/",
+        toggle_chat_notifications,
+        name="toggle_chat_notifications"
     ),
     path(
         "communications/messages/<int:message_id>/reactions/",

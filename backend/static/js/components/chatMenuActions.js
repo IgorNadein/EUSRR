@@ -103,26 +103,45 @@ function handlePinAction(chatId, chatName, chatRow) {
 /**
  * Обработка настройки уведомлений
  */
-function handleNotificationsAction(chatId, chatName) {
-  showDevMessage('Функция настройки уведомлений находится в разработке', 'info');
-  
-  // TODO: Реализовать API endpoint для управления уведомлениями
-  /*
-  fetch(`/communications/api/chat/${chatId}/notifications/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': getCsrfToken()
-    },
-    body: JSON.stringify({ enabled: false })
-  })
-  .then(response => response.json())
-  .then(data => {
+async function handleNotificationsAction(chatId, chatName) {
+  try {
+    // Получаем текущее состояние из data-атрибута
+    const chatRow = document.querySelector(`[data-chat-id="${chatId}"]`);
+    const currentlyEnabled = chatRow?.dataset.notificationsEnabled !== 'false';
+    
+    // Переключаем состояние
+    const newState = !currentlyEnabled;
+    
+    const response = await fetch(`/api/v1/communications/chats/${chatId}/notifications/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken()
+      },
+      body: JSON.stringify({ enabled: newState })
+    });
+    
+    const data = await response.json();
+    
     if (data.ok) {
-      console.log('Notifications updated');
+      // Обновляем data-атрибут
+      if (chatRow) {
+        chatRow.dataset.notificationsEnabled = newState.toString();
+      }
+      
+      // Показываем toast с результатом
+      const message = data.message || `Уведомления ${newState ? 'включены' : 'отключены'}`;
+      showSuccessMessage(message);
+      
+      // Обновляем иконку в меню
+      updateNotificationsIcon(chatRow, newState);
+    } else {
+      showErrorMessage(data.error || 'Ошибка при изменении настроек');
     }
-  });
-  */
+  } catch (error) {
+    console.error('Notifications toggle error:', error);
+    showErrorMessage('Ошибка при изменении настроек уведомлений');
+  }
 }
 
 /**
@@ -275,4 +294,100 @@ function moveToPinnedSection(chatRow) {
 function moveToUnpinnedSection(chatRow) {
   const parent = chatRow.parentElement;
   parent.appendChild(chatRow);
+}
+
+/**
+ * Обновить иконку уведомлений в чате
+ */
+function updateNotificationsIcon(chatRow, enabled) {
+  if (!chatRow) return;
+  
+  // Ищем или создаем иконку уведомлений
+  let notifIcon = chatRow.querySelector('.chat-notification-icon');
+  
+  if (!enabled) {
+    // Уведомления отключены - показываем перечеркнутый колокольчик
+    if (!notifIcon) {
+      notifIcon = document.createElement('i');
+      notifIcon.className = 'bi-bell-slash text-muted chat-notification-icon ms-1';
+      notifIcon.title = 'Уведомления отключены';
+      
+      // Вставляем после заголовка чата
+      const titleElement = chatRow.querySelector('[data-chat-name]');
+      if (titleElement) {
+        titleElement.appendChild(notifIcon);
+      }
+    }
+  } else {
+    // Уведомления включены - убираем иконку
+    if (notifIcon) {
+      notifIcon.remove();
+    }
+  }
+}
+
+/**
+ * Показать сообщение об успехе
+ */
+function showSuccessMessage(message) {
+  const toastContainer = getOrCreateToastContainer();
+  const toastId = `toast-${Date.now()}`;
+  
+  const toastHtml = `
+    <div id="${toastId}" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body">
+          <i class="bi-check-circle-fill me-2"></i>${message}
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  `;
+  
+  toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+  
+  const toastElement = document.getElementById(toastId);
+  const toast = new bootstrap.Toast(toastElement, {
+    autohide: true,
+    delay: 3000
+  });
+  
+  toast.show();
+  
+  toastElement.addEventListener('hidden.bs.toast', () => {
+    toastElement.remove();
+  });
+}
+
+/**
+ * Показать сообщение об ошибке
+ */
+function showErrorMessage(message) {
+  const toastContainer = getOrCreateToastContainer();
+  const toastId = `toast-${Date.now()}`;
+  
+  const toastHtml = `
+    <div id="${toastId}" class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body">
+          <i class="bi-exclamation-triangle-fill me-2"></i>${message}
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  `;
+  
+  toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+  
+  const toastElement = document.getElementById(toastId);
+  const toast = new bootstrap.Toast(toastElement, {
+    autohide: true,
+    delay: 5000
+  });
+  
+  toast.show();
+  
+  toastElement.addEventListener('hidden.bs.toast', () => {
+    toastElement.remove();
+  });
 }
