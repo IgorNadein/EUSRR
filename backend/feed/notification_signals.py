@@ -49,7 +49,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
     
     # Уведомляем автора публикации (если комментарий не от него)
     if post.author.id != comment_author.id:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=post.author,
             notification_type_code='feed_post_comment',
             title='Новый комментарий к вашей публикации',
@@ -90,7 +90,7 @@ def notify_new_post(post):
         )
     
     for recipient in recipients:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code='feed_new_post',
             title=f'Новая публикация {context}',
@@ -163,7 +163,7 @@ def notify_post_reaction(post, user):
     """
     # Уведомляем автора (если лайк не от него)
     if post.author.id != user.id:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=post.author,
             notification_type_code='feed_post_reaction',
             title='Ваша публикация понравилась',

@@ -35,6 +35,10 @@ INSTALLED_APPS = [
     "widget_tweaks",
     "simple_history",
     "rest_framework",
+    # Celery приложения
+    "django_celery_beat",  # Периодические задачи
+    "django_celery_results",  # Хранение результатов
+    # Основные приложения
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
     "hikcentral.apps.HikcentralConfig",
@@ -461,3 +465,38 @@ VAPID_PRIVATE_KEY = os.getenv(
     "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCNnpupg3xbtFUiOSUZ6L7s6puxuEjzR73kTL7v8bMvKhRANCAATE4rWcva-MoGCQYBnWmbgpG-68Ee4hyyb9A5DaWiTixEqLTjRE1rWQEMZyVVP2KPb_omKPu3VhHhdFRIzHBjJE"
 )
 VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "robotail-info@yandex.ru")
+
+# -----------------------------------------------------------------------------
+# CELERY CONFIGURATION
+# -----------------------------------------------------------------------------
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
+
+# Сериализация
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Таймзона
+CELERY_TIMEZONE = 'Europe/Moscow'
+CELERY_ENABLE_UTC = True
+
+# Мониторинг и отладка
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 минут максимум на задачу
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Мягкий лимит - 25 минут
+
+# Приоритеты очередей
+CELERY_TASK_ROUTES = {
+    'notifications.tasks.*': {'queue': 'notifications'},
+    'documents.tasks.*': {'queue': 'default'},
+    'employees.tasks.*': {'queue': 'default'},
+}
+
+# Настройки для периодических задач (Celery Beat)
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Опции по умолчанию для всех задач
+CELERY_TASK_ACKS_LATE = True  # Подтверждаем выполнение после завершения
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Берем по 1 задаче за раз
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000  # Перезапуск worker после 1000 задач

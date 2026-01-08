@@ -333,7 +333,7 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
         total_recipients > 0 and
         document.uploaded_by):
         
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=document.uploaded_by,
             notification_type_code='document_signed_all',
             title='Все ознакомились с документом',
@@ -452,7 +452,7 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
         else 'Администратор'
     )
     
-    notification = NotificationService.create_notification(
+    notification = NotificationService.create_notification_async(
         recipient=recipient,
         notification_type_code='document_ready',
         title='Новый документ на ознакомление',

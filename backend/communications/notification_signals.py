@@ -111,8 +111,8 @@ def create_message_notifications(sender, instance, created, **kwargs):
                 if user in participants_list and user.id != author.id:
                     # Проверяем настройки уведомлений (из предзагруженного словаря)
                     if notification_settings.get(user.id, True):
-                        # Создаем уведомление об упоминании
-                        NotificationService.create_notification(
+                        # Создаем уведомление об упоминании (асинхронно)
+                        NotificationService.create_notification_async(
                             recipient=user,
                             notification_type_code='chat_mention',
                             title=f'Вас упомянул {author.get_full_name() or author.username}',
@@ -138,7 +138,7 @@ def create_message_notifications(sender, instance, created, **kwargs):
         if original_author.id not in mentioned_user_ids:
             # Проверяем настройки уведомлений (из предзагруженного словаря)
             if notification_settings.get(original_author.id, True):
-                NotificationService.create_notification(
+                NotificationService.create_notification_async(
                     recipient=original_author,
                     notification_type_code='chat_reply',
                     title=f'{author.get_full_name() or author.username} ответил на ваше сообщение',
@@ -197,7 +197,7 @@ def create_message_notifications(sender, instance, created, **kwargs):
         if is_announcement:
             metadata['is_announcement'] = True
         
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code=notification_type,
             title=title,
@@ -238,7 +238,7 @@ def create_chat_added_notifications(sender, instance, action, pk_set, **kwargs):
         if not notification_settings.get(user.id, True):
             continue
         
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=user,
             notification_type_code='chat_added_to_chat',
             title=f'Вас добавили в чат',
