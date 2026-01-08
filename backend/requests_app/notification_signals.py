@@ -185,7 +185,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
     )
 
     for recipient in recipients_set:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code="request_comment",
             title=f"💬 Новый комментарий к заявлению от {employee_name}",
@@ -373,10 +373,10 @@ def notify_new_request(request_obj):
             notification_type = "request_new"  # Используем общий тип
 
         logger.info(
-            f"[notify_new_request] ➡️ Вызов NotificationService.create_notification для {recipient.username}"
+            f"[notify_new_request] ➡️ Вызов NotificationService.create_notification_async для {recipient.username}"
         )
 
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code=notification_type,
             title=title,
@@ -481,7 +481,7 @@ def notify_status_change(request_obj, old_status, new_status):
                 f"изменен: {old_status} → {new_status}"
             )
 
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code=notification_type,
             title=title,

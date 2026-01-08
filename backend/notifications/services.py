@@ -21,8 +21,103 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def is_celery_available():
+    """Проверка доступности Celery worker"""
+    try:
+        from celery import current_app
+        inspect = current_app.control.inspect()
+        active_workers = inspect.active()
+        return active_workers is not None and len(active_workers) > 0
+    except Exception:
+        return False
+
+
 class NotificationService:
     """Сервис для создания и отправки уведомлений"""
+
+    @staticmethod
+    def create_notification_async(
+        recipient: User,
+        notification_type_code: str,
+        title: str,
+        message: str,
+        content_object=None,
+        action_url: str = '',
+        action_text: str = 'Посмотреть',
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        Создать уведомление асинхронно через Celery (рекомендуется)
+        
+        Args:
+            recipient: Получатель уведомления
+            notification_type_code: Код типа уведомления
+            title: Заголовок
+            message: Текст сообщения
+            content_object: Связанный объект (опционально)
+            action_url: URL для действия
+            action_text: Текст кнопки действия
+            metadata: Дополнительные данные
+            
+        Returns:
+            True если задача поставлена в очередь, False если fallback на sync
+        """
+        try:
+            # Проверяем доступность Celery
+            if not is_celery_available():
+                logger.warning(
+                    f"[create_notification_async] Celery недоступен, fallback на синхронный режим"
+                )
+                NotificationService.create_notification(
+                    recipient=recipient,
+                    notification_type_code=notification_type_code,
+                    title=title,
+                    message=message,
+                    content_object=content_object,
+                    action_url=action_url,
+                    action_text=action_text,
+                    metadata=metadata,
+                    send_immediately=True,
+                )
+                return False
+            
+            # Импортируем задачу
+            from notifications.tasks import send_notification_task
+            
+            # Отправляем задачу в Celery
+            send_notification_task.delay(
+                notification_type=notification_type_code,
+                user_id=recipient.id,
+                title=title,
+                message=message,
+                link=action_url,
+                sender_id=None,
+                metadata=metadata or {},
+            )
+            
+            logger.debug(
+                f"[create_notification_async] ✅ Задача отправлена в Celery: "
+                f"user={recipient.id}, type={notification_type_code}"
+            )
+            return True
+            
+        except Exception as e:
+            logger.exception(
+                f"[create_notification_async] ❌ Ошибка при отправке в Celery: {e}"
+            )
+            # Fallback на синхронный режим
+            NotificationService.create_notification(
+                recipient=recipient,
+                notification_type_code=notification_type_code,
+                title=title,
+                message=message,
+                content_object=content_object,
+                action_url=action_url,
+                action_text=action_text,
+                metadata=metadata,
+                send_immediately=True,
+            )
+            return False
 
     @staticmethod
     def create_notification(

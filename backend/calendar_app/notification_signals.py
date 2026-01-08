@@ -78,7 +78,7 @@ def notify_event_cancelled(sender, instance, **kwargs):
     
     # Создаем уведомления об отмене
     for recipient in recipients:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code='event_cancelled',
             title='Событие отменено',
@@ -117,7 +117,7 @@ def notify_event_created(event):
     )
     
     for recipient in recipients:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code='event_created',
             title='Новое событие в календаре',
@@ -166,7 +166,7 @@ def notify_event_changed(event, changed_fields):
     ])
     
     for recipient in recipients:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code='event_changed',
             title='Событие изменено',
