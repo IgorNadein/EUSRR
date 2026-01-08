@@ -86,15 +86,16 @@ def create_message_notifications(sender, instance, created, **kwargs):
     # Запускаем ВСЮ обработку асинхронно в одной задаче
     # Signal handler сразу возвращает управление
     from notifications.tasks import process_message_notifications_task
-    from notifications.services import is_celery_available
     
     try:
-        if is_celery_available():
-            # Запускаем асинхронно - НЕ БЛОКИРУЕМ
-            process_message_notifications_task.delay(instance.id)
-        else:
-            # Fallback: выполняем синхронно (только для разработки)
-            _create_message_notifications_sync(instance)
+        # Запускаем асинхронно через Celery
+        process_message_notifications_task.delay(instance.id)
+    except Exception as e:
+        # Если Celery недоступен - fallback на синхронную обработку
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Celery unavailable, using sync fallback: {e}")
+        _create_message_notifications_sync(instance)
     except Exception as e:
         # Если что-то пошло не так, логируем но не ломаем сохранение сообщения
         import logging
