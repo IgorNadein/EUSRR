@@ -566,6 +566,47 @@ def pin_chat(request, chat_id):
     return JsonResponse({'ok': True, 'pinned': is_pinned})
 
 
+@login_required
+@require_POST
+@csrf_protect
+def toggle_chat_notifications(request, chat_id):
+    """Включение/выключение уведомлений для чата"""
+    import json
+    
+    chat = get_object_or_404(Chat, pk=chat_id)
+    
+    # Проверка доступа к чату
+    if not user_can_access_chat(chat, request.user):
+        return JsonResponse(
+            {'ok': False, 'error': 'Access denied'}, 
+            status=403
+        )
+    
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {'ok': False, 'error': 'Invalid JSON'}, 
+            status=400
+        )
+    
+    enabled = data.get('enabled', True)
+    
+    settings, created = ChatUserSettings.objects.get_or_create(
+        chat=chat,
+        user=request.user
+    )
+    
+    settings.notifications_enabled = enabled
+    settings.save()
+    
+    return JsonResponse({
+        'ok': True, 
+        'enabled': enabled,
+        'message': f'Уведомления {"включены" if enabled else "отключены"}'
+    })
+
+
 # ============ MESSAGE FORWARDING ============
 
 @login_required
