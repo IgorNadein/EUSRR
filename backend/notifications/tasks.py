@@ -257,3 +257,174 @@ def send_digest_email_task(self, user_id: int):
     except Exception as exc:
         logger.exception(f"Failed to send digest email to user {user_id}: {exc}")
         raise self.retry(exc=exc)
+
+
+@shared_task(
+    name="communications.process_message_notifications",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+)
+def process_message_notifications_task(self, message_id: int):
+    """
+    Обрабатывает ВСЕ уведомления для нового сообщения в чате асинхронно.
+    
+    Это позволяет signal handler сразу вернуть управление,
+    а всю логику обработки (поиск упоминаний, проверка настроек, отправка)
+    выполнить в фоновом режиме.
+    
+    Args:
+        message_id: ID сообщения
+    """
+    try:
+        from communications.models import Message
+        from notifications.services import NotificationService
+        from communications.notification_signals import (
+            get_users_with_notifications_enabled,
+            extract_mentions,
+            truncate_message,
+            get_chat_name
+        )
+        
+        # Загружаем сообщение с оптимизацией
+        message = Message.objects.select_related(
+            'chat', 'author', 'reply_to__author'
+        ).get(id=message_id)
+        
+        if message.is_system or message.is_deleted:
+            return {"status": "skipped", "reason": "system_or_deleted"}
+        
+        chat = message.chat
+        author = message.author
+        content = message.content
+        
+        # Получаем всех участников чата кроме автора
+        if chat.type in ['announcement', 'channel', 'department', 'global']:
+            participants = chat.get_participants.exclude(id=author.id)
+        else:
+            participants = chat.participants.exclude(id=author.id)
+        
+        participants_list = list(participants)
+        if not participants_list:
+            return {"status": "success", "notifications_sent": 0}
+        
+        # Загружаем настройки уведомлений ОДНИМ запросом
+        notification_settings = get_users_with_notifications_enabled(chat, participants_list)
+        
+        notifications_count = 0
+        
+        # 1. Обработка упоминаний (@username)
+        mentioned_users = extract_mentions(content)
+        mentioned_user_ids = []
+        
+        if mentioned_users:
+            for email in mentioned_users:
+                try:
+                    user = User.objects.get(email=email)
+                    if user in participants_list and user.id != author.id:
+                        if notification_settings.get(user.id, True):
+                            NotificationService.create_notification(
+                                recipient=user,
+                                notification_type_code='chat_mention',
+                                title=f'Вас упомянул {author.get_full_name() or author.username}',
+                                message=truncate_message(content, 100),
+                                content_object=message,
+                                action_url=f'/communications/chats/{chat.id}/?message={message.id}',
+                                metadata={
+                                    'chat_id': chat.id,
+                                    'chat_name': get_chat_name(chat),
+                                    'message_id': message.id,
+                                    'author_id': author.id,
+                                }
+                            )
+                            notifications_count += 1
+                        mentioned_user_ids.append(user.id)
+                except User.DoesNotExist:
+                    continue
+        
+        # 2. Обработка ответов на сообщения
+        if message.reply_to and message.reply_to.author_id != author.id:
+            original_author = message.reply_to.author
+            
+            if original_author.id not in mentioned_user_ids:
+                if notification_settings.get(original_author.id, True):
+                    NotificationService.create_notification(
+                        recipient=original_author,
+                        notification_type_code='chat_reply',
+                        title=f'{author.get_full_name() or author.username} ответил на ваше сообщение',
+                        message=truncate_message(content, 100),
+                        content_object=message,
+                        action_url=f'/communications/chats/{chat.id}/?message={message.id}',
+                        metadata={
+                            'chat_id': chat.id,
+                            'chat_name': get_chat_name(chat),
+                            'message_id': message.id,
+                            'reply_to_id': message.reply_to.id,
+                            'author_id': author.id,
+                        }
+                    )
+                    notifications_count += 1
+        
+        # 3. Обычное уведомление о новом сообщении
+        excluded_ids = set(mentioned_user_ids)
+        if message.reply_to and message.reply_to.author_id != author.id:
+            excluded_ids.add(message.reply_to.author_id)
+        
+        # Определяем тип уведомления
+        if chat.type == 'announcement':
+            notification_type = 'announcement_new_message'
+            title = f'Новое объявление от {author.get_full_name() or author.username}'
+            is_announcement = True
+        else:
+            notification_type = 'chat_new_message'
+            if chat.type == 'private':
+                title = f'Новое сообщение от {author.get_full_name() or author.username}'
+            else:
+                title = f'{author.get_full_name() or author.username} в {get_chat_name(chat)}'
+            is_announcement = False
+        
+        # Отправляем уведомления
+        for recipient in participants_list:
+            if recipient.id in excluded_ids:
+                continue
+            
+            if not notification_settings.get(recipient.id, True):
+                continue
+            
+            metadata = {
+                'chat_id': chat.id,
+                'chat_name': get_chat_name(chat),
+                'message_id': message.id,
+                'author_id': author.id,
+            }
+            if is_announcement:
+                metadata['is_announcement'] = True
+            
+            NotificationService.create_notification(
+                recipient=recipient,
+                notification_type_code=notification_type,
+                title=title,
+                message=truncate_message(content, 150 if is_announcement else 100),
+                content_object=message,
+                action_url=f'/communications/chats/{chat.id}/',
+                metadata=metadata
+            )
+            notifications_count += 1
+        
+        logger.info(
+            f"Processed message {message_id}: sent {notifications_count} notifications"
+        )
+        
+        return {
+            "status": "success",
+            "message_id": message_id,
+            "notifications_sent": notifications_count
+        }
+        
+    except Message.DoesNotExist:
+        logger.error(f"Message {message_id} not found")
+        return {"status": "error", "reason": "message_not_found"}
+        
+    except Exception as exc:
+        logger.exception(f"Failed to process notifications for message {message_id}: {exc}")
+        raise self.retry(exc=exc)

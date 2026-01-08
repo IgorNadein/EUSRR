@@ -14,7 +14,6 @@ from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 
 from .models import Message, Chat, ChatUserSettings
-from notifications.services import NotificationService
 
 Employee = get_user_model()
 
@@ -73,6 +72,9 @@ def create_message_notifications(sender, instance, created, **kwargs):
     """
     Создает уведомления при создании нового сообщения.
     
+    ОПТИМИЗАЦИЯ: Вся логика обработки вынесена в асинхронную Celery задачу,
+    чтобы не блокировать сохранение сообщения.
+    
     Обрабатывает:
     1. Новое сообщение в чате (для всех участников кроме автора)
     2. Упоминания (@username) в тексте
@@ -80,6 +82,31 @@ def create_message_notifications(sender, instance, created, **kwargs):
     """
     if not created or instance.is_system or instance.is_deleted:
         return
+    
+    # Запускаем ВСЮ обработку асинхронно в одной задаче
+    # Signal handler сразу возвращает управление
+    from notifications.tasks import process_message_notifications_task
+    from notifications.services import is_celery_available
+    
+    try:
+        if is_celery_available():
+            # Запускаем асинхронно - НЕ БЛОКИРУЕМ
+            process_message_notifications_task.delay(instance.id)
+        else:
+            # Fallback: выполняем синхронно (только для разработки)
+            _create_message_notifications_sync(instance)
+    except Exception as e:
+        # Если что-то пошло не так, логируем но не ломаем сохранение сообщения
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to queue message notifications: {e}", exc_info=True)
+
+
+def _create_message_notifications_sync(instance):
+    """
+    Синхронная версия обработки уведомлений (fallback для разработки).
+    Используется только когда Celery недоступен.
+    """
     
     chat = instance.chat
     author = instance.author
@@ -104,15 +131,12 @@ def create_message_notifications(sender, instance, created, **kwargs):
     mentioned_user_ids = []
     
     if mentioned_users:
-        # Проверяем, что упомянутые пользователи есть в чате
         for email in mentioned_users:
             try:
                 user = Employee.objects.get(email=email)
                 if user in participants_list and user.id != author.id:
-                    # Проверяем настройки уведомлений (из предзагруженного словаря)
                     if notification_settings.get(user.id, True):
-                        # Создаем уведомление об упоминании (асинхронно)
-                        NotificationService.create_notification_async(
+                        NotificationService.create_notification(
                             recipient=user,
                             notification_type_code='chat_mention',
                             title=f'Вас упомянул {author.get_full_name() or author.username}',
@@ -134,11 +158,9 @@ def create_message_notifications(sender, instance, created, **kwargs):
     if instance.reply_to and instance.reply_to.author_id != author.id:
         original_author = instance.reply_to.author
         
-        # Создаем уведомление об ответе (если автор не упомянут явно)
         if original_author.id not in mentioned_user_ids:
-            # Проверяем настройки уведомлений (из предзагруженного словаря)
             if notification_settings.get(original_author.id, True):
-                NotificationService.create_notification_async(
+                NotificationService.create_notification(
                     recipient=original_author,
                     notification_type_code='chat_reply',
                     title=f'{author.get_full_name() or author.username} ответил на ваше сообщение',
@@ -148,43 +170,33 @@ def create_message_notifications(sender, instance, created, **kwargs):
                     metadata={
                         'chat_id': chat.id,
                         'chat_name': get_chat_name(chat),
-                    'message_id': instance.id,
-                    'reply_to_id': instance.reply_to.id,
-                    'author_id': author.id,
-                }
-            )
+                        'message_id': instance.id,
+                        'reply_to_id': instance.reply_to.id,
+                        'author_id': author.id,
+                    }
+                )
     
     # 3. Обычное уведомление о новом сообщении
-    # Отправляем только тем, кто НЕ получил упоминание или ответ
     excluded_ids = set(mentioned_user_ids)
     if instance.reply_to and instance.reply_to.author_id != author.id:
         excluded_ids.add(instance.reply_to.author_id)
     
-    # СТАНДАРТИЗИРОВАННАЯ ЛОГИКА УВЕДОМЛЕНИЙ:
-    # Все типы чатов могут отправлять уведомления, но пользователь может их отключить
-    # через настройки ChatUserSettings.notifications_enabled
-    
-    # Определяем тип уведомления и заголовок в зависимости от типа чата
     if chat.type == 'announcement':
         notification_type = 'announcement_new_message'
         title = f'Новое объявление от {author.get_full_name() or author.username}'
         is_announcement = True
     else:
-        # Для private, group, department, channel используем единый тип
         notification_type = 'chat_new_message'
         if chat.type == 'private':
             title = f'Новое сообщение от {author.get_full_name() or author.username}'
-        else:  # group, department, channel
+        else:
             title = f'{author.get_full_name() or author.username} в {get_chat_name(chat)}'
         is_announcement = False
     
-    # Отправляем уведомления всем участникам (с учетом их настроек)
     for recipient in participants_list:
-        # Пропускаем тех, кто уже получил упоминание или ответ
         if recipient.id in excluded_ids:
             continue
         
-        # Проверяем настройки уведомлений (из предзагруженного словаря)
         if not notification_settings.get(recipient.id, True):
             continue
         
@@ -197,7 +209,7 @@ def create_message_notifications(sender, instance, created, **kwargs):
         if is_announcement:
             metadata['is_announcement'] = True
         
-        NotificationService.create_notification_async(
+        NotificationService.create_notification(
             recipient=recipient,
             notification_type_code=notification_type,
             title=title,
