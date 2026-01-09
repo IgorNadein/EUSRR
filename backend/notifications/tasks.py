@@ -276,158 +276,10 @@ def process_message_notifications_task(self, message_id: int):
     Args:
         message_id: ID сообщения
     """
-    try:
-        from communications.models import Message
-        from notifications.services import NotificationService
-        from communications.notification_signals import (
-            get_users_with_notifications_enabled,
-            extract_mentions,
-            truncate_message,
-            get_chat_name
-        )
-        
-        # Загружаем сообщение с оптимизацией
-        message = Message.objects.select_related(
-            'chat', 'author', 'reply_to__author'
-        ).get(id=message_id)
-        
-        if message.is_system or message.is_deleted:
-            return {"status": "skipped", "reason": "system_or_deleted"}
-        
-        chat = message.chat
-        author = message.author
-        content = message.content
-        
-        # Получаем всех участников чата кроме автора
-        if chat.type in ['announcement', 'channel', 'department', 'global']:
-            participants = chat.get_participants.exclude(id=author.id)
-        else:
-            participants = chat.participants.exclude(id=author.id)
-        
-        participants_list = list(participants)
-        if not participants_list:
-            return {"status": "success", "notifications_sent": 0}
-        
-        # Загружаем настройки уведомлений ОДНИМ запросом
-        notification_settings = get_users_with_notifications_enabled(chat, participants_list)
-        
-        notifications_count = 0
-        
-        # 1. Обработка упоминаний (@username)
-        mentioned_users = extract_mentions(content)
-        mentioned_user_ids = []
-        
-        if mentioned_users:
-            for email in mentioned_users:
-                try:
-                    user = User.objects.get(email=email)
-                    if user in participants_list and user.id != author.id:
-                        if notification_settings.get(user.id, True):
-                            NotificationService.create_notification(
-                                recipient=user,
-                                notification_type_code='chat_mention',
-                                title=f'Вас упомянул {author.get_full_name() or author.username}',
-                                message=truncate_message(content, 100),
-                                content_object=message,
-                                action_url=f'/communications/chats/{chat.id}/?message={message.id}',
-                                metadata={
-                                    'chat_id': chat.id,
-                                    'chat_name': get_chat_name(chat),
-                                    'message_id': message.id,
-                                    'author_id': author.id,
-                                }
-                            )
-                            notifications_count += 1
-                        mentioned_user_ids.append(user.id)
-                except User.DoesNotExist:
-                    continue
-        
-        # 2. Обработка ответов на сообщения
-        if message.reply_to and message.reply_to.author_id != author.id:
-            original_author = message.reply_to.author
-            
-            if original_author.id not in mentioned_user_ids:
-                if notification_settings.get(original_author.id, True):
-                    NotificationService.create_notification(
-                        recipient=original_author,
-                        notification_type_code='chat_reply',
-                        title=f'{author.get_full_name() or author.username} ответил на ваше сообщение',
-                        message=truncate_message(content, 100),
-                        content_object=message,
-                        action_url=f'/communications/chats/{chat.id}/?message={message.id}',
-                        metadata={
-                            'chat_id': chat.id,
-                            'chat_name': get_chat_name(chat),
-                            'message_id': message.id,
-                            'reply_to_id': message.reply_to.id,
-                            'author_id': author.id,
-                        }
-                    )
-                    notifications_count += 1
-        
-        # 3. Обычное уведомление о новом сообщении
-        excluded_ids = set(mentioned_user_ids)
-        if message.reply_to and message.reply_to.author_id != author.id:
-            excluded_ids.add(message.reply_to.author_id)
-        
-        # Определяем тип уведомления
-        if chat.type == 'announcement':
-            notification_type = 'announcement_new_message'
-            title = f'Новое объявление от {author.get_full_name() or author.username}'
-            is_announcement = True
-        else:
-            notification_type = 'chat_new_message'
-            if chat.type == 'private':
-                title = f'Новое сообщение от {author.get_full_name() or author.username}'
-            else:
-                title = f'{author.get_full_name() or author.username} в {get_chat_name(chat)}'
-            is_announcement = False
-        
-        # Отправляем уведомления
-        for recipient in participants_list:
-            if recipient.id in excluded_ids:
-                continue
-            
-            if not notification_settings.get(recipient.id, True):
-                continue
-            
-            metadata = {
-                'chat_id': chat.id,
-                'chat_name': get_chat_name(chat),
-                'message_id': message.id,
-                'author_id': author.id,
-            }
-            if is_announcement:
-                metadata['is_announcement'] = True
-            
-            NotificationService.create_notification(
-                recipient=recipient,
-                notification_type_code=notification_type,
-                title=title,
-                message=truncate_message(content, 150 if is_announcement else 100),
-                content_object=message,
-                action_url=f'/communications/chats/{chat.id}/',
-                metadata=metadata
-            )
-            notifications_count += 1
-        
-        logger.info(
-            f"Processed message {message_id}: sent {notifications_count} notifications"
-        )
-        
-        return {
-            "status": "success",
-            "message_id": message_id,
-            "notifications_sent": notifications_count
-        }
-        
-    except Message.DoesNotExist:
-        logger.error(f"Message {message_id} not found")
-        return {"status": "error", "reason": "message_not_found"}
-        
-    except Exception as exc:
-        logger.exception(f"Failed to process notifications for message {message_id}: {exc}")
-        raise self.retry(exc=exc)
+    from notifications.task_base import MessageNotificationProcessor
+    
+    processor = MessageNotificationProcessor(task=self)
+    return processor.process(message_id)
 
 
 @shared_task(
@@ -439,7 +291,7 @@ def process_message_notifications_task(self, message_id: int):
 def process_event_notifications_task(
     self,
     event_id: int,
-    action: str,  # 'created', 'updated', 'cancelled'
+    action: str = 'created',  # 'created', 'updated', 'cancelled'
     changed_fields: list = None
 ):
     """
@@ -450,87 +302,10 @@ def process_event_notifications_task(
         action: Тип действия ('created', 'updated', 'cancelled')
         changed_fields: Список изменённых полей (для updated)
     """
-    try:
-        from calendar_app.models import CalendarEvent
-        from notifications.services import NotificationService
-        
-        event = CalendarEvent.objects.select_related(
-            'department', 'creator'
-        ).prefetch_related('participants').get(id=event_id)
-        
-        # Определяем получателей
-        recipients = set()
-        
-        if event.is_company:
-            from employees.models import Employee
-            recipients = set(Employee.objects.filter(is_active=True).exclude(id=event.creator.id))
-        elif event.department:
-            recipients = set(event.department.employees.filter(is_active=True).exclude(id=event.creator.id))
-        else:
-            recipients = set(event.participants.exclude(id=event.creator.id))
-        
-        if not recipients:
-            return {"status": "success", "notifications_sent": 0}
-        
-        # Определяем тип и текст уведомления
-        if action == 'created':
-            notification_type = 'event_created'
-            title = 'Новое событие в календаре'
-            message = f'"{event.title}" ({event.start_date.strftime("%d.%m.%Y")})'
-        elif action == 'cancelled':
-            notification_type = 'event_cancelled'
-            title = 'Событие отменено'
-            message = f'Событие "{event.title}" ({event.start_date.strftime("%d.%m.%Y")}) отменено'
-        else:  # updated
-            notification_type = 'event_updated'
-            title = 'Событие изменено'
-            message = f'Изменено событие "{event.title}"'
-        
-        # URL календаря
-        if event.department:
-            action_url = f'/calendar/?department={event.department.id}'
-        else:
-            action_url = '/calendar/'
-        
-        notifications_count = 0
-        
-        # Отправляем уведомления
-        for recipient in recipients:
-            NotificationService.create_notification(
-                recipient=recipient,
-                notification_type_code=notification_type,
-                title=title,
-                message=message,
-                content_object=event,
-                action_url=action_url,
-                metadata={
-                    'event_id': event.id,
-                    'event_title': event.title,
-                    'event_date': event.start_date.isoformat(),
-                    'department_id': event.department.id if event.department else None,
-                    'is_company_event': event.is_company,
-                }
-            )
-            notifications_count += 1
-        
-        logger.info(
-            f"Processed event {event_id} ({action}): sent {notifications_count} notifications"
-        )
-        
-        return {
-            "status": "success",
-            "event_id": event_id,
-            "action": action,
-            "notifications_sent": notifications_count
-        }
-        
-    except CalendarEvent.DoesNotExist:
-        logger.error(f"CalendarEvent {event_id} not found")
-        return {"status": "error", "reason": "event_not_found"}
-        
-    except Exception as exc:
-        logger.exception(f"Failed to process event notifications: {exc}")
-        raise self.retry(exc=exc)
+    from notifications.task_base import EventNotificationProcessor
+    
+    processor = EventNotificationProcessor(task=self)
+    return processor.process(event_id)
 
 
 @shared_task(
@@ -547,71 +322,10 @@ def process_post_notifications_task(self, post_id: int, action: str = 'created')
         post_id: ID публикации
         action: Тип действия ('created', 'comment')
     """
-    try:
-        from feed.models import Post
-        from notifications.services import NotificationService
-        
-        post = Post.objects.select_related(
-            'author', 'department'
-        ).get(id=post_id)
-        
-        # Определяем получателей
-        recipients = set()
-        
-        if post.type == 'company':
-            from employees.models import Employee
-            recipients = set(Employee.objects.filter(is_active=True).exclude(id=post.author.id))
-        elif post.type == 'department' and post.department:
-            recipients = set(post.department.employees.filter(is_active=True).exclude(id=post.author.id))
-        
-        if not recipients:
-            return {"status": "success", "notifications_sent": 0}
-        
-        # Определяем контекст
-        if post.type == 'company':
-            context = 'компании'
-        elif post.type == 'department' and post.department:
-            context = f'отдела {post.department.name}'
-        else:
-            context = f'от {post.author.get_full_name() or post.author.username}'
-        
-        notifications_count = 0
-        
-        # Отправляем уведомления
-        for recipient in recipients:
-            NotificationService.create_notification(
-                recipient=recipient,
-                notification_type_code='feed_new_post',
-                title=f'Новая публикация {context}',
-                message=post.title,
-                content_object=post,
-                action_url=f'/post/{post.id}/',
-                metadata={
-                    'post_id': post.id,
-                    'post_title': post.title,
-                    'author_id': post.author.id,
-                    'post_type': post.type,
-                }
-            )
-            notifications_count += 1
-        
-        logger.info(
-            f"Processed post {post_id}: sent {notifications_count} notifications"
-        )
-        
-        return {
-            "status": "success",
-            "post_id": post_id,
-            "notifications_sent": notifications_count
-        }
-        
-    except Post.DoesNotExist:
-        logger.error(f"Post {post_id} not found")
-        return {"status": "error", "reason": "post_not_found"}
-        
-    except Exception as exc:
-        logger.exception(f"Failed to process post notifications: {exc}")
-        raise self.retry(exc=exc)
+    from notifications.task_base import PostNotificationProcessor
+    
+    processor = PostNotificationProcessor(task=self)
+    return processor.process(post_id)
 
 
 @shared_task(
@@ -623,7 +337,7 @@ def process_post_notifications_task(self, post_id: int, action: str = 'created')
 def process_request_notifications_task(
     self,
     request_id: int,
-    action: str,  # 'created', 'approved', 'rejected', 'comment'
+    action: str = 'created',  # 'created', 'approved', 'rejected', 'comment'
     comment_id: int = None
 ):
     """
@@ -634,104 +348,17 @@ def process_request_notifications_task(
         action: Тип действия
         comment_id: ID комментария (если action='comment')
     """
-    try:
-        from requests_app.models import Request, RequestComment
-        from notifications.services import NotificationService
-        
-        request_obj = Request.objects.select_related(
-            'employee'
-        ).prefetch_related('departments').get(id=request_id)
-        
-        recipients = set()
-        
-        if action == 'comment' and comment_id:
-            comment = RequestComment.objects.select_related('author').get(id=comment_id)
-            
-            # Уведомляем автора заявления
-            recipients.add(request_obj.employee)
-            
-            # Уведомляем руководителей отделов
-            for dept in request_obj.departments.all():
-                dept_heads = dept.employees.filter(
-                    departments_links__role='head',
-                    departments_links__is_active=True,
-                    is_active=True
-                )
-                recipients.update(dept_heads)
-            
-            # Исключаем автора комментария
-            recipients.discard(comment.author)
-            
-            notification_type = 'request_comment'
-            title = f"💬 Новый комментарий к заявлению от {request_obj.employee.get_full_name()}"
-            message = f"{comment.author.get_full_name()} прокомментировал: {comment.text[:100]}"
-            
-        elif action == 'approved':
-            recipients = {request_obj.employee}
-            notification_type = 'request_approved'
-            title = f"✅ Заявление одобрено"
-            message = f'Ваше заявление "{request_obj.get_type_display()}" одобрено'
-            
-        elif action == 'rejected':
-            recipients = {request_obj.employee}
-            notification_type = 'request_rejected'
-            title = f"❌ Заявление отклонено"
-            message = f'Ваше заявление "{request_obj.get_type_display()}" отклонено'
-            
-        else:  # created
-            # Уведомляем руководителей
-            for dept in request_obj.departments.all():
-                dept_heads = dept.employees.filter(
-                    departments_links__role='head',
-                    departments_links__is_active=True,
-                    is_active=True
-                )
-                recipients.update(dept_heads)
-            
-            notification_type = 'request_new'
-            title = f"📋 Новое заявление от {request_obj.employee.get_full_name()}"
-            message = f'Тип: {request_obj.get_type_display()}'
-        
-        if not recipients:
-            return {"status": "success", "notifications_sent": 0}
-        
-        notifications_count = 0
-        
-        # Отправляем уведомления
-        for recipient in recipients:
-            NotificationService.create_notification(
-                recipient=recipient,
-                notification_type_code=notification_type,
-                title=title,
-                message=message,
-                content_object=request_obj,
-                action_url=f'/requests/{request_obj.id}/',
-                metadata={
-                    'request_id': request_obj.id,
-                    'request_type': request_obj.type,
-                    'employee_id': request_obj.employee.id,
-                }
-            )
-            notifications_count += 1
-        
-        logger.info(
-            f"Processed request {request_id} ({action}): sent {notifications_count} notifications"
-        )
-        
-        return {
-            "status": "success",
-            "request_id": request_id,
-            "action": action,
-            "notifications_sent": notifications_count
-        }
-        
-    except Request.DoesNotExist:
-        logger.error(f"Request {request_id} not found")
-        return {"status": "error", "reason": "request_not_found"}
-        
-    except Exception as exc:
-        logger.exception(f"Failed to process request notifications: {exc}")
-        raise self.retry(exc=exc)
+    from notifications.task_base import RequestNotificationProcessor
+    
+    processor = RequestNotificationProcessor(task=self)
+    # Определяем тип уведомления на основе action
+    notification_type_map = {
+        'created': 'created',
+        'approved': 'status_changed',
+        'rejected': 'status_changed',
+        'comment': 'comment_added',
+    }
+    return processor.process(request_id, notification_type_map.get(action, 'created'))
 
 
 @shared_task(
@@ -747,72 +374,7 @@ def process_document_notifications_task(self, document_id: int):
     Args:
         document_id: ID документа
     """
-    try:
-        from documents.models import Document
-        from notifications.services import NotificationService
-        
-        document = Document.objects.select_related(
-            'uploaded_by'
-        ).prefetch_related('recipients', 'departments').get(id=document_id)
-        
-        recipients = set()
-        
-        # Определяем получателей
-        if document.sent_to_all:
-            # Все активные сотрудники
-            recipients = set(User.objects.filter(is_active=True))
-        else:
-            # Конкретные получатели
-            recipients.update(document.recipients.filter(is_active=True))
-            
-            # Сотрудники отделов
-            for dept in document.departments.all():
-                dept_employees = dept.employees.filter(
-                    departments_links__is_active=True,
-                    is_active=True
-                )
-                recipients.update(dept_employees)
-        
-        # Исключаем загрузившего
-        if document.uploaded_by:
-            recipients.discard(document.uploaded_by)
-        
-        if not recipients:
-            return {"status": "success", "notifications_sent": 0}
-        
-        notifications_count = 0
-        
-        # Отправляем уведомления
-        for recipient in recipients:
-            NotificationService.create_notification(
-                recipient=recipient,
-                notification_type_code='document_new',
-                title='Новый документ для ознакомления',
-                message=f'Документ "{document.title}" требует ознакомления',
-                content_object=document,
-                action_url=f'/documents/{document.id}/',
-                metadata={
-                    'document_id': document.id,
-                    'document_title': document.title,
-                    'uploaded_by_id': document.uploaded_by.id if document.uploaded_by else None,
-                }
-            )
-            notifications_count += 1
-        
-        logger.info(
-            f"Processed document {document_id}: sent {notifications_count} notifications"
-        )
-        
-        return {
-            "status": "success",
-            "document_id": document_id,
-            "notifications_sent": notifications_count
-        }
-        
-    except Document.DoesNotExist:
-        logger.error(f"Document {document_id} not found")
-        return {"status": "error", "reason": "document_not_found"}
-        
-    except Exception as exc:
-        logger.exception(f"Failed to process document notifications: {exc}")
-        raise self.retry(exc=exc)
+    from notifications.task_base import DocumentNotificationProcessor
+    
+    processor = DocumentNotificationProcessor(task=self)
+    return processor.process(document_id)
