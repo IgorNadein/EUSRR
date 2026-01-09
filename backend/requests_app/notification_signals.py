@@ -67,7 +67,8 @@ def create_request_notifications(sender, instance, created, **kwargs):
                     
                     # Определяем action по статусу
                     action = 'approved' if new_status == 'approved' else \
-                             'rejected' if new_status == 'rejected' else 'updated'
+                             'rejected' if new_status == 'rejected' else \
+                             'cancelled' if new_status == 'cancelled' else 'updated'
                     
                     def send_task():
                         """Отложенная отправка задачи после commit транзакции"""
@@ -215,8 +216,9 @@ def create_comment_notification(sender, instance, created, **kwargs):
             notify_request_comment(instance)
     
     transaction.on_commit(send_task)
-    author = comment.author
+    author = instance.author
     recipients_set = set()
+    request_obj = instance.request
 
     # Автор заявки
     if request_obj.employee.id != author.id:
@@ -264,14 +266,14 @@ def create_comment_notification(sender, instance, created, **kwargs):
             title=f"💬 Новый комментарий к заявлению от {employee_name}",
             message=(
                 f"{author_name} прокомментировал заявление "
-                f'"{request_type}": {comment.text[:100]}'
+                f'"{request_type}": {instance.text[:100]}'
             ),
             content_object=request_obj,
             action_url=f"/requests/{request_obj.id}/",
             metadata={
                 "request_id": request_obj.id,
                 "request_type": request_obj.type,
-                "comment_id": comment.id,
+                "comment_id": instance.id,
                 "author_id": author.id,
             },
         )

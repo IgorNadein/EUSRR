@@ -360,31 +360,36 @@ class EventNotificationProcessor(BaseNotificationProcessor):
             
             User = get_user_model()
             
-            event = CalendarEvent.objects.select_related('creator').get(id=event_id)
+            event = CalendarEvent.objects.select_related('created_by', 'employee', 'department').get(id=event_id)
             
             # Собираем всех получателей
             recipients = set()
             
-            # Участники события
-            for participant in event.participants.all():
-                recipients.add(participant)
+            # Если событие отдела - уведомляем всех сотрудников отдела
+            if event.department:
+                recipients.update(self.get_department_employees([event.department.id]))
             
-            # Департаменты (если есть)
-            if event.departments.exists():
-                recipients.update(self.get_department_employees(event.departments.all()))
+            # Если личное событие сотрудника - уведомляем только его
+            elif event.employee:
+                # Проверяем что сотрудник активен
+                if event.employee.is_active and event.employee.email_verified:
+                    recipients.add(event.employee)
             
-            # Исключаем создателя и неактивных
-            recipients = self.get_active_employees(recipients)
-            if event.creator:
-                recipients.discard(event.creator)
+            # Если глобальное событие (нет department и employee) - уведомляем всех активных
+            else:
+                recipients = set(User.objects.filter(is_active=True, email_verified=True))
+            
+            # Исключаем создателя
+            if event.created_by:
+                recipients.discard(event.created_by)
             
             if not recipients:
-                return self.log_result(event_id, 0)
+                return self.log_result('event', event_id, 'skipped', 0)
             
             # Отправляем уведомления
             notifications_sent = self.send_notifications(
                 recipients=recipients,
-                notification_type='calendar_event_created',
+                notification_type='event_created',
                 title=f'Новое событие: {event.title}',
                 message=truncate_text(event.description or '', 150),
                 content_object=event,
@@ -397,10 +402,10 @@ class EventNotificationProcessor(BaseNotificationProcessor):
                 }
             )
             
-            return self.log_result(event_id, notifications_sent)
+            return self.log_result('event', event_id, 'created', notifications_sent)
             
         except Exception as exc:
-            return self.handle_exception(exc, f"event {event_id}")
+            self.handle_exception(exc)
 
 
 class PostNotificationProcessor(BaseNotificationProcessor):
@@ -410,55 +415,47 @@ class PostNotificationProcessor(BaseNotificationProcessor):
         """Обработка уведомлений для поста"""
         try:
             from feed.models import Post
+            from django.contrib.auth import get_user_model
             
-            post = Post.objects.select_related('author').get(id=post_id)
-            
-            if post.is_deleted:
-                return {"status": "skipped", "reason": "deleted"}
+            User = get_user_model()
+            post = Post.objects.select_related('author', 'department').get(id=post_id)
             
             # Собираем получателей
             recipients = set()
             
-            # Департаменты
-            if post.target_departments.exists():
-                recipients.update(self.get_department_employees(post.target_departments.all()))
+            # Если пост для конкретного отдела - уведомляем сотрудников отдела
+            if post.department:
+                recipients.update(self.get_department_employees([post.department.id]))
+            else:
+                # Иначе уведомляем всех активных сотрудников
+                recipients = set(User.objects.filter(is_active=True, email_verified=True))
             
-            # Конкретные пользователи
-            for user in post.target_users.all():
-                recipients.add(user)
-            
-            # Если нет конкретных получателей - всем активным
-            if not recipients:
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                recipients = set(User.objects.filter(is_active=True))
-            
-            # Исключаем автора и неактивных
-            recipients = self.get_active_employees(recipients)
+            # Исключаем автора
             if post.author:
                 recipients.discard(post.author)
             
             if not recipients:
-                return self.log_result(post_id, 0)
+                return self.log_result('post', post_id, 'skipped', 0)
             
             # Отправляем уведомления
             notifications_sent = self.send_notifications(
                 recipients=recipients,
                 notification_type='feed_new_post',
-                title=f'Новая публикация от {post.author.get_full_name() if post.author else "Система"}',
-                message=truncate_text(post.content, 200),
+                title=f'{post.title}',
+                message=truncate_text(post.body, 200),
                 content_object=post,
                 action_url=f'/feed/?post={post.id}',
                 metadata={
                     'post_id': post.id,
                     'author_id': post.author.id if post.author else None,
+                    'post_type': post.type,
                 }
             )
             
-            return self.log_result(post_id, notifications_sent)
+            return self.log_result('post', post_id, 'created', notifications_sent)
             
         except Exception as exc:
-            return self.handle_exception(exc, f"post {post_id}")
+            self.handle_exception(exc)
 
 
 class RequestNotificationProcessor(BaseNotificationProcessor):
@@ -475,76 +472,83 @@ class RequestNotificationProcessor(BaseNotificationProcessor):
         try:
             from requests_app.models import Request
             
-            request_obj = Request.objects.select_related('requester', 'handler').get(id=request_id)
+            request_obj = Request.objects.select_related('employee', 'approver').prefetch_related('recipients', 'cc_users').get(id=request_id)
             
             # Собираем получателей в зависимости от типа уведомления
             recipients = set()
             
             if notification_type == 'created':
-                # Уведомляем исполнителя и копии
-                if request_obj.handler:
-                    recipients.add(request_obj.handler)
+                # Уведомляем согласующего и получателей
+                if request_obj.approver:
+                    recipients.add(request_obj.approver)
                 
                 for user in request_obj.recipients.all():
-                    recipients.add(user)
+                    if user.is_active and getattr(user, 'email_verified', True):
+                        recipients.add(user)
                     
                 for user in request_obj.cc_users.all():
-                    recipients.add(user)
+                    if user.is_active and getattr(user, 'email_verified', True):
+                        recipients.add(user)
                     
             elif notification_type == 'status_changed':
-                # Уведомляем создателя
-                if request_obj.requester:
-                    recipients.add(request_obj.requester)
+                # Уведомляем создателя заявки
+                if request_obj.employee:
+                    if request_obj.employee.is_active and getattr(request_obj.employee, 'email_verified', True):
+                        recipients.add(request_obj.employee)
                     
             elif notification_type == 'comment_added':
-                # Уведомляем всех участников кроме автора комментария
-                if request_obj.requester:
-                    recipients.add(request_obj.requester)
-                if request_obj.handler:
-                    recipients.add(request_obj.handler)
+                # Уведомляем всех участников
+                if request_obj.employee:
+                    if request_obj.employee.is_active and getattr(request_obj.employee, 'email_verified', True):
+                        recipients.add(request_obj.employee)
+                        
+                if request_obj.approver:
+                    if request_obj.approver.is_active and getattr(request_obj.approver, 'email_verified', True):
+                        recipients.add(request_obj.approver)
+                        
                 for user in request_obj.recipients.all():
-                    recipients.add(user)
+                    if user.is_active and getattr(user, 'email_verified', True):
+                        recipients.add(user)
+                        
                 for user in request_obj.cc_users.all():
-                    recipients.add(user)
-            
-            # Исключаем неактивных
-            recipients = self.get_active_employees(recipients)
+                    if user.is_active and getattr(user, 'email_verified', True):
+                        recipients.add(user)
             
             if not recipients:
-                return self.log_result(request_id, 0)
+                return self.log_result('request', request_id, notification_type, 0)
             
             # Формируем заголовок
             title_map = {
-                'created': f'Новая заявка #{request_obj.id}: {request_obj.subject}',
+                'created': f'Новая заявка #{request_obj.id}: {request_obj.title or request_obj.get_type_display()}',
                 'status_changed': f'Изменён статус заявки #{request_obj.id}',
                 'comment_added': f'Новый комментарий к заявке #{request_obj.id}',
             }
             
             type_code_map = {
-                'created': 'request_created',
+                'created': 'request_new',
                 'status_changed': 'request_status_changed',
-                'comment_added': 'request_comment_added',
+                'comment_added': 'request_comment',
             }
             
             # Отправляем уведомления
             notifications_sent = self.send_notifications(
                 recipients=recipients,
-                notification_type=type_code_map.get(notification_type, 'request_created'),
+                notification_type=type_code_map.get(notification_type, 'request_new'),
                 title=title_map.get(notification_type, f'Обновление заявки #{request_obj.id}'),
-                message=truncate_text(request_obj.description, 150),
+                message=truncate_text(request_obj.comment or '', 150),
                 content_object=request_obj,
                 action_url=f'/requests/{request_obj.id}/',
                 metadata={
                     'request_id': request_obj.id,
-                    'subject': request_obj.subject,
+                    'request_type': request_obj.type,
                     'status': request_obj.status,
                 }
             )
             
-            return self.log_result(request_id, notifications_sent)
+            return self.log_result('request', request_id, notification_type, notifications_sent)
             
         except Exception as exc:
-            return self.handle_exception(exc, f"request {request_id}")
+            self.handle_exception(exc)
 
 
 class DocumentNotificationProcessor(BaseNotificationProcessor):
@@ -554,35 +558,39 @@ class DocumentNotificationProcessor(BaseNotificationProcessor):
         """Обработка уведомлений для документа"""
         try:
             from documents.models import Document
+            from django.contrib.auth import get_user_model
             
-            document = Document.objects.select_related('author').get(id=document_id)
-            
-            if document.is_deleted:
-                return {"status": "skipped", "reason": "deleted"}
+            User = get_user_model()
+            document = Document.objects.select_related('uploaded_by').prefetch_related('departments', 'recipients').get(id=document_id)
             
             # Собираем получателей
             recipients = set()
             
-            # Департаменты
-            if document.departments.exists():
-                recipients.update(self.get_department_employees(document.departments.all()))
+            # Если разослать всем
+            if document.sent_to_all:
+                recipients = set(User.objects.filter(is_active=True, email_verified=True))
+            else:
+                # Департаменты
+                if document.departments.exists():
+                    dept_ids = [d.id for d in document.departments.all()]
+                    recipients.update(self.get_department_employees(dept_ids))
+                
+                # Конкретные получатели
+                for user in document.recipients.all():
+                    if user.is_active and getattr(user, 'email_verified', True):
+                        recipients.add(user)
             
-            # Конкретные пользователи
-            for user in document.readers.all():
-                recipients.add(user)
-            
-            # Исключаем автора и неактивных
-            recipients = self.get_active_employees(recipients)
-            if document.author:
-                recipients.discard(document.author)
+            # Исключаем автора
+            if document.uploaded_by:
+                recipients.discard(document.uploaded_by)
             
             if not recipients:
-                return self.log_result(document_id, 0)
+                return self.log_result('document', document_id, 'skipped', 0)
             
             # Отправляем уведомления
             notifications_sent = self.send_notifications(
                 recipients=recipients,
-                notification_type='document_created',
+                notification_type='document_ready',
                 title=f'Новый документ: {document.title}',
                 message=truncate_text(document.description or '', 150),
                 content_object=document,
@@ -590,11 +598,10 @@ class DocumentNotificationProcessor(BaseNotificationProcessor):
                 metadata={
                     'document_id': document.id,
                     'document_title': document.title,
-                    'document_type': document.document_type,
                 }
             )
             
-            return self.log_result(document_id, notifications_sent)
+            return self.log_result('document', document_id, 'created', notifications_sent)
             
         except Exception as exc:
-            return self.handle_exception(exc, f"document {document_id}")
+            self.handle_exception(exc)

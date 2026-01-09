@@ -367,6 +367,36 @@ class RequestViewSet(viewsets.ModelViewSet):
         logger.info(f"[RequestViewSet.comments] POST: comment created id={saved.id}")
         return Response(ser.data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=["delete"], url_path="comments/(?P<comment_id>[^/.]+)")
+    def delete_comment(self, request: DRFRequest, pk: int | str | None = None, comment_id: int | str | None = None) -> Response:
+        """Удаление комментария.
+
+        DELETE /api/v1/requests/{pk}/comments/{comment_id}/
+        
+        Права: только автор комментария или staff.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        req_obj = self.get_object()
+        
+        try:
+            comment = RequestComment.objects.get(id=comment_id, request=req_obj)
+        except RequestComment.DoesNotExist:
+            return Response({"detail": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Проверка прав: только автор или staff
+        if not (request.user.is_staff or comment.author == request.user):
+            return Response(
+                {"detail": "You don't have permission to delete this comment"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        logger.info(f"[RequestViewSet.delete_comment] user={request.user.id} deleting comment_id={comment_id}")
+        comment.delete()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     # ---------- Экшены статусов (только бизнес-валидация) ----------
 
     @action(detail=True, methods=["post"])

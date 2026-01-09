@@ -356,6 +356,8 @@ def process_request_notifications_task(
         'created': 'created',
         'approved': 'status_changed',
         'rejected': 'status_changed',
+        'cancelled': 'status_changed',
+        'updated': 'status_changed',
         'comment': 'comment_added',
     }
     return processor.process(request_id, notification_type_map.get(action, 'created'))
