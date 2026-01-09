@@ -21,7 +21,7 @@ Employee = get_user_model()
 @receiver(post_save, sender=Post)
 def create_post_notification(sender, instance, created, **kwargs):
     """
-    Создает уведомления при создании новой публикации.
+    Создает уведомления при создании новой публикации асинхронно.
     
     Уведомления отправляются в зависимости от типа:
     - TYPE_COMPANY - всем сотрудникам
@@ -31,8 +31,27 @@ def create_post_notification(sender, instance, created, **kwargs):
     if not created:
         return
     
-    post = instance
-    notify_new_post(post)
+    from django.db import transaction
+    from notifications.tasks import process_post_notifications_task
+    
+    def send_task():
+        """Отложенная отправка задачи после commit транзакции"""
+        try:
+            process_post_notifications_task.delay(
+                post_id=instance.id,
+                action='created'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Failed to queue post notifications task: {e}, "
+                f"falling back to sync"
+            )
+            # Fallback на старую логику
+            notify_new_post(instance)
+    
+    transaction.on_commit(send_task)
 
 
 @receiver(post_save, sender=Comment)
