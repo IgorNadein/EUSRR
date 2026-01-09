@@ -13,15 +13,13 @@ from api.decorators import require_api_auth
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, JsonResponse
+from django.http.multipartparser import MultiPartParser, MultiPartParserError
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
-from django.http.multipartparser import MultiPartParser, MultiPartParserError
-
 
 from .forms_front import DepartmentEditForm, SetHeadForm
-
 
 # =========================
 #   Утилиты
@@ -102,24 +100,26 @@ def _extract_items(payload: Any):
 def _convert_api_url_to_frontend(api_url: str | None, frontend_path: str) -> str | None:
     """
     Преобразует API URL пагинации в frontend URL.
-    
+
     Пример:
         http://localhost:9000/api/v1/employees/?page=2&search=test
         -> /employees/list/?page=2&search=test
     """
     if not api_url:
         return None
-    
-    from urllib.parse import urlparse, parse_qs, urlencode
-    
+
+    from urllib.parse import parse_qs, urlencode, urlparse
+
     parsed = urlparse(api_url)
     query_params = parse_qs(parsed.query)
-    
+
     # Преобразуем query_params обратно в строку (parse_qs возвращает списки)
-    clean_params = {k: v[0] if isinstance(v, list) and len(v) == 1 else v 
-                    for k, v in query_params.items()}
+    clean_params = {
+        k: v[0] if isinstance(v, list) and len(v) == 1 else v
+        for k, v in query_params.items()
+    }
     query_string = urlencode(clean_params, doseq=True)
-    
+
     return f"{frontend_path}?{query_string}" if query_string else frontend_path
     return [], 0, None, None
 
@@ -207,18 +207,19 @@ def employee_list(request):
     Список сотрудников.
     Если ?format=json — вернуть JSON (для автокомплита):
       /employees/list/?format=json&q=...&exclude=1,2,3&limit=12
-    
+
     Для HTML страницы - данные загружаются через JavaScript на клиенте.
     """
-    # Если параметр active отсутствует и это HTML-запрос, 
+    # Если параметр active отсутствует и это HTML-запрос,
     # редиректим с active=true по умолчанию
     if request.GET.get("format") != "json" and "active" not in request.GET:
         params = request.GET.copy()
         params["active"] = "true"
         from django.http import QueryDict
+
         query_string = params.urlencode()
         return redirect(f"{request.path}?{query_string}")
-    
+
     api = get_api_client(request)
 
     # JSON-ветка для автокомплита
@@ -246,7 +247,7 @@ def employee_list(request):
 
         payload = resp.json or {}
         items, count, next_url, prev_url = _extract_items(payload)
-        
+
         # exclude: "1,2,3"
         raw_ex = (request.GET.get("exclude") or "").strip()
         try:
@@ -279,7 +280,7 @@ def employee_list(request):
         if dept_resp.ok:
             dept_data = dept_resp.json or {}
             departments_list = dept_data.get("results", [])
-        
+
         # Получаем все должности для фильтров
         pos_resp = api.get("v1/positions/", params={"page_size": 1000})
         if pos_resp.ok:
@@ -287,7 +288,7 @@ def employee_list(request):
             positions_list = pos_data.get("results", [])
     except Exception:
         pass
-    
+
     context = {
         "employees": [],  # Пустой список - данные загрузятся через JS
         "departments_list": departments_list,
@@ -356,7 +357,9 @@ def employee_profile(request, pk: str | int = "me"):
     gresp_all = api.get("v1/groups/", params={"ordering": "name"})
     gdata_all = gresp_all.json if gresp_all.ok else []
     all_groups = (
-        gdata_all.get("results", gdata_all) if isinstance(gdata_all, dict) else gdata_all
+        gdata_all.get("results", gdata_all)
+        if isinstance(gdata_all, dict)
+        else gdata_all
     ) or []
 
     # Персональные группы сотрудника (для «пилюль»)
@@ -451,12 +454,13 @@ def employee_edit(request, pk: int):
     Поддерживает как JSON, так и multipart/form-data (для загрузки файлов).
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     api = get_api_client(request)
-    
+
     # Проверяем Content-Type
-    content_type = request.content_type or ''
+    content_type = request.content_type or ""
     logger.info(f"[employee_edit] pk={pk}, Content-Type: {content_type}")
     parsed_post, parsed_files = _parse_multipart_request(request, logger)
     logger.info(
@@ -467,30 +471,30 @@ def employee_edit(request, pk: int):
         "[employee_edit] request.FILES keys: %s",
         list(parsed_files.keys()),
     )
-    
-    if 'multipart/form-data' in content_type:
+
+    if "multipart/form-data" in content_type:
         # Обрабатываем multipart/form-data (файлы)
         logger.info("[employee_edit] Processing multipart/form-data")
         payload = {}
-        
+
         # Собираем обычные поля из POST
         for key, value in parsed_post.items():
-            if key == 'csrfmiddlewaretoken':
+            if key == "csrfmiddlewaretoken":
                 continue
             # Если это массив (например skills_ids)
-            if key.endswith('_ids') or key == 'skills':
+            if key.endswith("_ids") or key == "skills":
                 payload[key] = parsed_post.getlist(key)
             else:
                 payload[key] = value
-        
+
         logger.info(
             "[employee_edit] Payload before avatar: %s",
             list(payload.keys()),
         )
-        
+
         # Обрабатываем файлы (аватар)
-        if 'avatar' in parsed_files:
-            avatar_file = parsed_files['avatar']
+        if "avatar" in parsed_files:
+            avatar_file = parsed_files["avatar"]
             logger.info(
                 "[employee_edit] Processing avatar: %s, size: %s",
                 avatar_file.name,
@@ -498,23 +502,26 @@ def employee_edit(request, pk: int):
             )
         else:
             logger.warning("[employee_edit] No avatar in request.FILES")
-        
+
         logger.info(f"[employee_edit] Final payload keys: {list(payload.keys())}")
-        
+
         # Отправляем в DRF (multipart если есть файл, иначе JSON)
         try:
             if avatar_file:
-                files = {"avatar": (avatar_file.name, avatar_file.read(), avatar_file.content_type)}
+                files = {
+                    "avatar": (
+                        avatar_file.name,
+                        avatar_file.read(),
+                        avatar_file.content_type,
+                    )
+                }
                 resp = api.patch(f"v1/employees/{pk}/", data=payload, files=files)
             else:
                 resp = api.patch(f"v1/employees/{pk}/", json=payload)
             logger.info(f"[employee_edit] API response status: {resp.status}")
         except Exception as e:
             logger.error(f"[employee_edit] API call error: {e}")
-            return JsonResponse(
-                {"detail": f"API error: {str(e)}"},
-                status=500
-            )
+            return JsonResponse({"detail": f"API error: {str(e)}"}, status=500)
     else:
         # Обрабатываем JSON (как раньше)
         logger.info("[employee_edit] Processing JSON")
@@ -523,16 +530,13 @@ def employee_edit(request, pk: int):
         except Exception as e:
             logger.error(f"[employee_edit] JSON parse error: {e}")
             payload = {}
-        
+
         try:
             resp = api.patch(f"v1/employees/{pk}/", json=payload)
         except Exception as e:
             logger.error(f"[employee_edit] API call error: {e}")
-            return JsonResponse(
-                {"detail": f"API error: {str(e)}"},
-                status=500
-            )
-    
+            return JsonResponse({"detail": f"API error: {str(e)}"}, status=500)
+
     try:
         data = resp.json
     except Exception as e:
@@ -552,16 +556,17 @@ def employee_edit_me(request):
     Поддерживает как JSON, так и multipart/form-data (для загрузки файлов).
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     logger.info("=" * 80)
     logger.info("[employee_edit_me] ===== FUNCTION CALLED =====")
     logger.info(f"[employee_edit_me] Method: {request.method}")
-    
+
     api = get_api_client(request)
-    
+
     # Проверяем Content-Type
-    content_type = request.content_type or ''
+    content_type = request.content_type or ""
     logger.info(f"[employee_edit_me] Content-Type: {content_type}")
     parsed_post, parsed_files = _parse_multipart_request(request, logger)
     logger.info(
@@ -572,42 +577,42 @@ def employee_edit_me(request):
         "[employee_edit_me] request.FILES keys: %s",
         list(parsed_files.keys()),
     )
-    
-    if 'multipart/form-data' in content_type:
+
+    if "multipart/form-data" in content_type:
         # Обрабатываем multipart/form-data (файлы)
         logger.info("[employee_edit_me] Processing multipart/form-data")
         payload = {}
-        
+
         # Собираем обычные поля из POST
         for key, value in parsed_post.items():
-            value_len = len(value) if hasattr(value, '__len__') else 'N/A'
+            value_len = len(value) if hasattr(value, "__len__") else "N/A"
             logger.info(
                 f"[employee_edit_me] POST field: '{key}' = '{value}' "
                 f"(type: {type(value).__name__}, len: {value_len})"
             )
-            if key == 'csrfmiddlewaretoken':
+            if key == "csrfmiddlewaretoken":
                 continue
             # Пропускаем пустое поле avatar (приходит из FormData без файла)
-            if key == 'avatar' and value == '':
+            if key == "avatar" and value == "":
                 logger.info("[employee_edit_me] ✅ Skipping empty avatar field")
                 continue
             # Конвертируем пустые строки в null для ForeignKey полей
-            if key.endswith('_id') and value == '':
+            if key.endswith("_id") and value == "":
                 value = None
             # Если это массив (например skills_ids)
-            if key.endswith('_ids') or key == 'skills':
+            if key.endswith("_ids") or key == "skills":
                 payload[key] = parsed_post.getlist(key)
             else:
                 payload[key] = value
-        
+
         logger.info(
             "[employee_edit_me] Payload before avatar: %s",
             list(payload.keys()),
         )
-        
+
         # Обрабатываем файлы (аватар)
-        if 'avatar' in parsed_files:
-            avatar_file = parsed_files['avatar']
+        if "avatar" in parsed_files:
+            avatar_file = parsed_files["avatar"]
             logger.info(
                 "[employee_edit_me] Processing avatar: %s, size: %s",
                 avatar_file.name,
@@ -615,16 +620,22 @@ def employee_edit_me(request):
             )
         else:
             logger.warning("[employee_edit_me] No avatar in request.FILES")
-        
+
         logger.info(
             "[employee_edit_me] Final payload keys: %s",
             list(payload.keys()),
         )
-        
+
         # Отправляем в DRF (multipart если есть файл, иначе JSON)
         try:
             if avatar_file:
-                files = {"avatar": (avatar_file.name, avatar_file.read(), avatar_file.content_type)}
+                files = {
+                    "avatar": (
+                        avatar_file.name,
+                        avatar_file.read(),
+                        avatar_file.content_type,
+                    )
+                }
                 resp = api.patch("v1/employees/me/", data=payload, files=files)
             else:
                 resp = api.patch("v1/employees/me/", json=payload)
@@ -634,10 +645,7 @@ def employee_edit_me(request):
             )
         except Exception as e:
             logger.error(f"[employee_edit_me] API call error: {e}")
-            return JsonResponse(
-                {"detail": f"API error: {str(e)}"},
-                status=500
-            )
+            return JsonResponse({"detail": f"API error: {str(e)}"}, status=500)
     else:
         # Обрабатываем JSON (как раньше)
         logger.info("[employee_edit_me] Processing JSON")
@@ -646,16 +654,13 @@ def employee_edit_me(request):
         except Exception as e:
             logger.error(f"[employee_edit_me] JSON parse error: {e}")
             payload = {}
-        
+
         try:
             resp = api.patch("v1/employees/me/", json=payload)
         except Exception as e:
             logger.error(f"[employee_edit_me] API call error: {e}")
-            return JsonResponse(
-                {"detail": f"API error: {str(e)}"},
-                status=500
-            )
-    
+            return JsonResponse({"detail": f"API error: {str(e)}"}, status=500)
+
     try:
         data = resp.json
     except Exception as e:
@@ -686,7 +691,7 @@ def employee_create(request):
         "whatsapp": request.POST.get("whatsapp", "").strip(),
         "wechat": request.POST.get("wechat", "").strip(),
     }
-    
+
     # Обработка gender (должно быть числом)
     gender = request.POST.get("gender", "").strip()
     if gender:
@@ -694,12 +699,12 @@ def employee_create(request):
             data["gender"] = int(gender)
         except (ValueError, TypeError):
             pass
-    
+
     # Обработка birth_date
     birth_date = request.POST.get("birth_date", "").strip()
     if birth_date:
         data["birth_date"] = birth_date
-    
+
     # Обработка position
     position = request.POST.get("position", "").strip()
     if position:
@@ -707,7 +712,7 @@ def employee_create(request):
             data["position"] = int(position)
         except (ValueError, TypeError):
             pass
-    
+
     skills = request.POST.getlist("skills")
     if skills:
         data["skills"] = skills
@@ -719,19 +724,19 @@ def employee_create(request):
     files = {}
     if request.FILES.get("avatar"):
         avatar_file = request.FILES["avatar"]
-        files["avatar"] = (avatar_file.name, avatar_file.read(), avatar_file.content_type)
-    
+        files["avatar"] = (
+            avatar_file.name,
+            avatar_file.read(),
+            avatar_file.content_type,
+        )
+
     if files:
         resp = api.post("v1/employees/", data=data, files=files)
     else:
         resp = api.post("v1/employees/", json=data)
     if not resp.ok:
-        messages.error(
-            request, f"Не удалось создать: {resp.status} — {resp.text}"
-        )
-        return render(
-            request, "employees/employee_create.html", {"form": request.POST}
-        )
+        messages.error(request, f"Не удалось создать: {resp.status} — {resp.text}")
+        return render(request, "employees/employee_create.html", {"form": request.POST})
 
     new_emp = resp.json or {}
     messages.success(request, "Сотрудник создан.")
@@ -747,7 +752,7 @@ def employee_create_modal(request):
     Возвращает JSON с результатом.
     """
     api = get_api_client(request)
-    
+
     # Собираем данные из формы
     data = {
         "email": request.POST.get("email", "").strip(),
@@ -759,7 +764,7 @@ def employee_create_modal(request):
         "whatsapp": request.POST.get("whatsapp", "").strip(),
         "wechat": request.POST.get("wechat", "").strip(),
     }
-    
+
     # Обработка gender (должно быть числом: 0, 1, 2)
     gender = request.POST.get("gender", "").strip()
     if gender:
@@ -767,35 +772,39 @@ def employee_create_modal(request):
             data["gender"] = int(gender)
         except (ValueError, TypeError):
             data["gender"] = None
-    
+
     # Обработка остальных полей
     birth_date = request.POST.get("birth_date", "").strip()
     if birth_date:
         data["birth_date"] = birth_date
-    
+
     position = request.POST.get("position", "").strip()
     if position:
         try:
             data["position"] = int(position)
         except (ValueError, TypeError):
             pass
-    
+
     # Обработка навыков (если будут добавлены в форму)
     skills = request.POST.getlist("skills")
     if skills:
         data["skills"] = skills
-    
+
     # Обработка пароля
     password = request.POST.get("password", "").strip()
     if password:
         data["password"] = password
-    
+
     # Если есть аватар - отправляем multipart, иначе JSON
     files = {}
     if request.FILES.get("avatar"):
         avatar_file = request.FILES["avatar"]
-        files["avatar"] = (avatar_file.name, avatar_file.read(), avatar_file.content_type)
-    
+        files["avatar"] = (
+            avatar_file.name,
+            avatar_file.read(),
+            avatar_file.content_type,
+        )
+
     # Отправляем запрос к API
     if files:
         # С файлом - multipart/form-data
@@ -803,23 +812,21 @@ def employee_create_modal(request):
     else:
         # Без файла - JSON
         resp = api.post("v1/employees/", json=data)
-    
+
     if not resp.ok:
         # Парсим ошибки от API
         error_msg = "Не удалось создать сотрудника"
         field_errors = {}
-        
+
         try:
             error_data = resp.json
             if isinstance(error_data, dict):
                 # Логируем для отладки
                 import logging
+
                 logger = logging.getLogger(__name__)
-                logger.error(
-                    f"API validation errors: {error_data}, "
-                    f"sent data: {data}"
-                )
-                
+                logger.error(f"API validation errors: {error_data}, sent data: {data}")
+
                 # Проверяем, есть ли детальные ошибки по полям
                 for field, messages_list in error_data.items():
                     if isinstance(messages_list, list):
@@ -828,39 +835,40 @@ def employee_create_modal(request):
                         field_errors[field] = [str(messages_list)]
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"Error parsing API response: {e}, resp.text: {resp.text}")
             error_msg = f"Ошибка {resp.status}: {resp.text}"
-        
+
         # Если есть детальные ошибки, возвращаем их
         if field_errors:
-            return JsonResponse({
-                "success": False,
-                "error": "Проверьте правильность заполнения полей",
-                "errors": field_errors
-            }, status=400)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Проверьте правильность заполнения полей",
+                    "errors": field_errors,
+                },
+                status=400,
+            )
         else:
-            return JsonResponse({
-                "success": False,
-                "error": error_msg
-            }, status=400)
-    
+            return JsonResponse({"success": False, "error": error_msg}, status=400)
+
     # Успешное создание
     new_emp = resp.json or {}
     emp_id = new_emp.get("id")
-    
+
     redirect_url = None
     if emp_id:
-        redirect_url = reverse(
-            "employees:employee_detail", kwargs={"pk": emp_id}
-        )
-    
-    return JsonResponse({
-        "success": True,
-        "message": "Сотрудник успешно создан",
-        "employee_id": emp_id,
-        "redirect_url": redirect_url
-    })
+        redirect_url = reverse("employees:employee_detail", kwargs={"pk": emp_id})
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Сотрудник успешно создан",
+            "employee_id": emp_id,
+            "redirect_url": redirect_url,
+        }
+    )
 
 
 # =========================
@@ -887,7 +895,9 @@ def employee_groups_bulk(request, pk: int):
     try:
         gids = [int(x) for x in group_ids]
     except Exception:
-        return JsonResponse({"detail": "group_ids must be a list of integers"}, status=400)
+        return JsonResponse(
+            {"detail": "group_ids must be a list of integers"}, status=400
+        )
     if not gids:
         return JsonResponse({"detail": "group_ids is empty"}, status=400)
 
@@ -905,7 +915,9 @@ def employee_groups_bulk(request, pk: int):
                 msg = r.text or f"HTTP {r.status}"
             errors[str(gid)] = msg
     status_code = 200 if not errors else 207  # Multi-Status семантически уместен
-    return JsonResponse({"ok": True, "processed": ok, "failed": errors}, status=status_code)
+    return JsonResponse(
+        {"ok": True, "processed": ok, "failed": errors}, status=status_code
+    )
 
 
 @require_api_auth
@@ -1232,7 +1244,9 @@ def department_create(request):
         form.add_error(None, "Недостаточно прав для создания отдела.")
         status_code = 403
     else:
-        form.add_error(None, f"Ошибка API ({getattr(r, "status", None)}). Повторите попытку позже.")
+        form.add_error(
+            None, f"Ошибка API ({getattr(r, 'status', None)}). Повторите попытку позже."
+        )
         status_code = 502
 
     return render(
@@ -1597,6 +1611,7 @@ def position_create_front(request: HttpRequest) -> JsonResponse:
         )
     return _ok(data, status=201)
 
+
 @require_api_auth
 @require_http_methods(["GET"])
 def position_detail_front(request: HttpRequest, pos_id: int) -> JsonResponse:
@@ -1607,7 +1622,9 @@ def position_detail_front(request: HttpRequest, pos_id: int) -> JsonResponse:
     resp = api.get(f"v1/positions/{pos_id}/")
     ok, data, status = _api_ok_or_error(resp)
     if not ok:
-        return JsonResponse(data or {"detail": "Не удалось получить должность"}, status=status)
+        return JsonResponse(
+            data or {"detail": "Не удалось получить должность"}, status=status
+        )
     return JsonResponse(data or {}, status=200)
 
 

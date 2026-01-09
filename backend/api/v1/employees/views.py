@@ -1057,14 +1057,18 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         link = EmployeeDepartment.objects.filter(
             employee_id=emp_id, department_id=dept.id
         ).first()
-        logger.warning(f"[set_member_role] emp={emp_id}, dept={dept.id}, role={role_id}, link={link}")
+        logger.warning(
+            f"[set_member_role] emp={emp_id}, dept={dept.id}, role={role_id}, link={link}"
+        )
 
         via_assignment = False
 
         if link:
             # Сотрудник — член отдела: обновляем роль в линке (старая логика)
             svc = DirectoryService() if _is_ldap_enabled() else None
-            logger.warning(f"[set_member_role] member branch, svc={type(svc).__name__ if svc else None}")
+            logger.warning(
+                f"[set_member_role] member branch, svc={type(svc).__name__ if svc else None}"
+            )
 
             if svc:
                 try:
@@ -1076,9 +1080,14 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     DirectoryDbError,
                     DirectoryServiceError,
                 ) as e:
-                    logger.error(f"[set_member_role] svc.set_member_role FAILED: {type(e).__name__}: {e}")
+                    logger.error(
+                        f"[set_member_role] svc.set_member_role FAILED: {type(e).__name__}: {e}"
+                    )
                     import traceback
-                    logger.error(f"[set_member_role] traceback:\n{traceback.format_exc()}")
+
+                    logger.error(
+                        f"[set_member_role] traceback:\n{traceback.format_exc()}"
+                    )
                     return Response(
                         {"detail": str(e)},
                         status=(
@@ -1108,7 +1117,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         else:
             # Сотрудник НЕ член отдела: используем только RoleAssignment
             via_assignment = True
-            logger.warning(f"[set_member_role] via_assignment branch: emp={emp_id}, role={role_id}")
+            logger.warning(
+                f"[set_member_role] via_assignment branch: emp={emp_id}, role={role_id}"
+            )
 
             if role:
                 # Назначаем роль через RoleAssignment
@@ -1118,16 +1129,23 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
                 if _is_ldap_enabled():
                     try:
-                        logger.warning(f"[set_member_role] calling assign_role via LDAP")
+                        logger.warning(
+                            f"[set_member_role] calling assign_role via LDAP"
+                        )
                         group_service = GroupService()
                         user_service = UserService(group_service)
                         dept_service = DepartmentService(group_service, user_service)
                         dept_service.assign_role(employee, role, request.user)
                         logger.warning(f"[set_member_role] assign_role OK")
                     except Exception as e:
-                        logger.error(f"[set_member_role] assign_role FAILED: {type(e).__name__}: {e}")
+                        logger.error(
+                            f"[set_member_role] assign_role FAILED: {type(e).__name__}: {e}"
+                        )
                         import traceback
-                        logger.error(f"[set_member_role] traceback:\n{traceback.format_exc()}")
+
+                        logger.error(
+                            f"[set_member_role] traceback:\n{traceback.format_exc()}"
+                        )
                         return Response({"detail": str(e)}, status=400)
                 else:
                     RoleAssignment.objects.update_or_create(
@@ -1140,12 +1158,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 from employees.ldap.services.department_service import DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
-                
+
                 # Находим активные роли сотрудника в этом отделе
                 active_assignments = RoleAssignment.objects.filter(
                     employee_id=emp_id, role__department=dept, is_active=True
-                ).select_related('role')
-                
+                ).select_related("role")
+
                 if _is_ldap_enabled():
                     # Удаляем из LDAP-групп для каждой роли
                     try:
@@ -1155,7 +1173,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                         for assignment in active_assignments:
                             dept_service.revoke_role(employee, assignment.role)
                     except Exception as e:
-                        logger.error(f"[set_member_role] revoke_role FAILED: {type(e).__name__}: {e}")
+                        logger.error(
+                            f"[set_member_role] revoke_role FAILED: {type(e).__name__}: {e}"
+                        )
                         return Response({"detail": str(e)}, status=400)
                 else:
                     active_assignments.update(is_active=False)
