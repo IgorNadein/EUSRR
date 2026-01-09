@@ -1792,7 +1792,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
                     # Аватар
                     if avatar_bytes:
-                        user.photo.save(
+                        user.avatar.save(
                             f"avatar_{user.id}.jpg",
                             ContentFile(avatar_bytes),
                             save=False,

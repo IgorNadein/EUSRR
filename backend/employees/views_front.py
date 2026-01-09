@@ -32,6 +32,7 @@ def _file_to_data_uri(uploaded) -> str:
     """
     Превращаем загруженный файл (InMemoryUploadedFile/TemporaryUploadedFile)
     в data URI (data:image/...;base64,xxxx).
+    Deprecated: используйте прямую отправку файлов через multipart/form-data.
     """
     if not uploaded:
         return ""
@@ -495,18 +496,18 @@ def employee_edit(request, pk: int):
                 avatar_file.name,
                 avatar_file.size,
             )
-            # Конвертируем в data URI для Base64ImageField
-            data_uri = _file_to_data_uri(avatar_file)
-            payload['avatar'] = data_uri
-            logger.info(f"[employee_edit] Avatar converted, data URI length: {len(data_uri)}")
         else:
             logger.warning("[employee_edit] No avatar in request.FILES")
         
         logger.info(f"[employee_edit] Final payload keys: {list(payload.keys())}")
         
-        # Отправляем в DRF как JSON (с base64 аватаром)
+        # Отправляем в DRF (multipart если есть файл, иначе JSON)
         try:
-            resp = api.patch(f"v1/employees/{pk}/", json=payload)
+            if avatar_file:
+                files = {"avatar": (avatar_file.name, avatar_file.read(), avatar_file.content_type)}
+                resp = api.patch(f"v1/employees/{pk}/", data=payload, files=files)
+            else:
+                resp = api.patch(f"v1/employees/{pk}/", json=payload)
             logger.info(f"[employee_edit] API response status: {resp.status}")
         except Exception as e:
             logger.error(f"[employee_edit] API call error: {e}")
@@ -612,13 +613,6 @@ def employee_edit_me(request):
                 avatar_file.name,
                 avatar_file.size,
             )
-            # Конвертируем в data URI для Base64ImageField
-            data_uri = _file_to_data_uri(avatar_file)
-            payload['avatar'] = data_uri
-            logger.info(
-                "[employee_edit_me] Avatar converted to data URI, length: %s",
-                len(data_uri),
-            )
         else:
             logger.warning("[employee_edit_me] No avatar in request.FILES")
         
@@ -627,9 +621,13 @@ def employee_edit_me(request):
             list(payload.keys()),
         )
         
-        # Отправляем в DRF как JSON (с base64 аватаром)
+        # Отправляем в DRF (multipart если есть файл, иначе JSON)
         try:
-            resp = api.patch("v1/employees/me/", json=payload)
+            if avatar_file:
+                files = {"avatar": (avatar_file.name, avatar_file.read(), avatar_file.content_type)}
+                resp = api.patch("v1/employees/me/", data=payload, files=files)
+            else:
+                resp = api.patch("v1/employees/me/", json=payload)
             logger.info(
                 "[employee_edit_me] API response status: %s",
                 resp.status,
@@ -710,8 +708,6 @@ def employee_create(request):
         except (ValueError, TypeError):
             pass
     
-    if request.FILES.get("avatar"):
-        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
     skills = request.POST.getlist("skills")
     if skills:
         data["skills"] = skills
@@ -719,7 +715,16 @@ def employee_create(request):
     if password:
         data["password"] = password  # API сгенерирует сам, если не передали
 
-    resp = api.post("v1/employees/", json=data)
+    # Если есть аватар - multipart, иначе JSON
+    files = {}
+    if request.FILES.get("avatar"):
+        avatar_file = request.FILES["avatar"]
+        files["avatar"] = (avatar_file.name, avatar_file.read(), avatar_file.content_type)
+    
+    if files:
+        resp = api.post("v1/employees/", data=data, files=files)
+    else:
+        resp = api.post("v1/employees/", json=data)
     if not resp.ok:
         messages.error(
             request, f"Не удалось создать: {resp.status} — {resp.text}"
@@ -775,10 +780,6 @@ def employee_create_modal(request):
         except (ValueError, TypeError):
             pass
     
-    # Обработка аватара
-    if request.FILES.get("avatar"):
-        data["avatar"] = _file_to_data_uri(request.FILES["avatar"])
-    
     # Обработка навыков (если будут добавлены в форму)
     skills = request.POST.getlist("skills")
     if skills:
@@ -789,8 +790,19 @@ def employee_create_modal(request):
     if password:
         data["password"] = password
     
+    # Если есть аватар - отправляем multipart, иначе JSON
+    files = {}
+    if request.FILES.get("avatar"):
+        avatar_file = request.FILES["avatar"]
+        files["avatar"] = (avatar_file.name, avatar_file.read(), avatar_file.content_type)
+    
     # Отправляем запрос к API
-    resp = api.post("v1/employees/", json=data)
+    if files:
+        # С файлом - multipart/form-data
+        resp = api.post("v1/employees/", data=data, files=files)
+    else:
+        # Без файла - JSON
+        resp = api.post("v1/employees/", json=data)
     
     if not resp.ok:
         # Парсим ошибки от API
