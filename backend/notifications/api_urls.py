@@ -1,3 +1,13 @@
+"""
+DEPRECATED: Этот файл устарел и будет удалён в следующей версии.
+
+Используйте вместо него: api.v1.notifications.urls
+
+URL routing перенесён в api/v1/notifications/urls.py
+Новые пути: /api/v1/notifications/* вместо /api/v1/notifications/*
+
+Миграция: 9 января 2026
+"""
 from django.urls import path
 from . import api_views
 

@@ -1,20 +1,13 @@
 """
-DEPRECATED: Этот файл устарел и будет удалён в следующей версии.
-
-Используйте вместо него: api.v1.notifications.views
-
-Все API endpoints перенесены в api/v1/notifications/ для единообразия
-с остальными модулями проекта (employees, documents, requests и т.д.)
-
-Миграция: 9 января 2026
+API endpoints для работы с уведомлениями (версия 1).
 """
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Notification, NotificationCategory, NotificationType
-from .services import NotificationService
+from notifications.models import Notification, NotificationCategory, NotificationType
+from notifications.services import NotificationService
 
 
 
@@ -318,7 +311,7 @@ def update_category_settings(request):
 @permission_classes([IsAuthenticated])
 def get_telegram_link_status(request):
     """Получить статус привязки Telegram аккаунта"""
-    from .telegram_models import TelegramUser
+    from notifications.telegram_models import TelegramUser
     
     try:
         tg_user = TelegramUser.objects.get(
@@ -354,7 +347,7 @@ def get_telegram_link_status(request):
 @permission_classes([IsAuthenticated])
 def generate_telegram_link_code(request):
     """Сгенерировать код для привязки Telegram аккаунта"""
-    from .telegram_models import TelegramUser
+    from notifications.telegram_models import TelegramUser
     
     # Проверяем что аккаунт еще не привязан
     existing = TelegramUser.objects.filter(
@@ -399,7 +392,7 @@ def generate_telegram_link_code(request):
 @permission_classes([IsAuthenticated])
 def unlink_telegram(request):
     """Отвязать Telegram аккаунт"""
-    from .telegram_models import TelegramUser
+    from notifications.telegram_models import TelegramUser
     
     try:
         tg_user = TelegramUser.objects.get(
@@ -426,7 +419,7 @@ def unlink_telegram(request):
 # ============================================
 
 from django.conf import settings
-from .models import WebPushSubscription
+from notifications.models import WebPushSubscription
 import logging
 
 logger = logging.getLogger(__name__)

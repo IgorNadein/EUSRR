@@ -165,5 +165,9 @@ urlpatterns = [
         get_poll_results,
         name="poll_results"
     ),
+    
+    # Notifications API
+    path("notifications/", include("api.v1.notifications.urls")),
+    
     path("", include(router.urls)),
 ]

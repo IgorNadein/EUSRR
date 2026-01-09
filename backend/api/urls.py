@@ -14,5 +14,4 @@ urlpatterns = [
         name="token_obtain_pair",
     ),
     path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
-    path("v1/", include("notifications.api_urls")),
 ]
