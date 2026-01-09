@@ -63,8 +63,28 @@ def create_request_notifications(sender, instance, created, **kwargs):
                 new_status = request_obj.status
 
                 if old_status != new_status:
-                    # Передаем текущий request_obj с актуальным approver_id
-                    notify_status_change(request_obj, old_status, new_status)
+                    from notifications.tasks import process_request_notifications_task
+                    
+                    # Определяем action по статусу
+                    action = 'approved' if new_status == 'approved' else \
+                             'rejected' if new_status == 'rejected' else 'updated'
+                    
+                    def send_task():
+                        """Отложенная отправка задачи после commit транзакции"""
+                        try:
+                            process_request_notifications_task.delay(
+                                request_id=request_obj.id,
+                                action=action
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to queue status change notifications task: {e}, "
+                                f"falling back to sync"
+                            )
+                            # Fallback на старую логику
+                            notify_status_change(request_obj, old_status, new_status)
+                    
+                    transaction.on_commit(send_task)
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] create_request_notifications: {e}")
         print(f"❌ [SIGNAL ERROR] create_request_notifications: {e}")
@@ -91,13 +111,31 @@ def notify_on_recipients_changed(sender, instance, action, **kwargs):
     Срабатывает когда recipients устанавливаются через .set(), .add() и т.д.
     """
     try:
+        from notifications.tasks import process_request_notifications_task
+        
         # Проверяем что это завершение операции установки recipients
         if action == "post_add" and instance.id in _pending_new_requests:
             print(
                 f"🎯 [M2M_SIGNAL] Recipients установлены для заявления #{instance.id}, отправляем уведомления"
             )
             _pending_new_requests.discard(instance.id)
-            notify_new_request(instance)
+            
+            def send_task():
+                """Отложенная отправка задачи после commit транзакции"""
+                try:
+                    process_request_notifications_task.delay(
+                        request_id=instance.id,
+                        action='created'
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to queue new request notifications task: {e}, "
+                        f"falling back to sync"
+                    )
+                    # Fallback на старую логику
+                    notify_new_request(instance)
+            
+            transaction.on_commit(send_task)
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] notify_on_recipients_changed: {e}")
         print(f"❌ [SIGNAL ERROR] notify_on_recipients_changed: {e}")
@@ -112,6 +150,8 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
     также отправляем уведомления.
     """
     try:
+        from notifications.tasks import process_request_notifications_task
+        
         # Если это завершение добавления cc_users И заявление все еще ожидает уведомлений
         if action == "post_add" and instance.id in _pending_new_requests:
             # Проверяем что recipients пусты (значит уведомления еще не отправлены)
@@ -120,7 +160,23 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
                     f"🎯 [M2M_SIGNAL] CC users установлены для заявления #{instance.id} (без recipients), отправляем уведомления"
                 )
                 _pending_new_requests.discard(instance.id)
-                notify_new_request(instance)
+                
+                def send_task():
+                    """Отложенная отправка задачи после commit транзакции"""
+                    try:
+                        process_request_notifications_task.delay(
+                            request_id=instance.id,
+                            action='created'
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to queue new request notifications task: {e}, "
+                            f"falling back to sync"
+                        )
+                        # Fallback на старую логику
+                        notify_new_request(instance)
+                
+                transaction.on_commit(send_task)
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] notify_on_cc_users_changed: {e}")
         print(f"❌ [SIGNAL ERROR] notify_on_cc_users_changed: {e}")
@@ -129,7 +185,7 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
 @receiver(post_save, sender=RequestComment)
 def create_comment_notification(sender, instance, created, **kwargs):
     """
-    Создает уведомление при добавлении комментария к заявлению.
+    Создает уведомления при добавлении комментария к заявлению асинхронно.
     Уведомляет:
     - Автора заявления
     - Всех получателей
@@ -139,9 +195,26 @@ def create_comment_notification(sender, instance, created, **kwargs):
     """
     if not created:
         return
-
-    comment = instance
-    request_obj = comment.request
+    
+    from notifications.tasks import process_request_notifications_task
+    
+    def send_task():
+        """Отложенная отправка задачи после commit транзакции"""
+        try:
+            process_request_notifications_task.delay(
+                request_id=instance.request.id,
+                action='comment',
+                comment_id=instance.id
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to queue comment notifications task: {e}, "
+                f"falling back to sync"
+            )
+            # Fallback на старую логику
+            notify_request_comment(instance)
+    
+    transaction.on_commit(send_task)
     author = comment.author
     recipients_set = set()
 

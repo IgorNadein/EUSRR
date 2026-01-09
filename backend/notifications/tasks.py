@@ -732,3 +732,87 @@ def process_request_notifications_task(
     except Exception as exc:
         logger.exception(f"Failed to process request notifications: {exc}")
         raise self.retry(exc=exc)
+
+
+@shared_task(
+    name="documents.process_document_notifications",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+)
+def process_document_notifications_task(self, document_id: int):
+    """
+    Обрабатывает уведомления о новом документе асинхронно.
+    
+    Args:
+        document_id: ID документа
+    """
+    try:
+        from documents.models import Document
+        from notifications.services import NotificationService
+        
+        document = Document.objects.select_related(
+            'uploaded_by'
+        ).prefetch_related('recipients', 'departments').get(id=document_id)
+        
+        recipients = set()
+        
+        # Определяем получателей
+        if document.sent_to_all:
+            # Все активные сотрудники
+            recipients = set(User.objects.filter(is_active=True))
+        else:
+            # Конкретные получатели
+            recipients.update(document.recipients.filter(is_active=True))
+            
+            # Сотрудники отделов
+            for dept in document.departments.all():
+                dept_employees = dept.employees.filter(
+                    departments_links__is_active=True,
+                    is_active=True
+                )
+                recipients.update(dept_employees)
+        
+        # Исключаем загрузившего
+        if document.uploaded_by:
+            recipients.discard(document.uploaded_by)
+        
+        if not recipients:
+            return {"status": "success", "notifications_sent": 0}
+        
+        notifications_count = 0
+        
+        # Отправляем уведомления
+        for recipient in recipients:
+            NotificationService.create_notification(
+                recipient=recipient,
+                notification_type_code='document_new',
+                title='Новый документ для ознакомления',
+                message=f'Документ "{document.title}" требует ознакомления',
+                content_object=document,
+                action_url=f'/documents/{document.id}/',
+                metadata={
+                    'document_id': document.id,
+                    'document_title': document.title,
+                    'uploaded_by_id': document.uploaded_by.id if document.uploaded_by else None,
+                }
+            )
+            notifications_count += 1
+        
+        logger.info(
+            f"Processed document {document_id}: sent {notifications_count} notifications"
+        )
+        
+        return {
+            "status": "success",
+            "document_id": document_id,
+            "notifications_sent": notifications_count
+        }
+        
+    except Document.DoesNotExist:
+        logger.error(f"Document {document_id} not found")
+        return {"status": "error", "reason": "document_not_found"}
+        
+    except Exception as exc:
+        logger.exception(f"Failed to process document notifications: {exc}")
+        raise self.retry(exc=exc)

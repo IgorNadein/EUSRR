@@ -23,13 +23,16 @@ Employee = get_user_model()
 @receiver(post_save, sender=Document)
 def create_document_notification(sender, instance, created, **kwargs):
     """
-    Создает уведомления при создании нового документа.
+    Создает уведомления при создании нового документа асинхронно.
     
     Уведомления отправляются:
     - Всем активным сотрудникам (если sent_to_all=True)
     - Сотрудникам выбранных отделов (через m2m_changed signal)
     - Выбранным получателям (через m2m_changed signal)
     """
+    from django.db import transaction
+    from notifications.tasks import process_document_notifications_task
+    
     logger.info(
         f"[notification_signals] post_save Document id={instance.pk} "
         f"created={created} sent_to_all={instance.sent_to_all}"
@@ -40,12 +43,25 @@ def create_document_notification(sender, instance, created, **kwargs):
     
     document = instance
     
-    # Если документ отправляется всем - создаем уведомления сразу
+    # Если документ отправляется всем - создаем уведомления сразу асинхронно
     if document.sent_to_all:
         logger.info(
-            f"[notification_signals] Calling notify_all_employees for doc={document.pk}"
+            f"[notification_signals] Queuing task for doc={document.pk} (sent_to_all=True)"
         )
-        notify_all_employees(document)
+        
+        def send_task():
+            """Отложенная отправка задачи после commit транзакции"""
+            try:
+                process_document_notifications_task.delay(document_id=document.pk)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to queue document notifications task: {e}, "
+                    f"falling back to sync"
+                )
+                # Fallback на старую логику
+                notify_all_employees(document)
+        
+        transaction.on_commit(send_task)
     else:
         logger.info(
             f"[notification_signals] Skipping notifications (sent_to_all=False), "
