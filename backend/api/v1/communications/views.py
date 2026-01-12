@@ -332,6 +332,122 @@ def load_chat_messages(request, pk: int):
     )
 
 
+@login_required
+@require_GET
+def load_chat_messages_around(request, pk: int):
+    """
+    Загрузка сообщений ВОКРУГ конкретного message_id.
+    Современная архитектура как в Telegram/Discord/WhatsApp.
+    
+    Параметры:
+    - around_id: ID сообщения-якоря (обычно last_read_message_id)
+    - limit: Общее количество сообщений (по умолчанию 50)
+    
+    Возвращает примерно limit/2 сообщений ДО и limit/2 ПОСЛЕ якоря.
+    """
+    chat = get_object_or_404(Chat, pk=pk)
+    user = request.user
+
+    if not user_can_access_chat(chat, user):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        limit = int(request.GET.get("limit", 50))
+    except (TypeError, ValueError):
+        limit = 50
+    limit = max(10, min(limit, 100))
+    
+    around_id = request.GET.get("around_id")
+    
+    # Если нет around_id, пытаемся получить last_read_message_id
+    if not around_id:
+        try:
+            from communications.models import ChatReadState
+            read_state = ChatReadState.objects.filter(
+                chat=chat, user=user
+            ).first()
+            
+            if read_state and read_state.last_read_message_id:
+                around_id = read_state.last_read_message_id
+        except Exception:
+            pass
+    
+    # Если все еще нет around_id - загружаем последние сообщения
+    if not around_id:
+        return load_chat_messages(request, pk)
+    
+    # Находим anchor message
+    # ВАЖНО: around_id может быть либо message_id, либо timestamp
+    # Определяем по размеру: message_id обычно < 1000000, timestamp > 1000000000
+    try:
+        around_value = int(around_id)
+        
+        # Если это большое число (> 1 миллиард) - вероятно timestamp в миллисекундах
+        if around_value > 1_000_000_000:
+            # Конвертируем timestamp из миллисекунд в seconds
+            from datetime import datetime, timezone
+            timestamp_seconds = around_value / 1000
+            anchor_dt = datetime.fromtimestamp(timestamp_seconds, tz=timezone.utc)
+            
+            # Ищем ближайшее сообщение к этому timestamp
+            anchor = Message.objects.filter(
+                chat=chat,
+                created_at__lte=anchor_dt
+            ).order_by('-created_at').first()
+            
+            # Если не нашли до этого времени, берем первое после
+            if not anchor:
+                anchor = Message.objects.filter(
+                    chat=chat,
+                    created_at__gte=anchor_dt
+                ).order_by('created_at').first()
+        else:
+            # Это обычный message_id
+            anchor = Message.objects.filter(chat=chat, pk=around_value).first()
+            
+    except (ValueError, TypeError):
+        # Невалидный ID - загружаем последние
+        return load_chat_messages(request, pk)
+    
+    if not anchor:
+        # Сообщение не найдено - загружаем последние
+        return load_chat_messages(request, pk)
+    
+    half = limit // 2
+    
+    # Сообщения ДО anchor (более старые)
+    before_qs = (
+        Message.objects.filter(chat=chat, created_at__lt=anchor.created_at)
+        .select_related("author", "reply_to__author")
+        .prefetch_related("attachments", "reactions__user")
+        .order_by("-created_at")[: half]
+    )
+    before_messages = list(reversed(list(before_qs)))
+    
+    # Сообщения ПОСЛЕ anchor включая само anchor (более новые)
+    after_qs = (
+        Message.objects.filter(chat=chat, created_at__gte=anchor.created_at)
+        .select_related("author", "reply_to__author")
+        .prefetch_related("attachments", "reactions__user")
+        .order_by("created_at")[: half + 1]
+    )
+    after_messages = list(after_qs)
+    
+    # Объединяем
+    all_messages = before_messages + after_messages
+    serialized = [serialize_message(m) for m in all_messages]
+    
+    return JsonResponse({
+        "ok": True,
+        "messages": serialized,
+        "anchor_id": anchor.id,  # ИСПРАВЛЕНО: возвращаем реальный message_id, а не входной параметр
+        "anchor_index": len(before_messages),  # Позиция anchor в массиве
+        "has_more_before": len(before_messages) >= half,
+        "has_more_after": len(after_messages) > half,
+        "total_loaded": len(all_messages)
+    })
+
+
 # ============ MESSAGE REACTIONS ============
 
 @login_required

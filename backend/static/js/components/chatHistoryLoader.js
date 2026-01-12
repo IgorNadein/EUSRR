@@ -1,15 +1,25 @@
+/**
+ * @fileoverview Chat History Loader - DEPRECATED
+ * @module components/chatHistoryLoader
+ * 
+ * @deprecated Используйте ChatControllerV2 вместо этого модуля.
+ * Этот модуль сохранен для обратной совместимости.
+ * 
+ * МИГРАЦИЯ:
+ * - Вместо initChatHistoryLoader() используйте ChatControllerV2
+ * - Вместо loadMore() используйте chatController.loadMoreHistory()
+ * - Вся логика загрузки теперь в MessageLoaderV2 и ScrollManagerV2
+ * 
+ * @see controllers/chatControllerV2.js
+ * @see loaders/messageLoaderV2.js
+ * @see managers/scrollManagerV2.js
+ */
+
 import {
   createMessageElement,
-  createDayDivider,
   formatDay,
   toTimestamp
 } from './chatMessageTemplates.js';
-
-/**
- * Chat History Loader - загрузка ранних сообщений при прокрутке вверх
- * 
- * РЕФАКТОРИНГ: Теперь использует MessageRenderer для создания элементов сообщений
- */
 
 const DEFAULT_CONFIG = {
   scrollSelector: '#chatScroll',
@@ -128,16 +138,25 @@ export function initChatHistoryLoader(options = {}) {
     const fragment = document.createDocumentFragment();
     let prevDay = null;
 
+    // РЕФАКТОРИНГ: Создаем day-dividers вручную с правильным стилем
+    // Используем messageRenderer.formatDay() для единообразия
     messages.forEach((msg) => {
+      // Определяем день сообщения
       const ts = toTimestamp(msg);
-      const day = msg.day || formatDay(ts);
+      const msgDate = new Date(ts);
+      const day = messageRenderer ? messageRenderer.formatDay(msgDate) : formatDay(ts);
 
+      // Создаем day-divider если день изменился
       if (day !== prevDay) {
-        fragment.appendChild(createDayDivider(day));
+        // Создаем divider с ПРАВИЛЬНЫМ стилем (как в messageRenderer)
+        const dividerEl = document.createElement('div');
+        dividerEl.className = 'day-divider text-center small text-muted my-3';
+        dividerEl.innerHTML = `<span class="px-3 py-1 rounded-pill bg-light">${day}</span>`;
+        fragment.appendChild(dividerEl);
       }
       prevDay = day;
 
-      // РЕФАКТОРИНГ: Используем MessageRenderer если доступен
+      // Создаем элемент сообщения
       let element;
       if (messageRenderer) {
         element = messageRenderer.createMessageElement(msg, false);

@@ -84,43 +84,12 @@ export class MessageContextMenu {
             return;
         }
         
-        console.log('[MessageContextMenu] Setting up MutationObserver');
+        // РЕФАКТОРИНГ: MutationObserver УДАЛЕН
+        // Он дублировал обработку сообщений с событием chat:message-added
+        // Теперь используется ТОЛЬКО событийная модель - chat-detail-enhanced.js
+        // слушает chat:message-added и вызывает attachToMessage
         
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        // Если добавлено само сообщение
-                        if (node.classList?.contains('msg') && node.dataset.messageId) {
-                            if (!node.dataset.contextMenuAttached) {
-                                console.log('[MessageContextMenu] New message detected:', node.dataset.messageId);
-                                this.attachToMessage(node);
-                                node.dataset.contextMenuAttached = 'true';
-                            }
-                        }
-                        
-                        // Если добавлен контейнер с сообщениями
-                        const newMessages = node.querySelectorAll?.('.msg[data-message-id]');
-                        if (newMessages) {
-                            newMessages.forEach((msg) => {
-                                if (!msg.dataset.contextMenuAttached) {
-                                    console.log('[MessageContextMenu] New message in batch:', msg.dataset.messageId);
-                                    this.attachToMessage(msg);
-                                    msg.dataset.contextMenuAttached = 'true';
-                                }
-                            });
-                        }
-                    }
-                });
-            });
-        });
-        
-        observer.observe(container, {
-            childList: true,
-            subtree: true
-        });
-        
-        this.observer = observer;
+        console.log('[MessageContextMenu] Observer setup skipped - using event-based model only');
     }
 
     /**

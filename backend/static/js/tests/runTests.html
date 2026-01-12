@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Tests Runner</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+        }
+        .header p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        .test-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .test-button {
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            padding: 15px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-button:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .test-button.primary {
+            background: #667eea;
+            color: white;
+            font-size: 18px;
+        }
+        .test-button.primary:hover {
+            background: #5568d3;
+        }
+        .console-output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            min-height: 400px;
+            max-height: 600px;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .console-output pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .info-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        .info-box code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+        .info-box ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .status {
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .status.running {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 Chat System Test Runner</h1>
+        <p>Комплексное тестирование системы чата EUSRR</p>
+    </div>
+
+    <div class="info-box">
+        <h3>📋 Инструкции</h3>
+        <ul>
+            <li>Нажмите на любую кнопку ниже для запуска соответствующего набора тестов</li>
+            <li>Результаты будут отображены в консоли браузера (F12) и в окне ниже</li>
+            <li>Для запуска всех тестов используйте кнопку "Запустить все тесты"</li>
+            <li>Тесты можно также запускать из консоли браузера: <code>window.ChatTests.runAll()</code></li>
+        </ul>
+    </div>
+
+    <div id="status" class="status hidden"></div>
+
+    <div class="test-buttons">
+        <button class="test-button primary" onclick="runAllTests()">
+            🚀 Запустить все тесты
+        </button>
+        <button class="test-button" onclick="runTest('testMessageStore')">
+            📦 MessageStore
+        </button>
+        <button class="test-button" onclick="runTest('testMessageLoader')">
+            📥 MessageLoader
+        </button>
+        <button class="test-button" onclick="runTest('testScrollManager')">
+            📜 ScrollManager
+        </button>
+        <button class="test-button" onclick="runTest('testMessageRenderer')">
+            🎨 MessageRenderer
+        </button>
+        <button class="test-button" onclick="runTest('testChatController')">
+            🎮 ChatController
+        </button>
+        <button class="test-button" onclick="runTest('testIntegration')">
+            🔗 Интеграционные
+        </button>
+        <button class="test-button" onclick="runTest('testPerformance')">
+            ⚡ Производительность
+        </button>
+    </div>
+
+    <div class="console-output" id="console">
+        <pre>Консоль готова к выполнению тестов...</pre>
+    </div>
+
+    <div class="info-box">
+        <h3>📊 Что тестируется?</h3>
+        <ul>
+            <li><strong>MessageStore:</strong> Хранение, добавление, обновление, удаление сообщений</li>
+            <li><strong>MessageLoader:</strong> Загрузка начальных сообщений и истории</li>
+            <li><strong>ScrollManager:</strong> Управление скроллом и lazy loading</li>
+            <li><strong>MessageRenderer:</strong> Рендеринг сообщений в DOM</li>
+            <li><strong>ChatController:</strong> Общая координация работы системы</li>
+            <li><strong>Интеграционные:</strong> Взаимодействие всех компонентов</li>
+            <li><strong>Производительность:</strong> Тесты скорости работы с большими объемами данных</li>
+        </ul>
+    </div>
+
+    <script>
+        // Объявляем функции глобально ДО загрузки модуля
+        window.runAllTests = null;
+        window.runTest = null;
+    </script>
+
+    <script type="module">
+        import './chatTests.js';
+
+        // Перехватываем console.log для отображения в UI
+        const consoleOutput = document.getElementById('console');
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        function addToConsole(message, type = 'log') {
+            const pre = consoleOutput.querySelector('pre');
+            const color = type === 'error' ? '#f48771' : type === 'warn' ? '#dcdcaa' : '#d4d4d4';
+            const line = document.createElement('div');
+            line.style.color = color;
+            line.textContent = message;
+            pre.appendChild(line);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToConsole(args.join(' '), 'log');
+        };
+
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToConsole('ERROR: ' + args.join(' '), 'error');
+        };
+
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addToConsole('WARN: ' + args.join(' '), 'warn');
+        };
+
+        // Присваиваем функции глобальным переменным
+        window.runAllTests = async function() {
+            const status = document.getElementById('status');
+            status.className = 'status running';
+            status.textContent = '⏳ Выполнение всех тестов...';
+            status.classList.remove('hidden');
+            
+            const pre = consoleOutput.querySelector('pre');
+            pre.innerHTML = '';
+            
+            try {
+                const results = await window.ChatTests.runAll();
+                
+                status.className = 'status ' + (results.failed === 0 ? 'success' : 'error');
+                status.textContent = results.failed === 0 
+                    ? `✅ Все тесты пройдены! (${results.passed}/${results.total})`
+                    : `⚠️ Некоторые тесты провалены: ${results.passed}/${results.total} успешно, ${results.failed} провалено`;
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = '❌ Ошибка при выполнении тестов: ' + error.message;
+            }
+        };
+
+        window.runTest = async function(testName) {
+            const status = document.getElementById('status');
+            status.className = 'status running';
+            status.textContent = `⏳ Выполнение ${testName}...`;
+            status.classList.remove('hidden');
+            
+            const pre = consoleOutput.querySelector('pre');
+            pre.innerHTML = '';
+            
+            try {
+                const results = await window.ChatTests[testName]();
+                
+                status.className = 'status ' + (results.failed === 0 ? 'success' : 'error');
+                status.textContent = results.failed === 0 
+                    ? `✅ Тест ${testName} пройден! (${results.passed}/${results.total})`
+                    : `⚠️ Тест ${testName}: ${results.passed}/${results.total} успешно, ${results.failed} провалено`;
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = '❌ Ошибка: ' + error.message;
+            }
+        };
+
+        console.log('✅ Test Runner готов к работе!');
+    </script>
+</body>
+</html>

@@ -333,7 +333,7 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         # отдаём клиенту last_read_at и «первое непрочитанное»
         read_state = (
             ChatReadState.objects.filter(chat=chat, user=user)
-            .only("last_read_at")
+            .only("last_read_at", "last_read_message_id")
             .first()
         )
         last_read_at = (
@@ -341,7 +341,19 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
             if read_state and read_state.last_read_at
             else None
         )
+        last_read_message_id = (
+            read_state.last_read_message_id
+            if read_state and read_state.last_read_message_id
+            else None
+        )
         context["last_read_at"] = last_read_at
+        context["last_read_message_id"] = last_read_message_id
+
+        # Передаем last_read_message_id в chat объект для data-атрибута
+        chat.last_read_message_id = last_read_message_id
+        chat.last_read_timestamp = (
+            int(last_read_at.timestamp() * 1000) if last_read_at else 0
+        )
 
         first_unread = None
         if last_read_at:

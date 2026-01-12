@@ -42,19 +42,15 @@ body:has(.chat-page) .bottom-navbar {
   }
 }
 
-/* На десктопе добавляем container для контента */
-@media (min-width: 768px) {
-  .chat-page {
-    padding: 0 var(--space-3);
-  }
-  
+
+
   .chat-header,
   .chat-container {
     max-width: 1200px;
     margin: 0 auto;
     width: 100%;
   }
-  
+
   .chat-container {
     border-radius: var(--bs-border-radius-lg);
     border: 1px solid var(--bs-border-color);
@@ -70,19 +66,22 @@ body:has(.chat-page) .bottom-navbar {
   flex-shrink: 0;
   background: var(--bs-body-bg);
   padding: var(--space-2) var(--space-3);
-  z-index: 10;
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  border-bottom: 1px solid var(--bs-border-color);
 }
 
 @media (min-width: 768px) {
   .chat-header {
     padding: var(--space-3) var(--space-4);
+    border-bottom: none;
   }
 }
 
 @media (max-width: 767.98px) {
   .chat-header {
     padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--bs-border-color);
   }
 }
 
@@ -161,15 +160,15 @@ body:has(.chat-page) .bottom-navbar {
   .chat-header {
     padding: var(--space-1) var(--space-2);
   }
-  
+
   .chat-header-title h1 {
     font-size: 1.1rem;
   }
-  
+
   .chat-header-title i {
     font-size: 1.25rem;
   }
-  
+
   .chat-header-actions .btn-sm span {
     display: none;
   }
@@ -189,6 +188,32 @@ body:has(.chat-page) .bottom-navbar {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   EMOJI PICKER
+═══════════════════════════════════════════════════════════ */
+
+.chat-emoji-picker {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: var(--space-2);
+  z-index: 1050;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--bs-border-radius-lg);
+  max-width: 90vw;
+}
+
+@media (min-width: 768px) {
+  .chat-emoji-picker {
+    right: var(--space-3);
+  }
+}
+
+/* Скрываем по умолчанию, показываем через JS */
+.chat-emoji-picker:not([data-visible="true"]) {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
    ОБЛАСТЬ СООБЩЕНИЙ
 ═══════════════════════════════════════════════════════════ */
 
@@ -201,6 +226,15 @@ body:has(.chat-page) .bottom-navbar {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 70%) transparent;
+
+  /* CSS Containment для оптимизации (как в Telegram) */
+  contain: layout style paint;
+  will-change: scroll-position;
+
+  /* GPU acceleration для плавного scroll */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
 }
 
 .chat-messages-scroll:hover {
@@ -268,6 +302,8 @@ body:has(.chat-page) .bottom-navbar {
   padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   background: var(--bs-body-bg);
   border-top: 1px solid var(--bs-border-color);
+  position: relative;
+  z-index: 1010;
 }
 
 @media (min-width: 768px) {
@@ -281,9 +317,7 @@ body:has(.chat-page) .bottom-navbar {
 @media (max-width: 767.98px) {
   .chat-composer-wrapper {
     padding: var(--space-2) var(--space-2);
-    padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 12px));
-  }
-}
+
 
 .message-field {
   display: flex;
@@ -408,8 +442,8 @@ body:has(.chat-page) .bottom-navbar {
 }
 
 .bubble-me {
-  background: var(--bs-primary);
-  color: white;
+  background: color-mix(in srgb, var(--bs-primary) 92%, #fff 0%);
+  color: #fff;
 }
 
 .bubble-other {
@@ -420,11 +454,10 @@ body:has(.chat-page) .bottom-navbar {
 .mini-ava {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: 9999px;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   background: var(--bs-secondary-bg);
   flex-shrink: 0;
 }
@@ -433,6 +466,7 @@ body:has(.chat-page) .bottom-navbar {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -476,9 +510,12 @@ body:has(.chat-page) .bottom-navbar {
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  margin: var(--space-2) 0;
-  font-size: 0.85rem;
-  font-weight: 600;
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: .85rem;
+  line-height: 1;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
 }
 
 .day-divider::before,
@@ -486,13 +523,20 @@ body:has(.chat-page) .bottom-navbar {
 .unread-divider::before,
 .unread-divider::after {
   content: "";
-  flex: 1;
+  flex: 1 1 auto;
   height: 1px;
-  background: var(--bs-border-color);
+  background: color-mix(in srgb, var(--bs-border-color), transparent 30%);
+}
+
+.day-divider > span,
+.unread-divider > span {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1);
+  background: transparent;
 }
 
 .day-divider {
-  color: var(--bs-secondary);
+  color: var(--bs-secondary-color);
 }
 
 .unread-divider {

@@ -51,7 +51,8 @@ class ChatComposer {
 		this.meAvatar = options.meAvatar || form.dataset.meAvatar || this.scrollEl?.dataset.meAvatar || '';
 		this.profileUrl = options.profileUrl || form.dataset.profileUrl || this.options.profileUrl;
 		this.detailUrlTemplate = options.detailUrlTemplate || form.dataset.detailUrlTemplate || this.options.detailUrlTemplate;
-		this.messageRenderer = options.messageRenderer || null; // РЕФАКТОРИНГ: Принимаем MessageRenderer
+		this.messageRenderer = options.messageRenderer || null; // DEPRECATED: Старый MessageRenderer
+		this.chatController = options.chatController || null; // НОВОЕ: ChatController для новой архитектуры
 		this.selectedFiles = [];
 		this.typingThrottle = 1200;
 		this.lastTypingSent = 0;
@@ -547,7 +548,24 @@ class ChatComposer {
 			is_pending: true
 		};
 
-		// РЕФАКТОРИНГ: Используем MessageRenderer если доступен, иначе fallback на createMessageElement
+		// НОВАЯ АРХИТЕКТУРА: Используем ChatController для оптимистичных сообщений
+		// ChatController сам создаст pending message и добавит в Store
+		if (this.chatController) {
+			const tempId = this.chatController.sendMessage(content, {
+				attachments,
+				optimistic: true
+			});
+			
+			this.pendingQueue.push({
+				id: pendingId,
+				tempId: tempId, // ID от ChatController
+				objectUrls: attachments.map((att) => att.file_url)
+			});
+			
+			return pendingId;
+		}
+		
+		// FALLBACK: Старая логика с MessageRenderer (для backward compatibility)
 		let element;
 		if (this.messageRenderer) {
 			element = this.messageRenderer.createMessageElement(msg, true); // true = isPending

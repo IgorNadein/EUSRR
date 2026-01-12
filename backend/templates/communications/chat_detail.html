@@ -98,7 +98,8 @@
        data-messages-url="{% url 'api:v1:chat_messages' chat.pk %}"
        data-mark-read-url="{% url 'communications:chat_mark_read' chat.pk %}"
        data-edit-url-template="/api/v1/communications/messages/{id}/edit/"
-       data-last-read-timestamp="{{ chat.last_read_timestamp|default:'0' }}">
+       data-last-read-timestamp="{{ chat.last_read_timestamp|default:'0' }}"
+       data-last-read-message-id="{% if chat.last_read_message_id %}{{ chat.last_read_message_id }}{% else %}0{% endif %}">
 
         <!-- Предупреждение о блокировке -->
         {% if chat.is_blocked %}

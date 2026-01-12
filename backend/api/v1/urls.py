@@ -21,6 +21,7 @@ from .communications.views import (
     get_message_reactions,
     get_user_chats,
     load_chat_messages,
+    load_chat_messages_around,
     pin_chat,
     remove_reaction,
     toggle_chat_notifications,
@@ -93,6 +94,11 @@ urlpatterns = [
         "communications/chats/<int:pk>/messages/",
         load_chat_messages,
         name="chat_messages",
+    ),
+    path(
+        "communications/chats/<int:pk>/messages/around/",
+        load_chat_messages_around,
+        name="chat_messages_around",
     ),
     path(
         "communications/chats/<int:chat_id>/pin/",

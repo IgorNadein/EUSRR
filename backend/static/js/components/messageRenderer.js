@@ -116,6 +116,22 @@ export class MessageRenderer {
             return;
         }
 
+        // 🔥 КРИТИЧНО: Проверяем нужен ли day-divider перед новым сообщением
+        const msgDate = new Date(msg.created_ts);
+        const msgDay = this.formatDay(msgDate);
+        
+        // Находим последний day-divider в контейнере
+        const lastDivider = container.querySelector('.day-divider:last-of-type');
+        const lastDividerText = lastDivider ? lastDivider.textContent.trim() : null;
+        
+        // Если дня еще нет или день изменился - создаем divider
+        if (!lastDividerText || lastDividerText !== msgDay) {
+            const dividerEl = document.createElement('div');
+            dividerEl.className = 'day-divider text-center small text-muted my-3';
+            dividerEl.innerHTML = `<span class="px-3 py-1 rounded-pill bg-light">${msgDay}</span>`;
+            container.appendChild(dividerEl);
+        }
+
         const isOwn = msg.author_id === this.currentUserId;
         const messageHtml = this.buildMessageHtml(msg, isOwn);
         
