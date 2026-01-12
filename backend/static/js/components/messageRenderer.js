@@ -121,6 +121,60 @@ export class MessageRenderer {
     }
 
     /**
+     * Создаёт DOM элемент сообщения без вставки в контейнер
+     * Используется для pending сообщений, где нужен прямой доступ к элементу
+     * @param {Object} msg - Объект сообщения
+     * @param {boolean} isPending - Является ли сообщение pending
+     * @returns {HTMLElement} DOM элемент сообщения
+     */
+    createMessageElement(msg, isPending = false) {
+        const isOwn = msg.author_id === this.currentUserId;
+        
+        const wrap = document.createElement('div');
+        wrap.className = `d-flex mb-3 msg ${isOwn ? 'justify-content-end' : 'justify-content-start'}`;
+        
+        if (isPending) {
+            wrap.classList.add('message-pending');
+        }
+        
+        if (msg.id != null) {
+            wrap.setAttribute('data-id', String(msg.id));
+            wrap.setAttribute('data-message-id', String(msg.id));
+            const reactionsData = msg.reactions_summary || {};
+            wrap.setAttribute('data-reactions', JSON.stringify(reactionsData));
+        }
+        
+        const ts = msg.created_ts || Date.now();
+        wrap.setAttribute('data-ts', String(ts));
+        wrap.setAttribute('data-author-id', String(msg.author_id || ''));
+        wrap.setAttribute('data-is-edited', String(msg.is_edited || false));
+        wrap.setAttribute('data-edited-at', String(msg.edited_at || ''));
+
+        // Используем buildMessageInnerHtml для единообразного рендеринга
+        const htmlContent = this.buildMessageInnerHtml(msg, isOwn);
+        
+        // Добавляем статус отправки для pending сообщений
+        if (isPending) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            
+            const bubble = tempDiv.querySelector('.bubble');
+            if (bubble) {
+                const pendingStatus = document.createElement('div');
+                pendingStatus.className = 'message-status small text-secondary mt-2';
+                pendingStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Отправляем…';
+                bubble.appendChild(pendingStatus);
+            }
+            
+            wrap.innerHTML = tempDiv.innerHTML;
+        } else {
+            wrap.innerHTML = htmlContent;
+        }
+
+        return wrap;
+    }
+
+    /**
      * Строит HTML одного сообщения
      */
     buildMessageHtml(msg, isOwn) {

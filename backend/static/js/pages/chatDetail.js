@@ -146,6 +146,19 @@ function initializeComponents(config, userWs) {
   
   console.log('[ChatDetail] MarkRead initialized');
   
+  // ========== MESSAGE RENDERER ==========
+  console.log('[ChatDetail] Initializing MessageRenderer...');
+  
+  const messageRenderer = new MessageRenderer({
+    containerId: 'chatScroll',
+    currentUserId: config.userId,
+    currentUserAvatar: config.userAvatar || '',
+    profileUrl: config.profileUrl || '/employees/profile/',
+    detailUrlTemplate: config.detailUrlTemplate || '/employees/detail/0/'
+  });
+  
+  console.log('[ChatDetail] MessageRenderer initialized');
+  
   // ========== COMPOSER ==========
   console.log('[ChatDetail] Initializing Composer...');
   const composer = initChatComposer({
@@ -155,7 +168,8 @@ function initializeComponents(config, userWs) {
     uploadUrl: config.uploadUrl,
     meId: config.userId,
     meName: config.userName,
-    meAvatar: config.userAvatar
+    meAvatar: config.userAvatar,
+    messageRenderer: messageRenderer  // Передаём MessageRenderer
   });
   
   if (!composer) {
@@ -176,23 +190,11 @@ function initializeComponents(config, userWs) {
     scrollContainerId: 'chatScroll',
     fetchUrl: config.messagesUrl,
     avatarMap: avatarMap,
-    meId: config.userId
+    meId: config.userId,
+    messageRenderer: messageRenderer  // Передаём MessageRenderer
   });
   
   console.log('[ChatDetail] HistoryLoader initialized');
-  
-  // ========== MESSAGE RENDERER ==========
-  console.log('[ChatDetail] Initializing MessageRenderer...');
-  
-  const messageRenderer = new MessageRenderer({
-    containerId: 'chatScroll',
-    currentUserId: config.userId,
-    currentUserAvatar: config.userAvatar || '',
-    profileUrl: config.profileUrl || '/employees/profile/',
-    detailUrlTemplate: config.detailUrlTemplate || '/employees/detail/0/'
-  });
-  
-  console.log('[ChatDetail] MessageRenderer initialized');
   
   // ========== CONTEXT MENU ==========
   // Инициализация контекстного меню перенесена в chat-detail-enhanced.js

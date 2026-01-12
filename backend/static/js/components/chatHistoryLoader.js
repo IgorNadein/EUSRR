@@ -5,6 +5,12 @@ import {
   toTimestamp
 } from './chatMessageTemplates.js';
 
+/**
+ * Chat History Loader - загрузка ранних сообщений при прокрутке вверх
+ * 
+ * РЕФАКТОРИНГ: Теперь использует MessageRenderer для создания элементов сообщений
+ */
+
 const DEFAULT_CONFIG = {
   scrollSelector: '#chatScroll',
   loaderSelector: '[data-history-loader]',
@@ -67,6 +73,7 @@ export function initChatHistoryLoader(options = {}) {
   const profileUrl = scrollEl.dataset.profileUrl || '/employees/profile/';
   const detailUrlTemplate = scrollEl.dataset.detailUrlTemplate || '/employees/0/';
   const avatarMap = getAvatarMapSnapshot();
+  const messageRenderer = options.messageRenderer || null; // РЕФАКТОРИНГ: Принимаем MessageRenderer
 
   const state = {
     loading: false,
@@ -113,6 +120,7 @@ export function initChatHistoryLoader(options = {}) {
       profileUrl,
       detailUrlTemplate,
       avatarMap,
+      messageRenderer,
       state
     } = ctx;
 
@@ -129,12 +137,20 @@ export function initChatHistoryLoader(options = {}) {
       }
       prevDay = day;
 
-      const element = createMessageElement(msg, {
-        meId,
-        profileUrl,
-        detailUrlTemplate,
-        avatarMap
-      });
+      // РЕФАКТОРИНГ: Используем MessageRenderer если доступен
+      let element;
+      if (messageRenderer) {
+        element = messageRenderer.createMessageElement(msg, false);
+      } else {
+        // Fallback для обратной совместимости
+        element = createMessageElement(msg, {
+          meId,
+          profileUrl,
+          detailUrlTemplate,
+          avatarMap
+        });
+      }
+      
       element.classList.remove('message-pending', 'message-pending--resolved');
       fragment.appendChild(element);
     });
@@ -186,6 +202,7 @@ export function initChatHistoryLoader(options = {}) {
           profileUrl,
           detailUrlTemplate,
           avatarMap,
+          messageRenderer,
           state
         });
         state.oldestId = String(payload.messages[0].id);

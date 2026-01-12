@@ -3,6 +3,8 @@ import { createMessageElement } from './chatMessageTemplates.js';
 /**
  * Chat Composer module
  * Отвечает за ввод текста, прикрепление файлов и отправку сообщений через REST API.
+ * 
+ * РЕФАКТОРИНГ: Теперь использует MessageRenderer для создания pending сообщений
  */
 
 const DEFAULT_CONFIG = {
@@ -49,6 +51,7 @@ class ChatComposer {
 		this.meAvatar = options.meAvatar || form.dataset.meAvatar || this.scrollEl?.dataset.meAvatar || '';
 		this.profileUrl = options.profileUrl || form.dataset.profileUrl || this.options.profileUrl;
 		this.detailUrlTemplate = options.detailUrlTemplate || form.dataset.detailUrlTemplate || this.options.detailUrlTemplate;
+		this.messageRenderer = options.messageRenderer || null; // РЕФАКТОРИНГ: Принимаем MessageRenderer
 		this.selectedFiles = [];
 		this.typingThrottle = 1200;
 		this.lastTypingSent = 0;
@@ -544,11 +547,19 @@ class ChatComposer {
 			is_pending: true
 		};
 
-		const element = createMessageElement(msg, {
-			meId: this.meId,
-			profileUrl: this.profileUrl,
-			detailUrlTemplate: this.detailUrlTemplate
-		});
+		// РЕФАКТОРИНГ: Используем MessageRenderer если доступен, иначе fallback на createMessageElement
+		let element;
+		if (this.messageRenderer) {
+			element = this.messageRenderer.createMessageElement(msg, true); // true = isPending
+		} else {
+			// Fallback для обратной совместимости
+			element = createMessageElement(msg, {
+				meId: this.meId,
+				profileUrl: this.profileUrl,
+				detailUrlTemplate: this.detailUrlTemplate
+			});
+		}
+		
 		element.dataset.pendingId = pendingId;
 		this.scrollEl.appendChild(element);
 		this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
