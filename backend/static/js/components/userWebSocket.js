@@ -248,7 +248,23 @@ export function initUserWebSocket(options = {}) {
     if (!state.scrollEl) return;
 
     const { messages } = data;
-    if (!messages || !messages.length) return;
+    
+    // Убираем индикатор загрузки независимо от наличия сообщений
+    const loader = document.getElementById('initialLoader');
+    if (loader) {
+      loader.remove();
+    }
+    
+    // Отправляем событие для других модулей
+    window.dispatchEvent(new CustomEvent('chat:initial-messages-loaded', {
+      detail: { count: messages ? messages.length : 0 }
+    }));
+
+    // Если сообщений нет, завершаем обработку
+    if (!messages || !messages.length) {
+      console.log('[UserWS] No initial messages to render');
+      return;
+    }
 
     // Используем MessageRenderer для добавления сообщений (с проверкой дубликатов)
     if (!options.messageRenderer) {
@@ -263,17 +279,6 @@ export function initUserWebSocket(options = {}) {
 
     // Скроллим вниз
     scrollToBottom(true);
-    
-    // Убираем индикатор загрузки
-    const loader = document.getElementById('initialLoader');
-    if (loader) {
-      loader.remove();
-    }
-    
-    // Отправляем событие для других модулей
-    window.dispatchEvent(new CustomEvent('chat:initial-messages-loaded', {
-      detail: { count: messages.length }
-    }));
     
     // Инициализируем голосования после загрузки сообщений
     if (window.chatPoll) {

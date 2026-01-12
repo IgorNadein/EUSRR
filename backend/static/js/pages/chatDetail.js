@@ -3,7 +3,7 @@
  * Инициализация страницы детального просмотра чата
  */
 
-let initChatMarkRead, initChatComposer, initChatHistoryLoader, initChatFormManager, MessageRenderer, InitialMessagesLoader;
+let initChatMarkRead, initChatComposer, initChatHistoryLoader, initChatFormManager, MessageRenderer;
 
 try {
   const modules = await Promise.all([
@@ -11,8 +11,7 @@ try {
     import('../components/chatComposer.js'),
     import('../components/chatHistoryLoader.js'),
     import('../components/chatFormManager.js'),
-    import('../components/messageRenderer.js'),
-    import('../components/initialMessagesLoader.js')
+    import('../components/messageRenderer.js')
   ]);
   
   initChatMarkRead = modules[0].initChatMarkRead;
@@ -20,7 +19,6 @@ try {
   initChatHistoryLoader = modules[2].initChatHistoryLoader;
   initChatFormManager = modules[3].initChatFormManager;
   MessageRenderer = modules[4].MessageRenderer;
-  InitialMessagesLoader = modules[5].InitialMessagesLoader;
 } catch (error) {
   console.error('[ChatDetail] Failed to load modules:', error);
   alert('Ошибка загрузки модулей чата: ' + error.message);
@@ -199,48 +197,6 @@ function initializeComponents(config, userWs) {
   // ========== CONTEXT MENU ==========
   // Инициализация контекстного меню перенесена в chat-detail-enhanced.js
   // для избежания конфликтов и дублирования
-  
-  // ========== INITIAL MESSAGES LOADER ==========
-  // ОТКЛЮЧЕНО: Используем WebSocket для загрузки initial_messages
-  // InitialMessagesLoader больше не нужен, так как WebSocket справляется с этой задачей
-  /*
-  console.log('[ChatDetail] Loading initial messages...');
-  
-  const initialLoader = new InitialMessagesLoader({
-    chatId: config.chatId,
-    fetchUrl: config.messagesUrl,
-    limit: 30,
-    messageRenderer: messageRenderer,
-    onLoaded: (data) => {
-      console.log('[ChatDetail] Initial messages loaded:', data.messages.length);
-      
-      // Скроллим вниз к последнему сообщению
-      const container = document.getElementById('chatScroll');
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
-    },
-    onError: (error) => {
-      console.error('[ChatDetail] Failed to load initial messages:', error);
-      alert('Ошибка загрузки сообщений: ' + error.message);
-    }
-  });
-  
-  // Загружаем сообщения
-  initialLoader.load().catch(err => {
-    console.error('[ChatDetail] Initial load error:', err);
-  });
-  */
-  console.log('[ChatDetail] Initial messages will be loaded via WebSocket');
-  
-  // Убираем индикатор загрузки после подключения WebSocket
-  const loader = document.getElementById('initialLoader');
-  if (loader) {
-    // Скроем индикатор через WebSocket событие initial_messages
-    window.addEventListener('chat:initial-messages-loaded', () => {
-      loader.remove();
-    }, { once: true });
-  }
   
   // ========== CONFIGURE WEBSOCKET ==========
   console.log('[ChatDetail] Configuring WebSocket...');
