@@ -523,8 +523,17 @@ export function initUserWebSocket(options = {}) {
   function scrollToBottom(instant = false) {
     if (!state.scrollEl) return;
     
-    if (markReadApi?.autoscroll) {
-      markReadApi.autoscroll(instant);
+    // Прямая установка scrollTop для предсказуемости
+    // Избегаем вызова markReadApi.autoscroll чтобы не было конфликтов
+    if (instant) {
+      const prev = state.scrollEl.style.scrollBehavior;
+      state.scrollEl.style.scrollBehavior = 'auto';
+      state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
+      if (prev) {
+        state.scrollEl.style.scrollBehavior = prev;
+      } else {
+        state.scrollEl.style.removeProperty('scroll-behavior');
+      }
     } else {
       state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
     }

@@ -93,6 +93,8 @@ export function initChatMarkRead(options = {}) {
 
   /**
    * Скроллит вниз без анимации
+   * ВНИМАНИЕ: Используется только для кнопки "вниз" и при вводе текста
+   * НЕ используется при инициализации!
    */
   function autoscroll() {
     const prev = box.style.scrollBehavior;
@@ -267,12 +269,11 @@ export function initChatMarkRead(options = {}) {
 
   // Инициализация
   const mark = insertUnreadDivider();
+  
+  // ВАЖНО: НЕ скроллим при инициализации!
+  // Прокрутка управляется из handleInitialMessages в userWebSocket.js
+  // Здесь только инициализируем UI состояние
   requestAnimationFrame(() => {
-    if (mark) {
-      mark.scrollIntoView({ block: 'center' });
-    } else {
-      autoscroll();
-    }
     autosize();
     toggleBtn();
     window.__SCROLLED_ON_INIT__ = true;

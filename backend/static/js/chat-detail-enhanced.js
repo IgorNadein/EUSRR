@@ -265,12 +265,6 @@ async function initChatDetail() {
             window.chatPoll.refreshPoll(poll_id);
         }
     });
-    
-    // Scroll button
-    const scrollBtn = document.getElementById('scrollBtn');
-    scrollBtn?.addEventListener('click', () => {
-        chatScroll.scrollTop = chatScroll.scrollHeight;
-    });
 }
 
 // Запускаем инициализацию
