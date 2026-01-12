@@ -14,13 +14,15 @@ document.addEventListener('DOMContentLoaded', function() {
   function syncNotificationBadges() {
     if (notificationBadge && bottomNotificationBadge) {
       const count = notificationBadge.textContent;
-      const hasNotifications = !notificationBadge.classList.contains('d-none');
+      const isVisible = notificationBadge.style.display !== 'none';
       
       bottomNotificationBadge.textContent = count;
-      if (hasNotifications) {
-        bottomNotificationBadge.classList.remove('d-none');
+      if (isVisible && count !== '0') {
+        bottomNotificationBadge.style.display = '';
+        bottomNotificationBadge.classList.add('pulse');
+        setTimeout(() => bottomNotificationBadge.classList.remove('pulse'), 600);
       } else {
-        bottomNotificationBadge.classList.add('d-none');
+        bottomNotificationBadge.style.display = 'none';
       }
     }
   }

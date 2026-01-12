@@ -250,11 +250,18 @@ class NotificationManager {
   updateBadge(count) {
     const badge = document.getElementById("notificationBadge");
     if (badge) {
+      const oldCount = parseInt(badge.textContent) || 0;
       if (count > 0) {
         badge.textContent = count > 99 ? "99+" : count;
-        badge.classList.remove("d-none");
+        badge.style.display = '';
+        // Анимация pulse при увеличении
+        if (count > oldCount) {
+          badge.classList.add('pulse');
+          setTimeout(() => badge.classList.remove('pulse'), 600);
+        }
       } else {
-        badge.classList.add("d-none");
+        badge.style.display = 'none';
+        badge.classList.remove('pulse');
       }
     }
   }

@@ -5,6 +5,7 @@
 {% block title %}Мои чаты{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/badges-telegram-style.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
 <link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
@@ -29,37 +30,37 @@
               <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn active" 
                       data-chat-type="all" title="Все чаты">
                 <i class="bi-chat-dots fs-4 d-block"></i>
-                <span class="badge rounded-pill bg-secondary" data-count="all">0</span>
+                <span class="badge-telegram badge-telegram-muted" data-count="all" style="display: none;">0</span>
               </button>
               <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
                       data-chat-type="global" title="Глобальный">
                 <i class="bi-globe fs-4 d-block"></i>
-                <span class="badge rounded-pill bg-secondary" data-count="global">0</span>
+                <span class="badge-telegram badge-telegram-muted" data-count="global" style="display: none;">0</span>
               </button>
               <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
                       data-chat-type="department" title="Отделы">
                 <i class="bi-diagram-3 fs-4 d-block"></i>
-                <span class="badge rounded-pill bg-secondary" data-count="department">0</span>
+                <span class="badge-telegram badge-telegram-muted" data-count="department" style="display: none;">0</span>
               </button>
               <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
                       data-chat-type="private" title="Личные">
                 <i class="bi-person-fill fs-4 d-block"></i>
-                <span class="badge rounded-pill bg-secondary" data-count="private">0</span>
+                <span class="badge-telegram badge-telegram-muted" data-count="private" style="display: none;">0</span>
               </button>
               <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
                       data-chat-type="group" title="Группы">
                 <i class="bi-people-fill fs-4 d-block"></i>
-                <span class="badge rounded-pill bg-secondary" data-count="group">0</span>
+                <span class="badge-telegram badge-telegram-muted" data-count="group" style="display: none;">0</span>
               </button>
               <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
                       data-chat-type="channel" title="Каналы">
                 <i class="bi-broadcast fs-4 d-block"></i>
-                <span class="badge rounded-pill bg-secondary" data-count="channel">0</span>
+                <span class="badge-telegram badge-telegram-muted" data-count="channel" style="display: none;">0</span>
               </button>
               <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
                       data-chat-type="announcement" title="Объявления">
                 <i class="bi-megaphone fs-4 d-block"></i>
-                <span class="badge rounded-pill bg-secondary" data-count="announcement">0</span>
+                <span class="badge-telegram badge-telegram-muted" data-count="announcement" style="display: none;">0</span>
               </button>
             </div>
           </div>
@@ -621,8 +622,17 @@
       
       if (badge) {
         badge.textContent = counts[type];
-        // Скрываем бейдж если 0
-        badge.style.display = counts[type] === 0 ? 'none' : '';
+        // Telegram-стиль: показываем/скрываем с анимацией
+        if (counts[type] === 0) {
+          badge.style.display = 'none';
+          badge.classList.remove('animate-in', 'pulse');
+        } else {
+          badge.style.display = '';
+          if (badge.textContent !== String(counts[type])) {
+            badge.classList.add('pulse');
+            setTimeout(() => badge.classList.remove('pulse'), 600);
+          }
+        }
       }
       
       // Скрываем кнопку категории, если в ней нет чатов (кроме 'all')

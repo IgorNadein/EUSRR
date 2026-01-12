@@ -20,13 +20,12 @@
     
     {# Бейдж "Основной" #}
     {% if chat.is_main %}
-      <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">
+      <span class="badge-telegram badge-telegram-primary badge-telegram-inline ms-1">
         <i class="bi-star-fill"></i> Основной
       </span>
     {% endif %}
   </a>
   
   {# Счётчик непрочитанных #}
-  <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle {% if not chat.unread_count %}d-none{% endif %}"
-        data-unread>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
+  <span class="badge-telegram animate-in" data-unread {% if not chat.unread_count %}style="display: none;"{% endif %}>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
 </div>

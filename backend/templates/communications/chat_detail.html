@@ -5,6 +5,7 @@
 {% block title %}Чат{% endblock %}
 
 {% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/components/badges-telegram-style.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/chat-detail.css' %}">
   <link rel="stylesheet" href="{% static 'css/message-reactions.css' %}">
@@ -25,7 +26,7 @@
           <!-- Аватар чата с маленькой иконкой типа -->
           <div class="chat-avatar-wrapper">
             <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar">
-            <span class="chat-type-badge">
+            <span class="chat-type-badge badge-telegram badge-telegram-avatar animate-in">
               {% if chat.type == 'global' %}
                 <i class="bi-globe"></i>
               {% elif chat.type == 'department' %}

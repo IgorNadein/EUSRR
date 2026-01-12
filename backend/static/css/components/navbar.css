@@ -176,18 +176,51 @@
 
 .bottom-nav-badge {
   position: absolute;
-  top: -4px;
-  right: -8px;
+  top: -6px;
+  right: -10px;
   background: var(--bs-danger);
-  color: white;
-  border-radius: var(--badge-radius);
-  padding: 2px 5px;
-  font-size: 0.65rem;
+  color: #fff;
+  border-radius: 10px; /* Telegram использует фиксированный radius для круглых бэйджей */
+  padding: 0 6px;
+  font-size: 11px;
   font-weight: 600;
-  min-width: 18px;
+  min-width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   line-height: 1;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Более заметная тень */
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              background-color 0.2s ease;
+  z-index: 10;
+}
+
+/* Мигание при новом сообщении */
+.bottom-nav-badge.pulse {
+  animation: badge-pulse 0.6s ease-out;
+}
+
+@keyframes badge-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Серый для замьюченных чатов */
+.bottom-nav-badge.badge-muted {
+  background: var(--bs-secondary);
+}
+
+.bottom-nav-badge:empty {
+  display: none;
 }
 
 /* Padding для body, чтобы контент не перекрывался нижней панелью */
