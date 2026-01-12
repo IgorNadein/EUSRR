@@ -5,6 +5,8 @@
 {% block title %}Чат{% endblock %}
 
 {% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/chat-detail.css' %}">
   <link rel="stylesheet" href="{% static 'css/message-reactions.css' %}">
   <link rel="stylesheet" href="{% static 'css/message-context-menu.css' %}">
   <link rel="stylesheet" href="{% static 'css/message-selection.css' %}">
@@ -12,74 +14,91 @@
 {% endblock %}
 
 {% block content %}
-<div class="container chat-root" 
-     id="chatDetailApp"
-     data-chat-id="{{ chat.id }}"
-     data-user-id="{{ user.id }}"
-     data-user-name="{{ user.get_full_name|default:user.username }}"
-     data-user-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
-     data-upload-url="{% url 'api:v1:upload_message' %}"
-     data-messages-url="{% url 'api:v1:chat_messages' chat.pk %}"
-     data-mark-read-url="{% url 'communications:chat_mark_read' chat.pk %}"
-     data-edit-url-template="/api/v1/communications/messages/{id}/edit/"
-     data-last-read-timestamp="{{ chat.last_read_timestamp|default:'0' }}">
-  <div class="row gx-0"> 
-    <div class="col-12 chat-col">
-
-      <!-- Заголовок -->
-      <div class="section-header">
-        {% if chat.type == 'global' %}
-          <i class="bi-globe fs-2 text-primary"></i>
-          <h2 class="title mb-0">Глобальный чат</h2>
-        {% elif chat.type == 'department' %}
-          <i class="bi-diagram-3 fs-2 text-primary"></i>
-          <h2 class="title mb-0">Чат отдела: {{ chat.department.name }}</h2>
-        {% elif chat.type == 'announcement' %}
-          <i class="bi-megaphone fs-2 text-warning"></i>
-          <h2 class="title mb-0">{{ chat.name|default:"Объявление" }}</h2>
-          {% if chat.is_blocked %}
-            <span class="badge bg-danger ms-2">
-              <i class="bi-lock-fill"></i> Заблокировано
-            </span>
-          {% endif %}
-          {% if not is_announcement_creator %}
-            <span class="badge bg-info ms-2">
-              <i class="bi-eye"></i> Только просмотр
-            </span>
-          {% endif %}
-        {% else %}
-          <i class="bi-person fs-2 text-primary"></i>
-          <h2 class="title mb-0">
-            {% for u in chat.participants.all %}
-              {% if u != user %}
-                {% if not forloop.first %}, {% endif %}
-                <a href="{% url 'employees:employee_detail' u.pk %}" class="text-decoration-none">
-                  {{ u.get_full_name|default:u.username }}
-                </a>
+<!-- Чат без лишних контейнеров -->
+<div class="chat-page">
+  
+  <!-- Шапка чата -->
+  <div class="chat-header">
+    <div class="chat-header-content">
+      <div class="chat-header-title">
+        {% if chat.avatar %}
+          <!-- Аватар чата с маленькой иконкой типа -->
+          <div class="chat-avatar-wrapper">
+            <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar">
+            <span class="chat-type-badge">
+              {% if chat.type == 'global' %}
+                <i class="bi-globe"></i>
+              {% elif chat.type == 'department' %}
+                <i class="bi-diagram-3"></i>
+              {% elif chat.type == 'announcement' %}
+                <i class="bi-megaphone"></i>
+              {% elif chat.type == 'group' %}
+                <i class="bi-people"></i>
+              {% elif chat.type == 'channel' %}
+                <i class="bi-broadcast"></i>
+              {% else %}
+                <i class="bi-person"></i>
               {% endif %}
-            {% endfor %}
-          </h2>
-        {% endif %}
-        <div class="ms-auto d-flex gap-2">
-          {% if chat.type == 'announcement' and user.is_staff %}
-            {% if chat.is_blocked %}
-              <button type="button" class="btn btn-success btn-sm" onclick="unblockAnnouncement({{ chat.id }})">
-                <i class="bi-unlock"></i> Разблокировать
-              </button>
-            {% else %}
-              <button type="button" class="btn btn-danger btn-sm" onclick="blockAnnouncement({{ chat.id }})">
-                <i class="bi-lock"></i> Заблокировать
-              </button>
-            {% endif %}
+            </span>
+          </div>
+          <h1>{{ chat.name|default:"Чат" }}</h1>
+        {% else %}
+          <!-- Иконка категории, если нет аватара -->
+          {% if chat.type == 'global' %}
+            <i class="bi-globe text-primary"></i>
+            <h1>{{ chat.name|default:"Глобальный чат" }}</h1>
+          {% elif chat.type == 'department' %}
+            <i class="bi-diagram-3 text-primary"></i>
+            <h1>{{ chat.department.name|default:chat.name }}</h1>
+          {% elif chat.type == 'announcement' %}
+            <i class="bi-megaphone text-warning"></i>
+            <h1>{{ chat.name|default:"Объявление" }}</h1>
+          {% else %}
+            <i class="bi-person text-primary"></i>
+            <h1>
+              {% if chat.name %}
+                {{ chat.name }}
+              {% else %}
+                {% for u in chat.participants.all %}
+                  {% if u != user %}{{ u.get_full_name|default:u.username }}{% endif %}
+                {% endfor %}
+              {% endif %}
+            </h1>
           {% endif %}
-          <a href="{% url 'communications:chat_list' %}" class="btn btn-ghost">
-            <i class="bi-arrow-left"></i> К чатам
-          </a>
-        </div>
+        {% endif %}
       </div>
+      
+      <div class="chat-header-actions">
+        {% if chat.type == 'announcement' and user.is_staff %}
+          {% if chat.is_blocked %}
+            <button type="button" class="btn btn-success btn-sm" onclick="unblockAnnouncement({{ chat.id }})">
+              <i class="bi-unlock"></i>
+            </button>
+          {% else %}
+            <button type="button" class="btn btn-danger btn-sm" onclick="blockAnnouncement({{ chat.id }})">
+              <i class="bi-lock"></i>
+            </button>
+          {% endif %}
+        {% endif %}
+        <a href="{% url 'communications:chat_list' %}" class="btn btn-ghost">
+          <i class="bi-arrow-left"></i>
+        </a>
+      </div>
+    </div>
+  </div>
 
-      <!-- Корпус чата -->
-      <article class="card chat-box">
+  <!-- Контейнер чата -->
+  <div class="chat-container"
+       id="chatDetailApp"
+       data-chat-id="{{ chat.id }}"
+       data-user-id="{{ user.id }}"
+       data-user-name="{{ user.get_full_name|default:user.username }}"
+       data-user-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
+       data-upload-url="{% url 'api:v1:upload_message' %}"
+       data-messages-url="{% url 'api:v1:chat_messages' chat.pk %}"
+       data-mark-read-url="{% url 'communications:chat_mark_read' chat.pk %}"
+       data-edit-url-template="/api/v1/communications/messages/{id}/edit/"
+       data-last-read-timestamp="{{ chat.last_read_timestamp|default:'0' }}">
 
         <!-- Предупреждение о блокировке -->
         {% if chat.is_blocked %}
@@ -117,7 +136,7 @@
 
         <!-- Лента сообщений -->
         <div id="chatScroll"
-             class="chat-scroll"
+             class="chat-messages-scroll"
              data-me-id="{{ user.id }}"
              data-me-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
              data-profile-url="{% url 'employees:profile' %}"
@@ -130,7 +149,7 @@
              data-has-more="{% if messages_has_more %}1{% else %}0{% endif %}"
              data-last-read-ts="{% if last_read_at %}{{ last_read_at|date:'U' }}000{% endif %}">
           
-          <!-- Индикатор загрузки истории (для прокрутки вверх) -->
+          <!-- Индикатор загрузки истории -->
           <div class="history-loader d-none" data-history-loader>
             <div class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></div>
             <span class="small">Загружаем ранние сообщения…</span>
@@ -143,21 +162,18 @@
             </div>
             <p class="text-secondary">Загружаем сообщения...</p>
           </div>
-          
-          <!-- Сообщения будут добавлены через JavaScript -->
-          
         </div>
 
         <!-- Индикатор печати -->
-        <div id="typing" class="small text-secondary ps-3 pt-2 d-none">
-          <span class="typing-indicator">
+        <div id="typing" class="chat-typing-indicator d-none">
+          <span class="typing-dots">
             <span></span><span></span><span></span>
           </span>
-          Собеседник печатает…
+          <span class="typing-text">Собеседник печатает…</span>
         </div>
 
         <!-- Композер -->
-        <div class="chat-composer">
+        <div class="chat-composer-wrapper">
           {% if can_send_messages %}
           <form id="chatForm"
                 class="composer-wrap"
@@ -270,11 +286,14 @@
           </div>
           {% endif %}
         </div>
-      </article>
+      </div> <!-- .chat-container -->
 
-    </div>
-  </div>
-</div>
+      <!-- Кнопка «вниз» -->
+      <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
+        <i class="bi-arrow-down"></i>
+      </button>
+
+    </div> <!-- .chat-page -->
 
 {% endblock %}
 
@@ -427,6 +446,6 @@
       </div>
     </div>
   </div>
-
+</div> <!-- .chat-page -->
 
 {% endblock %}

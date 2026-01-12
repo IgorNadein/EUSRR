@@ -195,5 +195,19 @@
   body {
     padding-bottom: 60px;
   }
+  
+  /* Скрыть bottom navbar на странице чата - композер заменяет навигацию */
+  .chat-container ~ .bottom-navbar,
+  .chat-page ~ .bottom-navbar,
+  body:has(.chat-container) .bottom-navbar,
+  body:has(.chat-page) .bottom-navbar {
+    display: none;
+  }
+  
+  /* Убрать padding, когда navbar скрыт */
+  body:has(.chat-container),
+  body:has(.chat-page) {
+    padding-bottom: 0;
+  }
 }
 
