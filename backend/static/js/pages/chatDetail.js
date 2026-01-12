@@ -1,6 +1,20 @@
 /**
- * Chat Detail Page
- * Инициализация страницы детального просмотра чата
+ * @fileoverview Chat Detail Page - инициализация страницы детального просмотра чата
+ * @module pages/chatDetail
+ * 
+ * Порядок инициализации компонентов:
+ * 1. MessageRenderer - единый источник рендеринга сообщений
+ * 2. FormManager - управление формой редактирования
+ * 3. MarkRead API - отслеживание прочитанных сообщений
+ * 4. Composer - отправка новых сообщений и файлов
+ * 5. HistoryLoader - подгрузка старых сообщений при скролле
+ * 6. WebSocket - real-time сообщения и события
+ * 
+ * РЕФАКТОРИНГ: Унифицированная архитектура загрузки сообщений
+ * - Все компоненты используют единый MessageRenderer
+ * - WebSocket для initial messages
+ * - HTTP для истории (pagination)
+ * - Composer для pending messages
  */
 
 let initChatMarkRead, initChatComposer, initChatHistoryLoader, initChatFormManager, MessageRenderer;
@@ -25,7 +39,10 @@ try {
   throw error;
 }
 
-// Ждём DOM
+/**
+ * Инициализация при готовности DOM
+ * Читает конфигурацию из data-атрибутов и запускает инициализацию компонентов
+ */
 function initWhenReady() {
   // Получаем данные из data-атрибутов
   const appContainer = document.getElementById('chatDetailApp');
@@ -80,7 +97,9 @@ if (document.readyState === 'loading') {
 }
 
 /**
- * Ожидание готовности WebSocket
+ * Ожидание готовности WebSocket соединения
+ * @returns {Promise<Object>} Промис с API WebSocket
+ * @throws {Error} Если WebSocket не инициализирован за 10 секунд
  */
 function waitForWebSocket() {
   return new Promise((resolve, reject) => {
@@ -111,11 +130,35 @@ function waitForWebSocket() {
 }
 
 /**
- * Инициализация всех компонентов страницы
+ * Инициализация всех компонентов страницы чата
+ * @param {Object} config - Конфигурация из data-атрибутов
+ * @param {number} config.chatId - ID чата
+ * @param {number} config.userId - ID текущего пользователя
+ * @param {string} config.userName - Имя текущего пользователя
+ * @param {string} config.userAvatar - URL аватара пользователя
+ * @param {string} config.uploadUrl - URL для загрузки файлов
+ * @param {string} config.messagesUrl - URL для загрузки истории
+ * @param {string} config.markReadUrl - URL для отметки прочтения
+ * @param {Object} userWs - API WebSocket соединения
  */
 function initializeComponents(config, userWs) {
-  // ========== FORM MANAGER ==========
-  console.log('[ChatDetail] Initializing FormManager...');
+  console.log('[ChatDetail] Initializing components...');
+  
+  // Получаем avatarMap если доступен
+  const avatarMap = window.chatAvatarMap?.getAll() || {};
+  
+  // ========== 1. MESSAGE RENDERER ==========
+  // Создается первым, т.к. используется другими компонентами
+  const messageRenderer = new MessageRenderer({
+    containerId: 'chatScroll',
+    currentUserId: config.userId,
+    currentUserAvatar: config.userAvatar || '',
+    profileUrl: config.profileUrl || '/employees/profile/',
+    detailUrlTemplate: config.detailUrlTemplate || '/employees/detail/0/'
+  });
+  console.log('[ChatDetail] ✓ MessageRenderer initialized');
+  
+  // ========== 2. FORM MANAGER ==========
   const formManager = initChatFormManager({
     formId: 'chatForm',
     textareaId: 'id_content',
@@ -128,11 +171,9 @@ function initializeComponents(config, userWs) {
     console.error('[ChatDetail] FormManager initialization failed');
     return;
   }
+  console.log('[ChatDetail] ✓ FormManager initialized');
   
-  console.log('[ChatDetail] FormManager initialized');
-  
-  // ========== MARK READ ==========
-  console.log('[ChatDetail] Initializing MarkRead...');
+  // ========== 3. MARK READ API ==========
   const markReadApi = initChatMarkRead({
     chatId: config.chatId,
     meId: config.userId,
@@ -143,24 +184,9 @@ function initializeComponents(config, userWs) {
     markReadUrl: config.markReadUrl,
     initialLastReadTs: config.lastReadTimestamp
   });
+  console.log('[ChatDetail] ✓ MarkRead initialized');
   
-  console.log('[ChatDetail] MarkRead initialized');
-  
-  // ========== MESSAGE RENDERER ==========
-  console.log('[ChatDetail] Initializing MessageRenderer...');
-  
-  const messageRenderer = new MessageRenderer({
-    containerId: 'chatScroll',
-    currentUserId: config.userId,
-    currentUserAvatar: config.userAvatar || '',
-    profileUrl: config.profileUrl || '/employees/profile/',
-    detailUrlTemplate: config.detailUrlTemplate || '/employees/detail/0/'
-  });
-  
-  console.log('[ChatDetail] MessageRenderer initialized');
-  
-  // ========== COMPOSER ==========
-  console.log('[ChatDetail] Initializing Composer...');
+  // ========== 4. COMPOSER ==========
   const composer = initChatComposer({
     chatId: config.chatId,
     formId: 'chatForm',
@@ -169,40 +195,27 @@ function initializeComponents(config, userWs) {
     meId: config.userId,
     meName: config.userName,
     meAvatar: config.userAvatar,
-    messageRenderer: messageRenderer  // Передаём MessageRenderer
+    messageRenderer: messageRenderer
   });
   
   if (!composer) {
     console.error('[ChatDetail] Composer initialization failed');
     return;
   }
+  console.log('[ChatDetail] ✓ Composer initialized');
   
-  console.log('[ChatDetail] Composer initialized:', composer);
-  
-  // ========== HISTORY LOADER ==========
-  console.log('[ChatDetail] Initializing HistoryLoader...');
-  
-  // Получаем avatarMap если доступен
-  const avatarMap = window.chatAvatarMap?.getAll() || {};
-  
+  // ========== 5. HISTORY LOADER ==========
   const historyLoader = initChatHistoryLoader({
     chatId: config.chatId,
     scrollContainerId: 'chatScroll',
     fetchUrl: config.messagesUrl,
     avatarMap: avatarMap,
     meId: config.userId,
-    messageRenderer: messageRenderer  // Передаём MessageRenderer
+    messageRenderer: messageRenderer
   });
+  console.log('[ChatDetail] ✓ HistoryLoader initialized');
   
-  console.log('[ChatDetail] HistoryLoader initialized');
-  
-  // ========== CONTEXT MENU ==========
-  // Инициализация контекстного меню перенесена в chat-detail-enhanced.js
-  // для избежания конфликтов и дублирования
-  
-  // ========== CONFIGURE WEBSOCKET ==========
-  console.log('[ChatDetail] Configuring WebSocket...');
-  
+  // ========== 6. CONFIGURE WEBSOCKET ==========
   if (userWs && userWs.configure) {
     userWs.configure({
       scrollContainerId: 'chatScroll',
@@ -211,21 +224,27 @@ function initializeComponents(config, userWs) {
       typingIndicatorId: 'typing',
       avatarMap: avatarMap,
       markReadApi: markReadApi,
-      messageRenderer: messageRenderer  // Добавляем MessageRenderer
+      messageRenderer: messageRenderer
     });
+    console.log('[ChatDetail] ✓ WebSocket configured');
   }
   
-  // Открываем чат в WebSocket с загрузкой истории
+  // ========== 7. OPEN CHAT IN WEBSOCKET ==========
+  // Загружаем начальные сообщения через WebSocket
   if (userWs && userWs.openChat) {
-    console.log('[ChatDetail] Opening chat in WebSocket with history:', config.chatId);
     userWs.openChat(config.chatId, true);  // true = загружаем initial_messages
+    console.log('[ChatDetail] ✓ Chat opened in WebSocket');
   }
   
-  // ========== EXPORT APIS ==========
+  // ========== 8. EXPORT APIS TO WINDOW ==========
+  // Для доступа из других скриптов и отладки
   window.chatComposer = composer;
   window.chatHistoryLoader = historyLoader;
   window.markReadApi = markReadApi;
   window.chatFormManager = formManager;
+  window.messageRenderer = messageRenderer;
+  
+  console.log('[ChatDetail] ✅ All components initialized successfully');
   
   // Контекстное меню и выделение сообщений инициализируются в chat-detail-enhanced.js
   
