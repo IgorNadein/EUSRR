@@ -1,18 +1,10 @@
 {% load static %}
 <link rel="stylesheet" href="{% static 'css/components/navbar.css' %}">
 <script src="{% static 'js/navbar-mobile-search.js' %}" defer></script>
+<script src="{% static 'js/bottom-navbar.js' %}" defer></script>
 
 <nav class="navbar navbar-expand bg-primary app-navbar" data-bs-theme="dark">
   <div class="container-fluid align-items-center">
-
-    {% if user.is_authenticated %}
-      <!-- Моб. меню (иконка без подложки) -->
-      <button class="menu-toggle d-lg-none me-2 navbar-icon" type="button"
-              data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar"
-              aria-label="Открыть меню">
-        <i class="bi-list fs-4"></i>
-      </button>
-    {% endif %}
 
     {% load static %}
     <a class="navbar-brand d-flex align-items-center gap-2 me-3 navbar-brand-item" href="/">
@@ -28,23 +20,10 @@
       <!-- Группа: поиск + колокол -->
       <div class="d-flex align-items-center ms-4 gap-3">
         <!-- Поиск: иконка на мобильном, поле на десктопе -->
-        <form class="d-flex align-items-center mobile-search-form" role="search"
+        <form class="d-none d-md-flex align-items-center mobile-search-form" role="search"
               action="{% url 'search:search' %}" method="get" autocomplete="off">
-          <!-- Мобильная версия: иконка или поле -->
-          <button type="button" class="btn btn-link text-white p-0 d-md-none mobile-search-toggle" aria-label="Поиск">
-            <i class="bi-search fs-5"></i>
-          </button>
-          <div class="mobile-search-input d-none align-items-center gap-2">
-            <input
-              class="form-control form-control-sm rounded-pill bg-white bg-opacity-10 border-0 text-white shadow-sm"
-              type="search" name="q" placeholder="Поиск…" aria-label="Поиск" id="mobileSearchInput"
-              style="width: 200px; height: 36px; padding-left: 12px;">
-            <button type="submit" class="btn btn-link text-white p-0" aria-label="Найти">
-              <i class="bi-arrow-right-circle fs-5"></i>
-            </button>
-          </div>
           <!-- Десктопная версия: поле -->
-          <div class="position-relative ios-search d-none d-md-block" style="max-width: clamp(160px, 28vw, 300px);">
+          <div class="position-relative ios-search" style="max-width: clamp(160px, 28vw, 300px);">
             <i class="bi-search"></i>
             <input
               class="form-control form-control-sm rounded-pill ios-search-input bg-white bg-opacity-10 border-0 text-white shadow-sm"
@@ -53,8 +32,8 @@
           </div>
         </form>
 
-        <!-- Уведомления: только иконка + плотный бейдж -->
-        <div class="position-relative navbar-icon" id="notificationBell">
+        <!-- Уведомления: только иконка + плотный бейдж (скрыть на мобильных) -->
+        <div class="position-relative navbar-icon d-none d-md-block" id="notificationBell">
           <button class="btn btn-link text-white p-0" 
                   id="notificationToggle"
                   type="button"
@@ -67,18 +46,8 @@
           </button>
         </div>
 
-        <!-- Календарь: только на мобильных устройствах -->
-        <div class="position-relative navbar-icon d-lg-none">
-          <button class="btn btn-link text-white p-0" 
-                  type="button"
-                  data-bs-toggle="offcanvas" 
-                  data-bs-target="#rightbarOffcanvas"
-                  aria-controls="rightbarOffcanvas"
-                  title="Календарь" 
-                  aria-label="Календарь">
-            <i class="bi-calendar-event fs-5"></i>
-          </button>
-        </div>
+        <!-- Календарь: только на мобильных устройствах (перенесен в bottom navbar) -->
+        <!-- Удалено, теперь в нижней панели -->
 
       </div>
     {% endif %}
@@ -145,4 +114,47 @@
     </a>
   </div>
 </div>
+
+<!-- Bottom Navigation Bar (только для мобильных) -->
+<nav class="bottom-navbar d-md-none" id="bottomNav">
+  <div class="bottom-navbar-container">
+    <a href="/" class="bottom-nav-item" title="Главная" aria-label="Главная">
+      <i class="bi-house-door"></i>
+      <span class="bottom-nav-label">Главная</span>
+    </a>
+    
+    <button class="bottom-nav-item" id="bottomNotificationToggle" type="button" title="Уведомления" aria-label="Уведомления">
+      <span class="bottom-nav-icon-wrapper">
+        <i class="bi-bell"></i>
+        <span class="bottom-nav-badge d-none" id="bottomNotificationBadge">0</span>
+      </span>
+      <span class="bottom-nav-label">Уведомления</span>
+    </button>
+    
+    <button class="bottom-nav-item" id="bottomSearchToggle" type="button" title="Поиск" aria-label="Поиск">
+      <i class="bi-search"></i>
+      <span class="bottom-nav-label">Поиск</span>
+    </button>
+    
+    <button class="bottom-nav-item" type="button" 
+            data-bs-toggle="offcanvas" 
+            data-bs-target="#rightbarOffcanvas"
+            aria-controls="rightbarOffcanvas"
+            title="Календарь" 
+            aria-label="Календарь">
+      <i class="bi-calendar-event"></i>
+      <span class="bottom-nav-label">Календарь</span>
+    </button>
+    
+    <button class="bottom-nav-item" type="button"
+            data-bs-toggle="offcanvas" 
+            data-bs-target="#sidebar" 
+            aria-controls="sidebar"
+            title="Меню" 
+            aria-label="Меню">
+      <i class="bi-three-dots"></i>
+      <span class="bottom-nav-label">Ещё</span>
+    </button>
+  </div>
+</nav>
 {% endif %}
