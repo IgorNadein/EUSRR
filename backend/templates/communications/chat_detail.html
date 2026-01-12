@@ -303,11 +303,13 @@
   {# ========== THIRD-PARTY ========== #}
   <script type="module" src="{% static 'vendor/emoji-picker/index.js' %}"></script>
   
-  {# ========== CHAT DETAIL - NEW ENHANCED VERSION ========== #}
-  <script type="module" src="{% static 'js/chat-detail-enhanced.js' %}"></script>
-  
   {# ========== CHAT DETAIL PAGE - CORE FUNCTIONALITY ========== #}
+  {# chatDetail.js инициализирует все компоненты в правильном порядке #}
   <script type="module" src="{% static 'js/pages/chatDetail.js' %}"></script>
+  
+  {# ========== CHAT DETAIL - UI ENHANCEMENTS ========== #}
+  {# Реакции, контекстное меню, выделение, голосования #}
+  <script type="module" src="{% static 'js/chat-detail-enhanced.js' %}"></script>
   
   <script>
     // Блокировка объявления

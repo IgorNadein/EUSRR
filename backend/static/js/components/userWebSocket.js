@@ -281,11 +281,14 @@ export function initUserWebSocket(options = {}) {
     // Используем батчевый renderMessages вместо forEach для лучшей производительности
     options.messageRenderer.renderMessages(messages);
     
-    // Устанавливаем scroll в конец ДО показа контейнера
-    state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
-    
-    // Показываем контейнер - пользователь сразу видит конец диалога
-    state.scrollEl.style.visibility = wasVisible || '';
+    // Используем requestAnimationFrame для гарантии что DOM обновлен перед прокруткой
+    requestAnimationFrame(() => {
+      // Устанавливаем scroll в конец ДО показа контейнера
+      state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
+      
+      // Показываем контейнер - пользователь сразу видит конец диалога
+      state.scrollEl.style.visibility = wasVisible || '';
+    });
     
     // Инициализируем голосования после загрузки сообщений
     if (window.chatPoll) {
@@ -308,10 +311,16 @@ export function initUserWebSocket(options = {}) {
 
     options.messageRenderer.renderMessage(message);
     
-    // Автоскролл если внизу
-    const isAtBottom = markReadApi?.atBottom?.() ?? true;
-    if (isAtBottom || message.author_id === userId) {
-      scrollToBottom();
+    // Автоскролл ТОЛЬКО если это наше сообщение ИЛИ мы уже внизу
+    // Предотвращаем принудительный скролл при получении чужих сообщений
+    const isAtBottom = markReadApi?.atBottom?.() ?? false;
+    const isOwnMessage = message.author_id === userId;
+    
+    if (isOwnMessage || isAtBottom) {
+      // Используем requestAnimationFrame для плавности
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
     }
 
     // Отмечаем как прочитанное
