@@ -273,12 +273,19 @@ export function initUserWebSocket(options = {}) {
     }
 
     console.log('[UserWS] Rendering %d initial messages via MessageRenderer', messages.length);
-    messages.forEach(msg => {
-      options.messageRenderer.renderMessage(msg);
-    });
-
-    // Скроллим вниз
-    scrollToBottom(true);
+    
+    // ОПТИМИЗАЦИЯ: Скрываем контейнер перед рендерингом для предотвращения reflow
+    const wasVisible = state.scrollEl.style.visibility;
+    state.scrollEl.style.visibility = 'hidden';
+    
+    // Используем батчевый renderMessages вместо forEach для лучшей производительности
+    options.messageRenderer.renderMessages(messages);
+    
+    // Устанавливаем scroll в конец ДО показа контейнера
+    state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
+    
+    // Показываем контейнер - пользователь сразу видит конец диалога
+    state.scrollEl.style.visibility = wasVisible || '';
     
     // Инициализируем голосования после загрузки сообщений
     if (window.chatPoll) {

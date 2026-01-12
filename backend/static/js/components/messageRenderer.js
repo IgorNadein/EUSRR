@@ -22,19 +22,48 @@ export class MessageRenderer {
             return;
         }
 
+        // ОПТИМИЗАЦИЯ: Используем DocumentFragment для батчевой вставки
+        const fragment = document.createDocumentFragment();
         let lastDay = null;
+        
         messages.forEach(msg => {
+            // Проверяем на дубликаты
+            const existingMessage = container.querySelector(`[data-message-id="${msg.id}"]`);
+            if (existingMessage) {
+                console.log('[MessageRenderer] Message already exists, skipping:', msg.id);
+                return;
+            }
+            
             // Добавляем разделитель дня если нужно
             const msgDate = new Date(msg.created_ts);
             const msgDay = this.formatDay(msgDate);
             
             if (msgDay !== lastDay) {
-                this.addDayDivider(msgDay, container);
+                const dividerEl = document.createElement('div');
+                dividerEl.className = 'day-divider text-center small text-muted my-3';
+                dividerEl.innerHTML = `<span class="px-3 py-1 rounded-pill bg-light">${msgDay}</span>`;
+                fragment.appendChild(dividerEl);
                 lastDay = msgDay;
             }
             
-            this.renderMessage(msg, container);
+            // Создаем элемент сообщения и добавляем во fragment
+            const isOwn = msg.author_id === this.currentUserId;
+            const messageEl = document.createElement('div');
+            messageEl.className = `d-flex mb-3 msg ${isOwn ? 'justify-content-end' : 'justify-content-start'}`;
+            messageEl.setAttribute('data-id', String(msg.id));
+            messageEl.setAttribute('data-message-id', String(msg.id));
+            messageEl.setAttribute('data-ts', String(msg.created_ts));
+            messageEl.setAttribute('data-author-id', String(msg.author_id || ''));
+            messageEl.setAttribute('data-is-edited', String(msg.is_edited || false));
+            messageEl.setAttribute('data-edited-at', String(msg.edited_at || ''));
+            messageEl.setAttribute('data-reactions', JSON.stringify(msg.reactions_summary || {}));
+            messageEl.innerHTML = this.buildMessageInnerHtml(msg, isOwn);
+            
+            fragment.appendChild(messageEl);
         });
+        
+        // Одна вставка всех элементов - минимизируем reflow
+        container.appendChild(fragment);
     }
 
     /**
