@@ -184,7 +184,21 @@ export class MessageLoaderV2 {
             const messages = this._extractMessages(result);
             
             if (messages.length > 0) {
-                this._processMessages(chatId, messages);
+                // Определяем какие сообщения НОВЫЕ (не были в Store)
+                const existingIds = new Set(
+                    this.store.getMessagesForChat(chatId).map(m => m.id)
+                );
+                const newMessages = messages.filter(m => !existingIds.has(m.id));
+                
+                console.log('[MessageLoaderV2] Filtering messages:', {
+                    total: messages.length,
+                    existing: messages.length - newMessages.length,
+                    new: newMessages.length
+                });
+                
+                // Добавляем в Store БЕЗ событий (silent mode)
+                // Отрисовка будет через prependMessages
+                this._processMessages(chatId, messages, { silent: true });
                 
                 // Обновляем границы
                 const oldestMessage = this.store.getOldestMessage(chatId);
@@ -192,12 +206,15 @@ export class MessageLoaderV2 {
                     hasMoreBefore: result.has_more !== false,
                     oldestId: oldestMessage?.id || null
                 });
+                
+                // Возвращаем только НОВЫЕ сообщения
+                return newMessages;
             } else {
                 this._updateBoundaries(chatId, { hasMoreBefore: false });
             }
 
             console.log('[MessageLoaderV2] History loaded:', messages.length, 'messages');
-            return messages;
+            return [];
 
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -447,12 +464,22 @@ export class MessageLoaderV2 {
             requestKey
         );
 
+        const messages = this._extractMessages(result);
+        
+        // ВАЖНО: Сначала добавляем в Store, затем берем границы из Store
+        this._processMessages(chatId, messages);
+        
+        const oldestMessage = this.store.getOldestMessage(chatId);
+        const newestMessage = this.store.getNewestMessage(chatId);
+
         return {
-            messages: this._extractMessages(result),
+            messages,
             anchorId: result.anchor_id || aroundId,
             anchorIndex: result.anchor_index || null,
             hasMoreBefore: result.has_more_before !== false,
-            hasMoreAfter: result.has_more_after !== false
+            hasMoreAfter: result.has_more_after !== false,
+            oldestId: oldestMessage?.id || null,
+            newestId: newestMessage?.id || null
         };
     }
 
@@ -468,11 +495,22 @@ export class MessageLoaderV2 {
             requestKey
         );
 
+        const messages = this._extractMessages(result);
+        
+        // ВАЖНО: Сначала добавляем в Store, затем берем границы из Store
+        // Store гарантирует правильную сортировку по timestamp
+        this._processMessages(chatId, messages);
+        
+        const oldestMessage = this.store.getOldestMessage(chatId);
+        const newestMessage = this.store.getNewestMessage(chatId);
+
         return {
-            messages: this._extractMessages(result),
+            messages,
             anchorId: null,
             hasMoreBefore: result.has_more !== false,
-            hasMoreAfter: false
+            hasMoreAfter: false,
+            oldestId: oldestMessage?.id || null,
+            newestId: newestMessage?.id || null
         };
     }
 
@@ -575,8 +613,12 @@ export class MessageLoaderV2 {
     /**
      * Обрабатывает и сохраняет сообщения в Store
      * @private
+     * @param {number} chatId
+     * @param {Array} messages
+     * @param {Object} [options]
+     * @param {boolean} [options.silent=false] - Не emit'ить события
      */
-    _processMessages(chatId, messages) {
+    _processMessages(chatId, messages, options = {}) {
         // Добавляем chat_id если отсутствует
         messages.forEach(msg => {
             if (!msg.chat_id) {
@@ -584,7 +626,7 @@ export class MessageLoaderV2 {
             }
         });
         
-        this.store.addMessages(messages);
+        this.store.addMessages(messages, options);
     }
 
     /**

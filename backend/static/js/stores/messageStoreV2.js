@@ -65,6 +65,7 @@ export class MessageStoreV2 {
 
         // Batch mode
         this._batchMode = false;
+        this._silentMode = false;
         this._pendingNotifications = [];
 
         console.log('[MessageStoreV2] Initialized');
@@ -111,15 +112,21 @@ export class MessageStoreV2 {
     /**
      * Добавляет множество сообщений (batch)
      * @param {Array<Message>} messages - Сообщения
+     * @param {Object} [options] - Опции
+     * @param {boolean} [options.silent=false] - Не emit'ить события
      * @returns {number} Количество добавленных
      */
-    addMessages(messages) {
+    addMessages(messages, options = {}) {
         if (!Array.isArray(messages) || messages.length === 0) {
             return 0;
         }
 
+        const { silent = false } = options;
+
         // Включаем batch mode
         this._batchMode = true;
+        const oldSilent = this._silentMode;
+        this._silentMode = silent;
         let addedCount = 0;
 
         try {
@@ -131,11 +138,17 @@ export class MessageStoreV2 {
         } finally {
             // Выключаем batch mode и отправляем все уведомления
             this._batchMode = false;
-            this._flushNotifications();
+            this._silentMode = oldSilent;
+            
+            if (!silent) {
+                this._flushNotifications();
+            }
         }
 
-        // Отправляем групповое уведомление
-        this._notify(STORE_EVENTS.MESSAGES_LOADED, { count: addedCount });
+        // Отправляем групповое уведомление только если не silent
+        if (!silent) {
+            this._notify(STORE_EVENTS.MESSAGES_LOADED, { count: addedCount });
+        }
 
         return addedCount;
     }

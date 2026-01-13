@@ -118,8 +118,16 @@ export class MessageRendererV2 {
      * @returns {DocumentFragment} Fragment с элементами для prepend
      */
     prependMessages(messages, chatId) {
+        console.log('[MessageRendererV2] ======================================');
+        console.log('[MessageRendererV2] prependMessages called:', {
+            messagesCount: messages?.length || 0,
+            chatId,
+            messageIds: messages?.map(m => m.id) || []
+        });
+        
         if (!messages || messages.length === 0) {
-            console.log('[MessageRendererV2] No messages to prepend');
+            console.log('[MessageRendererV2] ❌ No messages to prepend');
+            console.log('[MessageRendererV2] ======================================');
             return document.createDocumentFragment();
         }
 
@@ -143,18 +151,38 @@ export class MessageRendererV2 {
             items.push({ type: 'message', message: msg });
         });
 
+        console.log('[MessageRendererV2] Items to render:', {
+            totalItems: items.length,
+            dividers: items.filter(i => i.type === 'day-divider').length,
+            messages: items.filter(i => i.type === 'message').length
+        });
+
         // Создаем элементы
+        let skipped = 0;
+        let added = 0;
         items.forEach(item => {
             if (item.type === 'day-divider') {
                 fragment.appendChild(this._createDayDivider(item.text));
+                added++;
             } else if (item.type === 'message') {
                 if (!this.renderedMessages.has(item.message.id)) {
                     const messageEl = this._createMessageElement(item.message);
                     fragment.appendChild(messageEl);
                     this.renderedMessages.add(item.message.id);
+                    added++;
+                } else {
+                    skipped++;
+                    console.log('[MessageRendererV2] ⚠️ Skipped duplicate:', item.message.id);
                 }
             }
         });
+
+        console.log('[MessageRendererV2] Fragment created:', {
+            added,
+            skipped,
+            fragmentChildren: fragment.childElementCount
+        });
+        console.log('[MessageRendererV2] ======================================');
 
         return fragment;
     }

@@ -135,38 +135,147 @@ export class ScrollManagerV2 {
      * @returns {Promise<Array>}
      */
     async loadMoreHistory() {
+        console.log('[ScrollManagerV2] ======================================');
+        console.log('[ScrollManagerV2] loadMoreHistory called');
+        
         if (this._isLoadingHistory || this._destroyed) {
+            console.log('[ScrollManagerV2] ❌ Skipped: already loading or destroyed');
             return [];
         }
 
         if (!this.loader.hasMoreHistory(this.chatId)) {
+            console.log('[ScrollManagerV2] ❌ No more history available');
             return [];
         }
 
         this._isLoadingHistory = true;
 
         try {
-            // Сохраняем позицию
-            const savedPosition = this._saveScrollPosition();
+            // Отключаем smooth scroll для мгновенных изменений
+            const originalScrollBehavior = this.scrollEl.style.scrollBehavior;
+            this.scrollEl.style.scrollBehavior = 'auto';
+
+            // Сохраняем высоты ДО загрузки
+            const oldScrollHeight = this.scrollEl.scrollHeight;
+            const oldScrollTop = this.scrollEl.scrollTop;
+            const messagesBefore = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+
+            console.log('[ScrollManagerV2] BEFORE load:', { 
+                oldScrollHeight,
+                oldScrollTop,
+                messagesBefore
+            });
 
             // Загружаем историю
             const messages = await this.loader.loadHistory(this.chatId);
 
-            if (messages.length > 0) {
-                // Ре-рендерим
-                await this.renderer.render(this.chatId);
-                
-                // Восстанавливаем позицию
-                this._restoreScrollPosition(savedPosition);
-                
-                // Обновляем observer
-                this._updateObserverTarget();
+            console.log('[ScrollManagerV2] AFTER loader.loadHistory:', {
+                messagesLoaded: messages.length,
+                messageIds: messages.map(m => m.id)
+            });
+
+            // Проверяем есть ли еще история ПОСЛЕ загрузки
+            const stillHasMore = this.loader.hasMoreHistory(this.chatId);
+            
+            if (messages.length === 0 || !stillHasMore) {
+                console.log('[ScrollManagerV2] ⚠️ Stopping: no messages or no more history', {
+                    messagesLength: messages.length,
+                    stillHasMore
+                });
+                this.scrollEl.style.scrollBehavior = originalScrollBehavior;
+                return [];
             }
+
+            console.log('[ScrollManagerV2] ✅ History loaded:', messages.length, 'messages');
+
+            // КЛЮЧЕВОЙ МОМЕНТ: НЕ делаем полный render!
+            // Создаем fragment с новыми сообщениями
+            const fragment = this.renderer.prependMessages(messages, this.chatId);
+            
+            console.log('[ScrollManagerV2] Fragment created:', {
+                hasChildNodes: fragment.hasChildNodes(),
+                childCount: fragment.childElementCount
+            });
+            
+            // Если fragment пустой (все сообщения уже отрендерены), выходим
+            if (!fragment.hasChildNodes()) {
+                console.log('[ScrollManagerV2] ⚠️ All messages already rendered');
+                this.scrollEl.style.scrollBehavior = originalScrollBehavior;
+                return messages;
+            }
+
+            // ВАЖНО: Проверяем и удаляем потенциальные дубликаты divider
+            // ПЕРЕД prepend, чтобы избежать визуальных скачков
+            const firstFragmentChild = fragment.firstElementChild;
+            if (firstFragmentChild && firstFragmentChild.classList.contains('day-divider')) {
+                const firstContainerChild = this.scrollEl.firstElementChild;
+                if (firstContainerChild && firstContainerChild.classList.contains('day-divider')) {
+                    const fragmentDividerText = firstFragmentChild.textContent.trim();
+                    const containerDividerText = firstContainerChild.textContent.trim();
+                    
+                    // Если dividers одинаковые, удаляем из fragment
+                    if (fragmentDividerText === containerDividerText) {
+                        fragment.removeChild(firstFragmentChild);
+                        console.log('[ScrollManagerV2] Removed duplicate divider:', fragmentDividerText);
+                    }
+                }
+            }
+
+            // Prepend fragment в НАЧАЛО контейнера (как в Telegram)
+            this.scrollEl.prepend(fragment);
+
+            const messagesAfterPrepend = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+            console.log('[ScrollManagerV2] AFTER prepend:', {
+                messagesAfterPrepend,
+                added: messagesAfterPrepend - messagesBefore
+            });
+
+            // КЛЮЧЕВОЕ ОТЛИЧИЕ Telegram: ДВОЙНОЙ RAF для стабильности!
+            // Первый RAF - браузер обновляет layout
+            // Второй RAF - браузер гарантированно применил все изменения
+            await new Promise(resolve => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        // КЛЮЧЕВОЙ МОМЕНТ: вычисляем разницу в высоте
+                        const newScrollHeight = this.scrollEl.scrollHeight;
+                        const heightDifference = newScrollHeight - oldScrollHeight;
+                        
+                        // Корректируем scrollTop на разницу высоты
+                        // Это сохраняет визуальную позицию пользователя ТОЧНО там же
+                        // БЕЗ КАКИХ-ЛИБО ПРЫЖКОВ!
+                        this.scrollEl.scrollTop = oldScrollTop + heightDifference;
+                        
+                        console.log('[ScrollManagerV2] Scroll restored using height difference:', {
+                            oldScrollHeight,
+                            newScrollHeight,
+                            heightDifference,
+                            oldScrollTop,
+                            newScrollTop: this.scrollEl.scrollTop
+                        });
+
+                        // Обновляем observer на новое первое сообщение
+                        this._updateObserverTarget();
+                        
+                        // Восстанавливаем scroll-behavior
+                        this.scrollEl.style.scrollBehavior = originalScrollBehavior;
+                        
+                        const finalMessages = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+                        console.log('[ScrollManagerV2] ✅ FINAL STATE:', {
+                            finalMessages,
+                            totalAdded: finalMessages - messagesBefore
+                        });
+                        console.log('[ScrollManagerV2] ======================================');
+                        
+                        resolve();
+                    });
+                });
+            });
 
             return messages;
 
         } catch (error) {
-            console.error('[ScrollManagerV2] History load failed:', error);
+            console.error('[ScrollManagerV2] ❌ History load failed:', error);
+            console.log('[ScrollManagerV2] ======================================');
             return [];
             
         } finally {
