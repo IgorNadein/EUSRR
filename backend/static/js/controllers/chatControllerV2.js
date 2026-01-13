@@ -16,6 +16,7 @@ import { MessageRendererV2 } from '../renderers/messageRendererV2.js';
 import { ScrollManagerV2 } from '../managers/scrollManagerV2.js';
 import { DateGroupManager } from '../managers/dateGroupManager.js';
 import { StickyDateObserver } from '../observers/stickyDateObserver.js';
+import { UnreadBadgeManager } from '../managers/unreadBadgeManager.js';
 import { CHAT_EVENTS, WS_EVENTS, SCROLL_CONFIG, AUTOSCROLL_CONFIG } from '../config/chatConfig.js';
 
 /**
@@ -95,10 +96,10 @@ export class ChatControllerV2 {
         this._initializing = false;
         this._destroyed = false;
         
-        // Индикатор новых сообщений (умный автоскролл)
-        this._unreadCount = 0;
-        this._scrollBtn = null; // Используем существующий #scrollBtn
-        this._scrollBtnBadge = null;
+        // Badge Manager для непрочитанных сообщений
+        this.badgeManager = new UnreadBadgeManager('scrollBtn');
+        
+        // Слушатели
         this._scrollWatcherCleanup = null;
         
         // Слушатели для cleanup
@@ -459,7 +460,7 @@ export class ChatControllerV2 {
         // Слушаем событие скролла вниз для сброса badge
         const scrollBottomHandler = (e) => {
             if (e.detail.chatId === this.chatId) {
-                this._resetUnreadBadge();
+                this.badgeManager.reset();
             }
         };
         window.addEventListener('chat:userScrolledToBottom', scrollBottomHandler);
@@ -489,12 +490,12 @@ export class ChatControllerV2 {
                     });
                 } else {
                     // ✅ Пользователь НЕ внизу → показываем badge
-                    this._incrementUnreadBadge();
+                    this.badgeManager.increment();
                 }
             } else {
                 // ❌ Исторический просмотр (hasMoreAfter=true) - НЕ рендерим, только badge
                 // Не добавляем в Store (не рендерим), только показываем что есть новые
-                this._incrementUnreadBadge();
+                this.badgeManager.increment();
                 console.log('[ChatControllerV2] New message in historical view - showing badge only');
             }
         }
@@ -658,28 +659,16 @@ export class ChatControllerV2 {
      * @private
      */
     _initScrollButton() {
-        this._scrollBtn = document.getElementById('scrollBtn');
+        const scrollBtn = document.getElementById('scrollBtn');
         
-        if (!this._scrollBtn) {
+        if (!scrollBtn) {
             console.warn('[ChatControllerV2] #scrollBtn not found');
             return;
         }
         
-        // Создаем badge элемент если его нет
-        if (!this._scrollBtn.querySelector('.unread-badge')) {
-            this._scrollBtnBadge = document.createElement('span');
-            this._scrollBtnBadge.className = 'unread-badge';
-            this._scrollBtnBadge.style.display = 'none';
-            this._scrollBtn.appendChild(this._scrollBtnBadge);
-        } else {
-            this._scrollBtnBadge = this._scrollBtn.querySelector('.unread-badge');
-        }
-        
         // Заменяем обработчик клика на умный
-        const oldHandler = this._scrollBtn.onclick;
-        this._scrollBtn.onclick = null;
-        
-        this._scrollBtn.addEventListener('click', () => this._handleScrollButtonClick());
+        scrollBtn.onclick = null;
+        scrollBtn.addEventListener('click', () => this._handleScrollButtonClick());
         
         // Настраиваем умную видимость
         this._setupSmartButtonVisibility();
@@ -692,7 +681,8 @@ export class ChatControllerV2 {
      * @private
      */
     _setupSmartButtonVisibility() {
-        if (!this._scrollBtn) return;
+        const scrollBtn = document.getElementById('scrollBtn');
+        if (!scrollBtn) return;
         
         // Обновляем видимость при скролле
         const updateVisibility = () => {
@@ -705,7 +695,7 @@ export class ChatControllerV2 {
             // 2. ИЛИ hasMoreAfter=true (даже если внизу)
             const shouldShow = !isNearBottom || hasMoreAfter;
             
-            this._scrollBtn.classList.toggle('show', shouldShow);
+            scrollBtn.classList.toggle('show', shouldShow);
         };
         
         // Обновляем при скролле
@@ -749,14 +739,14 @@ export class ChatControllerV2 {
             }
             
             // Сбрасываем badge
-            this._resetUnreadBadge();
+            this.badgeManager.reset();
             return;
         }
         
         // 🔵 НАСТОЯЩИЙ НИЗ: Умная логика
         const isInPresentTime = !hasMoreAfter;
         
-        if (this._unreadCount > 0 && this.lastReadMessageId && isInPresentTime) {
+        if (this.badgeManager.hasUnread() && this.lastReadMessageId && isInPresentTime) {
             // Режим "Перейти к непрочитанным"
             // Пытаемся найти первое непрочитанное (lastReadId + 1)
             const firstUnreadId = this.lastReadMessageId + 1;
@@ -782,131 +772,12 @@ export class ChatControllerV2 {
         }
         
         // Сбрасываем badge
-        this._resetUnreadBadge();
+        this.badgeManager.reset();
     }
 
-    /**
-     * Увеличивает счетчик непрочитанных и показывает badge
-     * @private
-     */
-    _incrementUnreadBadge() {
-        if (!this._scrollBtn || !this._scrollBtnBadge) return;
-        
-        this._unreadCount++;
-        this._scrollBtnBadge.textContent = this._unreadCount;
-        this._scrollBtnBadge.style.display = 'flex';
-        
-        // Добавляем класс для анимации
-        this._scrollBtn.classList.add('has-unread');
-        
-        console.log('[ChatControllerV2] Unread badge:', this._unreadCount);
-    }
 
-    /**
-     * Сбрасывает badge непрочитанных
-     * @private
-     */
-    _resetUnreadBadge() {
-        if (!this._scrollBtn || !this._scrollBtnBadge) return;
-        
-        this._unreadCount = 0;
-        this._scrollBtnBadge.style.display = 'none';
-        this._scrollBtn.classList.remove('has-unread');
-    }
 
-    /**
-     * Показывает индикатор новых сообщений
-     * @private
-     * @deprecated Используем _incrementUnreadBadge вместо этого
-     */
-    _showNewMessagesIndicator() {
-        // Ищем или создаём кнопку
-        if (!this._newMessagesBtn) {
-            this._newMessagesBtn = this._findOrCreateNewMessagesButton();
-        }
 
-        if (!this._newMessagesBtn) {
-            console.warn('[ChatControllerV2] New messages button not found');
-            return;
-        }
-
-        // Увеличиваем счётчик
-        this._newMessagesCount++;
-
-        // Обновляем текст кнопки
-        const badge = this._newMessagesBtn.querySelector('.badge');
-        if (badge) {
-            badge.textContent = this._newMessagesCount;
-        }
-
-        // Показываем кнопку
-        this._newMessagesBtn.style.display = 'flex';
-        this._newMessagesBtn.classList.add('show');
-    }
-
-    /**
-     * Скрывает индикатор новых сообщений
-     * @private
-     */
-    _hideNewMessagesIndicator() {
-        if (!this._newMessagesBtn) {
-            return;
-        }
-
-        // Сбрасываем счётчик
-        this._newMessagesCount = 0;
-
-        // Обновляем текст
-        const badge = this._newMessagesBtn.querySelector('.badge');
-        if (badge) {
-            badge.textContent = '0';
-        }
-
-        // Скрываем кнопку
-        this._newMessagesBtn.style.display = 'none';
-        this._newMessagesBtn.classList.remove('show');
-    }
-
-    /**
-     * Находит или создаёт кнопку новых сообщений
-     * @private
-     * @returns {HTMLElement|null}
-     */
-    _findOrCreateNewMessagesButton() {
-        // Ищем существующую кнопку
-        let btn = document.getElementById(AUTOSCROLL_CONFIG.NEW_MESSAGES_BTN_ID);
-        
-        if (btn) {
-            return btn;
-        }
-
-        // Создаём новую кнопку
-        btn = document.createElement('button');
-        btn.id = AUTOSCROLL_CONFIG.NEW_MESSAGES_BTN_ID;
-        btn.className = AUTOSCROLL_CONFIG.NEW_MESSAGES_BTN_CLASS;
-        btn.style.display = 'none';
-        btn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M10 14L10 6M10 14L6 10M10 14L14 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="badge">0</span> новых сообщения
-        `;
-
-        // Добавляем обработчик клика
-        btn.addEventListener('click', () => {
-            this.scrollManager.scrollToBottom({ 
-                instant: !AUTOSCROLL_CONFIG.SMOOTH_SCROLL_ON_CLICK, 
-                force: true 
-            });
-            this._hideNewMessagesIndicator();
-        });
-
-        // Добавляем в DOM
-        const chatContainer = this.scrollElement.parentElement || document.body;
-        chatContainer.appendChild(btn);
-
-        return btn;
-    }
 
     /**
      * Настраивает обработчик кликов на даты
