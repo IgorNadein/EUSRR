@@ -245,33 +245,6 @@ export class MessageLoaderV2 {
      * @returns {Promise<Array<Message>>}
      */
     async loadNewer(chatId, limit = null) {
-
-    /**
-     * Загружает последние сообщения (самые свежие в чате)
-     * Используется для перехода к настоящему времени из исторического просмотра
-     * @param {number} chatId - ID чата
-     * @param {number} [limit] - Количество сообщений
-     * @returns {Promise<LoadResult>}
-     */
-    async loadLatest(chatId, limit = 50) {
-        const requestKey = `latest_${chatId}`;
-        
-        console.log('[MessageLoaderV2] Loading latest messages to present time');
-        
-        try {
-            const result = await this._loadLatest(chatId, limit, requestKey);
-            
-            // Эмитим событие
-            window.dispatchEvent(new CustomEvent('chat:messagesLoaded', {
-                detail: { chatId, count: result.messages.length, type: 'latest' }
-            }));
-            
-            return result;
-        } catch (error) {
-            console.error('[MessageLoaderV2] Failed to load latest:', error);
-            throw error;
-        }
-    }
         const requestKey = `newer_${chatId}`;
         
         const state = this._getLoadingState(chatId);
@@ -346,6 +319,33 @@ export class MessageLoaderV2 {
         } finally {
             state.newer = false;
             this._cleanupRequest(requestKey);
+        }
+    }
+
+    /**
+     * Загружает последние сообщения (самые свежие в чате)
+     * Используется для перехода к настоящему времени из исторического просмотра
+     * @param {number} chatId - ID чата
+     * @param {number} [limit] - Количество сообщений
+     * @returns {Promise<LoadResult>}
+     */
+    async loadLatest(chatId, limit = 50) {
+        const requestKey = `latest_${chatId}`;
+        
+        console.log('[MessageLoaderV2] Loading latest messages to present time');
+        
+        try {
+            const result = await this._loadLatest(chatId, limit, requestKey);
+            
+            // Эмитим событие
+            window.dispatchEvent(new CustomEvent('chat:messagesLoaded', {
+                detail: { chatId, count: result.messages.length, type: 'latest' }
+            }));
+            
+            return result;
+        } catch (error) {
+            console.error('[MessageLoaderV2] Failed to load latest:', error);
+            throw error;
         }
     }
 
