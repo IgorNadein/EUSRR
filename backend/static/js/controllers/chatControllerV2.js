@@ -96,8 +96,9 @@ export class ChatControllerV2 {
         this._destroyed = false;
         
         // Индикатор новых сообщений (умный автоскролл)
-        this._newMessagesCount = 0;
-        this._newMessagesBtn = null;
+        this._unreadCount = 0;
+        this._scrollBtn = null; // Используем существующий #scrollBtn
+        this._scrollBtnBadge = null;
         this._scrollWatcherCleanup = null;
         
         // Слушатели для cleanup
@@ -175,6 +176,9 @@ export class ChatControllerV2 {
 
                 // 8. Настраиваем обработчик кликов на даты
                 this._setupDateClickHandler();
+                
+                // 9. Инициализируем умную кнопку скролла
+                this._initScrollButton();
 
                 // 9. Инициализируем watcher для умного автоскролла
                 this._initScrollWatcher();
@@ -451,6 +455,15 @@ export class ChatControllerV2 {
             window.addEventListener(event, handler);
             this._eventListeners.push({ event, handler });
         });
+        
+        // Слушаем событие скролла вниз для сброса badge
+        const scrollBottomHandler = (e) => {
+            if (e.detail.chatId === this.chatId) {
+                this._resetUnreadBadge();
+            }
+        };
+        window.addEventListener('chat:userScrolledToBottom', scrollBottomHandler);
+        this._eventListeners.push({ event: 'chat:userScrolledToBottom', handler: scrollBottomHandler });
     }
 
     /**
@@ -460,6 +473,26 @@ export class ChatControllerV2 {
         const { message, chatId } = detail;
         if (chatId === this.chatId && message) {
             this.loader.handleNewMessage(message);
+            
+            // 🎯 УМНЫЙ АВТОСКРОЛЛ: только если мы в "настоящем времени"
+            const boundaries = this.loader.chatBoundaries.get(chatId);
+            const isInPresentTime = boundaries && !boundaries.hasMoreAfter;
+            
+            if (isInPresentTime) {
+                const isNearBottom = this.scrollManager.isNearBottom();
+                
+                if (isNearBottom) {
+                    // ✅ Пользователь внизу → автоскролл к новому сообщению
+                    requestAnimationFrame(() => {
+                        this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+                        console.log('[ChatControllerV2] Auto-scrolled to new message (user at bottom)');
+                    });
+                } else {
+                    // ✅ Пользователь НЕ внизу → показываем badge
+                    this._incrementUnreadBadge();
+                }
+            }
+            // Если hasMoreAfter = true (исторический низ) - ничего не делаем
         }
     }
 
@@ -614,11 +647,109 @@ export class ChatControllerV2 {
         window.dispatchEvent(new CustomEvent(eventName, { detail }));
     }
 
-    // ==================== Умный автоскролл ====================
+    // ==================== Умный scrollBtn с badge ====================
+
+    /**
+     * Инициализирует умную кнопку скролла
+     * @private
+     */
+    _initScrollButton() {
+        this._scrollBtn = document.getElementById('scrollBtn');
+        
+        if (!this._scrollBtn) {
+            console.warn('[ChatControllerV2] #scrollBtn not found');
+            return;
+        }
+        
+        // Создаем badge элемент если его нет
+        if (!this._scrollBtn.querySelector('.unread-badge')) {
+            this._scrollBtnBadge = document.createElement('span');
+            this._scrollBtnBadge.className = 'unread-badge';
+            this._scrollBtnBadge.style.display = 'none';
+            this._scrollBtn.appendChild(this._scrollBtnBadge);
+        } else {
+            this._scrollBtnBadge = this._scrollBtn.querySelector('.unread-badge');
+        }
+        
+        // Заменяем обработчик клика на умный
+        const oldHandler = this._scrollBtn.onclick;
+        this._scrollBtn.onclick = null;
+        
+        this._scrollBtn.addEventListener('click', () => this._handleScrollButtonClick());
+        
+        console.log('[ChatControllerV2] Smart scroll button initialized');
+    }
+
+    /**
+     * Обработчик клика на умную кнопку
+     * @private
+     */
+    _handleScrollButtonClick() {
+        const boundaries = this.loader.chatBoundaries.get(this.chatId);
+        const isInPresentTime = boundaries && !boundaries.hasMoreAfter;
+        
+        if (this._unreadCount > 0 && this.lastReadMessageId && isInPresentTime) {
+            // Режим "Перейти к непрочитанным"
+            // Пытаемся найти первое непрочитанное (lastReadId + 1)
+            const firstUnreadId = this.lastReadMessageId + 1;
+            const firstUnreadEl = this.scrollElement.querySelector(`[data-message-id="${firstUnreadId}"]`);
+            
+            if (firstUnreadEl) {
+                // Скроллим к первому непрочитанному
+                const containerRect = this.scrollElement.getBoundingClientRect();
+                const messageRect = firstUnreadEl.getBoundingClientRect();
+                const relativeTop = messageRect.top - containerRect.top;
+                const targetScrollTop = this.scrollElement.scrollTop + relativeTop - 100;
+                
+                this.scrollElement.scrollTop = Math.max(0, targetScrollTop);
+                console.log('[ChatControllerV2] Scrolled to first unread:', firstUnreadId);
+            } else {
+                // Не нашли первое непрочитанное - просто в низ
+                this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+            }
+        } else {
+            // Обычный режим "В самый низ"
+            this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+            console.log('[ChatControllerV2] Scrolled to bottom');
+        }
+        
+        // Сбрасываем badge
+        this._resetUnreadBadge();
+    }
+
+    /**
+     * Увеличивает счетчик непрочитанных и показывает badge
+     * @private
+     */
+    _incrementUnreadBadge() {
+        if (!this._scrollBtn || !this._scrollBtnBadge) return;
+        
+        this._unreadCount++;
+        this._scrollBtnBadge.textContent = this._unreadCount;
+        this._scrollBtnBadge.style.display = 'flex';
+        
+        // Добавляем класс для анимации
+        this._scrollBtn.classList.add('has-unread');
+        
+        console.log('[ChatControllerV2] Unread badge:', this._unreadCount);
+    }
+
+    /**
+     * Сбрасывает badge непрочитанных
+     * @private
+     */
+    _resetUnreadBadge() {
+        if (!this._scrollBtn || !this._scrollBtnBadge) return;
+        
+        this._unreadCount = 0;
+        this._scrollBtnBadge.style.display = 'none';
+        this._scrollBtn.classList.remove('has-unread');
+    }
 
     /**
      * Показывает индикатор новых сообщений
      * @private
+     * @deprecated Используем _incrementUnreadBadge вместо этого
      */
     _showNewMessagesIndicator() {
         // Ищем или создаём кнопку

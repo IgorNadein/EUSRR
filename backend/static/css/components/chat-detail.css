@@ -611,6 +611,59 @@ body:has(.chat-page) .bottom-navbar {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+/* Badge непрочитанных на кнопке scrollBtn */
+.scroll-to-bottom {
+  position: relative; /* Для абсолютного позиционирования badge */
+}
+
+.scroll-to-bottom .unread-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: none; /* По умолчанию скрыт */
+  align-items: center;
+  justify-content: center;
+  background: var(--bs-danger);
+  color: white;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(220, 53, 69, 0.4);
+  animation: badgePulse 0.3s ease;
+}
+
+.scroll-to-bottom.has-unread {
+  /* Опционально: можем изменить вид кнопки когда есть непрочитанные */
+  animation: buttonPulse 2s ease infinite;
+}
+
+@keyframes badgePulse {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes buttonPulse {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(var(--bs-primary-rgb), 0.4);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
    ИНДИКАТОР ЗАГРУЗКИ
 ═══════════════════════════════════════════════════════════ */

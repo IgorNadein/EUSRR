@@ -706,10 +706,12 @@ export class ScrollManagerV2 {
      * @private
      */
     _onScroll(e) {
-        // Здесь можно добавить логику:
-        // - Показать/скрыть кнопку "scroll to bottom"
-        // - Отслеживание видимых сообщений для mark read
-        // - Отправка событий
+        // Если пользователь доскроллил вниз - сбрасываем badge
+        if (this.isNearBottom()) {
+            window.dispatchEvent(new CustomEvent('chat:userScrolledToBottom', {
+                detail: { chatId: this.chatId }
+            }));
+        }
     }
 
     /**
