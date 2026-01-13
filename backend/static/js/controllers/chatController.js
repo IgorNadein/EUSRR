@@ -7,9 +7,9 @@
  */
 
 import { MessageStore } from '../stores/messageStore.js';
-import { MessageLoader } from '../loaders/messageLoader.js';
+import { MessageLoaderV2 } from '../loaders/messageLoaderV2.js';
 import { MessageRendererV2 } from '../renderers/messageRendererV2.js';
-import { ScrollManager } from '../managers/scrollManager.js';
+import { ScrollManagerV2 } from '../managers/scrollManagerV2.js';
 
 /**
  * ChatController - координатор чата
@@ -49,7 +49,7 @@ export class ChatController {
         // Создаем компоненты
         this.store = new MessageStore({ currentUserId: this.currentUserId });
 
-        this.loader = new MessageLoader({
+        this.loader = new MessageLoaderV2({
             store: this.store,
             wsConnection: options.wsConnection,
             currentUserId: this.currentUserId
@@ -63,7 +63,7 @@ export class ChatController {
             detailUrlTemplate: options.detailUrlTemplate
         });
 
-        this.scrollManager = new ScrollManager({
+        this.scrollManager = new ScrollManagerV2({
             scrollElement: this.scrollElement,
             messageLoader: this.loader,
             messageRenderer: this.renderer,
