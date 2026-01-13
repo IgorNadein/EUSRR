@@ -55,8 +55,7 @@ export class UnreadBadgeManager {
      */
     _createBadge() {
         const badge = document.createElement('span');
-        badge.className = 'unread-badge';
-        badge.style.display = 'none';
+        badge.className = 'unread-badge badge-hidden';
         badge.textContent = '0';
         return badge;
     }
@@ -73,7 +72,7 @@ export class UnreadBadgeManager {
 
         this.count++;
         this.badge.textContent = this.count;
-        this.badge.style.display = 'flex';
+        this.badge.classList.remove('badge-hidden');
         this.button.classList.add('has-unread');
 
         console.log('[UnreadBadgeManager] Incremented:', this.count);
@@ -91,7 +90,7 @@ export class UnreadBadgeManager {
 
         this.count = 0;
         this.badge.textContent = '0';
-        this.badge.style.display = 'none';
+        this.badge.classList.add('badge-hidden');
         this.button.classList.remove('has-unread');
 
         console.log('[UnreadBadgeManager] Reset');
@@ -111,10 +110,10 @@ export class UnreadBadgeManager {
         this.badge.textContent = this.count;
 
         if (this.count > 0) {
-            this.badge.style.display = 'flex';
+            this.badge.classList.remove('badge-hidden');
             this.button.classList.add('has-unread');
         } else {
-            this.badge.style.display = 'none';
+            this.badge.classList.add('badge-hidden');
             this.button.classList.remove('has-unread');
         }
     }
