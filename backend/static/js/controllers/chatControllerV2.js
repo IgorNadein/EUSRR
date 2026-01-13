@@ -513,11 +513,14 @@ export class ChatControllerV2 {
         const messageEl = this.scrollElement.querySelector(`[data-message-id="${messageId}"]`);
         
         if (messageEl) {
-            messageEl.scrollIntoView({
-                behavior: 'instant',
-                block: 'center',
-                inline: 'nearest'
-            });
+            // ✅ КРИТИЧНО: НЕ используем scrollIntoView() - он скроллит родителей!
+            // Вместо этого вручную скроллим только scrollElement
+            const containerRect = this.scrollElement.getBoundingClientRect();
+            const messageRect = messageEl.getBoundingClientRect();
+            const relativeTop = messageRect.top - containerRect.top;
+            const targetScrollTop = this.scrollElement.scrollTop + relativeTop - (this.scrollElement.clientHeight / 2) + (messageRect.height / 2);
+            
+            this.scrollElement.scrollTop = Math.max(0, targetScrollTop);
             return true;
         }
         
