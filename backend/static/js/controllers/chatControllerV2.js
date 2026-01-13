@@ -143,28 +143,25 @@ export class ChatControllerV2 {
                         clientHeight: this.scrollElement.clientHeight
                     });
                     
-                    // Используем scrollTo() вместо scrollTop (более надежно)
+                    // Используем ПРЯМОЕ присвоение scrollTop (как в legacy коде)
+                    // scrollTo() НЕ работает на первичной загрузке
                     await new Promise(resolve => {
                         requestAnimationFrame(() => {
                             requestAnimationFrame(() => {
-                                const targetScroll = this.scrollElement.scrollHeight;
-                                
-                                // Используем scrollTo с auto (не smooth!)
-                                this.scrollElement.scrollTo({
-                                    top: targetScroll,
-                                    behavior: 'auto'
+                                requestAnimationFrame(() => {
+                                    // Тройной RAF для надежности
+                                    this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+                                    
+                                    // Проверяем через setTimeout
+                                    setTimeout(() => {
+                                        console.log('[ChatControllerV2] After scrollTop:', {
+                                            scrollHeight: this.scrollElement.scrollHeight,
+                                            scrollTop: this.scrollElement.scrollTop,
+                                            success: this.scrollElement.scrollTop > 0
+                                        });
+                                        resolve();
+                                    }, 10);
                                 });
-                                
-                                // Проверяем через setTimeout
-                                setTimeout(() => {
-                                    console.log('[ChatControllerV2] After scrollTo:', {
-                                        scrollHeight: this.scrollElement.scrollHeight,
-                                        scrollTop: this.scrollElement.scrollTop,
-                                        targetScroll,
-                                        success: Math.abs(this.scrollElement.scrollTop - targetScroll) < 5
-                                    });
-                                    resolve();
-                                }, 10);
                             });
                         });
                     });
