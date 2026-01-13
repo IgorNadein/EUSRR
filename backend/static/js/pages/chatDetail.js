@@ -183,7 +183,8 @@ async function initializeComponents(config, userWs) {
     profileUrl: config.profileUrl || '/employees/profile/',
     detailUrlTemplate: config.detailUrlTemplate || '/employees/detail/0/',
     messagesUrl: config.messagesUrl,
-    lastReadTimestamp: config.lastReadMessageId || config.lastReadTimestamp  // Используем message_id, fallback на timestamp
+    lastReadMessageId: config.lastReadMessageId,  // ✅ Передаем message_id
+    lastReadTimestamp: config.lastReadTimestamp   // ✅ Fallback на timestamp
   });
   
   console.log('[ChatDetail] Initializing ChatController...');

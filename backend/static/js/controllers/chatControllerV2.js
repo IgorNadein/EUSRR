@@ -45,6 +45,7 @@ export class ChatControllerV2 {
         this.scrollElement = options.scrollElement;
         this.containerId = options.containerId || 'chatScroll';
         this.lastReadMessageId = options.lastReadMessageId || null;
+        this.lastReadTimestamp = options.lastReadTimestamp || null;
 
         // Создаем компоненты
         this.store = new MessageStoreV2({ currentUserId: this.currentUserId });
@@ -114,8 +115,10 @@ export class ChatControllerV2 {
 
         try {
             // 1. Загружаем сообщения
+            // Используем timestamp как fallback если нет message ID (API поддерживает оба)
+            const anchorValue = this.lastReadMessageId || this.lastReadTimestamp;
             const loadResult = await this.loader.loadInitial(this.chatId, {
-                aroundMessageId: this.lastReadMessageId
+                aroundMessageId: anchorValue
             });
 
             // 2. Скрываем контейнер для плавного рендера
