@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тестирование двунаправленной загрузки сообщений</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #chatScroll {
+            height: 500px;
+            overflow-y: auto;
+            border: 2px solid #dee2e6;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .msg {
+            background: white;
+            padding: 10px 15px;
+            margin: 8px 0;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .msg.msg-own {
+            background: #0d6efd;
+            color: white;
+            margin-left: auto;
+            max-width: 70%;
+        }
+        
+        .msg-author {
+            font-weight: 600;
+            margin-bottom: 4px;
+            font-size: 0.875rem;
+        }
+        
+        .msg-time {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+        
+        .day-divider {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .day-divider span {
+            background: #e9ecef;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .loading-indicator {
+            text-align: center;
+            padding: 15px;
+            color: #6c757d;
+        }
+        
+        .test-results {
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+        
+        .test-pass {
+            color: #198754;
+        }
+        
+        .test-fail {
+            color: #dc3545;
+        }
+        
+        .controls {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
+            padding: 15px;
+            border-bottom: 2px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Левая панель - Контролы -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Контролы тестирования</h5>
+                    </div>
+                    <div class="card-body">
+                        <h6>Загрузка сообщений</h6>
+                        <div class="d-grid gap-2 mb-3">
+                            <button class="btn btn-primary" id="btnLoadLatest">
+                                📥 Загрузить последние
+                            </button>
+                            <button class="btn btn-secondary" id="btnLoadHistory" disabled>
+                                ⬆️ Загрузить историю (старые)
+                            </button>
+                            <button class="btn btn-success" id="btnLoadNewer" disabled>
+                                ⬇️ Загрузить новые (после даты)
+                            </button>
+                        </div>
+                        
+                        <hr>
+                        
+                        <h6>Переход по дате</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Выберите дату:</label>
+                            <select class="form-select" id="dateSelect">
+                                <option value="">-- Выберите дату --</option>
+                                <option value="2026-01-01">1 января 2026</option>
+                                <option value="2026-01-05">5 января 2026</option>
+                                <option value="2026-01-10">10 января 2026</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-info w-100" id="btnJumpToDate" disabled>
+                            🎯 Перейти к дате
+                        </button>
+                        
+                        <hr>
+                        
+                        <h6>Автотесты</h6>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-warning" id="btnRunTests">
+                                🧪 Запустить все тесты
+                            </button>
+                            <button class="btn btn-danger" id="btnClear">
+                                🗑️ Очистить чат
+                            </button>
+                        </div>
+                        
+                        <hr>
+                        
+                        <h6>Статус</h6>
+                        <div class="alert alert-info" id="statusPanel">
+                            <small>
+                                <div>Сообщений в Store: <strong id="msgCount">0</strong></div>
+                                <div>Oldest ID: <strong id="oldestId">-</strong></div>
+                                <div>Newest ID: <strong id="newestId">-</strong></div>
+                                <div>Has More Before: <strong id="hasMoreBefore">-</strong></div>
+                                <div>Has More After: <strong id="hasMoreAfter">-</strong></div>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Центральная панель - Чат -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Тестовый чат</h5>
+                    </div>
+                    <div id="chatScroll">
+                        <div class="loading-indicator">
+                            Нажмите "Загрузить последние" для начала
+                        </div>
+                    </div>
+                    <div class="card-footer text-muted">
+                        <small>Прокрутите вверх/вниз для автозагрузки</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Правая панель - Результаты тестов -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">Результаты тестов</h5>
+                    </div>
+                    <div class="card-body test-results" id="testResults">
+                        <p class="text-muted">Тесты еще не запущены</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { MessageLoaderV2 } from './js/loaders/messageLoaderV2.js';
+        import { MessageRendererV2 } from './js/renderers/messageRendererV2.js';
+        import { MessageStoreV2 } from './js/stores/messageStoreV2.js';
+        import { ScrollManagerV2 } from './js/managers/scrollManagerV2.js';
+        
+        // ==================== Mock Data ====================
+        
+        const MOCK_MESSAGES = {
+            jan1: Array.from({ length: 30 }, (_, i) => ({
+                id: i + 1,
+                chat_id: 1,
+                author_id: 1,
+                content: `Сообщение за 1 января #${i}`,
+                created_ts: new Date(2026, 0, 1, 12, i).getTime(),
+                author: { id: 1, name: 'Тестовый пользователь', avatar: null }
+            })),
+            jan5: Array.from({ length: 40 }, (_, i) => ({
+                id: i + 31,
+                chat_id: 1,
+                author_id: 1,
+                content: `Сообщение за 5 января #${i}`,
+                created_ts: new Date(2026, 0, 5, 12, i).getTime(),
+                author: { id: 1, name: 'Тестовый пользователь', avatar: null }
+            })),
+            jan10: Array.from({ length: 30 }, (_, i) => ({
+                id: i + 71,
+                chat_id: 1,
+                author_id: 1,
+                content: `Сообщение за 10 января #${i}`,
+                created_ts: new Date(2026, 0, 10, 12, i).getTime(),
+                author: { id: 1, name: 'Тестовый пользователь', avatar: null }
+            }))
+        };
+        
+        const ALL_MESSAGES = [
+            ...MOCK_MESSAGES.jan1,
+            ...MOCK_MESSAGES.jan5,
+            ...MOCK_MESSAGES.jan10
+        ];
+        
+        // ==================== Mock API ====================
+        
+        const originalFetch = window.fetch;
+        
+        window.fetch = function(url, options) {
+            if (url.includes('/api/v1/communications/chats/')) {
+                const urlObj = new URL(url, window.location.origin);
+                const params = Object.fromEntries(urlObj.searchParams);
+                
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        const data = mockFetchMessages(params);
+                        resolve({
+                            ok: true,
+                            json: () => Promise.resolve(data)
+                        });
+                    }, 300); // Симуляция задержки сети
+                });
+            }
+            
+            return originalFetch(url, options);
+        };
+        
+        function mockFetchMessages(params) {
+            const before_id = params.before_id ? parseInt(params.before_id) : undefined;
+            const after_id = params.after_id ? parseInt(params.after_id) : undefined;
+            const around_id = params.around_id ? parseInt(params.around_id) : undefined;
+            const limit = parseInt(params.limit) || 30;
+            
+            console.log('[MOCK API] Request:', { before_id, after_id, around_id, limit });
+            
+            let filtered = [...ALL_MESSAGES];
+            
+            // Around date
+            if (around_id && around_id > 1_000_000_000) {
+                const targetTimestamp = parseInt(around_id);
+                
+                const closest = filtered.reduce((prev, curr) => {
+                    return Math.abs(curr.created_ts - targetTimestamp) < Math.abs(prev.created_ts - targetTimestamp) 
+                        ? curr 
+                        : prev;
+                });
+                
+                const closestIndex = filtered.indexOf(closest);
+                const start = Math.max(0, closestIndex - Math.floor(limit / 2));
+                const end = Math.min(filtered.length, start + limit);
+                
+                filtered = filtered.slice(start, end);
+                
+                console.log('[MOCK API] Around response:', {
+                    closestIndex,
+                    start,
+                    end,
+                    totalMessages: ALL_MESSAGES.length,
+                    returnedMessages: filtered.length,
+                    has_more_before: start > 0,
+                    has_more_after: end < ALL_MESSAGES.length
+                });
+                
+                return {
+                    ok: true,
+                    messages: filtered,
+                    anchor_id: closest.id,
+                    has_more_before: start > 0,
+                    has_more_after: end < ALL_MESSAGES.length
+                };
+            }
+            
+            // After ID
+            if (after_id) {
+                filtered = filtered.filter(msg => msg.id > after_id);
+                filtered = filtered.slice(0, limit);
+                
+                const lastId = filtered.length > 0 ? filtered[filtered.length - 1].id : after_id;
+                const hasMoreAfter = ALL_MESSAGES.some(msg => msg.id > lastId);
+                
+                return {
+                    ok: true,
+                    messages: filtered,
+                    has_more: false,
+                    has_more_after: hasMoreAfter
+                };
+            }
+            
+            // Before ID
+            if (before_id) {
+                filtered = filtered.filter(msg => msg.id < before_id);
+                filtered = filtered.slice(-limit);
+                
+                const firstId = filtered.length > 0 ? filtered[0].id : before_id;
+                const hasMoreBefore = ALL_MESSAGES.some(msg => msg.id < firstId);
+                
+                return {
+                    ok: true,
+                    messages: filtered,
+                    has_more: hasMoreBefore,
+                    has_more_before: hasMoreBefore
+                };
+            }
+            
+            // Latest
+            filtered = filtered.slice(-limit);
+            
+            return {
+                ok: true,
+                messages: filtered,
+                has_more: ALL_MESSAGES.length > limit,
+                has_more_before: ALL_MESSAGES.length > limit
+            };
+        }
+        
+        // ==================== App Setup ====================
+        
+        const chatId = 1;
+        const store = new MessageStoreV2({ currentUserId: 1 });
+        const renderer = new MessageRendererV2({
+            store,
+            containerId: 'chatScroll',
+            currentUserId: 1
+        });
+        const loader = new MessageLoaderV2({ store });
+        const scrollElement = document.getElementById('chatScroll');
+        const scrollManager = new ScrollManagerV2({
+            scrollElement,
+            loader,
+            renderer,
+            store,
+            chatId
+        });
+        
+        // ==================== UI Updates ====================
+        
+        function updateStatus() {
+            const oldest = store.getOldestMessage(chatId);
+            const newest = store.getNewestMessage(chatId);
+            
+            document.getElementById('msgCount').textContent = store.getMessageCount(chatId);
+            document.getElementById('oldestId').textContent = oldest?.id || '-';
+            document.getElementById('newestId').textContent = newest?.id || '-';
+            document.getElementById('hasMoreBefore').textContent = loader.hasMoreHistory(chatId) ? 'Да' : 'Нет';
+            document.getElementById('hasMoreAfter').textContent = loader.hasMoreAfter(chatId) ? 'Да' : 'Нет';
+            
+            // Enable/disable buttons
+            document.getElementById('btnLoadHistory').disabled = !loader.hasMoreHistory(chatId);
+            document.getElementById('btnLoadNewer').disabled = !loader.hasMoreAfter(chatId);
+        }
+        
+        function logTest(message, passed = true) {
+            const results = document.getElementById('testResults');
+            const time = new Date().toLocaleTimeString();
+            const className = passed ? 'test-pass' : 'test-fail';
+            const icon = passed ? '✅' : '❌';
+            
+            results.innerHTML += `<div class="${className}">[${time}] ${icon} ${message}</div>`;
+            results.scrollTop = results.scrollHeight;
+        }
+        
+        // ==================== Event Handlers ====================
+        
+        document.getElementById('btnLoadLatest').addEventListener('click', async () => {
+            logTest('Загрузка последних сообщений...');
+            await loader.loadInitial(chatId);
+            await renderer.render(chatId);
+            await scrollManager.init();
+            updateStatus();
+            logTest('Последние сообщения загружены');
+        });
+        
+        document.getElementById('btnLoadHistory').addEventListener('click', async () => {
+            logTest('Загрузка истории (старые сообщения)...');
+            await scrollManager.loadMoreHistory();
+            updateStatus();
+            logTest('История загружена');
+        });
+        
+        document.getElementById('btnLoadNewer').addEventListener('click', async () => {
+            logTest('Загрузка новых сообщений...');
+            await scrollManager.loadMoreNewer();
+            updateStatus();
+            logTest('Новые сообщения загружены');
+        });
+        
+        document.getElementById('dateSelect').addEventListener('change', (e) => {
+            document.getElementById('btnJumpToDate').disabled = !e.target.value;
+        });
+        
+        document.getElementById('btnJumpToDate').addEventListener('click', async () => {
+            const dateStr = document.getElementById('dateSelect').value;
+            if (!dateStr) return;
+            
+            logTest(`Переход к дате: ${dateStr}`);
+            
+            const targetDate = new Date(dateStr + 'T12:00:00');
+            const timestamp = targetDate.getTime();
+            
+            await loader.loadAround(chatId, timestamp);
+            await renderer.render(chatId);
+            scrollManager.destroy();  // Уничтожаем старые observers
+            await scrollManager.init();  // Создаем новые
+            updateStatus();
+            
+            logTest(`Переход выполнен. Загружено ${store.getMessageCount(chatId)} сообщений`);
+        });
+        
+        document.getElementById('btnClear').addEventListener('click', () => {
+            store.clear();
+            renderer.clear();
+            scrollManager.destroy();
+            updateStatus();
+            logTest('Чат очищен');
+        });
+        
+        document.getElementById('btnRunTests').addEventListener('click', async () => {
+            document.getElementById('testResults').innerHTML = '<h6>Запуск автотестов...</h6>';
+            
+            // Test 1
+            logTest('Test 1: Загрузка последних сообщений');
+            await loader.loadInitial(chatId);
+            logTest(`Загружено ${store.getMessageCount(chatId)} сообщений`, store.getMessageCount(chatId) > 0);
+            
+            // Test 2
+            logTest('Test 2: hasMoreAfter должен быть false для последних');
+            logTest(`hasMoreAfter = ${loader.hasMoreAfter(chatId)}`, !loader.hasMoreAfter(chatId));
+            
+            // Test 3
+            store.clear();
+            logTest('Test 3: Переход к 5 января');
+            const jan5 = new Date(2026, 0, 5, 12, 0).getTime();
+            await loader.loadAround(chatId, jan5, { limit: 30 });
+            logTest(`Загружено ${store.getMessageCount(chatId)} сообщений вокруг даты`);
+            
+            // Test 4
+            logTest('Test 4: hasMoreAfter должен быть true после loadAround');
+            logTest(`hasMoreAfter = ${loader.hasMoreAfter(chatId)}`, loader.hasMoreAfter(chatId));
+            
+            // Test 5
+            logTest('Test 5: Загрузка новых сообщений');
+            const countBefore = store.getMessageCount(chatId);
+            await loader.loadNewer(chatId);
+            const countAfter = store.getMessageCount(chatId);
+            logTest(`Добавлено ${countAfter - countBefore} новых сообщений`, countAfter > countBefore);
+            
+            await renderer.render(chatId);
+            await scrollManager.init();
+            updateStatus();
+            
+            logTest('✅ Все тесты завершены!');
+        });
+        
+        // Initial status
+        updateStatus();
+    </script>
+</body>
+</html>
