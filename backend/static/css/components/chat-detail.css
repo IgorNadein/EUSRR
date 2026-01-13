@@ -42,6 +42,11 @@ body:has(.chat-page) .bottom-navbar {
   }
 }
 
+/* Utility class: Hide scroll element during initialization */
+.scroll-hidden {
+  visibility: hidden !important;
+}
+
 
 
   .chat-header,
@@ -611,44 +616,61 @@ body:has(.chat-page) .bottom-navbar {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-/* Badge непрочитанных на кнопке scrollBtn */
-/* Унифицирован со стилем sticky-date */
+/* ═══════════════════════════════════════════════════════════
+   BADGE НЕПРОЧИТАННЫХ НА SCROLL BTN
+   Унифицирован со стилем sticky-date
+═══════════════════════════════════════════════════════════ */
+
 .scroll-to-bottom {
-  position: relative; /* Для абсолютного позиционирования badge */
+  position: relative !important; /* Для абсолютного позиционирования badge */
 }
 
 .scroll-to-bottom .unread-badge {
   position: absolute;
   top: -8px;
   right: -8px;
-  
+  z-index: 1;
+
   /* Layout - как у sticky-date span */
-  display: none; /* По умолчанию скрыт */
+  display: flex !important; /* По умолчанию flex для правильного позиционирования */
   align-items: center;
   justify-content: center;
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  
+
   /* Typography - как у sticky-date */
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  color: white;
-  
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  color: white !important;
+
   /* Visual - унифицировано с sticky-date */
-  background-color: var(--bs-danger);
-  border-radius: 10px;
-  border: 2px solid var(--bs-body-bg); /* Контраст с фоном */
-  
+  background-color: var(--bs-danger) !important;
+  border-radius: 10px !important;
+  border: 2px solid var(--bs-body-bg) !important; /* Контраст с фоном */
+
   /* Shadow - как у sticky-date */
-  box-shadow: 0 2px 6px rgba(220, 53, 69, 0.4);
-  
+  box-shadow: 0 2px 6px rgba(220, 53, 69, 0.4) !important;
+
   /* Transitions - как у sticky-date */
-  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease !important;
+
+  /* Анимация появления */
+  animation: badgePulse 0.3s ease;
 }
 
-/* Анимация появления - как у sticky-date hover */
+/* Класс для скрытия badge */
+.scroll-to-bottom .unread-badge.badge-hidden {
+  display: none !important;
+}
+
+/* Кнопка с непрочитанными - subtle pulse как у sticky-date.interactive */
+.scroll-to-bottom.has-unread {
+  animation: buttonPulse 2s ease infinite !important;
+}
+
+/* Анимации */
 @keyframes badgePulse {
   0% {
     transform: scale(0);
@@ -661,15 +683,6 @@ body:has(.chat-page) .bottom-navbar {
     transform: scale(1);
     opacity: 1;
   }
-}
-
-.scroll-to-bottom .unread-badge {
-  animation: badgePulse 0.3s ease;
-}
-
-/* Кнопка с непрочитанными - subtle pulse как у sticky-date.interactive */
-.scroll-to-bottom.has-unread {
-  animation: buttonPulse 2s ease infinite;
 }
 
 @keyframes buttonPulse {
