@@ -270,7 +270,13 @@ def upload_message_with_attachments(request):
 @login_required
 @require_GET
 def load_chat_messages(request, pk: int):
-    """Постраничная загрузка истории чата (старые сообщения)."""
+    """
+    Постраничная загрузка сообщений чата.
+    
+    Поддерживает двунаправленную загрузку как в Telegram:
+    - before_id / before_ts: загрузка старых сообщений (история)
+    - after_id / after_ts: загрузка новых сообщений (при прокрутке вниз после перехода по дате)
+    """
     chat = get_object_or_404(Chat, pk=pk)
     user = request.user
 
@@ -285,51 +291,92 @@ def load_chat_messages(request, pk: int):
 
     before_id = request.GET.get("before_id")
     before_ts = request.GET.get("before_ts")
+    after_id = request.GET.get("after_id")
+    after_ts = request.GET.get("after_ts")
 
     qs = (
         Message.objects.filter(chat=chat)
         .select_related("author", "reply_to__author")
         .prefetch_related("attachments")
-        .order_by("-created_at")
     )
 
-    if before_id:
+    # Определяем направление загрузки
+    is_loading_newer = bool(after_id or after_ts)
+    
+    if after_id:
+        # Загрузка НОВЫХ сообщений (after_id) - для прокрутки вниз после перехода по дате
+        boundary = (
+            Message.objects.filter(chat=chat, pk=after_id)
+            .only("created_at")
+            .first()
+        )
+        if boundary:
+            qs = qs.filter(created_at__gt=boundary.created_at).order_by("created_at")
+        else:
+            qs = qs.order_by("created_at")
+    elif after_ts:
+        # Загрузка НОВЫХ по timestamp
+        boundary_ts = _coerce_ts(after_ts)
+        qs = qs.filter(created_at__gt=boundary_ts).order_by("created_at")
+    elif before_id:
+        # Загрузка СТАРЫХ сообщений (before_id) - обычная история
         boundary = (
             Message.objects.filter(chat=chat, pk=before_id)
             .only("created_at")
             .first()
         )
         if boundary:
-            qs = qs.filter(created_at__lt=boundary.created_at)
+            qs = qs.filter(created_at__lt=boundary.created_at).order_by("-created_at")
+        else:
+            qs = qs.order_by("-created_at")
     elif before_ts:
+        # Загрузка СТАРЫХ по timestamp
         boundary_ts = _coerce_ts(before_ts)
-        qs = qs.filter(created_at__lt=boundary_ts)
+        qs = qs.filter(created_at__lt=boundary_ts).order_by("-created_at")
+    else:
+        # По умолчанию - последние сообщения
+        qs = qs.order_by("-created_at")
 
     batch = list(qs[: limit + 1])
     has_more = len(batch) > limit
-    next_cursor = None
 
     if has_more:
-        next_cursor = batch[-1]
         batch = batch[:-1]
-    elif batch:
-        next_cursor = batch[-1]
 
-    serialized = [serialize_message(m) for m in reversed(batch)]
+    # Для after_id сообщения уже в правильном порядке (от старых к новым)
+    # Для before_id нужно перевернуть (сейчас от новых к старым)
+    if not is_loading_newer:
+        batch = list(reversed(batch))
 
-    return JsonResponse(
-        {
+    serialized = [serialize_message(m) for m in batch]
+
+    # Определяем next cursor в зависимости от направления
+    if is_loading_newer:
+        next_cursor = batch[-1] if batch else None
+        return JsonResponse({
             "ok": True,
             "messages": serialized,
             "has_more": has_more,
+            "has_more_after": has_more,
+            "next_after_id": next_cursor.id if next_cursor else None,
+            "next_after_ts": (
+                int(next_cursor.created_at.timestamp() * 1000)
+                if next_cursor else None
+            ),
+        })
+    else:
+        next_cursor = batch[0] if batch else None
+        return JsonResponse({
+            "ok": True,
+            "messages": serialized,
+            "has_more": has_more,
+            "has_more_before": has_more,
             "next_before_id": next_cursor.id if next_cursor else None,
             "next_before_ts": (
                 int(next_cursor.created_at.timestamp() * 1000)
-                if next_cursor
-                else None
+                if next_cursor else None
             ),
-        }
-    )
+        })
 
 
 @login_required

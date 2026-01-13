@@ -271,9 +271,13 @@ export function initUserWebSocket(options = {}) {
       console.log('[UserWS] [DEPRECATED] Using old messageRenderer for backward compatibility');
       options.messageRenderer.renderMessages(messages);
       
-      requestAnimationFrame(() => {
-        state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
-      });
+      // Автоскролл только для старой архитектуры (НЕ V2)
+      // V2 управляет скроллом через ChatControllerV2
+      if (!window.chatControllerV2) {
+        requestAnimationFrame(() => {
+          state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
+        });
+      }
     }
     
     // Инициализируем голосования после загрузки сообщений
@@ -308,7 +312,9 @@ export function initUserWebSocket(options = {}) {
       const isAtBottom = markReadApi?.atBottom?.() ?? false;
       const isOwnMessage = message.author_id === userId;
       
-      if (isOwnMessage || isAtBottom) {
+      // КРИТИЧНО: Не скроллим если работает ChatControllerV2
+      // V2 сам управляет автоскроллом через свою логику (isNearBottom, индикатор новых сообщений)
+      if (!window.chatControllerV2 && (isOwnMessage || isAtBottom)) {
         requestAnimationFrame(() => scrollToBottom());
       }
       
