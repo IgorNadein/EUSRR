@@ -152,40 +152,17 @@ export class ChatControllerV2 {
                 // Ждем один frame чтобы браузер применил visibility
                 await new Promise(resolve => requestAnimationFrame(resolve));
 
-                // 5. Скроллим к нужной позиции
+                // 5. ✨ НОВЫЙ ПОДХОД: Мгновенное позиционирование БЕЗ скролла
                 if (loadResult.anchorId) {
-                    // Есть последнее прочитанное - скроллим к нему
-                    await this._scrollToMessage(loadResult.anchorId);
+                    // Есть lastRead - СРАЗУ позиционируем на него
+                    await this._positionToMessage(loadResult.anchorId);
                 } else {
-                    // Нет anchor - скроллим в самый низ (как в Telegram)
-                    console.log('[ChatControllerV2] Scrolling to bottom (no anchor)...', {
-                        scrollHeightBefore: this.scrollElement.scrollHeight,
-                        scrollTopBefore: this.scrollElement.scrollTop,
-                        clientHeight: this.scrollElement.clientHeight
-                    });
-                    
-                    // Используем ПРЯМОЕ присвоение scrollTop (как в legacy коде)
-                    // scrollTo() НЕ работает на первичной загрузке
+                    // Нет anchor - позиционируем в самый низ (новый чат)
                     await new Promise(resolve => {
                         requestAnimationFrame(() => {
-                            requestAnimationFrame(() => {
-                                requestAnimationFrame(() => {
-                                    // 🚫 REMOVED: Автоскролл при открытии чата
-                                    // Пользователь сам решает куда скроллить
-                                    // loadAround уже показывает нужный контекст
-                                    console.log('[ChatControllerV2] Initial autoscroll removed - user position preserved');
-                                    
-                                    // Проверяем через setTimeout
-                                    setTimeout(() => {
-                                        console.log('[ChatControllerV2] After scrollTop:', {
-                                            scrollHeight: this.scrollElement.scrollHeight,
-                                            scrollTop: this.scrollElement.scrollTop,
-                                            success: this.scrollElement.scrollTop > 0
-                                        });
-                                        resolve();
-                                    }, 10);
-                                });
-                            });
+                            this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+                            console.log('[ChatControllerV2] Initial position: bottom (no anchor)');
+                            resolve();
                         });
                     });
                 }
@@ -535,6 +512,51 @@ export class ChatControllerV2 {
         if (!options.currentUserId) {
             throw new Error('[ChatControllerV2] currentUserId is required');
         }
+    }
+
+    /**
+     * 🆕 Мгновенно позиционирует viewport на сообщение БЕЗ скроллинга
+     * Вызывается ТОЛЬКО при начальной загрузке
+     * @private
+     */
+    async _positionToMessage(messageId) {
+        if (!messageId) return false;
+
+        // Ждем один RAF для надежности
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
+        const messageEl = this.scrollElement.querySelector(`[data-message-id="${messageId}"]`);
+        
+        if (messageEl) {
+            // Вычисляем позицию для центрирования сообщения
+            const containerRect = this.scrollElement.getBoundingClientRect();
+            const messageRect = messageEl.getBoundingClientRect();
+            const relativeTop = messageRect.top - containerRect.top;
+            
+            // Учитываем sticky header (56px + ~40px для sticky date)
+            const stickyHeaderOffset = 96;
+            const targetScrollTop = this.scrollElement.scrollTop + relativeTop - (this.scrollElement.clientHeight / 2) + (messageRect.height / 2);
+            
+            // Дополнительно вычитаем offset если сообщение будет в верхней части
+            const adjustedScrollTop = relativeTop < this.scrollElement.clientHeight / 2 
+                ? targetScrollTop - stickyHeaderOffset 
+                : targetScrollTop;
+            
+            // ✨ МГНОВЕННАЯ установка позиции - НЕ скролл, а начальная позиция!
+            this.scrollElement.scrollTop = Math.max(0, adjustedScrollTop);
+            
+            console.log('[ChatControllerV2] Initial position set to message:', {
+                messageId,
+                scrollTop: this.scrollElement.scrollTop,
+                relativeTop,
+                noScrollAnimation: true
+            });
+            
+            return true;
+        }
+        
+        console.warn('[ChatControllerV2] Message not found for positioning:', messageId);
+        return false;
     }
 
     /**
