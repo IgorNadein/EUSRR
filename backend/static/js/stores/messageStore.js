@@ -95,7 +95,7 @@ export class MessageStore {
         }
         
         // Уведомляем слушателей
-        this._notify('messageAdded', { message, optimistic });
+        this._notify('message_added', { message, optimistic });
         
         return 1;
     }
@@ -122,7 +122,7 @@ export class MessageStore {
         console.log('[MessageStore] Batch added:', addedCount, 'of', messages.length, '| Total in store:', this.messages.size);
         
         // Уведомляем о batch загрузке
-        this._notify('messagesAdded', { messages, count: addedCount });
+        this._notify('messages_loaded', { messages, count: addedCount });
         
         return addedCount;
     }
@@ -147,7 +147,7 @@ export class MessageStore {
         console.log('[MessageStore] Message updated:', messageId, updates);
         
         // Уведомляем слушателей
-        this._notify('messageUpdated', { messageId, message: updated, updates });
+        this._notify('message_updated', { messageId, message: updated, updates });
         
         return true;
     }
@@ -181,7 +181,7 @@ export class MessageStore {
         console.log('[MessageStore] Message removed:', messageId);
         
         // Уведомляем слушателей
-        this._notify('messageRemoved', { messageId, message });
+        this._notify('message_removed', { messageId, message });
         
         return true;
     }
@@ -446,7 +446,7 @@ export class MessageStore {
         this.chatMessages.delete(chatId);
         
         console.log('[MessageStore] Chat cleared:', chatId);
-        this._notify('chatCleared', { chatId });
+        this._notify('chat_cleared', { chatId });
     }
 
     /**

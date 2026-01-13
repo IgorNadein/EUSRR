@@ -6,7 +6,7 @@
  * или в другой вкладке.
  */
 
-import { MessageRenderer } from './messageRenderer.js';
+import { MessageRendererV2 } from '../renderers/messageRendererV2.js';
 
 /**
  * Инициализация обработки редактирования сообщений
@@ -89,8 +89,8 @@ function updateMessageInDOM(message) {
 				return;
 			}
 
-			// Создаём renderer
-			const renderer = new MessageRenderer({
+			// Создаём renderer V2
+			const renderer = new MessageRendererV2({
 				containerId: 'chatScroll',
 				currentUserId: currentUserId,
 				currentUserAvatar: window.currentUserAvatar || '',

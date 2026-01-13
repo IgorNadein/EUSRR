@@ -1,0 +1,158 @@
+/**
+ * Индикатор новых сообщений в чате
+ * Кнопка для прокрутки к новым сообщениям
+ */
+
+.new-messages-indicator {
+    /* Позиционирование */
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    
+    /* Размеры */
+    padding: 10px 16px;
+    min-width: 180px;
+    
+    /* Оформление */
+    background: var(--bs-primary, #0d6efd);
+    color: white;
+    border: none;
+    border-radius: 24px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    
+    /* Текст */
+    font-size: 14px;
+    font-weight: 500;
+    
+    /* Анимация */
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+    
+    /* Флекс для иконки и текста */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    
+    /* Курсор */
+    cursor: pointer;
+}
+
+/* Показанное состояние */
+.new-messages-indicator.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+}
+
+/* Hover эффект */
+.new-messages-indicator:hover {
+    background: var(--bs-primary-dark, #0a58ca);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+}
+
+/* Active эффект */
+.new-messages-indicator:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Иконка стрелки вниз */
+.new-messages-indicator svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+/* Бейдж со счётчиком */
+.new-messages-indicator .badge {
+    display: inline-block;
+    min-width: 20px;
+    padding: 2px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.3);
+    color: white;
+    margin: 0 4px;
+}
+
+/* Анимация появления (pulse) */
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+.new-messages-indicator.show {
+    animation: pulse 0.6s ease-in-out;
+}
+
+/* Адаптив для мобильных */
+@media (max-width: 768px) {
+    .new-messages-indicator {
+        bottom: 15px;
+        right: 15px;
+        min-width: 160px;
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+    
+    .new-messages-indicator svg {
+        width: 18px;
+        height: 18px;
+    }
+    
+    .new-messages-indicator .badge {
+        font-size: 11px;
+        min-width: 18px;
+        padding: 2px 5px;
+    }
+}
+
+/* Тёмная тема (если есть) */
+@media (prefers-color-scheme: dark) {
+    .new-messages-indicator {
+        background: #1a73e8;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    .new-messages-indicator:hover {
+        background: #1557b0;
+    }
+}
+
+/* Варианты расположения (если нужно) */
+.new-messages-indicator.left {
+    right: auto;
+    left: 20px;
+}
+
+.new-messages-indicator.center {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) translateY(10px);
+}
+
+.new-messages-indicator.center.show {
+    transform: translateX(-50%) translateY(0);
+}
+
+.new-messages-indicator.center:hover {
+    transform: translateX(-50%) translateY(-2px);
+}
+
+/* Для контейнера чата (относительное позиционирование) */
+#chatScroll {
+    position: relative;
+}

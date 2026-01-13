@@ -14,7 +14,7 @@ import { MessageStoreV2 } from '../stores/messageStoreV2.js';
 import { MessageLoaderV2 } from '../loaders/messageLoaderV2.js';
 import { MessageRendererV2 } from '../renderers/messageRendererV2.js';
 import { ScrollManagerV2 } from '../managers/scrollManagerV2.js';
-import { CHAT_EVENTS, WS_EVENTS, SCROLL_CONFIG } from '../config/chatConfig.js';
+import { CHAT_EVENTS, WS_EVENTS, SCROLL_CONFIG, AUTOSCROLL_CONFIG } from '../config/chatConfig.js';
 
 /**
  * @typedef {Object} ChatControllerOptions
@@ -76,6 +76,11 @@ export class ChatControllerV2 {
         this._initializing = false;
         this._destroyed = false;
         
+        // Индикатор новых сообщений (умный автоскролл)
+        this._newMessagesCount = 0;
+        this._newMessagesBtn = null;
+        this._scrollWatcherCleanup = null;
+        
         // Слушатели для cleanup
         this._eventListeners = [];
 
@@ -120,16 +125,56 @@ export class ChatControllerV2 {
                 // 3. Рендерим сообщения
                 await this.renderer.render(this.chatId);
 
-                // 4. Показываем контейнер
+                // 4. СНАЧАЛА показываем контейнер (важно для scrollTop!)
                 this.scrollElement.style.visibility = '';
+
+                // Ждем один frame чтобы браузер применил visibility
+                await new Promise(resolve => requestAnimationFrame(resolve));
 
                 // 5. Скроллим к нужной позиции
                 if (loadResult.anchorId) {
+                    // Есть последнее прочитанное - скроллим к нему
                     await this._scrollToMessage(loadResult.anchorId);
+                } else {
+                    // Нет anchor - скроллим в самый низ (как в Telegram)
+                    console.log('[ChatControllerV2] Scrolling to bottom (no anchor)...', {
+                        scrollHeightBefore: this.scrollElement.scrollHeight,
+                        scrollTopBefore: this.scrollElement.scrollTop,
+                        clientHeight: this.scrollElement.clientHeight
+                    });
+                    
+                    // Используем scrollTo() вместо scrollTop (более надежно)
+                    await new Promise(resolve => {
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                const targetScroll = this.scrollElement.scrollHeight;
+                                
+                                // Используем scrollTo с auto (не smooth!)
+                                this.scrollElement.scrollTo({
+                                    top: targetScroll,
+                                    behavior: 'auto'
+                                });
+                                
+                                // Проверяем через setTimeout
+                                setTimeout(() => {
+                                    console.log('[ChatControllerV2] After scrollTo:', {
+                                        scrollHeight: this.scrollElement.scrollHeight,
+                                        scrollTop: this.scrollElement.scrollTop,
+                                        targetScroll,
+                                        success: Math.abs(this.scrollElement.scrollTop - targetScroll) < 5
+                                    });
+                                    resolve();
+                                }, 10);
+                            });
+                        });
+                    });
                 }
 
                 // 6. Инициализируем ScrollManager
                 await this.scrollManager.init();
+
+                // 7. Инициализируем watcher для умного автоскролла
+                this._initScrollWatcher();
 
             } catch (error) {
                 this.scrollElement.style.visibility = '';
@@ -171,6 +216,12 @@ export class ChatControllerV2 {
 
         // Очищаем Renderer
         this.renderer?.clear();
+
+        // Удаляем scroll watcher
+        if (this._scrollWatcherCleanup) {
+            this._scrollWatcherCleanup();
+            this._scrollWatcherCleanup = null;
+        }
 
         // Удаляем слушатели событий
         this._eventListeners.forEach(({ event, handler }) => {
@@ -324,11 +375,26 @@ export class ChatControllerV2 {
         // Рендерим новое сообщение
         this.renderer.appendMessage(message, this.chatId);
 
-        // Автоскролл только для наших сообщений
-        if (message.author_id === this.currentUserId && !optimistic) {
-            requestAnimationFrame(() => {
-                this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+        // УМНЫЙ АВТОСКРОЛЛ:
+        // 1. Своё сообщение - всегда скроллим
+        // 2. Чужое сообщение + внизу чата - скроллим (активно читаем)
+        // 3. Чужое сообщение + читаем историю - показываем индикатор
+        const isMyMessage = message.author_id === this.currentUserId;
+        const isAtBottom = this.scrollManager.isNearBottom();
+        const shouldScroll = isMyMessage || isAtBottom;
+
+        if (shouldScroll) {
+            // Для своих сообщений - мгновенный скролл (AUTOSCROLL_CONFIG.SMOOTH_SCROLL_FOR_OWN)
+            // Для чужих - проверка уже прошла выше (isAtBottom)
+            this.scrollManager.scrollToBottom({ 
+                instant: isMyMessage && !AUTOSCROLL_CONFIG.SMOOTH_SCROLL_FOR_OWN,
+                force: isMyMessage
             });
+            // Скрываем индикатор если он показан
+            this._hideNewMessagesIndicator();
+        } else if (!shouldScroll && !optimistic) {
+            // Показываем индикатор только для НЕ-оптимистичных чужих сообщений
+            this._showNewMessagesIndicator();
         }
 
         this._emit(CHAT_EVENTS.MESSAGE_ADDED, { messageId: message.id, chatId: this.chatId });
@@ -464,6 +530,121 @@ export class ChatControllerV2 {
      */
     _emit(eventName, detail) {
         window.dispatchEvent(new CustomEvent(eventName, { detail }));
+    }
+
+    // ==================== Умный автоскролл ====================
+
+    /**
+     * Показывает индикатор новых сообщений
+     * @private
+     */
+    _showNewMessagesIndicator() {
+        // Ищем или создаём кнопку
+        if (!this._newMessagesBtn) {
+            this._newMessagesBtn = this._findOrCreateNewMessagesButton();
+        }
+
+        if (!this._newMessagesBtn) {
+            console.warn('[ChatControllerV2] New messages button not found');
+            return;
+        }
+
+        // Увеличиваем счётчик
+        this._newMessagesCount++;
+
+        // Обновляем текст кнопки
+        const badge = this._newMessagesBtn.querySelector('.badge');
+        if (badge) {
+            badge.textContent = this._newMessagesCount;
+        }
+
+        // Показываем кнопку
+        this._newMessagesBtn.style.display = 'flex';
+        this._newMessagesBtn.classList.add('show');
+    }
+
+    /**
+     * Скрывает индикатор новых сообщений
+     * @private
+     */
+    _hideNewMessagesIndicator() {
+        if (!this._newMessagesBtn) {
+            return;
+        }
+
+        // Сбрасываем счётчик
+        this._newMessagesCount = 0;
+
+        // Обновляем текст
+        const badge = this._newMessagesBtn.querySelector('.badge');
+        if (badge) {
+            badge.textContent = '0';
+        }
+
+        // Скрываем кнопку
+        this._newMessagesBtn.style.display = 'none';
+        this._newMessagesBtn.classList.remove('show');
+    }
+
+    /**
+     * Находит или создаёт кнопку новых сообщений
+     * @private
+     * @returns {HTMLElement|null}
+     */
+    _findOrCreateNewMessagesButton() {
+        // Ищем существующую кнопку
+        let btn = document.getElementById(AUTOSCROLL_CONFIG.NEW_MESSAGES_BTN_ID);
+        
+        if (btn) {
+            return btn;
+        }
+
+        // Создаём новую кнопку
+        btn = document.createElement('button');
+        btn.id = AUTOSCROLL_CONFIG.NEW_MESSAGES_BTN_ID;
+        btn.className = AUTOSCROLL_CONFIG.NEW_MESSAGES_BTN_CLASS;
+        btn.style.display = 'none';
+        btn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 14L10 6M10 14L6 10M10 14L14 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="badge">0</span> новых сообщения
+        `;
+
+        // Добавляем обработчик клика
+        btn.addEventListener('click', () => {
+            this.scrollManager.scrollToBottom({ 
+                instant: !AUTOSCROLL_CONFIG.SMOOTH_SCROLL_ON_CLICK, 
+                force: true 
+            });
+            this._hideNewMessagesIndicator();
+        });
+
+        // Добавляем в DOM
+        const chatContainer = this.scrollElement.parentElement || document.body;
+        chatContainer.appendChild(btn);
+
+        return btn;
+    }
+
+    /**
+     * Инициализирует отслеживание скролла для индикатора
+     * @private
+     */
+    _initScrollWatcher() {
+        // Слушаем скролл для автоматического скрытия индикатора
+        const scrollHandler = () => {
+            if (this.scrollManager.isNearBottom() && this._newMessagesCount > 0) {
+                this._hideNewMessagesIndicator();
+            }
+        };
+        
+        this.scrollElement.addEventListener('scroll', scrollHandler);
+        
+        // Сохраняем handler для cleanup
+        this._scrollWatcherCleanup = () => {
+            this.scrollElement.removeEventListener('scroll', scrollHandler);
+        };
     }
 }
 

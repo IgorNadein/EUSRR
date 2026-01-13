@@ -1,4 +1,8 @@
 /**
+ * ⚠️ DEPRECATED - LEGACY CODE ⚠️
+ * Используйте messageRendererV2.js вместо этого файла
+ * Этот файл сохранен только для справки
+ * 
  * Message Renderer
  * Рендерит сообщения в DOM из JSON данных
  */

@@ -5,13 +5,13 @@
 {% block title %}Чат{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/components/badges-telegram-style.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/chat-detail.css' %}">
   <link rel="stylesheet" href="{% static 'css/message-reactions.css' %}">
   <link rel="stylesheet" href="{% static 'css/message-context-menu.css' %}">
   <link rel="stylesheet" href="{% static 'css/message-selection.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/chat-polls.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components/chat-new-messages-indicator.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -135,6 +135,11 @@
         <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
           <i class="bi-arrow-down"></i>
         </button>
+
+        <!-- Индикатор новых сообщений (V2) -->
+        <div id="newMessagesIndicator" class="new-messages-indicator" style="display: none;">
+          <span class="new-messages-count">0</span> новых сообщений
+        </div>
 
         <!-- Лента сообщений -->
         <div id="chatScroll"

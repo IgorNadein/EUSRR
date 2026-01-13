@@ -169,18 +169,18 @@ $card-cap-color: null !default;
   // Прозрачный фон с лёгким оттенком для светлой темы (как в тёмной)
   --bs-card-bg: transparent;
   background: rgba(255, 255, 255, 0.1) !important;
-  
+
   // Размытие фона (glassmorphism) - основа эффекта жидкого стекла
   backdrop-filter: blur(10px) saturate(180%);
   -webkit-backdrop-filter: blur(10px) saturate(180%);
-  
+
   // Тонкая рамка для светлой темы
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  
+
   // Плавные переходы
   transition: all 0.3s ease;
   overflow: hidden;
-  
+
   // Hover эффект - усиливаем эффект
   &:hover {
     background: rgba(255, 255, 255, 0.15) !important;
@@ -200,7 +200,7 @@ $card-cap-color: null !default;
     --bs-card-border-color: rgba(255, 255, 255, 0.1);
     background: transparent !important;
     border-color: rgba(255, 255, 255, 0.1) !important;
-    
+
     &:hover {
       background: rgba(255, 255, 255, 0.03) !important;
       border-color: rgba(255, 255, 255, 0.15) !important;
@@ -221,15 +221,15 @@ $card-cap-color: null !default;
   color: var(--bs-secondary-color);  // Серый цвет по умолчанию
   font-weight: 500;
   transition: color 0.2s ease;  // Только цвет меняется
-  
+
   &:hover:not(:disabled) {
     color: var(--bs-body-color);  // Только текст становится ярче, фон НЕ меняется
   }
-  
+
   &:active:not(:disabled) {
     color: var(--bs-body-color);
   }
-  
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -240,12 +240,12 @@ $card-cap-color: null !default;
 .btn-primary {
   color: #fff !important;
   background: rgba(13, 110, 253, 0.7) !important;  // Лёгкий синий фон
-  
+
   &:hover:not(:disabled) {
     background: rgba(13, 110, 253, 0.85) !important;
     box-shadow: 0 4px 16px rgba(13, 110, 253, 0.3);
   }
-  
+
   &:active:not(:disabled) {
     background: rgba(13, 110, 253, 0.95) !important;
   }
@@ -258,12 +258,12 @@ $card-cap-color: null !default;
 .btn-ghost {
   background: transparent !important;
   color: var(--bs-secondary-color);
-  
+
   &:hover:not(:disabled) {
     background: transparent !important;  // Фон НЕ меняется!
     color: var(--bs-body-color);  // Только цвет текста
   }
-  
+
   &:active:not(:disabled) {
     background: transparent !important;
   }
@@ -272,7 +272,7 @@ $card-cap-color: null !default;
 // Особый цвет для outline-primary
 .btn-outline-primary {
   color: var(--bs-primary);
-  
+
   &:hover:not(:disabled) {
     color: var(--bs-primary);
     background: transparent !important;
@@ -285,24 +285,24 @@ $card-cap-color: null !default;
     &:hover:not(:disabled) {
       background: transparent !important;  // В тёмной теме тоже без фона
     }
-    
+
     &:active:not(:disabled) {
       background: transparent !important;
     }
   }
-  
+
   .btn-primary {
     background: rgba(13, 110, 253, 0.6) !important;
-    
+
     &:hover:not(:disabled) {
       background: rgba(13, 110, 253, 0.75) !important;
     }
-    
+
     &:active:not(:disabled) {
       background: rgba(13, 110, 253, 0.85) !important;
     }
   }
-  
+
   .btn-secondary,
   .btn-outline-primary,
   .btn-outline-secondary,
@@ -310,7 +310,7 @@ $card-cap-color: null !default;
     &:hover:not(:disabled) {
       background: transparent !important;
     }
-    
+
     &:active:not(:disabled) {
       background: transparent !important;
     }
@@ -330,7 +330,7 @@ $card-cap-color: null !default;
   align-items: center;
   gap: var(--gap-component, 1rem);
   margin-bottom: var(--space-3, 0.75rem);
-  
+
   .title {
     font-weight: 800;
     letter-spacing: 0.2px;
@@ -360,7 +360,7 @@ $card-cap-color: null !default;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  
+
   img {
     width: 100%;
     height: 100%;
@@ -415,7 +415,7 @@ $card-cap-color: null !default;
   border-top: 1px solid var(--bs-border-color);
   position: relative;
   z-index: 2;
-  
+
   // Кнопки в card-actions наследуют базовые стили, только добавляем активное состояние
   .btn,
   button {
@@ -432,11 +432,11 @@ $card-cap-color: null !default;
   .card-header {
     padding: var(--space-1, 0.25rem) var(--card-padding-sm, 0.5rem);
   }
-  
+
   .card-body {
     padding: var(--space-1, 0.25rem) var(--card-padding-sm, 0.5rem);
   }
-  
+
   .card-icon {
     width: 32px;
     height: 32px;
@@ -448,7 +448,7 @@ $card-cap-color: null !default;
   box-shadow: none;
   border-radius: 0;
   border-bottom: 1px solid var(--bs-border-color);
-  
+
   &:hover {
     transform: none;
     box-shadow: none;
@@ -467,17 +467,17 @@ $card-cap-color: null !default;
     gap: var(--space-2, 0.5rem);
     flex-wrap: wrap;
   }
-  
+
   .card-header {
     padding: var(--space-2, 0.5rem);
     padding-bottom: var(--space-1, 0.25rem);
   }
-  
+
   .card-icon {
     width: 36px;
     height: 36px;
   }
-  
+
   .card-actions {
     padding: var(--space-2, 0.5rem);
   }
@@ -492,3 +492,8 @@ $card-cap-color: null !default;
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Consolas', 'Liberation Mono', 'Menlo', 'Courier', monospace;
 }
+
+// =============================================================================
+// 7. TELEGRAM-STYLE BADGES (В КОНЦЕ, ЧТОБЫ ТОЧНО ПРИМЕНИЛИСЬ)
+// =============================================================================
+@import "components/badges-telegram-style";

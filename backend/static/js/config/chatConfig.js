@@ -47,6 +47,32 @@ export const SCROLL_CONFIG = {
 };
 
 /**
+ * Конфигурация умного автоскролла и индикатора новых сообщений
+ */
+export const AUTOSCROLL_CONFIG = {
+    /** ID кнопки "новые сообщения" */
+    NEW_MESSAGES_BTN_ID: 'new-messages-btn',
+    
+    /** Класс кнопки "новые сообщения" */
+    NEW_MESSAGES_BTN_CLASS: 'new-messages-indicator',
+    
+    /** Длительность анимации показа (мс) */
+    SHOW_ANIMATION_DURATION: 300,
+    
+    /** Длительность анимации скрытия (мс) */
+    HIDE_ANIMATION_DURATION: 200,
+    
+    /** Использовать плавный скролл для собственных сообщений */
+    SMOOTH_SCROLL_FOR_OWN: false,
+    
+    /** Использовать плавный скролл по клику на индикатор */
+    SMOOTH_SCROLL_ON_CLICK: true,
+    
+    /** Порог для показа индикатора (px от низа) */
+    SHOW_INDICATOR_THRESHOLD: 100
+};
+
+/**
  * Конфигурация рендеринга
  */
 export const RENDER_CONFIG = {
@@ -178,6 +204,7 @@ export function getRequestHeaders() {
 export default {
     LOADER_CONFIG,
     SCROLL_CONFIG,
+    AUTOSCROLL_CONFIG,
     RENDER_CONFIG,
     WS_CONFIG,
     STORE_EVENTS,

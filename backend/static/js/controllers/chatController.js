@@ -75,6 +75,10 @@ export class ChatController {
         this.initialized = false;
         this.isInitializing = false;
 
+        // Индикатор новых сообщений
+        this.newMessagesCount = 0;
+        this.newMessagesBtn = null;
+
         // Подписываемся на изменения Store
         this._subscribeToStore();
 
@@ -161,6 +165,10 @@ export class ChatController {
             console.log('[ChatController] Step 6: Initializing ScrollManager...');
             await this.scrollManager.init();
 
+            // 7. Инициализируем отслеживание скролла для индикатора
+            console.log('[ChatController] Step 7: Initializing scroll watcher...');
+            this._initScrollWatcher();
+
             this.initialized = true;
             this.isInitializing = false; // Сбрасываем флаг
             console.log('[ChatController] ✅ Initialization complete');
@@ -169,6 +177,7 @@ export class ChatController {
             this._dispatchEvent('chat:initialized', { chatId: this.chatId });
 
         } catch (error) {
+            this.isInitializing = false; // ВАЖНО: Сбрасываем флаг даже при ошибке
             console.error('[ChatController] ❌ Initialization failed:', error);
             throw error;
         }
@@ -247,6 +256,12 @@ export class ChatController {
     destroy() {
         console.log('[ChatController] Destroying...');
 
+        // Очищаем scroll watcher
+        if (this._scrollWatcherCleanup) {
+            this._scrollWatcherCleanup();
+            this._scrollWatcherCleanup = null;
+        }
+
         // Останавливаем ScrollManager
         if (this.scrollManager) {
             this.scrollManager.destroy();
@@ -302,6 +317,11 @@ export class ChatController {
                 // Batch загрузка - ничего не делаем, render() вызовется вручную
                 break;
 
+            case 'chat_cleared':
+                // Чат очищен - можно обновить UI
+                console.log('[ChatController] Chat cleared:', data);
+                break;
+
             default:
                 console.log('[ChatController] Unhandled store event:', event);
         }
@@ -322,9 +342,15 @@ export class ChatController {
         }
 
         if (message.chat_id !== this.chatId) {
+            console.log('[ChatController] Message for different chat:', message.chat_id, 'current:', this.chatId);
             // Сообщение для другого чата
             return;
         }
+
+        console.log('[ChatController] ====== Processing message_added ======');
+        console.log('[ChatController] Message ID:', message.id);
+        console.log('[ChatController] Author ID:', message.author_id, 'Current User ID:', this.currentUserId);
+        console.log('[ChatController] Optimistic:', optimistic);
 
         // Incremental render - добавляем только новое сообщение
         const wasEmpty = this.renderer.renderedMessages.size === 0;
@@ -335,15 +361,36 @@ export class ChatController {
             this.scrollManager.setupIntersectionObserver();
         }
 
-        // Автоскролл ТОЛЬКО если это наше сообщение (отправили мы)
-        // Убрали автоскролл при получении чужих сообщений даже если пользователь внизу
-        const shouldScroll = message.author_id === this.currentUserId;
+        // УМНЫЙ АВТОСКРОЛЛ:
+        // 1. Своё сообщение - всегда скроллим
+        // 2. Чужое сообщение + внизу чата - скроллим (активно читаем)
+        // 3. Чужое сообщение + читаем историю - показываем индикатор
+        const isMyMessage = message.author_id === this.currentUserId;
+        const isAtBottom = this.scrollManager.isNearBottom();
+        const shouldScroll = isMyMessage || isAtBottom;
 
-        if (shouldScroll && !optimistic) {
-            // Плавная прокрутка к нашему новому сообщению
-            requestAnimationFrame(() => {
-                this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
+        console.log('[ChatController] New message:', {
+            id: message.id,
+            isMyMessage,
+            isAtBottom,
+            shouldScroll,
+            optimistic
+        });
+
+        // ВАЖНО: для оптимистичных сообщений тоже скроллим (если это наше сообщение)
+        // Оптимистичное = только что отправленное пользователем
+        if (shouldScroll) {
+            // Для СВОИХ сообщений - force:true (игнорируем isNearBottom)
+            // Для чужих - проверка уже прошла выше
+            this.scrollManager.scrollToBottom({ 
+                instant: false,
+                force: isMyMessage  // Принудительно для своих сообщений
             });
+            // Скрываем индикатор если он показан
+            this._hideNewMessagesIndicator();
+        } else if (!shouldScroll && !optimistic) {
+            // Показываем индикатор "Новые сообщения" только для НЕ-оптимистичных чужих сообщений
+            this._showNewMessagesIndicator();
         }
 
         // Dispatch события для других компонентов (reactions, context menu, etc.)
@@ -528,6 +575,132 @@ export class ChatController {
      */
     isNearBottom() {
         return this.scrollManager.isNearBottom();
+    }
+
+    // ==================== Индикатор новых сообщений ====================
+
+    /**
+     * Показывает индикатор новых сообщений
+     * @private
+     */
+    _showNewMessagesIndicator() {
+        console.log('[ChatController] _showNewMessagesIndicator called, count before:', this.newMessagesCount);
+        console.trace('[ChatController] Stack trace');
+        
+        // Ищем или создаём кнопку
+        if (!this.newMessagesBtn) {
+            this.newMessagesBtn = this._findOrCreateNewMessagesButton();
+        }
+
+        if (!this.newMessagesBtn) {
+            console.warn('[ChatController] New messages button not found');
+            return;
+        }
+
+        // Увеличиваем счётчик
+        this.newMessagesCount++;
+
+        // Обновляем текст кнопки
+        const badge = this.newMessagesBtn.querySelector('.badge');
+        if (badge) {
+            badge.textContent = this.newMessagesCount;
+        }
+
+        // Показываем кнопку
+        this.newMessagesBtn.style.display = 'flex';
+        this.newMessagesBtn.classList.add('show');
+
+        console.log('[ChatController] New messages indicator shown:', this.newMessagesCount);
+    }
+
+    /**
+     * Скрывает индикатор новых сообщений
+     * @private
+     */
+    _hideNewMessagesIndicator() {
+        if (!this.newMessagesBtn) {
+            return;
+        }
+
+        console.log('[ChatController] _hideNewMessagesIndicator called, count before:', this.newMessagesCount);
+
+        // Сбрасываем счётчик
+        this.newMessagesCount = 0;
+
+        // Обновляем текст
+        const badge = this.newMessagesBtn.querySelector('.badge');
+        if (badge) {
+            badge.textContent = '0';
+        }
+
+        // Скрываем кнопку
+        this.newMessagesBtn.style.display = 'none';
+        this.newMessagesBtn.classList.remove('show');
+
+        console.log('[ChatController] New messages indicator hidden');
+    }
+
+    /**
+     * Находит или создаёт кнопку новых сообщений
+     * @private
+     * @returns {HTMLElement|null}
+     */
+    _findOrCreateNewMessagesButton() {
+        // Ищем существующую кнопку
+        let btn = document.getElementById('new-messages-btn');
+        
+        if (btn) {
+            return btn;
+        }
+
+        // Создаём новую кнопку
+        btn = document.createElement('button');
+        btn.id = 'new-messages-btn';
+        btn.className = 'new-messages-indicator';
+        btn.style.display = 'none';
+        btn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 14L10 6M10 14L6 10M10 14L14 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="badge">0</span> новых сообщения
+        `;
+
+        // Добавляем обработчик клика
+        btn.addEventListener('click', () => {
+            this.scrollManager.scrollToBottom({ instant: false, force: true });
+            this._hideNewMessagesIndicator();
+        });
+
+        // Добавляем в DOM (ищем контейнер чата или body)
+        const chatContainer = this.scrollElement.parentElement || document.body;
+        chatContainer.appendChild(btn);
+
+        console.log('[ChatController] Created new messages button');
+        return btn;
+    }
+
+    /**
+     * Инициализирует отслеживание скролла для индикатора
+     * @private
+     */
+    _initScrollWatcher() {
+        // Слушаем скролл для автоматического скрытия индикатора
+        // БЕЗ debounce - срабатывает мгновенно для тестов и UX
+        const scrollHandler = () => {
+            // Если пользователь прокрутил вниз вручную - скрываем индикатор
+            if (this.scrollManager.isNearBottom() && this.newMessagesCount > 0) {
+                this._hideNewMessagesIndicator();
+            }
+        };
+        
+        this.scrollElement.addEventListener('scroll', scrollHandler);
+        
+        // Сохраняем handler для cleanup
+        this._scrollWatcherCleanup = () => {
+            this.scrollElement.removeEventListener('scroll', scrollHandler);
+        };
+
+        console.log('[ChatController] Scroll watcher initialized');
     }
 
     /**

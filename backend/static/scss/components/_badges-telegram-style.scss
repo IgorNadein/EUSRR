@@ -1,0 +1,260 @@
+// =============================================================================
+// Telegram-Style Badges
+// =============================================================================
+// Based on Telegram Web K design system (morethanwords/tweb)
+// Perfect circles, smooth animations, professional appearance
+
+// Variables
+$badge-height: 20px;
+$badge-padding-x: 6px;
+$badge-font-size: 11px;
+$badge-font-weight: 600;
+$badge-border-radius: 10px; // Fixed value for perfect circles, not percentage
+$badge-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+$badge-transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+// Size variants
+$badge-sm-height: 18px;
+$badge-lg-height: 24px;
+$badge-xl-height: 28px;
+
+// =============================================================================
+// Base Badge Class
+// =============================================================================
+.badge-telegram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: $badge-height;
+  min-width: $badge-height;
+  padding: 0 $badge-padding-x;
+  font-size: $badge-font-size;
+  font-weight: $badge-font-weight;
+  line-height: 1;
+  color: white;
+  background: var(--bs-danger);
+  border-radius: $badge-border-radius;
+  box-shadow: $badge-shadow;
+  transition: $badge-transition;
+  user-select: none;
+
+  // Auto-hide when empty
+  &:empty {
+    display: none;
+  }
+
+  // Hide when count is 0
+  &[data-count="0"] {
+    display: none;
+  }
+}
+
+// =============================================================================
+// Size Variants
+// =============================================================================
+.badge-telegram-sm {
+  height: $badge-sm-height;
+  min-width: $badge-sm-height;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 9px;
+}
+
+.badge-telegram-lg {
+  height: $badge-lg-height;
+  min-width: $badge-lg-height;
+  font-size: 12px;
+  padding: 0 7px;
+  border-radius: 12px;
+}
+
+.badge-telegram-xl {
+  height: $badge-xl-height;
+  min-width: $badge-xl-height;
+  font-size: 13px;
+  padding: 0 8px;
+  border-radius: 14px;
+}
+
+// =============================================================================
+// Color Variants
+// =============================================================================
+.badge-telegram-primary {
+  background: var(--bs-primary);
+}
+
+.badge-telegram-muted {
+  background: var(--bs-secondary);
+  opacity: 0.8;
+}
+
+.badge-telegram-success {
+  background: var(--bs-success);
+}
+
+.badge-telegram-warning {
+  background: var(--bs-warning);
+  color: var(--bs-dark);
+}
+
+.badge-telegram-info {
+  background: var(--bs-info);
+}
+
+.badge-telegram-mention {
+  background: #0088cc; // Telegram mention blue
+}
+
+// =============================================================================
+// Animations
+// =============================================================================
+@keyframes badge-scale-in {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes badge-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes badge-scale-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+// Animation Classes
+.badge-telegram.animate-in {
+  animation: badge-scale-in 0.2s $badge-transition;
+}
+
+.badge-telegram.pulse {
+  animation: badge-pulse 0.6s $badge-transition;
+}
+
+.badge-telegram.animate-out {
+  animation: badge-scale-out 0.2s $badge-transition;
+}
+
+// =============================================================================
+// Positioning Variants
+// =============================================================================
+// On avatar
+.badge-telegram-avatar {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  border: 2px solid white;
+}
+
+// On button/icon
+.badge-telegram-button {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  z-index: 1;
+}
+
+// Inline with text
+.badge-telegram-inline {
+  position: relative;
+  top: -1px;
+  margin-left: 4px;
+}
+
+// =============================================================================
+// Special Effects
+// =============================================================================
+// Dot badge (no number)
+.badge-telegram-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+// Interactive badge (hoverable)
+.badge-telegram-interactive {
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: scale(1.1);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// Premium badge (gradient)
+.badge-telegram-premium {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+// Star badge (for favorites)
+.badge-telegram-star {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+// =============================================================================
+// Responsive Design
+// =============================================================================
+@media (max-width: 576px) {
+  .badge-telegram {
+    height: calc($badge-height - 2px);
+    min-width: calc($badge-height - 2px);
+    font-size: calc($badge-font-size - 1px);
+    padding: 0 calc($badge-padding-x - 1px);
+  }
+}
+
+// =============================================================================
+// Dark Theme Support
+// =============================================================================
+@media (prefers-color-scheme: dark) {
+  .badge-telegram {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .badge-telegram-avatar {
+    border-color: var(--bs-dark);
+  }
+}
+
+// =============================================================================
+// Utilities
+// =============================================================================
+// Hide badge class (for JavaScript manipulation)
+.badge-telegram-hidden {
+  display: none !important;
+}
+
+// Badge with border
+.badge-telegram-outlined {
+  background: transparent;
+  color: var(--bs-danger);
+  border: 2px solid var(--bs-danger);
+  box-shadow: none;
+}

@@ -22,7 +22,7 @@
       import('../components/chatMarkRead.js'),
       import('../components/chatComposer.js'),
       import('../components/chatFormManager.js'),
-      import('../controllers/chatController.js')
+      import('../chat/index.js')  // ✅ V2 автоматически (ChatController = ChatControllerV2)
     ]);
     
     console.log('[ChatDetail] Modules loaded:', modules.map(m => Object.keys(m)));

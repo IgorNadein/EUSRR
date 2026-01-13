@@ -184,6 +184,11 @@ class NotificationManager {
         return;
       }
 
+      // Игнорируем list_update - это для списка чатов, не для уведомлений
+      if (data.type === "list_update") {
+        return;
+      }
+
       console.log("[Notifications] Received:", data);
 
       switch (data.type) {

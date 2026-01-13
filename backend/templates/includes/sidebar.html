@@ -47,7 +47,7 @@
         <span class="side-icon icon-wrap">
           <i class="bi-chat-dots"></i>
           {% if total|add:0 > 0 %}
-            <span class="badge-telegram badge-telegram-button pulse" id="sidebarChatBadge" data-count="{{ total }}">{{ total }}</span>
+            <span class="badge-telegram badge-telegram-button" id="sidebarChatBadge" data-count="{{ total }}">{{ total }}</span>
           {% else %}
             <span class="badge-telegram badge-telegram-button" id="sidebarChatBadge" data-count="0" style="display: none;">0</span>
           {% endif %}

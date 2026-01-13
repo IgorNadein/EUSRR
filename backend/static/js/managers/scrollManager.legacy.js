@@ -1,4 +1,8 @@
 /**
+ * ⚠️ DEPRECATED - LEGACY CODE ⚠️
+ * Используйте scrollManagerV2.js вместо этого файла
+ * Этот файл сохранен только для справки
+ * 
  * @fileoverview ScrollManager - централизованное управление прокруткой
  * @module managers/scrollManager
  * 
