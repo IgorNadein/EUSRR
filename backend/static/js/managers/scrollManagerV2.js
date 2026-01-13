@@ -360,6 +360,28 @@ export class ScrollManagerV2 {
     }
 
     /**
+     * Приостанавливает обработку scroll событий на указанное время
+     * @param {number} duration - Длительность паузы в миллисекундах
+     */
+    pauseScrollEvents(duration = 1000) {
+        console.log('[ScrollManagerV2] ⏸️ Pausing scroll events for', duration, 'ms');
+        
+        // Сохраняем оригинальный debounced handler
+        const originalHandler = this._debouncedLoadHistory;
+        
+        // Заменяем на no-op функцию
+        this._debouncedLoadHistory = () => {
+            console.log('[ScrollManagerV2] 🚫 Scroll events paused, ignoring history load');
+        };
+        
+        // Восстанавливаем оригинальный handler через указанное время
+        setTimeout(() => {
+            this._debouncedLoadHistory = originalHandler;
+            console.log('[ScrollManagerV2] ▶️ Scroll events resumed');
+        }, duration);
+    }
+
+    /**
      * Проверяет, находится ли пользователь внизу
      * @param {number} [threshold] - Порог в пикселях
      * @returns {boolean}
