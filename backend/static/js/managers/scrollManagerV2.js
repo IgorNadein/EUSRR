@@ -306,10 +306,11 @@ export class ScrollManagerV2 {
                 });
             });
         } else {
-            // Плавный скролл
-            this.scrollEl.scrollTo({
-                top: this.scrollEl.scrollHeight,
-                behavior: 'smooth'
+            // Обычный скролл - БЕЗ анимации (как в старом коде)
+            // Используем scrollTop вместо scrollTo({ behavior: 'smooth' })
+            // чтобы избежать незавершенных анимаций
+            requestAnimationFrame(() => {
+                this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
             });
         }
     }
@@ -319,7 +320,7 @@ export class ScrollManagerV2 {
      * @param {number|string} messageId - ID сообщения
      * @param {Object} [options]
      * @param {string} [options.block='center'] - Позиция в viewport
-     * @param {string} [options.behavior='smooth'] - Тип анимации
+     * @param {string} [options.behavior='auto'] - Тип анимации ('auto', 'smooth', 'instant')
      */
     scrollToMessage(messageId, options = {}) {
         const messageEl = this.scrollEl.querySelector(`[data-message-id="${messageId}"]`);
@@ -331,7 +332,7 @@ export class ScrollManagerV2 {
 
         messageEl.scrollIntoView({
             block: options.block || 'center',
-            behavior: options.behavior || 'smooth',
+            behavior: options.behavior || 'auto',
             inline: 'nearest'
         });
     }
