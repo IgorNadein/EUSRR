@@ -241,9 +241,37 @@ export class MessageLoaderV2 {
      * Загружает новые сообщения (после текущего newest)
      * Используется для прокрутки вниз после перехода по дате (как в Telegram)
      * @param {number} chatId - ID чата
+     * @param {number} [limit] - Количество сообщений (опционально)
      * @returns {Promise<Array<Message>>}
      */
-    async loadNewer(chatId) {
+    async loadNewer(chatId, limit = null) {
+
+    /**
+     * Загружает последние сообщения (самые свежие в чате)
+     * Используется для перехода к настоящему времени из исторического просмотра
+     * @param {number} chatId - ID чата
+     * @param {number} [limit] - Количество сообщений
+     * @returns {Promise<LoadResult>}
+     */
+    async loadLatest(chatId, limit = 50) {
+        const requestKey = `latest_${chatId}`;
+        
+        console.log('[MessageLoaderV2] Loading latest messages to present time');
+        
+        try {
+            const result = await this._loadLatest(chatId, limit, requestKey);
+            
+            // Эмитим событие
+            window.dispatchEvent(new CustomEvent('chat:messagesLoaded', {
+                detail: { chatId, count: result.messages.length, type: 'latest' }
+            }));
+            
+            return result;
+        } catch (error) {
+            console.error('[MessageLoaderV2] Failed to load latest:', error);
+            throw error;
+        }
+    }
         const requestKey = `newer_${chatId}`;
         
         const state = this._getLoadingState(chatId);
@@ -277,7 +305,7 @@ export class MessageLoaderV2 {
             const result = await this._fetchWithRetry(
                 buildUrl(API_ENDPOINTS.MESSAGES(chatId), {
                     after_id: boundaries.newestId,
-                    limit: this.config.HISTORY_LIMIT
+                    limit: limit || this.config.HISTORY_LIMIT
                 }),
                 requestKey
             );
@@ -301,6 +329,11 @@ export class MessageLoaderV2 {
                 // Нет больше сообщений
                 this._updateBoundaries(chatId, { hasMoreAfter: false });
             }
+
+            // Эмитим событие для обновления UI
+            window.dispatchEvent(new CustomEvent('chat:messagesLoaded', {
+                detail: { chatId, count: messages.length, type: 'newer' }
+            }));
 
             return messages;
 

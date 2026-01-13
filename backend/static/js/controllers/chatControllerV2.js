@@ -472,13 +472,13 @@ export class ChatControllerV2 {
     _handleWsNewMessage(detail) {
         const { message, chatId } = detail;
         if (chatId === this.chatId && message) {
-            this.loader.handleNewMessage(message);
-            
-            // 🎯 УМНЫЙ АВТОСКРОЛЛ: только если мы в "настоящем времени"
             const boundaries = this.loader.chatBoundaries.get(chatId);
             const isInPresentTime = boundaries && !boundaries.hasMoreAfter;
             
             if (isInPresentTime) {
+                // ✅ Настоящее время (hasMoreAfter=false) - обрабатываем как обычно
+                this.loader.handleNewMessage(message);
+                
                 const isNearBottom = this.scrollManager.isNearBottom();
                 
                 if (isNearBottom) {
@@ -491,8 +491,12 @@ export class ChatControllerV2 {
                     // ✅ Пользователь НЕ внизу → показываем badge
                     this._incrementUnreadBadge();
                 }
+            } else {
+                // ❌ Исторический просмотр (hasMoreAfter=true) - НЕ рендерим, только badge
+                // Не добавляем в Store (не рендерим), только показываем что есть новые
+                this._incrementUnreadBadge();
+                console.log('[ChatControllerV2] New message in historical view - showing badge only');
             }
-            // Если hasMoreAfter = true (исторический низ) - ничего не делаем
         }
     }
 
@@ -677,16 +681,80 @@ export class ChatControllerV2 {
         
         this._scrollBtn.addEventListener('click', () => this._handleScrollButtonClick());
         
+        // Настраиваем умную видимость
+        this._setupSmartButtonVisibility();
+        
         console.log('[ChatControllerV2] Smart scroll button initialized');
+    }
+
+    /**
+     * Настраивает умную видимость кнопки
+     * @private
+     */
+    _setupSmartButtonVisibility() {
+        if (!this._scrollBtn) return;
+        
+        // Обновляем видимость при скролле
+        const updateVisibility = () => {
+            const boundaries = this.loader.chatBoundaries.get(this.chatId);
+            const hasMoreAfter = boundaries?.hasMoreAfter || false;
+            const isNearBottom = this.scrollManager.isNearBottom();
+            
+            // Показываем кнопку если:
+            // 1. Пользователь НЕ внизу (любой случай)
+            // 2. ИЛИ hasMoreAfter=true (даже если внизу)
+            const shouldShow = !isNearBottom || hasMoreAfter;
+            
+            this._scrollBtn.classList.toggle('show', shouldShow);
+        };
+        
+        // Обновляем при скролле
+        this.scrollElement.addEventListener('scroll', updateVisibility);
+        
+        // Обновляем при загрузке новых сообщений
+        window.addEventListener('chat:messagesLoaded', updateVisibility);
+        
+        // Начальное обновление
+        setTimeout(updateVisibility, 100);
     }
 
     /**
      * Обработчик клика на умную кнопку
      * @private
      */
-    _handleScrollButtonClick() {
+    async _handleScrollButtonClick() {
         const boundaries = this.loader.chatBoundaries.get(this.chatId);
-        const isInPresentTime = boundaries && !boundaries.hasMoreAfter;
+        const hasMoreAfter = boundaries?.hasMoreAfter || false;
+        
+        if (hasMoreAfter) {
+            // 📥 ИСТОРИЧЕСКИЙ НИЗ: Загружаем всю историю до конца
+            console.log('[ChatControllerV2] Loading history to present time...');
+            
+            try {
+                // Загружаем последние сообщения (настоящее время)
+                const result = await this.loader.loadLatest(this.chatId, 50);
+                
+                // Рендерим новые сообщения
+                await this.renderer.render(this.chatId);
+                
+                // Скроллим в низ
+                await new Promise(resolve => requestAnimationFrame(resolve));
+                this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+                
+                console.log('[ChatControllerV2] Loaded to present, messages:', result.messages.length);
+            } catch (error) {
+                console.error('[ChatControllerV2] Failed to load history:', error);
+                // Если ошибка - просто скроллим в низ загруженного
+                this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+            }
+            
+            // Сбрасываем badge
+            this._resetUnreadBadge();
+            return;
+        }
+        
+        // 🔵 НАСТОЯЩИЙ НИЗ: Умная логика
+        const isInPresentTime = !hasMoreAfter;
         
         if (this._unreadCount > 0 && this.lastReadMessageId && isInPresentTime) {
             // Режим "Перейти к непрочитанным"
