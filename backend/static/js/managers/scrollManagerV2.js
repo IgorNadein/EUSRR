@@ -95,14 +95,28 @@ export class ScrollManagerV2 {
      * @returns {Promise<void>}
      */
     async init() {
+        console.log('[ScrollManagerV2] 🔵 INIT STARTED');
+        console.log('[ScrollManagerV2] Initial scroll state:', {
+            scrollTop: this.scrollEl.scrollTop,
+            scrollHeight: this.scrollEl.scrollHeight,
+            clientHeight: this.scrollEl.clientHeight,
+            isNearBottom: this.isNearBottom(),
+            messagesCount: this.scrollEl.querySelectorAll('.msg').length
+        });
+        
         // Ждем стабилизации DOM
         await this._waitForLayout();
+        
+        console.log('[ScrollManagerV2] After layout wait:', {
+            scrollTop: this.scrollEl.scrollTop,
+            scrollHeight: this.scrollEl.scrollHeight
+        });
         
         this._setupIntersectionObserver();
         this._setupScrollListener();
         this._setupResizeListener();
         
-        console.log('[ScrollManagerV2] Initialized');
+        console.log('[ScrollManagerV2] 🟢 INIT COMPLETE');
     }
 
     /**
@@ -380,13 +394,22 @@ export class ScrollManagerV2 {
      * @private
      */
     _setupIntersectionObserver() {
+        console.log('[ScrollManagerV2] 🔍 _setupIntersectionObserver called');
+        
         // Находим первое сообщение
         const firstMessage = this.scrollEl.querySelector('.msg[data-message-id]');
         
         if (!firstMessage) {
-            console.log('[ScrollManagerV2] No messages yet, observer not set');
+            console.log('[ScrollManagerV2] ❌ No messages yet, observer not set');
             return;
         }
+
+        console.log('[ScrollManagerV2] First message found:', {
+            messageId: firstMessage.dataset.messageId,
+            offsetTop: firstMessage.offsetTop,
+            scrollTop: this.scrollEl.scrollTop,
+            firstMessageVisible: firstMessage.getBoundingClientRect().top < this.scrollEl.clientHeight
+        });
 
         // Создаем observer
         this._historyObserver = new IntersectionObserver(
@@ -399,7 +422,7 @@ export class ScrollManagerV2 {
         );
 
         this._historyObserver.observe(firstMessage);
-        console.log('[ScrollManagerV2] Observer attached to first message');
+        console.log('[ScrollManagerV2] ✅ Observer attached to first message');
     }
 
     /**
@@ -433,11 +456,43 @@ export class ScrollManagerV2 {
      * @private
      */
     _handleIntersection(entries) {
+        console.log('[ScrollManagerV2] 👁️ IntersectionObserver triggered:', {
+            entriesCount: entries.length,
+            scrollTop: this.scrollEl.scrollTop,
+            scrollHeight: this.scrollEl.scrollHeight,
+            isNearBottom: this.isNearBottom()
+        });
+        
         entries.forEach(entry => {
-            if (entry.isIntersecting && !this._isLoadingHistory) {
+            console.log('[ScrollManagerV2] Entry:', {
+                target: entry.target.dataset?.messageId,
+                isIntersecting: entry.isIntersecting,
+                intersectionRatio: entry.intersectionRatio,
+                isLoadingHistory: this._isLoadingHistory,
+                isNearBottom: this.isNearBottom(),
+                willLoadHistory: entry.isIntersecting && !this._isLoadingHistory && !this.isNearBottom()
+            });
+            
+            // ✅ ВАЖНО: НЕ загружаем историю если пользователь внизу!
+            // Это предотвращает ложное срабатывание при инициализации
+            if (entry.isIntersecting && !this._isLoadingHistory && !this.isNearBottom()) {
+                console.log('[ScrollManagerV2] 🚀 Triggering debounced history load...');
                 this._debouncedLoadHistory();
+            } else if (entry.isIntersecting && this.isNearBottom()) {
+                console.log('[ScrollManagerV2] 🚫 User at bottom, skipping history load (false positive)');
+            } else if (entry.isIntersecting && this._isLoadingHistory) {
+                console.log('[ScrollManagerV2] ⏸️ Already loading history, skipping');
             }
         });
+    }
+
+    /**
+     * Триггер загрузки истории
+     * @private
+     */
+    _triggerLoadHistory() {
+        console.log('[ScrollManagerV2] 🎬 _triggerLoadHistory called (from debounced)');
+        this.loadMoreHistory();
     }
 
     /**
