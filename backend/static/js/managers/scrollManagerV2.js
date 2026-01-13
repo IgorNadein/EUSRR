@@ -72,7 +72,9 @@ export class ScrollManagerV2 {
 
         // Состояние
         this._historyObserver = null;
+        this._newerObserver = null;  // ✅ Observer для новых сообщений (как в Telegram)
         this._isLoadingHistory = false;
+        this._isLoadingNewer = false;  // ✅ Флаг загрузки новых
         this._destroyed = false;
         this._isInitializing = true; // ✅ Флаг инициализации
 
@@ -83,6 +85,12 @@ export class ScrollManagerV2 {
         // Debounced/throttled функции
         this._debouncedLoadHistory = debounce(
             () => this._triggerLoadHistory(),
+            LOADER_CONFIG.HISTORY_DEBOUNCE
+        );
+        
+        // ✅ Debounced функция для загрузки новых сообщений
+        this._debouncedLoadNewer = debounce(
+            () => this._triggerLoadNewer(),
             LOADER_CONFIG.HISTORY_DEBOUNCE
         );
 
@@ -135,10 +143,16 @@ export class ScrollManagerV2 {
         
         this._destroyed = true;
 
-        // Отключаем observer
+        // Отключаем observers
         if (this._historyObserver) {
             this._historyObserver.disconnect();
             this._historyObserver = null;
+        }
+        
+        // ✅ Отключаем observer для новых сообщений
+        if (this._newerObserver) {
+            this._newerObserver.disconnect();
+            this._newerObserver = null;
         }
 
         // Удаляем слушатели
@@ -258,13 +272,15 @@ export class ScrollManagerV2 {
             await new Promise(resolve => {
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
-                        // КЛЮЧЕВОЙ МОМЕНТ: вычисляем разницу в высоте
+                        // ✅ ФИЗИКА: НЕ АВТОСКРОЛЛ! Компенсация роста scrollHeight вверх
+                        // При prepend сообщений scrollHeight растет ВВЕРХ
+                        // Без коррекции: scrollTop фиксирован → визуальный ПРЫЖОК вверх
+                        // С коррекцией: scrollTop += heightDiff → пользователь видит ТЕ ЖЕ сообщения
                         const newScrollHeight = this.scrollEl.scrollHeight;
                         const heightDifference = newScrollHeight - oldScrollHeight;
                         
-                        // Корректируем scrollTop на разницу высоты
-                        // Это сохраняет визуальную позицию пользователя ТОЧНО там же
-                        // БЕЗ КАКИХ-ЛИБО ПРЫЖКОВ!
+                        // КРИТИЧНО: Без этой строки - бесконечная загрузка истории!
+                        // Первое сообщение остается в viewport → observer снова его видит
                         this.scrollEl.scrollTop = oldScrollTop + heightDifference;
                         
                         console.log('[ScrollManagerV2] Scroll restored using height difference:', {
@@ -306,35 +322,108 @@ export class ScrollManagerV2 {
     }
 
     /**
+     * Загружает более новые сообщения (при прокрутке вниз после перехода по дате)
+     * Как в Telegram: при переходе к старой дате и прокрутке вниз подгружаем новые сообщения
+     * @returns {Promise<Array>}
+     */
+    async loadMoreNewer() {
+        console.log('[ScrollManagerV2] ======================================');
+        console.log('[ScrollManagerV2] loadMoreNewer called');
+        
+        if (this._isLoadingNewer || this._destroyed) {
+            console.log('[ScrollManagerV2] ❌ Skipped: already loading newer or destroyed');
+            return [];
+        }
+
+        if (!this.loader.hasMoreAfter(this.chatId)) {
+            console.log('[ScrollManagerV2] ❌ No more newer messages available');
+            return [];
+        }
+
+        this._isLoadingNewer = true;
+
+        try {
+            const messagesBefore = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+            
+            console.log('[ScrollManagerV2] BEFORE loadNewer:', { 
+                messagesBefore,
+                scrollTop: this.scrollEl.scrollTop,
+                scrollHeight: this.scrollEl.scrollHeight
+            });
+
+            // Загружаем новые сообщения через loader
+            const messages = await this.loader.loadNewer(this.chatId);
+
+            console.log('[ScrollManagerV2] AFTER loader.loadNewer:', {
+                messagesLoaded: messages.length,
+                messageIds: messages.map(m => m.id)
+            });
+
+            if (messages.length === 0) {
+                console.log('[ScrollManagerV2] ⚠️ No new messages loaded');
+                return [];
+            }
+
+            // Проверяем какие сообщения реально новые
+            const existingIds = new Set(
+                Array.from(this.scrollEl.querySelectorAll('.msg[data-message-id]'))
+                    .map(el => el.dataset.messageId)
+            );
+            const newMessages = messages.filter(m => !existingIds.has(String(m.id)));
+
+            if (newMessages.length === 0) {
+                console.log('[ScrollManagerV2] ⚠️ All messages already rendered');
+                // Обновляем observer даже если сообщения уже отрендерены
+                // Это важно когда loadAround загрузил меньше сообщений чем есть в чате
+                this._updateNewerObserverTarget();
+                return messages;
+            }
+
+            console.log('[ScrollManagerV2] ✅ Newer messages loaded:', newMessages.length);
+
+            // Рендерим новые сообщения в КОНЕЦ контейнера
+            const fragment = this.renderer.appendMessages(newMessages, this.chatId);
+            
+            if (fragment && fragment.hasChildNodes()) {
+                this.scrollEl.appendChild(fragment);
+                
+                // Обновляем observer на новое последнее сообщение
+                this._updateNewerObserverTarget();
+                
+                const messagesAfter = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+                console.log('[ScrollManagerV2] ✅ NEWER FINAL STATE:', {
+                    messagesAfter,
+                    totalAdded: messagesAfter - messagesBefore
+                });
+            } else {
+                // Даже если fragment пустой, обновляем observer
+                this._updateNewerObserverTarget();
+            }
+
+            console.log('[ScrollManagerV2] ======================================');
+            return newMessages;
+
+        } catch (error) {
+            console.error('[ScrollManagerV2] ❌ Newer load failed:', error);
+            console.log('[ScrollManagerV2] ======================================');
+            return [];
+            
+        } finally {
+            this._isLoadingNewer = false;
+        }
+    }
+
+    /**
      * Прокручивает к низу чата
      * @param {Object} [options]
      * @param {boolean} [options.instant=false] - Без анимации
      * @param {boolean} [options.force=false] - Игнорировать позицию пользователя
      */
     scrollToBottom(options = {}) {
-        const { instant = false, force = false } = options;
-
-        if (!force && !this.isNearBottom()) {
-            return;
-        }
-
-        if (instant) {
-            // Мгновенный скролл с visibility hiding
-            this.scrollEl.style.visibility = 'hidden';
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
-                    this.scrollEl.style.visibility = '';
-                });
-            });
-        } else {
-            // Обычный скролл - БЕЗ анимации (как в старом коде)
-            // Используем scrollTop вместо scrollTo({ behavior: 'smooth' })
-            // чтобы избежать незавершенных анимаций
-            requestAnimationFrame(() => {
-                this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
-            });
-        }
+        // 🚫 REMOVED: Автоскролл не нужен!
+        // IntersectionObserver + физика prepend = естественное поведение
+        // Пользователь сам управляет своей позицией скролла
+        console.log('[ScrollManagerV2] scrollToBottom() removed - user controls scroll');
     }
 
     /**
@@ -345,18 +434,10 @@ export class ScrollManagerV2 {
      * @param {string} [options.behavior='auto'] - Тип анимации ('auto', 'smooth', 'instant')
      */
     scrollToMessage(messageId, options = {}) {
-        const messageEl = this.scrollEl.querySelector(`[data-message-id="${messageId}"]`);
-        
-        if (!messageEl) {
-            console.warn('[ScrollManagerV2] Message not found:', messageId);
-            return;
-        }
-
-        messageEl.scrollIntoView({
-            block: options.block || 'center',
-            behavior: options.behavior || 'auto',
-            inline: 'nearest'
-        });
+        // 🚫 REMOVED: Автоскролл к сообщению не нужен!
+        // loadAround загрузит сообщения, пользователь увидит контекст
+        // Принудительный скролл мешает навигации
+        console.log('[ScrollManagerV2] scrollToMessage() removed - showing context only');
     }
 
     /**
@@ -443,7 +524,7 @@ export class ScrollManagerV2 {
 
         // Создаем observer
         this._historyObserver = new IntersectionObserver(
-            (entries) => this._handleIntersection(entries),
+            (entries) => this._handleHistoryIntersection(entries),
             {
                 root: this.scrollEl,
                 threshold: this.config.OBSERVER_THRESHOLD,
@@ -453,6 +534,49 @@ export class ScrollManagerV2 {
 
         this._historyObserver.observe(firstMessage);
         console.log('[ScrollManagerV2] ✅ Observer attached to first message');
+        
+        // ✅ Настраиваем observer для новых сообщений (последнее сообщение)
+        this._setupNewerObserver();
+    }
+
+    /**
+     * Настраивает IntersectionObserver для автозагрузки НОВЫХ сообщений
+     * Как в Telegram: при прокрутке вниз после перехода по дате
+     * @private
+     */
+    _setupNewerObserver() {
+        console.log('[ScrollManagerV2] 🔍 _setupNewerObserver called');
+        
+        const messages = this.scrollEl.querySelectorAll('.msg[data-message-id]');
+        const lastMessage = messages[messages.length - 1];
+        
+        if (!lastMessage) {
+            console.log('[ScrollManagerV2] ❌ No last message for newer observer');
+            return;
+        }
+
+        // Проверяем есть ли ещё новые сообщения для загрузки
+        if (!this.loader.hasMoreAfter(this.chatId)) {
+            console.log('[ScrollManagerV2] ❌ No more newer messages, skipping observer');
+            return;
+        }
+
+        console.log('[ScrollManagerV2] Last message found:', {
+            messageId: lastMessage.dataset.messageId
+        });
+
+        // Создаем observer для последнего сообщения
+        this._newerObserver = new IntersectionObserver(
+            (entries) => this._handleNewerIntersection(entries),
+            {
+                root: this.scrollEl,
+                threshold: this.config.OBSERVER_THRESHOLD,
+                rootMargin: '0px 0px 200px 0px'  // Триггер при приближении к низу
+            }
+        );
+
+        this._newerObserver.observe(lastMessage);
+        console.log('[ScrollManagerV2] ✅ Newer observer attached to last message');
     }
 
     /**
@@ -482,11 +606,11 @@ export class ScrollManagerV2 {
     // ==================== Приватные методы - Handlers ====================
 
     /**
-     * Обработчик IntersectionObserver
+     * Обработчик IntersectionObserver для ИСТОРИИ (старые сообщения)
      * @private
      */
-    _handleIntersection(entries) {
-        console.log('[ScrollManagerV2] 👁️ IntersectionObserver triggered:', {
+    _handleHistoryIntersection(entries) {
+        console.log('[ScrollManagerV2] 👁️ History IntersectionObserver triggered:', {
             entriesCount: entries.length,
             scrollTop: this.scrollEl.scrollTop,
             scrollHeight: this.scrollEl.scrollHeight,
@@ -495,7 +619,7 @@ export class ScrollManagerV2 {
         });
         
         entries.forEach(entry => {
-            console.log('[ScrollManagerV2] Entry:', {
+            console.log('[ScrollManagerV2] History Entry:', {
                 target: entry.target.dataset?.messageId,
                 isIntersecting: entry.isIntersecting,
                 intersectionRatio: entry.intersectionRatio,
@@ -524,12 +648,57 @@ export class ScrollManagerV2 {
     }
 
     /**
+     * Обработчик IntersectionObserver для НОВЫХ сообщений
+     * Как в Telegram: при прокрутке вниз после перехода к старой дате
+     * @private
+     */
+    _handleNewerIntersection(entries) {
+        console.log('[ScrollManagerV2] 👁️ Newer IntersectionObserver triggered:', {
+            entriesCount: entries.length,
+            scrollTop: this.scrollEl.scrollTop,
+            isInitializing: this._isInitializing
+        });
+        
+        entries.forEach(entry => {
+            console.log('[ScrollManagerV2] Newer Entry:', {
+                target: entry.target.dataset?.messageId,
+                isIntersecting: entry.isIntersecting,
+                isLoadingNewer: this._isLoadingNewer,
+                willLoadNewer: entry.isIntersecting && !this._isLoadingNewer && !this._isInitializing
+            });
+            
+            // Игнорируем во время инициализации
+            if (this._isInitializing) {
+                console.log('[ScrollManagerV2] 🚫 Initializing, ignoring newer observer event');
+                return;
+            }
+            
+            // Загружаем новые сообщения при видимости последнего
+            if (entry.isIntersecting && !this._isLoadingNewer) {
+                console.log('[ScrollManagerV2] 🚀 Triggering debounced newer load...');
+                this._debouncedLoadNewer();
+            } else if (entry.isIntersecting && this._isLoadingNewer) {
+                console.log('[ScrollManagerV2] ⏸️ Already loading newer, skipping');
+            }
+        });
+    }
+
+    /**
      * Триггер загрузки истории
      * @private
      */
     _triggerLoadHistory() {
         console.log('[ScrollManagerV2] 🎬 _triggerLoadHistory called (from debounced)');
         this.loadMoreHistory();
+    }
+
+    /**
+     * Триггер загрузки новых сообщений
+     * @private
+     */
+    _triggerLoadNewer() {
+        console.log('[ScrollManagerV2] 🎬 _triggerLoadNewer called (from debounced)');
+        this.loadMoreNewer();
     }
 
     /**
@@ -563,7 +732,7 @@ export class ScrollManagerV2 {
     // ==================== Приватные методы - Observer ====================
 
     /**
-     * Обновляет target IntersectionObserver
+     * Обновляет target IntersectionObserver для истории
      * @private
      */
     _updateObserverTarget() {
@@ -574,6 +743,44 @@ export class ScrollManagerV2 {
         const firstMessage = this.scrollEl.querySelector('.msg[data-message-id]');
         if (firstMessage) {
             this._historyObserver.observe(firstMessage);
+        }
+    }
+
+    /**
+     * Обновляет target IntersectionObserver для новых сообщений
+     * @private
+     */
+    _updateNewerObserverTarget() {
+        // Отключаем старый observer
+        if (this._newerObserver) {
+            this._newerObserver.disconnect();
+        }
+
+        // Проверяем есть ли ещё новые сообщения
+        if (!this.loader.hasMoreAfter(this.chatId)) {
+            console.log('[ScrollManagerV2] No more newer messages, removing observer');
+            this._newerObserver = null;
+            return;
+        }
+
+        // Находим последнее сообщение
+        const messages = this.scrollEl.querySelectorAll('.msg[data-message-id]');
+        const lastMessage = messages[messages.length - 1];
+        
+        if (lastMessage) {
+            if (!this._newerObserver) {
+                // Создаем новый observer если нужно
+                this._newerObserver = new IntersectionObserver(
+                    (entries) => this._handleNewerIntersection(entries),
+                    {
+                        root: this.scrollEl,
+                        threshold: this.config.OBSERVER_THRESHOLD,
+                        rootMargin: '0px 0px 200px 0px'
+                    }
+                );
+            }
+            this._newerObserver.observe(lastMessage);
+            console.log('[ScrollManagerV2] ✅ Newer observer updated to last message:', lastMessage.dataset.messageId);
         }
     }
 

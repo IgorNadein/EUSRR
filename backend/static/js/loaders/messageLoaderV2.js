@@ -239,7 +239,7 @@ export class MessageLoaderV2 {
 
     /**
      * Загружает новые сообщения (после текущего newest)
-     * Используется для синхронизации после reconnect
+     * Используется для прокрутки вниз после перехода по дате (как в Telegram)
      * @param {number} chatId - ID чата
      * @returns {Promise<Array<Message>>}
      */
@@ -249,7 +249,24 @@ export class MessageLoaderV2 {
         const state = this._getLoadingState(chatId);
         const boundaries = this._getBoundaries(chatId);
         
-        if (state.newer || !boundaries.newestId) {
+        console.log('[MessageLoaderV2] loadNewer called:', {
+            chatId,
+            newestId: boundaries.newestId,
+            hasMoreAfter: boundaries.hasMoreAfter
+        });
+        
+        if (state.newer) {
+            console.log('[MessageLoaderV2] Already loading newer');
+            return [];
+        }
+        
+        if (!boundaries.newestId) {
+            console.log('[MessageLoaderV2] No newestId for loading newer');
+            return [];
+        }
+        
+        if (!boundaries.hasMoreAfter) {
+            console.log('[MessageLoaderV2] No more newer messages available');
             return [];
         }
 
@@ -267,14 +284,22 @@ export class MessageLoaderV2 {
 
             const messages = this._extractMessages(result);
             
+            console.log('[MessageLoaderV2] loadNewer result:', {
+                messagesCount: messages.length,
+                hasMoreAfter: result.has_more_after ?? result.has_more ?? false
+            });
+            
             if (messages.length > 0) {
                 this._processMessages(chatId, messages);
                 
                 const newestMessage = this.store.getNewestMessage(chatId);
                 this._updateBoundaries(chatId, {
-                    hasMoreAfter: result.has_more !== false,
+                    hasMoreAfter: result.has_more_after ?? result.has_more ?? false,
                     newestId: newestMessage?.id || null
                 });
+            } else {
+                // Нет больше сообщений
+                this._updateBoundaries(chatId, { hasMoreAfter: false });
             }
 
             return messages;
@@ -287,6 +312,91 @@ export class MessageLoaderV2 {
             
         } finally {
             state.newer = false;
+            this._cleanupRequest(requestKey);
+        }
+    }
+
+    /**
+     * Загружает сообщения вокруг указанной даты (timestamp)
+     * Используется для навигации по датам через date picker
+     * @param {number} chatId - ID чата
+     * @param {number} timestamp - Unix timestamp (миллисекунды)
+     * @param {Object} [options] - Опции
+     * @param {number} [options.limit] - Количество сообщений
+     * @returns {Promise<LoadResult>}
+     */
+    async loadAround(chatId, timestamp, options = {}) {
+        const { limit = this.config.INITIAL_LIMIT } = options;
+        const requestKey = `around_date_${chatId}_${timestamp}`;
+        
+        console.log('[MessageLoaderV2] Loading around timestamp:', {
+            chatId,
+            timestamp,
+            date: new Date(timestamp).toISOString(),
+            limit
+        });
+        
+        this._abortRequest(requestKey);
+        
+        try {
+            // API ожидает timestamp в виде "around_id" параметра
+            // API определяет что это timestamp если значение > 1_000_000_000
+            const result = await this._fetchWithRetry(
+                buildUrl(API_ENDPOINTS.MESSAGES_AROUND(chatId), {
+                    around_id: timestamp,
+                    limit
+                }),
+                requestKey
+            );
+
+            const messages = this._extractMessages(result);
+            
+            // Добавляем в Store
+            this._processMessages(chatId, messages);
+            
+            // Обновляем границы для подгрузки истории
+            const oldestMessage = this.store.getOldestMessage(chatId);
+            const newestMessage = this.store.getNewestMessage(chatId);
+
+            const loadResult = {
+                messages,
+                anchorId: result.anchor_id || messages[0]?.id || null,
+                anchorIndex: result.anchor_index || null,
+                hasMoreBefore: result.has_more_before !== false,
+                hasMoreAfter: result.has_more_after !== false,
+                oldestId: oldestMessage?.id || null,
+                newestId: newestMessage?.id || null
+            };
+            
+            // КРИТИЧНО: Обновляем boundaries в loader для подгрузки истории
+            this._updateBoundaries(chatId, loadResult);
+            
+            console.log('[MessageLoaderV2] Loaded around date:', {
+                messagesCount: messages.length,
+                anchorId: loadResult.anchorId,
+                hasMoreBefore: loadResult.hasMoreBefore,
+                hasMoreAfter: loadResult.hasMoreAfter,
+                oldestId: loadResult.oldestId,
+                newestId: loadResult.newestId
+            });
+            
+            return loadResult;
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('[MessageLoaderV2] Load around date aborted');
+                return { 
+                    messages: [], 
+                    anchorId: null, 
+                    hasMoreBefore: false, 
+                    hasMoreAfter: false 
+                };
+            }
+            
+            console.error('[MessageLoaderV2] Load around date failed:', error);
+            throw error;
+            
+        } finally {
             this._cleanupRequest(requestKey);
         }
     }
@@ -421,6 +531,16 @@ export class MessageLoaderV2 {
      */
     hasMoreHistory(chatId) {
         return this._getBoundaries(chatId).hasMoreBefore;
+    }
+
+    /**
+     * Проверяет, есть ли ещё новые сообщения для загрузки
+     * Используется после перехода по дате для определения нужна ли подгрузка вниз
+     * @param {number} chatId - ID чата
+     * @returns {boolean}
+     */
+    hasMoreAfter(chatId) {
+        return this._getBoundaries(chatId).hasMoreAfter;
     }
 
     /**

@@ -11,6 +11,7 @@
  */
 
 import { STORE_EVENTS } from '../config/chatConfig.js';
+import { DateDividerManager } from '../utils/dateDividers.js';
 
 /**
  * @typedef {Object} Message
@@ -324,7 +325,7 @@ export class MessageStoreV2 {
         let lastDay = null;
 
         for (const message of messages) {
-            const day = this._formatDay(new Date(message.created_ts));
+            const day = DateDividerManager.formatDay(new Date(message.created_ts));
             
             if (day !== lastDay) {
                 result.push({ type: 'divider', text: day });
@@ -492,25 +493,6 @@ export class MessageStoreV2 {
         if (idx > -1) {
             ids.splice(idx, 1);
         }
-    }
-
-    /**
-     * Форматирует дату в текст дня
-     * @private
-     */
-    _formatDay(date) {
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-
-        if (date.toDateString() === today.toDateString()) return 'Сегодня';
-        if (date.toDateString() === yesterday.toDateString()) return 'Вчера';
-
-        return date.toLocaleDateString('ru-RU', { 
-            day: 'numeric', 
-            month: 'long', 
-            year: 'numeric' 
-        });
     }
 
     /**

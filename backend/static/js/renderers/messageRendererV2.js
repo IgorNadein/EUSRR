@@ -9,6 +9,9 @@
  * - Нет дублирования логики
  */
 
+import { DateDividerManager } from '../utils/dateDividers.js';
+import { DateGroupManager } from '../managers/dateGroupManager.js';
+
 /**
  * Экранирует HTML для безопасного вывода
  * @param {string} text - Текст для экранирования
@@ -35,6 +38,7 @@ export class MessageRendererV2 {
      * @param {MessageStore} options.store - Экземпляр MessageStore
      * @param {string} options.containerId - ID контейнера для сообщений
      * @param {number} options.currentUserId - ID текущего пользователя
+     * @param {DateGroupManager} [options.dateGroupManager] - Менеджер date groups
      * @param {string} [options.profileUrl] - URL шаблон профиля
      * @param {string} [options.detailUrlTemplate] - URL шаблон детальной информации
      */
@@ -46,13 +50,16 @@ export class MessageRendererV2 {
         this.store = options.store;
         this.containerId = options.containerId || 'chatScroll';
         this.currentUserId = options.currentUserId;
+        this.dateGroupManager = options.dateGroupManager || null;
         this.profileUrl = options.profileUrl || '/employees/profile/';
         this.detailUrlTemplate = options.detailUrlTemplate || '/employees/detail/0/';
 
         /** @type {Set<number|string>} ID сообщений которые уже в DOM */
         this.renderedMessages = new Set();
 
-        console.log('[MessageRendererV2] Initialized');
+        console.log('[MessageRendererV2] Initialized', {
+            hasDateGroupManager: !!this.dateGroupManager
+        });
     }
 
     // ==================== Основные методы рендеринга ====================
@@ -73,10 +80,10 @@ export class MessageRendererV2 {
 
         const { clear = true } = options;
 
-        // Получаем сообщения с dividers из Store
-        const items = this.store.getMessagesWithDividers(chatId);
+        // Получаем сообщения из Store (без dividers, groupAndRender сам добавит)
+        const messages = this.store.getMessagesForChat(chatId);
 
-        if (items.length === 0) {
+        if (messages.length === 0) {
             if (clear) {
                 container.innerHTML = '';
                 this.renderedMessages.clear();
@@ -84,18 +91,46 @@ export class MessageRendererV2 {
             return;
         }
 
-        // Очищаем ДО создания fragment
+        // Очищаем ДО рендеринга
         if (clear) {
             container.innerHTML = '';
             this.renderedMessages.clear();
+            // Очищаем DateGroupManager если есть
+            if (this.dateGroupManager) {
+                this.dateGroupManager.clear();
+            }
         }
+
+        // Если есть DateGroupManager - используем группировку
+        if (this.dateGroupManager) {
+            console.log('[MessageRendererV2] Using DateGroupManager for full render');
+            
+            // Используем groupAndRender для создания date groups
+            const groups = this.dateGroupManager.groupAndRender(
+                messages,
+                (msg) => {
+                    this.renderedMessages.add(msg.id);
+                    return this._createMessageElement(msg);
+                },
+                'append'
+            );
+            
+            console.log('[MessageRendererV2] Rendered', messages.length, 'messages in', groups.length, 'date groups');
+            return;
+        }
+
+        // Fallback: старая логика без DateGroupManager
+        console.log('[MessageRendererV2] Using legacy rendering (no DateGroupManager)');
+        
+        // Получаем сообщения с dividers из Store
+        const items = this.store.getMessagesWithDividers(chatId);
 
         // Используем DocumentFragment для батчинга
         const fragment = document.createDocumentFragment();
 
         items.forEach(item => {
-            if (item.type === 'day-divider') {
-                fragment.appendChild(this._createDayDivider(item.text));
+            if (item.type === 'divider') {
+                fragment.appendChild(DateDividerManager.createDivider(item.text));
             } else if (item.type === 'message') {
                 if (!this.renderedMessages.has(item.message.id)) {
                     const messageEl = this._createMessageElement(item.message);
@@ -108,7 +143,7 @@ export class MessageRendererV2 {
         // ОДНА вставка в DOM
         container.appendChild(fragment);
 
-        console.log('[MessageRendererV2] Rendered', items.length, 'items');
+        console.log('[MessageRendererV2] Rendered', items.length, 'items (legacy mode)');
     }
 
     /**
@@ -134,13 +169,41 @@ export class MessageRendererV2 {
         console.log('[MessageRendererV2] Prepending', messages.length, 'messages');
 
         const fragment = document.createDocumentFragment();
+        
+        // Если есть DateGroupManager - используем группировку
+        if (this.dateGroupManager) {
+            console.log('[MessageRendererV2] Using DateGroupManager');
+            
+            // Создаем группы с помощью DateGroupManager
+            const groups = this.dateGroupManager.groupAndRender(
+                messages,
+                (msg) => {
+                    if (!this.renderedMessages.has(msg.id)) {
+                        this.renderedMessages.add(msg.id);
+                        return this._createMessageElement(msg);
+                    }
+                    return null;
+                },
+                'prepend' // Важно: указываем что это prepend
+            );
+            
+            // Добавляем все группы в fragment
+            groups.forEach(group => fragment.appendChild(group));
+            
+            console.log('[MessageRendererV2] Created', groups.length, 'date groups');
+            console.log('[MessageRendererV2] ======================================');
+            return fragment;
+        }
+        
+        // Fallback: старая логика без групп
+        console.log('[MessageRendererV2] Using legacy dividers (no DateGroupManager)');
         const items = [];
 
         // Группируем сообщения по дням (от старых к новым)
         let lastDay = null;
         messages.forEach(msg => {
             const msgDate = new Date(msg.created_ts);
-            const msgDay = this._formatDay(msgDate);
+            const msgDay = DateDividerManager.formatDay(msgDate);
 
             // Добавляем divider если день изменился
             if (msgDay !== lastDay) {
@@ -162,7 +225,7 @@ export class MessageRendererV2 {
         let added = 0;
         items.forEach(item => {
             if (item.type === 'day-divider') {
-                fragment.appendChild(this._createDayDivider(item.text));
+                fragment.appendChild(DateDividerManager.createDivider(item.text));
                 added++;
             } else if (item.type === 'message') {
                 if (!this.renderedMessages.has(item.message.id)) {
@@ -178,6 +241,115 @@ export class MessageRendererV2 {
         });
 
         console.log('[MessageRendererV2] Fragment created:', {
+            added,
+            skipped,
+            fragmentChildren: fragment.childElementCount
+        });
+        console.log('[MessageRendererV2] ======================================');
+
+        return fragment;
+    }
+
+    /**
+     * Добавляет новые сообщения в КОНЕЦ (для загрузки при прокрутке вниз после перехода по дате)
+     * Как в Telegram: при прокрутке вниз после перехода к старой дате
+     * @param {Array<Object>} messages - Массив сообщений (от старых к новым)
+     * @param {number} chatId - ID чата
+     * @returns {DocumentFragment} Fragment с элементами для append
+     */
+    appendMessages(messages, chatId) {
+        console.log('[MessageRendererV2] ======================================');
+        console.log('[MessageRendererV2] appendMessages called:', {
+            messagesCount: messages?.length || 0,
+            chatId,
+            messageIds: messages?.map(m => m.id) || []
+        });
+        
+        if (!messages || messages.length === 0) {
+            console.log('[MessageRendererV2] ❌ No messages to append');
+            console.log('[MessageRendererV2] ======================================');
+            return document.createDocumentFragment();
+        }
+
+        console.log('[MessageRendererV2] Appending', messages.length, 'messages');
+
+        const fragment = document.createDocumentFragment();
+        
+        // Если есть DateGroupManager - используем группировку
+        if (this.dateGroupManager) {
+            console.log('[MessageRendererV2] Using DateGroupManager for append');
+            
+            // Создаем группы с помощью DateGroupManager
+            const groups = this.dateGroupManager.groupAndRender(
+                messages,
+                (msg) => {
+                    if (!this.renderedMessages.has(msg.id)) {
+                        this.renderedMessages.add(msg.id);
+                        return this._createMessageElement(msg);
+                    }
+                    return null;
+                },
+                'append' // Указываем что это append
+            );
+            
+            // Добавляем все группы в fragment
+            groups.forEach(group => fragment.appendChild(group));
+            
+            console.log('[MessageRendererV2] Created', groups.length, 'date groups for append');
+            console.log('[MessageRendererV2] ======================================');
+            return fragment;
+        }
+        
+        // Fallback: старая логика без групп
+        console.log('[MessageRendererV2] Using legacy dividers for append (no DateGroupManager)');
+        const items = [];
+
+        // Получаем последний день из контейнера для корректных divider'ов
+        const container = document.getElementById(this.containerId);
+        const lastDivider = container?.querySelector('.day-divider:last-of-type');
+        let lastDay = lastDivider ? lastDivider.textContent.trim() : null;
+
+        // Группируем сообщения по дням (от старых к новым)
+        messages.forEach(msg => {
+            const msgDate = new Date(msg.created_ts);
+            const msgDay = DateDividerManager.formatDay(msgDate);
+
+            // Добавляем divider если день изменился
+            if (msgDay !== lastDay) {
+                items.push({ type: 'day-divider', text: msgDay });
+                lastDay = msgDay;
+            }
+
+            items.push({ type: 'message', message: msg });
+        });
+
+        console.log('[MessageRendererV2] Items to append:', {
+            totalItems: items.length,
+            dividers: items.filter(i => i.type === 'day-divider').length,
+            messages: items.filter(i => i.type === 'message').length
+        });
+
+        // Создаем элементы
+        let skipped = 0;
+        let added = 0;
+        items.forEach(item => {
+            if (item.type === 'day-divider') {
+                fragment.appendChild(DateDividerManager.createDivider(item.text));
+                added++;
+            } else if (item.type === 'message') {
+                if (!this.renderedMessages.has(item.message.id)) {
+                    const messageEl = this._createMessageElement(item.message);
+                    fragment.appendChild(messageEl);
+                    this.renderedMessages.add(item.message.id);
+                    added++;
+                } else {
+                    skipped++;
+                    console.log('[MessageRendererV2] ⚠️ Skipped duplicate in append:', item.message.id);
+                }
+            }
+        });
+
+        console.log('[MessageRendererV2] Append fragment created:', {
             added,
             skipped,
             fragmentChildren: fragment.childElementCount
@@ -232,6 +404,28 @@ export class MessageRendererV2 {
 
         console.log('[MessageRendererV2] Appending message:', message.id);
 
+        // Если есть DateGroupManager - используем группировку
+        if (this.dateGroupManager) {
+            const messageDate = DateDividerManager.getMessageDate(message);
+            const dateText = DateDividerManager.formatDay(messageDate);
+            
+            // Создаем элемент сообщения
+            const messageEl = this._createMessageElement(message);
+            
+            // Добавляем в соответствующую группу
+            this.dateGroupManager.addMessageToGroup(
+                messageEl,
+                dateText,
+                messageDate.getTime(),
+                'append'
+            );
+            
+            this.renderedMessages.add(message.id);
+            console.log('[MessageRendererV2] Message added to date group:', dateText);
+            return;
+        }
+
+        // Fallback: старая логика без групп
         // Проверяем нужен ли day-divider
         // Сравниваем с последним сообщением, а не с последним divider
         const lastMessage = container.querySelector('.msg:last-of-type');
@@ -240,20 +434,20 @@ export class MessageRendererV2 {
             const lastMsgData = this.store.getMessage(lastMsgId);
             if (lastMsgData) {
                 const lastMsgDate = new Date(lastMsgData.created_ts);
-                const lastMsgDay = this._formatDay(lastMsgDate);
+                const lastMsgDay = DateDividerManager.formatDay(lastMsgDate);
                 const msgDate = new Date(message.created_ts);
-                const msgDay = this._formatDay(msgDate);
+                const msgDay = DateDividerManager.formatDay(msgDate);
                 
                 // Добавляем divider только если день изменился
                 if (msgDay !== lastMsgDay) {
-                    container.appendChild(this._createDayDivider(msgDay));
+                    container.appendChild(DateDividerManager.createDivider(msgDay));
                 }
             }
         } else {
             // Первое сообщение - добавляем divider
             const msgDate = new Date(message.created_ts);
-            const msgDay = this._formatDay(msgDate);
-            container.appendChild(this._createDayDivider(msgDay));
+            const msgDay = DateDividerManager.formatDay(msgDate);
+            container.appendChild(DateDividerManager.createDivider(msgDay));
         }
 
         // Создаем и добавляем сообщение
@@ -327,17 +521,6 @@ export class MessageRendererV2 {
     }
 
     // ==================== Создание элементов ====================
-
-    /**
-     * Создает элемент day-divider
-     * @private
-     */
-    _createDayDivider(text) {
-        const dividerEl = document.createElement('div');
-        dividerEl.className = 'day-divider text-center small text-muted my-3';
-        dividerEl.innerHTML = `<span class="px-3 py-1 rounded-pill bg-light">${escapeHtml(text)}</span>`;
-        return dividerEl;
-    }
 
     /**
      * Создает элемент сообщения
@@ -557,25 +740,6 @@ export class MessageRendererV2 {
     // ==================== Утилиты ====================
 
     /**
-     * Форматирует дату в текст дня
-     * @private
-     */
-    _formatDay(date) {
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-
-        const isToday = date.toDateString() === today.toDateString();
-        const isYesterday = date.toDateString() === yesterday.toDateString();
-
-        if (isToday) return 'Сегодня';
-        if (isYesterday) return 'Вчера';
-
-        const options = { day: 'numeric', month: 'long', year: 'numeric' };
-        return date.toLocaleDateString('ru-RU', options);
-    }
-
-    /**
      * Форматирует время
      * @private
      */
@@ -594,6 +758,12 @@ export class MessageRendererV2 {
         if (container) {
             container.innerHTML = '';
             this.renderedMessages.clear();
+            
+            // Очищаем DateGroupManager если есть
+            if (this.dateGroupManager) {
+                this.dateGroupManager.clear();
+            }
+            
             console.log('[MessageRendererV2] Container cleared');
         }
     }

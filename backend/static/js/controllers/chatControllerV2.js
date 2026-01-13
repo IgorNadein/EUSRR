@@ -14,6 +14,8 @@ import { MessageStoreV2 } from '../stores/messageStoreV2.js';
 import { MessageLoaderV2 } from '../loaders/messageLoaderV2.js';
 import { MessageRendererV2 } from '../renderers/messageRendererV2.js';
 import { ScrollManagerV2 } from '../managers/scrollManagerV2.js';
+import { DateGroupManager } from '../managers/dateGroupManager.js';
+import { StickyDateObserver } from '../observers/stickyDateObserver.js';
 import { CHAT_EVENTS, WS_EVENTS, SCROLL_CONFIG, AUTOSCROLL_CONFIG } from '../config/chatConfig.js';
 
 /**
@@ -50,6 +52,21 @@ export class ChatControllerV2 {
         // Создаем компоненты
         this.store = new MessageStoreV2({ currentUserId: this.currentUserId });
         
+        // Date Group Manager для группировки по датам
+        this.dateGroupManager = new DateGroupManager({
+            container: this.scrollElement,
+            enableSticky: true,
+            interactive: true // Кликабельные даты
+        });
+        
+        // Sticky Date Observer для IntersectionObserver
+        this.stickyDateObserver = new StickyDateObserver({
+            container: this.scrollElement,
+            onSticky: (isSticky, element, dateText) => {
+                console.log('[ChatControllerV2] Date sticky state:', { dateText, isSticky });
+            }
+        });
+        
         this.loader = new MessageLoaderV2({
             store: this.store,
             wsConnection: options.wsConnection,
@@ -60,6 +77,7 @@ export class ChatControllerV2 {
             store: this.store,
             containerId: this.containerId,
             currentUserId: this.currentUserId,
+            dateGroupManager: this.dateGroupManager, // Передаем в renderer
             profileUrl: options.profileUrl || '/employees/profile/',
             detailUrlTemplate: options.detailUrlTemplate || '/employees/detail/0/'
         });
@@ -152,8 +170,10 @@ export class ChatControllerV2 {
                         requestAnimationFrame(() => {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
-                                    // Тройной RAF для надежности
-                                    this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+                                    // 🚫 REMOVED: Автоскролл при открытии чата
+                                    // Пользователь сам решает куда скроллить
+                                    // loadAround уже показывает нужный контекст
+                                    console.log('[ChatControllerV2] Initial autoscroll removed - user position preserved');
                                     
                                     // Проверяем через setTimeout
                                     setTimeout(() => {
@@ -173,7 +193,13 @@ export class ChatControllerV2 {
                 // 6. Инициализируем ScrollManager
                 await this.scrollManager.init();
 
-                // 7. Инициализируем watcher для умного автоскролла
+                // 7. Инициализируем StickyDateObserver
+                this.stickyDateObserver.init();
+
+                // 8. Настраиваем обработчик кликов на даты
+                this._setupDateClickHandler();
+
+                // 9. Инициализируем watcher для умного автоскролла
                 this._initScrollWatcher();
 
             } catch (error) {
@@ -210,6 +236,12 @@ export class ChatControllerV2 {
 
         // Уничтожаем ScrollManager
         this.scrollManager?.destroy();
+
+        // Уничтожаем StickyDateObserver
+        this.stickyDateObserver?.destroy();
+
+        // Очищаем DateGroupManager
+        this.dateGroupManager?.clear();
 
         // Очищаем Store
         this.store?.clearChat(this.chatId);
@@ -375,6 +407,11 @@ export class ChatControllerV2 {
         // Рендерим новое сообщение
         this.renderer.appendMessage(message, this.chatId);
 
+        // Обновляем StickyDateObserver (могла появиться новая date group)
+        if (this.stickyDateObserver?.isInitialized()) {
+            this.stickyDateObserver.refresh();
+        }
+
         // УМНЫЙ АВТОСКРОЛЛ:
         // 1. Своё сообщение - всегда скроллим
         // 2. Чужое сообщение + внизу чата - скроллим (активно читаем)
@@ -518,9 +555,29 @@ export class ChatControllerV2 {
             const containerRect = this.scrollElement.getBoundingClientRect();
             const messageRect = messageEl.getBoundingClientRect();
             const relativeTop = messageRect.top - containerRect.top;
+            
+            // Учитываем sticky header (56px + ~40px для sticky date)
+            const stickyHeaderOffset = 96;
             const targetScrollTop = this.scrollElement.scrollTop + relativeTop - (this.scrollElement.clientHeight / 2) + (messageRect.height / 2);
             
-            this.scrollElement.scrollTop = Math.max(0, targetScrollTop);
+            // Дополнительно вычитаем offset если сообщение будет в верхней части
+            const adjustedScrollTop = relativeTop < this.scrollElement.clientHeight / 2 
+                ? targetScrollTop - stickyHeaderOffset 
+                : targetScrollTop;
+            
+            // 🚫 REMOVED: Автоскролл к сообщению после loadAround
+            // loadAround уже загрузил контекст, сообщение видно
+            // Принудительное центрирование мешает естественной навигации
+            console.log('[ChatControllerV2] _scrollToMessage removed - context loaded, no forced scroll');
+            
+            console.log('[ChatControllerV2] Scrolled to message with sticky header adjustment:', {
+                messageId,
+                relativeTop,
+                stickyHeaderOffset,
+                targetScrollTop,
+                adjustedScrollTop
+            });
+            
             return true;
         }
         
@@ -628,6 +685,198 @@ export class ChatControllerV2 {
         chatContainer.appendChild(btn);
 
         return btn;
+    }
+
+    /**
+     * Настраивает обработчик кликов на даты
+     * @private
+     */
+    _setupDateClickHandler() {
+        // Делегированный обработчик для всех .sticky-date
+        this.scrollElement.addEventListener('click', (e) => {
+            const stickyDate = e.target.closest('.sticky-date.interactive');
+            if (!stickyDate) return;
+
+            const dateText = stickyDate.getAttribute('data-date-text') || 
+                           stickyDate.querySelector('span')?.textContent;
+            
+            console.log('[ChatControllerV2] Date clicked:', dateText);
+            
+            // Открываем модальное окно с date picker
+            this._openDatePickerModal(dateText);
+        });
+    }
+
+    /**
+     * Открывает модальное окно с date picker
+     * @private
+     */
+    _openDatePickerModal(currentDateText) {
+        // Ищем или создаем модальное окно
+        let modal = document.getElementById('chatDatePickerModal');
+        
+        if (!modal) {
+            // Создаем модальное окно динамически
+            modal = this._createDatePickerModal();
+            document.body.appendChild(modal);
+        }
+
+        // Инициализируем Bootstrap modal
+        const bsModal = new bootstrap.Modal(modal);
+        
+        // Устанавливаем текущую дату как заголовок
+        const modalTitle = modal.querySelector('.modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = `Перейти к дате (текущая: ${currentDateText})`;
+        }
+
+        // Обработчик подтверждения
+        const confirmBtn = modal.querySelector('#confirmDateJump');
+        const dateInput = modal.querySelector('#chatDateInput');
+        
+        if (confirmBtn && dateInput) {
+            // Устанавливаем сегодняшнюю дату по умолчанию
+            dateInput.valueAsDate = new Date();
+            
+            // Удаляем старые обработчики
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            
+            // Добавляем новый обработчик
+            newConfirmBtn.addEventListener('click', () => {
+                const selectedDate = dateInput.valueAsDate;
+                if (selectedDate) {
+                    bsModal.hide();
+                    this._jumpToDate(selectedDate);
+                }
+            });
+        }
+
+        // Показываем модальное окно
+        bsModal.show();
+    }
+
+    /**
+     * Создает модальное окно date picker
+     * @private
+     */
+    _createDatePickerModal() {
+        const modal = document.createElement('div');
+        modal.id = 'chatDatePickerModal';
+        modal.className = 'modal fade';
+        modal.tabIndex = -1;
+        modal.setAttribute('aria-hidden', 'true');
+        
+        modal.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="bi-calendar3 me-2"></i>Перейти к дате
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="chatDateInput" class="form-label">Выберите дату</label>
+                            <input type="date" class="form-control" id="chatDateInput" required>
+                            <div class="form-text">
+                                Чат загрузит сообщения вокруг выбранной даты
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            Отмена
+                        </button>
+                        <button type="button" class="btn btn-primary" id="confirmDateJump">
+                            <i class="bi-arrow-right-circle me-1"></i>Перейти
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return modal;
+    }
+
+    /**
+     * Переходит к указанной дате
+     * @private
+     */
+    async _jumpToDate(targetDate) {
+        console.log('[ChatControllerV2] Jumping to date:', targetDate);
+        
+        // Конвертируем дату в timestamp (начало дня по UTC)
+        const timestamp = Date.UTC(
+            targetDate.getFullYear(),
+            targetDate.getMonth(),
+            targetDate.getDate()
+        );
+
+        try {
+            // Показываем индикатор загрузки
+            const loader = this.scrollElement.querySelector('[data-history-loader]');
+            if (loader) {
+                loader.classList.remove('d-none');
+            }
+
+            // КРИТИЧНО: Очищаем Store чтобы не смешивать старые и новые сообщения
+            // Как в Telegram Web - при переходе к дате чат перезагружается с этой точки
+            this.store.clearChat(this.chatId);
+
+            // Загружаем сообщения вокруг этой даты через API
+            // Сообщения автоматически попадут в Store
+            const loadResult = await this.loader.loadAround(this.chatId, timestamp);
+            
+            if (loadResult.messages && loadResult.messages.length > 0) {
+                console.log('[ChatControllerV2] Loaded messages around date:', loadResult.messages.length);
+                
+                // Перерисовываем чат из Store (как в Telegram Web)
+                await this.renderer.render(this.chatId);
+                
+                // КРИТИЧНО: Переинициализируем ScrollManager для новых сообщений
+                // Сбрасываем флаг инициализации
+                if (this.scrollManager._isInitializing !== undefined) {
+                    this.scrollManager._isInitializing = false;
+                }
+                
+                // Переподключаем IntersectionObserver к новому первому сообщению
+                if (this.scrollManager._setupIntersectionObserver) {
+                    this.scrollManager._setupIntersectionObserver();
+                }
+                
+                // Даем время на завершение рендеринга
+                await new Promise(resolve => requestAnimationFrame(resolve));
+                
+                // Якорное сообщение (возвращается API)
+                const anchorMessageId = loadResult.anchorId || loadResult.messages[0].id;
+                
+                // Скроллим к якорному сообщению БЕЗ smooth (мгновенно)
+                this.scrollManager.scrollToMessage(anchorMessageId, {
+                    block: 'start',
+                    behavior: 'auto'
+                });
+                
+                // КРИТИЧНО: Приостанавливаем обработку скролла на 1 секунду
+                // чтобы не сработал автоматический loadNewer
+                this.scrollManager.pauseScrollEvents(1000);
+                
+                console.log('[ChatControllerV2] Jumped to date, anchor message:', anchorMessageId);
+            } else {
+                // Нет сообщений в эту дату
+                alert('В выбранную дату нет сообщений');
+            }
+        } catch (error) {
+            console.error('[ChatControllerV2] Error jumping to date:', error);
+            alert('Ошибка при переходе к дате');
+        } finally {
+            // Скрываем индикатор
+            const loader = this.scrollElement.querySelector('[data-history-loader]');
+            if (loader) {
+                loader.classList.add('d-none');
+            }
+        }
     }
 
     /**
