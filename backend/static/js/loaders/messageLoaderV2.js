@@ -102,6 +102,13 @@ export class MessageLoaderV2 {
         try {
             const { aroundMessageId, limit = this.config.INITIAL_LIMIT } = options;
             
+            console.log('[MessageLoaderV2] 🔍 Load decision:', {
+                aroundMessageId,
+                type: typeof aroundMessageId,
+                isPositive: aroundMessageId > 0,
+                willLoadAround: !!(aroundMessageId && aroundMessageId > 0)
+            });
+            
             let result;
             if (aroundMessageId && aroundMessageId > 0) {
                 result = await this._loadAround(chatId, aroundMessageId, limit, requestKey);

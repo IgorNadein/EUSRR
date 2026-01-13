@@ -71,6 +71,12 @@ function initWhenReady() {
     lastReadMessageId: appContainer.dataset.lastReadMessageId ? Number(appContainer.dataset.lastReadMessageId) : null
   };
   
+  console.log('[ChatDetail] 🔍 lastReadMessageId from HTML:', {
+    rawValue: appContainer.dataset.lastReadMessageId,
+    parsedValue: config.lastReadMessageId,
+    type: typeof config.lastReadMessageId
+  });
+  
   // Читаем дополнительные URL из chatScroll (для рендеринга сообщений)
   const chatScroll = document.getElementById('chatScroll');
   if (chatScroll) {
