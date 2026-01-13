@@ -74,6 +74,7 @@ export class ScrollManagerV2 {
         this._historyObserver = null;
         this._isLoadingHistory = false;
         this._destroyed = false;
+        this._isInitializing = true; // ✅ Флаг инициализации
 
         // Bound handlers для cleanup
         this._boundScrollHandler = null;
@@ -115,6 +116,13 @@ export class ScrollManagerV2 {
         this._setupIntersectionObserver();
         this._setupScrollListener();
         this._setupResizeListener();
+        
+        // Снимаем флаг инициализации после небольшой задержки
+        // чтобы Observer не сработал сразу
+        setTimeout(() => {
+            this._isInitializing = false;
+            console.log('[ScrollManagerV2] ✅ Initialization flag cleared');
+        }, 500);
         
         console.log('[ScrollManagerV2] 🟢 INIT COMPLETE');
     }
@@ -460,7 +468,8 @@ export class ScrollManagerV2 {
             entriesCount: entries.length,
             scrollTop: this.scrollEl.scrollTop,
             scrollHeight: this.scrollEl.scrollHeight,
-            isNearBottom: this.isNearBottom()
+            isNearBottom: this.isNearBottom(),
+            isInitializing: this._isInitializing
         });
         
         entries.forEach(entry => {
@@ -470,11 +479,17 @@ export class ScrollManagerV2 {
                 intersectionRatio: entry.intersectionRatio,
                 isLoadingHistory: this._isLoadingHistory,
                 isNearBottom: this.isNearBottom(),
-                willLoadHistory: entry.isIntersecting && !this._isLoadingHistory && !this.isNearBottom()
+                isInitializing: this._isInitializing,
+                willLoadHistory: entry.isIntersecting && !this._isLoadingHistory && !this.isNearBottom() && !this._isInitializing
             });
             
-            // ✅ ВАЖНО: НЕ загружаем историю если пользователь внизу!
-            // Это предотвращает ложное срабатывание при инициализации
+            // ✅ ВАЖНО: Игнорируем события во время инициализации
+            if (this._isInitializing) {
+                console.log('[ScrollManagerV2] 🚫 Initializing, ignoring observer event');
+                return;
+            }
+            
+            // ✅ НЕ загружаем историю если пользователь внизу
             if (entry.isIntersecting && !this._isLoadingHistory && !this.isNearBottom()) {
                 console.log('[ScrollManagerV2] 🚀 Triggering debounced history load...');
                 this._debouncedLoadHistory();
