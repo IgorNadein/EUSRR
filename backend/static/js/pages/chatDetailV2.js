@@ -58,7 +58,7 @@
 
         const scrollContainer = document.getElementById('chatScroll');
         
-        return {
+        const config = {
             chatId: Number(appContainer.dataset.chatId),
             userId: Number(appContainer.dataset.userId),
             userName: appContainer.dataset.userName || 'Вы',
@@ -67,12 +67,22 @@
             messagesUrl: appContainer.dataset.messagesUrl,
             markReadUrl: appContainer.dataset.markReadUrl,
             editUrlTemplate: appContainer.dataset.editUrlTemplate,
+            lastReadTimestamp: Number(appContainer.dataset.lastReadTimestamp) || null,
             lastReadMessageId: appContainer.dataset.lastReadMessageId 
                 ? Number(appContainer.dataset.lastReadMessageId) 
                 : null,
             profileUrl: scrollContainer?.dataset.profileUrl || '/employees/profile/',
             detailUrlTemplate: scrollContainer?.dataset.detailUrlTemplate || '/employees/detail/0/'
         };
+        
+        console.log('[ChatDetailV2] 🔍 Config:', {
+            lastReadMessageId: config.lastReadMessageId,
+            lastReadTimestamp: config.lastReadTimestamp,
+            rawMessageId: appContainer.dataset.lastReadMessageId,
+            rawTimestamp: appContainer.dataset.lastReadTimestamp
+        });
+        
+        return config;
     }
 
     /**
@@ -132,7 +142,8 @@
             wsConnection: wsApi,
             profileUrl: config.profileUrl,
             detailUrlTemplate: config.detailUrlTemplate,
-            lastReadMessageId: config.lastReadMessageId
+            lastReadMessageId: config.lastReadMessageId,
+            lastReadTimestamp: config.lastReadTimestamp  // ✅ Fallback для скролла
         });
 
         await chatController.init();
@@ -195,7 +206,9 @@
      * Главная функция инициализации
      */
     async function init() {
+        console.log('[ChatDetailV2] 🚀🚀🚀 INIT STARTED - V2 FILE LOADED 🚀🚀🚀');
         const config = readConfig();
+        console.log('[ChatDetailV2] 🔍 Config read result:', config);
         if (!config || !config.chatId) {
             console.error('[ChatDetailV2] Invalid configuration');
             return;

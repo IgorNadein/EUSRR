@@ -471,6 +471,12 @@ export class MessageLoaderV2 {
             requestKey
         );
 
+        console.log('[MessageLoaderV2] 🔍 API response:', {
+            anchor_id: result.anchor_id,
+            anchor_index: result.anchor_index,
+            messages_count: result.messages?.length || result.results?.length || 0
+        });
+
         const messages = this._extractMessages(result);
         
         // ВАЖНО: Сначала добавляем в Store, затем берем границы из Store
@@ -479,7 +485,7 @@ export class MessageLoaderV2 {
         const oldestMessage = this.store.getOldestMessage(chatId);
         const newestMessage = this.store.getNewestMessage(chatId);
 
-        return {
+        const loadResult = {
             messages,
             anchorId: result.anchor_id || aroundId,
             anchorIndex: result.anchor_index || null,
@@ -488,6 +494,14 @@ export class MessageLoaderV2 {
             oldestId: oldestMessage?.id || null,
             newestId: newestMessage?.id || null
         };
+        
+        console.log('[MessageLoaderV2] 🔍 Returning loadResult:', {
+            anchorId: loadResult.anchorId,
+            anchorIndex: loadResult.anchorIndex,
+            messagesCount: loadResult.messages.length
+        });
+        
+        return loadResult;
     }
 
     /**
