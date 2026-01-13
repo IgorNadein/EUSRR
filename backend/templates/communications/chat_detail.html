@@ -132,16 +132,6 @@
           </div>
         {% endif %}
 
-        <!-- Кнопка «вниз» -->
-        <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
-          <i class="bi-arrow-down"></i>
-        </button>
-
-        <!-- Индикатор новых сообщений (V2) -->
-        <div id="newMessagesIndicator" class="new-messages-indicator" style="display: none;">
-          <span class="new-messages-count">0</span> новых сообщений
-        </div>
-
         <!-- Лента сообщений -->
         <div id="chatScroll"
              class="chat-messages-scroll"
@@ -299,6 +289,7 @@
       <!-- Кнопка «вниз» -->
       <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
         <i class="bi-arrow-down"></i>
+        <span class="unread-badge badge-hidden">0</span>
       </button>
 
     </div> <!-- .chat-page -->
