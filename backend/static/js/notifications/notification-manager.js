@@ -189,6 +189,11 @@ class NotificationManager {
         return;
       }
 
+      // Игнорируем чат-события - они обрабатываются userWebSocket
+      if (["message_edited", "reaction_added", "reaction_removed"].includes(data.type)) {
+        return;
+      }
+
       console.log("[Notifications] Received:", data);
 
       switch (data.type) {

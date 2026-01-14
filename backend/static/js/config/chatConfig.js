@@ -162,7 +162,7 @@ export const API_ENDPOINTS = {
     MESSAGES: (chatId) => `/api/v1/communications/chats/${chatId}/messages/`,
     
     /** Получить сообщения вокруг конкретного ID */
-    MESSAGES_AROUND: (chatId) => `/api/v1/communications/chats/${chatId}/messages/around/`,
+    MESSAGES_AROUND: (chatId) => `/api/v1/communications/chats/${chatId}/messages-around/`,
     
     /** Отметить сообщения как прочитанные */
     MARK_READ: (chatId) => `/api/v1/communications/chats/${chatId}/mark-read/`,

@@ -7,6 +7,7 @@ import MessageContextMenu from './components/messageContextMenu.js';
 import MessageSelection from './components/messageSelection.js';
 import ChatPoll from './components/chatPoll.js';
 import { initMessageEditing } from './components/messageEditing.js';
+import { initChatFormManager } from './components/chatFormManager.js';
 import reactionsConfig from './config/reactionsConfig.js';
 
 console.log('[chat-detail-enhanced] Script loaded');
@@ -33,16 +34,35 @@ async function initChatDetail() {
     // Загружаем доступные реакции из БД
     console.log('[chat-detail-enhanced] Loading available reactions from API...');
     await reactionsConfig.load();
-    const availableEmojis = reactionsConfig.getEmojis();
-    console.log('[chat-detail-enhanced] ✓ Available emojis:', availableEmojis);
+    const allEmojis = reactionsConfig.getEmojis();
+    // Берем только первые 5 эмодзи для быстрых реакций
+    const availableEmojis = allEmojis.slice(0, 5);
+    console.log('[chat-detail-enhanced] ✓ Available emojis (quick):', availableEmojis);
+    console.log('[chat-detail-enhanced] ✓ All emojis:', allEmojis);
     
     // Инициализируем систему реакций
     const reactions = new MessageReactions();
     console.log('[chat-detail-enhanced] MessageReactions initialized');
     
+    // Делаем доступным глобально
+    window.reactions = reactions;
+    
     // Инициализируем обработку редактирования сообщений
     initMessageEditing();
     console.log('[chat-detail-enhanced] Message editing initialized');
+    
+    // Инициализируем менеджер формы (для редактирования/ответов)
+    const formManager = initChatFormManager({
+        chatId: chatId,
+        formId: 'chatForm',
+        textareaId: 'id_content'
+    });
+    
+    if (formManager) {
+        console.log('[chat-detail-enhanced] ChatFormManager initialized');
+    } else {
+        console.warn('[chat-detail-enhanced] ChatFormManager init failed - form elements not found');
+    }
     
     // Инициализируем систему выделения сообщений
     console.log('[chat-detail-enhanced] Initializing MessageSelection...');
@@ -81,21 +101,8 @@ async function initChatDetail() {
         
         if (messageElements.length && data.reactions_summary) {
             messageElements.forEach(messageElement => {
-                console.log('[chat-detail-enhanced] Updating message element:', messageElement);
-                
-                // Обновляем data-атрибут с реакциями
-                messageElement.dataset.reactions = JSON.stringify(data.reactions_summary);
-                
-                // Обновляем отображение
-                const wrapper = messageElement.querySelector('.message-reactions-wrapper');
-                if (wrapper) {
-                    const reactionsHtml = reactions.renderReactions(data.reactions_summary, meId);
-                    wrapper.innerHTML = reactionsHtml;
-                    reactions.initMessageReactions(messageElement, messageId, meId);
-                    console.log('[chat-detail-enhanced] ✓ Reactions updated successfully');
-                } else {
-                    console.warn('[chat-detail-enhanced] ✗ Wrapper not found in message');
-                }
+                // Используем централизованный MessageReactions для обновления
+                reactions.updateMessageReactions(messageElement, data.reactions_summary, meId);
             });
         } else {
             if (!data.reactions_summary) {
@@ -108,6 +115,7 @@ async function initChatDetail() {
     });
     
     // Обработка удаления реакции через WebSocket
+    // Обработка удаления реакции через WebSocket
     window.addEventListener('chat:reaction-removed', (event) => {
         console.log('[chat-detail-enhanced] WebSocket: reaction-removed', event.detail);
         const data = event.detail;
@@ -119,26 +127,13 @@ async function initChatDetail() {
         const messageElements = document.querySelectorAll(`[data-message-id="${messageId}"]`);
         console.log('[chat-detail-enhanced] Found message elements:', messageElements.length);
         
-        if (messageElements.length && data.reactions_summary) {
+        if (messageElements.length && data.reactions_summary !== undefined) {
             messageElements.forEach(messageElement => {
-                console.log('[chat-detail-enhanced] Updating message element:', messageElement);
-                
-                // Обновляем data-атрибут с реакциями
-                messageElement.dataset.reactions = JSON.stringify(data.reactions_summary);
-                
-                // Обновляем отображение
-                const wrapper = messageElement.querySelector('.message-reactions-wrapper');
-                if (wrapper) {
-                    const reactionsHtml = reactions.renderReactions(data.reactions_summary, meId);
-                    wrapper.innerHTML = reactionsHtml;
-                    reactions.initMessageReactions(messageElement, messageId, meId);
-                    console.log('[chat-detail-enhanced] ✓ Reactions updated successfully');
-                } else {
-                    console.warn('[chat-detail-enhanced] ✗ Wrapper not found in message');
-                }
+                // Используем централизованный MessageReactions для обновления
+                reactions.updateMessageReactions(messageElement, data.reactions_summary, meId);
             });
         } else {
-            if (!data.reactions_summary) {
+            if (data.reactions_summary === undefined) {
                 console.warn('[chat-detail-enhanced] ✗ No reactions_summary in WebSocket data');
             }
             if (!messageElements.length) {
@@ -181,25 +176,15 @@ async function initChatDetail() {
     // Инициализация реакций для существующих сообщений
     function initMessageReactions() {
         const messages = document.querySelectorAll('[data-message-id]');
+        console.log('[chat-detail-enhanced] Initializing reactions for', messages.length, 'messages');
+        
         messages.forEach(messageElement => {
             const messageId = messageElement.dataset.messageId;
-            const wrapper = messageElement.querySelector('.message-reactions-wrapper');
-            if (wrapper && !wrapper.querySelector('.message-reactions')) {
-                // Загрузить существующие реакции из data-атрибута
-                let existingReactions = {};
-                try {
-                    const reactionsJson = messageElement.dataset.reactions;
-                    if (reactionsJson && reactionsJson !== '{}') {
-                        existingReactions = JSON.parse(reactionsJson);
-                    }
-                } catch (e) {
-                    console.error('Error parsing reactions:', e);
-                }
-                
-                // Отрендерить контейнер реакций с существующими реакциями
-                const reactionsHtml = reactions.renderReactions(existingReactions, meId);
-                wrapper.innerHTML = reactionsHtml;
-                // Инициализировать обработчики
+            
+            // Инициализировать обработчики реакций если есть контейнер
+            const reactionsContainer = messageElement.querySelector('.message-reactions');
+            if (reactionsContainer) {
+                console.log('[chat-detail-enhanced] Initializing reactions handlers for message:', messageId);
                 reactions.initMessageReactions(messageElement, messageId, meId);
             }
             
@@ -217,25 +202,16 @@ async function initChatDetail() {
         mutations.forEach((mutation) => {
             mutation.addedNodes.forEach((node) => {
                 if (node.nodeType === 1 && node.dataset && node.dataset.messageId) {
-                    const wrapper = node.querySelector('.message-reactions-wrapper');
-                    if (wrapper && !wrapper.querySelector('.message-reactions')) {
-                        // Читаем существующие реакции из data-атрибута
-                        let existingReactions = {};
-                        try {
-                            const reactionsJson = node.dataset.reactions;
-                            if (reactionsJson && reactionsJson !== '{}') {
-                                existingReactions = JSON.parse(reactionsJson);
-                            }
-                        } catch (e) {
-                            console.error('Error parsing reactions for new message:', e);
-                        }
-                        
-                        const reactionsHtml = reactions.renderReactions(existingReactions, meId);
-                        wrapper.innerHTML = reactionsHtml;
+                    console.log('[chat-detail-enhanced] New message detected:', node.dataset.messageId);
+                    
+                    // Инициализировать обработчики реакций если есть контейнер
+                    const reactionsContainer = node.querySelector('.message-reactions');
+                    if (reactionsContainer) {
+                        console.log('[chat-detail-enhanced] Initializing reactions handlers for new message');
                         reactions.initMessageReactions(node, node.dataset.messageId, meId);
                     }
                     
-                    // Подключить контекстное меню к новому сообщению
+                    // Подключить контекстное меню
                     if (!node.dataset.contextMenuAttached) {
                         contextMenu.attachToMessage(node);
                         node.dataset.contextMenuAttached = 'true';
@@ -252,6 +228,31 @@ async function initChatDetail() {
     });
 
     // ==================== Init ====================
+    
+    // Делегированный обработчик кликов на реакции - используем MessageReactions
+    document.addEventListener('click', async (e) => {
+        const reactionBtn = e.target.closest('.reaction-button');
+        if (reactionBtn && !reactionBtn.classList.contains('add-reaction')) {
+            e.preventDefault();
+            
+            const messageEl = reactionBtn.closest('[data-message-id]');
+            if (!messageEl) return;
+            
+            const messageId = messageEl.dataset.messageId;
+            const emoji = reactionBtn.dataset.emoji;
+            const isActive = reactionBtn.classList.contains('active');
+            
+            try {
+                if (isActive) {
+                    await reactions.removeReaction(messageId);
+                } else {
+                    await reactions.addReaction(messageId, emoji);
+                }
+            } catch (error) {
+                console.error('[chat-detail-enhanced] Reaction error:', error);
+            }
+        }
+    });
     
     initMessageReactions();
     

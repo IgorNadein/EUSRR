@@ -20,7 +20,7 @@
 .message-context-menu {
   position: fixed;
   z-index: 9999;
-  background: var(--bs-body-bg);
+  background: #ffffff; // Явно белый для светлой темы
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   min-width: 280px;
@@ -34,6 +34,9 @@
     opacity: 1;
     transform: scale(1);
   }
+
+  // Мобильное позиционирование больше не отличается - убрано
+  // (контекстное меню позиционируется одинаково на всех устройствах)
 
   // Backdrop для мобильных
   &::before {
@@ -71,38 +74,121 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   QUICK REACTIONS
+   QUICK REACTIONS (TELEGRAM-STYLE)
 ────────────────────────────────────────────────────────────── */
-.quick-reactions {
+// Floating панель с реакциями (отдельно от меню)
+.quick-reactions-panel {
+  position: fixed;
+  z-index: 10000; // Выше чем меню (9999)
+  background: #ffffff; // Явно белый для светлой темы
+  border-radius: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  width: 280px; // Фиксированная ширина как у меню
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  transition: opacity 0.2s ease, transform 0.2s ease, height 0.3s ease;
+  pointer-events: none; // Не блокирует клики когда невидима
+  overflow: hidden; // Для плавной анимации высоты
+
+  &.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+}
+
+.quick-reactions-wrapper {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--bs-border-color);
-  background: var(--bs-tertiary-bg);
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+}
+
+.quick-reactions-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap; // Переносим смайлики на новые строки
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 4px 0;
+
+  // Скрываем scrollbar
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .quick-reaction-btn {
-  width: 44px;
-  height: 44px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
   border: none;
-  background: var(--bs-body-bg);
+  background: transparent;
   border-radius: 50%;
   font-size: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
 
   &:hover {
-    transform: scale(1.2);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    transform: scale(1.25);
+    background: var(--bs-secondary-bg);
   }
 
   &:active {
     transform: scale(1.1);
+  }
+
+  // Кнопка "показать больше реакций"
+  // TODO: Изменить серый фон на белый для светлой темы (должен совпадать с quick-reaction-btn) и кнопка раскрытия меню со смайликами при белой теме сливается с фоном (не меняется от цвета темы)
+  &.quick-reaction-btn-more {
+    opacity: 0.6;
+    font-size: 20px;
+
+    i {
+      transition: transform 0.3s ease;
+    }
+
+    &:hover {
+      opacity: 1;
+      transform: scale(1.25);
+
+      i {
+        transform: translateY(3px);
+      }
+    }
+
+    &.expanded i {
+      transform: rotate(180deg);
+    }
+  }
+
+  // Анимация появления по очереди
+  opacity: 0;
+  animation: reactionItemAppear 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+
+  @for $i from 1 through 10 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{$i * 0.03}s;
+    }
+  }
+}
+
+@keyframes reactionItemAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.5) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
   }
 }
 
@@ -199,17 +285,14 @@
     background-color: rgba(88, 101, 242, 0.15) !important;
   }
 
-  .quick-reactions {
-    background: #1e1f22;
-    border-bottom-color: #3f4147;
+  .quick-reactions-panel {
+    background: #2b2d31;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
 
   .quick-reaction-btn {
-    background: #383a40;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-
     &:hover {
-      background: #42444a;
+      background: rgba(255, 255, 255, 0.1);
     }
   }
 
@@ -238,40 +321,6 @@
 
     &:hover {
       background-color: rgba(242, 63, 67, 0.1);
-    }
-  }
-}
-
-/* ─────────────────────────────────────────────────────────────
-   MOBILE RESPONSIVE
-────────────────────────────────────────────────────────────── */
-@media (max-width: 576px) {
-  .message-context-menu {
-    min-width: calc(100vw - 32px);
-    max-width: calc(100vw - 32px);
-    left: 16px !important;
-    right: 16px;
-    bottom: 16px !important;
-    top: auto !important;
-    transform-origin: center bottom;
-  }
-
-  .quick-reactions {
-    justify-content: center;
-  }
-
-  .quick-reaction-btn {
-    width: 48px;
-    height: 48px;
-    font-size: 26px;
-  }
-
-  .menu-action {
-    padding: var(--space-4) calc(var(--space-4) + var(--space-1));
-    font-size: 16px;
-
-    i {
-      font-size: 20px;
     }
   }
 }

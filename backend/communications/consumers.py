@@ -85,9 +85,9 @@ def serialize_message(m: Message) -> dict:
         )
     data["reactions_summary"] = reactions_summary
     
-    # Вложения
+    # Вложения - всегда включаем поле attachments
+    attachments = []
     if m.has_attachments:
-        attachments = []
         for att in m.attachments.all():
             attachments.append({
                 "id": att.id,
@@ -96,13 +96,15 @@ def serialize_message(m: Message) -> dict:
                 "file_url": att.file.url,
                 "file_size": att.file_size,
                 "mime_type": att.mime_type,
+                "width": att.width,  # Размеры для CSS aspect-ratio
+                "height": att.height,
                 "thumbnail": (
                     att.thumbnail.url
                     if getattr(att, "thumbnail", None)
                     else None
                 ),
             })
-        data["attachments"] = attachments
+    data["attachments"] = attachments
     
     # Голосование
     if hasattr(m, 'poll'):
@@ -584,8 +586,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _get_message(self, message_id: int) -> Message:
         return Message.objects.select_related(
-            'author', 'reply_to', 'reply_to__author'
-        ).prefetch_related('attachments').get(pk=message_id)
+            'author', 'reply_to', 'reply_to__author', 
+            'forwarded_from_author', 'poll'
+        ).prefetch_related(
+            'attachments', 'reactions', 'reactions__user', 'poll__options'
+        ).get(pk=message_id)
 
     @database_sync_to_async
     def _serialize_message_full(self, msg: Message) -> dict:

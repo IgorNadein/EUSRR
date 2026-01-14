@@ -145,6 +145,14 @@ export class ChatControllerV2 {
       // 1. Загружаем сообщения
       // Используем timestamp как fallback если нет message ID (API поддерживает оба)
       const anchorValue = this.lastReadMessageId || this.lastReadTimestamp;
+      
+      console.log('[ChatControllerV2] Init: Loading messages', {
+        anchorValue,
+        lastReadMessageId: this.lastReadMessageId,
+        lastReadTimestamp: this.lastReadTimestamp,
+        willLoadAround: !!anchorValue
+      });
+      
       const loadResult = await this.loader.loadInitial(this.chatId, {
         aroundMessageId: anchorValue,
       });
@@ -170,7 +178,17 @@ export class ChatControllerV2 {
           // Нет anchor - позиционируем в самый низ (новый чат)
           await new Promise((resolve) => {
             requestAnimationFrame(() => {
+              // Отключаем scroll-behavior для мгновенного скролла
+              const originalScrollBehavior = this.scrollElement.style.scrollBehavior;
+              this.scrollElement.style.scrollBehavior = 'auto';
+              
               this.scrollElement.scrollTop = this.scrollElement.scrollHeight;
+              
+              // Возвращаем scroll-behavior
+              requestAnimationFrame(() => {
+                this.scrollElement.style.scrollBehavior = originalScrollBehavior;
+              });
+              
               console.log(
                 "[ChatControllerV2] Initial position: bottom (no anchor)"
               );
@@ -616,8 +634,17 @@ export class ChatControllerV2 {
           ? targetScrollTop - stickyHeaderOffset
           : targetScrollTop;
 
-      // ✨ МГНОВЕННАЯ установка позиции - НЕ скролл, а начальная позиция!
+      // ✨ ОТКЛЮЧАЕМ scroll-behavior для мгновенного позиционирования
+      const originalScrollBehavior = this.scrollElement.style.scrollBehavior;
+      this.scrollElement.style.scrollBehavior = 'auto';
+      
+      // МГНОВЕННАЯ установка позиции - без анимации!
       this.scrollElement.scrollTop = Math.max(0, adjustedScrollTop);
+      
+      // Возвращаем scroll-behavior через RAF (после применения scrollTop)
+      requestAnimationFrame(() => {
+        this.scrollElement.style.scrollBehavior = originalScrollBehavior;
+      });
 
       console.log("[ChatControllerV2] Initial position set to message:", {
         messageId,
@@ -1039,6 +1066,43 @@ export class ChatControllerV2 {
         loader.classList.add("d-none");
       }
     }
+  }
+
+  /**
+   * Показывает индикатор новых сообщений
+   * @private
+   */
+  _showNewMessagesIndicator() {
+    if (!this._newMessagesCount) {
+      this._newMessagesCount = 0;
+    }
+    this._newMessagesCount++;
+    
+    // Можно добавить UI индикатор или просто считать
+    console.log('[ChatControllerV2] New messages indicator:', this._newMessagesCount);
+    
+    // TODO: Показать визуальный индикатор в UI если нужно
+    // const indicator = document.getElementById('newMessagesIndicator');
+    // if (indicator) {
+    //   indicator.textContent = `${this._newMessagesCount} новых сообщений`;
+    //   indicator.classList.add('show');
+    // }
+  }
+
+  /**
+   * Скрывает индикатор новых сообщений
+   * @private
+   */
+  _hideNewMessagesIndicator() {
+    this._newMessagesCount = 0;
+    
+    console.log('[ChatControllerV2] New messages indicator hidden');
+    
+    // TODO: Скрыть визуальный индикатор в UI если есть
+    // const indicator = document.getElementById('newMessagesIndicator');
+    // if (indicator) {
+    //   indicator.classList.remove('show');
+    // }
   }
 
   /**

@@ -361,17 +361,30 @@
   border-radius: $radius-sm;
 }
 
+// TODO: Исследовать почему у медиа остаются большие отступы
+// Возможные причины: кэш браузера, конфликты с Bootstrap, line-height на родителях
+// Попробовать: добавить !important, проверить в DevTools computed styles
+// Убираем верхний отступ если вложение - только медиа без текста
+.message-attachments:has(.attachment-item--media):not(:has(.attachment-item:not(.attachment-item--media))) {
+  margin-top: 0.25rem; // Уменьшенный отступ для медиа (вместо mt-2 = 0.5rem)
+}
+
 .chat-media {
-  display: block; // Изменено с inline-block
-  width: auto !important;
+  display: block;
+  width: auto;
   max-width: min(640px, 85vw);
   max-height: 520px;
-  height: auto !important;
   border-radius: $radius-md;
   background: rgba(0, 0, 0, 0.08);
   content-visibility: auto;
-  // Убираем vertical-align issues
   vertical-align: top;
+}
+
+// Telegram approach: изображения с aspect-ratio занимают полную ширину контейнера
+// Это позволяет браузеру резервировать место до загрузки → нет скачка скролла
+.chat-media--image[style*="aspect-ratio"] {
+  width: 100% !important;
+  height: auto !important;
 }
 
 // Убираем этот конфликтующий селектор - заменяем на более специфичный
@@ -436,7 +449,6 @@
 .selection-mode {
   .msg {
     cursor: pointer;
-    user-select: none;
     transition: background-color $transition-fast;
 
     &:hover {
@@ -793,6 +805,8 @@
   white-space: pre-line; /* Сохраняет \n, но схлопывает пробелы из HTML */
   max-width: 70%; /* Ограничиваем ширину bubble */
   @include shadow($shadow-xs);
+  user-select: text; /* Разрешаем выделение текста */
+  cursor: text; /* Курсор текстового выделения */
 
   // Наследование white-space для вложенных элементов
   > div {

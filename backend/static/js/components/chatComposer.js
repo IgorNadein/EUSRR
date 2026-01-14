@@ -18,7 +18,7 @@ const DEFAULT_CONFIG = {
 		audio: '#audioInput'
 	},
 	submitSelector: '.btn-send',
-	uploadUrl: '/api/v1/communications/upload-message/',
+	uploadUrl: '/api/v1/communications/messages/upload/',
 	csrfCookieName: 'csrftoken',
 	scrollSelector: '#chatScroll',
 	profileUrl: '/employees/profile/',
@@ -290,17 +290,21 @@ class ChatComposer {
 		
 		const content = (this.textarea?.value || '').trim();
 		
-		// Валидация: если нет текста И нет файлов - не отправляем
-		if (!content && this.selectedFiles.length === 0) {
-			console.log('[ChatComposer] Empty message, skipping');
-			return;
-		}
-		
 		// Определяем режим через formManager
 		const mode = window.chatFormManager?.mode || 'send';
 		const messageId = window.chatFormManager?.currentMessageId || null;
 		
-		console.log('[ChatComposer] Mode:', mode, 'MessageId:', messageId);
+		// Валидация: проверяем что есть хоть что-то
+		const hasContent = content.length > 0;
+		const hasFiles = this.selectedFiles.length > 0;
+		
+		if (!hasContent && !hasFiles) {
+			console.warn('[ChatComposer] Cannot send empty message');
+			alert('Сообщение должно содержать либо текст, либо вложения');
+			return;
+		}
+		
+		console.log('[ChatComposer] Mode:', mode, 'MessageId:', messageId, 'Content:', content.substring(0, 50), 'Files:', hasFiles);
 		
 		// Блокируем повторную отправку
 		if (this.isSubmitting) {
@@ -325,7 +329,7 @@ class ChatComposer {
 			console.error('[ChatComposer] Send failed', error);
 			alert(error.message || 'Ошибка при отправке сообщения');
 		} finally {
-			this.isSubmitting = false;
+			this.isSubmitting = true;
 			this.setLoading(false);
 		}
 	}
@@ -377,6 +381,7 @@ class ChatComposer {
 	
 	/**
 	 * Редактирование существующего сообщения
+	 * Поддерживает загрузку новых файлов
 	 */
 	async sendEdit(messageId, content) {
 		const csrfToken = getCookie(this.csrfCookieName);
@@ -384,22 +389,102 @@ class ChatComposer {
 			throw new Error('CSRF токен не найден');
 		}
 		
-		const editUrl = `/api/v1/communications/messages/${messageId}/edit/`;
+		// Разделяем файлы на существующие и новые
+		const existingAttachmentIds = [];
+		const newFiles = [];
+		
+		this.selectedFiles.forEach(entry => {
+			if (entry.file._isExisting === true && entry.file._existingId) {
+				// Существующее вложение - сохраняем его ID
+				existingAttachmentIds.push(entry.file._existingId);
+			} else {
+				// Новый файл - нужно загрузить
+				newFiles.push(entry);
+			}
+		});
+		
+		console.log('[ChatComposer] Editing message:', {
+			messageId,
+			contentLength: content.length,
+			existingAttachments: existingAttachmentIds,
+			newFiles: newFiles.length
+		});
+		
+		// Шаг 1: Загружаем новые файлы если есть
+		const newAttachmentIds = [];
+		if (newFiles.length > 0) {
+			console.log('[ChatComposer] Uploading new files:', newFiles.length);
+			
+			const formData = new FormData();
+			formData.set('chat_id', this.chatId);
+			formData.set('content', ''); // Пустое сообщение для загрузки файлов
+			
+			newFiles.forEach((entry, index) => {
+				formData.append(`file_${index}`, entry.file, entry.file.name);
+			});
+			
+			// Загружаем файлы через upload-message
+			const uploadResponse = await fetch(this.uploadUrl, {
+				method: 'POST',
+				headers: {
+					'X-CSRFToken': csrfToken
+				},
+				body: formData
+			});
+			
+			if (!uploadResponse.ok) {
+				const data = await uploadResponse.json().catch(() => ({}));
+				throw new Error(data.error || 'Ошибка загрузки файлов');
+			}
+			
+			const uploadData = await uploadResponse.json();
+			
+			// Получаем ID временного сообщения и его вложений
+			if (uploadData.message && uploadData.message.attachments) {
+				uploadData.message.attachments.forEach(att => {
+					newAttachmentIds.push(att.id);
+				});
+				
+				console.log('[ChatComposer] New attachments uploaded:', newAttachmentIds);
+				
+				// Удаляем временное сообщение
+				if (uploadData.message.id) {
+					await fetch(`/api/v1/communications/messages/${uploadData.message.id}/`, {
+						method: 'DELETE',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-CSRFToken': csrfToken
+						}
+					});
+				}
+			}
+		}
+		
+		// Шаг 2: Собираем все ID вложений (существующие + новые)
+		const allAttachmentIds = [...existingAttachmentIds, ...newAttachmentIds];
+		
+		console.log('[ChatComposer] All attachment IDs:', allAttachmentIds);
+		
+		// Шаг 3: Отправляем запрос на редактирование
+		const editUrl = `/api/v1/communications/messages/${messageId}/`;
 		
 		const response = await fetch(editUrl, {
-			method: 'POST',
+			method: 'PATCH',
 			headers: {
 				'Content-Type': 'application/json',
 				'X-CSRFToken': csrfToken
 			},
-			body: JSON.stringify({ content })
+			body: JSON.stringify({ 
+				content,
+				existing_attachment_ids: allAttachmentIds.length > 0 ? allAttachmentIds : []
+			})
 		});
 		
 		console.log('[ChatComposer] Edit response:', response.status);
 		
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));
-			throw new Error(data.error || 'Ошибка редактирования');
+			throw new Error(data.error || data.detail || 'Ошибка редактирования');
 		}
 		
 		// Успех - очищаем форму
@@ -426,8 +511,8 @@ class ChatComposer {
 		try {
 			this.setLoading(true);
 			
-			const response = await fetch(`/api/v1/communications/messages/${messageId}/edit/`, {
-				method: 'POST',
+			const response = await fetch(`/api/v1/communications/messages/${messageId}/`, {
+				method: 'PATCH',
 				headers: {
 					'Content-Type': 'application/json',
 					'X-CSRFToken': csrfToken
@@ -437,8 +522,8 @@ class ChatComposer {
 
 			const payload = await response.json().catch(() => ({}));
 
-			if (!response.ok || !payload.ok) {
-				const errorMessage = payload.error || 'Не удалось отредактировать сообщение';
+			if (!response.ok) {
+				const errorMessage = payload.error || payload.detail || 'Не удалось отредактировать сообщение';
 				throw new Error(errorMessage);
 			}
 
@@ -630,19 +715,36 @@ class ChatComposer {
 
 		this.selectedFiles.forEach((entry) => {
 			const isImage = entry.file.type.startsWith('image/');
+			const isExisting = entry.file._isExisting === true;
 			const iconClass = pickIcon(entry.file.type);
 			const wrapper = document.createElement('div');
 			wrapper.className = 'attachment-item d-flex align-items-center gap-2 p-2 rounded mb-2';
 			
-			// Для изображений показываем превью
+			// Определяем URL изображения
+			let imgUrl = null;
 			if (isImage) {
-				const imgUrl = URL.createObjectURL(entry.file);
+				if (isExisting && entry.file._existingUrl) {
+					// Для существующих файлов используем их URL
+					imgUrl = entry.file._existingUrl;
+				} else {
+					// Для новых файлов создаем blob URL
+					imgUrl = URL.createObjectURL(entry.file);
+				}
+			}
+			
+			// Определяем размер файла
+			const fileSizeStr = isExisting && entry.file._sizeStr 
+				? entry.file._sizeStr 
+				: formatFileSize(entry.file.size);
+			
+			// Для изображений показываем превью
+			if (isImage && imgUrl) {
 				wrapper.innerHTML = `
 					<img src="${imgUrl}" alt="${entry.file.name}" 
 					     style="max-width: 60px; max-height: 60px; border-radius: 6px; object-fit: cover;" />
 					<div class="flex-grow-1">
 						<div class="fw-semibold text-truncate">${entry.file.name}</div>
-						<div class="small text-secondary">${formatFileSize(entry.file.size)}</div>
+						<div class="small text-secondary">${fileSizeStr}</div>
 					</div>
 					<button type="button" class="btn btn-sm btn-ghost" aria-label="Удалить файл" data-file-id="${entry.id}">
 						<i class="bi-x-lg"></i>
@@ -654,7 +756,7 @@ class ChatComposer {
 					<i class="${iconClass} fs-4"></i>
 					<div class="flex-grow-1">
 						<div class="fw-semibold text-truncate">${entry.file.name}</div>
-						<div class="small text-secondary">${formatFileSize(entry.file.size)}</div>
+						<div class="small text-secondary">${fileSizeStr}</div>
 					</div>
 					<button type="button" class="btn btn-sm btn-ghost" aria-label="Удалить файл" data-file-id="${entry.id}">
 						<i class="bi-x-lg"></i>
@@ -664,10 +766,9 @@ class ChatComposer {
 
 			wrapper.querySelector('button')?.addEventListener('click', () => {
 				this.removeFile(entry.id);
-				// Очищаем URL.createObjectURL для изображений
-				if (isImage) {
-					const img = wrapper.querySelector('img');
-					if (img) URL.revokeObjectURL(img.src);
+				// Очищаем URL.createObjectURL только для НОВЫХ изображений
+				if (isImage && !isExisting && imgUrl) {
+					URL.revokeObjectURL(imgUrl);
 				}
 			});
 

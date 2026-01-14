@@ -11,8 +11,8 @@ export function initChatFormManager(options = {}) {
     formId = 'chatForm',
     textareaId = 'id_content',
     chatId,
-    uploadUrl = '/api/v1/communications/upload-message/',
-    editUrlTemplate = '/api/v1/communications/messages/{id}/edit/',
+    uploadUrl = '/api/v1/communications/messages/upload/',
+    editUrlTemplate = '/api/v1/communications/messages/{id}/',
   } = options;
 
   const form = document.getElementById(formId);
@@ -28,6 +28,7 @@ export function initChatFormManager(options = {}) {
     mode: 'send', // 'send' | 'edit' | 'reply'
     editMessageId: null,
     replyToMessageId: null,
+    existingAttachments: [], // Вложения при редактировании
     originalAction: form.action,
     originalMethod: form.method,
   };
@@ -64,9 +65,17 @@ export function initChatFormManager(options = {}) {
 
   /**
    * Переключить форму в режим редактирования
+   * @param {number|string} messageId - ID сообщения
+   * @param {string} currentContent - Текущий текст сообщения
+   * @param {Array} existingAttachments - Существующие вложения [{id, file_url, filename, ...}]
    */
-  function setModeToEdit(messageId, currentContent) {
-    if (!messageId) {
+  function setModeToEdit(messageId, currentContent = '', existingAttachments = []) {    console.log('[ChatFormManager] setModeToEdit called with:', {
+      messageId,
+      contentLength: currentContent?.length || 0,
+      attachmentsCount: existingAttachments?.length || 0,
+      attachments: existingAttachments
+    });
+        if (!messageId) {
       console.error('[ChatFormManager] messageId required for edit mode');
       return;
     }
@@ -74,6 +83,7 @@ export function initChatFormManager(options = {}) {
     state.mode = 'edit';
     state.editMessageId = messageId;
     state.replyToMessageId = null;
+    state.existingAttachments = existingAttachments; // Сохраняем существующие файлы
 
     // Меняем action на API редактирования
     const editUrl = editUrlTemplate.replace('{id}', messageId);
@@ -88,9 +98,53 @@ export function initChatFormManager(options = {}) {
 
     // Удаляем индикатор ответа
     removeReplyIndicator();
+    
+    // ВАЖНО: Очищаем новые загруженные файлы (input type="file")
+    clearFileInputs();
 
     // Показываем индикатор редактирования
     showEditIndicator(messageId, currentContent);
+    
+    // Добавляем существующие вложения в chatComposer
+    if (existingAttachments && existingAttachments.length > 0 && window.chatComposer) {
+      console.log('[ChatFormManager] Adding existing attachments to chatComposer:', existingAttachments);
+      
+      // Сохраняем оригинальный метод removeFile
+      if (!window.chatComposer._originalRemoveFile) {
+        window.chatComposer._originalRemoveFile = window.chatComposer.removeFile.bind(window.chatComposer);
+      }
+      
+      // Переопределяем removeFile чтобы учитывать существующие файлы
+      window.chatComposer.removeFile = function(entryId) {
+        console.log('[ChatComposer] removeFile called:', entryId);
+        
+        // Если это существующий файл - удаляем через chatFormManager
+        if (entryId.startsWith('existing-')) {
+          const attachmentId = entryId.replace('existing-', '');
+          const manager = window.chatFormManager;
+          if (manager && manager.state) {
+            manager.state.existingAttachments = manager.state.existingAttachments.filter(
+              att => att.id != attachmentId
+            );
+            console.log('[ChatComposer] Removed existing attachment:', attachmentId);
+          }
+        }
+        
+        // Вызываем оригинальный метод
+        this._originalRemoveFile(entryId);
+      };
+      
+      existingAttachments.forEach(att => {
+        // Создаем фейковый File объект для существующих вложений
+        // chatComposer будет отображать их как обычные файлы
+        const mockFile = createMockFileFromAttachment(att);
+        if (mockFile) {
+          const fileId = `existing-${att.id}`;
+          window.chatComposer.selectedFiles.push({ id: fileId, file: mockFile, existingId: att.id });
+        }
+      });
+      window.chatComposer.renderPreview();
+    }
 
     // Заполняем textarea текущим содержимым
     textarea.value = currentContent || '';
@@ -100,7 +154,11 @@ export function initChatFormManager(options = {}) {
     // Курсор в конец
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
-    console.log('[ChatFormManager] Mode: EDIT', messageId);
+    console.log('[ChatFormManager] Mode: EDIT', {
+      messageId,
+      contentLength: currentContent?.length || 0,
+      attachmentsCount: existingAttachments?.length || 0
+    });
   }
 
   /**
@@ -188,17 +246,53 @@ export function initChatFormManager(options = {}) {
     }
   }
 
+  /**
+   * Создает mock File объект из данных существующего вложения
+   */
+  function createMockFileFromAttachment(att) {
+    const fileName = att.filename || att.file_name || 'Файл';
+    const fileUrl = att.file_url || att.url || '';
+    
+    if (!fileUrl) return null;
+    
+    // Определяем MIME type из URL
+    let mimeType = 'application/octet-stream';
+    if (fileUrl.match(/\.(jpg|jpeg)$/i)) mimeType = 'image/jpeg';
+    else if (fileUrl.match(/\.png$/i)) mimeType = 'image/png';
+    else if (fileUrl.match(/\.gif$/i)) mimeType = 'image/gif';
+    else if (fileUrl.match(/\.webp$/i)) mimeType = 'image/webp';
+    else if (fileUrl.match(/\.mp4$/i)) mimeType = 'video/mp4';
+    else if (fileUrl.match(/\.pdf$/i)) mimeType = 'application/pdf';
+    
+    // Создаем mock File объект с расширенными свойствами
+    const mockFile = {
+      name: fileName,
+      type: mimeType,
+      size: 0, // Размер неизвестен для существующих файлов
+      lastModified: Date.now(),
+      // Дополнительные свойства для идентификации
+      _isExisting: true,
+      _existingId: att.id,
+      _existingUrl: fileUrl,
+      _sizeStr: att.size_str || ''
+    };
+    
+    return mockFile;
+  }
+
   function showEditIndicator(messageId, content) {
+    console.log('[ChatFormManager] showEditIndicator called:', { messageId, contentLength: content?.length || 0 });
+    
     removeEditIndicator();
 
     const preview = content.length > 50 ? content.substring(0, 50) + '…' : content;
 
     const indicator = document.createElement('div');
-    indicator.className = 'edit-indicator alert alert-warning d-flex align-items-center justify-content-between py-2 px-3 mb-2';
+    indicator.className = 'edit-indicator alert alert-info d-flex align-items-center justify-content-between py-2 px-3 mb-2';
     indicator.dataset.editIndicator = '1';
     indicator.innerHTML = `
       <div class="d-flex align-items-center gap-2">
-        <i class="bi-pencil-square"></i>
+        <i class="bi bi-pencil-square fs-5"></i>
         <div>
           <strong>Редактирование сообщения</strong>
           <div class="small text-muted">${escapeHtml(preview)}</div>
@@ -223,6 +317,36 @@ export function initChatFormManager(options = {}) {
     }
   }
 
+  /**
+   * Очистить все input type="file" и их превью
+   */
+  function clearFileInputs() {
+    console.log('[ChatFormManager] Clearing file inputs...');
+    
+    // Очищаем все file inputs в форме
+    const fileInputs = form.querySelectorAll('input[type="file"]');
+    fileInputs.forEach(input => {
+      input.value = '';
+    });
+    
+    // Очищаем превью файлов (если есть ChatComposer)
+    const attachmentPreview = document.getElementById('attachmentPreview');
+    if (attachmentPreview) {
+      attachmentPreview.classList.add('d-none');
+      attachmentPreview.innerHTML = '';
+    }
+    
+    // Если есть глобальный chatComposer - вызываем его метод очистки
+    if (window.chatComposer && typeof window.chatComposer.selectedFiles !== 'undefined') {
+      window.chatComposer.selectedFiles = [];
+      if (typeof window.chatComposer.renderPreview === 'function') {
+        window.chatComposer.renderPreview();
+      }
+      console.log('[ChatFormManager] ✓ Cleared chatComposer files');
+    }
+    
+    console.log('[ChatFormManager] ✓ File inputs cleared');
+  }
   function showReplyIndicator(messageId, authorName, messagePreview) {
     removeReplyIndicator();
 
@@ -299,6 +423,12 @@ export function initChatFormManager(options = {}) {
     },
     get replyToMessageId() {
       return state.replyToMessageId;
+    },
+    get existingAttachments() {
+      return state.existingAttachments || [];
+    },
+    get existingAttachments() {
+      return state.existingAttachments || [];
     },
     
     state, // Для отладки

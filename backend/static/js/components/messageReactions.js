@@ -150,11 +150,49 @@ export class MessageReactions {
         const reactionsContainer = messageElement.querySelector('.message-reactions');
         if (!reactionsContainer) return;
 
+        let longPressTimer = null;
+        let longPressTriggered = false;
+
+        // Обработчик начала нажатия (mousedown/touchstart)
+        const handlePressStart = (e, reactionBtn) => {
+            // Останавливаем всплытие чтобы не срабатывало контекстное меню сообщения
+            e.stopPropagation();
+            // НЕ вызываем e.preventDefault() чтобы клики работали на мобилках
+            
+            longPressTriggered = false;
+            const emoji = reactionBtn.dataset.emoji;
+            const title = reactionBtn.getAttribute('title');
+            
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                this.showReactionUsers(reactionBtn, emoji, title);
+            }, 500); // 500ms для долгого нажатия
+        };
+
+        // Обработчик окончания нажатия
+        const handlePressEnd = (e) => {
+            if (e) {
+                e.stopPropagation();
+            }
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
         // Обработчик клика на существующую реакцию (добавить/удалить)
         reactionsContainer.addEventListener('click', async (e) => {
             const reactionBtn = e.target.closest('.reaction-button');
             if (reactionBtn) {
                 e.preventDefault();
+                e.stopPropagation(); // Останавливаем всплытие
+                
+                // Если было долгое нажатие - не выполняем клик
+                if (longPressTriggered) {
+                    longPressTriggered = false;
+                    return;
+                }
+                
                 const emoji = reactionBtn.dataset.emoji;
                 const isActive = reactionBtn.classList.contains('active');
 
@@ -171,46 +209,229 @@ export class MessageReactions {
                 }
             }
         });
+
+        // Обработчик правой кнопки мыши (контекстное меню)
+        reactionsContainer.addEventListener('contextmenu', (e) => {
+            console.log('[MessageReactions] contextmenu event on reactions container');
+            const reactionBtn = e.target.closest('.reaction-button');
+            if (reactionBtn) {
+                console.log('[MessageReactions] contextmenu on reaction button, showing users');
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation(); // Останавливаем все обработчики
+                
+                const emoji = reactionBtn.dataset.emoji;
+                const title = reactionBtn.getAttribute('title');
+                this.showReactionUsers(reactionBtn, emoji, title);
+            }
+        }, true); // Используем capturing phase
+
+        // Обработчики долгого нажатия для мыши
+        reactionsContainer.addEventListener('mousedown', (e) => {
+            const reactionBtn = e.target.closest('.reaction-button');
+            if (reactionBtn && e.button === 0) { // Только левая кнопка
+                handlePressStart(e, reactionBtn);
+            }
+        });
+
+        reactionsContainer.addEventListener('mouseup', (e) => {
+            handlePressEnd(e);
+        });
+        
+        reactionsContainer.addEventListener('mouseleave', (e) => {
+            handlePressEnd(e);
+        });
+
+        // Обработчики долгого нажатия для тачскрина
+        reactionsContainer.addEventListener('touchstart', (e) => {
+            console.log('[MessageReactions] touchstart event on reactions container');
+            const reactionBtn = e.target.closest('.reaction-button');
+            if (reactionBtn) {
+                console.log('[MessageReactions] touchstart on reaction button');
+                handlePressStart(e, reactionBtn);
+            }
+        }, { passive: true, capture: true }); // passive: true чтобы не блокировать скролл
+
+        reactionsContainer.addEventListener('touchend', (e) => {
+            const reactionBtn = e.target.closest('.reaction-button');
+            
+            // Если было долгое нажатие - preventDefault чтобы не было клика
+            if (longPressTriggered && reactionBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                longPressTriggered = false;
+            }
+            
+            handlePressEnd(e);
+        });
+        
+        reactionsContainer.addEventListener('touchcancel', (e) => {
+            handlePressEnd(e);
+        });
+    }
+
+    /**
+     * Показать список пользователей, поставивших реакцию
+     */
+    showReactionUsers(reactionBtn, emoji, userNames) {
+        console.log('[MessageReactions] showReactionUsers called', { emoji, userNames });
+        
+        // Удаляем предыдущий попап если есть
+        this.closeReactionUsersPopup();
+
+        // Создаем попап
+        const popup = document.createElement('div');
+        popup.className = 'reaction-users-popup';
+        
+        const usersList = userNames.split(', ');
+        console.log('[MessageReactions] Users list:', usersList);
+        const usersHtml = usersList.map(name => `<div class="user-name">${name}</div>`).join('');
+        
+        popup.innerHTML = `
+            <div class="reaction-users-header">
+                <span class="reaction-emoji">${emoji}</span>
+                <span class="reaction-count">${usersList.length}</span>
+            </div>
+            <div class="reaction-users-list">
+                ${usersHtml}
+            </div>
+        `;
+        
+        document.body.appendChild(popup);
+        
+        // Позиционируем попап
+        const rect = reactionBtn.getBoundingClientRect();
+        const popupRect = popup.getBoundingClientRect();
+        
+        let left = rect.left + (rect.width / 2) - (popupRect.width / 2);
+        let top = rect.top - popupRect.height - 8;
+        
+        // Корректируем если выходит за пределы экрана
+        if (left < 8) left = 8;
+        if (left + popupRect.width > window.innerWidth - 8) {
+            left = window.innerWidth - popupRect.width - 8;
+        }
+        if (top < 8) {
+            top = rect.bottom + 8; // Показываем снизу
+        }
+        
+        popup.style.left = `${left}px`;
+        popup.style.top = `${top}px`;
+        
+        // Сохраняем ссылку на активный попап
+        this.activePopup = popup;
+        
+        // Анимация появления
+        requestAnimationFrame(() => {
+            popup.classList.add('show');
+        });
+        
+        // Закрываем при клике вне попапа
+        const handleClickOutside = (e) => {
+            if (this.activePopup && !this.activePopup.contains(e.target) && !e.target.closest('.reaction-button')) {
+                this.closeReactionUsersPopup();
+            }
+        };
+        
+        // Закрываем при нажатии Escape
+        const handleEscape = (e) => {
+            if (e.key === 'Escape' && this.activePopup) {
+                this.closeReactionUsersPopup();
+            }
+        };
+        
+        // Закрываем при скролле
+        const handleScroll = () => {
+            if (this.activePopup) {
+                this.closeReactionUsersPopup();
+            }
+        };
+        
+        // Сохраняем обработчики для возможности удаления
+        this.popupHandlers = {
+            click: handleClickOutside,
+            escape: handleEscape,
+            scroll: handleScroll
+        };
+        
+        // Добавляем обработчики с небольшой задержкой чтобы не закрыть сразу
+        setTimeout(() => {
+            document.addEventListener('click', handleClickOutside);
+            document.addEventListener('keydown', handleEscape);
+            document.addEventListener('scroll', handleScroll, true);
+        }, 100);
+    }
+
+    /**
+     * Закрыть попап списка пользователей
+     */
+    closeReactionUsersPopup() {
+        if (!this.activePopup) {
+            return;
+        }
+
+        console.log('[MessageReactions] Closing reaction users popup');
+        
+        const popupToClose = this.activePopup;
+        this.activePopup = null;
+
+        // Удаляем обработчики событий
+        if (this.popupHandlers) {
+            document.removeEventListener('click', this.popupHandlers.click);
+            document.removeEventListener('keydown', this.popupHandlers.escape);
+            document.removeEventListener('scroll', this.popupHandlers.scroll, true);
+            this.popupHandlers = null;
+        }
+
+        // Анимация закрытия
+        popupToClose.classList.remove('show');
+        
+        setTimeout(() => {
+            popupToClose.remove();
+        }, 200);
     }
 
     /**
      * Обновить отображение реакций для сообщения
+     * Работает как с .message-reactions-wrapper так и с .message-reactions напрямую
      */
     updateMessageReactions(messageElement, reactionsSummary, currentUserId) {
-        console.log('[Reactions] === updateMessageReactions START ===');
-        console.log('[Reactions] Message ID:', messageElement.dataset.messageId);
-        console.log('[Reactions] Reactions summary:', JSON.stringify(reactionsSummary));
-        console.log('[Reactions] Current user ID:', currentUserId);
+        // Обновляем data-reactions атрибут
+        messageElement.setAttribute('data-reactions', JSON.stringify(reactionsSummary || {}));
         
-        const wrapper = messageElement.querySelector('.message-reactions-wrapper');
+        let reactionsContainer = messageElement.querySelector('.message-reactions');
         
-        if (!wrapper) {
-            console.error('[Reactions] Message reactions wrapper NOT FOUND!');
+        // Если нет реакций - удаляем контейнер
+        if (!reactionsSummary || Object.keys(reactionsSummary).length === 0) {
+            if (reactionsContainer) {
+                reactionsContainer.remove();
+            }
             return;
         }
-
-        console.log('[Reactions] Found wrapper:', wrapper);
-
-        // Обновляем data-reactions атрибут для синхронизации состояния
-        const dataReactionsValue = JSON.stringify(reactionsSummary || {});
-        messageElement.setAttribute('data-reactions', dataReactionsValue);
-        console.log('[Reactions] Updated data-reactions attribute:', dataReactionsValue);
-
-        // Обновить содержимое wrapper
-        const messageId = messageElement.dataset.messageId;
+        
+        // Рендерим HTML реакций
         const reactionsHtml = this.renderReactions(reactionsSummary, currentUserId);
-        console.log('[Reactions] Rendered HTML length:', reactionsHtml.length);
-        console.log('[Reactions] Rendered HTML preview:', reactionsHtml.substring(0, 200));
         
-        wrapper.innerHTML = reactionsHtml;
-        
-        console.log('[Reactions] Wrapper updated. Children count:', wrapper.children.length);
-        console.log('[Reactions] Wrapper first child:', wrapper.firstElementChild);
-
-        // Переинициализировать обработчики
-        this.initMessageReactions(messageElement, messageId, currentUserId);
-        console.log('[Reactions] Handlers reinitialized');
-        console.log('[Reactions] === updateMessageReactions END ===');
+        if (reactionsContainer) {
+            // Обновляем существующий контейнер
+            reactionsContainer.innerHTML = reactionsHtml;
+        } else {
+            // Создаем новый контейнер
+            const bubble = messageElement.querySelector('.bubble');
+            if (bubble) {
+                reactionsContainer = document.createElement('div');
+                reactionsContainer.className = 'message-reactions mt-2';
+                reactionsContainer.innerHTML = reactionsHtml;
+                
+                // Вставляем перед временем сообщения
+                const timeEl = bubble.querySelector('.message-time');
+                if (timeEl) {
+                    timeEl.parentNode.insertBefore(reactionsContainer, timeEl);
+                } else {
+                    bubble.appendChild(reactionsContainer);
+                }
+            }
+        }
     }
 
     /**

@@ -11,6 +11,7 @@
 
 import { DateDividerManager } from '../utils/dateDividers.js';
 import { DateGroupManager } from '../managers/dateGroupManager.js';
+import MessageReactions from '../components/messageReactions.js';
 
 /**
  * Экранирует HTML для безопасного вывода
@@ -56,6 +57,9 @@ export class MessageRendererV2 {
 
         /** @type {Set<number|string>} ID сообщений которые уже в DOM */
         this.renderedMessages = new Set();
+        
+        /** @type {MessageReactions} Централизованный обработчик реакций */
+        this.reactions = new MessageReactions();
 
         console.log('[MessageRendererV2] Initialized', {
             hasDateGroupManager: !!this.dateGroupManager
@@ -495,7 +499,8 @@ export class MessageRendererV2 {
         }
 
         if (updates.reactions_summary !== undefined) {
-            this._updateReactions(messageEl, updates.reactions_summary);
+            // Используем централизованный MessageReactions для обновления
+            this.reactions.updateMessageReactions(messageEl, updates.reactions_summary, this.currentUserId);
         }
 
         if (updates.status !== undefined) {
@@ -622,6 +627,13 @@ export class MessageRendererV2 {
         }
         html += '</div>';
         
+        // Голосование
+        if (msg.poll) {
+            html += '<div class="mt-2">';
+            html += this._renderPoll(msg.poll);
+            html += '</div>';
+        }
+        
         // Вложения
         if (msg.attachments && msg.attachments.length > 0) {
             html += '<div class="message-attachments mt-2">';
@@ -636,10 +648,10 @@ export class MessageRendererV2 {
         if (msg.status === 'failed') html += '<i class="bi bi-exclamation-circle text-danger ms-1"></i>';
         html += '</div>';
         
-        // Реакции
+        // Реакции (используем централизованный MessageReactions)
         if (msg.reactions_summary && Object.keys(msg.reactions_summary).length > 0) {
             html += '<div class="message-reactions mt-2">';
-            html += this._renderReactions(msg.reactions_summary);
+            html += this.reactions.renderReactions(msg.reactions_summary, this.currentUserId);
             html += '</div>';
         }
         
@@ -660,15 +672,62 @@ export class MessageRendererV2 {
         const fileSize = att.file_size || att.size || 0;
         const fileType = att.file_type || att.type || '';
         const thumbnailUrl = att.thumbnail || null;
+        const attachmentId = att.id || '';
+        const width = att.width || null;
+        const height = att.height || null;
         
         // Рендеринг изображений
         if (fileType === 'image' || fileType.startsWith('image/')) {
             const imgSrc = thumbnailUrl || fileUrl;
+            
+            // 🐛 DEBUG: Проверяем размеры изображения
+            console.log(`[IMAGE DEBUG] Attachment #${attachmentId}: ${fileName}`, {
+                width, height,
+                hasSize: !!(width && height),
+                url: imgSrc
+            });
+            
+            // Telegram approach: вычисляем точные размеры в пикселях
+            let dimensionStyle = '';
+            if (width && height) {
+                const maxWidth = 500; // Максимальная ширина как в Telegram
+                const scale = Math.min(1, maxWidth / width);
+                const w = Math.round(width * scale);
+                const h = Math.round(height * scale);
+                
+                dimensionStyle = `style="width: ${w}px; height: ${h}px;"`;
+                console.log(`[IMAGE DEBUG] ✅ Telegram approach: ${w}x${h}px (original: ${width}x${height}, scale: ${scale.toFixed(2)})`);
+            } else {
+                console.warn(`[IMAGE DEBUG] ⚠️ Размеры отсутствуют! Возможно смещение скролла`);
+            }
+            
+            // Генерируем unique ID для изображения
+            const imgId = `img-${attachmentId}-${Date.now()}`;
+            
+            // Добавляем onload через setTimeout после рендера
+            setTimeout(() => {
+                const img = document.getElementById(imgId);
+                if (img) {
+                    img.addEventListener('load', () => {
+                        console.log(`[IMAGE DEBUG] 📊 Изображение загружено: #${attachmentId}`, {
+                            naturalWidth: img.naturalWidth,
+                            naturalHeight: img.naturalHeight,
+                            displayWidth: img.clientWidth,
+                            displayHeight: img.clientHeight,
+                            expectedRatio: width && height ? (width / height).toFixed(2) : 'unknown',
+                            actualRatio: img.naturalWidth && img.naturalHeight ? (img.naturalWidth / img.naturalHeight).toFixed(2) : 'unknown'
+                        });
+                    });
+                }
+            }, 0);
+            
             return `
-                <a href="${fileUrl}" target="_blank" class="attachment-item attachment-item--media d-block">
-                    <img src="${imgSrc}" 
+                <a href="${fileUrl}" target="_blank" class="attachment-item attachment-item--media d-block" data-attachment-id="${attachmentId}">
+                    <img id="${imgId}"
+                         src="${imgSrc}" 
                          alt="${fileName}" 
                          class="chat-media chat-media--image"
+                         ${dimensionStyle}
                          loading="lazy" />
                 </a>
             `;
@@ -677,7 +736,7 @@ export class MessageRendererV2 {
         // Рендеринг видео
         if (fileType === 'video' || fileType.startsWith('video/')) {
             return `
-                <div class="attachment-item attachment-item--media">
+                <div class="attachment-item attachment-item--media" data-attachment-id="${attachmentId}">
                     <video src="${fileUrl}" 
                            class="chat-media chat-media--video"
                            controls
@@ -708,7 +767,8 @@ export class MessageRendererV2 {
         return `
             <a href="${fileUrl}" 
                target="_blank" 
-               class="attachment-link d-inline-flex align-items-center text-decoration-none ${isOwn ? 'text-white' : 'text-dark'} mb-1">
+               class="attachment-link d-inline-flex align-items-center text-decoration-none ${isOwn ? 'text-white' : 'text-dark'} mb-1"
+               data-attachment-id="${attachmentId}">
                 <i class="bi ${icon} me-2"></i>
                 <span class="attachment-name">${fileName}</span>
                 ${sizeStr ? `<span class="attachment-size ms-2 small opacity-75">(${sizeStr})</span>` : ''}
@@ -717,56 +777,32 @@ export class MessageRendererV2 {
     }
 
     /**
-     * Рендерит реакции
+     * Рендерит голосование
      * @private
      */
-    _renderReactions(reactions) {
-        if (!reactions || typeof reactions !== 'object') return '';
+    _renderPoll(poll) {
+        if (!poll) return '';
         
-        return Object.entries(reactions)
-            .map(([emoji, count]) => {
-                if (count > 0) {
-                    return `<span class="reaction-badge badge bg-secondary me-1">${escapeHtml(emoji)} ${count}</span>`;
-                }
-                return '';
-            })
-            .join('');
+        // Базовая структура poll widget
+        let html = `<div class="poll-widget" data-poll-id="${poll.id}">`;
+        
+        // Вопрос
+        html += `<div class="poll-question mb-3"><strong>${escapeHtml(poll.question)}</strong></div>`;
+        
+        // Контейнер для опций (заполнится через chatPoll.refreshPoll)
+        html += '<div class="poll-options"></div>';
+        
+        // Футер
+        html += '<div class="poll-footer mt-3 d-flex justify-content-between align-items-center">';
+        html += '<div class="small text-muted">Загрузка...</div>';
+        html += '</div>';
+        
+        html += '</div>';
+        
+        return html;
     }
 
-    /**
-     * Обновляет реакции сообщения
-     * @private
-     */
-    _updateReactions(messageEl, reactions) {
-        let reactionsContainer = messageEl.querySelector('.message-reactions');
-        
-        if (!reactions || Object.keys(reactions).length === 0) {
-            // Удаляем контейнер если нет реакций
-            if (reactionsContainer) {
-                reactionsContainer.remove();
-            }
-            return;
-        }
-
-        const reactionsHtml = this._renderReactions(reactions);
-
-        if (!reactionsContainer) {
-            // Создаем контейнер
-            const bubble = messageEl.querySelector('.message-bubble');
-            if (bubble) {
-                reactionsContainer = document.createElement('div');
-                reactionsContainer.className = 'message-reactions mt-2';
-                bubble.appendChild(reactionsContainer);
-            }
-        }
-
-        if (reactionsContainer) {
-            reactionsContainer.innerHTML = reactionsHtml;
-        }
-
-        // Обновляем data-атрибут
-        messageEl.setAttribute('data-reactions', JSON.stringify(reactions));
-    }
+    // Методы рендеринга и обновления реакций удалены - используется MessageReactions
 
     /**
      * Обновляет статус сообщения (sending/sent/failed)

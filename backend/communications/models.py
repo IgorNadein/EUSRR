@@ -564,6 +564,20 @@ class MessageAttachment(models.Model):
         help_text="Для изображений и видео"
     )
     
+    # Размеры для изображений и видео
+    width = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Ширина",
+        help_text="Ширина изображения или видео в пикселях"
+    )
+    height = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Высота",
+        help_text="Высота изображения или видео в пикселях"
+    )
+    
     class Meta:
         verbose_name = "Вложение"
         verbose_name_plural = "Вложения"
@@ -575,6 +589,40 @@ class MessageAttachment(models.Model):
     
     def __str__(self):
         return f"{self.file_name} ({self.get_file_type_display()})"
+    
+    def save(self, *args, **kwargs):
+        """
+        Автоматически извлекает размеры изображения при сохранении.
+        Telegram-подход: размеры всегда известны до рендеринга.
+        """
+        # Если это изображение и размеры еще не установлены
+        if self.file_type == 'image' and self.file and (not self.width or not self.height):
+            try:
+                from PIL import Image
+                from io import BytesIO
+                
+                # Открываем файл
+                file_obj = self.file.file if hasattr(self.file, 'file') else self.file
+                
+                # Сохраняем позицию курсора
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+                
+                # Открываем изображение
+                image = Image.open(file_obj)
+                self.width, self.height = image.size
+                
+                # Возвращаем курсор в начало
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+                    
+            except Exception as e:
+                # Если не удалось извлечь размеры - не критично
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Could not extract image dimensions: {e}")
+        
+        super().save(*args, **kwargs)
 
 
 class ForwardedMessage(models.Model):

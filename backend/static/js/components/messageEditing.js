@@ -80,29 +80,16 @@ function updateMessageInDOM(message) {
 
 	messageElements.forEach(oldMessageEl => {
 		try {
-			// Получаем данные для рендера
-			const chatScroll = document.getElementById('chatScroll');
-			const currentUserId = parseInt(chatScroll?.dataset.meId || oldMessageEl.dataset.currentUserId);
+			// Используем существующий renderer из ChatControllerV2
+			const renderer = window.chatController?.messageRenderer;
 			
-			if (!currentUserId) {
-				console.warn('[MessageEditing] Cannot determine current user ID');
+			if (!renderer) {
+				console.error('[MessageEditing] MessageRenderer not available from ChatController');
 				return;
 			}
 
-			// Создаём renderer V2
-			const renderer = new MessageRendererV2({
-				containerId: 'chatScroll',
-				currentUserId: currentUserId,
-				currentUserAvatar: window.currentUserAvatar || '',
-				profileUrl: '/employees/profile/',
-				detailUrlTemplate: '/employees/detail/0/'
-			});
-
-			// Определяем является ли сообщение своим
-			const isOwn = message.author_id === currentUserId;
-
-			// Генерируем новый HTML
-			const newMessageHtml = renderer.buildMessageHtml(message, isOwn);
+			// Рендерим сообщение через существующий renderer
+			const newMessageHtml = renderer.renderSingleMessage(message);
 			
 			console.log('[MessageEditing] Generated HTML length:', newMessageHtml.length);
 			console.log('[MessageEditing] HTML contains "attachment":', newMessageHtml.includes('attachment'));
@@ -136,6 +123,7 @@ function updateMessageInDOM(message) {
 			}
 
 			// Переинициализируем компоненты для нового элемента
+			const currentUserId = renderer.currentUserId;
 			reinitMessageComponents(newMessageEl, message.id, currentUserId);
 
 		} catch (error) {

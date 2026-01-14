@@ -1,6 +1,7 @@
 # backend/api/v1/communications/views.py
 """API views для чатов и сообщений"""
 
+import logging
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.contrib.auth.decorators import login_required
@@ -22,6 +23,8 @@ from communications.models import (
 )
 from communications.consumers import serialize_message
 from communications.views import _coerce_ts, user_can_access_chat
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -1006,29 +1009,33 @@ def bulk_delete_messages(request):
 @login_required
 @require_POST
 def edit_message(request, message_id):
-    """Редактирование сообщения"""
+    """Редактирование сообщения
+    
+    Поддерживает:
+    - content: новый текст сообщения (опционально если есть вложения)
+    - existing_attachment_ids: список ID вложений которые нужно оставить (остальные удалятся)
+    """
     import json
     
     try:
         data = json.loads(request.body)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.warning(f'[edit_message] Invalid JSON: {e}')
         return JsonResponse(
             {'ok': False, 'error': 'Invalid JSON'},
             status=400
         )
     
-    new_content = data.get('content', '').strip()
+    logger.info(f'[edit_message] Request data: {data}')
     
-    if not new_content:
-        return JsonResponse(
-            {'ok': False, 'error': 'content required'},
-            status=400
-        )
+    new_content = data.get('content', '').strip()
+    existing_attachment_ids = data.get('existing_attachment_ids', None)  # Список ID вложений для сохранения
     
     # Получаем сообщение
     try:
         message = Message.objects.get(pk=message_id, author=request.user)
     except Message.DoesNotExist:
+        logger.warning(f'[edit_message] Message {message_id} not found for user {request.user.id}')
         return JsonResponse(
             {'ok': False, 'error': 'Message not found or access denied'},
             status=404
@@ -1039,6 +1046,28 @@ def edit_message(request, message_id):
         return JsonResponse(
             {'ok': False, 'error': 'Editing is not allowed in announcements'},
             status=403
+        )
+    
+    # Валидация: сообщение должно иметь либо текст, либо вложения
+    # Если existing_attachment_ids не передан (None), проверяем текущие вложения
+    current_attachments_count = message.attachments.count()
+    will_have_attachments = (
+        (existing_attachment_ids is not None and len(existing_attachment_ids) > 0) or
+        (existing_attachment_ids is None and current_attachments_count > 0)
+    )
+    
+    logger.info(
+        f'[edit_message] Validation: new_content={bool(new_content)}, '
+        f'will_have_attachments={will_have_attachments}, '
+        f'existing_attachment_ids={existing_attachment_ids}, '
+        f'current_attachments={current_attachments_count}'
+    )
+    
+    if not new_content and not will_have_attachments:
+        logger.warning(f'[edit_message] Message {message_id} has no content and no attachments')
+        return JsonResponse(
+            {'ok': False, 'error': 'Message must have either content or attachments'},
+            status=400
         )
     
     # Сохраняем старый контент в историю редактирования
@@ -1054,7 +1083,41 @@ def edit_message(request, message_id):
     message.content = new_content
     message.is_edited = True
     message.edited_at = timezone.now()
+    
+    # Управление вложениями
+    if existing_attachment_ids is not None:
+        # Получаем текущие вложения сообщения
+        current_attachments = message.attachments.all()
+        current_ids = set(str(att.id) for att in current_attachments)
+        keep_ids = set(str(id) for id in existing_attachment_ids)
+        
+        # Определяем какие вложения нужно удалить
+        ids_to_remove = current_ids - keep_ids
+        
+        if ids_to_remove:
+            # Удаляем файлы которые не в списке
+            attachments_to_delete = message.attachments.filter(id__in=ids_to_remove)
+            deleted_count = attachments_to_delete.count()
+            
+            # Удаляем физические файлы
+            for att in attachments_to_delete:
+                if att.file and att.file.storage.exists(att.file.name):
+                    att.file.delete(save=False)
+            
+            # Удаляем записи из БД
+            attachments_to_delete.delete()
+            
+            logger.info(
+                f'[edit_message] Deleted {deleted_count} attachments from message {message_id}'
+            )
+    
     message.save()
+    
+    # Обновляем has_attachments после изменений
+    remaining_attachments_count = message.attachments.count()
+    message.has_attachments = remaining_attachments_count > 0
+    if remaining_attachments_count == 0:
+        message.save(update_fields=['has_attachments'])
     
     # Перезагружаем сообщение со всеми связанными объектами
     # для корректной сериализации
@@ -1086,8 +1149,6 @@ def edit_message(request, message_id):
     
     # Находим все сообщения, которые ссылаются на это (reply_to)
     # и отправляем обновления для них тоже
-    import logging
-    logger = logging.getLogger(__name__)
     
     reply_messages = Message.objects.filter(
         reply_to=message,
