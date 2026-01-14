@@ -288,9 +288,21 @@
   background: transparent;
   padding: 0;
   margin-bottom: 8px;
+  
+  // Медиа-элементы (изображения и видео) - минимальные отступы
+  &.attachment-item--media {
+    margin-bottom: 0;
+    
+    a {
+      display: block;
+      padding: 0;
+      line-height: 0;
+    }
+  }
 }
 
-.bubble .attachment-item a {
+// Стили только для ссылок на файлы (документы)
+.bubble .attachment-item:not(.attachment-item--media) a {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -350,7 +362,7 @@
 }
 
 .chat-media {
-  display: inline-block;
+  display: block; // Изменено с inline-block
   width: auto !important;
   max-width: min(640px, 85vw);
   max-height: 520px;
@@ -358,11 +370,14 @@
   border-radius: $radius-md;
   background: rgba(0, 0, 0, 0.08);
   content-visibility: auto;
+  // Убираем vertical-align issues
+  vertical-align: top;
 }
 
-.message-attachments .attachment-item > a,
-.message-attachments .attachment-item > video,
-.message-attachments .attachment-item > img {
+// Убираем этот конфликтующий селектор - заменяем на более специфичный
+.message-attachments .attachment-item:not(.attachment-item--media) > a,
+.message-attachments .attachment-item:not(.attachment-item--media) > video,
+.message-attachments .attachment-item:not(.attachment-item--media) > img {
   display: inline-flex;
   max-width: 100%;
 }

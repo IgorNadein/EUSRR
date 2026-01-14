@@ -665,12 +665,11 @@ export class MessageRendererV2 {
         if (fileType === 'image' || fileType.startsWith('image/')) {
             const imgSrc = thumbnailUrl || fileUrl;
             return `
-                <a href="${fileUrl}" target="_blank" class="attachment-item d-block">
+                <a href="${fileUrl}" target="_blank" class="attachment-item attachment-item--media d-block">
                     <img src="${imgSrc}" 
                          alt="${fileName}" 
                          class="chat-media chat-media--image"
-                         loading="lazy"
-                         style="max-width: 100%; height: auto; display: block;" />
+                         loading="lazy" />
                 </a>
             `;
         }
@@ -678,13 +677,12 @@ export class MessageRendererV2 {
         // Рендеринг видео
         if (fileType === 'video' || fileType.startsWith('video/')) {
             return `
-                <div class="attachment-item">
+                <div class="attachment-item attachment-item--media">
                     <video src="${fileUrl}" 
                            class="chat-media chat-media--video"
                            controls
                            playsinline
-                           preload="metadata"
-                           style="max-width: 100%; height: auto; display: block;">
+                           preload="metadata">
                         Ваш браузер не поддерживает воспроизведение видео.
                     </video>
                 </div>
