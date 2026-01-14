@@ -131,7 +131,7 @@ $message-bg-focused: transparent;
   height: 340px;
   border: none;
   outline: none;
-  
+
   // Основные переменные для светлой и тёмной темы
   --background-color: var(--bs-body-bg);
   --text-color: var(--bs-body-color);
@@ -145,7 +145,7 @@ $message-bg-focused: transparent;
   --input-placeholder-color: var(--bs-secondary-color);
   --input-focus-border-color: var(--bs-primary);
   --indicator-color: var(--bs-primary);
-  
+
   // RGB переменные для emoji-picker-element (для тёмной темы)
   --rgb-background: var(--bs-body-bg-rgb);
   --rgb-color: var(--bs-body-color-rgb);
@@ -193,7 +193,7 @@ $message-bg-focused: transparent;
     --text-color: var(--bs-body-color);
     --secondary-text-color: var(--bs-secondary-color);
     --category-emoji-size: 1.125rem;
-    
+
     // Скроллбар для темной темы
     --scrollbar-color: rgba(255, 255, 255, 0.3);
     --scrollbar-background: rgba(255, 255, 255, 0.05);
@@ -219,12 +219,12 @@ $message-bg-focused: transparent;
     padding: 0.3rem 0.35rem;
     gap: 0.25rem;
   }
-  
+
   .message-field--compact {
     --message-action-size: 32px;
     padding: 0.2rem 0.25rem;
   }
-  
+
   .message-input,
   .composer-textarea {
     // Уменьшаем отступы для экономии места

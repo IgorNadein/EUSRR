@@ -77,27 +77,27 @@ $modal-header-padding-x: 1rem !default; // var(--space-2)
 
 // Dropdowns
 $dropdown-padding-x: 0 !default;
-$dropdown-padding-y: 0.5rem !default;  // var(--space-1)
-$dropdown-item-padding-y: 0.5rem !default; // var(--space-1)
-$dropdown-item-padding-x: 1rem !default;   // var(--space-2)
+$dropdown-padding-y: 8px !default;  // var(--space-1)
+$dropdown-item-padding-y: 8px !default; // var(--space-1)
+$dropdown-item-padding-x: 16px !default;   // var(--space-2)
 
 // Navs
-$nav-link-padding-y: 0.5rem !default;  // var(--space-1)
-$nav-link-padding-x: 1rem !default;    // var(--space-2)
+$nav-link-padding-y: 8px !default;  // var(--space-1)
+$nav-link-padding-x: 16px !default;    // var(--space-2)
 
 // Navbar
-$navbar-padding-y: 0.5rem !default;    // var(--space-1)
-$navbar-padding-x: 1rem !default;      // var(--space-2)
+$navbar-padding-y: 8px !default;    // var(--space-1)
+$navbar-padding-x: 16px !default;      // var(--space-2)
 
 // Pagination
-$pagination-padding-y: 0.5rem !default; // var(--space-1)
-$pagination-padding-x: 1rem !default;   // var(--space-2)
+$pagination-padding-y: 8px !default; // var(--space-1)
+$pagination-padding-x: 16px !default;   // var(--space-2)
 
-$pagination-padding-y-sm: 0.5rem !default; // var(--space-1)
-$pagination-padding-x-sm: 0.5rem !default; // var(--space-1)
+$pagination-padding-y-sm: 8px !default; // var(--space-1)
+$pagination-padding-x-sm: 8px !default; // var(--space-1)
 
-$pagination-padding-y-lg: 1rem !default;   // var(--space-2)
-$pagination-padding-x-lg: 1.5rem !default; // var(--space-3)
+$pagination-padding-y-lg: 16px !default;   // var(--space-2)
+$pagination-padding-x-lg: 24px !default; // var(--space-3)
 
 // List groups
 $list-group-item-padding-y: 1rem !default; // var(--space-2)
@@ -144,356 +144,58 @@ $card-cap-color: null !default;
 // $border-radius-lg: 14px !default;      // var(--radius-lg)
 
 // =============================================================================
-// 3. ИМПОРТ BOOTSTRAP
+// 3. ИМПОРТ ABSTRACTS (Design Tokens & Mixins)
+// =============================================================================
+// Импортируем переменные и миксины ДО Bootstrap
+@import "abstracts/variables";
+@import "abstracts/mixins";
+
+// =============================================================================
+// 4. ИМПОРТ BOOTSTRAP
 // =============================================================================
 // Импортируем Bootstrap ПОСЛЕ переопределения переменных
 @import "../node_modules/bootstrap/scss/bootstrap";
 
 // =============================================================================
-// 4. КАСТОМНЫЕ СТИЛИ (если нужно)
+// 4.5 CSS ПЕРЕМЕННЫЕ (RUNTIME)
 // =============================================================================
-// Здесь можно добавить дополнительные стили или переопределения
+// CSS custom properties для использования в браузере
+@import "abstracts/css-variables";
 
-@import "components/message-inputs";
-@import "components/chat-detail";
+// =============================================================================
+// 5. КАСТОМНЫЕ КОМПОНЕНТЫ
+// =============================================================================
+
+// Layout
+@import "layout/chat-layout";
+
+// Базовые компоненты
+@import "components/common";
+@import "components/navbar";
+@import "components/sidebar";
+@import "components/page-header";
+@import "components/cards";
+
+// Badge компоненты
+@import "components/badges-bem";
+
+// Чат компоненты (в подпапке chat/)
+@import "components/chat/message-inputs";
+@import "components/chat/chat-detail";
+@import "components/chat/chat-date-groups";
+@import "components/chat/chat-list-enhanced";
+@import "components/chat/chat-enhanced";
+@import "components/chat/chat-polls";
+@import "components/chat/chat-new-messages-indicator";
+@import "components/chat/message-selection";
+@import "components/chat/message-context-menu";
+@import "components/chat/message-reactions";
+
+// Дополнительные компоненты
 @import "components/comments";
 @import "components/modals";
 
-// =============================================================================
-// 5. ПЕРЕОПРЕДЕЛЕНИЕ BOOTSTRAP КАРТОЧЕК (GLASSMORPHISM ЭФФЕКТ)
-// =============================================================================
-// Все стили карточек собраны здесь для удобства поддержки
+// Остальные компоненты (загружаются напрямую из CSS - не мигрировано)
+// TODO: Мигрировать buttons, card-list, document-list, request-list,
+// ios-search, feed-specific, base-app, request-detail
 
-// Базовые стили карточки - применяем эффект жидкого стекла
-.card {
-  // Прозрачный фон с лёгким оттенком для светлой темы (как в тёмной)
-  --bs-card-bg: transparent;
-  background: rgba(255, 255, 255, 0.1) !important;
-
-  // Размытие фона (glassmorphism) - основа эффекта жидкого стекла
-  backdrop-filter: blur(10px) saturate(180%);
-  -webkit-backdrop-filter: blur(10px) saturate(180%);
-
-  // Тонкая рамка для светлой темы
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-
-  // Плавные переходы
-  transition: all 0.3s ease;
-  overflow: hidden;
-
-  // Hover эффект - усиливаем эффект
-  &:hover {
-    background: rgba(255, 255, 255, 0.15) !important;
-    border-color: rgba(0, 0, 0, 0.12) !important;
-    backdrop-filter: blur(12px) saturate(200%);
-    -webkit-backdrop-filter: blur(12px) saturate(200%);
-    box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
-  }
-}
-
-// Поддержка тёмной темы
-[data-bs-theme="dark"] {
-  .card {
-    // Для тёмной темы - полностью прозрачный фон и светлая рамка
-    --bs-card-bg: transparent;
-    --bs-card-border-color: rgba(255, 255, 255, 0.1);
-    background: transparent !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.03) !important;
-      border-color: rgba(255, 255, 255, 0.15) !important;
-    }
-  }
-}
-
-// =============================================================================
-// 6. ПЕРЕОПРЕДЕЛЕНИЕ КНОПОК (ЕДИНЫЙ СТИЛЬ - ПРОЗРАЧНЫЕ)
-// =============================================================================
-// Единый источник правды для всех кнопок
-// Философия: кнопки прозрачные, сливаются с фоном, БЕЗ hover эффектов
-
-// Базовые стили для ВСЕХ кнопок - полностью прозрачные без hover
-.btn {
-  background: transparent !important;  // Всегда прозрачный фон
-  border: none !important;  // Без рамок
-  color: var(--bs-secondary-color);  // Серый цвет по умолчанию
-  font-weight: 500;
-  transition: color 0.2s ease;  // Только цвет меняется
-
-  &:hover:not(:disabled) {
-    color: var(--bs-body-color);  // Только текст становится ярче, фон НЕ меняется
-  }
-
-  &:active:not(:disabled) {
-    color: var(--bs-body-color);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-// Primary кнопка (основное действие) - единственная с цветным фоном
-.btn-primary {
-  color: #fff !important;
-  background: rgba(13, 110, 253, 0.7) !important;  // Лёгкий синий фон
-
-  &:hover:not(:disabled) {
-    background: rgba(13, 110, 253, 0.85) !important;
-    box-shadow: 0 4px 16px rgba(13, 110, 253, 0.3);
-  }
-
-  &:active:not(:disabled) {
-    background: rgba(13, 110, 253, 0.95) !important;
-  }
-}
-
-// Secondary, outline, ghost - все прозрачные БЕЗ фона при hover
-.btn-secondary,
-.btn-outline-primary,
-.btn-outline-secondary,
-.btn-ghost {
-  background: transparent !important;
-  color: var(--bs-secondary-color);
-
-  &:hover:not(:disabled) {
-    background: transparent !important;  // Фон НЕ меняется!
-    color: var(--bs-body-color);  // Только цвет текста
-  }
-
-  &:active:not(:disabled) {
-    background: transparent !important;
-  }
-}
-
-// Особый цвет для outline-primary
-.btn-outline-primary {
-  color: var(--bs-primary);
-
-  &:hover:not(:disabled) {
-    color: var(--bs-primary);
-    background: transparent !important;
-  }
-}
-
-// Кнопки в тёмной теме
-[data-bs-theme="dark"] {
-  .btn {
-    &:hover:not(:disabled) {
-      background: transparent !important;  // В тёмной теме тоже без фона
-    }
-
-    &:active:not(:disabled) {
-      background: transparent !important;
-    }
-  }
-
-  .btn-primary {
-    background: rgba(13, 110, 253, 0.6) !important;
-
-    &:hover:not(:disabled) {
-      background: rgba(13, 110, 253, 0.75) !important;
-    }
-
-    &:active:not(:disabled) {
-      background: rgba(13, 110, 253, 0.85) !important;
-    }
-  }
-
-  .btn-secondary,
-  .btn-outline-primary,
-  .btn-outline-secondary,
-  .btn-ghost {
-    &:hover:not(:disabled) {
-      background: transparent !important;
-    }
-
-    &:active:not(:disabled) {
-      background: transparent !important;
-    }
-  }
-}
-
-// Контейнер списка карточек
-.card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-// Заголовок секции
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-component, 1rem);
-  margin-bottom: var(--space-3, 0.75rem);
-
-  .title {
-    font-weight: 800;
-    letter-spacing: 0.2px;
-    margin: 0;
-  }
-}
-
-// Переопределение card-header для гибкости
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-component, 1rem);
-  padding: var(--card-padding, 1rem);
-  padding-bottom: var(--space-1, 0.25rem);
-  background: transparent;
-  border-bottom: none;
-}
-
-// Иконка/аватар в карточке
-.card-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 9999px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
-  background: var(--bs-tertiary-bg);
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-}
-
-// Метаинформация
-.card-meta {
-  line-height: 1.2;
-  flex: 1;
-  min-width: 0;
-}
-
-// Заголовок карточки
-.card-title {
-  font-weight: 700;
-  color: var(--bs-body-color);
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-bottom: 0;
-}
-
-// Подзаголовок
-.card-subtitle {
-  font-size: 0.82rem;
-  color: var(--bs-secondary-color);
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-bottom: 0;
-}
-
-// Тело карточки
-.card-body {
-  padding: var(--space-1, 0.25rem) var(--card-padding, 1rem);
-  padding-bottom: var(--space-1, 0.25rem);
-  position: relative;
-}
-
-// Действия карточки
-.card-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1, 0.25rem);
-  padding: var(--card-padding, 1rem);
-  padding-top: var(--space-2, 0.5rem);
-  border-top: 1px solid var(--bs-border-color);
-  position: relative;
-  z-index: 2;
-
-  // Кнопки в card-actions наследуют базовые стили, только добавляем активное состояние
-  .btn,
-  button {
-    &.active,
-    &.is-liked {
-      color: var(--bs-primary) !important;
-      font-weight: 600;
-    }
-  }
-}
-
-// Вариации карточек
-.card.compact {
-  .card-header {
-    padding: var(--space-1, 0.25rem) var(--card-padding-sm, 0.5rem);
-  }
-
-  .card-body {
-    padding: var(--space-1, 0.25rem) var(--card-padding-sm, 0.5rem);
-  }
-
-  .card-icon {
-    width: 32px;
-    height: 32px;
-  }
-}
-
-.card.borderless {
-  border: none;
-  box-shadow: none;
-  border-radius: 0;
-  border-bottom: 1px solid var(--bs-border-color);
-
-  &:hover {
-    transform: none;
-    box-shadow: none;
-    background: var(--bs-tertiary-bg);
-  }
-}
-
-.card.highlighted {
-  border-left: 3px solid var(--bs-primary);
-  background: color-mix(in srgb, var(--bs-primary), transparent 95%);
-}
-
-// Адаптивность
-@media (max-width: 576px) {
-  .section-header {
-    gap: var(--space-2, 0.5rem);
-    flex-wrap: wrap;
-  }
-
-  .card-header {
-    padding: var(--space-2, 0.5rem);
-    padding-bottom: var(--space-1, 0.25rem);
-  }
-
-  .card-icon {
-    width: 36px;
-    height: 36px;
-  }
-
-  .card-actions {
-    padding: var(--space-2, 0.5rem);
-  }
-}
-
-// =============================================================================
-// 6. УТИЛИТАРНЫЕ КЛАССЫ
-// =============================================================================
-
-// Моноширинный шрифт для дат, цифр, кодов
-.text-mono {
-  font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Consolas', 'Liberation Mono', 'Menlo', 'Courier', monospace;
-}
-
-// =============================================================================
-// 7. TELEGRAM-STYLE BADGES (В КОНЦЕ, ЧТОБЫ ТОЧНО ПРИМЕНИЛИСЬ)
-// =============================================================================
-@import "components/badges-telegram-style";

@@ -1,0 +1,298 @@
+/**
+ * _chat-enhanced.scss
+ * Enhanced chat features: replies, forwards, reactions, attachments
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   REPLY PREVIEW
+────────────────────────────────────────────────────────────── */
+.reply-preview {
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-left: 3px solid var(--bs-primary);
+  border-radius: $radius-xs;
+
+  i {
+    color: var(--bs-primary);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FORWARD INFO
+────────────────────────────────────────────────────────────── */
+.forward-info {
+  font-size: 0.85rem;
+  color: var(--bs-secondary);
+  font-style: italic;
+
+  i {
+    color: var(--bs-info);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MESSAGE ACTIONS (shown on hover)
+────────────────────────────────────────────────────────────── */
+.msg {
+  position: relative;
+
+  &:hover .message-actions {
+    opacity: 1;
+  }
+
+  &:hover .quick-reactions {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  &.new {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  &.system-message {
+    justify-content: center !important;
+
+    .bubble {
+      background: #f8f9fa;
+      border: 1px dashed #dee2e6;
+      color: #6c757d;
+      text-align: center;
+      font-size: 0.9rem;
+      font-style: italic;
+    }
+  }
+
+  .bubble {
+    em.text-muted {
+      font-size: 0.9rem;
+      opacity: 0.7;
+    }
+
+    .bi-pencil-fill {
+      font-size: 0.7rem;
+      opacity: 0.6;
+    }
+
+    .bi-pin-angle-fill {
+      color: var(--bs-warning);
+      font-size: 1rem;
+    }
+  }
+}
+
+.message-actions {
+  position: absolute;
+  top: -12px;
+  right: 10px;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: $radius-pill;
+  padding: 2px 4px;
+  @include shadow($shadow-sm);
+  opacity: 0;
+  @include transition(opacity, $transition-fast);
+  z-index: 10;
+
+  .btn {
+    padding: 2px 6px;
+    font-size: 0.85rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   REACTIONS
+────────────────────────────────────────────────────────────── */
+.reactions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.reaction-btn {
+  border: 1px solid #dee2e6;
+  background: white;
+  border-radius: $radius-md;
+  padding: 2px 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  @include transition-all($transition-fast);
+
+  &:hover {
+    background: #f8f9fa;
+    transform: scale(1.1);
+  }
+
+  &.active {
+    background: #e3f2fd;
+    border-color: var(--bs-primary);
+  }
+
+  .count {
+    font-size: 0.75rem;
+    color: #666;
+    margin-left: 2px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   QUICK REACTIONS (on hover)
+────────────────────────────────────────────────────────────── */
+.quick-reactions {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: $radius-pill;
+  padding: 4px 8px;
+  @include shadow($shadow-md);
+  opacity: 0;
+  pointer-events: none;
+  @include transition(opacity, $transition-fast);
+  z-index: 20;
+  display: flex;
+  gap: 4px;
+
+  button {
+    border: none;
+    background: transparent;
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: $radius-sm;
+    @include transition(background, $transition-fast);
+
+    &:hover {
+      background: #f0f0f0;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ATTACHMENTS
+────────────────────────────────────────────────────────────── */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attachment-image {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  @include transition(transform, $transition-fast);
+
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+.attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: $radius-sm;
+  text-decoration: none;
+  color: inherit;
+  font-size: 0.9rem;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT LIST ITEMS
+────────────────────────────────────────────────────────────── */
+.chat-list-item {
+  position: relative;
+
+  &.pinned {
+    background: #fffbeb;
+    border-left: 4px solid var(--bs-warning);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BADGES & INDICATORS
+────────────────────────────────────────────────────────────── */
+.mention-badge {
+  background: #ef4444;
+  color: white;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.thread-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--bs-primary);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   INDICATORS
+────────────────────────────────────────────────────────────── */
+#typing {
+  padding: 4px 12px;
+  font-style: italic;
+}
+
+#editing-indicator,
+#reply-indicator {
+  margin-bottom: 8px;
+  border-radius: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ANIMATIONS
+────────────────────────────────────────────────────────────── */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE RESPONSIVE
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .message-actions {
+    position: static;
+    opacity: 1;
+    margin-top: 8px;
+  }
+
+  .quick-reactions {
+    position: static;
+    transform: none;
+    opacity: 1;
+    pointer-events: all;
+    margin-top: 8px;
+    justify-content: center;
+  }
+
+  .attachment-image {
+    max-width: 150px;
+    max-height: 150px;
+  }
+}

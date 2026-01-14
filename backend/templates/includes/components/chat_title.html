@@ -6,26 +6,26 @@
   <a href="{% url 'communications:chat_detail' chat.pk %}" class="card-title text-decoration-none stretched-link" data-chat-name="{% if chat.type == 'global' %}{{ chat.name|default:"Глобальный чат" }}{% elif chat.type == 'department' %}{{ chat.name|default:"Основной чат" }}{% elif chat.type == 'private' %}{% for u in chat.participants.all %}{% if u.id != user.id %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}{% else %}{{ chat.name }}{% endif %}">
     {% if chat.type == 'global' %}
       {{ chat.name|default:"Глобальный чат" }}
-    
+
     {% elif chat.type == 'department' %}
       {{ chat.name|default:"Основной чат" }}
-    
+
     {% elif chat.type == 'private' %}
       {# Показываем имена участников (кроме текущего) #}
       {% for u in chat.participants.all %}{% if u.id != user.id %}{% cycle '' ', ' %}{{ u.get_full_name|default:u.username }}{% endif %}{% endfor %}
-    
+
     {% else %}
       {{ chat.name }}
     {% endif %}
-    
+
     {# Бейдж "Основной" #}
     {% if chat.is_main %}
-      <span class="badge-telegram badge-telegram-primary badge-telegram-inline ms-1">
+      <span class="badge badge--primary badge--inline ms-1">
         <i class="bi-star-fill"></i> Основной
       </span>
     {% endif %}
   </a>
-  
+
   {# Счётчик непрочитанных #}
-  <span class="badge-telegram animate-in" data-unread {% if not chat.unread_count %}style="display: none;"{% endif %}>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
+  <span class="badge animate-in" data-unread {% if not chat.unread_count %}style="display: none;"{% endif %}>+<span data-unread-count>{{ chat.unread_count|default:0 }}</span></span>
 </div>

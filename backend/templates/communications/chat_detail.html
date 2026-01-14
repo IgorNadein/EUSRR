@@ -4,21 +4,12 @@
 
 {% block title %}Чат{% endblock %}
 
-{% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/chat-detail.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/chat-date-groups.css' %}">
-  <link rel="stylesheet" href="{% static 'css/message-reactions.css' %}">
-  <link rel="stylesheet" href="{% static 'css/message-context-menu.css' %}">
-  <link rel="stylesheet" href="{% static 'css/message-selection.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/chat-polls.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/chat-new-messages-indicator.css' %}">
-{% endblock %}
+
 
 {% block content %}
 <!-- Чат без лишних контейнеров -->
 <div class="chat-page">
-  
+
   <!-- Шапка чата -->
   <div class="chat-header">
     <div class="chat-header-content">
@@ -27,7 +18,7 @@
           <!-- Аватар чата с маленькой иконкой типа -->
           <div class="chat-avatar-wrapper">
             <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar">
-            <span class="chat-type-badge badge-telegram badge-telegram-avatar animate-in">
+            <span class="chat-type-badge badge badge--avatar animate-in">
               {% if chat.type == 'global' %}
                 <i class="bi-globe"></i>
               {% elif chat.type == 'department' %}
@@ -69,7 +60,7 @@
           {% endif %}
         {% endif %}
       </div>
-      
+
       <div class="chat-header-actions">
         {% if chat.type == 'announcement' and user.is_staff %}
           {% if chat.is_blocked %}
@@ -146,13 +137,13 @@
              data-oldest-ts="{{ messages_oldest_ts }}"
              data-has-more="{% if messages_has_more %}1{% else %}0{% endif %}"
              data-last-read-ts="{% if last_read_at %}{{ last_read_at|date:'U' }}000{% endif %}">
-          
+
           <!-- Индикатор загрузки истории -->
           <div class="history-loader d-none" data-history-loader>
             <div class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></div>
             <span class="small">Загружаем ранние сообщения…</span>
           </div>
-          
+
           <!-- Индикатор первоначальной загрузки -->
           <div class="initial-loader text-center py-5" id="initialLoader">
             <div class="spinner-border text-primary mb-3" role="status">
@@ -169,10 +160,11 @@
           </span>
           <span class="typing-text">Собеседник печатает…</span>
         </div>
+      </div> <!-- .chat-container -->
 
-        <!-- Композер -->
-        <div class="chat-composer-wrapper">
-          {% if can_send_messages %}
+  <!-- Композер (вынесен из chat-container на уровень chat-page) -->
+  <div class="chat-composer-wrapper">
+    {% if can_send_messages %}
           <form id="chatForm"
                 class="composer-wrap"
                 method="post"
@@ -192,9 +184,9 @@
             <div class="message-field">
               <!-- Кнопка вложений с выпадающим меню -->
               <div class="dropdown message-attach">
-                <button type="button" class="btn btn-ghost btn-attachment message-icon-btn" 
-                        id="attachmentDropdown" 
-                        data-bs-toggle="dropdown" 
+                <button type="button" class="btn btn-ghost btn-attachment message-icon-btn"
+                        id="attachmentDropdown"
+                        data-bs-toggle="dropdown"
                         aria-expanded="false"
                         title="Прикрепить файл">
                   <i class="bi-paperclip"></i>
@@ -250,10 +242,10 @@
               </div>
 
               <!-- Поле ввода текста -->
-              <textarea name="content" 
-                        id="id_content" 
-                        class="form-control composer-textarea message-input" 
-                        rows="1" 
+              <textarea name="content"
+                        id="id_content"
+                        class="form-control composer-textarea message-input"
+                        rows="1"
                         placeholder="Напишите сообщение…"></textarea>
 
               <!-- Кнопка отправки -->
@@ -267,7 +259,7 @@
             <input type="file" id="imageInput" class="d-none" accept="image/*,video/*" multiple>
             <input type="file" id="cameraInput" class="d-none" accept="image/*" capture="environment">
             <input type="file" id="audioInput" class="d-none" accept="audio/*">
-            
+
             <!-- Превью прикрепленных файлов -->
             <div id="attachmentPreview" class="attachment-preview d-none"></div>
           </form>
@@ -283,87 +275,14 @@
             </p>
           </div>
           {% endif %}
-        </div>
-      </div> <!-- .chat-container -->
+  </div> <!-- .chat-composer-wrapper -->
 
-      <!-- Кнопка «вниз» -->
-      <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
-        <i class="bi-arrow-down"></i>
-        <span class="unread-badge badge-hidden">0</span>
-      </button>
+  <!-- Кнопка «вниз» -->
+  <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
+    <i class="bi-arrow-down"></i>
+    <span class="unread-badge badge-hidden">0</span>
+  </button>
 
-    </div> <!-- .chat-page -->
-
-{% endblock %}
-
-{% block extra_js %}
-  {{ block.super }}
-  
-  {# ========== THIRD-PARTY ========== #}
-  <script type="module" src="{% static 'vendor/emoji-picker/index.js' %}"></script>
-  
-  {# ========== CHAT DETAIL PAGE - CORE FUNCTIONALITY ========== #}
-  {# chatDetail.js - V2 архитектура с прямым импортом ChatControllerV2 #}
-  <script type="module" src="{% static 'js/pages/chatDetail.js' %}"></script>
-  
-  {# ========== CHAT DETAIL - UI ENHANCEMENTS ========== #}
-  {# Реакции, контекстное меню, выделение, голосования #}
-  <script type="module" src="{% static 'js/chat-detail-enhanced.js' %}"></script>
-  
-  <script>
-    // Блокировка объявления
-    async function blockAnnouncement(chatId) {
-      if (!confirm('Вы уверены, что хотите заблокировать это объявление? Оно исчезнет из списка чатов всех пользователей.')) {
-        return;
-      }
-      
-      try {
-        const response = await fetch(`/communications/api/announcement/${chatId}/block/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-          }
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          location.reload();
-        } else {
-          alert(data.error || 'Ошибка блокировки');
-        }
-      } catch (error) {
-        console.error('Error blocking announcement:', error);
-        alert('Ошибка при блокировке объявления');
-      }
-    }
-    
-    // Разблокировка объявления
-    async function unblockAnnouncement(chatId) {
-      try {
-        const response = await fetch(`/communications/api/announcement/${chatId}/unblock/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-          }
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          location.reload();
-        } else {
-          alert(data.error || 'Ошибка разблокировки');
-        }
-      } catch (error) {
-        console.error('Error unblocking announcement:', error);
-        alert('Ошибка при разблокировке объявления');
-      }
-    }
-  </script>
-  
   <!-- Модальное окно создания голосования -->
   <div class="modal fade" id="pollModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -377,21 +296,21 @@
         <div class="modal-body">
           <div class="mb-3">
             <label for="pollQuestion" class="form-label">Вопрос</label>
-            <input type="text" class="form-control" id="pollQuestion" 
+            <input type="text" class="form-control" id="pollQuestion"
                    placeholder="Введите вопрос" maxlength="500">
           </div>
-          
+
           <div class="mb-3">
             <label class="form-label">Варианты ответа</label>
             <div id="pollOptions">
               <div class="input-group mb-2">
                 <span class="input-group-text">1</span>
-                <input type="text" class="form-control poll-option" 
+                <input type="text" class="form-control poll-option"
                        placeholder="Вариант ответа" maxlength="200">
               </div>
               <div class="input-group mb-2">
                 <span class="input-group-text">2</span>
-                <input type="text" class="form-control poll-option" 
+                <input type="text" class="form-control poll-option"
                        placeholder="Вариант ответа" maxlength="200">
               </div>
             </div>
@@ -399,7 +318,7 @@
               <i class="bi-plus-circle me-1"></i>Добавить вариант
             </button>
           </div>
-          
+
           <div class="mb-3">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="pollAnonymous">
@@ -420,19 +339,19 @@
               </label>
             </div>
           </div>
-          
+
           <div class="mb-3" id="quizCorrectAnswer" style="display: none;">
             <label class="form-label">Правильный ответ</label>
             <select class="form-select" id="pollCorrectOption">
               <option value="">Выберите правильный вариант</option>
             </select>
           </div>
-          
+
           <div class="mb-3">
             <label for="pollCloses" class="form-label">
               Автоматическое закрытие (минуты, необязательно)
             </label>
-            <input type="number" class="form-control" id="pollCloses" 
+            <input type="number" class="form-control" id="pollCloses"
                    min="1" placeholder="Оставьте пустым для бессрочного">
           </div>
         </div>
@@ -447,6 +366,76 @@
       </div>
     </div>
   </div>
+
 </div> <!-- .chat-page -->
 
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+
+  {# ========== THIRD-PARTY ========== #}
+  <script type="module" src="{% static 'vendor/emoji-picker/index.js' %}"></script>
+
+  {# ========== CHAT DETAIL PAGE - CORE FUNCTIONALITY ========== #}
+  {# chatDetail.js - V2 архитектура с прямым импортом ChatControllerV2 #}
+  <script type="module" src="{% static 'js/pages/chatDetail.js' %}"></script>
+
+  {# ========== CHAT DETAIL - UI ENHANCEMENTS ========== #}
+  {# Реакции, контекстное меню, выделение, голосования #}
+  <script type="module" src="{% static 'js/chat-detail-enhanced.js' %}"></script>
+
+  <script>
+    // Блокировка объявления
+    async function blockAnnouncement(chatId) {
+      if (!confirm('Вы уверены, что хотите заблокировать это объявление? Оно исчезнет из списка чатов всех пользователей.')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/communications/api/announcement/${chatId}/block/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          location.reload();
+        } else {
+          alert(data.error || 'Ошибка блокировки');
+        }
+      } catch (error) {
+        console.error('Error blocking announcement:', error);
+        alert('Ошибка при блокировке объявления');
+      }
+    }
+
+    // Разблокировка объявления
+    async function unblockAnnouncement(chatId) {
+      try {
+        const response = await fetch(`/communications/api/announcement/${chatId}/unblock/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          location.reload();
+        } else {
+          alert(data.error || 'Ошибка разблокировки');
+        }
+      } catch (error) {
+        console.error('Error unblocking announcement:', error);
+        alert('Ошибка при разблокировке объявления');
+      }
+    }
+  </script>
 {% endblock %}

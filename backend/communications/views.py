@@ -56,18 +56,18 @@ def _coerce_ts(val: str | None) -> datetime.datetime:
 def user_can_access_chat(chat: Chat, user) -> bool:
     if not chat or not user:
         return False
-    
+
     print(f"[CHAT DEBUG] user_can_access_chat: chat={chat.id}, type={chat.type}, user={user.id}")
-    
+
     if chat.type == "global":
         return True
-    
+
     if chat.type == "private":
         # Личные чаты только через participants
         result = chat.participants.filter(pk=user.pk).exists()
         print(f"[CHAT DEBUG] Private chat, participants check: {result}")
         return result
-    
+
     if chat.type == "group":
         # Групповые чаты через participants ИЛИ ChatMembership
         in_participants = chat.participants.filter(pk=user.pk).exists()
@@ -75,12 +75,12 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         result = in_participants or in_membership
         print(f"[CHAT DEBUG] Group chat, participants={in_participants}, membership={in_membership}, result={result}")
         return result
-    
+
     if chat.type == "department" and chat.department_id:
         result = chat.get_participants.filter(pk=user.pk).exists()
         print(f"[CHAT DEBUG] Department chat, result={result}")
         return result
-    
+
     if chat.type in ("channel", "announcement"):
         # Для каналов и объявлений может быть include_all или membership
         if chat.include_all_employees:
@@ -92,7 +92,7 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         )
         print(f"[CHAT DEBUG] Channel/announcement chat, result={result}")
         return result
-    
+
     return False
 
 
@@ -220,46 +220,46 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         """Возвращает только чаты, к которым пользователь имеет доступ"""
         user = self.request.user
         departments = user.departments
-        
+
         print(f"=" * 80)
         print(f"[CHAT DEBUG] ChatDetailView.get_queryset called")
         print(f"[CHAT DEBUG] User: {user.id} ({user.username or 'NO USERNAME'})")
         print(f"[CHAT DEBUG] Requested chat PK: {self.kwargs.get('pk')}")
-        
+
         logger.info(
             f"ChatDetailView.get_queryset: user={user.id} ({user.username}), "
             f"pk={self.kwargs.get('pk')}"
         )
-        
+
         # Получаем ID чатов через membership
         from communications.models import ChatMembership
         membership_chat_ids = list(
             ChatMembership.objects.filter(user=user).values_list('chat_id', flat=True)
         )
-        
+
         dept_ids = list(departments.values_list('id', flat=True))
         print(f"[CHAT DEBUG] User departments IDs: {dept_ids}")
         print(f"[CHAT DEBUG] User membership_chat_ids: {membership_chat_ids}")
-        
+
         logger.info(
             f"User departments: {list(departments.values_list('id', flat=True))}, "
             f"membership_chat_ids: {membership_chat_ids}"
         )
-        
+
         qs = Chat.objects.filter(
             Q(type="global")
             | Q(type="department", department__in=departments)
             | Q(type="private", participants=user)
             | Q(id__in=membership_chat_ids)
         ).distinct()
-        
+
         available_ids = list(qs.values_list('id', flat=True))
         print(f"[CHAT DEBUG] Available chats for user: {available_ids}")
         print(f"[CHAT DEBUG] Access to requested chat: {self.kwargs.get('pk') in available_ids}")
         print(f"=" * 80)
-        
+
         logger.info(f"Available chats for user: {list(qs.values_list('id', flat=True))}")
-        
+
         return qs
 
     def get_object(self, queryset=None):
@@ -287,11 +287,11 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         user = self.request.user
 
         print(f"[CHAT DEBUG] get_context_data called for chat {chat.id}")
-        
+
         # защита доступа
         has_access = self._user_has_access(chat, user)
         print(f"[CHAT DEBUG] _user_has_access returned: {has_access}")
-        
+
         if not has_access:
             from django.http import Http404
             print(f"[CHAT DEBUG] Raising Http404 because user has no access")

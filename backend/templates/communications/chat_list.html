@@ -21,45 +21,45 @@
 
       {# ===== ДВУХКОЛОНОЧНАЯ СТРУКТУРА ===== #}
       <div class="d-flex gap-3 chat-list-wrapper">
-        
+
         {# Левая колонка - иконки типов чатов #}
         <div class="chat-type-sidebar">
           <div class="card">
             <div class="list-group list-group-flush">
-              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn active" 
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn active"
                       data-chat-type="all" title="Все чаты">
                 <i class="bi-chat-dots fs-4 d-block"></i>
-                <span class="badge-telegram badge-telegram-muted" data-count="all" style="display: none;">0</span>
+                <span class="badge badge--muted" data-count="all" style="display: none;">0</span>
               </button>
-              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn"
                       data-chat-type="global" title="Глобальный">
                 <i class="bi-globe fs-4 d-block"></i>
-                <span class="badge-telegram badge-telegram-muted" data-count="global" style="display: none;">0</span>
+                <span class="badge badge--muted" data-count="global" style="display: none;">0</span>
               </button>
-              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn"
                       data-chat-type="department" title="Отделы">
                 <i class="bi-diagram-3 fs-4 d-block"></i>
-                <span class="badge-telegram badge-telegram-muted" data-count="department" style="display: none;">0</span>
+                <span class="badge badge--muted" data-count="department" style="display: none;">0</span>
               </button>
-              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn"
                       data-chat-type="private" title="Личные">
                 <i class="bi-person-fill fs-4 d-block"></i>
-                <span class="badge-telegram badge-telegram-muted" data-count="private" style="display: none;">0</span>
+                <span class="badge badge--muted" data-count="private" style="display: none;">0</span>
               </button>
-              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn"
                       data-chat-type="group" title="Группы">
                 <i class="bi-people-fill fs-4 d-block"></i>
-                <span class="badge-telegram badge-telegram-muted" data-count="group" style="display: none;">0</span>
+                <span class="badge badge--muted" data-count="group" style="display: none;">0</span>
               </button>
-              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn"
                       data-chat-type="channel" title="Каналы">
                 <i class="bi-broadcast fs-4 d-block"></i>
-                <span class="badge-telegram badge-telegram-muted" data-count="channel" style="display: none;">0</span>
+                <span class="badge badge--muted" data-count="channel" style="display: none;">0</span>
               </button>
-              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn" 
+              <button type="button" class="list-group-item list-group-item-action text-center py-3 chat-type-btn"
                       data-chat-type="announcement" title="Объявления">
                 <i class="bi-megaphone fs-4 d-block"></i>
-                <span class="badge-telegram badge-telegram-muted" data-count="announcement" style="display: none;">0</span>
+                <span class="badge badge--muted" data-count="announcement" style="display: none;">0</span>
               </button>
             </div>
           </div>
@@ -204,7 +204,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
       <div class="modal-body">
-        
+
         {# Выбор типа чата #}
         <div class="mb-3">
           <label for="chatTypeSelect" class="form-label">Тип чата <span class="text-danger">*</span></label>
@@ -234,7 +234,7 @@
             <label for="chatNameInput" class="form-label">Название чата <span class="text-danger">*</span></label>
             <input type="text" class="form-control" id="chatNameInput" placeholder="Введите название">
           </div>
-          
+
           <div class="mb-3">
             <label for="chatDescInput" class="form-label">Описание</label>
             <textarea class="form-control" id="chatDescInput" rows="3" placeholder="Краткое описание чата"></textarea>
@@ -346,8 +346,8 @@
   // Инициализация RecipientPicker для создания чата
   const chatPicker = new RecipientPicker(
     document.getElementById('chatRecipients'),
-    { 
-      headers: headersAuth, 
+    {
+      headers: headersAuth,
       apiUrl: "{% url 'api:v1:employees-list' %}",
       maxSelections: 1  // По умолчанию для личного чата
     }
@@ -364,7 +364,7 @@
 
   chatTypeSelect?.addEventListener('change', function() {
     const type = this.value;
-    
+
     // Скрываем все секции по умолчанию
     recipientSection.style.display = 'none';
     recipientRequired.style.display = 'none';
@@ -372,7 +372,7 @@
     departmentSection.style.display = 'none';
     includeAllSection.style.display = 'none';
     mainChatSection.style.display = 'none';
-    
+
     if(type === 'private') {
       // Личный чат: только выбор 1 участника
       recipientSection.style.display = 'block';
@@ -403,7 +403,7 @@
   // Предпросмотр аватара чата
   const chatAvatarInput = document.getElementById('chatAvatarInput');
   const chatAvatarPreview = document.getElementById('chatAvatarPreview');
-  
+
   chatAvatarInput?.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if(!file) {
@@ -411,21 +411,21 @@
       chatAvatarPreview.innerHTML = '<i class="bi bi-people-fill text-secondary" style="font-size: 2rem;"></i>';
       return;
     }
-    
+
     // Валидация размера
     if(file.size > 5 * 1024 * 1024) {
       alert('Файл слишком большой. Максимум 5 МБ.');
       this.value = '';
       return;
     }
-    
+
     // Валидация типа
     if(!file.type.match(/^image\/(jpeg|png|gif)$/)) {
       alert('Разрешены только JPG, PNG или GIF.');
       this.value = '';
       return;
     }
-    
+
     // Показываем предпросмотр
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -441,7 +441,7 @@
     if (tokenInput) {
       return tokenInput.value;
     }
-    
+
     // Иначе берем из cookie
     const name = 'csrftoken';
     let cookieValue = null;
@@ -470,7 +470,7 @@
         alert('Выберите сотрудника для чата');
         return;
       }
-      
+
       const employeeId = selected[0].id;
       window.location.href = "{% url 'communications:start_private_chat' 0 %}".replace('/0/', `/${employeeId}/`);
     } else {
@@ -481,7 +481,7 @@
       const includeAllCheckbox = document.getElementById('includeAllEmployees');
       const isMainCheckbox = document.getElementById('isMainChat');
       const avatarInput = document.getElementById('chatAvatarInput');
-      
+
       const name = nameInput?.value.trim() || '';
       const description = descInput?.value.trim() || '';
 
@@ -504,22 +504,22 @@
       formData.append('type', type);
       formData.append('name', name);
       formData.append('description', description);
-      
+
       // Добавляем аватар если выбран
       if(avatarInput?.files[0]) {
         formData.append('avatar', avatarInput.files[0]);
       }
-      
+
       // Добавляем department_id для типа "department"
       if(type === 'department' && departmentSelect?.value) {
         formData.append('department_id', departmentSelect.value);
       }
-      
+
       // Добавляем include_all_employees
       if(includeAllCheckbox?.checked) {
         formData.append('include_all_employees', 'true');
       }
-      
+
       // Добавляем is_main
       if(isMainCheckbox?.checked) {
         formData.append('is_main', 'true');
@@ -547,7 +547,7 @@
         window.location.href = `/communications/chats/${data.chat_id}/`;
       } else {
         const err = await res.json();
-        
+
         // Если это ошибка с existing_chat_id - редиректим на существующий чат
         if(err.existing_chat_id) {
           if(confirm(err.error + '\n\nПерейти к вашему чату объявлений?')) {
@@ -559,7 +559,7 @@
       }
     }
   });
-  
+
   // Инициализация поиска и фильтрации
   const filterApi = initSearchFilter({
     inputId: 'chatSearch',
@@ -570,10 +570,10 @@
 
   // ===== ФИЛЬТРАЦИЯ ПО ТИПАМ ЧАТОВ =====
   let activeFilter = 'all';
-  
+
   const chatTypeButtons = document.querySelectorAll('.chat-type-btn');
   const chatSections = document.querySelectorAll('.chat-section');
-  
+
   // Функция подсчета чатов по типам и управления видимостью
   function updateChatCounts() {
     const counts = {
@@ -585,25 +585,25 @@
       channel: 0,
       announcement: 0
     };
-    
+
     // Подсчитываем чаты в каждой секции
     chatSections.forEach(section => {
       const sectionType = section.dataset.sec;
       const chatRows = section.querySelectorAll('.chat-row');
-      
+
       // Считаем только видимые (не скрытые поиском) чаты
       const visibleChats = Array.from(chatRows).filter(row => {
         return row.style.display !== 'none';
       }).length;
-      
+
       counts[sectionType] = visibleChats;
       counts.all += visibleChats;
-      
+
       // Управление видимостью секции
       // 1. Если чатов нет (скрыты поиском или отсутствуют) -> скрываем секцию
       if (visibleChats === 0) {
         section.style.display = 'none';
-      } 
+      }
       // 2. Если чаты есть, проверяем активный фильтр
       else {
         if (activeFilter === 'all' || activeFilter === sectionType) {
@@ -613,12 +613,12 @@
         }
       }
     });
-    
+
     // Обновляем бейджи и кнопки
     Object.keys(counts).forEach(type => {
       const badge = document.querySelector(`[data-count="${type}"]`);
       const button = document.querySelector(`[data-chat-type="${type}"]`);
-      
+
       if (badge) {
         badge.textContent = counts[type];
         // Telegram-стиль: показываем/скрываем с анимацией
@@ -633,17 +633,17 @@
           }
         }
       }
-      
+
       // Скрываем кнопку категории, если в ней нет чатов (кроме 'all')
       if (button && type !== 'all') {
         button.style.display = counts[type] === 0 ? 'none' : '';
       }
     });
   }
-  
+
   function applyTypeFilter(filterType) {
     activeFilter = filterType;
-    
+
     // Обновляем активную кнопку
     chatTypeButtons.forEach(btn => {
       if (btn.dataset.chatType === filterType) {
@@ -652,16 +652,16 @@
         btn.classList.remove('active');
       }
     });
-    
+
     // Переприменяем поиск (если есть), это обновит видимость строк
     if (filterApi && filterApi.reapply) {
       filterApi.reapply();
     }
-    
+
     // Обновляем видимость секций и счетчики
     updateChatCounts();
   }
-  
+
   // Обработка кликов по кнопкам типов
   chatTypeButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -669,10 +669,10 @@
       applyTypeFilter(filterType);
     });
   });
-  
+
   // Применяем начальный фильтр и подсчитываем чаты
   applyTypeFilter('all');
-  
+
   // Обновляем счетчики после поиска
   const searchInput = document.getElementById('chatSearch');
   if (searchInput) {

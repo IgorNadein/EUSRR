@@ -20,28 +20,23 @@
   <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
   <link rel="icon" type="image/png" sizes="192x192" href="{% static 'img/logo-192.png' %}">
 
-  {# Preload критичных CSS для ускорения загрузки #}
+  {# Preload критичного CSS для ускорения загрузки #}
   <link rel="preload" href="{% static 'css/bootstrap-custom.css' %}" as="style">
-  <link rel="preload" href="{% static 'css/variables.css' %}" as="style">
-  <link rel="preload" href="{% static 'css/components/common.css' %}" as="style">
 
-  <!-- Bootstrap / Icons / FullCalendar -->
-  <!-- Bootstrap CSS (локальная версия) -->
-  <!-- Кастомный Bootstrap с нашей системой отступов -->
+  <!-- Bootstrap / Icons -->
+  <!-- Кастомный Bootstrap с нашей системой отступов + все CSS переменные -->
   <link rel="stylesheet" href="{% static 'css/bootstrap-custom.css' %}">
+
   <link href="{% static 'vendor/bootstrap-icons/bootstrap-icons.min.css' %}" rel="stylesheet">
 
-  <!-- CSS Components -->
-  <link rel="stylesheet" href="{% static 'css/variables.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/spacing-utils.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/layout-spacing.css' %}">
+  <!-- TODO: Мигрировать в SCSS и удалить -->
   <link rel="stylesheet" href="{% static 'css/components/buttons.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/base-app.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/ios-components.css' %}">
   <link rel="stylesheet" href="{% static 'css/components/card-list.css' %}">
   <link rel="stylesheet" href="{% static 'css/notifications/notifications.css' %}">
+
 
   {% block extra_css %}{% endblock %}
 </head>
@@ -74,7 +69,7 @@
   <!-- JS -->
   <!-- Bootstrap JS (локальная версия) -->
   <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
-  
+
   <!-- FullCalendar (локальные версии) -->
   <script src="{% static 'vendor/fullcalendar/fullcalendar.min.js' %}" defer></script>
   <script src="{% static 'vendor/fullcalendar/locales-all.min.js' %}" defer></script>
@@ -150,7 +145,7 @@
         // Если разрешение еще не спрошено - запрашиваем его
         if (pushNotifications.getPermissionStatus() === 'default' && !pushNotifications.isSubscribed) {
           console.log('[WebPush] Запрашиваем разрешение на уведомления...');
-          
+
           // Небольшая задержка, чтобы пользователь успел сориентироваться
           setTimeout(async () => {
             const permission = await pushNotifications.requestPermission();

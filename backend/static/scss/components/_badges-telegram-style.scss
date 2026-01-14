@@ -3,40 +3,19 @@
 // =============================================================================
 // Based on Telegram Web K design system (morethanwords/tweb)
 // Perfect circles, smooth animations, professional appearance
-
-// Variables
-$badge-height: 20px;
-$badge-padding-x: 6px;
-$badge-font-size: 11px;
-$badge-font-weight: 600;
-$badge-border-radius: 10px; // Fixed value for perfect circles, not percentage
-$badge-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-$badge-transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-
-// Size variants
-$badge-sm-height: 18px;
-$badge-lg-height: 24px;
-$badge-xl-height: 28px;
+// REFACTORED: использует design tokens из abstracts/_variables.scss
 
 // =============================================================================
 // Base Badge Class
 // =============================================================================
 .badge-telegram {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: $badge-height;
-  min-width: $badge-height;
-  padding: 0 $badge-padding-x;
-  font-size: $badge-font-size;
-  font-weight: $badge-font-weight;
-  line-height: 1;
-  color: white;
+  @include badge-base($badge-height-base, $badge-radius);
+  color: $color-white;
   background: var(--bs-danger);
-  border-radius: $badge-border-radius;
-  box-shadow: $badge-shadow;
+  @include badge-shadow();
   transition: $badge-transition;
   user-select: none;
+  padding: 0 $badge-padding-x;
 
   // Auto-hide when empty
   &:empty {
@@ -53,27 +32,21 @@ $badge-xl-height: 28px;
 // Size Variants
 // =============================================================================
 .badge-telegram-sm {
-  height: $badge-sm-height;
-  min-width: $badge-sm-height;
+  @include badge-base($badge-height-sm, $badge-radius-sm);
   font-size: 10px;
   padding: 0 5px;
-  border-radius: 9px;
 }
 
 .badge-telegram-lg {
-  height: $badge-lg-height;
-  min-width: $badge-lg-height;
+  @include badge-base($badge-height-lg, $badge-radius-lg);
   font-size: 12px;
   padding: 0 7px;
-  border-radius: 12px;
 }
 
 .badge-telegram-xl {
-  height: $badge-xl-height;
-  min-width: $badge-xl-height;
+  @include badge-base($badge-height-xl, $badge-radius-xl);
   font-size: 13px;
   padding: 0 8px;
-  border-radius: 14px;
 }
 
 // =============================================================================
@@ -102,7 +75,7 @@ $badge-xl-height: 28px;
 }
 
 .badge-telegram-mention {
-  background: #0088cc; // Telegram mention blue
+  background: $telegram-blue;
 }
 
 // =============================================================================
@@ -144,7 +117,7 @@ $badge-xl-height: 28px;
 
 // Animation Classes
 .badge-telegram.animate-in {
-  animation: badge-scale-in 0.2s $badge-transition;
+  animation: badge-scale-in 0.2s $ease-bounce;
 }
 
 .badge-telegram.pulse {
@@ -223,8 +196,8 @@ $badge-xl-height: 28px;
 // =============================================================================
 @media (max-width: 576px) {
   .badge-telegram {
-    height: calc($badge-height - 2px);
-    min-width: calc($badge-height - 2px);
+    height: calc($badge-height-base - 2px);
+    min-width: calc($badge-height-base - 2px);
     font-size: calc($badge-font-size - 1px);
     padding: 0 calc($badge-padding-x - 1px);
   }

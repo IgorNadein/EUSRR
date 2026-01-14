@@ -1,0 +1,294 @@
+/**
+ * _message-context-menu.scss
+ * Контекстное меню сообщений (long-press / right-click)
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   MESSAGE INTERACTIVE
+────────────────────────────────────────────────────────────── */
+[data-message-id] {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  position: relative;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CONTEXT MENU
+────────────────────────────────────────────────────────────── */
+.message-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--bs-body-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+  max-width: 320px;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  overflow: hidden;
+
+  &.show {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  // Backdrop для мобильных
+  &::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+
+  &.show::before {
+    opacity: 1;
+  }
+
+  // На десктопе backdrop не нужен
+  @media (hover: hover) and (pointer: fine) {
+    &::before {
+      display: none;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MESSAGE HIGHLIGHT
+────────────────────────────────────────────────────────────── */
+.message-highlighted {
+  background-color: color-mix(in srgb, var(--bs-primary), transparent 92%) !important;
+  transition: background-color 0.2s ease;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   QUICK REACTIONS
+────────────────────────────────────────────────────────────── */
+.quick-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--bs-border-color);
+  background: var(--bs-tertiary-bg);
+}
+
+.quick-reaction-btn {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: var(--bs-body-bg);
+  border-radius: 50%;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+
+  &:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: scale(1.1);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MENU ACTIONS
+────────────────────────────────────────────────────────────── */
+.menu-actions {
+  padding: var(--space-2) 0;
+}
+
+.menu-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  font-size: 15px;
+  color: var(--bs-body-color);
+  text-align: left;
+
+  &:hover {
+    background-color: var(--bs-tertiary-bg);
+  }
+
+  &:active {
+    background-color: var(--bs-secondary-bg);
+  }
+
+  i {
+    font-size: 18px;
+    width: 24px;
+    text-align: center;
+    color: var(--bs-secondary-color);
+  }
+
+  span {
+    flex: 1;
+    font-weight: 500;
+  }
+}
+
+.menu-action-danger {
+  color: var(--bs-danger);
+
+  i {
+    color: var(--bs-danger);
+  }
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--bs-danger), transparent 95%);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TOAST NOTIFICATION
+────────────────────────────────────────────────────────────── */
+.context-menu-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: var(--space-3) calc(var(--space-3) * 2);
+  border-radius: var(--badge-radius);
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+
+  &.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DARK THEME
+────────────────────────────────────────────────────────────── */
+[data-bs-theme="dark"] {
+  .message-context-menu {
+    background: #2b2d31;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .message-highlighted {
+    background-color: rgba(88, 101, 242, 0.15) !important;
+  }
+
+  .quick-reactions {
+    background: #1e1f22;
+    border-bottom-color: #3f4147;
+  }
+
+  .quick-reaction-btn {
+    background: #383a40;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+
+    &:hover {
+      background: #42444a;
+    }
+  }
+
+  .menu-action {
+    color: #dbdee1;
+
+    &:hover {
+      background-color: #35373c;
+    }
+
+    &:active {
+      background-color: #3f4147;
+    }
+
+    i {
+      color: #b5bac1;
+    }
+  }
+
+  .menu-action-danger {
+    color: #f23f43;
+
+    i {
+      color: #f23f43;
+    }
+
+    &:hover {
+      background-color: rgba(242, 63, 67, 0.1);
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE RESPONSIVE
+────────────────────────────────────────────────────────────── */
+@media (max-width: 576px) {
+  .message-context-menu {
+    min-width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    left: 16px !important;
+    right: 16px;
+    bottom: 16px !important;
+    top: auto !important;
+    transform-origin: center bottom;
+  }
+
+  .quick-reactions {
+    justify-content: center;
+  }
+
+  .quick-reaction-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 26px;
+  }
+
+  .menu-action {
+    padding: var(--space-4) calc(var(--space-4) + var(--space-1));
+    font-size: 16px;
+
+    i {
+      font-size: 20px;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   UTILITIES
+────────────────────────────────────────────────────────────── */
+.message-context-menu-enabled .reaction-button.add-reaction {
+  display: none !important;
+}
+
+@keyframes vibrate {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+.message-vibrating {
+  animation: vibrate 0.1s linear;
+}

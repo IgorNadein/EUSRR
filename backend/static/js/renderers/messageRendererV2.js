@@ -557,8 +557,35 @@ export class MessageRendererV2 {
             messageEl.setAttribute('data-reactions', JSON.stringify(msg.reactions_summary));
         }
 
-        // HTML содержимое
-        messageEl.innerHTML = this._buildMessageInnerHtml(msg, isOwn);
+        // HTML содержимое с аватаром для чужих сообщений
+        let html = '';
+        
+        // Аватар для чужих сообщений (слева)
+        if (!isOwn) {
+            // Проверяем разные варианты поля с аватаром
+            const avatarUrl = msg.author_avatar || msg.avatar || msg.author?.avatar || '';
+            console.log('[MessageRendererV2] Avatar debug:', {
+                author_avatar: msg.author_avatar,
+                avatar: msg.avatar,
+                author: msg.author,
+                avatarUrl,
+                message: msg
+            });
+            
+            // Всегда создаем контейнер .mini-ava
+            html += '<div class="mini-ava me-2">';
+            if (avatarUrl) {
+                html += `<img src="${avatarUrl}" alt="${escapeHtml(msg.author_name || '')}"/>`;
+            } else {
+                html += '<i class="bi bi-person-circle"></i>';
+            }
+            html += '</div>';
+        }
+        
+        // Bubble с содержимым
+        html += this._buildMessageInnerHtml(msg, isOwn);
+        
+        messageEl.innerHTML = html;
 
         return messageEl;
     }
@@ -578,38 +605,45 @@ export class MessageRendererV2 {
             authorUrl = this.detailUrlTemplate.replace('/0/', `/${msg.author_id}/`);
         }
 
-        // Базовая структура
-        let html = `
-            <div class="message-bubble ${isOwn ? 'bg-primary text-white' : 'bg-light'} rounded-3 p-2 position-relative">
-                ${!isOwn ? `
-                    <div class="message-author mb-1">
-                        <a href="${authorUrl}" class="text-decoration-none fw-bold ${isOwn ? 'text-white' : 'text-primary'}">
-                            ${authorName}
-                        </a>
-                    </div>
-                ` : ''}
-                
-                <div class="message-content">${content}${msg.is_edited ? '<small class="edited-indicator text-muted ms-1">(ред.)</small>' : ''}</div>
-                
-                ${msg.attachments && msg.attachments.length > 0 ? `
-                    <div class="message-attachments mt-2">
-                        ${msg.attachments.map(att => this._renderAttachment(att, isOwn)).join('')}
-                    </div>
-                ` : ''}
-                
-                <div class="message-time small ${isOwn ? 'text-white-50' : 'text-muted'} mt-1">
-                    ${time}
-                    ${msg.status === 'sending' ? '<i class="bi bi-clock ms-1"></i>' : ''}
-                    ${msg.status === 'failed' ? '<i class="bi bi-exclamation-circle text-danger ms-1"></i>' : ''}
-                </div>
-                
-                ${msg.reactions_summary && Object.keys(msg.reactions_summary).length > 0 ? `
-                    <div class="message-reactions mt-2">
-                        ${this._renderReactions(msg.reactions_summary)}
-                    </div>
-                ` : ''}
-            </div>
-        `;
+        // Базовая структура с кастомными классами (компактно, без лишних переносов)
+        let html = '<div class="bubble ' + (isOwn ? 'bubble-me' : 'bubble-other') + ' position-relative">';
+        
+        // Имя автора для чужих сообщений
+        if (!isOwn) {
+            html += '<div class="message-author mb-1">';
+            html += '<a href="' + authorUrl + '" class="text-decoration-none fw-bold text-primary">' + authorName + '</a>';
+            html += '</div>';
+        }
+        
+        // Контент
+        html += '<div class="message-content">' + content;
+        if (msg.is_edited) {
+            html += '<small class="edited-indicator text-muted ms-1">(ред.)</small>';
+        }
+        html += '</div>';
+        
+        // Вложения
+        if (msg.attachments && msg.attachments.length > 0) {
+            html += '<div class="message-attachments mt-2">';
+            html += msg.attachments.map(att => this._renderAttachment(att, isOwn)).join('');
+            html += '</div>';
+        }
+        
+        // Время
+        html += '<div class="message-time small ' + (isOwn ? 'text-white-50' : 'text-muted') + ' mt-1">';
+        html += time;
+        if (msg.status === 'sending') html += '<i class="bi bi-clock ms-1"></i>';
+        if (msg.status === 'failed') html += '<i class="bi bi-exclamation-circle text-danger ms-1"></i>';
+        html += '</div>';
+        
+        // Реакции
+        if (msg.reactions_summary && Object.keys(msg.reactions_summary).length > 0) {
+            html += '<div class="message-reactions mt-2">';
+            html += this._renderReactions(msg.reactions_summary);
+            html += '</div>';
+        }
+        
+        html += '</div>';
 
         return html;
     }

@@ -38,7 +38,7 @@
         <span class="side-icon"><i class="bi-clipboard-check"></i></span>
         <span>Заявления</span>
       </a>
-      
+
       {% with total=chat_unread_total|default:0 %}
       <a href="{% url 'communications:chat_list' %}"
         class="nav-link {% if request.resolver_match.app_name == 'communications' %}active{% endif %}"
@@ -47,9 +47,9 @@
         <span class="side-icon icon-wrap">
           <i class="bi-chat-dots"></i>
           {% if total|add:0 > 0 %}
-            <span class="badge-telegram badge-telegram-button" id="sidebarChatBadge" data-count="{{ total }}">{{ total }}</span>
+            <span class="badge badge--button" id="sidebarChatBadge" data-count="{{ total }}">{{ total }}</span>
           {% else %}
-            <span class="badge-telegram badge-telegram-button" id="sidebarChatBadge" data-count="0" style="display: none;">0</span>
+            <span class="badge badge--button" id="sidebarChatBadge" data-count="0" style="display: none;">0</span>
           {% endif %}
         </span>
         <span>Чаты</span>
@@ -61,14 +61,14 @@
         <span class="side-icon"><i class="bi-file-earmark-text"></i></span>
         <span>Документы</span>
       </a>
-      
+
       <a href="{% url 'finance:dashboard' %}"
         class="nav-link {% if request.resolver_match.app_name == 'finance' %}active{% endif %}"
         {% if request.resolver_match.app_name == 'finance' %}aria-current="page"{% endif %}>
         <span class="side-icon"><i class="bi-cash-coin"></i></span>
         <span>Финансы</span>
       </a>
-      
+
     </nav>
 
     <div class="mt-auto pt-3 small">
