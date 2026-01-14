@@ -659,24 +659,54 @@ export class MessageRendererV2 {
         const fileUrl = att.file_url || att.url || '#';
         const fileSize = att.file_size || att.size || 0;
         const fileType = att.file_type || att.type || '';
+        const thumbnailUrl = att.thumbnail || null;
         
-        // Форматируем размер
+        // Рендеринг изображений
+        if (fileType === 'image' || fileType.startsWith('image/')) {
+            const imgSrc = thumbnailUrl || fileUrl;
+            return `
+                <a href="${fileUrl}" target="_blank" class="attachment-item d-block">
+                    <img src="${imgSrc}" 
+                         alt="${fileName}" 
+                         class="chat-media chat-media--image"
+                         loading="lazy"
+                         style="max-width: 100%; height: auto; display: block;" />
+                </a>
+            `;
+        }
+        
+        // Рендеринг видео
+        if (fileType === 'video' || fileType.startsWith('video/')) {
+            return `
+                <div class="attachment-item">
+                    <video src="${fileUrl}" 
+                           class="chat-media chat-media--video"
+                           controls
+                           playsinline
+                           preload="metadata"
+                           style="max-width: 100%; height: auto; display: block;">
+                        Ваш браузер не поддерживает воспроизведение видео.
+                    </video>
+                </div>
+            `;
+        }
+        
+        // Форматируем размер для файлов
         const sizeStr = fileSize > 0 
             ? `${(fileSize / 1024).toFixed(1)} KB` 
             : '';
         
-        // Определяем иконку по типу
+        // Определяем иконку для файлов
         let icon = 'bi-file-earmark';
-        if (fileType.startsWith('image/')) {
-            icon = 'bi-file-image';
-        } else if (fileType.startsWith('video/')) {
-            icon = 'bi-file-play';
-        } else if (fileType.includes('pdf')) {
+        if (fileType.includes('pdf')) {
             icon = 'bi-file-pdf';
         } else if (fileType.includes('word') || fileType.includes('document')) {
             icon = 'bi-file-word';
+        } else if (fileType.startsWith('audio/')) {
+            icon = 'bi-file-music';
         }
         
+        // Рендеринг обычных файлов (документы, аудио и т.д.)
         return `
             <a href="${fileUrl}" 
                target="_blank" 

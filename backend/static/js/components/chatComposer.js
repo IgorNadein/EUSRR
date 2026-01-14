@@ -629,22 +629,46 @@ class ChatComposer {
 		this.preview.innerHTML = '';
 
 		this.selectedFiles.forEach((entry) => {
+			const isImage = entry.file.type.startsWith('image/');
 			const iconClass = pickIcon(entry.file.type);
 			const wrapper = document.createElement('div');
 			wrapper.className = 'attachment-item d-flex align-items-center gap-2 p-2 rounded mb-2';
-			wrapper.innerHTML = `
-				<i class="${iconClass} fs-4"></i>
-				<div class="flex-grow-1">
-					<div class="fw-semibold text-truncate">${entry.file.name}</div>
-					<div class="small text-secondary">${formatFileSize(entry.file.size)}</div>
-				</div>
-				<button type="button" class="btn btn-sm btn-ghost" aria-label="Удалить файл" data-file-id="${entry.id}">
-					<i class="bi-x-lg"></i>
-				</button>
-			`;
+			
+			// Для изображений показываем превью
+			if (isImage) {
+				const imgUrl = URL.createObjectURL(entry.file);
+				wrapper.innerHTML = `
+					<img src="${imgUrl}" alt="${entry.file.name}" 
+					     style="max-width: 60px; max-height: 60px; border-radius: 6px; object-fit: cover;" />
+					<div class="flex-grow-1">
+						<div class="fw-semibold text-truncate">${entry.file.name}</div>
+						<div class="small text-secondary">${formatFileSize(entry.file.size)}</div>
+					</div>
+					<button type="button" class="btn btn-sm btn-ghost" aria-label="Удалить файл" data-file-id="${entry.id}">
+						<i class="bi-x-lg"></i>
+					</button>
+				`;
+			} else {
+				// Для других файлов - иконка
+				wrapper.innerHTML = `
+					<i class="${iconClass} fs-4"></i>
+					<div class="flex-grow-1">
+						<div class="fw-semibold text-truncate">${entry.file.name}</div>
+						<div class="small text-secondary">${formatFileSize(entry.file.size)}</div>
+					</div>
+					<button type="button" class="btn btn-sm btn-ghost" aria-label="Удалить файл" data-file-id="${entry.id}">
+						<i class="bi-x-lg"></i>
+					</button>
+				`;
+			}
 
 			wrapper.querySelector('button')?.addEventListener('click', () => {
 				this.removeFile(entry.id);
+				// Очищаем URL.createObjectURL для изображений
+				if (isImage) {
+					const img = wrapper.querySelector('img');
+					if (img) URL.revokeObjectURL(img.src);
+				}
 			});
 
 			this.preview.appendChild(wrapper);
