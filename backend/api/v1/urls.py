@@ -11,11 +11,8 @@ from .feed.views import CommentViewSet, PostViewSet
 from .documents.views import DocumentViewSet
 from .requests_app.views import RequestViewSet
 
-# NEW: Импорт ViewSets для Communications
-from .communications.viewsets import ChatViewSet, MessageViewSet, PollViewSet
-
-# OLD: Function-based views (постепенно удалим)
-from .communications.views import get_available_reactions
+# Communications ViewSets
+from .communications.views import ChatViewSet, MessageViewSet, PollViewSet
 
 app_name = "v1"
 
@@ -62,13 +59,6 @@ urlpatterns = [
         "auth/verify-email/",
         VerifyEmailAPIView.as_view(),
         name="verify-email",
-    ),
-    
-    # Communications: доступные реакции (для обратной совместимости)
-    path(
-        "communications/reactions/available/",
-        get_available_reactions,
-        name="available_reactions"
     ),
     
     # Notifications API
