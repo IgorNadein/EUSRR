@@ -814,6 +814,19 @@ export class MessageContextMenu {
                 throw new Error(`HTTP ${response.status}`);
             }
 
+            // Статус 204 = No Content, не парсим JSON
+            if (response.status === 204) {
+                console.log('[MessageContextMenu] Delete successful (204)');
+                console.log('[MessageContextMenu] NOTE: DOM will be updated via WebSocket');
+                
+                // НЕ удаляем из DOM здесь - это сделает WebSocket handler
+                // Так все пользователи увидят удаление в реальном времени
+                
+                this.showToast('Сообщение удалено');
+                console.log('[MessageContextMenu] Toast shown');
+                return;
+            }
+
             const data = await response.json();
             console.log('[MessageContextMenu] Response data:', data);
             

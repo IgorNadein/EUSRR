@@ -21,8 +21,12 @@ export class MessageReactions {
      * Добавить реакцию на сообщение
      */
     async addReaction(messageId, emoji) {
+        console.log('[MessageReactions] Adding reaction:', { messageId, emoji });
         try {
-            const response = await fetch(`${this.apiBaseUrl}/${messageId}/react/`, {
+            const url = `${this.apiBaseUrl}/${messageId}/react/`;
+            console.log('[MessageReactions] Sending POST to:', url);
+            
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -31,18 +35,22 @@ export class MessageReactions {
                 body: JSON.stringify({ emoji })
             });
 
+            console.log('[MessageReactions] Response status:', response.status);
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
+            console.log('[MessageReactions] Response data:', data);
+            
             if (!data.ok) {
                 throw new Error(data.error || 'Failed to add reaction');
             }
 
             return data;
         } catch (error) {
-            console.error('Error adding reaction:', error);
+            console.error('[MessageReactions] Error adding reaction:', error);
             throw error;
         }
     }
@@ -50,28 +58,37 @@ export class MessageReactions {
     /**
      * Удалить свою реакцию с сообщения
      */
-    async removeReaction(messageId) {
+    async removeReaction(messageId, emoji) {
+        console.log('[MessageReactions] Removing reaction:', { messageId, emoji });
         try {
-            const response = await fetch(`${this.apiBaseUrl}/${messageId}/unreact/`, {
+            const url = `${this.apiBaseUrl}/${messageId}/unreact/`;
+            console.log('[MessageReactions] Sending POST to:', url);
+            
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': this.getCsrfToken()
-                }
+                },
+                body: JSON.stringify({ emoji })
             });
+
+            console.log('[MessageReactions] Response status:', response.status);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
+            console.log('[MessageReactions] Response data:', data);
+            
             if (!data.ok) {
                 throw new Error(data.error || 'Failed to remove reaction');
             }
 
             return data;
         } catch (error) {
-            console.error('Error removing reaction:', error);
+            console.error('[MessageReactions] Error removing reaction:', error);
             throw error;
         }
     }
@@ -199,7 +216,7 @@ export class MessageReactions {
                 try {
                     if (isActive) {
                         // Удалить свою реакцию
-                        await this.removeReaction(messageId);
+                        await this.removeReaction(messageId, emoji);
                     } else {
                         // Добавить/изменить реакцию
                         await this.addReaction(messageId, emoji);

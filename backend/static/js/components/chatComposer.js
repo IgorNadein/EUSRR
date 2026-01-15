@@ -416,15 +416,13 @@ class ChatComposer {
 			console.log('[ChatComposer] Uploading new files:', newFiles.length);
 			
 			const formData = new FormData();
-			formData.set('chat_id', this.chatId);
-			formData.set('content', ''); // Пустое сообщение для загрузки файлов
 			
 			newFiles.forEach((entry, index) => {
 				formData.append(`file_${index}`, entry.file, entry.file.name);
 			});
 			
-			// Загружаем файлы через upload-message
-			const uploadResponse = await fetch(this.uploadUrl, {
+			// Загружаем файлы через временный endpoint (без создания сообщения)
+			const uploadResponse = await fetch('/api/v1/communications/messages/upload-temp/', {
 				method: 'POST',
 				headers: {
 					'X-CSRFToken': csrfToken
@@ -439,24 +437,10 @@ class ChatComposer {
 			
 			const uploadData = await uploadResponse.json();
 			
-			// Получаем ID временного сообщения и его вложений
-			if (uploadData.message && uploadData.message.attachments) {
-				uploadData.message.attachments.forEach(att => {
-					newAttachmentIds.push(att.id);
-				});
-				
+			// Получаем ID вложений без привязки к сообщению
+			if (uploadData.attachment_ids) {
+				newAttachmentIds.push(...uploadData.attachment_ids);
 				console.log('[ChatComposer] New attachments uploaded:', newAttachmentIds);
-				
-				// Удаляем временное сообщение
-				if (uploadData.message.id) {
-					await fetch(`/api/v1/communications/messages/${uploadData.message.id}/`, {
-						method: 'DELETE',
-						headers: {
-							'Content-Type': 'application/json',
-							'X-CSRFToken': csrfToken
-						}
-					});
-				}
 			}
 		}
 		

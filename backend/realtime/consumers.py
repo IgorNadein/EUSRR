@@ -9,6 +9,7 @@ WebSocket Consumer для пользователя.
 - Календарь и другие real-time события
 """
 import asyncio
+import logging
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
@@ -17,6 +18,8 @@ from django.utils import timezone
 
 from communications.models import Chat, ChatMembership, ChatReadState, Message, MessageReaction
 from communications.consumers import serialize_message
+
+logger = logging.getLogger(__name__)
 
 
 class UserConsumer(AsyncJsonWebsocketConsumer):
@@ -299,9 +302,14 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     
     async def chat_reaction_added(self, event):
         """Реакция добавлена"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         chat_id = event.get("chat_id")
+        logger.info(f"[UserConsumer] chat_reaction_added: chat_id={chat_id}, active_chat_id={self.active_chat_id}, message_id={event.get('message_id')}")
         
         if chat_id == self.active_chat_id:
+            logger.info(f"[UserConsumer] Sending reaction_added to client")
             await self.send_json({
                 "type": "reaction_added",
                 "chat_id": chat_id,
@@ -311,12 +319,19 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "user_name": event.get("user_name"),
                 "reactions_summary": event.get("reactions_summary")
             })
+        else:
+            logger.info(f"[UserConsumer] Skipping - not active chat")
     
     async def chat_reaction_removed(self, event):
         """Реакция удалена"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         chat_id = event.get("chat_id")
+        logger.info(f"[UserConsumer] chat_reaction_removed: chat_id={chat_id}, active_chat_id={self.active_chat_id}, message_id={event.get('message_id')}")
         
         if chat_id == self.active_chat_id:
+            logger.info(f"[UserConsumer] Sending reaction_removed to client")
             await self.send_json({
                 "type": "reaction_removed",
                 "chat_id": chat_id,
@@ -325,6 +340,8 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "user_id": event.get("user_id"),
                 "reactions_summary": event.get("reactions_summary")
             })
+        else:
+            logger.info(f"[UserConsumer] Skipping - not active chat")
     
     async def chat_user_typing(self, event):
         """Пользователь печатает"""
@@ -365,6 +382,21 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "message_id": payload.get("message_id"),
                 "results": payload.get("results")
             })
+    
+    async def chat_marked_read(self, event):
+        """Синхронизация отметки прочитанного между вкладками"""
+        chat_id = event.get("chat_id")
+        last_read_at = event.get("last_read_at")
+        last_read_message_id = event.get("last_read_message_id")
+        
+        logger.info(f"[Consumer.chat_marked_read] Sending to client: chat={chat_id}, last_read_at={last_read_at}, last_read_message_id={last_read_message_id}")
+        
+        await self.send_json({
+            "type": "marked_read",
+            "chat_id": chat_id,
+            "last_read_at": last_read_at,
+            "last_read_message_id": last_read_message_id
+        })
     
     # ==================== Обработчики уведомлений ====================
     
@@ -591,12 +623,19 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     
     async def _handle_mark_read(self, content):
         """Отметка сообщений как прочитанных"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         chat_id = content.get("chat_id")
         if not chat_id:
+            logger.warning(f"[Consumer._handle_mark_read] No chat_id provided")
             return
+        
+        logger.info(f"[Consumer._handle_mark_read] User {self.user.id} marking chat {chat_id} as read")
         
         chat = await self._get_chat(int(chat_id))
         if not chat:
+            logger.warning(f"[Consumer._handle_mark_read] Chat {chat_id} not found")
             return
         
         await self._mark_read(chat, self.user)
@@ -735,11 +774,25 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _mark_read(self, chat, user):
         """Отметить чат как прочитанный"""
-        ChatReadState.objects.update_or_create(
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"[Consumer._mark_read] Marking chat {chat.id} as read for user {user.id}")
+        
+        # Получаем старое состояние для сравнения
+        try:
+            old_state = ChatReadState.objects.get(chat=chat, user=user)
+            logger.info(f"[Consumer._mark_read] OLD state: last_read_at={old_state.last_read_at}, last_read_message_id={old_state.last_read_message_id}")
+        except ChatReadState.DoesNotExist:
+            logger.info(f"[Consumer._mark_read] No previous ReadState found")
+        
+        read_state, created = ChatReadState.objects.update_or_create(
             chat=chat,
             user=user,
             defaults={"last_read_at": timezone.now()}
         )
+        
+        logger.info(f"[Consumer._mark_read] {'CREATED' if created else 'UPDATED'} ReadState: last_read_at={read_state.last_read_at}, last_read_message_id={read_state.last_read_message_id}")
     
     @database_sync_to_async
     def _set_typing_status(self, chat, user, is_typing):

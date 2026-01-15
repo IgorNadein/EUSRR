@@ -33,6 +33,7 @@
 
         ChatControllerV2 = controllerModule.ChatControllerV2;
         initChatMarkRead = markReadModule.initChatMarkRead;
+        window.markVisibleMessagesAsRead = markReadModule.markVisibleMessagesAsRead;
         initChatComposer = composerModule.initChatComposer;
         initChatFormManager = formManagerModule.initChatFormManager;
 
@@ -170,6 +171,13 @@
             initialLastReadTs: config.lastReadMessageId
         });
 
+        // Отметить видимые сообщения как прочитанные после инициализации
+        setTimeout(() => {
+            if (window.markVisibleMessagesAsRead) {
+                window.markVisibleMessagesAsRead();
+            }
+        }, 500);
+
         // 4. Composer (отправка сообщений)
         const composer = initChatComposer({
             chatId: config.chatId,
@@ -184,6 +192,8 @@
 
         // 5. Экспорт в window
         window.chatController = chatController;
+        // Добавляем прямой доступ к renderer для messageEditing.js
+        window.chatController.messageRenderer = chatController.renderer;
         window.chatComposer = composer;
         window.markReadApi = markReadApi;
         window.chatFormManager = formManager;

@@ -54,6 +54,12 @@ export class ChatControllerV2 {
     this.containerId = options.containerId || "chatScroll";
     this.lastReadMessageId = options.lastReadMessageId || null;
     this.lastReadTimestamp = options.lastReadTimestamp || null;
+    
+    // Для корректировки скролла при загрузке изображений
+    this._anchorElement = null;
+    this._anchorOffsetTop = 0;
+    this._lastScrollHeight = 0;
+    this._imageLoadHandlers = [];
 
     // Создаем компоненты
     this.store = new MessageStoreV2({ currentUserId: this.currentUserId });
@@ -652,6 +658,14 @@ export class ChatControllerV2 {
         relativeTop,
         noScrollAnimation: true,
       });
+      
+      // Сохраняем якорный элемент для корректировки при загрузке изображений
+      this._anchorElement = messageEl;
+      this._anchorOffsetTop = messageEl.offsetTop;
+      this._lastScrollHeight = this.scrollElement.scrollHeight;
+      
+      // Устанавливаем обработчики загрузки изображений
+      this._setupImageLoadHandlers();
 
       return true;
     }
@@ -661,6 +675,82 @@ export class ChatControllerV2 {
       messageId
     );
     return false;
+  }
+  
+  /**
+   * Устанавливает обработчики загрузки изображений для корректировки скролла
+   * @private
+   */
+  _setupImageLoadHandlers() {
+    if (!this._anchorElement) return;
+    
+    // Находим все изображения в чате
+    const images = this.scrollElement.querySelectorAll('img.chat-media--image');
+    
+    console.log('[ChatControllerV2] Setting up image load handlers:', images.length);
+    
+    images.forEach((img) => {
+      if (img.complete) {
+        // Изображение уже загружено
+        return;
+      }
+      
+      const handler = () => {
+        this._adjustScrollForImageLoad();
+      };
+      
+      img.addEventListener('load', handler, { once: true });
+      this._imageLoadHandlers.push({ img, handler });
+    });
+  }
+  
+  /**
+   * Корректирует скролл при загрузке изображения
+   * @private
+   */
+  _adjustScrollForImageLoad() {
+    if (!this._anchorElement || !this._anchorElement.isConnected) {
+      console.log('[ChatControllerV2] Anchor element lost, stopping adjustments');
+      this._cleanupImageHandlers();
+      return;
+    }
+    
+    const currentScrollHeight = this.scrollElement.scrollHeight;
+    const heightChange = currentScrollHeight - this._lastScrollHeight;
+    
+    if (heightChange > 0) {
+      const currentAnchorOffset = this._anchorElement.offsetTop;
+      const anchorDrift = currentAnchorOffset - this._anchorOffsetTop;
+      
+      if (anchorDrift > 5) { // Игнорируем маленькие изменения
+        console.log('[ChatControllerV2] Adjusting scroll for image load:', {
+          heightChange,
+          anchorDrift,
+          oldScrollTop: this.scrollElement.scrollTop,
+          newScrollTop: this.scrollElement.scrollTop + anchorDrift
+        });
+        
+        // Корректируем scrollTop чтобы якорь остался на месте
+        this.scrollElement.scrollTop += anchorDrift;
+        
+        // Обновляем отслеживаемые значения
+        this._anchorOffsetTop = currentAnchorOffset;
+      }
+      
+      this._lastScrollHeight = currentScrollHeight;
+    }
+  }
+  
+  /**
+   * Очищает обработчики загрузки изображений
+   * @private
+   */
+  _cleanupImageHandlers() {
+    this._imageLoadHandlers.forEach(({ img, handler }) => {
+      img.removeEventListener('load', handler);
+    });
+    this._imageLoadHandlers = [];
+    this._anchorElement = null;
   }
 
   /**

@@ -212,6 +212,7 @@ LOGGING = {
         "documents": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "bots": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "api.v1.communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "notifications": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "requests_app": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "employees": {"handlers": ["console"], "level": "INFO", "propagate": False},
@@ -495,6 +496,14 @@ CELERY_TASK_ROUTES = {
 
 # Настройки для периодических задач (Celery Beat)
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Расписание периодических задач
+CELERY_BEAT_SCHEDULE = {
+    'cleanup-orphaned-attachments': {
+        'task': 'communications.tasks.cleanup_orphaned_attachments',
+        'schedule': 3600.0,  # Каждый час
+    },
+}
 
 # Опции по умолчанию для всех задач
 CELERY_TASK_ACKS_LATE = True  # Подтверждаем выполнение после завершения

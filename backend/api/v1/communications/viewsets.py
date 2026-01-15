@@ -335,24 +335,49 @@ class ChatViewSet(viewsets.ModelViewSet):
         """
         chat = self.get_object()
         
+        logger.info(f"[mark_read] User {request.user.id} marking chat {chat.id} as read")
+        logger.info(f"[mark_read] Request data: {request.data}")
+        
         read_state, created = ChatReadState.objects.get_or_create(
             chat=chat,
             user=request.user
         )
         
+        logger.info(f"[mark_read] ReadState {'created' if created else 'found'}: last_read_at={read_state.last_read_at}, last_read_message_id={read_state.last_read_message_id}")
+        
         # Обновляем timestamp
         upto_ts = request.data.get('upto_ts')
+        new_timestamp = None
+        
         if upto_ts:
             try:
                 # Конвертируем timestamp (может быть в миллисекундах)
                 ts_value = float(upto_ts)
                 if ts_value > 10000000000:  # Timestamp в миллисекундах
                     ts_value = ts_value / 1000
-                read_state.last_read_at = timezone.datetime.fromtimestamp(ts_value, tz=timezone.utc)
-            except (ValueError, OSError):
-                read_state.last_read_at = timezone.now()
+                new_timestamp = datetime.fromtimestamp(ts_value, tz=dt_tz.utc)
+                logger.info(f"[mark_read] Parsed timestamp: {new_timestamp}")
+            except (ValueError, OSError) as e:
+                new_timestamp = timezone.now()
+                logger.warning(f"[mark_read] Invalid timestamp, using now: {e}")
         else:
-            read_state.last_read_at = timezone.now()
+            new_timestamp = timezone.now()
+            logger.info(f"[mark_read] No timestamp provided, using now: {new_timestamp}")
+        
+        # Проверка: не откатываем назад
+        if read_state.last_read_at and new_timestamp <= read_state.last_read_at:
+            logger.warning(f"[mark_read] SKIPPING - new timestamp {new_timestamp} is not newer than current {read_state.last_read_at}")
+            return Response({
+                'ok': True,
+                'last_read_at': read_state.last_read_at.isoformat() if read_state.last_read_at else None,
+                'last_read_message_id': read_state.last_read_message_id,
+                'skipped': True,
+                'reason': 'timestamp_not_newer'
+            })
+        
+        # Обновляем только если новее
+        read_state.last_read_at = new_timestamp
+        logger.info(f"[mark_read] Updated last_read_at to: {read_state.last_read_at}")
         
         # Обновляем last_read_message если передан message_id
         message_id = request.data.get('message_id')
@@ -360,8 +385,9 @@ class ChatViewSet(viewsets.ModelViewSet):
             try:
                 message = chat.messages.get(pk=int(message_id))
                 read_state.last_read_message = message
-            except (Message.DoesNotExist, ValueError):
-                pass
+                logger.info(f"[mark_read] Set last_read_message from request: {message.id}")
+            except (Message.DoesNotExist, ValueError) as e:
+                logger.warning(f"[mark_read] Could not find message {message_id}: {e}")
         else:
             # Если не передан явно, находим последнее сообщение до указанного времени
             if read_state.last_read_at:
@@ -371,8 +397,26 @@ class ChatViewSet(viewsets.ModelViewSet):
                 ).order_by('-created_at').first()
                 if last_msg:
                     read_state.last_read_message = last_msg
+                    logger.info(f"[mark_read] Auto-detected last_read_message: {last_msg.id}")
+                else:
+                    logger.warning(f"[mark_read] No messages found before {read_state.last_read_at}")
         
         read_state.save()
+        
+        logger.info(f"[mark_read] SAVED ReadState: chat={chat.id}, user={request.user.id}, last_read_at={read_state.last_read_at}, last_read_message_id={read_state.last_read_message_id}")
+        
+        # Отправляем WebSocket событие для синхронизации между вкладками
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'user_{request.user.id}',
+            {
+                'type': 'chat_marked_read',
+                'chat_id': chat.id,
+                'last_read_at': read_state.last_read_at.isoformat() if read_state.last_read_at else None,
+                'last_read_message_id': read_state.last_read_message_id,
+            }
+        )
+        logger.info(f"[mark_read] Sent WebSocket event: chat_marked_read for chat {chat.id}")
         
         return Response({
             'ok': True,
@@ -514,6 +558,44 @@ class MessageViewSet(viewsets.ModelViewSet):
             'message': payload
         }, status=status.HTTP_201_CREATED)
     
+    @action(detail=False, methods=['post'], url_path='upload-temp')
+    def upload_temp(self, request):
+        """
+        Временная загрузка файлов для редактирования сообщения
+        POST /api/v1/communications/messages/upload-temp/
+        Создает MessageAttachment без привязки к сообщению (message=null)
+        """
+        # Получаем файлы
+        files = []
+        for key in request.FILES:
+            if key.startswith('file_'):
+                files.append(request.FILES[key])
+        
+        if not files:
+            return Response(
+                {'error': 'No files provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Создаем attachments БЕЗ привязки к сообщению
+        attachment_ids = []
+        with transaction.atomic():
+            for file in files:
+                attachment = MessageAttachment.objects.create(
+                    message=None,  # Без сообщения!
+                    file=file,
+                    file_name=file.name,
+                    file_size=file.size,
+                    mime_type=file.content_type or 'application/octet-stream',
+                    file_type=self._detect_file_type(file.content_type)
+                )
+                attachment_ids.append(attachment.id)
+        
+        return Response({
+            'ok': True,
+            'attachment_ids': attachment_ids
+        }, status=status.HTTP_201_CREATED)
+    
     def update(self, request, *args, **kwargs):
         """Редактирование сообщения"""
         partial = kwargs.pop('partial', False)
@@ -570,13 +652,23 @@ class MessageViewSet(viewsets.ModelViewSet):
             current_ids = set(str(att.id) for att in instance.attachments.all())
             keep_ids = set(str(id) for id in existing_attachment_ids)
             ids_to_remove = current_ids - keep_ids
+            ids_to_add = keep_ids - current_ids
             
+            # Удаляем attachments которых нет в списке
             if ids_to_remove:
                 attachments_to_delete = instance.attachments.filter(id__in=ids_to_remove)
                 for att in attachments_to_delete:
                     if att.file and att.file.storage.exists(att.file.name):
                         att.file.delete(save=False)
                 attachments_to_delete.delete()
+                logger.info(f"[update] Removed attachments: {ids_to_remove}")
+            
+            # Переносим новые attachments из других сообщений к этому
+            if ids_to_add:
+                from communications.models import MessageAttachment
+                attachments_to_move = MessageAttachment.objects.filter(id__in=ids_to_add)
+                updated_count = attachments_to_move.update(message=instance)
+                logger.info(f"[update] Moved {updated_count} attachments to message {instance.id}: {list(ids_to_add)}")
         
         instance.save()
         
@@ -584,7 +676,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         instance.has_attachments = instance.attachments.count() > 0
         instance.save(update_fields=['has_attachments'])
         
-        # Перезагружаем
+        # Перезагружаем с нуля чтобы получить обновленные attachments
         instance = Message.objects.select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
@@ -595,8 +687,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         channel_layer = get_channel_layer()
         payload = serialize_message(instance)
         
+        group_name = f'chat_{instance.chat_id}'
+        
         async_to_sync(channel_layer.group_send)(
-            f'chat_{instance.chat_id}',
+            group_name,
             {
                 'type': 'chat.message_edited',
                 'chat_id': instance.chat_id,
@@ -638,10 +732,13 @@ class MessageViewSet(viewsets.ModelViewSet):
     def react(self, request, pk=None):
         """Добавить реакцию"""
         message = self.get_object()
+        logger.info(f"[react] User {request.user.id} adding reaction to message {message.id}")
+        
         serializer = ReactionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         emoji = serializer.validated_data['emoji']
+        logger.info(f"[react] Emoji: {emoji}")
         
         # Создаем или получаем реакцию
         reaction, created = MessageReaction.objects.get_or_create(
@@ -649,6 +746,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             user=request.user,
             emoji=emoji
         )
+        
+        logger.info(f"[react] Reaction created={created}, id={reaction.id}")
         
         if not created:
             return Response(
@@ -669,12 +768,17 @@ class MessageViewSet(viewsets.ModelViewSet):
             reactions_summary[r.emoji]['users'].append(r.user_id)
             reactions_summary[r.emoji]['user_names'].append(r.user.get_full_name())
         
+        logger.info(f"[react] reactions_summary: {reactions_summary}")
+        
         # WebSocket уведомление
         channel_layer = get_channel_layer()
+        logger.info(f"[react] Sending to chat_{message.chat_id} group")
+        
         async_to_sync(channel_layer.group_send)(
             f'chat_{message.chat_id}',
             {
                 'type': 'chat.reaction_added',
+                'chat_id': message.chat_id,
                 'message_id': message.id,
                 'user_id': request.user.id,
                 'emoji': emoji,
@@ -682,22 +786,29 @@ class MessageViewSet(viewsets.ModelViewSet):
             }
         )
         
+        logger.info(f"[react] WebSocket message sent successfully")
+        
         return Response({'ok': True, 'reactions_summary': reactions_summary})
     
     @action(detail=True, methods=['post'])
     def unreact(self, request, pk=None):
         """Убрать реакцию"""
         message = self.get_object()
+        logger.info(f"[unreact] User {request.user.id} removing reaction from message {message.id}")
+        
         serializer = ReactionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         emoji = serializer.validated_data['emoji']
+        logger.info(f"[unreact] Emoji: {emoji}")
         
         deleted_count = MessageReaction.objects.filter(
             message=message,
             user=request.user,
             emoji=emoji
         ).delete()[0]
+        
+        logger.info(f"[unreact] Deleted count: {deleted_count}")
         
         if deleted_count == 0:
             return Response(
@@ -718,18 +829,25 @@ class MessageViewSet(viewsets.ModelViewSet):
             reactions_summary[r.emoji]['users'].append(r.user_id)
             reactions_summary[r.emoji]['user_names'].append(r.user.get_full_name())
         
+        logger.info(f"[unreact] reactions_summary: {reactions_summary}")
+        
         # WebSocket уведомление
         channel_layer = get_channel_layer()
+        logger.info(f"[unreact] Sending to chat_{message.chat_id} group")
+        
         async_to_sync(channel_layer.group_send)(
             f'chat_{message.chat_id}',
             {
                 'type': 'chat.reaction_removed',
+                'chat_id': message.chat_id,
                 'message_id': message.id,
                 'user_id': request.user.id,
                 'emoji': emoji,
                 'reactions_summary': reactions_summary
             }
         )
+        
+        logger.info(f"[unreact] WebSocket message sent successfully")
         
         return Response({'ok': True, 'reactions_summary': reactions_summary})
     

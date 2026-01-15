@@ -84,9 +84,10 @@ export function initUserWebSocket(options = {}) {
     state.reconnectAttempts = 0;
 
     // Если есть активный чат на странице, открываем его
+    // load_history: false, так как ChatController уже загрузил сообщения через API
     const currentChatId = detectCurrentChatId();
     if (currentChatId) {
-      openChat(currentChatId, true);
+      openChat(currentChatId, false);
     }
   };
 
@@ -161,10 +162,12 @@ export function initUserWebSocket(options = {}) {
         break;
 
       case 'reaction_added':
+        console.log('[UserWS] ✅ reaction_added received:', data);
         handleReactionAdded(data);
         break;
 
       case 'reaction_removed':
+        console.log('[UserWS] ✅ reaction_removed received:', data);
         handleReactionRemoved(data);
         break;
 
@@ -179,6 +182,11 @@ export function initUserWebSocket(options = {}) {
       case 'poll_vote':
       case 'poll_update':
         handlePollUpdate(data);
+        break;
+      
+      case 'marked_read':
+        console.log('[UserWS] ✅ marked_read received:', data);
+        handleMarkedRead(data);
         break;
 
       case 'error':
@@ -471,6 +479,20 @@ export function initUserWebSocket(options = {}) {
         emoji, 
         userId: user_id,
         reactions_summary: reactions_summary
+      }
+    }));
+  }
+  
+  function handleMarkedRead(data) {
+    const { chat_id, last_read_at, last_read_message_id } = data;
+    
+    console.log('[UserWS] Dispatching ws:marked-read for chat=%s', chat_id);
+    
+    window.dispatchEvent(new CustomEvent('ws:marked-read', {
+      detail: {
+        chat_id,
+        last_read_at,
+        last_read_message_id
       }
     }));
   }

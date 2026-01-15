@@ -492,6 +492,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def chat_reaction_added(self, event):
         """Реакция добавлена"""
+        logger.info(f"[Consumer] chat_reaction_added called: message_id={event.get('message_id')}, emoji={event.get('emoji')}")
         await self.send_json({
             "type": "reaction_added",
             "message_id": event["message_id"],
@@ -499,9 +500,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             "emoji": event.get("emoji"),
             "reactions_summary": event.get("reactions_summary", {})
         })
+        logger.info(f"[Consumer] reaction_added sent to client")
 
     async def chat_reaction_removed(self, event):
         """Реакция удалена"""
+        logger.info(f"[Consumer] chat_reaction_removed called: message_id={event.get('message_id')}, emoji={event.get('emoji')}")
         await self.send_json({
             "type": "reaction_removed",
             "message_id": event["message_id"],
@@ -509,6 +512,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             "emoji": event.get("emoji"),
             "reactions_summary": event.get("reactions_summary", {})
         })
+        logger.info(f"[Consumer] reaction_removed sent to client")
 
     async def chat_user_typing(self, event):
         """Пользователь набирает текст"""

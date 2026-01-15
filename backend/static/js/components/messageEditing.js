@@ -88,23 +88,20 @@ function updateMessageInDOM(message) {
 				return;
 			}
 
-			// Рендерим сообщение через существующий renderer
-			const newMessageHtml = renderer.renderSingleMessage(message);
+			// Рендерим сообщение через существующий renderer (возвращает DOM элемент)
+			const newMessageEl = renderer.renderSingleMessage(message);
 			
-			console.log('[MessageEditing] Generated HTML length:', newMessageHtml.length);
-			console.log('[MessageEditing] HTML contains "attachment":', newMessageHtml.includes('attachment'));
-			console.log('[MessageEditing] HTML contains "reply-reference":', newMessageHtml.includes('reply-reference'));
-			console.log('[MessageEditing] HTML sample:', newMessageHtml.substring(0, 500));
-
-			// Создаём временный контейнер для парсинга HTML
-			const tempDiv = document.createElement('div');
-			tempDiv.innerHTML = newMessageHtml.trim();
-			const newMessageEl = tempDiv.firstElementChild;
-
 			if (!newMessageEl) {
-				console.error('[MessageEditing] Failed to parse new message HTML');
+				console.error('[MessageEditing] Failed to render new message element');
 				return;
 			}
+			
+			console.log('[MessageEditing] Generated element:', {
+				tagName: newMessageEl.tagName,
+				className: newMessageEl.className,
+				hasContent: !!newMessageEl.querySelector('.message-content'),
+				hasAttachments: !!newMessageEl.querySelector('.message-attachments')
+			});
 
 			// Сохраняем позицию скролла
 			const scrollContainer = document.getElementById('chatScroll');

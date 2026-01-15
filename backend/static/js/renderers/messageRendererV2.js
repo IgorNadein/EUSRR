@@ -524,6 +524,15 @@ export class MessageRendererV2 {
         messageEl.remove();
         this.renderedMessages.delete(messageId);
     }
+    
+    /**
+     * Рендерит одно сообщение (для редактирования)
+     * @param {Object} message - данные сообщения
+     * @returns {HTMLElement} - DOM элемент сообщения
+     */
+    renderSingleMessage(message) {
+        return this._createMessageElement(message);
+    }
 
     // ==================== Создание элементов ====================
 

@@ -529,7 +529,10 @@ class MessageAttachment(models.Model):
         Message,
         on_delete=models.CASCADE,
         related_name='attachments',
-        verbose_name="Сообщение"
+        verbose_name="Сообщение",
+        null=True,
+        blank=True,
+        help_text="Может быть null для временных вложений при редактировании"
     )
     file = models.FileField(
         upload_to='chat_attachments/%Y/%m/%d/',
