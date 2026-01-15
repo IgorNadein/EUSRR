@@ -4,8 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build:css": "sass scss/custom-bootstrap.scss css/bootstrap-custom.css --style compressed",
-    "watch:css": "sass scss/custom-bootstrap.scss css/bootstrap-custom.css --watch --style compressed",
+    "build:bootstrap": "sass scss/custom-bootstrap.scss css/bootstrap-custom.css --style compressed",
+    "build:app": "sass scss/main.scss css/app.css --style compressed",
+    "build:css": "npm run build:bootstrap && npm run build:app",
+    "watch:bootstrap": "sass scss/custom-bootstrap.scss css/bootstrap-custom.css --watch --style compressed",
+    "watch:app": "sass scss/main.scss css/app.css --watch --style compressed",
+    "watch:css": "npm run watch:bootstrap & npm run watch:app",
     "dev": "npm run watch:css",
     "build": "npm run build:css"
   },

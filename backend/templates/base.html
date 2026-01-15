@@ -22,6 +22,7 @@
 
   {# Preload критичного CSS для ускорения загрузки #}
   <link rel="preload" href="{% static 'css/bootstrap-custom.css' %}" as="style">
+  <link rel="preload" href="{% static 'css/app.css' %}" as="style">
 
   <!-- Bootstrap / Icons -->
   <!-- Кастомный Bootstrap с нашей системой отступов + все CSS переменные -->
@@ -29,14 +30,8 @@
 
   <link href="{% static 'vendor/bootstrap-icons/bootstrap-icons.min.css' %}" rel="stylesheet">
 
-  <!-- TODO: Мигрировать в SCSS и удалить -->
-  <link rel="stylesheet" href="{% static 'css/components/buttons.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/base-app.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/ios-components.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/card-list.css' %}">
-  <link rel="stylesheet" href="{% static 'css/notifications/notifications.css' %}">
-
+  <!-- Главные стили приложения (скомпилированные из SCSS) -->
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
 
   {% block extra_css %}{% endblock %}
 </head>

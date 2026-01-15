@@ -1,0 +1,251 @@
+// =============================================================================
+// iOS-style Search Component (SCSS)
+// =============================================================================
+// Поле поиска в стиле iOS с иконкой лупы и кнопкой очистки
+// Переиспользуемый компонент для различных страниц списков
+//
+// HTML структура:
+// <div class="ios-search">
+//   <i class="bi bi-search"></i>
+//   <input type="text" class="ios-search-input" placeholder="Поиск...">
+//   <button class="ios-search-clear" type="button">
+//     <i class="bi bi-x-lg"></i>
+//   </button>
+// </div>
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+// Размеры (default)
+$ios-search-height: 40px;
+$ios-search-max-width: 420px;
+$ios-search-border-radius: 14px;
+$ios-search-font-size: 15px;
+
+// Размеры sm
+$ios-search-height-sm: 34px;
+$ios-search-border-radius-sm: 12px;
+$ios-search-font-size-sm: 14px;
+
+// Размеры lg
+$ios-search-height-lg: 48px;
+$ios-search-border-radius-lg: 16px;
+$ios-search-font-size-lg: 16px;
+
+// Размеры mobile
+$ios-search-height-mobile: 38px;
+$ios-search-font-size-mobile: 14px;
+
+// Отступы
+$ios-search-padding-left: 36px;
+$ios-search-padding-right: 36px;
+$ios-search-icon-left: 10px;
+$ios-search-clear-right: 4px;
+
+$ios-search-padding-left-sm: 32px;
+$ios-search-padding-right-sm: 32px;
+$ios-search-icon-left-sm: 8px;
+$ios-search-clear-right-sm: 3px;
+
+$ios-search-padding-left-lg: 42px;
+$ios-search-padding-right-lg: 42px;
+$ios-search-icon-left-lg: 12px;
+$ios-search-clear-right-lg: 6px;
+
+// Иконки
+$ios-search-icon-size: 0.95rem;
+$ios-search-icon-size-sm: 0.85rem;
+$ios-search-icon-size-lg: 1.1rem;
+$ios-search-clear-icon-size: 0.9rem;
+
+// Переходы
+$ios-search-transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+$ios-search-btn-transition: background 0.2s ease;
+
+// =============================================================================
+// МИКСИНЫ
+// =============================================================================
+
+// Миксин для скрытия нативного крестика браузера
+@mixin hide-search-controls {
+  &::-webkit-search-cancel-button,
+  &::-webkit-search-decoration {
+    display: none;
+    -webkit-appearance: none;
+  }
+
+  &::-ms-clear {
+    display: none;
+  }
+}
+
+// =============================================================================
+// БАЗОВЫЕ СТИЛИ
+// =============================================================================
+
+// Контейнер поиска
+.ios-search {
+  position: relative;
+  width: 100%;
+  max-width: $ios-search-max-width;
+}
+
+// Поле ввода
+.ios-search-input {
+  width: 100%;
+  height: $ios-search-height;
+  padding: var(--space-1) $ios-search-padding-right var(--space-1) $ios-search-padding-left;
+  border-radius: $ios-search-border-radius;
+  border: 1px solid var(--bs-border-color);
+  background: color-mix(in srgb, var(--bs-body-bg), #000 4%);
+  font-size: $ios-search-font-size;
+  outline: none;
+  transition: $ios-search-transition;
+
+  // Скрываем нативный крестик браузера
+  @include hide-search-controls;
+
+  // Placeholder
+  &::placeholder {
+    color: var(--bs-secondary-color);
+    opacity: 0.6;
+  }
+
+  // Фокус
+  &:focus {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0.15);
+    background: var(--bs-body-bg);
+  }
+
+  // Темная тема
+  [data-bs-theme="dark"] & {
+    background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+  }
+}
+
+// =============================================================================
+// ИКОНКА ПОИСКА (ЛУПА)
+// =============================================================================
+
+.ios-search > .bi-search {
+  position: absolute;
+  left: $ios-search-icon-left;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.55;
+  pointer-events: none;
+  font-size: $ios-search-icon-size;
+  color: var(--bs-body-color);
+}
+
+// =============================================================================
+// КНОПКА ОЧИСТКИ
+// =============================================================================
+
+.ios-search-clear {
+  position: absolute;
+  right: $ios-search-clear-right;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  padding: var(--space-1);
+  display: none;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: $ios-search-btn-transition;
+
+  &:hover {
+    background: color-mix(in srgb, var(--bs-body-color), transparent 90%);
+  }
+
+  &:active {
+    background: color-mix(in srgb, var(--bs-body-color), transparent 85%);
+  }
+
+  .bi-x-lg {
+    opacity: 0.6;
+    font-size: $ios-search-clear-icon-size;
+    color: var(--bs-body-color);
+  }
+}
+
+// Показываем кнопку очистки когда есть текст
+.ios-search-input:not(:placeholder-shown) ~ .ios-search-clear {
+  display: block;
+}
+
+// =============================================================================
+// ВАРИАЦИИ РАЗМЕРОВ
+// =============================================================================
+
+// Маленький размер
+.ios-search.sm {
+  .ios-search-input {
+    height: $ios-search-height-sm;
+    font-size: $ios-search-font-size-sm;
+    padding: var(--space-1) $ios-search-padding-right-sm var(--space-1) $ios-search-padding-left-sm;
+    border-radius: $ios-search-border-radius-sm;
+  }
+
+  > .bi-search {
+    left: $ios-search-icon-left-sm;
+    font-size: $ios-search-icon-size-sm;
+  }
+
+  .ios-search-clear {
+    right: $ios-search-clear-right-sm;
+    padding: var(--space-1);
+  }
+}
+
+// Большой размер
+.ios-search.lg {
+  .ios-search-input {
+    height: $ios-search-height-lg;
+    font-size: $ios-search-font-size-lg;
+    padding: var(--space-2) $ios-search-padding-right-lg var(--space-2) $ios-search-padding-left-lg;
+    border-radius: $ios-search-border-radius-lg;
+  }
+
+  > .bi-search {
+    left: $ios-search-icon-left-lg;
+    font-size: $ios-search-icon-size-lg;
+  }
+
+  .ios-search-clear {
+    right: $ios-search-clear-right-lg;
+    padding: var(--space-1);
+  }
+}
+
+// =============================================================================
+// ВАРИАЦИЯ: ТОЛЬКО ИКОНКА БЕЗ КНОПКИ ОЧИСТКИ
+// =============================================================================
+
+.ios-search.icon-only {
+  .ios-search-input {
+    padding-right: var(--space-3);
+  }
+
+  .ios-search-clear {
+    display: none !important;
+  }
+}
+
+// =============================================================================
+// АДАПТИВНОСТЬ
+// =============================================================================
+
+@media (max-width: 576px) {
+  .ios-search {
+    max-width: 100%;
+
+    .ios-search-input {
+      height: $ios-search-height-mobile;
+      font-size: $ios-search-font-size-mobile;
+    }
+  }
+}

@@ -1,0 +1,545 @@
+// =============================================================================
+// Request List Styles (SCSS)
+// =============================================================================
+// Табличный вид списка заявлений с адаптивным дизайном
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+// Размеры колонок таблицы
+$req-icon-size: 48px;
+$req-icon-size-tablet: 42px;
+$req-icon-size-mobile: 36px;
+$req-icon-size-compact: 32px;
+
+// Отступы
+$req-row-padding: 0.75rem 1rem;
+$req-row-padding-mobile: 1rem 0.75rem;
+$req-row-padding-compact: 0.625rem;
+$req-cell-gap: 0.75rem;
+$req-cell-gap-mobile: 0.75rem;
+
+// Переходы
+$req-hover-transition: background-color 0.15s ease;
+
+// =============================================================================
+// КОНТЕЙНЕР СПИСКА
+// =============================================================================
+
+#reqList.card {
+  display: block;
+  gap: 0;
+  padding: 0;
+}
+
+// =============================================================================
+// ЗАГОЛОВОК ТАБЛИЦЫ
+// =============================================================================
+
+#reqList .req-table-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bs-body-bg);
+  border-bottom: 2px solid var(--bs-border-color);
+
+  .req-table-row {
+    padding: 0.625rem 1rem;
+  }
+
+  h6 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--bs-secondary-color);
+    margin: 0;
+  }
+
+  .req-cell {
+    align-items: center;
+  }
+
+  // Выравнивание заголовков
+  .req-cell-title h6,
+  .req-cell-author h6 {
+    text-align: left;
+  }
+
+  .req-cell-dates h6,
+  .req-cell-status h6,
+  .req-cell-created h6,
+  .req-cell-actions h6 {
+    text-align: center;
+  }
+}
+
+// =============================================================================
+// СТРОКА ЗАЯВЛЕНИЯ
+// =============================================================================
+
+#reqList .req-row {
+  padding: 0;
+  margin: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 50%);
+  transition: $req-hover-transition;
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--bs-primary) 3%, transparent);
+  }
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+// =============================================================================
+// ТАБЛИЧНАЯ СЕТКА
+// =============================================================================
+
+#reqList .req-table-row {
+  display: grid;
+  grid-template-columns:
+    $req-icon-size           // Иконка
+    minmax(200px, 2fr)      // Заголовок (расширяемая)
+    minmax(120px, 1fr)      // Автор
+    100px                   // Даты
+    110px                   // Статус
+    80px                    // Создано
+    80px;                   // Действия
+  gap: $req-cell-gap;
+  align-items: start;
+  padding: $req-row-padding;
+}
+
+// =============================================================================
+// ЯЧЕЙКИ ТАБЛИЦЫ
+// =============================================================================
+
+#reqList .req-cell {
+  min-width: 0; // Для корректного word-wrap
+  display: flex;
+  align-items: center;
+}
+
+#reqList .req-cell-content {
+  width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+  line-height: 1.4;
+}
+
+// =============================================================================
+// СПЕЦИФИЧНЫЕ СТИЛИ ЯЧЕЕК
+// =============================================================================
+
+#reqList .req-cell-icon {
+  justify-content: center;
+
+  .card-icon {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+  }
+}
+
+#reqList .req-cell-title {
+  font-size: 0.9rem;
+
+  strong {
+    display: block;
+    margin-bottom: 0.125rem;
+  }
+
+  .badge {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+  }
+}
+
+#reqList .req-cell-author {
+  font-size: 0.875rem;
+}
+
+#reqList .req-cell-dates {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+#reqList .req-cell-status {
+  justify-content: flex-start;
+
+  .badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    white-space: nowrap;
+  }
+}
+
+#reqList .req-cell-created {
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+#reqList .req-cell-actions {
+  justify-content: center;
+  gap: 0.25rem;
+
+  .req-cell-content {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: center;
+  }
+}
+
+// =============================================================================
+// ФУТЕР С КОММЕНТАРИЯМИ
+// =============================================================================
+
+#reqList .req-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  margin-left: calc($req-icon-size + $req-cell-gap);
+  border-top: none;
+  background: transparent;
+}
+
+#reqList .comments-block {
+  margin: 0;
+  padding: 1rem;
+  margin-left: calc($req-icon-size + $req-cell-gap);
+}
+
+// =============================================================================
+// АДАПТИВНОСТЬ: ПЛАНШЕТЫ
+// =============================================================================
+
+@media (max-width: 992px) {
+  #reqList .req-table-header .req-table-row,
+  #reqList .req-table-row {
+    grid-template-columns:
+      $req-icon-size-tablet      // Иконка
+      minmax(150px, 2fr)        // Заголовок
+      minmax(100px, 1fr)        // Автор
+      90px                      // Даты
+      100px                     // Статус
+      70px;                     // Создано
+  }
+
+  // Скрываем колонку действий в заголовке
+  #reqList .req-table-header .req-cell-actions {
+    display: none;
+  }
+
+  // Но кнопки остаются видимыми
+  #reqList .req-cell-actions {
+    grid-column: 6;
+    display: flex !important;
+    justify-content: flex-end;
+  }
+}
+
+// =============================================================================
+// АДАПТИВНОСТЬ: МОБИЛЬНЫЕ
+// =============================================================================
+
+@media (max-width: 768px) {
+  // Скрываем заголовок таблицы
+  #reqList .req-table-header {
+    display: none;
+  }
+
+  // Переходим на flexbox
+  #reqList .req-table-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: $req-row-padding-mobile;
+    gap: $req-cell-gap-mobile;
+    align-items: flex-start;
+  }
+
+  // Сброс для ячеек
+  #reqList .req-cell {
+    display: block;
+    min-width: 0;
+  }
+
+  #reqList .req-cell-content {
+    width: 100%;
+  }
+
+  // Иконка слева сверху
+  #reqList .req-cell-icon {
+    flex: 0 0 $req-icon-size-mobile;
+    padding-top: 0.25rem;
+
+    .card-icon {
+      width: $req-icon-size-compact;
+      height: $req-icon-size-compact;
+    }
+  }
+
+  // Заголовок занимает оставшуюся ширину
+  #reqList .req-cell-title {
+    flex: 1 1 calc(100% - 48px);
+    font-size: 0.9rem;
+
+    strong {
+      display: block;
+      margin-bottom: 0.25rem;
+      font-size: 0.95rem;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.4rem;
+    }
+
+    .small {
+      display: block;
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+    }
+  }
+
+  // Остальная информация
+  #reqList .req-cell-author,
+  #reqList .req-cell-dates,
+  #reqList .req-cell-status {
+    flex: 0 1 auto;
+    font-size: 0.8rem;
+  }
+
+  #reqList .req-cell-dates {
+    white-space: nowrap;
+
+    br {
+      display: none;
+    }
+  }
+
+  #reqList .req-cell-status .badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    white-space: nowrap;
+  }
+
+  // Скрываем дату создания
+  #reqList .req-cell-created {
+    display: none;
+  }
+
+  // Кнопки действий на отдельной строке
+  #reqList .req-cell-actions {
+    display: flex !important;
+    flex: 1 1 100%;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+    margin: 0;
+
+    .req-cell-content {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .btn {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+    }
+  }
+
+  // Футер на полную ширину
+  #reqList .req-footer {
+    flex: 1 1 100%;
+    margin-left: 0;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--bs-border-color-translucent);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+
+    .btn {
+      padding: 0.4rem 0.6rem;
+      font-size: 0.8rem;
+    }
+  }
+
+  // Блок комментариев
+  #reqList .comments-block {
+    margin-left: 0;
+    padding: 0.75rem;
+  }
+
+  // Строка без hover
+  #reqList .req-row {
+    padding: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 50%);
+
+    &:hover {
+      background-color: transparent;
+    }
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+}
+
+// =============================================================================
+// КОМПАКТНЫЙ РЕЖИМ
+// =============================================================================
+
+@media (max-width: 576px) {
+  #reqList .req-table-row {
+    padding: $req-row-padding-compact;
+  }
+
+  #reqList .req-cell-title .small {
+    display: none; // Скрываем превью
+  }
+
+  #reqList .req-cell-dates {
+    br {
+      display: none;
+    }
+
+    .req-cell-content::after {
+      content: ' — ';
+    }
+  }
+}
+
+// =============================================================================
+// AJAX-РЕЖИМ: REQ-ITEM
+// =============================================================================
+
+.req-item {
+  border-bottom: 1px solid var(--bs-border-color);
+  padding: 1rem;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: var(--bs-light);
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.req-header {
+  margin-bottom: 0.75rem;
+}
+
+.req-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.req-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--bs-body-color);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+
+  &:hover {
+    color: var(--bs-primary);
+  }
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.req-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+
+  > span {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+}
+
+.req-comment {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background-color: var(--bs-light);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+}
+
+.req-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--bs-border-color-translucent);
+  font-size: 0.875rem;
+}
+
+.req-approver,
+.req-recipients {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--bs-secondary-color);
+}
+
+// =============================================================================
+// BADGE СТАТУСЫ
+// =============================================================================
+
+.badge-warning {
+  background-color: #ffc107;
+  color: #000;
+}
+
+.badge-success {
+  background-color: #198754;
+  color: #fff;
+}
+
+.badge-danger {
+  background-color: #dc3545;
+  color: #fff;
+}
+
+.badge-secondary {
+  background-color: #6c757d;
+  color: #fff;
+}
+
+// =============================================================================
+// ВСПОМОГАТЕЛЬНЫЕ
+// =============================================================================
+
+.load-more-trigger {
+  visibility: hidden;
+}

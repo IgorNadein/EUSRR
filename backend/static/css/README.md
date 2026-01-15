@@ -1,377 +1,249 @@
 # CSS Architecture Documentation
 
-## Overview
-This document describes the CSS architecture for the EUSRR application after Phase 6 refactoring (October 2024). The architecture follows DRY (Don't Repeat Yourself) principles with centralized shared classes and component-specific styles.
+## 🎯 Overview
 
-## Dependency Hierarchy
+**Status:** ✅ SCSS Migration Complete (January 2026)  
+**Architecture:** 100% SCSS-based, compiled to CSS
 
-```
-variables.css (base layer - CSS custom properties)
-    ↓
-bootstrap-custom.css (Bootstrap с переопределениями .card, .card-header и т.д.)
-    ↓
-common.css (shared classes - buttons, badges, avatars, chips, utilities)
-    ↓
-├── feed-specific.css (стили для постов - feed-pin, feed-title, feed-action)
-├── ios-components.css (iOS UI - cards, lists, accordions)
-├── component-specific.css (document-list, employee-list, etc.)
-└── base-app.css (app layout - navbar, sidebar, grid)
-```
+This folder contains **compiled CSS files only**. All source styles are written in SCSS and located in `../scss/`.
 
-## Core Files
-
-### 1. variables.css
-**Purpose**: Centralized CSS custom properties.
-
-**Key Variables**:
-```css
-/* Layout */
---navbar-h: 60px;
---sidebar-w: 190px;
---rightbar-w: 350px;
-
-/* Radii Scale */
---radius-xs: 4px;   --radius-sm: 8px;   --radius-md: 10px;
---radius-lg: 14px;  --radius-xl: 18px;  --radius-2xl: 24px;
-
-/* Shadow Hierarchy */
---shadow-xs: /* minimal */
---shadow-sm: /* small elements */
---shadow-md: /* standard cards */
---shadow-lg: /* elevated/hover */
---shadow-xl: /* modals */
-
-/* Component Aliases */
---feed-gap: 0.75rem;
---ios-search-radius: var(--radius-md);
---avatar-xs/sm/md/lg/xl: 28px/36px/44px/64px/96px;
-```
-
----
-
-### 2. common.css ⭐ NEW
-**Purpose**: Shared classes to eliminate duplication (245 lines).
-
-**Contents**:
-```css
-/* Buttons */
-.btn-icon              /* 36px icon button */
-.btn-icon--primary     /* Primary variant */
-.btn-icon--danger      /* Danger variant */
-.btn-icon--success     /* Success variant */
-
-/* Badges */
-.badge-acked           /* Success acknowledgment */
-.badge-status          /* Generic status */
-.badge-status--pending/approved/rejected  /* State variants */
-
-/* Avatars */
-.avatar                /* Base container */
-.avatar-xs/sm/md/lg/xl /* Size variants */
-
-/* Feed Meta */
-.card-title           /* Author name */
-.card-subtitle              /* Subtitle/timestamp */
-
-/* Chips */
-.chip                  /* Base chip */
-.chip-remove           /* Removable chip */
-
-/* Utilities */
-.text-truncate-2       /* 2-line clamp */
-.text-truncate-3       /* 3-line clamp */
-.custom-scrollbar      /* Custom scrollbar */
-```
-
-**Dependencies**: `variables.css`  
-**Used By**: Almost all components
-
----
-
-### 3. bootstrap-custom.css
-**Purpose**: Bootstrap с переопределением стилей карточек (.card, .card-header, .card-body и т.д.) для единого дизайна.
-
-**Переопределенные классы**:
-```css
-.card             /* Базовая карточка с тенями и анимацией */
-.card-header      /* Шапка карточки с flex-layout */
-.card-icon        /* Аватар/иконка (кастомный класс) */
-.card-meta        /* Метаинформация (кастомный класс) */
-.card-title       /* Заголовок/автор */
-.card-subtitle    /* Подзаголовок */
-.card-body        /* Тело карточки */
-.card-actions     /* Кнопки действий (кастомный класс) */
-.card-list        /* Контейнер списка карточек (кастомный класс) */
-.section-header   /* Заголовок секции (кастомный класс) */
-```
-
-**Вариации**:
-```css
-.card.compact     /* Компактная версия */
-.card.borderless  /* Без границ (для списков) */
-.card.highlighted /* С выделением (например, непрочитанное) */
-```
-
-**Note**: Стили определены в `scss/custom-bootstrap.scss` и компилируются в `css/bootstrap-custom.css`.
-
-**Dependencies**: `variables.css`, Bootstrap 5
-
----
-
-### 4. feed-specific.css
-**Purpose**: Стили, специфичные только для постов в ленте новостей.
-
-**Key Classes**:
-```css
-.feed-pin      /* Значок закрепления */
-.feed-title    /* Заголовок поста */
-.feed-text     /* Текст поста */
-.feed-img      /* Изображение поста */
-.feed-action   /* Кнопки действий (лайки, комментарии) */
-.feed-footer   /* Футер поста */
-```
-
-**Dependencies**: `variables.css`, `bootstrap-custom.css`
-
----
-
-## Import Order (Critical!)
-
-### In Templates
-```html
-<link rel="stylesheet" href="{% static 'css/variables.css' %}">
-<link rel="stylesheet" href="{% static 'css/bootstrap-custom.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-<!-- Для страниц с постами: -->
-<link rel="stylesheet" href="{% static 'css/components/feed-specific.css' %}">
-<!-- Component-specific CSS -->
-```
-
-### In index.css
-```css
-@import 'variables.css';
-@import 'common.css';
-@import 'feed-specific.css'; /* только для feed */
-/* Other components */
-```
-
-**Why This Order?**
-1. `variables.css` - defines all CSS custom properties
-2. `common.css` - uses variables, defines shared classes
-3. `card-list.css` - uses variables + common classes
-4. Components - use all of the above
-
----
-
-## Naming Conventions
-
-### Variables
-- **Sizes**: `--component-property` (short forms: `-w`, `-h`, `-gap`)
-  - Examples: `--navbar-h`, `--sidebar-w`, `--feed-gap`
-- **Radii**: `xs/sm/md/lg/xl/2xl` scale (4px - 24px)
-- **Shadows**: `xs/sm/md/lg/xl` hierarchy
-
-### Classes (BEM-like)
-```css
-.block              /* Component/container */
-.block__element     /* Child element (or shorthand like .card-header) */
-.block--modifier    /* Variant/state */
-```
-
-**Examples**:
-```css
-.btn-icon           /* Block */
-.btn-icon--primary  /* Modifier */
-
-.badge-status          /* Block */
-.badge-status--pending /* Modifier */
-```
-
-### Prefixes
-- `.ios-*` - iOS-style components
-- `.feed-*` - Feed/post-specific classes (только для постов)
-- `.card-*` - Universal card components (Bootstrap + custom extensions)
-- `.section-*` - Page section components
-- `.doc-*` - Document-specific
-- `.dept-*` - Department-specific
-
----
-
-## Component-Specific Files
-
-Each component file contains ONLY unique styles:
-
-### document-list.css
-- `#docList` layout
-- `.feed-ico` (28px icon)
-- `.doc-actions` positioning
-
-**Dependencies**: `bootstrap-custom.css`, `common.css` (`.btn-icon`, `.badge-acked`)
-
-### employee-list.css
-- `#empList` layout
-- Component-specific overrides
-
-**Dependencies**: `bootstrap-custom.css`, `common.css` (`.card-title`, `.card-subtitle`)
-
-### feed-specific.css
-- Стили только для постов: `.feed-pin`, `.feed-title`, `.feed-text`, `.feed-img`, `.feed-action`, `.feed-footer`
-
-**Dependencies**: `bootstrap-custom.css`, `variables.css`
-
----
-
-## Best Practices
-
-### 1. Check bootstrap-custom.css and common.css First
-Before creating a new class, check if it exists in `bootstrap-custom.css` or `common.css`.
-
-### 2. Use Variables
-```css
-/* ✅ GOOD */
-border-radius: var(--radius-lg);
-box-shadow: var(--shadow-md);
-
-/* ❌ BAD */
-border-radius: 14px;
-box-shadow: 0 4px 12px rgba(0,0,0,.1);
-```
-
-### 3. Override Carefully
-```css
-/* ✅ GOOD: Override specific property */
-#empList .card-title {
-  line-height: 1.3;
-}
-
-/* ❌ BAD: Complete redefinition */
-#empList .card-title {
-  font-weight: 700; /* duplicates common.css */
-}
-```
-
-### 4. Document Dependencies
-```css
-/**
- * new-component.css
- * Description
- * 
- * Dependencies:
- * - variables.css (--navbar-h, --radius-md)
- * - common.css (.btn-icon, .badge-status)
- */
-```
-
----
-
-## Phase 6 Results ✅
-
-### Metrics
-- **Files Modified**: 16
-- **Files Created**: 1 (`common.css`)
-- **Files Deleted**: 1 (`feed-header.css` - duplicate)
-- **Lines Removed**: ~200 (duplication eliminated)
-- **Lines Added**: 245 (`common.css`)
-- **Net Change**: +45 lines (centralized)
-- **Duplication Rate**: 40% → 0%
-
-### Eliminated Duplication
-- `.btn-icon` × 3 → 1 in `common.css`
-- `.badge-status` × 2 → 1 in `common.css`
-- `.chip` × 2 → 1 in `common.css`
-- `.card-title/.card-subtitle` × 4 → 1 in `common.css`
-- Variables × 3 → centralized in `variables.css`
-
-### Benefits
-1. ✅ **DRY Compliance**: All shared classes defined once
-2. ✅ **Maintainability**: Single source of truth
-3. ✅ **Consistency**: Unified naming conventions
-4. ✅ **Performance**: Smaller CSS after compression
-5. ✅ **Documentation**: Clear dependency hierarchy
-
----
-
-## File Statistics
+## 📁 Directory Structure
 
 ```
-Total Components: 21 files
-Total Lines: ~3,500
-Shared Classes: 15 (common.css)
-Variables: 50+ (variables.css)
-Duplication: 0%
+css/
+├── app.css                     ← Compiled from scss/main.scss (95 KB)
+├── app.css.map                 ← Source map for debugging
+├── bootstrap-custom.css        ← Compiled from scss/bootstrap-custom.scss (301 KB)
+├── bootstrap-custom.css.map    ← Source map for debugging
+├── components/                 ← Legacy folder (kept for git structure)
+│   └── .gitkeep
+└── README.md                   ← This file
 ```
 
----
+## 🔄 Migration History
 
-## Adding New Components
+### Before (Phase 1-5)
+- 28+ individual CSS files
+- Duplication across components
+- Manual maintenance
 
-### Checklist
-1. ✓ Check `common.css` for existing classes
-2. ✓ Use variables from `variables.css`
-3. ✓ Follow BEM-like naming
-4. ✓ Add dependency comments
-5. ✓ Update this README
+### After (Phase 6 - January 2026)
+- ✅ **2 compiled CSS files** (app.css + bootstrap-custom.css)
+- ✅ **30 SCSS component modules**
+- ✅ **Centralized build system**
+- ✅ **0% duplication**
 
-### Example
-```css
-/**
- * new-component.css
- * Purpose description
- * 
- * Dependencies:
- * - variables.css (--navbar-h)
- * - common.css (.btn-icon)
- */
+## 📦 Compiled Files
 
-#newComponent {
-  padding: 1rem;
-  border-radius: var(--radius-md);
-}
-```
+## 📦 Compiled Files
 
----
+### 1. app.css (95 KB compressed)
+**Source:** `../scss/main.scss`  
+**Contains:** All application styles
 
-## Maintenance
+**Includes:**
+- CSS Custom Properties (variables)
+- Layout system (grid, navbar, sidebar, rightbar)
+- 30 SCSS components
+- Spacing utilities
+- Responsive styles
 
-### Regular Audits
+**Build Command:**
 ```bash
-# Check for duplication
-grep -r "\.btn-icon\s*{" static/css/components/
-
-# Check for hardcoded values
-grep -r ": [0-9]" static/css/components/ | grep -v "var("
+cd ../
+npm run build:app
 ```
 
-### Performance
-- **Total Size**: ~50KB uncompressed
-- **Gzip Size**: ~12KB estimated
-- **Load Time**: <100ms
+### 2. bootstrap-custom.css (301 KB compressed)
+**Source:** `../scss/bootstrap-custom.scss`  
+**Contains:** Bootstrap 5.3.3 with customizations
+
+**Customizations:**
+- 8px grid spacing system
+- Custom color palette
+- Component overrides
+- Typography adjustments
+
+**Build Command:**
+```bash
+cd ../
+npm run build:bootstrap
+```
+
+## 🏗️ SCSS Architecture
+
+All source styles are in `../scss/`:
+
+```
+scss/
+├── main.scss                    ← Entry point for app.css
+├── bootstrap-custom.scss        ← Entry point for bootstrap
+├── custom-bootstrap.scss        ← Bootstrap customizations
+├── abstracts/
+│   ├── _variables.scss          ← SCSS variables ($var)
+│   ├── _css-variables.scss      ← CSS Custom Properties (--var)
+│   ├── _mixins.scss             ← Reusable mixins
+│   └── _index.scss              ← Exports all abstracts
+├── layout/
+│   ├── _base-app.scss           ← Main app grid layout
+│   └── _chat-layout.scss        ← Chat-specific layout
+└── components/
+    ├── _navbar.scss             ← Navigation bar
+    ├── _sidebar.scss            ← Left sidebar
+    ├── _page-header.scss        ← Page headers
+    ├── _buttons.scss            ← Button styles
+    ├── _cards.scss              ← Card components
+    ├── _modals.scss             ← Modal dialogs
+    ├── _notifications.scss      ← Notification center
+    ├── _layout-spacing.scss     ← Spacing utilities
+    ├── _spacing-utils.scss      ← Utility classes
+    ├── _rightbar-calendar.scss  ← Calendar in rightbar
+    └── ... (30 total components)
+```
+
+## 🔧 Development Workflow
+
+### 1. Edit SCSS files
+```bash
+# Navigate to static folder
+cd backend/static
+
+# Edit any SCSS file in scss/ folder
+# Example: scss/components/_buttons.scss
+```
+
+### 2. Build CSS
+```bash
+# Build app.css once
+npm run build:app
+
+# Or watch for changes (auto-rebuild)
+npm run dev
+```
+
+### 3. Check output
+```bash
+# Verify compilation
+ls -lh css/app.css
+
+# Check for errors in terminal
+```
+
+## 📝 Template Usage
+
+### In base.html
+```django
+{% load static %}
+
+<head>
+  <!-- Bootstrap custom -->
+  <link rel="stylesheet" href="{% static 'css/bootstrap-custom.css' %}">
+  
+  <!-- Application styles -->
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+```
+
+**Note:** Do NOT link individual component CSS files - everything is in app.css!
+
+## 🎨 CSS Variables
+
+All CSS Custom Properties are compiled into app.css from `scss/abstracts/_css-variables.scss`:
+
+### Spacing (8px grid)
+```css
+--space-1: 4px
+--space-2: 8px
+--space-3: 12px
+--space-4: 16px
+--space-5: 24px
+```
+
+### Layout
+```css
+--navbar-h: 60px
+--sidebar-w: 200px
+--rightbar-w: 350px
+--layout-gap: 16px
+--layout-padding-y: 24px
+```
+
+### Components
+```css
+--card-padding: 16px
+--card-radius: 14px
+--feed-radius: 18px
+```
+
+## 🚀 Quick Reference
+
+### Build Commands
+```bash
+# Build everything
+npm run build:app && npm run build:bootstrap
+
+# Watch mode (development)
+npm run dev
+
+# Build app.css only
+npm run build:app
+
+# Build bootstrap only
+npm run build:bootstrap
+```
+
+### File Sizes
+- **app.css:** 95 KB compressed
+- **bootstrap-custom.css:** 301 KB compressed
+- **Total:** 396 KB
+
+### Adding New Component
+1. Create `scss/components/_new-component.scss`
+2. Add `@import 'components/new-component';` to `scss/main.scss`
+3. Run `npm run build:app`
+
+## ⚠️ Important Notes
+
+1. **Never edit CSS files directly** - they are auto-generated
+2. **Always edit SCSS files** in `../scss/` folder
+3. **Always rebuild** after SCSS changes
+4. **Source maps included** for debugging (*.css.map)
+5. **Components folder kept** for git structure only
+
+## 📚 Documentation
+
+- **SCSS Quick Reference:** [../../docs/guides/SCSS_QUICK_REFERENCE.md](../../docs/guides/SCSS_QUICK_REFERENCE.md)
+- **Migration Complete:** [../../docs/completed/CSS_TO_SCSS_MIGRATION_100_PERCENT_COMPLETE.md](../../docs/completed/CSS_TO_SCSS_MIGRATION_100_PERCENT_COMPLETE.md)
+- **Phase 6 Report:** [../../docs/reports/CSS_TO_SCSS_PHASE6_FINAL_CLEANUP.md](../../docs/reports/CSS_TO_SCSS_PHASE6_FINAL_CLEANUP.md)
+
+## 🔍 Troubleshooting
+
+### Styles not applying?
+1. Check if CSS files are up to date: `npm run build:app`
+2. Clear browser cache (Ctrl+F5)
+3. Check browser DevTools for CSS loading errors
+
+### Build errors?
+1. Check SCSS syntax in modified files
+2. Ensure all imports exist in `main.scss`
+3. Check terminal output for specific error
+
+### Variables not working?
+1. Ensure you're using `var(--variable-name)` syntax
+2. Check that `_css-variables.scss` is imported
+3. Verify variable is defined in `scss/abstracts/_css-variables.scss`
+
+## 📊 Statistics
+
+- **SCSS Components:** 30 files
+- **Total SCSS Lines:** ~4,768 lines
+- **CSS Files:** 2 (compiled)
+- **Duplication:** 0%
+- **Build Time:** ~2 seconds
 
 ---
 
-## Troubleshooting
-
-### Styles Not Applying?
-1. Check import order (`variables.css` → `common.css` → components)
-2. Verify class names (inspect with DevTools)
-3. Check specificity conflicts
-
-### Variables Not Working?
-1. Ensure `variables.css` imported first
-2. Use correct syntax: `var(--variable-name)`
-3. Check browser DevTools for computed values
-
----
-
-## References
-
-- [Phase 6 Summary](../../PHASE6_SUMMARY.md)
-- [CSS Custom Properties (MDN)](https://developer.mozilla.org/en-US/docs/Web/CSS/Using_CSS_custom_properties)
-- [BEM Methodology](http://getbem.com/)
-- [Bootstrap 5.3 Docs](https://getbootstrap.com/docs/5.3/)
-
----
-
-**Last Updated**: Phase 6 (October 2024)  
-**Status**: ✅ Complete and Stable  
-**Maintainer**: Development Team
+**Last Updated:** January 15, 2026  
+**Migration Status:** ✅ Complete  
+**Architecture:** SCSS → Compiled CSS  
+**Maintainer:** Development Team

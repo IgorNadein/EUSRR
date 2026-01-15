@@ -3,5 +3,6 @@
 // =============================================================================
 // Единая точка импорта всех abstracts компонентов
 
-@forward "variables";
-@forward "mixins";
+@import "variables";
+@import "css-variables";
+@import "mixins";

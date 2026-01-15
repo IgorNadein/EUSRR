@@ -1,0 +1,85 @@
+// =============================================================================
+// Main Application SCSS
+// =============================================================================
+// Главный файл для сборки всех стилей приложения (кроме Bootstrap)
+// Компилируется в css/app.css
+
+// =============================================================================
+// 1. ABSTRACTS - Переменные, миксины, функции
+// =============================================================================
+@import 'abstracts/index';
+
+// =============================================================================
+// 2. LAYOUT - Структура приложения
+// =============================================================================
+@import 'layout/base-app';
+@import 'layout/chat-layout';
+
+// =============================================================================
+// 3. COMPONENTS - Переиспользуемые компоненты
+// =============================================================================
+
+// Базовые компоненты
+@import 'components/buttons';
+@import 'components/cards';
+@import 'components/modals';
+@import 'components/navbar';
+@import 'components/sidebar';
+@import 'components/page-header';
+@import 'components/common';
+
+// Spacing и layout utilities
+@import 'components/layout-spacing';
+@import 'components/spacing-utils';
+
+// iOS-стиль компоненты
+@import 'components/ios-search';
+@import 'components/ios-components';
+
+// Бейджи
+@import 'components/badges-bem';
+@import 'components/badges-telegram-style';
+
+// Комментарии
+@import 'components/comments';
+
+// Списки и уведомления
+@import 'components/card-list';
+@import 'components/notifications';
+
+// Заявления и документы
+@import 'components/request-list';
+@import 'components/request-detail';
+@import 'components/document-list';
+@import 'components/recipientPicker';
+@import 'components/list-view';
+
+// Feed компоненты
+@import 'components/feed-specific';
+@import 'components/join-scroller';
+@import 'components/post-form';
+
+// Модальные окна
+@import 'components/modal-overrides';
+@import 'components/logout-modal';
+
+// Employees компоненты
+@import 'components/department-controls';
+@import 'components/team-wheel';
+
+// Календарь и rightbar
+@import 'components/rightbar-calendar';
+
+// =============================================================================
+// 4. UTILITIES - Вспомогательные классы
+// =============================================================================
+// @import 'utilities/spacing-utils';
+// @import 'utilities/index';
+
+// =============================================================================
+// ПРИМЕЧАНИЯ
+// =============================================================================
+// - Bootstrap подключается отдельно через bootstrap-custom.css
+// - CSS переменные (--variable) определены в abstracts/_css-variables.scss
+// - SCSS переменные ($variable) определены в abstracts/_variables.scss
+// - Порядок импортов критичен для CSS каскада

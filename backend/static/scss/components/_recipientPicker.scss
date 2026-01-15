@@ -1,0 +1,353 @@
+// =============================================================================
+// Recipient Picker (Email-style) Styles (SCSS)
+// =============================================================================
+// Компонент выбора получателей в стиле email-клиента
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+$recipient-avatar-size: 32px;
+$recipient-avatar-size-mobile: 28px;
+$recipient-label-width: 80px;
+$recipient-chip-padding: 0.25rem 0.5rem;
+$recipient-chip-padding-mobile: 0.2rem 0.4rem;
+
+// Цвета
+$chip-primary-color: var(--bs-primary);
+$chip-primary-hover: var(--bs-primary-dark, #0056b3);
+$chip-secondary-color: var(--bs-secondary);
+$chip-secondary-hover: var(--bs-secondary-dark, #5a6268);
+
+// =============================================================================
+// ОСНОВНОЙ КОНТЕЙНЕР
+// =============================================================================
+
+.recipient-picker-email {
+  font-size: 0.9375rem;
+}
+
+// =============================================================================
+// СТРОКИ ПОЛУЧАТЕЛЕЙ (To/CC/Отделы)
+// =============================================================================
+
+.recipient-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--bs-border-color);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+// =============================================================================
+// МЕТКА (To:/CC:/Отделы:)
+// =============================================================================
+
+.recipient-label {
+  min-width: $recipient-label-width;
+  padding-top: 0.5rem;
+  color: var(--bs-secondary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+
+  i {
+    font-size: 1.1em;
+  }
+}
+
+// =============================================================================
+// ПОЛЕ ВВОДА
+// =============================================================================
+
+.recipient-field {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+// =============================================================================
+// WRAPPER ДЛЯ CHIPS + INPUT
+// =============================================================================
+
+.recipient-input-wrapper {
+  flex: 1;
+  min-width: 300px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  position: relative;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+
+  &:focus-within {
+    border-color: $chip-primary-color;
+    box-shadow: 0 0 0 0.15rem rgba(var(--bs-primary-rgb), 0.15);
+  }
+}
+
+// =============================================================================
+// INPUT ВНУТРИ WRAPPER
+// =============================================================================
+
+.recipient-input {
+  flex: 1;
+  min-width: 200px;
+  border: none;
+  outline: none;
+  padding: 0.25rem;
+  font-size: inherit;
+  background: transparent;
+
+  &::placeholder {
+    color: var(--bs-secondary-color);
+    opacity: 0.7;
+  }
+}
+
+// =============================================================================
+// CHIPS (ВЫБРАННЫЕ ПОЛЬЗОВАТЕЛИ/ОТДЕЛЫ)
+// =============================================================================
+
+.recipient-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: $recipient-chip-padding;
+  background: $chip-primary-color;
+  color: white;
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  transition: background-color 0.15s;
+
+  &:hover {
+    background: $chip-primary-hover;
+  }
+
+  &.chip-cc {
+    background: $chip-secondary-color;
+
+    &:hover {
+      background: $chip-secondary-hover;
+    }
+  }
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+
+  &:hover {
+    opacity: 1;
+  }
+
+  i {
+    font-size: 1.1em;
+    line-height: 1;
+  }
+}
+
+// Chips для отделов
+.recipient-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+// =============================================================================
+// DROPDOWN С AUTOCOMPLETE
+// =============================================================================
+
+.recipient-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  background: white;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1050;
+}
+
+.dropdown-item-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+
+  &:hover {
+    background-color: var(--bs-light);
+  }
+}
+
+.dropdown-item-empty {
+  padding: 0.75rem 1rem;
+  color: var(--bs-secondary);
+  text-align: center;
+  font-size: 0.875rem;
+}
+
+// =============================================================================
+// АВАТАР ПОЛЬЗОВАТЕЛЯ
+// =============================================================================
+
+.user-avatar-small {
+  width: $recipient-avatar-size;
+  height: $recipient-avatar-size;
+  border-radius: 50%;
+  background: $chip-primary-color;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.user-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $chip-primary-color;
+  color: white;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+// =============================================================================
+// ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ
+// =============================================================================
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: 500;
+  color: var(--bs-body-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-subtitle {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// =============================================================================
+// ПОДСКАЗКИ
+// =============================================================================
+
+.alert-sm {
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}
+
+// =============================================================================
+// АДАПТИВНОСТЬ: ПЛАНШЕТЫ
+// =============================================================================
+
+@media (max-width: 768px) {
+  .recipient-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .recipient-label {
+    min-width: auto;
+    padding-top: 0;
+  }
+
+  .recipient-input-wrapper {
+    min-width: 100%;
+  }
+
+  .recipient-input {
+    min-width: 150px;
+  }
+}
+
+// =============================================================================
+// АДАПТИВНОСТЬ: МОБИЛЬНЫЕ
+// =============================================================================
+
+@media (max-width: 576px) {
+  .recipient-chip {
+    font-size: 0.8125rem;
+    padding: $recipient-chip-padding-mobile;
+  }
+
+  .user-avatar-small {
+    width: $recipient-avatar-size-mobile;
+    height: $recipient-avatar-size-mobile;
+    font-size: 0.7rem;
+  }
+
+  .dropdown-item-user {
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+// =============================================================================
+// ТЕМНАЯ ТЕМА
+// =============================================================================
+
+@media (prefers-color-scheme: dark) {
+  .recipient-input-wrapper {
+    background: var(--bs-dark);
+    border-color: var(--bs-gray-700);
+  }
+
+  .recipient-dropdown {
+    background: var(--bs-dark);
+    border-color: var(--bs-gray-700);
+  }
+
+  .dropdown-item-user:hover {
+    background-color: var(--bs-gray-800);
+  }
+}
