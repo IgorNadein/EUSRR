@@ -387,11 +387,6 @@ class Message(models.Model):
     # Редактирование
     is_edited = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
-    edit_history = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="История редактирования [{timestamp, old_content}, ...]"
-    )
     
     # Удаление
     is_deleted = models.BooleanField(default=False)
@@ -430,30 +425,6 @@ class Message(models.Model):
     
     # Флаги для специальных типов сообщений
     is_forwarded = models.BooleanField(default=False)
-    forwarded_from_message_id = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="ID исходного сообщения при пересылке"
-    )
-    forwarded_from_author = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='forwarded_messages_source',
-        help_text="Автор исходного сообщения при пересылке"
-    )
-    forwarded_from_created_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Дата создания исходного сообщения при пересылке"
-    )
-    forwarded_from_chat_name = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-        help_text="Название исходного чата при пересылке"
-    )
     is_cross_chat = models.BooleanField(
         default=False,
         help_text="Сообщение отправлено не участником чата"
@@ -468,7 +439,6 @@ class Message(models.Model):
         related_name='thread_messages',
         help_text="Корневое сообщение треда"
     )
-    thread_reply_count = models.IntegerField(default=0)
 
     class Meta:
         ordering = ["created_at"]
@@ -628,13 +598,50 @@ class MessageAttachment(models.Model):
         super().save(*args, **kwargs)
 
 
-class ForwardedMessage(models.Model):
-    """Информация о пересылке сообщения"""
+class MessageEditHistory(models.Model):
+    """История редактирования сообщения"""
+    
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='edit_history_records',
+        verbose_name="Сообщение"
+    )
+    edited_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Время редактирования",
+        db_index=True
+    )
+    previous_content = models.TextField(
+        verbose_name="Предыдущий текст"
+    )
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='+',
+        verbose_name="Кто отредактировал"
+    )
+    
+    class Meta:
+        verbose_name = "Запись истории редактирования"
+        verbose_name_plural = "История редактирования сообщений"
+        ordering = ['edited_at']
+        indexes = [
+            models.Index(fields=['message', 'edited_at']),
+        ]
+    
+    def __str__(self):
+        return f"Редактирование сообщения {self.message_id} в {self.edited_at}"
+
+
+class MessageForwardMetadata(models.Model):
+    """Метаданные пересланного сообщения"""
     
     message = models.OneToOneField(
         Message,
         on_delete=models.CASCADE,
-        related_name='forward_info',
+        related_name='forward_metadata',
         verbose_name="Пересланное сообщение"
     )
     original_message = models.ForeignKey(
@@ -643,16 +650,8 @@ class ForwardedMessage(models.Model):
         null=True,
         blank=True,
         related_name='forwarded_copies',
-        verbose_name="Самое первое сообщение в цепочке"
-    )
-    immediate_source = models.ForeignKey(
-        Message,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Непосредственный источник пересылки",
-        help_text="Откуда переслали (может отличаться от original)"
+        verbose_name="Оригинальное сообщение",
+        help_text="Самое первое сообщение в цепочке пересылок"
     )
     original_chat = models.ForeignKey(
         Chat,
@@ -660,7 +659,7 @@ class ForwardedMessage(models.Model):
         null=True,
         blank=True,
         related_name='+',
-        verbose_name="Исходный чат"
+        verbose_name="Оригинальный чат"
     )
     original_author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -668,7 +667,7 @@ class ForwardedMessage(models.Model):
         null=True,
         blank=True,
         related_name='+',
-        verbose_name="Автор оригинального сообщения"
+        verbose_name="Автор оригинала"
     )
     forwarded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -683,232 +682,29 @@ class ForwardedMessage(models.Model):
     forward_count = models.IntegerField(
         default=1,
         verbose_name="Количество пересылок",
-        help_text="Сколько раз это сообщение пересылалось"
+        help_text="Сколько раз пересылалось"
     )
-    preserved_content = models.TextField(
+    original_created_at = models.DateTimeField(
+        null=True,
         blank=True,
-        verbose_name="Сохранённый текст",
-        help_text="На случай удаления оригинала"
+        verbose_name="Дата создания оригинала"
     )
-    preserved_author_name = models.CharField(
+    original_chat_name = models.CharField(
         max_length=255,
         blank=True,
-        verbose_name="Имя автора оригинала"
+        verbose_name="Название оригинального чата"
     )
     
     class Meta:
-        verbose_name = "Информация о пересылке"
-        verbose_name_plural = "Информация о пересылках"
+        verbose_name = "Метаданные пересылки"
+        verbose_name_plural = "Метаданные пересылок"
         indexes = [
             models.Index(fields=['original_message']),
             models.Index(fields=['forwarded_by', 'forwarded_at']),
         ]
     
     def __str__(self):
-        return f"Пересылка: {self.message_id} от {self.forwarded_by}"
-
-
-class MessageReply(models.Model):
-    """Расширенная информация об ответе на сообщение"""
-    
-    REPLY_TYPE_CHOICES = [
-        ('inline', 'В потоке'),
-        ('quote', 'С цитатой'),
-        ('thread', 'В треде'),
-    ]
-    
-    message = models.OneToOneField(
-        Message,
-        on_delete=models.CASCADE,
-        related_name='reply_info',
-        verbose_name="Сообщение-ответ"
-    )
-    replied_to = models.ForeignKey(
-        Message,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='extended_replies',
-        verbose_name="На какое сообщение ответ"
-    )
-    is_cross_chat_reply = models.BooleanField(
-        default=False,
-        verbose_name="Ответ из другого чата"
-    )
-    original_chat = models.ForeignKey(
-        Chat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Исходный чат",
-        help_text="Если ответ был из другого чата"
-    )
-    preserved_text = models.TextField(
-        blank=True,
-        verbose_name="Сохранённый текст оригинала"
-    )
-    preserved_author_name = models.CharField(
-        max_length=255,
-        blank=True,
-        verbose_name="Имя автора оригинала"
-    )
-    reply_type = models.CharField(
-        max_length=10,
-        choices=REPLY_TYPE_CHOICES,
-        default='inline',
-        verbose_name="Тип ответа"
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Время создания ответа"
-    )
-    
-    class Meta:
-        verbose_name = "Информация об ответе"
-        verbose_name_plural = "Информация об ответах"
-        indexes = [
-            models.Index(fields=['replied_to']),
-            models.Index(fields=['is_cross_chat_reply']),
-        ]
-    
-    def __str__(self):
-        return f"Ответ: {self.message_id} → {self.replied_to_id}"
-
-
-class ChatAccessPermission(models.Model):
-    """Права доступа к чату для внешних пользователей"""
-    
-    ACCESS_LEVEL_CHOICES = [
-        ('read', 'Только чтение'),
-        ('write', 'Чтение и отправка'),
-        ('moderate', 'Модерация'),
-    ]
-    
-    chat = models.ForeignKey(
-        Chat,
-        on_delete=models.CASCADE,
-        related_name='access_permissions',
-        verbose_name="Чат"
-    )
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='chat_access_permissions',
-        verbose_name="Пользователь"
-    )
-    access_level = models.CharField(
-        max_length=10,
-        choices=ACCESS_LEVEL_CHOICES,
-        default='write',
-        verbose_name="Уровень доступа"
-    )
-    granted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Кто предоставил доступ"
-    )
-    granted_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Когда предоставлен доступ"
-    )
-    expires_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Срок действия",
-        help_text="Если не указано - бессрочно"
-    )
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name="Активен"
-    )
-    
-    class Meta:
-        verbose_name = "Право доступа к чату"
-        verbose_name_plural = "Права доступа к чатам"
-        unique_together = [('chat', 'user')]
-        indexes = [
-            models.Index(fields=['chat', 'is_active']),
-            models.Index(fields=['user', 'is_active']),
-        ]
-    
-    def __str__(self):
-        return f"{self.user} → {self.chat} ({self.get_access_level_display()})"
-
-
-class CrossChatMessage(models.Model):
-    """Сообщения, отправленные в чаты, где пользователь не является участником"""
-    
-    STATUS_CHOICES = [
-        ('pending', 'На модерации'),
-        ('approved', 'Одобрено'),
-        ('rejected', 'Отклонено'),
-    ]
-    
-    message = models.OneToOneField(
-        Message,
-        on_delete=models.CASCADE,
-        related_name='cross_chat_info',
-        verbose_name="Сообщение"
-    )
-    sender = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='sent_cross_chat_messages',
-        verbose_name="Отправитель"
-    )
-    target_chat = models.ForeignKey(
-        Chat,
-        on_delete=models.CASCADE,
-        related_name='cross_chat_messages',
-        verbose_name="Целевой чат"
-    )
-    status = models.CharField(
-        max_length=10,
-        choices=STATUS_CHOICES,
-        default='pending',
-        verbose_name="Статус"
-    )
-    requires_moderation = models.BooleanField(
-        default=True,
-        verbose_name="Требует модерации"
-    )
-    moderated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Модератор"
-    )
-    moderated_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Время модерации"
-    )
-    moderation_note = models.TextField(
-        blank=True,
-        verbose_name="Заметка модератора"
-    )
-    sent_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Время отправки"
-    )
-    
-    class Meta:
-        verbose_name = "Кросс-чат сообщение"
-        verbose_name_plural = "Кросс-чат сообщения"
-        indexes = [
-            models.Index(fields=['target_chat', 'status']),
-            models.Index(fields=['sender', 'sent_at']),
-            models.Index(fields=['status', 'requires_moderation']),
-        ]
-    
-    def __str__(self):
-        return f"CrossChat: {self.sender} → {self.target_chat} ({self.status})"
+        return f"Пересылка {self.message_id}: {self.forward_count}x"
 
 
 class ChatMembership(models.Model):
