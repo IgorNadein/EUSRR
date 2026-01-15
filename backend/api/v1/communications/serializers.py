@@ -238,9 +238,7 @@ class MessageCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = [
-            'content', 'chat', 'reply_to', 'is_forwarded',
-            'forwarded_from_author', 'forwarded_from_message_id',
-            'forwarded_from_chat_name', 'forwarded_from_created_at'
+            'content', 'chat', 'reply_to', 'is_forwarded'
         ]
     
     def validate(self, attrs):

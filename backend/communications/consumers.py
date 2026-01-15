@@ -42,31 +42,37 @@ def serialize_message(m: Message) -> dict:
         "has_attachments": m.has_attachments,
     }
     
-    # Информация о пересылке
-    if m.is_forwarded and m.forwarded_from_author:
-        forwarded_data = {
-            "author_id": m.forwarded_from_author.id,
-            "author_name": (
-                m.forwarded_from_author.get_full_name()
-                or m.forwarded_from_author.username
-            ),
-            "message_id": m.forwarded_from_message_id,
-        }
-        
-        # Добавляем дату оригинального сообщения
-        if m.forwarded_from_created_at:
-            forwarded_data["created_at"] = (
-                m.forwarded_from_created_at.strftime("%d.%m.%Y %H:%M")
-            )
-            forwarded_data["created_ts"] = int(
-                m.forwarded_from_created_at.timestamp() * 1000
-            )
-        
-        # Добавляем название исходного чата
-        if m.forwarded_from_chat_name:
-            forwarded_data["chat_name"] = m.forwarded_from_chat_name
-        
-        data["forwarded_from"] = forwarded_data
+    # Информация о пересылке (используем forward_metadata)
+    if m.is_forwarded:
+        try:
+            metadata = m.forward_metadata
+            forwarded_data = {
+                "author_id": metadata.original_author.id if metadata.original_author else None,
+                "author_name": (
+                    metadata.original_author.get_full_name() if metadata.original_author
+                    else metadata.original_author.username if metadata.original_author
+                    else "Неизвестно"
+                ),
+                "message_id": metadata.original_message_id if metadata.original_message else None,
+            }
+            
+            # Добавляем дату оригинального сообщения
+            if metadata.original_created_at:
+                forwarded_data["created_at"] = (
+                    metadata.original_created_at.strftime("%d.%m.%Y %H:%M")
+                )
+                forwarded_data["created_ts"] = int(
+                    metadata.original_created_at.timestamp() * 1000
+                )
+            
+            # Добавляем название исходного чата
+            if metadata.original_chat_name:
+                forwarded_data["chat_name"] = metadata.original_chat_name
+            
+            data["forwarded_from"] = forwarded_data
+        except Exception:
+            # Если метаданных нет, просто не добавляем информацию о пересылке
+            pass
     
     # Реакции - сериализуем из связанной модели MessageReaction
     reactions_summary = {}
@@ -591,7 +597,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     def _get_message(self, message_id: int) -> Message:
         return Message.objects.select_related(
             'author', 'reply_to', 'reply_to__author', 
-            'forwarded_from_author', 'poll'
+            'forward_metadata', 'forward_metadata__original_author', 'poll'
         ).prefetch_related(
             'attachments', 'reactions', 'reactions__user', 'poll__options'
         ).get(pk=message_id)
@@ -602,15 +608,17 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _edit_message(self, message_id: int, user, new_content: str) -> bool:
+        from .models import MessageEditHistory
+        
         try:
             msg = Message.objects.get(pk=message_id, author=user)
-            if not msg.is_edited:
-                msg.edit_history = []
             
-            msg.edit_history.append({
-                'timestamp': timezone.now().isoformat(),
-                'old_content': msg.content
-            })
+            # Сохраняем старый контент в историю редактирования
+            MessageEditHistory.objects.create(
+                message=msg,
+                previous_content=msg.content,
+                edited_by=user
+            )
             
             msg.content = new_content
             msg.is_edited = True
