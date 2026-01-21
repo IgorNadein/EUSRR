@@ -184,6 +184,15 @@ $card-cap-color: null !default;
 @import "components/chat/chat-detail";
 @import "components/chat/chat-date-groups";
 @import "components/chat/chat-list-enhanced";
+
+// Bubble модули (BEM архитектура)
+@import "components/chat/bubble-base";        // Базовые стили блока
+@import "components/chat/bubble-variants";    // Модификаторы типов (me/other/system)
+@import "components/chat/bubble-content";     // Вложенный контент (существующий)
+@import "components/chat/bubble-attachments"; // Вложения (медиа, файлы)
+@import "components/chat/bubble-polls";       // Голосования
+@import "components/chat/bubble-states";      // Интерактивные состояния (hover/focus)
+
 @import "components/chat/chat-enhanced";
 @import "components/chat/chat-polls";
 @import "components/chat/chat-new-messages-indicator";
@@ -194,8 +203,10 @@ $card-cap-color: null !default;
 // Дополнительные компоненты
 @import "components/comments";
 @import "components/modals";
+@import "components/request-list";
+@import "components/team-wheel";
 
 // Остальные компоненты (загружаются напрямую из CSS - не мигрировано)
-// TODO: Мигрировать buttons, card-list, document-list, request-list,
+// TODO: Мигрировать buttons, card-list, document-list,
 // ios-search, feed-specific, base-app, request-detail
 

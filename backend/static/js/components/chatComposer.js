@@ -290,9 +290,11 @@ class ChatComposer {
 		
 		const content = (this.textarea?.value || '').trim();
 		
-		// Определяем режим через formManager
-		const mode = window.chatFormManager?.mode || 'send';
-		const messageId = window.chatFormManager?.currentMessageId || null;
+		// Получаем данные из formManager
+		const formData = window.chatFormManager?.getFormData() || { mode: 'send' };
+		const mode = formData.mode;
+		const messageId = formData.editMessageId || null;
+		const replyToMessageId = formData.replyToMessageId || null;
 		
 		// Валидация: проверяем что есть хоть что-то
 		const hasContent = content.length > 0;
@@ -304,7 +306,7 @@ class ChatComposer {
 			return;
 		}
 		
-		console.log('[ChatComposer] Mode:', mode, 'MessageId:', messageId, 'Content:', content.substring(0, 50), 'Files:', hasFiles);
+		console.log('[ChatComposer] Mode:', mode, 'EditId:', messageId, 'ReplyTo:', replyToMessageId, 'Content:', content.substring(0, 50), 'Files:', hasFiles);
 		
 		// Блокируем повторную отправку
 		if (this.isSubmitting) {
@@ -322,22 +324,24 @@ class ChatComposer {
 			}
 			// SEND или REPLY: отправляем на upload-message
 			else {
-				await this.sendMessage(content);
+				await this.sendMessage(content, replyToMessageId);
 			}
 			
 		} catch (error) {
 			console.error('[ChatComposer] Send failed', error);
 			alert(error.message || 'Ошибка при отправке сообщения');
 		} finally {
-			this.isSubmitting = true;
+			this.isSubmitting = false;
 			this.setLoading(false);
 		}
 	}
 	
 	/**
 	 * Отправка нового сообщения или ответа
+	 * @param {string} content - Текст сообщения
+	 * @param {number|null} replyToMessageId - ID сообщения на которое отвечаем
 	 */
-	async sendMessage(content) {
+	async sendMessage(content, replyToMessageId = null) {
 		const formData = new FormData(this.form);
 		
 		// Добавляем файлы из this.selectedFiles
@@ -348,6 +352,12 @@ class ChatComposer {
 		// Если content не попал в FormData, добавляем вручную
 		if (!formData.has('content') && content) {
 			formData.set('content', content);
+		}
+		
+		// Добавляем reply_to если это ответ
+		if (replyToMessageId) {
+			formData.set('reply_to', replyToMessageId);
+			console.log('[ChatComposer] Sending reply to message:', replyToMessageId);
 		}
 		
 		// Проверяем chat_id

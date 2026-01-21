@@ -6,10 +6,8 @@ class ReactionsConfig {
     constructor() {
         this.reactions = [];
         this.loaded = false;
-        this.loading = false;
-        this.loadPromise = null;
         
-        // Дефолтные реакции на случай ошибки загрузки
+        // Дефолтные реакции
         this.defaultReactions = [
             { emoji: '👍', name: 'Лайк' },
             { emoji: '❤️', name: 'Сердце' },
@@ -23,51 +21,21 @@ class ReactionsConfig {
     }
 
     /**
-     * Загружает доступные реакции из API
+     * Загружает доступные реакции (использует дефолтные)
      * @returns {Promise<Array>} Массив объектов реакций
      */
     async load() {
-        // Если уже загружается - возвращаем существующий промис
-        if (this.loading) {
-            return this.loadPromise;
-        }
-
         // Если уже загружено - возвращаем кэш
         if (this.loaded) {
             return Promise.resolve(this.reactions);
         }
 
-        this.loading = true;
+        // Используем дефолтные реакции (API эндпоинт не реализован)
+        this.reactions = this.defaultReactions;
+        this.loaded = true;
+        console.log('[ReactionsConfig] ✓ Using default reactions:', this.reactions.length);
         
-        this.loadPromise = fetch('/api/v1/communications/reactions/available/')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.ok && Array.isArray(data.reactions)) {
-                    this.reactions = data.reactions;
-                    this.loaded = true;
-                    console.log('[ReactionsConfig] ✓ Loaded reactions from API:', this.reactions);
-                    return this.reactions;
-                } else {
-                    throw new Error('Invalid API response format');
-                }
-            })
-            .catch(error => {
-                console.error('[ReactionsConfig] ✗ Failed to load reactions:', error);
-                console.warn('[ReactionsConfig] Using default reactions as fallback');
-                this.reactions = this.defaultReactions;
-                this.loaded = true;
-                return this.reactions;
-            })
-            .finally(() => {
-                this.loading = false;
-            });
-
-        return this.loadPromise;
+        return Promise.resolve(this.reactions);
     }
 
     /**

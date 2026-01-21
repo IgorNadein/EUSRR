@@ -32,71 +32,28 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   MESSAGE ACTIONS (shown on hover)
+   MESSAGE WRAPPER (стили контейнера сообщения)
+   Стили .bubble теперь в _bubble-*.scss модулях
+   Интерактивные состояния в _bubble-states.scss
 ────────────────────────────────────────────────────────────── */
 .msg {
   position: relative;
 
-  &:hover .message-actions {
+  &:hover .msg__actions {
     opacity: 1;
   }
 
-  &:hover .quick-reactions {
+  &:hover .msg__quick-reactions {
     opacity: 1;
     pointer-events: all;
   }
 
-  &.new {
-    animation: slideIn 0.3s ease-out;
+  &.new .bubble {
+    animation: bubbleSlideIn 0.3s ease-out;
   }
 
   &.system-message {
     justify-content: center !important;
-
-    .bubble {
-      background: #f8f9fa;
-      border: 1px dashed #dee2e6;
-      color: #6c757d;
-      text-align: center;
-      font-size: 0.9rem;
-      font-style: italic;
-    }
-  }
-
-  .bubble {
-    em.text-muted {
-      font-size: 0.9rem;
-      opacity: 0.7;
-    }
-
-    .bi-pencil-fill {
-      font-size: 0.7rem;
-      opacity: 0.6;
-    }
-
-    .bi-pin-angle-fill {
-      color: var(--bs-warning);
-      font-size: 1rem;
-    }
-  }
-}
-
-.message-actions {
-  position: absolute;
-  top: -12px;
-  right: 10px;
-  background: white;
-  border: 1px solid #dee2e6;
-  border-radius: $radius-pill;
-  padding: 2px 4px;
-  @include shadow($shadow-sm);
-  opacity: 0;
-  @include transition(opacity, $transition-fast);
-  z-index: 10;
-
-  .btn {
-    padding: 2px 6px;
-    font-size: 0.85rem;
   }
 }
 
@@ -136,39 +93,9 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   QUICK REACTIONS (on hover)
+   QUICK REACTIONS & MESSAGE ACTIONS
+   Перенесены в _bubble-states.scss как .msg__quick-reactions и .msg__actions
 ────────────────────────────────────────────────────────────── */
-.quick-reactions {
-  position: absolute;
-  bottom: -20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: white;
-  border: 1px solid #dee2e6;
-  border-radius: $radius-pill;
-  padding: 4px 8px;
-  @include shadow($shadow-md);
-  opacity: 0;
-  pointer-events: none;
-  @include transition(opacity, $transition-fast);
-  z-index: 20;
-  display: flex;
-  gap: 4px;
-
-  button {
-    border: none;
-    background: transparent;
-    font-size: 1.1rem;
-    padding: 4px 8px;
-    cursor: pointer;
-    border-radius: $radius-sm;
-    @include transition(background, $transition-fast);
-
-    &:hover {
-      background: #f0f0f0;
-    }
-  }
-}
 
 /* ─────────────────────────────────────────────────────────────
    ATTACHMENTS
@@ -246,37 +173,7 @@
 
 /* ─────────────────────────────────────────────────────────────
    INDICATORS
-────────────────────────────────────────────────────────────── */
-#typing {
-  padding: 4px 12px;
-  font-style: italic;
-}
-
-#editing-indicator,
-#reply-indicator {
-  margin-bottom: 8px;
-  border-radius: 8px;
-}
-
-/* ─────────────────────────────────────────────────────────────
-   ANIMATIONS
-────────────────────────────────────────────────────────────── */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ─────────────────────────────────────────────────────────────
-   MOBILE RESPONSIVE
-────────────────────────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .message-actions {
+──.message-actions {
     position: static;
     opacity: 1;
     margin-top: 8px;
@@ -290,7 +187,27 @@
     margin-top: 8px;
     justify-content: center;
   }
+padding: 4px 12px;
+  font-style: italic;
+}
 
+#editing-indicator,
+#reply-indicator {
+  margin-bottom: 8px;
+  border-radius: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ANIMATIONS
+   Анимация bubbleSlideIn определена в _bubble-base.scss
+────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE RESPONSIVE
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  // Mobile стили для .msg__actions и .msg__quick-reactions в _bubble-states.scss
+  
   .attachment-image {
     max-width: 150px;
     max-height: 150px;

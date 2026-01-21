@@ -149,14 +149,24 @@ $req-hover-transition: background-color 0.15s ease;
 #reqList .req-cell-title {
   font-size: 0.9rem;
 
+  .req-cell-content {
+    display: inline-flex; // Inline-flex для горизонтального размещения
+    flex-wrap: wrap; // Перенос элементов при необходимости
+    gap: 0.25rem; // Отступ между элементами
+    align-items: center; // Вертикальное выравнивание
+  }
+
   strong {
     display: block;
     margin-bottom: 0.125rem;
   }
 
   .badge {
+    display: inline-block; // Не растягивается
     font-size: 0.7rem;
     padding: 0.2rem 0.4rem;
+    width: auto; // Автоматическая ширина по содержимому
+    flex-shrink: 0; // Не сжимается в flex-контейнере
   }
 }
 
@@ -193,6 +203,23 @@ $req-hover-transition: background-color 0.15s ease;
     display: flex;
     gap: 0.25rem;
     justify-content: center;
+    align-items: flex-start; // Не ограничивает высоту
+    width: 100%;
+  }
+  
+  // Badge с длинным текстом (например, имя согласующего)
+  .badge {
+    display: inline-block; // Важно для работы word-break
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    line-height: 1.3;
+    height: auto; // Автоматическая высота по содержимому
+    max-width: 100%;
+    min-width: 0; // Позволяет сжиматься
+    word-break: break-word;
+    white-space: normal;
+    text-align: center;
+    overflow-wrap: break-word;
   }
 }
 

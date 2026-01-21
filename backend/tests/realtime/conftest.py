@@ -14,6 +14,30 @@ User = get_user_model()
 
 
 @pytest.fixture
+def user(db):
+    """Создает тестового пользователя."""
+    return User.objects.create_user(
+        email='testuser@example.com',
+        password='testpass123',
+        phone_number='+79991234567',
+        first_name='Test',
+        last_name='User'
+    )
+
+
+@pytest.fixture
+def user2(db):
+    """Создает второго тестового пользователя."""
+    return User.objects.create_user(
+        email='testuser2@example.com',
+        password='testpass123',
+        phone_number='+79991234568',
+        first_name='Test2',
+        last_name='User2'
+    )
+
+
+@pytest.fixture
 def ws_communicator():
     """
     Фабрика для создания WebSocket communicator.
@@ -48,7 +72,7 @@ def test_chat(db, user):
     """Создает тестовый чат с пользователем."""
     chat = Chat.objects.create(
         name="Test Chat",
-        chat_type="group"
+        type="group"
     )
     ChatMembership.objects.create(
         chat=chat,
@@ -63,7 +87,7 @@ def test_chat_with_users(db, user, user2):
     """Создает чат с двумя пользователями."""
     chat = Chat.objects.create(
         name="Multi User Chat",
-        chat_type="group"
+        type="group"
     )
     ChatMembership.objects.create(chat=chat, user=user, role="admin")
     ChatMembership.objects.create(chat=chat, user=user2, role="member")

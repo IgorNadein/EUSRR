@@ -383,6 +383,10 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "results": payload.get("results")
             })
     
+    async def poll_update(self, event):
+        """Обработчик для события poll.update (алиас для chat_poll_update)"""
+        await self.chat_poll_update(event)
+    
     async def chat_marked_read(self, event):
         """Синхронизация отметки прочитанного между вкладками"""
         chat_id = event.get("chat_id")

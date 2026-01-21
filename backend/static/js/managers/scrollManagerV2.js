@@ -194,7 +194,7 @@ export class ScrollManagerV2 {
             // Сохраняем высоты ДО загрузки
             const oldScrollHeight = this.scrollEl.scrollHeight;
             const oldScrollTop = this.scrollEl.scrollTop;
-            const messagesBefore = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+            const messagesBefore = this.scrollEl.querySelectorAll('.msg[data-id]').length;
 
             console.log('[ScrollManagerV2] BEFORE load:', { 
                 oldScrollHeight,
@@ -210,14 +210,9 @@ export class ScrollManagerV2 {
                 messageIds: messages.map(m => m.id)
             });
 
-            // Проверяем есть ли еще история ПОСЛЕ загрузки
-            const stillHasMore = this.loader.hasMoreHistory(this.chatId);
-            
-            if (messages.length === 0 || !stillHasMore) {
-                console.log('[ScrollManagerV2] ⚠️ Stopping: no messages or no more history', {
-                    messagesLength: messages.length,
-                    stillHasMore
-                });
+            // Если ничего не загрузилось - выходим
+            if (messages.length === 0) {
+                console.log('[ScrollManagerV2] ⚠️ No messages loaded');
                 this.scrollEl.style.scrollBehavior = originalScrollBehavior;
                 return [];
             }
@@ -260,7 +255,7 @@ export class ScrollManagerV2 {
             // Prepend fragment в НАЧАЛО контейнера (как в Telegram)
             this.scrollEl.prepend(fragment);
 
-            const messagesAfterPrepend = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+            const messagesAfterPrepend = this.scrollEl.querySelectorAll('.msg[data-id]').length;
             console.log('[ScrollManagerV2] AFTER prepend:', {
                 messagesAfterPrepend,
                 added: messagesAfterPrepend - messagesBefore
@@ -294,13 +289,24 @@ export class ScrollManagerV2 {
                         // Обновляем observer на новое первое сообщение
                         this._updateObserverTarget();
                         
+                        // Проверяем есть ли еще история ПОСЛЕ рендеринга
+                        const stillHasMore = this.loader.hasMoreHistory(this.chatId);
+                        if (!stillHasMore) {
+                            console.log('[ScrollManagerV2] 📭 No more history available, disconnecting observer');
+                            if (this._historyObserver) {
+                                this._historyObserver.disconnect();
+                                this._historyObserver = null;
+                            }
+                        }
+                        
                         // Восстанавливаем scroll-behavior
                         this.scrollEl.style.scrollBehavior = originalScrollBehavior;
                         
-                        const finalMessages = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+                        const finalMessages = this.scrollEl.querySelectorAll('.msg[data-id]').length;
                         console.log('[ScrollManagerV2] ✅ FINAL STATE:', {
                             finalMessages,
-                            totalAdded: finalMessages - messagesBefore
+                            totalAdded: finalMessages - messagesBefore,
+                            hasMoreHistory: stillHasMore
                         });
                         console.log('[ScrollManagerV2] ======================================');
                         
@@ -343,7 +349,7 @@ export class ScrollManagerV2 {
         this._isLoadingNewer = true;
 
         try {
-            const messagesBefore = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+            const messagesBefore = this.scrollEl.querySelectorAll('.msg[data-id]').length;
             
             console.log('[ScrollManagerV2] BEFORE loadNewer:', { 
                 messagesBefore,
@@ -366,8 +372,8 @@ export class ScrollManagerV2 {
 
             // Проверяем какие сообщения реально новые
             const existingIds = new Set(
-                Array.from(this.scrollEl.querySelectorAll('.msg[data-message-id]'))
-                    .map(el => el.dataset.messageId)
+                Array.from(this.scrollEl.querySelectorAll('.msg[data-id]'))
+                    .map(el => el.dataset.id)
             );
             const newMessages = messages.filter(m => !existingIds.has(String(m.id)));
 
@@ -390,7 +396,7 @@ export class ScrollManagerV2 {
                 // Обновляем observer на новое последнее сообщение
                 this._updateNewerObserverTarget();
                 
-                const messagesAfter = this.scrollEl.querySelectorAll('.msg[data-message-id]').length;
+                const messagesAfter = this.scrollEl.querySelectorAll('.msg[data-id]').length;
                 console.log('[ScrollManagerV2] ✅ NEWER FINAL STATE:', {
                     messagesAfter,
                     totalAdded: messagesAfter - messagesBefore
@@ -508,7 +514,7 @@ export class ScrollManagerV2 {
         console.log('[ScrollManagerV2] 🔍 _setupIntersectionObserver called');
         
         // Находим первое сообщение
-        const firstMessage = this.scrollEl.querySelector('.msg[data-message-id]');
+        const firstMessage = this.scrollEl.querySelector('.msg[data-id]');
         
         if (!firstMessage) {
             console.log('[ScrollManagerV2] ❌ No messages yet, observer not set');
@@ -516,7 +522,7 @@ export class ScrollManagerV2 {
         }
 
         console.log('[ScrollManagerV2] First message found:', {
-            messageId: firstMessage.dataset.messageId,
+            messageId: firstMessage.dataset.id,
             offsetTop: firstMessage.offsetTop,
             scrollTop: this.scrollEl.scrollTop,
             firstMessageVisible: firstMessage.getBoundingClientRect().top < this.scrollEl.clientHeight
@@ -547,7 +553,7 @@ export class ScrollManagerV2 {
     _setupNewerObserver() {
         console.log('[ScrollManagerV2] 🔍 _setupNewerObserver called');
         
-        const messages = this.scrollEl.querySelectorAll('.msg[data-message-id]');
+        const messages = this.scrollEl.querySelectorAll('.msg[data-id]');
         const lastMessage = messages[messages.length - 1];
         
         if (!lastMessage) {
@@ -562,7 +568,7 @@ export class ScrollManagerV2 {
         }
 
         console.log('[ScrollManagerV2] Last message found:', {
-            messageId: lastMessage.dataset.messageId
+            messageId: lastMessage.dataset.id
         });
 
         // Создаем observer для последнего сообщения
@@ -620,7 +626,7 @@ export class ScrollManagerV2 {
         
         entries.forEach(entry => {
             console.log('[ScrollManagerV2] History Entry:', {
-                target: entry.target.dataset?.messageId,
+                target: entry.target.dataset?.id,
                 isIntersecting: entry.isIntersecting,
                 intersectionRatio: entry.intersectionRatio,
                 isLoadingHistory: this._isLoadingHistory,
@@ -661,7 +667,7 @@ export class ScrollManagerV2 {
         
         entries.forEach(entry => {
             console.log('[ScrollManagerV2] Newer Entry:', {
-                target: entry.target.dataset?.messageId,
+                target: entry.target.dataset?.id,
                 isIntersecting: entry.isIntersecting,
                 isLoadingNewer: this._isLoadingNewer,
                 willLoadNewer: entry.isIntersecting && !this._isLoadingNewer && !this._isInitializing
@@ -742,7 +748,7 @@ export class ScrollManagerV2 {
 
         this._historyObserver.disconnect();
 
-        const firstMessage = this.scrollEl.querySelector('.msg[data-message-id]');
+        const firstMessage = this.scrollEl.querySelector('.msg[data-id]');
         if (firstMessage) {
             this._historyObserver.observe(firstMessage);
         }
@@ -766,7 +772,7 @@ export class ScrollManagerV2 {
         }
 
         // Находим последнее сообщение
-        const messages = this.scrollEl.querySelectorAll('.msg[data-message-id]');
+        const messages = this.scrollEl.querySelectorAll('.msg[data-id]');
         const lastMessage = messages[messages.length - 1];
         
         if (lastMessage) {
@@ -782,7 +788,7 @@ export class ScrollManagerV2 {
                 );
             }
             this._newerObserver.observe(lastMessage);
-            console.log('[ScrollManagerV2] ✅ Newer observer updated to last message:', lastMessage.dataset.messageId);
+            console.log('[ScrollManagerV2] ✅ Newer observer updated to last message:', lastMessage.dataset.id);
         }
     }
 
@@ -867,12 +873,12 @@ export class ScrollManagerV2 {
      */
     _getFirstVisibleMessageId() {
         const containerRect = this.scrollEl.getBoundingClientRect();
-        const messages = this.scrollEl.querySelectorAll('.msg[data-message-id]');
+        const messages = this.scrollEl.querySelectorAll('.msg[data-id]');
 
         for (const msg of messages) {
             const rect = msg.getBoundingClientRect();
             if (rect.top >= containerRect.top && rect.top <= containerRect.bottom) {
-                return msg.dataset.messageId;
+                return msg.dataset.id;
             }
         }
         return null;
@@ -884,12 +890,12 @@ export class ScrollManagerV2 {
      */
     _getLastVisibleMessageId() {
         const containerRect = this.scrollEl.getBoundingClientRect();
-        const messages = Array.from(this.scrollEl.querySelectorAll('.msg[data-message-id]'));
+        const messages = Array.from(this.scrollEl.querySelectorAll('.msg[data-id]'));
 
         for (let i = messages.length - 1; i >= 0; i--) {
             const rect = messages[i].getBoundingClientRect();
             if (rect.bottom >= containerRect.top && rect.bottom <= containerRect.bottom) {
-                return messages[i].dataset.messageId;
+                return messages[i].dataset.id;
             }
         }
         return null;

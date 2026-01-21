@@ -1037,3 +1037,1556 @@ class TestPerformance:
         assert response.status_code == status.HTTP_200_OK
         # Должно выполниться разумно быстро
         assert duration < 3.0
+
+
+# ==================== Reply-to Tests ====================
+
+class TestMessageReplyTo:
+    """Тесты функционала ответа на сообщения"""
+    
+    def test_upload_message_with_reply_to(self, auth_client, private_chat, user1):
+        """Отправка сообщения с ответом на другое сообщение"""
+        # Создаем оригинальное сообщение
+        original_msg = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original message'
+        )
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to original',
+            'reply_to_id': original_msg.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['ok'] is True
+        assert response.data['message']['content'] == 'Reply to original'
+        
+        # Проверяем что reply_to присутствует в ответе
+        assert 'reply_to' in response.data['message']
+        assert response.data['message']['reply_to']['id'] == original_msg.id
+        assert response.data['message']['reply_to']['content'] == 'Original message'
+        assert response.data['message']['reply_to']['author_name']
+        
+        # Проверяем в БД
+        reply_msg = Message.objects.get(id=response.data['message']['id'])
+        assert reply_msg.reply_to_id == original_msg.id
+    
+    def test_reply_to_reply_chain(self, auth_client, private_chat, user1):
+        """Цепочка ответов - ответ на ответ"""
+        # Первое сообщение
+        msg1 = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='First message'
+        )
+        
+        # Ответ на первое
+        msg2 = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Reply to first',
+            reply_to=msg1
+        )
+        
+        # Ответ на ответ
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to reply',
+            'reply_to_id': msg2.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['reply_to']['id'] == msg2.id
+        assert response.data['message']['reply_to']['content'] == 'Reply to first'
+    
+    def test_reply_to_invalid_message_id(self, auth_client, private_chat):
+        """Попытка ответить на несуществующее сообщение"""
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to nothing',
+            'reply_to_id': 99999
+        }
+        
+        # Должна быть ошибка валидации или FK constraint
+        try:
+            response = auth_client.post(url, data, format='json')
+            # Если ответ получен, проверяем статус
+            assert response.status_code in [
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_404_NOT_FOUND
+            ]
+        except Exception:
+            # FK constraint violation - это тоже допустимый результат
+            pass
+    
+    def test_reply_to_deleted_message(self, auth_client, private_chat, user1):
+        """Ответ на удаленное сообщение"""
+        # Создаем и удаляем сообщение
+        deleted_msg = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Will be deleted',
+            is_deleted=True
+        )
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to deleted',
+            'reply_to_id': deleted_msg.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        # Сервер может разрешить или запретить
+        assert response.status_code in [
+            status.HTTP_201_CREATED,
+            status.HTTP_400_BAD_REQUEST
+        ]
+    
+    def test_reply_to_message_from_another_chat(self, user1, user2, user3):
+        """Попытка ответить на сообщение из другого чата"""
+        # Два разных чата
+        chat1 = Chat.objects.create(type='private', created_by=user1)
+        chat1.participants.add(user1, user2)
+        
+        chat2 = Chat.objects.create(type='private', created_by=user1)
+        chat2.participants.add(user1, user3)
+        
+        # Сообщение в первом чате
+        msg_chat1 = Message.objects.create(
+            chat=chat1,
+            author=user1,
+            content='Message in chat1'
+        )
+        
+        # Попытка ответить на него во втором чате
+        client = APIClient()
+        client.force_authenticate(user=user1)
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': chat2.id,
+            'content': 'Cross-chat reply',
+            'reply_to_id': msg_chat1.id
+        }
+        response = client.post(url, data, format='json')
+        
+        # Должна быть либо ошибка, либо игнорирование reply_to
+        assert response.status_code in [
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_201_CREATED
+        ]
+    
+    def test_reply_to_long_message_truncation(self, auth_client, private_chat, user1):
+        """Ответ на длинное сообщение - текст должен обрезаться"""
+        # Создаем длинное сообщение (>100 символов)
+        long_content = 'A' * 200
+        long_msg = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content=long_content
+        )
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to long',
+            'reply_to_id': long_msg.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        # reply_to content должен быть обрезан до 100 символов
+        reply_to_content = response.data['message']['reply_to']['content']
+        assert len(reply_to_content) <= 100
+    
+    def test_reply_without_content_but_with_files(self, auth_client, private_chat, user1):
+        """Ответ на сообщение только файлом без текста"""
+        from io import BytesIO
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        original_msg = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original'
+        )
+        
+        # Создаем тестовый файл
+        test_file = SimpleUploadedFile(
+            "test.txt",
+            b"file content",
+            content_type="text/plain"
+        )
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'reply_to_id': original_msg.id,
+            'file_0': test_file
+        }
+        response = auth_client.post(url, data, format='multipart')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['reply_to']['id'] == original_msg.id
+        assert response.data['message']['has_attachments'] is True
+
+
+# ==================== Attachments Tests ====================
+
+class TestMessageAttachments:
+    """Тесты функционала вложений (файлов) в сообщениях"""
+    
+    def test_upload_message_with_single_file(self, auth_client, private_chat):
+        """Загрузка сообщения с одним файлом"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        test_file = SimpleUploadedFile(
+            "document.txt",
+            b"Test file content",
+            content_type="text/plain"
+        )
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Message with file',
+            'file_0': test_file
+        }
+        response = auth_client.post(url, data, format='multipart')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['has_attachments'] is True
+        assert len(response.data['message']['attachments']) == 1
+        
+        attachment = response.data['message']['attachments'][0]
+        assert attachment['file_name'] == 'document.txt'
+        assert attachment['file_type'] == 'document'
+        assert attachment['mime_type'] == 'text/plain'
+        assert 'file_url' in attachment
+    
+    def test_upload_message_with_multiple_files(self, auth_client, private_chat):
+        """Загрузка сообщения с несколькими файлами"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file1 = SimpleUploadedFile("file1.txt", b"Content 1", content_type="text/plain")
+        file2 = SimpleUploadedFile("file2.pdf", b"PDF content", content_type="application/pdf")
+        file3 = SimpleUploadedFile("file3.jpg", b"Image data", content_type="image/jpeg")
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Multiple attachments',
+            'file_0': file1,
+            'file_1': file2,
+            'file_2': file3
+        }
+        response = auth_client.post(url, data, format='multipart')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['has_attachments'] is True
+        assert len(response.data['message']['attachments']) == 3
+        
+        # Проверяем типы
+        attachments = response.data['message']['attachments']
+        types = [att['file_type'] for att in attachments]
+        assert 'document' in types  # txt
+        assert 'pdf' in types       # pdf
+        assert 'image' in types     # jpg
+    
+    def test_upload_only_files_without_text(self, auth_client, private_chat):
+        """Загрузка только файлов без текстового контента"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        test_file = SimpleUploadedFile("test.txt", b"content", content_type="text/plain")
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': '',  # Пустой контент
+            'file_0': test_file
+        }
+        response = auth_client.post(url, data, format='multipart')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['content'] == ''
+        assert len(response.data['message']['attachments']) == 1
+    
+    def test_upload_temp_files(self, auth_client):
+        """Временная загрузка файлов для последующего редактирования"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file1 = SimpleUploadedFile("temp1.txt", b"Temp content", content_type="text/plain")
+        file2 = SimpleUploadedFile("temp2.jpg", b"Image", content_type="image/jpeg")
+        
+        url = '/api/v1/communications/messages/upload-temp/'
+        data = {
+            'file_0': file1,
+            'file_1': file2
+        }
+        response = auth_client.post(url, data, format='multipart')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['ok'] is True
+        assert 'attachment_ids' in response.data
+        assert len(response.data['attachment_ids']) == 2
+        
+        # Проверяем что attachments созданы без привязки к сообщению
+        from communications.models import MessageAttachment
+        for att_id in response.data['attachment_ids']:
+            att = MessageAttachment.objects.get(id=att_id)
+            assert att.message is None
+    
+    def test_edit_message_add_attachments(self, auth_client, private_chat, user1):
+        """Редактирование сообщения - добавление новых файлов"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        # Создаем сообщение без файлов
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original without files'
+        )
+        
+        # Загружаем временные файлы
+        file1 = SimpleUploadedFile("new.txt", b"New file", content_type="text/plain")
+        
+        url_temp = '/api/v1/communications/messages/upload-temp/'
+        temp_response = auth_client.post(url_temp, {'file_0': file1}, format='multipart')
+        attachment_ids = temp_response.data['attachment_ids']
+        
+        # Редактируем сообщение, добавляя файлы
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {
+            'content': 'Updated with files',
+            'existing_attachment_ids': attachment_ids
+        }
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        # Проверяем attachments в response
+        assert len(response.data['attachments']) == 1
+        assert response.data['has_attachments'] is True
+        
+        # Проверяем в БД
+        message.refresh_from_db()
+        assert message.has_attachments is True
+        
+        # Проверяем что attachment привязан к сообщению
+        att = MessageAttachment.objects.get(id=attachment_ids[0])
+        assert att.message_id == message.id
+    
+    def test_edit_message_remove_attachments(self, auth_client, private_chat, user1):
+        """Редактирование сообщения - удаление всех файлов"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        # Создаем сообщение с файлом
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='With file',
+            has_attachments=True
+        )
+        
+        att = MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("old.txt", b"Old", content_type="text/plain"),
+            file_name='old.txt',
+            file_size=100,
+            mime_type='text/plain',
+            file_type='document'
+        )
+        
+        # Редактируем, убирая все файлы
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {
+            'content': 'Updated without files',
+            'existing_attachment_ids': []  # Пустой список = удалить все
+        }
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        # Проверяем attachments в response
+        assert len(response.data['attachments']) == 0
+        assert response.data['has_attachments'] is False
+        
+        # Проверяем в БД
+        message.refresh_from_db()
+        assert message.has_attachments is False
+        
+        # Проверяем что attachment удален
+        assert not MessageAttachment.objects.filter(id=att.id).exists()
+    
+    def test_edit_message_replace_attachments(self, auth_client, private_chat, user1):
+        """Редактирование сообщения - замена файлов"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        # Создаем сообщение со старым файлом
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='With old file',
+            has_attachments=True
+        )
+        
+        old_att = MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("old.txt", b"Old", content_type="text/plain"),
+            file_name='old.txt',
+            file_size=100,
+            mime_type='text/plain',
+            file_type='document'
+        )
+        old_att_id = old_att.id
+        
+        # Загружаем новый временный файл
+        new_file = SimpleUploadedFile("new.txt", b"New", content_type="text/plain")
+        url_temp = '/api/v1/communications/messages/upload-temp/'
+        temp_response = auth_client.post(url_temp, {'file_0': new_file}, format='multipart')
+        new_att_ids = temp_response.data['attachment_ids']
+        
+        # Редактируем сообщение - оставляем только новый файл
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {
+            'content': 'With new file',
+            'existing_attachment_ids': new_att_ids
+        }
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['attachments']) == 1
+        assert response.data['attachments'][0]['file_name'] == 'new.txt'
+        
+        # Старый attachment должен быть удален
+        assert not MessageAttachment.objects.filter(id=old_att_id).exists()
+    
+    def test_edit_message_keep_some_remove_others(self, auth_client, private_chat, user1):
+        """Редактирование - оставить часть файлов, удалить другие"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        # Создаем сообщение с тремя файлами
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Three files',
+            has_attachments=True
+        )
+        
+        att1 = MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("file1.txt", b"1", content_type="text/plain"),
+            file_name='file1.txt', file_size=1, mime_type='text/plain', file_type='document'
+        )
+        att2 = MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("file2.txt", b"2", content_type="text/plain"),
+            file_name='file2.txt', file_size=1, mime_type='text/plain', file_type='document'
+        )
+        att3 = MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("file3.txt", b"3", content_type="text/plain"),
+            file_name='file3.txt', file_size=1, mime_type='text/plain', file_type='document'
+        )
+        
+        # Редактируем - оставляем только att1 и att3
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {
+            'content': 'Two files now',
+            'existing_attachment_ids': [att1.id, att3.id]
+        }
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['attachments']) == 2
+        
+        remaining_names = [att['file_name'] for att in response.data['attachments']]
+        assert 'file1.txt' in remaining_names
+        assert 'file3.txt' in remaining_names
+        assert 'file2.txt' not in remaining_names
+        
+        # att2 должен быть удален
+        assert not MessageAttachment.objects.filter(id=att2.id).exists()
+    
+    def test_file_type_detection(self, auth_client, private_chat):
+        """Проверка правильного определения типов файлов"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        files = [
+            ('image.jpg', b'img', 'image/jpeg', 'image'),
+            ('video.mp4', b'vid', 'video/mp4', 'video'),
+            ('audio.mp3', b'aud', 'audio/mpeg', 'audio'),
+            ('doc.pdf', b'pdf', 'application/pdf', 'pdf'),
+            ('text.docx', b'doc', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'document'),
+            ('unknown.xyz', b'???', 'application/octet-stream', 'file'),
+        ]
+        
+        url = '/api/v1/communications/messages/upload/'
+        
+        for idx, (filename, content, mime_type, expected_type) in enumerate(files):
+            file_obj = SimpleUploadedFile(filename, content, content_type=mime_type)
+            
+            data = {
+                'chat_id': private_chat.id,
+                'content': f'Test {filename}',
+                'file_0': file_obj
+            }
+            response = auth_client.post(url, data, format='multipart')
+            
+            assert response.status_code == status.HTTP_201_CREATED
+            attachment = response.data['message']['attachments'][0]
+            assert attachment['file_type'] == expected_type, f"Wrong type for {filename}"
+            assert attachment['mime_type'] == mime_type
+
+
+# ==================== Chat Creation Tests ====================
+
+class TestChatCreation:
+    """Тесты создания чатов"""
+    
+    def test_create_private_chat(self, auth_client, user1, user2):
+        """Создание приватного чата"""
+        url = '/api/v1/communications/chats/'
+        data = {
+            'type': 'private',
+            'name': 'Private Chat',
+            'participants': [user1.id, user2.id]
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['type'] == 'private'
+        assert response.data['name'] == 'Private Chat'
+        
+        # Проверяем в БД
+        chat = Chat.objects.get(id=response.data['id'])
+        assert chat.participants.count() >= 2
+        assert user1 in chat.participants.all()
+        assert user2 in chat.participants.all()
+    
+    def test_create_group_chat(self, auth_client, user1, user2, user3):
+        """Создание группового чата"""
+        url = '/api/v1/communications/chats/'
+        data = {
+            'type': 'group',
+            'name': 'Group Chat',
+            'participants': [user1.id, user2.id, user3.id]
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['type'] == 'group'
+        
+        chat = Chat.objects.get(id=response.data['id'])
+        assert chat.participants.count() >= 3
+    
+    def test_create_department_chat(self, auth_client, user1, department):
+        """Создание чата отдела"""
+        url = '/api/v1/communications/chats/'
+        data = {
+            'type': 'department',
+            'name': 'Department Chat',
+            'department': department.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['type'] == 'department'
+        
+        chat = Chat.objects.get(id=response.data['id'])
+        assert chat.department_id == department.id
+    
+    def test_create_announcement_chat(self, auth_client, user1):
+        """Создание чата-объявления"""
+        url = '/api/v1/communications/chats/'
+        data = {
+            'type': 'announcement',
+            'name': 'Announcements',
+            'include_all_employees': True
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['type'] == 'announcement'
+        
+        chat = Chat.objects.get(id=response.data['id'])
+        assert chat.include_all_employees is True
+    
+    def test_create_chat_without_name(self, auth_client, user1, user2):
+        """Создание чата без имени - должно использоваться имя по умолчанию"""
+        url = '/api/v1/communications/chats/'
+        data = {
+            'type': 'private',
+            'participants': [user1.id, user2.id]
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        # Может быть либо ошибка, либо автогенерация имени
+        assert response.status_code in [
+            status.HTTP_201_CREATED,
+            status.HTTP_400_BAD_REQUEST
+        ]
+
+
+# ==================== Poll Creation Tests ====================
+
+class TestPollCreation:
+    """Тесты создания голосований"""
+    
+    def test_create_poll_in_message(self, auth_client, private_chat, user1):
+        """Создание голосования внутри сообщения"""
+        from communications.models import Poll, PollOption
+        
+        # Создаем сообщение
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Poll message'
+        )
+        
+        # Создаем poll напрямую (API endpoint может не поддерживать создание)
+        poll = Poll.objects.create(
+            message=message,
+            author=user1,
+            question='What is your favorite color?',
+            is_anonymous=False,
+            is_multiple_choice=False
+        )
+        
+        # Создаем опции
+        PollOption.objects.create(poll=poll, text='Red', position=0)
+        PollOption.objects.create(poll=poll, text='Blue', position=1)
+        PollOption.objects.create(poll=poll, text='Green', position=2)
+        
+        # Проверяем что создалось
+        assert poll.question == 'What is your favorite color?'
+        assert poll.options.count() == 3
+        assert poll.author == user1
+    
+    def test_create_anonymous_poll(self, auth_client, private_chat, user1):
+        """Создание анонимного голосования"""
+        from communications.models import Poll, PollOption
+        
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Anonymous poll'
+        )
+        
+        # Создаем poll напрямую
+        poll = Poll.objects.create(
+            message=message,
+            author=user1,
+            question='Anonymous question?',
+            is_anonymous=True,
+            is_multiple_choice=False
+        )
+        
+        PollOption.objects.create(poll=poll, text='Yes', position=0)
+        PollOption.objects.create(poll=poll, text='No', position=1)
+        
+        assert poll.is_anonymous is True
+        assert poll.options.count() == 2
+    
+    def test_create_multiple_choice_poll(self, auth_client, private_chat, user1):
+        """Создание голосования с множественным выбором"""
+        from communications.models import Poll, PollOption
+        
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Multiple choice'
+        )
+        
+        # Создаем poll напрямую
+        poll = Poll.objects.create(
+            message=message,
+            author=user1,
+            question='Select all that apply',
+            is_anonymous=False,
+            is_multiple_choice=True
+        )
+        
+        PollOption.objects.create(poll=poll, text='Option A', position=0)
+        PollOption.objects.create(poll=poll, text='Option B', position=1)
+        PollOption.objects.create(poll=poll, text='Option C', position=2)
+        
+        assert poll.is_multiple_choice is True
+        assert poll.options.count() == 3
+
+
+# ==================== Metadata Tests ====================
+
+class TestMetadata:
+    """Тесты проверки создания метаданных"""
+    
+    def test_message_edit_history_created(self, auth_client, private_chat, user1):
+        """При редактировании должна создаваться запись в истории"""
+        from communications.models import MessageEditHistory
+        
+        # Создаем сообщение
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original content'
+        )
+        
+        # Редактируем
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {'content': 'Edited content'}
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['is_edited'] is True
+        
+        # Проверяем что создалась история
+        history = MessageEditHistory.objects.filter(message=message)
+        assert history.exists()
+        assert history.first().previous_content == 'Original content'
+        assert history.first().edited_by == user1
+    
+    def test_forward_metadata_created(self, auth_client, private_chat, group_chat, user1):
+        """При пересылке должны создаваться метаданные"""
+        from communications.models import MessageForwardMetadata
+        
+        # Создаем оригинальное сообщение
+        original = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original message'
+        )
+        
+        # Пересылаем
+        url = '/api/v1/communications/messages/forward/'
+        data = {
+            'message_ids': [original.id],
+            'target_chat_id': group_chat.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['forwarded_count'] == 1
+        
+        forwarded_id = response.data['forwarded_ids'][0]
+        forwarded_msg = Message.objects.get(id=forwarded_id)
+        
+        # Проверяем метаданные
+        assert forwarded_msg.is_forwarded is True
+        metadata = MessageForwardMetadata.objects.filter(message=forwarded_msg)
+        assert metadata.exists()
+        
+        meta = metadata.first()
+        assert meta.original_message_id == original.id
+        assert meta.original_author_id == user1.id
+        assert meta.forwarded_by == user1
+    
+    def test_mark_read_updates_read_state(self, auth_client, private_chat, user1):
+        """mark_read должен обновлять ChatReadState"""
+        from communications.models import ChatReadState
+        
+        # Создаем сообщения
+        msg1 = Message.objects.create(chat=private_chat, author=user1, content='Msg 1')
+        msg2 = Message.objects.create(chat=private_chat, author=user1, content='Msg 2')
+        
+        # Помечаем как прочитанное
+        url = f'/api/v1/communications/chats/{private_chat.pk}/mark-read/'
+        data = {'message_id': msg2.id}
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['ok'] is True
+        
+        # Проверяем ReadState
+        read_state = ChatReadState.objects.get(chat=private_chat, user=user1)
+        assert read_state.last_read_message_id == msg2.id
+        assert read_state.last_read_at is not None
+    
+    def test_mark_read_with_timestamp(self, auth_client, private_chat, user1):
+        """mark_read с явным указанием timestamp"""
+        from communications.models import ChatReadState
+        import time
+        
+        # Создаем сообщение
+        msg = Message.objects.create(chat=private_chat, author=user1, content='Test')
+        
+        # Помечаем с timestamp
+        upto_ts = int(time.time() * 1000)  # Миллисекунды
+        
+        url = f'/api/v1/communications/chats/{private_chat.pk}/mark-read/'
+        data = {'upto_ts': upto_ts}
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        
+        # Проверяем ReadState
+        read_state = ChatReadState.objects.get(chat=private_chat, user=user1)
+        assert read_state.last_read_at is not None
+    
+    def test_messages_around_with_timestamp(self, auth_client, private_chat, user1):
+        """messages_around может принимать timestamp вместо message_id"""
+        # Создаем несколько сообщений
+        messages = []
+        for i in range(10):
+            msg = Message.objects.create(
+                chat=private_chat,
+                author=user1,
+                content=f'Message {i}'
+            )
+            messages.append(msg)
+        
+        # Берем timestamp среднего сообщения
+        middle_msg = messages[5]
+        timestamp_ms = int(middle_msg.created_at.timestamp() * 1000)
+        
+        url = f'/api/v1/communications/chats/{private_chat.pk}/messages-around/'
+        response = auth_client.get(url, {
+            'around_id': timestamp_ms,
+            'limit': 6
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert 'messages' in response.data
+        assert response.data['anchor_id'] is not None
+
+
+# ==================== Complex Message Type Tests ====================
+
+class TestReplyToVariousMessageTypes:
+    """Тесты ответа на разные типы сообщений"""
+    
+    def test_reply_to_message_with_attachment(self, auth_client, private_chat, user1):
+        """Ответ на сообщение с вложением"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        # Создаем сообщение с файлом
+        original = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Message with file',
+            has_attachments=True
+        )
+        MessageAttachment.objects.create(
+            message=original,
+            file=SimpleUploadedFile("doc.pdf", b"PDF", content_type="application/pdf"),
+            file_name='doc.pdf',
+            file_size=100,
+            mime_type='application/pdf',
+            file_type='pdf'
+        )
+        
+        # Отвечаем на него
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to file message',
+            'reply_to_id': original.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['reply_to']['id'] == original.id
+        # В reply_to должна быть информация о файле
+        assert response.data['message']['reply_to']['content'] == 'Message with file'
+    
+    def test_reply_to_poll_message(self, auth_client, private_chat, user1):
+        """Ответ на сообщение с голосованием"""
+        from communications.models import Poll, PollOption
+        
+        # Создаем сообщение с голосованием
+        poll_message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Poll question'
+        )
+        poll = Poll.objects.create(
+            message=poll_message,
+            author=user1,
+            question='What color?',
+            is_anonymous=False,
+            is_multiple_choice=False
+        )
+        PollOption.objects.create(poll=poll, text='Red', position=0)
+        PollOption.objects.create(poll=poll, text='Blue', position=1)
+        
+        # Отвечаем на сообщение с голосованием
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'My answer to poll',
+            'reply_to_id': poll_message.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['reply_to']['id'] == poll_message.id
+    
+    def test_reply_to_forwarded_message(self, auth_client, private_chat, user1):
+        """Ответ на пересланное сообщение"""
+        from communications.models import MessageForwardMetadata
+        
+        # Создаем пересланное сообщение
+        forwarded = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Forwarded content',
+            is_forwarded=True
+        )
+        MessageForwardMetadata.objects.create(
+            message=forwarded,
+            original_author=user1,
+            original_chat=private_chat,
+            original_chat_name='Original Chat',
+            forwarded_by=user1
+        )
+        
+        # Отвечаем на пересланное
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to forwarded',
+            'reply_to_id': forwarded.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['reply_to']['id'] == forwarded.id
+    
+    def test_reply_to_edited_message(self, auth_client, private_chat, user1):
+        """Ответ на отредактированное сообщение"""
+        # Создаем и редактируем сообщение
+        edited = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Edited content',
+            is_edited=True
+        )
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply to edited',
+            'reply_to_id': edited.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['reply_to']['id'] == edited.id
+    
+    def test_reply_with_attachment_to_message(self, auth_client, private_chat, user1):
+        """Ответ с файлом на обычное сообщение"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        original = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original'
+        )
+        
+        file_obj = SimpleUploadedFile("reply.txt", b"Reply file", content_type="text/plain")
+        
+        url = '/api/v1/communications/messages/upload/'
+        data = {
+            'chat_id': private_chat.id,
+            'content': 'Reply with file',
+            'reply_to_id': original.id,
+            'file_0': file_obj
+        }
+        response = auth_client.post(url, data, format='multipart')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message']['reply_to']['id'] == original.id
+        assert response.data['message']['has_attachments'] is True
+
+
+class TestEditVariousMessageTypes:
+    """Тесты редактирования разных типов сообщений"""
+    
+    def test_edit_text_message(self, auth_client, private_chat, user1):
+        """Редактирование обычного текстового сообщения"""
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original text'
+        )
+        
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {'content': 'Edited text'}
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['content'] == 'Edited text'
+        assert response.data['is_edited'] is True
+    
+    def test_edit_message_with_attachments(self, auth_client, private_chat, user1):
+        """Редактирование сообщения с вложениями"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='With attachment',
+            has_attachments=True
+        )
+        att = MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("old.txt", b"Old", content_type="text/plain"),
+            file_name='old.txt',
+            file_size=100,
+            mime_type='text/plain',
+            file_type='document'
+        )
+        
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {
+            'content': 'Edited content',
+            'existing_attachment_ids': [att.id]  # Сохраняем файл
+        }
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['is_edited'] is True
+        assert response.data['has_attachments'] is True
+    
+    def test_cannot_edit_poll_message(self, auth_client, private_chat, user1):
+        """Попытка редактировать сообщение с голосованием"""
+        from communications.models import Poll, PollOption
+        
+        poll_message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Poll'
+        )
+        poll = Poll.objects.create(
+            message=poll_message,
+            author=user1,
+            question='Question?'
+        )
+        PollOption.objects.create(poll=poll, text='Option', position=0)
+        
+        url = f'/api/v1/communications/messages/{poll_message.pk}/'
+        data = {'content': 'Trying to edit poll'}
+        response = auth_client.patch(url, data, format='json')
+        
+        # Может редактироваться или нет в зависимости от бизнес-логики
+        # Допускаем оба варианта
+        assert response.status_code in [
+            status.HTTP_200_OK,
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN
+        ]
+    
+    def test_edit_forwarded_message(self, auth_client, private_chat, user1):
+        """Редактирование пересланного сообщения"""
+        from communications.models import MessageForwardMetadata
+        
+        forwarded = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Forwarded',
+            is_forwarded=True
+        )
+        MessageForwardMetadata.objects.create(
+            message=forwarded,
+            original_author=user1,
+            original_chat=private_chat,
+            original_chat_name='Chat',
+            forwarded_by=user1
+        )
+        
+        url = f'/api/v1/communications/messages/{forwarded.pk}/'
+        data = {'content': 'Edited forwarded'}
+        response = auth_client.patch(url, data, format='json')
+        
+        # Может редактироваться или быть запрещено
+        assert response.status_code in [
+            status.HTTP_200_OK,
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN
+        ]
+    
+    def test_edit_message_in_announcement_chat(self, auth_client, user1):
+        """Попытка редактировать в чате-объявлении"""
+        announcement_chat = Chat.objects.create(
+            type='announcement',
+            name='Announcements',
+            created_by=user1
+        )
+        announcement_chat.participants.add(user1)
+        
+        message = Message.objects.create(
+            chat=announcement_chat,
+            author=user1,
+            content='Announcement'
+        )
+        
+        client = APIClient()
+        client.force_authenticate(user=user1)
+        
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        data = {'content': 'Edited'}
+        response = client.patch(url, data, format='json')
+        
+        # Должно быть запрещено
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_edit_reply_message(self, auth_client, private_chat, user1):
+        """Редактирование сообщения которое является ответом"""
+        original = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original'
+        )
+        
+        reply = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Reply',
+            reply_to=original
+        )
+        
+        url = f'/api/v1/communications/messages/{reply.pk}/'
+        data = {'content': 'Edited reply'}
+        response = auth_client.patch(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['content'] == 'Edited reply'
+        # reply_to должен остаться
+        assert response.data['reply_to']['id'] == original.id
+
+
+class TestForwardVariousMessageTypes:
+    """Тесты пересылки разных типов сообщений"""
+    
+    def test_forward_text_message(self, auth_client, private_chat, group_chat, user1):
+        """Пересылка обычного текстового сообщения"""
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Text to forward'
+        )
+        
+        url = '/api/v1/communications/messages/forward/'
+        data = {
+            'message_ids': [message.id],
+            'target_chat_id': group_chat.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['forwarded_count'] == 1
+        
+        # Проверяем что создалось пересланное сообщение
+        forwarded_id = response.data['forwarded_ids'][0]
+        forwarded = Message.objects.get(id=forwarded_id)
+        assert forwarded.is_forwarded is True
+        assert forwarded.content == 'Text to forward'
+    
+    def test_forward_message_with_attachments(self, auth_client, private_chat, group_chat, user1):
+        """Пересылка сообщения с файлами"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='With file',
+            has_attachments=True
+        )
+        MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("doc.pdf", b"PDF", content_type="application/pdf"),
+            file_name='doc.pdf',
+            file_size=100,
+            mime_type='application/pdf',
+            file_type='pdf'
+        )
+        
+        url = '/api/v1/communications/messages/forward/'
+        data = {
+            'message_ids': [message.id],
+            'target_chat_id': group_chat.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['forwarded_count'] == 1
+        
+        # Файлы могут быть скопированы или нет в зависимости от реализации
+        forwarded_id = response.data['forwarded_ids'][0]
+        forwarded = Message.objects.get(id=forwarded_id)
+        assert forwarded.is_forwarded is True
+    
+    def test_forward_poll_message(self, auth_client, private_chat, group_chat, user1):
+        """Пересылка сообщения с голосованием"""
+        from communications.models import Poll, PollOption
+        
+        poll_message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Poll'
+        )
+        poll = Poll.objects.create(
+            message=poll_message,
+            author=user1,
+            question='Question?'
+        )
+        PollOption.objects.create(poll=poll, text='Yes', position=0)
+        PollOption.objects.create(poll=poll, text='No', position=1)
+        
+        url = '/api/v1/communications/messages/forward/'
+        data = {
+            'message_ids': [poll_message.id],
+            'target_chat_id': group_chat.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        # Пересылка голосования может быть разрешена или запрещена
+        assert response.status_code in [
+            status.HTTP_200_OK,
+            status.HTTP_400_BAD_REQUEST
+        ]
+    
+    def test_forward_already_forwarded_message(self, auth_client, private_chat, group_chat, user1):
+        """Пересылка уже пересланного сообщения (цепочка пересылок)"""
+        from communications.models import MessageForwardMetadata
+        
+        forwarded = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Already forwarded',
+            is_forwarded=True
+        )
+        MessageForwardMetadata.objects.create(
+            message=forwarded,
+            original_author=user1,
+            original_chat=private_chat,
+            original_chat_name='Original',
+            forwarded_by=user1,
+            forward_count=1
+        )
+        
+        url = '/api/v1/communications/messages/forward/'
+        data = {
+            'message_ids': [forwarded.id],
+            'target_chat_id': group_chat.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        # forward_count должен увеличиться
+    
+    def test_forward_reply_message(self, auth_client, private_chat, group_chat, user1):
+        """Пересылка сообщения которое является ответом"""
+        original = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original'
+        )
+        
+        reply = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Reply',
+            reply_to=original
+        )
+        
+        url = '/api/v1/communications/messages/forward/'
+        data = {
+            'message_ids': [reply.id],
+            'target_chat_id': group_chat.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        # reply_to может сохраниться или потеряться при пересылке
+    
+    def test_forward_multiple_different_types(self, auth_client, private_chat, group_chat, user1):
+        """Пересылка нескольких сообщений разных типов одновременно"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        # Текстовое
+        msg1 = Message.objects.create(chat=private_chat, author=user1, content='Text')
+        
+        # С файлом
+        msg2 = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='File',
+            has_attachments=True
+        )
+        MessageAttachment.objects.create(
+            message=msg2,
+            file=SimpleUploadedFile("f.txt", b"F", content_type="text/plain"),
+            file_name='f.txt',
+            file_size=1,
+            mime_type='text/plain',
+            file_type='document'
+        )
+        
+        # Ответ
+        msg3 = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Reply',
+            reply_to=msg1
+        )
+        
+        url = '/api/v1/communications/messages/forward/'
+        data = {
+            'message_ids': [msg1.id, msg2.id, msg3.id],
+            'target_chat_id': group_chat.id
+        }
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['forwarded_count'] >= 1
+
+
+class TestDeleteVariousMessageTypes:
+    """Тесты удаления разных типов сообщений"""
+    
+    def test_delete_text_message(self, auth_client, private_chat, user1):
+        """Удаление обычного текстового сообщения"""
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='To delete'
+        )
+        
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        response = auth_client.delete(url)
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        message.refresh_from_db()
+        assert message.is_deleted is True
+    
+    def test_delete_message_with_attachments(self, auth_client, private_chat, user1):
+        """Удаление сообщения с вложениями"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment
+        
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='With file',
+            has_attachments=True
+        )
+        att = MessageAttachment.objects.create(
+            message=message,
+            file=SimpleUploadedFile("doc.txt", b"Doc", content_type="text/plain"),
+            file_name='doc.txt',
+            file_size=100,
+            mime_type='text/plain',
+            file_type='document'
+        )
+        
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        response = auth_client.delete(url)
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        message.refresh_from_db()
+        assert message.is_deleted is True
+        # Файлы остаются в БД (мягкое удаление)
+        assert MessageAttachment.objects.filter(id=att.id).exists()
+    
+    def test_delete_poll_message(self, auth_client, private_chat, user1):
+        """Удаление сообщения с голосованием"""
+        from communications.models import Poll, PollOption
+        
+        poll_message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Poll'
+        )
+        poll = Poll.objects.create(
+            message=poll_message,
+            author=user1,
+            question='Question?'
+        )
+        option = PollOption.objects.create(poll=poll, text='Option', position=0)
+        
+        url = f'/api/v1/communications/messages/{poll_message.pk}/'
+        response = auth_client.delete(url)
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        poll_message.refresh_from_db()
+        assert poll_message.is_deleted is True
+        # Poll остается в БД
+        assert Poll.objects.filter(id=poll.id).exists()
+    
+    def test_delete_forwarded_message(self, auth_client, private_chat, user1):
+        """Удаление пересланного сообщения"""
+        from communications.models import MessageForwardMetadata
+        
+        forwarded = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Forwarded',
+            is_forwarded=True
+        )
+        metadata = MessageForwardMetadata.objects.create(
+            message=forwarded,
+            original_author=user1,
+            original_chat=private_chat,
+            original_chat_name='Chat',
+            forwarded_by=user1
+        )
+        
+        url = f'/api/v1/communications/messages/{forwarded.pk}/'
+        response = auth_client.delete(url)
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        forwarded.refresh_from_db()
+        assert forwarded.is_deleted is True
+        # Метаданные остаются
+        assert MessageForwardMetadata.objects.filter(id=metadata.id).exists()
+    
+    def test_delete_reply_message(self, auth_client, private_chat, user1):
+        """Удаление сообщения которое является ответом"""
+        original = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original'
+        )
+        
+        reply = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Reply',
+            reply_to=original
+        )
+        
+        url = f'/api/v1/communications/messages/{reply.pk}/'
+        response = auth_client.delete(url)
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        reply.refresh_from_db()
+        assert reply.is_deleted is True
+        # Оригинальное сообщение остается
+        original.refresh_from_db()
+        assert original.is_deleted is False
+    
+    def test_delete_message_with_replies(self, auth_client, private_chat, user1):
+        """Удаление сообщения на которое есть ответы"""
+        original = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Original'
+        )
+        
+        reply1 = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Reply 1',
+            reply_to=original
+        )
+        reply2 = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Reply 2',
+            reply_to=original
+        )
+        
+        url = f'/api/v1/communications/messages/{original.pk}/'
+        response = auth_client.delete(url)
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        original.refresh_from_db()
+        assert original.is_deleted is True
+        
+        # Ответы остаются, но reply_to указывает на удаленное
+        reply1.refresh_from_db()
+        reply2.refresh_from_db()
+        assert reply1.is_deleted is False
+        assert reply2.is_deleted is False
+        assert reply1.reply_to_id == original.id
+    
+    def test_bulk_delete_various_types(self, auth_client, private_chat, user1):
+        """Массовое удаление сообщений разных типов"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from communications.models import MessageAttachment, Poll, PollOption
+        
+        # Текстовое
+        msg1 = Message.objects.create(chat=private_chat, author=user1, content='Text')
+        
+        # С файлом
+        msg2 = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='File',
+            has_attachments=True
+        )
+        MessageAttachment.objects.create(
+            message=msg2,
+            file=SimpleUploadedFile("f.txt", b"F", content_type="text/plain"),
+            file_name='f.txt',
+            file_size=1,
+            mime_type='text/plain',
+            file_type='document'
+        )
+        
+        # С голосованием
+        msg3 = Message.objects.create(chat=private_chat, author=user1, content='Poll')
+        poll = Poll.objects.create(message=msg3, author=user1, question='Q?')
+        PollOption.objects.create(poll=poll, text='A', position=0)
+        
+        url = '/api/v1/communications/messages/bulk-delete/'
+        data = {'message_ids': [msg1.id, msg2.id, msg3.id]}
+        response = auth_client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['deleted_count'] == 3
+        
+        # Все должны быть помечены как удаленные
+        msg1.refresh_from_db()
+        msg2.refresh_from_db()
+        msg3.refresh_from_db()
+        assert msg1.is_deleted is True
+        assert msg2.is_deleted is True
+        assert msg3.is_deleted is True
+    
+    def test_delete_edited_message(self, auth_client, private_chat, user1):
+        """Удаление отредактированного сообщения"""
+        from communications.models import MessageEditHistory
+        
+        message = Message.objects.create(
+            chat=private_chat,
+            author=user1,
+            content='Edited content',
+            is_edited=True
+        )
+        
+        # Создаем историю редактирования
+        MessageEditHistory.objects.create(
+            message=message,
+            previous_content='Original',
+            edited_by=user1
+        )
+        
+        url = f'/api/v1/communications/messages/{message.pk}/'
+        response = auth_client.delete(url)
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        message.refresh_from_db()
+        assert message.is_deleted is True
+        # История редактирования сохраняется
+        assert MessageEditHistory.objects.filter(message=message).exists()

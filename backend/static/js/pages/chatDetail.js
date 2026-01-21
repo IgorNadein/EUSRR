@@ -168,7 +168,7 @@
             formId: 'chatForm',
             scrollBtnId: 'scrollBtn',
             markReadUrl: config.markReadUrl,
-            initialLastReadTs: config.lastReadMessageId
+            initialLastReadTs: config.lastReadTimestamp
         });
 
         // Отметить видимые сообщения как прочитанные после инициализации

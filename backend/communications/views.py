@@ -501,21 +501,11 @@ def chat_mark_read(request, pk: int):
     if not has_access(chat, user):
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
-    # целевая точка времени: приоритет у upto_id, затем upto_ts,
-    # затем последний месседж
-    ts = None
-    upto_id = request.POST.get("upto_id")
-    if upto_id:
-        m = (
-            Message.objects.filter(chat=chat, pk=upto_id)
-            .only("created_at")
-            .first()
-        )
-        ts = m.created_at if m else None
-    if ts is None:
-        ts = _coerce_ts(request.POST.get("upto_ts"))
+    # Целевая точка времени: приоритет у upto_ts, затем последний месседж
+    ts = _coerce_ts(request.POST.get("upto_ts"))
 
     if ts is None:
+        # Фоллбек на последнее сообщение
         ts = (
             chat.messages.order_by("-created_at")
             .values_list("created_at", flat=True)
@@ -523,8 +513,7 @@ def chat_mark_read(request, pk: int):
             or timezone.now()
         )
 
-    # обновляем только если новее; без update_or_create — устойчиво
-    # к SQLite/гонкам
+    # Обновляем только если новее; без update_or_create — устойчиво к SQLite/гонкам
     updated = ChatReadState.objects.filter(
         chat=chat, user=user, last_read_at__lt=ts
     ).update(last_read_at=ts)

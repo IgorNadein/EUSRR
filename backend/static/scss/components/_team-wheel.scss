@@ -140,6 +140,70 @@ $arc-width: 4px;
 }
 
 // =============================================================================
+// WHEEL FOCUS (ЦЕНТРАЛЬНЫЙ ЭЛЕМЕНТ)
+// =============================================================================
+
+.wheel-focus {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bs-body-bg);
+
+  .focus-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bs-body-bg) 85%, #e9ecef 15%);
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  [data-focus-fallback] {
+    display: none;
+    font-size: calc(var(--wheel-size) * 0.35);
+    color: var(--bs-secondary-color);
+  }
+}
+
+// =============================================================================
+// SCROLL ARC (ПРОГРЕСС-ИНДИКАТОР)
+// =============================================================================
+
+.scroll-arc {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.arc-track {
+  fill: none;
+  stroke: var(--arc-track);
+  stroke-width: var(--arc-width);
+  stroke-linecap: round;
+}
+
+.arc-prog {
+  fill: none;
+  stroke: var(--arc-prog);
+  stroke-width: var(--arc-width);
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.12s linear;
+}
+
+// =============================================================================
 // PROGRESS RING
 // =============================================================================
 

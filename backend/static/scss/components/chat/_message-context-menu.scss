@@ -147,10 +147,10 @@
   }
 
   // Кнопка "показать больше реакций"
-  // TODO: Изменить серый фон на белый для светлой темы (должен совпадать с quick-reaction-btn) и кнопка раскрытия меню со смайликами при белой теме сливается с фоном (не меняется от цвета темы)
   &.quick-reaction-btn-more {
     opacity: 0.6;
     font-size: 20px;
+    color: var(--bs-body-color);
 
     i {
       transition: transform 0.3s ease;

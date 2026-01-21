@@ -1,0 +1,152 @@
+/**
+ * _bubble-variants.scss
+ * Модификаторы блока bubble (BEM Modifiers)
+ * Определяет темы оформления для разных типов сообщений
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   МОДИФИКАТОР: МОЁ СООБЩЕНИЕ
+────────────────────────────────────────────────────────────── */
+.bubble--me {
+  // Фоновый цвет и текст
+  background: color-mix(in srgb, var(--bs-primary) 92%, #fff 0%);
+  color: #fff;
+  
+  // Темизация через CSS-переменные
+  --bubble-time-color: rgba(255, 255, 255, 0.7);
+  
+  // Reply preview для своих сообщений
+  --bubble-reply-bg: rgba(255, 255, 255, 0.15);
+  --bubble-reply-hover-bg: rgba(255, 255, 255, 0.25);
+  --bubble-reply-border: rgba(255, 255, 255, 0.5);
+  --bubble-reply-icon: rgba(255, 255, 255, 0.9);
+  
+  // Attachment стили
+  --bubble-attachment-bg: rgba(255, 255, 255, 0.15);
+  --bubble-attachment-hover-bg: rgba(255, 255, 255, 0.25);
+  --bubble-attachment-text: rgba(255, 255, 255, 0.95);
+  --bubble-attachment-icon: rgba(255, 255, 255, 0.9);
+  --bubble-attachment-meta: rgba(255, 255, 255, 0.7);
+  
+  // Poll стили
+  --bubble-poll-bg: rgba(255, 255, 255, 0.15);
+  --bubble-poll-text: #fff;
+  --bubble-poll-progress-bg: rgba(255, 255, 255, 0.2);
+  --bubble-poll-progress-fill: rgba(255, 255, 255, 0.4);
+  --bubble-poll-meta: rgba(255, 255, 255, 0.8);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   МОДИФИКАТОР: ЧУЖОЕ СООБЩЕНИЕ
+────────────────────────────────────────────────────────────── */
+.bubble--other {
+  // Этот модификатор использует дефолтные цвета из .bubble
+  // Можно оставить пустым или явно задать (для ясности)
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+  --bubble-time-color: var(--bs-secondary);
+  
+  // Reply preview для чужих сообщений
+  --bubble-reply-bg: rgba(0, 0, 0, 0.05);
+  --bubble-reply-hover-bg: rgba(0, 0, 0, 0.08);
+  --bubble-reply-border: var(--bs-primary);
+  --bubble-reply-icon: var(--bs-primary);
+  
+  // Attachment стили
+  --bubble-attachment-bg: rgba(0, 0, 0, 0.05);
+  --bubble-attachment-hover-bg: rgba(0, 0, 0, 0.08);
+  --bubble-attachment-text: inherit;
+  --bubble-attachment-icon: var(--bs-body-color);
+  --bubble-attachment-meta: var(--bs-secondary);
+  
+  // Poll стили
+  --bubble-poll-bg: var(--bs-secondary-bg);
+  --bubble-poll-text: var(--bs-body-color);
+  --bubble-poll-progress-bg: var(--bs-border-color);
+  --bubble-poll-progress-fill: var(--bs-primary);
+  --bubble-poll-meta: var(--bs-secondary);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   МОДИФИКАТОР: СИСТЕМНОЕ СООБЩЕНИЕ
+────────────────────────────────────────────────────────────── */
+.bubble--system {
+  background: #f8f9fa;
+  color: #6c757d;
+  border: 1px dashed #dee2e6;
+  text-align: center;
+  font-size: 0.9rem;
+  font-style: italic;
+  max-width: 80%;
+  margin: 0 auto;
+  cursor: default;
+  user-select: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   МОДИФИКАТОР: СООБЩЕНИЕ В ОЖИДАНИИ ОТПРАВКИ
+────────────────────────────────────────────────────────────── */
+.bubble--pending {
+  opacity: 0.6;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -20px;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--bubble-text, var(--bs-body-color));
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: bubbleSpinner 0.8s linear infinite;
+  }
+}
+
+@keyframes bubbleSpinner {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   МОДИФИКАТОР: ОШИБКА ОТПРАВКИ
+────────────────────────────────────────────────────────────── */
+.bubble--failed {
+  opacity: 0.6;
+  border: 1px solid var(--bs-danger);
+  background: color-mix(in srgb, var(--bs-danger) 10%, var(--bubble-bg, transparent));
+  
+  &::after {
+    content: '⚠';
+    position: absolute;
+    top: 50%;
+    right: -20px;
+    transform: translateY(-50%);
+    color: var(--bs-danger);
+    font-size: 1rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   МОДИФИКАТОР: УДАЛЁННОЕ СООБЩЕНИЕ
+────────────────────────────────────────────────────────────── */
+.bubble--deleted {
+  --bubble-text: var(--bs-secondary);
+  
+  font-style: italic;
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   АДАПТИВНОСТЬ
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .bubble {
+    max-width: 85%;
+  }
+  
+  .bubble--system {
+    max-width: 90%;
+  }
+}

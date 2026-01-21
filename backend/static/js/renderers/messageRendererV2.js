@@ -600,6 +600,38 @@ export class MessageRendererV2 {
         html += this._buildMessageInnerHtml(msg, isOwn);
         
         messageEl.innerHTML = html;
+        
+        // Добавляем обработчик клика на reply preview для навигации
+        if (msg.reply_to) {
+            const replyPreview = messageEl.querySelector('.message-reply-preview');
+            if (replyPreview) {
+                replyPreview.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this._scrollToMessage(msg.reply_to.id);
+                });
+                
+                // Поддержка клавиатуры (Enter)
+                replyPreview.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        this._scrollToMessage(msg.reply_to.id);
+                    }
+                });
+            }
+        }
+        
+        // Инициализация виджета опроса если есть
+        if (msg.poll && window.chatPoll) {
+            const pollWidget = messageEl.querySelector('.poll-widget');
+            if (pollWidget) {
+                const pollId = msg.poll.id;
+                // Даём время для вставки в DOM и инициализируем
+                setTimeout(() => {
+                    window.chatPoll.refreshPoll(pollId, pollWidget);
+                }, 0);
+            }
+        }
 
         return messageEl;
     }
@@ -619,47 +651,64 @@ export class MessageRendererV2 {
             authorUrl = this.detailUrlTemplate.replace('/0/', `/${msg.author_id}/`);
         }
 
-        // Базовая структура с кастомными классами (компактно, без лишних переносов)
-        let html = '<div class="bubble ' + (isOwn ? 'bubble-me' : 'bubble-other') + ' position-relative">';
+        // Базовая структура с BEM-модификаторами
+        let bubbleModifier = isOwn ? 'bubble--me' : 'bubble--other';
+        
+        // Системные сообщения (без автора)
+        if (!msg.author_id || msg.is_system) {
+            bubbleModifier = 'bubble--system';
+        }
+        
+        let html = `<div class="bubble ${bubbleModifier}">`;
         
         // Имя автора для чужих сообщений
         if (!isOwn) {
-            html += '<div class="message-author mb-1">';
-            html += '<a href="' + authorUrl + '" class="text-decoration-none fw-bold text-primary">' + authorName + '</a>';
+            html += '<div class="bubble__author">';
+            html += `<a href="${authorUrl}">${authorName}</a>`;
             html += '</div>';
         }
         
+        // Информация о пересылке
+        if (msg.is_forwarded && msg.forwarded_from) {
+            html += this._renderForwardInfo(msg.forwarded_from);
+        }
+        
+        // Ответ на сообщение (reply preview) - bubble__reply-preview добавляется внутри _renderReplyPreview
+        if (msg.reply_to) {
+            html += this._renderReplyPreview(msg.reply_to, isOwn);
+        }
+        
         // Контент
-        html += '<div class="message-content">' + content;
+        html += `<div class="bubble__content">${content}`;
         if (msg.is_edited) {
-            html += '<small class="edited-indicator text-muted ms-1">(ред.)</small>';
+            html += '<span class="bubble__edited">(ред.)</span>';
         }
         html += '</div>';
         
         // Голосование
         if (msg.poll) {
-            html += '<div class="mt-2">';
+            html += '<div class="bubble__poll">';
             html += this._renderPoll(msg.poll);
             html += '</div>';
         }
         
         // Вложения
         if (msg.attachments && msg.attachments.length > 0) {
-            html += '<div class="message-attachments mt-2">';
+            html += '<div class="bubble__attachments">';
             html += msg.attachments.map(att => this._renderAttachment(att, isOwn)).join('');
             html += '</div>';
         }
         
         // Время
-        html += '<div class="message-time small ' + (isOwn ? 'text-white-50' : 'text-muted') + ' mt-1">';
+        html += '<div class="bubble__time">';
         html += time;
-        if (msg.status === 'sending') html += '<i class="bi bi-clock ms-1"></i>';
-        if (msg.status === 'failed') html += '<i class="bi bi-exclamation-circle text-danger ms-1"></i>';
+        if (msg.status === 'sending') html += ' <i class="bi bi-clock"></i>';
+        if (msg.status === 'failed') html += ' <i class="bi bi-exclamation-circle text-danger"></i>';
         html += '</div>';
         
         // Реакции (используем централизованный MessageReactions)
         if (msg.reactions_summary && Object.keys(msg.reactions_summary).length > 0) {
-            html += '<div class="message-reactions mt-2">';
+            html += '<div class="bubble__reactions">';
             html += this.reactions.renderReactions(msg.reactions_summary, this.currentUserId);
             html += '</div>';
         }
@@ -670,7 +719,61 @@ export class MessageRendererV2 {
     }
 
     /**
-     * Рендерит вложения
+     * Рендерит превью ответа на сообщение
+     * @private
+     * @param {Object} replyTo - Данные исходного сообщения
+     * @param {boolean} isOwn - Своё ли это сообщение
+     * @returns {string} HTML превью
+     */
+    _renderReplyPreview(replyTo, isOwn) {
+        if (!replyTo) return '';
+        
+        const authorName = escapeHtml(replyTo.author_name || 'Пользователь');
+        const content = escapeHtml(replyTo.content || 'Сообщение');
+        const replyId = replyTo.id || '';
+        
+        // Используем BEM классы вместо inline стилей
+        const modifierClass = isOwn ? 'message-reply-preview--own' : 'message-reply-preview--other';
+        
+        return `
+            <div class="message-reply-preview ${modifierClass}" 
+                 data-reply-to-id="${replyId}"
+                 role="button"
+                 tabindex="0"
+                 title="Нажмите для перехода к сообщению">
+                <div class="message-reply-preview__author small fw-semibold">
+                    <i class="bi bi-reply-fill"></i>
+                    ${authorName}
+                </div>
+                <div class="message-reply-preview__content small text-truncate">
+                    ${content}
+                </div>
+            </div>
+        `;
+    }
+
+    /**     * Рендерит информацию о пересылке
+     * @private
+     * @param {Object} forwardedFrom - Данные оригинального сообщения
+     * @returns {string} HTML плашки пересылки
+     */
+    _renderForwardInfo(forwardedFrom) {
+        if (!forwardedFrom) return '';
+        
+        const authorName = escapeHtml(forwardedFrom.author_name || 'Пользователь');
+        const chatName = forwardedFrom.chat_name ? ` из «${escapeHtml(forwardedFrom.chat_name)}»` : '';
+        const createdAt = forwardedFrom.created_at || '';
+        
+        return `
+            <div class="bubble__forward">
+                <i class="bi bi-arrow-90deg-right me-1"></i>
+                Переслано от <strong>${authorName}</strong>${chatName}
+                ${createdAt ? `<div class="small opacity-75">${createdAt}</div>` : ''}
+            </div>
+        `;
+    }
+
+    /**     * Рендерит вложения
      * @private
      */
     _renderAttachment(att, isOwn) {
@@ -882,6 +985,31 @@ export class MessageRendererV2 {
      */
     isRendered(messageId) {
         return this.renderedMessages.has(messageId);
+    }
+
+    /**
+     * Скроллит к указанному сообщению с подсветкой
+     * @private
+     * @param {number|string} messageId - ID сообщения
+     */
+    _scrollToMessage(messageId) {
+        const targetEl = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (targetEl) {
+            // Скроллим к сообщению
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Добавляем анимацию подсветки к .msg (всей линии)
+            targetEl.classList.remove('highlight-flash');
+            setTimeout(() => {
+                targetEl.classList.add('highlight-flash');
+                setTimeout(() => targetEl.classList.remove('highlight-flash'), 1500);
+            }, 10);
+            
+            console.log('[MessageRendererV2] Scrolled to message:', messageId);
+        } else {
+            console.warn('[MessageRendererV2] Message not found in viewport:', messageId);
+            // TODO: Загрузить сообщение если оно не в viewport
+        }
     }
 
     /**

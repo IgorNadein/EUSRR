@@ -99,8 +99,8 @@
   // Критично для работы overflow в дочерних элементах
   min-height: 0;
 
-  // Предотвращает переполнение, scroll делегируется .chat-messages-scroll
-  overflow: hidden;
+  // Разрешаем overflow для scroll-to-bottom кнопки
+  overflow: visible;
 
   // Для позиционирования scroll-to-bottom кнопки
   position: relative;
@@ -274,6 +274,7 @@
 .attachment-item .flex-grow-1 {
   min-width: 0; // Важно для flex-элементов с text-truncate внутри
   overflow: hidden; // Предотвращаем выход контента за границы
+  line-height: 1.5; // Сбрасываем line-height: 0 от медиа-элементов
 }
 
 .attachment-item .text-truncate {
@@ -281,76 +282,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-}
-
-/* Вложения в сообщениях */
-.bubble .attachment-item {
-  background: transparent;
-  padding: 0;
-  margin-bottom: 8px;
-  
-  // Медиа-элементы (изображения и видео) - минимальные отступы
-  &.attachment-item--media {
-    margin-bottom: 0;
-    
-    a {
-      display: block;
-      padding: 0;
-      line-height: 0;
-    }
-  }
-}
-
-// Стили только для ссылок на файлы (документы)
-.bubble .attachment-item:not(.attachment-item--media) a {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: $radius-sm;
-  text-decoration: none;
-  border: none;
-  @include transition-all($transition-fast);
-  max-width: 100%;
-  word-break: break-word;
-}
-
-// Attachment links in regular messages (other person)
-.bubble-other .attachment-item a {
-  background: rgba(0, 0, 0, 0.05);
-  color: inherit;
-}
-
-.bubble-other .attachment-item a:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
-
-// Attachment links in own messages
-.bubble-me .attachment-item a {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.bubble-me .attachment-item a:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-// Icons in attachments
-.bubble .attachment-item a i {
-  font-size: 1.1rem;
-  flex-shrink: 0;
-}
-
-.bubble-me .attachment-item a i {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-// Text truncation for file names
-.bubble .attachment-item a span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0; // Important for flex items
 }
 
 .message-attachments video,
@@ -414,35 +345,15 @@
   opacity: 0.8;
 }
 
-.message-pending .message-status {
-  color: rgba(255, 255, 255, 0.8);
-}
-
 /* Состояния сообщений */
 .message-failed {
   opacity: 0.6;
-
-  .bubble {
-    border: 1px solid var(--bs-danger);
-    background: color-mix(in srgb, var(--bs-danger) 10%, transparent);
-  }
 }
 
-.message-highlighted {
-  animation: messageHighlight 1s ease-in-out;
-
-  .bubble {
-    background: color-mix(in srgb, var(--bs-warning) 20%, var(--bs-secondary-bg)) !important;
-  }
-}
-
-@keyframes messageHighlight {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.02);
-  }
+// Контент сообщения
+.message-content {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Режим выделения сообщений */
@@ -497,28 +408,6 @@
   }
 }
 
-.bubble-other .message-status {
-  color: rgba(0, 0, 0, 0.5);
-}
-
-.message-attachments .text-secondary {
-  color: inherit;
-  opacity: 0.7;
-}
-
-.bubble-me .message-attachments .text-secondary {
-  color: rgba(255, 255, 255, 0.9) !important;
-  opacity: 1;
-}
-
-.bubble-me .message-attachments .fw-semibold {
-  color: rgba(255, 255, 255, 0.95) !important;
-}
-
-.bubble-me .message-attachments i {
-  color: rgba(255, 255, 255, 0.9) !important;
-}
-
 .history-loader {
   display: flex;
   align-items: center;
@@ -553,12 +442,6 @@
 
 .dropdown-item i {
   width: 24px;
-}
-
-.composer-tools {
-  display: flex;
-  gap: var(--space-1);
-  align-items: center;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -664,9 +547,9 @@
    SCROLL TO BOTTOM BUTTON
 ────────────────────────────────────────────────────────────── */
 .scroll-to-bottom {
-  position: fixed;
+  position: absolute;
   right: var(--space-3);
-  bottom: calc(var(--space-3) + 80px);
+  bottom: var(--space-3);
   z-index: $z-dropdown;
   display: none;
   width: 44px;
@@ -696,19 +579,8 @@
   &:active {
     transform: scale(0.95);
   }
-}
 
-.scroll-to-bottom.show {
-  display: inline-flex;
-  opacity: 1;
-  pointer-events: auto;
-  animation: fadeInUp 0.3s ease;
-}
-
-/* Badge непрочитанных на кнопке скролла */
-.scroll-to-bottom {
-  position: relative; // Для позиционирования badge
-
+  // Badge непрочитанных
   .unread-badge {
     position: absolute;
     top: -6px;
@@ -745,6 +617,13 @@
   }
 }
 
+.scroll-to-bottom.show {
+  display: inline-flex;
+  opacity: 1;
+  pointer-events: auto;
+  animation: fadeInUp 0.3s ease;
+}
+
 @keyframes badgePulse {
   0%, 100% {
     box-shadow: 0 2px 8px rgba(var(--bs-danger-rgb), 0.3);
@@ -769,7 +648,7 @@
 @media (max-width: 767.98px) {
   .scroll-to-bottom {
     right: var(--space-2);
-    bottom: calc(var(--space-2) + 70px); // Учитываем composer на мобилке
+    bottom: var(--space-2);
     width: 40px;
     height: 40px;
 
@@ -796,43 +675,8 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   BUBBLES & AVATARS
+   AVATARS
 ────────────────────────────────────────────────────────────── */
-.bubble {
-  border-radius: $radius-lg;
-  padding: var(--space-1) var(--space-2);
-  word-break: break-word;
-  white-space: pre-line; /* Сохраняет \n, но схлопывает пробелы из HTML */
-  max-width: 70%; /* Ограничиваем ширину bubble */
-  @include shadow($shadow-xs);
-  user-select: text; /* Разрешаем выделение текста */
-  cursor: text; /* Курсор текстового выделения */
-
-  // Наследование white-space для вложенных элементов
-  > div {
-    white-space: inherit;
-  }
-
-  // Специально для голосований - схлопываем whitespace
-  .poll-widget,
-  .poll-question,
-  .poll-options,
-  .poll-option,
-  .poll-footer {
-    white-space: normal;
-  }
-}
-
-.bubble-me {
-  background: color-mix(in srgb, var(--bs-primary) 92%, #fff 0%);
-  color: #fff;
-}
-
-.bubble-other {
-  background: var(--bs-secondary-bg);
-  color: var(--bs-body-color);
-}
-
 .mini-ava {
   width: 32px;
   height: 32px;

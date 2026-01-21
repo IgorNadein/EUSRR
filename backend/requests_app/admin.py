@@ -4,6 +4,7 @@ from django.contrib import admin, messages
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from .enums import RequestStatus
 from .models import Request, RequestComment
 
 
@@ -19,7 +20,7 @@ class RequestAdminForm(forms.ModelForm):
         approver = cleaned.get("approver")
 
         # Если статус "Отменено" — согласующий должен быть пустым
-        if status == Request.STATUS_CANCELLED and approver:
+        if status == RequestStatus.CANCELLED and approver:
             cleaned["approver"] = None
 
         # Для approved/rejected НЕ требуем approver — его поставим в save_model.
@@ -110,10 +111,10 @@ class RequestAdmin(admin.ModelAdmin):
         - cancelled -> approver = None
         Это гарантирует отсутствие конфликтов с БД-constraint.
         """
-        if obj.status in {Request.STATUS_APPROVED, Request.STATUS_REJECTED}:
+        if obj.status in {RequestStatus.APPROVED, RequestStatus.REJECTED}:
             if obj.approver_id is None:
                 obj.approver = request.user
-        elif obj.status == Request.STATUS_CANCELLED:
+        elif obj.status == RequestStatus.CANCELLED:
             if obj.approver_id is not None:
                 obj.approver = None
 
@@ -124,7 +125,7 @@ class RequestAdmin(admin.ModelAdmin):
     def action_approve(self, request, queryset):
         updated = 0
         for obj in queryset:
-            if obj.status != Request.STATUS_APPROVED:
+            if obj.status != RequestStatus.APPROVED:
                 obj.approve(request.user)
                 updated += 1
         self.message_user(
@@ -135,7 +136,7 @@ class RequestAdmin(admin.ModelAdmin):
     def action_reject(self, request, queryset):
         updated = 0
         for obj in queryset:
-            if obj.status != Request.STATUS_REJECTED:
+            if obj.status != RequestStatus.REJECTED:
                 obj.reject(request.user)
                 updated += 1
         self.message_user(
@@ -146,7 +147,7 @@ class RequestAdmin(admin.ModelAdmin):
     def action_cancel(self, request, queryset):
         updated = 0
         for obj in queryset:
-            if obj.status != Request.STATUS_CANCELLED:
+            if obj.status != RequestStatus.CANCELLED:
                 obj.cancel()
                 updated += 1
         self.message_user(

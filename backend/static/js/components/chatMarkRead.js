@@ -57,19 +57,44 @@ export function initChatMarkRead(options = {}) {
 
   const csrf = getCookie('csrftoken');
   const LS_KEY = `chat:lastRead:${chatId}`;
+  
+  // In-memory кэш (как в Telegram Web)
+  // Быстрая синхронная проверка перед отправкой HTTP
+  window._chatLastRead = window._chatLastRead || {};
+  
+  // Debounce для markRead
+  let markReadTimer = null;
+  let pendingMarkTs = 0;
+  
+  // Флаг активного запроса (дедупликация)
+  let readPromise = null;
+  
+  // Отслеживание текущего наблюдаемого элемента
+  let currentObservedBubble = null;
 
   /**
-   * Получает timestamp последнего прочитанного из localStorage
+   * Получает timestamp последнего прочитанного из кэша/localStorage
+   * Как в Telegram Web: сначала проверяем память, потом localStorage
    */
   function getLocalLastReadTs() {
+    // 1. Проверяем in-memory кэш (синхронно, быстро)
+    const cached = window._chatLastRead[chatId];
+    if (cached && Number.isFinite(cached)) return cached;
+    
+    // 2. Fallback: localStorage
     const v = localStorage.getItem(LS_KEY);
     return v ? Number(v) : NaN;
   }
 
   /**
-   * Сохраняет timestamp последнего прочитанного в localStorage
+   * Сохраняет timestamp последнего прочитанного в кэш + localStorage
+   * Как в Telegram Web: двухуровневое хранение
    */
   function setLocalLastReadTs(ts) {
+    // 1. Сохраняем в memory (синхронно, мгновенно)
+    window._chatLastRead[chatId] = ts;
+    
+    // 2. Сохраняем в localStorage (персистентно)
     localStorage.setItem(LS_KEY, String(ts));
   }
 
@@ -133,7 +158,8 @@ export function initChatMarkRead(options = {}) {
   }
 
   /**
-   * Находит первое непрочитанное сообщение
+   * Находит первое непрочитанное ЧУЖОЕ сообщение для divider
+   * (свои сообщения отмечаются, но не показывают divider)
    */
   function findUnreadTarget() {
     const id = window.__FIRST_UNREAD_ID__;
@@ -189,24 +215,82 @@ export function initChatMarkRead(options = {}) {
   }
 
   /**
+   * Отмечает сообщения как прочитанные до указанного timestamp (с debounce)
+   * @param {number} ts - Timestamp последнего прочитанного сообщения
+   */
+  function markReadDebounced(ts) {
+    ts = Number(ts);
+    if (!Number.isFinite(ts)) {
+      console.log('[ChatMarkRead] markReadDebounced: invalid ts', ts);
+      return;
+    }
+    
+    // Сохраняем максимальный timestamp
+    pendingMarkTs = Math.max(pendingMarkTs, ts);
+    
+    clearTimeout(markReadTimer);
+    markReadTimer = setTimeout(() => {
+      if (pendingMarkTs > lastMarkedTs) {
+        markRead(pendingMarkTs);
+        pendingMarkTs = 0;
+      }
+    }, 500);
+  }
+  
+  /**
    * Отмечает сообщения как прочитанные до указанного timestamp
+   * Как в Telegram Web: проверяем кэш перед отправкой HTTP
    * @param {number} ts - Timestamp последнего прочитанного сообщения
    */
   async function markRead(ts) {
     ts = Number(ts);
-    console.log('[ChatMarkRead] markRead called:', { ts, lastMarkedTs, isFinite: Number.isFinite(ts), willSkip: !Number.isFinite(ts) || ts <= lastMarkedTs });
+    const cachedTs = getLocalLastReadTs();
     
-    if (!Number.isFinite(ts) || ts <= lastMarkedTs) {
-      console.log('[ChatMarkRead] Skipping markRead - invalid or already marked');
+    console.log('[ChatMarkRead] markRead called:', { 
+      ts, 
+      lastMarkedTs, 
+      cachedTs,
+      isFinite: Number.isFinite(ts), 
+      willSkip: !Number.isFinite(ts) || ts <= lastMarkedTs || ts <= cachedTs
+    });
+    
+    // ПРОВЕРКА 1: Валидность
+    if (!Number.isFinite(ts)) {
+      console.log('[ChatMarkRead] Skipping - invalid timestamp');
       return;
     }
+    
+    // ПРОВЕРКА 2: Уже отметили локально?
+    if (ts <= lastMarkedTs) {
+      console.log('[ChatMarkRead] Skipping - already marked locally');
+      return;
+    }
+    
+    // ПРОВЕРКА 3: Кэш показывает что уже прочитано? (как в Telegram Web)
+    if (Number.isFinite(cachedTs) && ts <= cachedTs) {
+      console.log('[ChatMarkRead] Skipping - already marked in cache:', cachedTs);
+      return;
+    }
+    
+    // ПРОВЕРКА 4: Уже идёт запрос? (дедупликация)
+    if (readPromise) {
+      console.log('[ChatMarkRead] Skipping - request already in progress');
+      return readPromise;
+    }
 
+    // Оптимистичное обновление (как в Telegram Web)
+    // Обновляем UI сразу, до ответа от сервера
     lastMarkedTs = ts;
-    setLocalLastReadTs(ts);
+    setLocalLastReadTs(ts); // → window._chatLastRead + localStorage
     box.dataset.lastReadTs = String(ts);
     removeUnreadDivider();
     
-    console.log('[ChatMarkRead] Updated local state:', { lastMarkedTs, localStorage: getLocalLastReadTs(), dataset: box.dataset.lastReadTs });
+    console.log('[ChatMarkRead] Optimistic update:', { 
+      lastMarkedTs, 
+      memoryCache: window._chatLastRead[chatId],
+      localStorage: localStorage.getItem(LS_KEY),
+      dataset: box.dataset.lastReadTs 
+    });
 
     // Определение URL для отметки
     let url = markReadUrl;
@@ -217,10 +301,13 @@ export function initChatMarkRead(options = {}) {
       url = base + "mark-read/";
     }
     
-    console.log('[ChatMarkRead] Sending mark-read request:', { url, chatId, upto_ts: ts });
+    console.log('[ChatMarkRead] Sending HTTP mark-read:', { url, chatId, upto_ts: ts });
 
+    // HTTP запрос для гарантированной доставки (как в Telegram Web)
+    // WebSocket только для получения уведомлений, не для отправки
     try {
-      const response = await fetch(url, {
+      // Сохраняем Promise для дедупликации
+      readPromise = fetch(url, {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrf,
@@ -231,15 +318,20 @@ export function initChatMarkRead(options = {}) {
         credentials: 'same-origin'
       });
       
+      const response = await readPromise;
+      
       const data = await response.json();
-      console.log('[ChatMarkRead] mark-read response:', { status: response.status, data });
+      console.log('[ChatMarkRead] HTTP mark-read response:', { status: response.status, data });
 
       // Отправляем событие для обновления глобального бейджа
       window.dispatchEvent(new CustomEvent('chat:read', {
         detail: { chatId: String(chatId) }
       }));
     } catch (err) {
-      console.error('[ChatMarkRead] Failed to mark as read:', err);
+      console.error('[ChatMarkRead] HTTP mark-read failed:', err);
+    } finally {
+      // Освобождаем флаг для новых запросов
+      readPromise = null;
     }
   }
 
@@ -264,25 +356,38 @@ export function initChatMarkRead(options = {}) {
         const el = en.target.closest('.msg');
         if (!el) return;
         const ts = Number(el.dataset.ts || 0);
-        markRead(ts);
+        markReadDebounced(ts);
       }
     });
   }, { root: box, threshold: 1.0 });
 
   /**
-   * Наблюдает за последним чужим сообщением
+   * Наблюдает за последним сообщением (любым - своим или чужим)
+   * Как в Telegram Web: отмечаем все видимые сообщения, включая собственные
    */
-  function observeLastForeign() {
-    io.disconnect();
+  function observeLastMessage() {
     const msgs = Array.from(box.querySelectorAll('.msg[data-ts][data-author-id]'));
-    const lastForeign = [...msgs].reverse().find(e => 
-      Number(e.dataset.authorId) !== meId
-    );
     
-    if (lastForeign) {
-      const bubble = lastForeign.querySelector('.bubble') || lastForeign;
-      io.observe(bubble);
+    // Берем последнее ЛЮБОЕ сообщение (не только чужое)
+    const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+    
+    if (!lastMsg) return;
+    
+    const bubble = lastMsg.querySelector('.bubble') || lastMsg;
+    
+    // Проверяем, нужно ли обновлять observer
+    if (currentObservedBubble === bubble) {
+      return; // Уже наблюдаем за этим элементом
     }
+    
+    // Отключаем только предыдущий элемент
+    if (currentObservedBubble) {
+      io.unobserve(currentObservedBubble);
+    }
+    
+    io.observe(bubble);
+    currentObservedBubble = bubble;
+    console.log('[ChatMarkRead] Observer updated to last message:', lastMsg.dataset.id);
   }
 
   // Инициализация
@@ -312,31 +417,19 @@ export function initChatMarkRead(options = {}) {
   box.addEventListener('scroll', toggleBtn);
   btn?.addEventListener('click', autoscroll);
 
-  // Наблюдение за последним чужим сообщением
-  observeLastForeign();
-
-  // Отметка при достижении низа
-  let bottomTimer = null;
-  box.addEventListener('scroll', () => {
-    clearTimeout(bottomTimer);
-    if (atBottom()) {
-      bottomTimer = setTimeout(() => {
-        const lastMsg = box.querySelector('.msg:last-of-type');
-        const ts = lastMsg ? Number(lastMsg.dataset.ts || 0) : 0;
-        markRead(ts);
-      }, 300);
-    }
-  });
+  // Наблюдение за последним сообщением (любым - своим или чужим)
+  observeLastMessage();
 
   // API
   const api = {
     markRead,
-    observeLastForeign,
+    markReadDebounced,
+    observeLastMessage,
     autoscroll,
     atBottom,
     destroy: () => {
       io.disconnect();
-      clearTimeout(bottomTimer);
+      clearTimeout(markReadTimer);
       ta?.removeEventListener('input', autosize);
       box.removeEventListener('scroll', toggleBtn);
       btn?.removeEventListener('click', autoscroll);
@@ -345,25 +438,40 @@ export function initChatMarkRead(options = {}) {
 
   // Переподключение observer при добавлении новых сообщений
   window.addEventListener('ws:new-message', () => {
-    observeLastForeign();
+    observeLastMessage();
   });
   
-  // Синхронизация lastMarkedTs через WebSocket (между вкладками)
+  // Синхронизация через WebSocket (как в Telegram Web)
+  // WebSocket получает уведомления от других устройств/вкладок
   window.addEventListener('ws:marked-read', (e) => {
     const { chat_id, last_read_at, last_read_message_id } = e.detail;
     
     if (chat_id !== chatId) return;
     
-    console.log('[ChatMarkRead] Received marked_read event:', { chat_id, last_read_at, last_read_message_id });
+    console.log('[ChatMarkRead] Received WS marked_read:', { chat_id, last_read_at, last_read_message_id });
     
     // Парсим timestamp из ISO строки
-    const newTimestamp = last_read_at ? new Date(last_read_at).getTime() : 0;
+    const remoteTs = last_read_at ? new Date(last_read_at).getTime() : 0;
+    const localTs = getLocalLastReadTs();
     
-    // Обновляем локальное состояние только если новее
-    if (newTimestamp > lastMarkedTs) {
-      lastMarkedTs = newTimestamp;
-      localStorage.setItem(lsKey, String(lastMarkedTs));
-      console.log('[ChatMarkRead] Updated lastMarkedTs from WebSocket:', lastMarkedTs);
+    console.log('[ChatMarkRead] WS sync check:', { remoteTs, localTs, willSync: remoteTs > localTs });
+    
+    // Комбинированный подход (как в Telegram Web):
+    // Если удалённый timestamp НОВЕЕ локального → отправляем HTTP для гарантии
+    if (Number.isFinite(remoteTs) && remoteTs > localTs) {
+      console.log('[ChatMarkRead] WS sync: remote is newer, syncing...');
+      
+      // Обновляем локальный кэш оптимистично
+      lastMarkedTs = remoteTs;
+      setLocalLastReadTs(remoteTs);
+      box.dataset.lastReadTs = String(remoteTs);
+      removeUnreadDivider();
+      
+      // Отправляем HTTP запрос для гарантии синхронизации с сервером
+      // (на случай если другая вкладка не успела отправить или был disconnect)
+      markRead(remoteTs);
+    } else {
+      console.log('[ChatMarkRead] WS sync: local is up-to-date, skipping');
     }
   });
 
@@ -407,19 +515,14 @@ export function markVisibleMessagesAsRead() {
   const boxRect = box.getBoundingClientRect();
   console.log('[ChatMarkRead] markVisible: viewport', { top: boxRect.top, bottom: boxRect.bottom, height: boxRect.height });
   
-  let foreignCount = 0;
-  const visibleForeignMsgs = msgs.filter(msg => {
-    const authorId = Number(msg.dataset.authorId);
-    if (authorId === meId) return false; // Пропускаем свои сообщения
-    
-    foreignCount++;
+  // Находим ВСЕ видимые сообщения (включая свои)
+  const visibleMsgs = msgs.filter(msg => {
     const rect = msg.getBoundingClientRect();
-    // Проверяем пересечение: сообщение видимо, если хотя бы частично во viewport
     const isVisible = rect.bottom > boxRect.top && rect.top < boxRect.bottom;
     
     console.log('[ChatMarkRead] markVisible: checking message', {
-      messageId: msg.dataset.messageId || msg.dataset.id,
-      authorId,
+      messageId: msg.dataset.id,
+      authorId: msg.dataset.authorId,
       rect: { top: Math.round(rect.top), bottom: Math.round(rect.bottom) },
       viewport: { top: Math.round(boxRect.top), bottom: Math.round(boxRect.bottom) },
       isVisible
@@ -428,20 +531,20 @@ export function markVisibleMessagesAsRead() {
     return isVisible;
   });
   
-  console.log('[ChatMarkRead] markVisible: foreign/visible', { foreignCount, visibleCount: visibleForeignMsgs.length });
+  console.log('[ChatMarkRead] markVisible: visible messages', visibleMsgs.length);
   
-  if (visibleForeignMsgs.length > 0) {
-    // Используем ТЕКУЩЕЕ время, а не timestamp сообщения
-    // (timestamp сообщения может быть из прошлого)
-    const ts = Date.now();
-    const newestVisible = visibleForeignMsgs[visibleForeignMsgs.length - 1];
+  if (visibleMsgs.length > 0) {
+    // Отмечаем последнее видимое сообщение (даже если оно свое)
+    const newestVisible = visibleMsgs[visibleMsgs.length - 1];
+    const ts = Number(newestVisible.dataset.ts);
     console.log('[ChatMarkRead] Initial mark-read for visible messages:', { 
-      messageId: newestVisible.dataset.id, 
-      messageCreatedAt: newestVisible.dataset.ts,
-      usingCurrentTime: ts 
+      messageId: newestVisible.dataset.id,
+      authorId: newestVisible.dataset.authorId,
+      isOwn: Number(newestVisible.dataset.authorId) === meId,
+      messageTimestamp: ts
     });
     api.markRead(ts);
   } else {
-    console.log('[ChatMarkRead] markVisible: no visible foreign messages to mark');
+    console.log('[ChatMarkRead] markVisible: no visible messages to mark');
   }
 }

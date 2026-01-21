@@ -163,7 +163,11 @@ export class DateGroupManager {
         let currentDateText = null;
         let currentGroup = null;
 
-        for (const message of messages) {
+        // ✅ FIX: При prepend инвертируем массив для сохранения хронологического порядка
+        // Без этого insertBefore в цикле перевернет сообщения задом наперед
+        const messagesToProcess = position === 'prepend' ? [...messages].reverse() : messages;
+
+        for (const message of messagesToProcess) {
             const messageDate = DateDividerManager.getMessageDate(message);
             const dateText = DateDividerManager.formatDay(messageDate);
 

@@ -1,0 +1,265 @@
+/**
+ * _bubble-content.scss
+ * Стили для вложенного контента внутри bubble
+ * Attachments, Polls, Media
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   ВЛОЖЕНИЯ (ATTACHMENTS)
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Контейнер всех вложений
+ */
+.bubble__attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/**
+ * Отдельное вложение
+ */
+.bubble__attachment {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  
+  // Медиа-элементы (изображения и видео) без дополнительных отступов
+  &--media {
+    line-height: 0;
+    
+    a {
+      display: block;
+      padding: 0;
+      line-height: 0;
+    }
+    
+    img, video {
+      max-width: 100%;
+      height: auto;
+      border-radius: $radius-sm;
+      cursor: pointer;
+      @include transition(transform, $transition-fast);
+      
+      &:hover {
+        transform: scale(1.02);
+      }
+    }
+  }
+  
+  // Файлы (документы, аудио и т.д.)
+  &--file {
+    a {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: $radius-sm;
+      text-decoration: none;
+      max-width: 100%;
+      word-break: break-word;
+      
+      // Используем CSS-переменные из модификаторов bubble
+      background: var(--bubble-attachment-bg, rgba(0, 0, 0, 0.05));
+      color: var(--bubble-attachment-text, inherit);
+      
+      @include transition-all($transition-fast);
+      
+      &:hover {
+        background: var(--bubble-attachment-hover-bg, rgba(0, 0, 0, 0.08));
+      }
+      
+      // Иконка файла
+      i {
+        font-size: 1.1rem;
+        flex-shrink: 0;
+        color: var(--bubble-attachment-icon, var(--bs-body-color));
+      }
+      
+      // Название файла
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+    }
+  }
+  
+  // Аудио-плеер
+  &--audio {
+    audio {
+      width: 100%;
+      max-width: 300px;
+      border-radius: $radius-sm;
+    }
+  }
+}
+
+/**
+ * Мета-информация о вложении (размер, тип)
+ */
+.bubble__attachment-meta {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  color: var(--bubble-attachment-meta, var(--bs-secondary));
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ГОЛОСОВАНИЯ (POLLS)
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Контейнер голосования внутри bubble
+ */
+.bubble__poll {
+  .poll-widget {
+    max-width: 100%;
+    background: var(--bubble-poll-bg, transparent);
+    border: none;
+    padding: 0;
+  }
+  
+  .poll-question {
+    color: var(--bubble-poll-text, inherit);
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+  }
+  
+  .poll-option {
+    margin-bottom: 0.5rem;
+    
+    .progress {
+      background-color: var(--bubble-poll-progress-bg, var(--bs-border-color));
+      
+      .progress-bar {
+        background-color: var(--bubble-poll-progress-fill, var(--bs-primary));
+      }
+    }
+  }
+  
+  .poll-footer {
+    font-size: 0.85rem;
+    color: var(--bubble-poll-meta, var(--bs-secondary));
+    margin-top: 0.5rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   РЕАКЦИИ (REACTIONS)
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Контейнер реакций под сообщением
+ */
+.bubble__reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+/**
+ * Отдельная реакция
+ */
+.bubble__reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: $radius-pill;
+  font-size: 0.85rem;
+  cursor: pointer;
+  
+  border: 1px solid var(--bs-border-color);
+  background: var(--bs-body-bg);
+  
+  @include transition-all($transition-fast);
+  
+  &:hover {
+    background: var(--bs-secondary-bg);
+    transform: scale(1.05);
+  }
+  
+  &--active {
+    background: color-mix(in srgb, var(--bs-primary) 15%, transparent);
+    border-color: var(--bs-primary);
+  }
+  
+  .emoji {
+    font-size: 1rem;
+    line-height: 1;
+  }
+  
+  .count {
+    font-size: 0.75rem;
+    color: var(--bs-secondary);
+    min-width: 1ch;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ССЫЛКИ И ПРЕВЬЮ
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Превью ссылки (Open Graph)
+ */
+.bubble__link-preview {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border-radius: $radius-sm;
+  border: 1px solid var(--bs-border-color);
+  background: var(--bubble-attachment-bg, rgba(0, 0, 0, 0.03));
+  text-decoration: none;
+  display: block;
+  @include transition(background, $transition-fast);
+  
+  &:hover {
+    background: var(--bubble-attachment-hover-bg, rgba(0, 0, 0, 0.05));
+  }
+  
+  &__image {
+    width: 100%;
+    border-radius: $radius-xs;
+    margin-bottom: 0.5rem;
+  }
+  
+  &__title {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--bubble-text, var(--bs-body-color));
+  }
+  
+  &__description {
+    font-size: 0.85rem;
+    color: var(--bubble-attachment-meta, var(--bs-secondary));
+    line-height: 1.4;
+  }
+  
+  &__domain {
+    font-size: 0.75rem;
+    color: var(--bubble-attachment-meta, var(--bs-secondary));
+    margin-top: 0.25rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   АДАПТИВНОСТЬ
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .bubble__attachment {
+    &--media {
+      img, video {
+        max-width: 100%;
+      }
+    }
+  }
+  
+  .bubble__poll {
+    .poll-widget {
+      font-size: 0.9rem;
+    }
+  }
+}

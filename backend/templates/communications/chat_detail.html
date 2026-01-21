@@ -160,6 +160,12 @@
           </span>
           <span class="typing-text">Собеседник печатает…</span>
         </div>
+
+        <!-- Кнопка «вниз» -->
+        <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
+          <i class="bi-arrow-down"></i>
+          <span class="unread-badge badge-hidden">0</span>
+        </button>
       </div> <!-- .chat-container -->
 
   <!-- Композер (вынесен из chat-container на уровень chat-page) -->
@@ -276,12 +282,6 @@
           </div>
           {% endif %}
   </div> <!-- .chat-composer-wrapper -->
-
-  <!-- Кнопка «вниз» -->
-  <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
-    <i class="bi-arrow-down"></i>
-    <span class="unread-badge badge-hidden">0</span>
-  </button>
 
   <!-- Модальное окно создания голосования -->
   <div class="modal fade" id="pollModal" tabindex="-1" aria-hidden="true">

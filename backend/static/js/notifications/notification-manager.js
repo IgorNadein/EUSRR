@@ -194,6 +194,16 @@ class NotificationManager {
         return;
       }
 
+      // Игнорируем marked_read - это для синхронизации между вкладками, обрабатывается в chatMarkRead
+      if (data.type === "marked_read") {
+        return;
+      }
+
+      // Игнорируем poll_update - это для опросов в чатах, обрабатывается в userWebSocket
+      if (data.type === "poll_update") {
+        return;
+      }
+
       console.log("[Notifications] Received:", data);
 
       switch (data.type) {

@@ -154,16 +154,33 @@ class MessageReactionSerializer(serializers.ModelSerializer):
 class PollOptionSerializer(serializers.ModelSerializer):
     """Опция голосования"""
     percentage = serializers.SerializerMethodField()
+    voters = serializers.SerializerMethodField()
     
     class Meta:
         model = PollOption
-        fields = ['id', 'text', 'position', 'vote_count', 'percentage']
+        fields = ['id', 'text', 'position', 'vote_count', 'percentage', 'voters']
     
     def get_percentage(self, obj):
         """Процент голосов"""
         if obj.poll and obj.poll.total_voters > 0:
             return round((obj.vote_count / obj.poll.total_voters) * 100, 1)
         return 0
+    
+    def get_voters(self, obj):
+        """Список проголосовавших (если не анонимное)"""
+        if obj.poll and obj.poll.is_anonymous:
+            return []
+        
+        # Возвращаем список с именами
+        votes = obj.votes.select_related('voter').all()
+        return [
+            {
+                'voter__first_name': vote.voter.first_name,
+                'voter__last_name': vote.voter.last_name,
+                'voter__id': vote.voter.id
+            }
+            for vote in votes
+        ]
 
 
 class PollSerializer(serializers.ModelSerializer):
@@ -171,13 +188,27 @@ class PollSerializer(serializers.ModelSerializer):
     options = PollOptionSerializer(many=True, read_only=True)
     user_voted_option_ids = serializers.SerializerMethodField()
     
+    # Поля для создания (write_only)
+    options_data = serializers.ListField(
+        child=serializers.CharField(max_length=200),
+        write_only=True,
+        required=False,
+        help_text="Список вариантов ответов (строки)"
+    )
+    chat_id = serializers.IntegerField(write_only=True, required=True)
+    correct_option_index = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    closes_in_minutes = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    
     class Meta:
         model = Poll
         fields = [
-            'id', 'question', 'is_anonymous', 'is_multiple_choice',
-            'is_quiz', 'is_closed', 'closes_at',
-            'total_voters', 'options', 'user_voted_option_ids'
+            'id', 'message', 'question', 'is_anonymous', 'is_multiple_choice',
+            'is_quiz', 'is_closed', 'closes_at', 'allows_custom_answers',
+            'total_voters', 'options', 'user_voted_option_ids',
+            # write_only поля
+            'options_data', 'chat_id', 'correct_option_index', 'closes_in_minutes'
         ]
+        read_only_fields = ['id', 'message', 'is_closed', 'total_voters']
     
     def get_user_voted_option_ids(self, obj):
         """ID опций за которые проголосовал текущий пользователь"""
@@ -186,6 +217,84 @@ class PollSerializer(serializers.ModelSerializer):
             votes = obj.votes.filter(voter=request.user)
             return [v.option_id for v in votes]
         return []
+    
+    def create(self, validated_data):
+        """Создание голосования с опциями"""
+        from communications.models import Chat, Message
+        from datetime import timedelta
+        from django.utils import timezone
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"[PollSerializer.create] validated_data: {validated_data}")
+        
+        # Извлекаем данные для создания
+        options_data = validated_data.pop('options_data', [])
+        chat_id = validated_data.pop('chat_id')
+        correct_option_index = validated_data.pop('correct_option_index', None)
+        closes_in_minutes = validated_data.pop('closes_in_minutes', None)
+        
+        logger.info(f"[PollSerializer.create] options_data: {options_data}, chat_id: {chat_id}")
+        
+        # Получаем автора (может быть передан через perform_create или взять из запроса)
+        author = validated_data.pop('author', None) or self.context.get('request').user
+        
+        # Создаем сообщение в чате
+        try:
+            chat = Chat.objects.get(id=chat_id)
+        except Chat.DoesNotExist:
+            logger.error(f"[PollSerializer.create] Chat {chat_id} not found")
+            raise serializers.ValidationError({'chat_id': 'Chat not found'})
+        
+        message = Message.objects.create(
+            chat=chat,
+            author=author,
+            content=f"📊 {validated_data['question']}",
+            is_system=False
+        )
+        
+        # Устанавливаем closes_at если указано
+        if closes_in_minutes and closes_in_minutes > 0:
+            validated_data['closes_at'] = timezone.now() + timedelta(minutes=closes_in_minutes)
+        
+        # Создаем голосование
+        poll = Poll.objects.create(
+            message=message,
+            author=author,
+            **validated_data
+        )
+        
+        # Создаем опции
+        for index, option_text in enumerate(options_data):
+            is_correct = (correct_option_index is not None and index == correct_option_index)
+            poll.options.create(
+                text=option_text,
+                position=index,
+                is_correct=is_correct
+            )
+        
+        # Отправляем WebSocket уведомление о новом сообщении
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from communications.serialization import serialize_message
+        
+        # Перезагружаем сообщение с poll и options для полной сериализации
+        message.refresh_from_db()
+        message_data = serialize_message(message)
+        
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{chat.id}',
+            {
+                'type': 'chat_message',
+                'chat_id': chat.id,
+                'payload': message_data
+            }
+        )
+        
+        logger.info(f"[PollSerializer.create] WebSocket notification sent for message {message.id}")
+        
+        return poll
 
 
 class MessageListSerializer(serializers.ModelSerializer):

@@ -493,7 +493,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         """
         chat_id = request.data.get('chat_id')
         content = request.data.get('content', '').strip()
-        reply_to_id = request.data.get('reply_to_id')
+        reply_to_id = request.data.get('reply_to') or request.data.get('reply_to_id')
         
         # Валидация чата
         try:
@@ -660,6 +660,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         
         # Управление вложениями
         if existing_attachment_ids is not None:
+            from communications.models import MessageAttachment
+            
             current_ids = set(str(att.id) for att in instance.attachments.all())
             keep_ids = set(str(id) for id in existing_attachment_ids)
             ids_to_remove = current_ids - keep_ids
@@ -676,18 +678,22 @@ class MessageViewSet(viewsets.ModelViewSet):
             
             # Переносим новые attachments из других сообщений к этому
             if ids_to_add:
-                from communications.models import MessageAttachment
                 attachments_to_move = MessageAttachment.objects.filter(id__in=ids_to_add)
                 updated_count = attachments_to_move.update(message=instance)
                 logger.info(f"[update] Moved {updated_count} attachments to message {instance.id}: {list(ids_to_add)}")
         
         instance.save()
         
-        # Обновляем has_attachments
-        instance.has_attachments = instance.attachments.count() > 0
+        # ВАЖНО: Очищаем кэш attachments перед подсчетом
+        instance.refresh_from_db()
+        
+        # Обновляем has_attachments (заново считаем из БД)
+        from communications.models import MessageAttachment
+        instance.has_attachments = MessageAttachment.objects.filter(message=instance).count() > 0
         instance.save(update_fields=['has_attachments'])
         
         # Перезагружаем с нуля чтобы получить обновленные attachments
+        # Используем новый запрос, чтобы избежать кэширования
         instance = Message.objects.select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(
@@ -751,20 +757,26 @@ class MessageViewSet(viewsets.ModelViewSet):
         emoji = serializer.validated_data['emoji']
         logger.info(f"[react] Emoji: {emoji}")
         
-        # Создаем или получаем реакцию
+        # Создаем или получаем реакцию (по message + user, т.к. unique_together)
         reaction, created = MessageReaction.objects.get_or_create(
             message=message,
             user=request.user,
-            emoji=emoji
+            defaults={'emoji': emoji}
         )
         
-        logger.info(f"[react] Reaction created={created}, id={reaction.id}")
-        
+        # Если реакция уже существует, обновляем emoji
         if not created:
-            return Response(
-                {'error': 'Reaction already exists'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            old_emoji = reaction.emoji
+            if old_emoji == emoji:
+                return Response(
+                    {'error': 'Reaction already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            reaction.emoji = emoji
+            reaction.save(update_fields=['emoji'])
+            logger.info(f"[react] Updated emoji from {old_emoji} to {emoji}")
+        else:
+            logger.info(f"[react] Created new reaction, id={reaction.id}")
         
         # Пересчитываем reactions_summary
         reactions_summary = {}
@@ -982,6 +994,10 @@ class PollViewSet(viewsets.ModelViewSet):
     serializer_class = PollSerializer
     permission_classes = [IsAuthenticated]
     
+    def perform_create(self, serializer):
+        """Автоматически устанавливаем автора голосования"""
+        serializer.save(author=self.request.user)
+    
     @action(detail=True, methods=['post'])
     def vote(self, request, pk=None):
         """Проголосовать"""
@@ -1000,6 +1016,20 @@ class PollViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Проверка что опции существуют и принадлежат этому poll
+        try:
+            options = poll.options.filter(pk__in=option_ids)
+            if options.count() != len(option_ids):
+                return Response(
+                    {'error': 'Invalid option IDs'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid option IDs format'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Проверка множественного выбора
         if not poll.is_multiple_choice and len(option_ids) > 1:
             return Response(
@@ -1008,24 +1038,19 @@ class PollViewSet(viewsets.ModelViewSet):
             )
         
         with transaction.atomic():
-            # Удаляем старые голоса если не множественный выбор
-            if not poll.is_multiple_choice:
-                PollVote.objects.filter(
-                    poll=poll,
-                    voter=request.user
-                ).delete()
+            # Удаляем ВСЕ старые голоса пользователя (и для single и для multiple choice)
+            PollVote.objects.filter(
+                poll=poll,
+                voter=request.user
+            ).delete()
             
             # Добавляем новые голоса
-            for option_id in option_ids:
-                try:
-                    option = poll.options.get(pk=option_id)
-                    PollVote.objects.get_or_create(
-                        poll=poll,
-                        option=option,
-                        voter=request.user
-                    )
-                except PollOption.DoesNotExist:
-                    pass
+            for option in options:
+                PollVote.objects.create(
+                    poll=poll,
+                    option=option,
+                    voter=request.user
+                )
             
             # Пересчитываем голоса
             for option in poll.options.all():
@@ -1041,14 +1066,18 @@ class PollViewSet(viewsets.ModelViewSet):
             f'chat_{poll.message.chat_id}',
             {
                 'type': 'poll.update',
+                'chat_id': poll.message.chat_id,
                 'payload': {
                     'poll_id': poll.id,
+                    'message_id': poll.message_id,
                     'total_voters': poll.total_voters
                 }
             }
         )
         
-        return Response(PollSerializer(poll, context={'request': request}).data)
+        # Возвращаем полные результаты
+        results_serializer = PollSerializer(poll, context={'request': request})
+        return Response({'ok': True, 'results': results_serializer.data})
     
     @action(detail=True, methods=['post'])
     def close(self, request, pk=None):
@@ -1062,13 +1091,14 @@ class PollViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        poll.is_closed = True
-        poll.save()
+        # Используем метод модели для установки is_closed и closed_at
+        poll.close()
         
         return Response(PollSerializer(poll, context={'request': request}).data)
     
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get', 'post'])
     def results(self, request, pk=None):
         """Получить результаты голосования"""
         poll = self.get_object()
-        return Response(PollSerializer(poll, context={'request': request}).data)
+        serializer = PollSerializer(poll, context={'request': request})
+        return Response(serializer.data)
