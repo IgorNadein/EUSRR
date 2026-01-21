@@ -19,9 +19,7 @@ from rest_framework.test import APIClient
 
 API_EVENTS = "/api/v1/calendar/events/"
 
-
 _phone_counter = itertools.count(100_000_000)  # 9 цифр
-
 
 def _detect_phone_field(User: type[models.Model]) -> str | None:
     """Возвращает имя телефонного поля модели пользователя, если оно есть.
@@ -43,7 +41,6 @@ def _detect_phone_field(User: type[models.Model]) -> str | None:
             continue
     return None
 
-
 def _next_ru_phone() -> str:
     """Генерирует уникальный российский номер в формате E.164.
 
@@ -54,7 +51,6 @@ def _next_ru_phone() -> str:
     """
     return f"+79{next(_phone_counter):09d}"
 
-
 @pytest.fixture
 def api_url() -> str:
     """Базовый URL API календаря.
@@ -64,7 +60,6 @@ def api_url() -> str:
     """
     return API_EVENTS
 
-
 @pytest.fixture
 def User() -> Type[models.Model]:
     """Модель пользователя проекта.
@@ -73,7 +68,6 @@ def User() -> Type[models.Model]:
         Type[models.Model]: Модель пользователя (get_user_model()).
     """
     return get_user_model()
-
 
 @pytest.fixture
 def CalendarEvent() -> Type[models.Model]:
@@ -87,14 +81,12 @@ def CalendarEvent() -> Type[models.Model]:
     """
     return django_apps.get_model("calendar_app", "CalendarEvent")
 
-
 @pytest.fixture
 def Recurrence():
     """Enum повторяемости из приложения (это не модель)."""
     from calendar_app.models import Recurrence as _Recurrence
 
     return _Recurrence
-
 
 @pytest.fixture
 def Department() -> Optional[Type[models.Model]]:
@@ -107,7 +99,6 @@ def Department() -> Optional[Type[models.Model]]:
         return django_apps.get_model("employees", "Department")
     except LookupError:
         return None
-
 
 @pytest.fixture
 def make_user() -> callable:
@@ -173,24 +164,20 @@ def make_user() -> callable:
 
     return _make_user
 
-
 @pytest.fixture
 def admin_user(make_user) -> models.Model:
     """Администратор (superuser)."""
     return make_user("admin@example.com", is_staff=True, is_superuser=True)
-
 
 @pytest.fixture
 def regular_user(make_user) -> models.Model:
     """Обычный пользователь без спецправ."""
     return make_user("regular@example.com")
 
-
 @pytest.fixture
 def dept_manager_user(make_user) -> models.Model:
     """Пользователь, которому потом выдадим право manage_department_events."""
     return make_user("manager@example.com")
-
 
 @pytest.fixture
 def give_manage_calendar_perm(db) -> Callable[[DjangoModel, DjangoModel], None]:
@@ -247,12 +234,10 @@ def give_manage_calendar_perm(db) -> Callable[[DjangoModel, DjangoModel], None]:
 
     return _grant
 
-
 @pytest.fixture
 def api_client() -> APIClient:
     """Чистый DRF-клиент без авторизации."""
     return APIClient()
-
 
 @pytest.fixture
 def auth_client() -> Callable[[models.Model], APIClient]:
@@ -271,7 +256,6 @@ def auth_client() -> Callable[[models.Model], APIClient]:
         return client
 
     return _build
-
 
 @pytest.fixture
 def make_department(Department) -> Callable[..., models.Model]:
@@ -292,7 +276,6 @@ def make_department(Department) -> Callable[..., models.Model]:
         return Department.objects.create(name=name)  # type: ignore[attr-defined]
 
     return _make_dept
-
 
 @pytest.fixture
 def make_event(CalendarEvent, Recurrence) -> Callable[..., models.Model]:

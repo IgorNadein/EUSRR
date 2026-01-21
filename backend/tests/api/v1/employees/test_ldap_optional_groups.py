@@ -12,18 +12,16 @@ from django.contrib.auth.models import Group
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
+from tests.conftest import _unique_phone
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 _phone_seq = itertools.count(5000)
 
-
-def _unique_phone():
-    return f"+7999000{next(_phone_seq):04d}"
-
-
+@pytest.fixture
 def make_user(email, **kwargs):
+    """Fixture для создания пользователей."""
     """Создаёт пользователя напрямую"""
     u = User.objects.create(
         email=email,
@@ -40,19 +38,15 @@ def make_user(email, **kwargs):
     u.save()
     return u
 
-
 @pytest.fixture
 def api_client():
     return APIClient()
-
 
 @pytest.fixture
 def admin_user():
     return make_user("admin@test.com", staff=True, superuser=True)
 
-
 # ---------- Создание группы ----------
-
 
 @pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
 @patch("api.v1.employees.views.DirectoryService")
@@ -81,7 +75,6 @@ def test_create_group_with_ldap(
     # Проверяем вызов LDAP
     mock_service.group_create.assert_called_once()
 
-
 def test_create_group_without_ldap(
     api_client, admin_user, settings
 ):
@@ -100,9 +93,7 @@ def test_create_group_without_ldap(
     group = Group.objects.get(name="TestGroup")
     assert group is not None
 
-
 # ---------- Добавление участников ----------
-
 
 @pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
 @patch("api.v1.employees.views.DirectoryService")
@@ -142,7 +133,6 @@ def test_add_members_with_ldap(
     # Проверяем вызов LDAP
     mock_service.group_add_members.assert_called_once()
 
-
 def test_add_members_without_ldap(
     api_client, admin_user, settings
 ):
@@ -167,9 +157,7 @@ def test_add_members_without_ldap(
     # Проверяем добавление в БД
     assert group.user_set.count() == 2
 
-
 # ---------- Удаление группы ----------
-
 
 @pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
 @patch("api.v1.employees.views.DirectoryService")
@@ -200,7 +188,6 @@ def test_destroy_group_with_ldap(
     # Проверяем вызов LDAP
     mock_service.group_delete.assert_called_once()
 
-
 def test_destroy_group_without_ldap(
     api_client, admin_user, settings
 ):
@@ -219,9 +206,7 @@ def test_destroy_group_without_ldap(
     # Проверяем удаление из БД
     assert not Group.objects.filter(id=group.id).exists()
 
-
 # ---------- Получение участников ----------
-
 
 @pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
 @patch("api.v1.employees.views.DirectoryService")
@@ -252,7 +237,6 @@ def test_get_members_with_ldap(
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data["dns"]) == 1
     assert len(response.data["employees"]) == 1
-
 
 def test_get_members_without_ldap(
     api_client, admin_user, settings

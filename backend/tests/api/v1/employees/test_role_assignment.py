@@ -10,18 +10,13 @@ from employees.models import (
     Department, DepartmentPermission, DepartmentRole,
     EmployeeDepartment, RoleAssignment,
 )
+from tests.conftest import _unique_phone
 
 User = get_user_model()
 # В этом проекте User == Employee (кастомная модель)
 Employee = User
 
-
-def _unique_phone() -> str:
-    """Генерирует уникальный номер телефона."""
-    base = 79000000000
-    return str(base + User.objects.count())
-
-
+@pytest.fixture
 def make_user(email: str, is_staff: bool = False) -> User:
     """Создаёт пользователя (Employee)."""
     return User.objects.create_user(
@@ -32,11 +27,9 @@ def make_user(email: str, is_staff: bool = False) -> User:
         send_activation_email=False,
     )
 
-
 def make_dept(name: str, head: User = None) -> Department:
     """Создаёт отдел."""
     return Department.objects.create(name=name, head=head)
-
 
 def make_role(dept: Department, name: str, perm_codes: list[str]) -> DepartmentRole:
     """Создаёт роль с указанными правами."""
@@ -48,7 +41,6 @@ def make_role(dept: Department, name: str, perm_codes: list[str]) -> DepartmentR
         role.scoped_permissions.add(perm)
     return role
 
-
 def grant_assign_perm(user: User, dept: Department) -> DepartmentRole:
     """Даёт пользователю право assign_department_role в отделе."""
     role = make_role(dept, "Assigner", ["assign_department_role"])
@@ -56,11 +48,9 @@ def grant_assign_perm(user: User, dept: Department) -> DepartmentRole:
     RoleAssignment.objects.create(employee=user, role=role, is_active=True)
     return role
 
-
 @pytest.fixture
 def api_client() -> APIClient:
     return APIClient()
-
 
 @pytest.mark.django_db
 class TestRoleAssignmentEndpoints:
@@ -179,7 +169,6 @@ class TestRoleAssignmentEndpoints:
         resp = api_client.post(url, {"employee_id": other_user.id})
         
         assert resp.status_code == status.HTTP_201_CREATED
-
 
 @pytest.mark.django_db
 class TestRoleAssignmentPermissions:
