@@ -8,7 +8,7 @@ from communications.models import (
     MessageReaction, Poll, PollOption, PollVote,
     ChatMembership, ChatUserSettings
 )
-from communications.consumers import serialize_message
+from communications.serialization import serialize_message
 
 Employee = get_user_model()
 

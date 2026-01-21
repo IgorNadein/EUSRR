@@ -17,7 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from communications.models import Chat, ChatMembership, ChatReadState, Message, MessageReaction
-from communications.consumers import serialize_message
+from communications.serialization import serialize_message
 
 logger = logging.getLogger(__name__)
 

@@ -32,7 +32,7 @@ from communications.models import (
     Poll, PollOption, PollVote, ChatMembership, ChatUserSettings,
     ChatReadState
 )
-from communications.consumers import serialize_message
+from communications.serialization import serialize_message
 from communications.views import user_can_access_chat, _coerce_ts
 from .serializers import (
     ChatListSerializer, ChatDetailSerializer,
