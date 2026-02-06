@@ -1,72 +1,62 @@
 /**
  * LDAP Login Field Component
  * =============================================================================
- * Компонент для безопасного отображения LDAP логина пользователя
- * - Blur-эффект по умолчанию
- * - Раскрытие по клику (только для админов/HR)
- * - AJAX запрос к API для получения реального sAMAccountName
+ * Компонент для отображения LDAP логина с кэшированием
+ * - Автоматическая загрузка при инициализации (из кэша или LDAP)
+ * - Кнопка обновления для принудительного запроса из LDAP
+ * - Визуальная индикация источника данных (cached/fresh)
  */
 
 class LdapLoginField {
   constructor(fieldElement) {
     this.field = fieldElement;
-    this.button = this.field.querySelector(".ldap-login-toggle");
-    this.textSpan = this.field.querySelector(".ldap-login-text");
-    this.icon = this.field.querySelector(".ldap-icon");
+    this.container = this.field.querySelector(".ldap-login-container");
+    this.valueSpan = this.field.querySelector(".ldap-login-value");
+    this.refreshBtn = this.field.querySelector(".ldap-refresh-btn");
     this.employeeId = this.field.dataset.employeeId;
 
-    this.isRevealed = false;
     this.ldapLogin = null;
+    this.isCached = false;
 
     this.init();
   }
 
   init() {
-    if (!this.button || !this.textSpan || !this.icon) {
+    if (!this.container || !this.valueSpan || !this.refreshBtn) {
       console.error("LDAP Login Field: Required elements not found");
       return;
     }
 
-    this.button.addEventListener("click", () => this.toggleReveal());
+    // Загрузить данные при инициализации
+    this.loadLdapInfo();
+
+    // Обработчик кнопки обновления
+    this.refreshBtn.addEventListener("click", () => this.refreshLdapInfo());
   }
 
-  async toggleReveal() {
-    if (this.isRevealed) {
-      this.hide();
-    } else {
-      await this.reveal();
-    }
-  }
-
-  async reveal() {
+  async loadLdapInfo(forceRefresh = false) {
     if (!this.employeeId) {
       this.showError("ID сотрудника не указан");
       return;
     }
 
-    // Уже загружено
-    if (this.ldapLogin) {
-      this.showLogin(this.ldapLogin);
-      return;
-    }
-
     // Показать состояние загрузки
     this.field.classList.add("loading");
-    this.icon.classList.remove("bi-lock-fill");
-    this.icon.classList.add("bi-hourglass");
+    this.valueSpan.textContent = "Загрузка...";
 
     try {
-      const response = await fetch(
-        `/api/v1/employees/${this.employeeId}/ldap-info/`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          credentials: "same-origin",
+      const url = forceRefresh
+        ? `/api/v1/employees/${this.employeeId}/ldap-info/?force_refresh=true`
+        : `/api/v1/employees/${this.employeeId}/ldap-info/`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
         },
-      );
+        credentials: "same-origin",
+      });
 
       if (!response.ok) {
         if (response.status === 403) {
@@ -85,7 +75,8 @@ class LdapLoginField {
       }
 
       this.ldapLogin = data.sAMAccountName;
-      this.showLogin(this.ldapLogin);
+      this.isCached = data.cached || false;
+      this.showLogin(this.ldapLogin, this.isCached);
     } catch (error) {
       console.error("LDAP Login Field Error:", error);
       this.showError(error.message || "Не удалось загрузить LDAP логин");
@@ -94,63 +85,49 @@ class LdapLoginField {
     }
   }
 
-  showLogin(login) {
-    this.textSpan.textContent = login;
-    this.textSpan.classList.remove("blurred");
-    this.textSpan.classList.add("revealed");
+  async refreshLdapInfo() {
+    await this.loadLdapInfo(true);
 
-    this.icon.classList.remove("bi-lock-fill", "bi-hourglass");
-    this.icon.classList.add("bi-unlock-fill");
-
-    this.field.classList.add("revealed");
-    this.isRevealed = true;
-
-    // Обновить tooltip
-    this.button.setAttribute("title", "Нажмите, чтобы скрыть LDAP логин");
-    if (bootstrap && bootstrap.Tooltip) {
-      const tooltip = bootstrap.Tooltip.getInstance(this.button);
-      if (tooltip) {
-        tooltip.dispose();
-      }
+    // Показать уведомление об обновлении
+    if (this.ldapLogin && !this.field.classList.contains("error")) {
+      this.showToast("LDAP логин обновлен из Active Directory", "success");
     }
   }
 
-  hide() {
-    this.textSpan.textContent = "••••••••";
-    this.textSpan.classList.remove("revealed");
-    this.textSpan.classList.add("blurred");
+  showLogin(login, cached = false) {
+    this.valueSpan.textContent = login;
+    this.field.classList.remove("error");
 
-    this.icon.classList.remove("bi-unlock-fill");
-    this.icon.classList.add("bi-lock-fill");
-
-    this.field.classList.remove("revealed");
-    this.isRevealed = false;
-
-    // Обновить tooltip
-    this.button.setAttribute("title", "Нажмите, чтобы показать LDAP логин");
+    // Визуальная индикация источника
+    if (cached) {
+      this.container.classList.add("cached");
+      this.updateRefreshTooltip("Данные из кэша. Нажмите для обновления из AD");
+    } else {
+      this.container.classList.remove("cached");
+      this.updateRefreshTooltip("Данные из AD. Нажмите для повторного обновления");
+    }
   }
 
   showError(message) {
+    this.valueSpan.textContent = "Ошибка";
     this.field.classList.add("error");
-    this.icon.classList.remove("bi-lock-fill", "bi-hourglass");
-    this.icon.classList.add("bi-exclamation-triangle-fill");
+    this.container.classList.remove("cached");
 
-    // Показать сообщение об ошибке через tooltip или alert
-    if (typeof bootstrap !== "undefined" && bootstrap.Toast) {
-      this.showToast("Ошибка", message, "danger");
-    } else {
-      alert(message);
-    }
-
-    // Убрать состояние ошибки через 3 секунды
-    setTimeout(() => {
-      this.field.classList.remove("error");
-      this.icon.classList.remove("bi-exclamation-triangle-fill");
-      this.icon.classList.add("bi-lock-fill");
-    }, 3000);
+    this.showToast(message, "error");
   }
 
-  showToast(title, message, type = "info") {
+  updateRefreshTooltip(text) {
+    this.refreshBtn.setAttribute("title", text);
+    if (typeof bootstrap !== "undefined" && bootstrap.Tooltip) {
+      const tooltip = bootstrap.Tooltip.getInstance(this.refreshBtn);
+      if (tooltip) {
+        tooltip.dispose();
+      }
+      new bootstrap.Tooltip(this.refreshBtn);
+    }
+  }
+
+  showToast(message, type = "info") {
     const toastContainer =
       document.querySelector(".toast-container") || this.createToastContainer();
 
@@ -161,23 +138,25 @@ class LdapLoginField {
     toastEl.setAttribute("aria-atomic", "true");
 
     toastEl.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">
-                    <strong>${title}:</strong> ${message}
-                </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto"
-                        data-bs-dismiss="toast" aria-label="Close"></button>
-            </div>
-        `;
+      <div class="d-flex">
+        <div class="toast-body">
+          ${message}
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    `;
 
     toastContainer.appendChild(toastEl);
 
-    const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 5000 });
-    toast.show();
+    if (typeof bootstrap !== "undefined" && bootstrap.Toast) {
+      const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 5000 });
+      toast.show();
 
-    toastEl.addEventListener("hidden.bs.toast", () => {
-      toastEl.remove();
-    });
+      toastEl.addEventListener("hidden.bs.toast", () => {
+        toastEl.remove();
+      });
+    }
   }
 
   createToastContainer() {

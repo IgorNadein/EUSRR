@@ -2261,28 +2261,41 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="ldap-info")
     def ldap_info(self, request, pk=None):
         """
-        GET /api/v1/employees/{id}/ldap-info/
+        GET /api/v1/employees/{id}/ldap-info/?force_refresh=true
 
-        Получает LDAP информацию о сотруднике из Active Directory.
+        Получает LDAP информацию о сотруднике (с кэшированием).
 
-        Доступ (через DRF permissions: IsSelfOrStaff | AdminOrActionOrModelPerms):
-            - Сам пользователь может видеть свой LDAP логин
-            - Staff/superuser могут видеть любые LDAP логины
-            - Пользователи с правом employees.view_ldap_info могут видеть любые
+        Query параметры:
+            - force_refresh: если true, принудительно обновляет кэш из LDAP
+
+        Доступ:
+            - Любой авторизованный пользователь может видеть LDAP логин
+            - Кэшируется в поле Employee.username для быстрого доступа
+            - При force_refresh=true - сбрасывает кэш и запрашивает из LDAP
 
         Возвращает:
-            - sAMAccountName: LDAP логин пользователя
-            - userPrincipalName: полный UPN
-            - displayName: отображаемое имя из LDAP
+            - sAMAccountName: LDAP логин пользователя (из кэша или LDAP)
+            - cached: true если данные из кэша, false если запрошены из LDAP
 
         Примечания:
-            - Данные запрашиваются напрямую из LDAP, не из базы Django
-            - Требуется активная связь с Active Directory
-            - Проверка прав выполняется автоматически через get_permissions()
+            - Кэшируется в Employee.username для быстрого доступа
+            - При отсутствии кэша - запрашивается из LDAP и сохраняется
+            - force_refresh=true сбрасывает кэш и обновляет из LDAP
         """
         from employees.ldap.repositories.ldap_repository import LdapRepository
 
-        emp = self.get_object()  # DRF автоматически проверит права через get_permissions()
+        emp = self.get_object()
+        force_refresh = request.query_params.get('force_refresh', '').lower() == 'true'
+
+        # Проверяем кэш (поле username), если не требуется принудительное обновление
+        if not force_refresh and emp.username:
+            return Response(
+                {
+                    "sAMAccountName": emp.username,
+                    "cached": True,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         # Проверяем наличие LDAP связи через LdapSyncState
         try:
@@ -2307,7 +2320,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             ldap_repo = LdapRepository(conn)
             attrs = ldap_repo.read_attrs(
                 ldap_sync.ldap_dn,
-                ["sAMAccountName", "userPrincipalName", "displayName"],
+                ["sAMAccountName"],
             )
 
             if not attrs or not attrs.get("sAMAccountName"):
@@ -2316,11 +2329,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+            # Кэшируем результат в username
+            sam_account_name = attrs.get("sAMAccountName")
+            emp.username = sam_account_name
+            emp.save(update_fields=["username"])
+
             return Response(
                 {
-                    "sAMAccountName": attrs.get("sAMAccountName"),
-                    "userPrincipalName": attrs.get("userPrincipalName"),
-                    "displayName": attrs.get("displayName"),
+                    "sAMAccountName": sam_account_name,
+                    "cached": False,
                 },
                 status=status.HTTP_200_OK,
             )

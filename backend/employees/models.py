@@ -157,7 +157,13 @@ class Position(models.Model):
 
 
 class Employee(AbstractUser):
-    username = None
+    username = models.CharField(
+        "LDAP Username (кэш)",
+        max_length=150,
+        blank=True,
+        null=True,
+        help_text="Кэшированный LDAP логин сотрудника",
+    )
 
     gender = models.PositiveSmallIntegerField(
         "Пол", choices=GENDER_CHOICES, default=0, blank=True
@@ -208,6 +214,7 @@ class Employee(AbstractUser):
             models.Index(fields=["last_name", "first_name"]),
             models.Index(fields=["email"]),
             models.Index(fields=["phone_number"]),
+            models.Index(fields=["username"]),
             models.Index(Lower("email"), name="employee_email_lower_idx"),
         ]
         permissions = [

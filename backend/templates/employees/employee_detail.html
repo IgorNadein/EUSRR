@@ -66,16 +66,19 @@
               {% endif %}
             </div>
 
-            {# LDAP Login (для себя или админов/HR) #}
-            {% if is_me or request.user.is_staff or perms.employees.view_ldap_info %}
-              <div class="ldap-login-field" id="ldapLoginField" data-employee-id="{{ emp.id }}">
-                <button type="button" class="ldap-login-toggle" data-bs-toggle="tooltip" 
-                        data-bs-placement="top" title="Нажмите, чтобы показать LDAP логин">
-                  <i class="bi-lock-fill ldap-icon"></i>
-                  <span class="ldap-login-text blurred">••••••••</span>
+            {# LDAP Login (кэшируемый, всегда доступен) #}
+            <div class="ldap-login-field" id="ldapLoginField" data-employee-id="{{ emp.id }}">
+              <div class="ldap-login-container">
+                <div class="ldap-login-text">
+                  <i class="bi-person-badge ldap-icon"></i>
+                  <span class="ldap-login-value">Загрузка...</span>
+                </div>
+                <button type="button" class="ldap-refresh-btn" data-bs-toggle="tooltip" 
+                        data-bs-placement="top" title="Обновить LDAP логин из Active Directory">
+                  <i class="bi-arrow-repeat refresh-icon"></i>
                 </button>
               </div>
-            {% endif %}
+            </div>
 
             <div class="ios-role">
               {% if emp.position.name %}
