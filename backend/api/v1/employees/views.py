@@ -2284,10 +2284,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         emp = self.get_object()  # DRF автоматически проверит права через get_permissions()
 
-        # Проверяем наличие LDAP связи
+        # Проверяем наличие LDAP связи через LdapSyncState
         try:
-            ldap_sync = emp.ldap_sync_state
-            if not ldap_sync or not ldap_sync.ldap_dn:
+            ldap_sync = LdapSyncState.objects.get(
+                model='employee',
+                object_pk=str(emp.pk)
+            )
+            if not ldap_sync.ldap_dn:
                 return Response(
                     {"detail": "У этого сотрудника нет связи с LDAP"},
                     status=status.HTTP_404_NOT_FOUND,
