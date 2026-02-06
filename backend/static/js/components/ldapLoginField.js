@@ -23,7 +23,13 @@ class LdapLoginField {
 
   init() {
     if (!this.container || !this.valueSpan || !this.refreshBtn) {
-      console.error("LDAP Login Field: Required elements not found");
+      console.error("LDAP Login Field: Required elements not found", {
+        field: this.field,
+        container: this.container,
+        valueSpan: this.valueSpan,
+        refreshBtn: this.refreshBtn,
+        html: this.field ? this.field.innerHTML : "field is null"
+      });
       return;
     }
 
@@ -176,13 +182,6 @@ function initLdapLoginFields() {
   fields.forEach((field) => {
     new LdapLoginField(field);
   });
-}
-
-// Инициализация при загрузке DOM
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initLdapLoginFields);
-} else {
-  initLdapLoginFields();
 }
 
 // Экспорт для использования в других модулях
