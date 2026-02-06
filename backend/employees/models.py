@@ -179,7 +179,7 @@ class Employee(AbstractUser):
         "Telegram Chat ID",
         max_length=100,
         blank=True,
-        help_text="Ваш Telegram Chat ID для получения уведомлений (найдите через @userinfobot)"
+        help_text="Ваш Telegram Chat ID для получения уведомлений (найдите через @userinfobot)",
     )
     whatsapp = PhoneNumberField("WhatsApp", blank=True)
     wechat = models.CharField("WeChat", max_length=100, blank=True)
@@ -516,10 +516,10 @@ class EmployeeDepartment(DateRangeMixin, models.Model):
 
 class RoleAssignment(models.Model):
     """Назначение роли сотруднику (не обязательно члену отдела).
-    
+
     Позволяет назначать роли любым сотрудникам компании,
     независимо от их членства в отделе.
-    
+
     Attributes:
         employee: Сотрудник, которому назначена роль.
         role: Назначенная роль отдела.
@@ -527,7 +527,7 @@ class RoleAssignment(models.Model):
         assigned_at: Дата/время назначения.
         is_active: Активно ли назначение.
     """
-    
+
     employee = models.ForeignKey(
         "Employee",
         on_delete=models.CASCADE,

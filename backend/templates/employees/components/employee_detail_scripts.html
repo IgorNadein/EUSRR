@@ -45,7 +45,7 @@
     const editWrap = document.getElementById('editFormWrap');
     if (editWrap) {
       const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
-      
+
       function getHeaderOffset() {
         const sticky = document.querySelector('.ios-header');
         return (sticky?.offsetHeight || 0) + 8;
@@ -114,7 +114,7 @@
       // Отправка формы
       actionForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         // Скрываем предыдущие сообщения
         if (actionSuccess) actionSuccess.classList.add('d-none');
         if (actionError) actionError.classList.add('d-none');
@@ -144,7 +144,7 @@
 
           if (response.ok) {
             const result = await response.json();
-            
+
             // Показываем сообщение об успехе
             if (actionSuccess) {
               const actionNames = {
@@ -178,7 +178,7 @@
           } else {
             const error = await response.json();
             let errorMsg = 'Ошибка при создании события.';
-            
+
             if (error.detail) {
               errorMsg = error.detail;
             } else if (error.error) {
@@ -186,7 +186,7 @@
             } else if (typeof error === 'object') {
               errorMsg = Object.values(error).flat().join('. ');
             }
-            
+
             if (actionError) {
               actionError.textContent = errorMsg;
               actionError.classList.remove('d-none');

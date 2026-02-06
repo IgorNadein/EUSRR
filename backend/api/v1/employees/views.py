@@ -1,6 +1,5 @@
 # flake8: noqa
 from __future__ import annotations
-# backend/api/v1/employees/views.py
 
 import logging
 import traceback
@@ -9,6 +8,9 @@ from typing import Any, Dict, List, Optional
 
 from common.emails import send_templated_mail
 from django.conf import settings
+
+# backend/api/v1/employees/views.py
+
 
 logger = logging.getLogger(__name__)
 from django.contrib.auth import get_user_model
@@ -69,11 +71,11 @@ from employees.utils import (
 )
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.exceptions import ValidationError
 
 from ..permissions import (
     AdminOrActionOrModelPerms,
@@ -1554,6 +1556,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     required_perms_by_action = {
         "add_skill": "employees.manage_employee_skills",
         "remove_skill": "employees.manage_employee_skills",
+        "ldap_info": "employees.view_ldap_info",  # Для просмотра чужих LDAP логинов
     }
 
     def get_permissions(self):
@@ -1568,6 +1571,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             "destroy",
             "add_skill",
             "remove_skill",
+            "ldap_info",  # Свой LDAP логин может видеть сам пользователь
         }:
             return [IsAuthenticated(), (IsSelfOrStaff | AdminOrActionOrModelPerms)()]
 
@@ -2173,8 +2177,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             # Сброс email_verified при изменении email
             if email_changed:
                 logger.info("[ME PATCH] Step 13: Processing email change...")
-                from django.utils.crypto import get_random_string
                 from common.emails import send_templated_mail
+                from django.utils.crypto import get_random_string
 
                 instance.email_verified = False
                 instance.email_activation_code = get_random_string(6, "0123456789")
@@ -2260,68 +2264,70 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         GET /api/v1/employees/{id}/ldap-info/
 
         Получает LDAP информацию о сотруднике из Active Directory.
-        
-        Доступ: только staff или пользователи с правом employees.view_ldap_info
-        
+
+        Доступ (через DRF permissions: IsSelfOrStaff | AdminOrActionOrModelPerms):
+            - Сам пользователь может видеть свой LDAP логин
+            - Staff/superuser могут видеть любые LDAP логины
+            - Пользователи с правом employees.view_ldap_info могут видеть любые
+
         Возвращает:
             - sAMAccountName: LDAP логин пользователя
             - userPrincipalName: полный UPN
             - displayName: отображаемое имя из LDAP
-            
+
         Примечания:
             - Данные запрашиваются напрямую из LDAP, не из базы Django
             - Требуется активная связь с Active Directory
+            - Проверка прав выполняется автоматически через get_permissions()
         """
         from employees.ldap.repositories.ldap_repository import LdapRepository
-        
-        # Проверка прав доступа
-        if not (request.user.is_staff or request.user.has_perm('employees.view_ldap_info')):
-            return Response(
-                {"detail": "У вас нет прав для просмотра LDAP информации"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        emp = self.get_object()
-        
+
+        emp = self.get_object()  # DRF автоматически проверит права через get_permissions()
+
         # Проверяем наличие LDAP связи
         try:
             ldap_sync = emp.ldap_sync_state
             if not ldap_sync or not ldap_sync.ldap_dn:
                 return Response(
                     {"detail": "У этого сотрудника нет связи с LDAP"},
-                    status=status.HTTP_404_NOT_FOUND
+                    status=status.HTTP_404_NOT_FOUND,
                 )
         except LdapSyncState.DoesNotExist:
             return Response(
                 {"detail": "У этого сотрудника нет связи с LDAP"},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
             )
-        
+
         # Запрашиваем данные из LDAP
         try:
             ldap_repo = LdapRepository()
             attrs = ldap_repo.read_attrs(
                 ldap_sync.ldap_dn,
-                ['sAMAccountName', 'userPrincipalName', 'displayName']
+                ["sAMAccountName", "userPrincipalName", "displayName"],
             )
-            
-            if not attrs or not attrs.get('sAMAccountName'):
+
+            if not attrs or not attrs.get("sAMAccountName"):
                 return Response(
                     {"detail": "Не удалось получить LDAP информацию"},
-                    status=status.HTTP_404_NOT_FOUND
+                    status=status.HTTP_404_NOT_FOUND,
                 )
-            
-            return Response({
-                "sAMAccountName": attrs.get('sAMAccountName'),
-                "userPrincipalName": attrs.get('userPrincipalName'),
-                "displayName": attrs.get('displayName'),
-            }, status=status.HTTP_200_OK)
-            
+
+            return Response(
+                {
+                    "sAMAccountName": attrs.get("sAMAccountName"),
+                    "userPrincipalName": attrs.get("userPrincipalName"),
+                    "displayName": attrs.get("displayName"),
+                },
+                status=status.HTTP_200_OK,
+            )
+
         except Exception as e:
-            logger.error(f"Error fetching LDAP info for employee {emp.id}: {e}", exc_info=True)
+            logger.error(
+                f"Error fetching LDAP info for employee {emp.id}: {e}", exc_info=True
+            )
             return Response(
                 {"detail": f"Ошибка при запросе LDAP информации: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @action(detail=False, methods=["get"], url_path="export-excel")
@@ -2337,10 +2343,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         Возвращает:
             - Excel файл (.xlsx) с данными сотрудников
         """
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill
-        from django.http import HttpResponse
         from datetime import datetime
+
+        from django.http import HttpResponse
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
 
         # Получаем отфильтрованный queryset
         queryset = self.filter_queryset(self.get_queryset())
@@ -2413,7 +2420,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 if not phone_field:
                     return ""
                 try:
-                    from phonenumbers import format_number, PhoneNumberFormat
+                    from phonenumbers import PhoneNumberFormat, format_number
 
                     return format_number(phone_field, PhoneNumberFormat.INTERNATIONAL)
                 except Exception:
@@ -2705,8 +2712,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         # Сброс email_verified при изменении email
         if email_changed:
-            from django.utils.crypto import get_random_string
             from common.emails import send_templated_mail
+            from django.utils.crypto import get_random_string
 
             emp.email_verified = False
             emp.email_activation_code = get_random_string(6, "0123456789")
@@ -3557,14 +3564,14 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                         # Если сотрудник не состоял ни в одном отделе, вручную перемещаем в OU=Dismissed
                         if not departments_processed:
                             try:
-                                from employees.ldap.utils.ldap_utils import (
-                                    get_base_dn_for_employee,
-                                )
                                 from employees.ldap.infrastructure.connections import (
                                     _ldap,
                                 )
                                 from employees.ldap.repositories.ldap_repository import (
                                     ensure_container_exists,
+                                )
+                                from employees.ldap.utils.ldap_utils import (
+                                    get_base_dn_for_employee,
                                 )
                                 from employees.models import LdapSyncState
 
