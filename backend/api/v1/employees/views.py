@@ -2303,7 +2303,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         # Запрашиваем данные из LDAP
         try:
-            ldap_repo = LdapRepository()
+            conn = _conn()
+            ldap_repo = LdapRepository(conn)
             attrs = ldap_repo.read_attrs(
                 ldap_sync.ldap_dn,
                 ["sAMAccountName", "userPrincipalName", "displayName"],
