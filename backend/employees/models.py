@@ -212,6 +212,7 @@ class Employee(AbstractUser):
         ]
         permissions = [
             ("manage_employee_skills", "Может управлять навыками сотрудников"),
+            ("view_ldap_info", "Может просматривать LDAP информацию сотрудников"),
         ]
 
     def clean(self):

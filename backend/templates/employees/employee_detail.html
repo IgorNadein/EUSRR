@@ -66,6 +66,17 @@
               {% endif %}
             </div>
 
+            {# LDAP Login (только для админов/HR) #}
+            {% if request.user.is_staff or perms.employees.view_ldap_info %}
+              <div class="ldap-login-field" id="ldapLoginField" data-employee-id="{{ emp.id }}">
+                <button type="button" class="ldap-login-toggle" data-bs-toggle="tooltip" 
+                        data-bs-placement="top" title="Нажмите, чтобы показать LDAP логин">
+                  <i class="bi-lock-fill ldap-icon"></i>
+                  <span class="ldap-login-text blurred">••••••••</span>
+                </button>
+              </div>
+            {% endif %}
+
             <div class="ios-role">
               {% if emp.position.name %}
                 {{ emp.position.name }}

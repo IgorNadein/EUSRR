@@ -2,12 +2,15 @@
 from __future__ import annotations
 # backend/api/v1/employees/views.py
 
+import logging
 import traceback
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from common.emails import send_templated_mail
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import FieldError
@@ -2250,6 +2253,76 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         return Response(
             {"ok": True, "removed": {"id": sk.id, "name": sk.name}}, status=200
         )
+
+    @action(detail=True, methods=["get"], url_path="ldap-info")
+    def ldap_info(self, request, pk=None):
+        """
+        GET /api/v1/employees/{id}/ldap-info/
+
+        Получает LDAP информацию о сотруднике из Active Directory.
+        
+        Доступ: только staff или пользователи с правом employees.view_ldap_info
+        
+        Возвращает:
+            - sAMAccountName: LDAP логин пользователя
+            - userPrincipalName: полный UPN
+            - displayName: отображаемое имя из LDAP
+            
+        Примечания:
+            - Данные запрашиваются напрямую из LDAP, не из базы Django
+            - Требуется активная связь с Active Directory
+        """
+        from employees.ldap.repositories.ldap_repository import LdapRepository
+        
+        # Проверка прав доступа
+        if not (request.user.is_staff or request.user.has_perm('employees.view_ldap_info')):
+            return Response(
+                {"detail": "У вас нет прав для просмотра LDAP информации"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        emp = self.get_object()
+        
+        # Проверяем наличие LDAP связи
+        try:
+            ldap_sync = emp.ldap_sync_state
+            if not ldap_sync or not ldap_sync.ldap_dn:
+                return Response(
+                    {"detail": "У этого сотрудника нет связи с LDAP"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        except LdapSyncState.DoesNotExist:
+            return Response(
+                {"detail": "У этого сотрудника нет связи с LDAP"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Запрашиваем данные из LDAP
+        try:
+            ldap_repo = LdapRepository()
+            attrs = ldap_repo.read_attrs(
+                ldap_sync.ldap_dn,
+                ['sAMAccountName', 'userPrincipalName', 'displayName']
+            )
+            
+            if not attrs or not attrs.get('sAMAccountName'):
+                return Response(
+                    {"detail": "Не удалось получить LDAP информацию"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            return Response({
+                "sAMAccountName": attrs.get('sAMAccountName'),
+                "userPrincipalName": attrs.get('userPrincipalName'),
+                "displayName": attrs.get('displayName'),
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error fetching LDAP info for employee {emp.id}: {e}", exc_info=True)
+            return Response(
+                {"detail": f"Ошибка при запросе LDAP информации: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=["get"], url_path="export-excel")
     def export_excel(self, request):

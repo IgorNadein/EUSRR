@@ -1,0 +1,115 @@
+// =============================================================================
+// LDAP Login Field Component
+// =============================================================================
+// Скрытое поле с LDAP логином для админов/HR
+// Использует blur-эффект и раскрывается по клику
+
+.ldap-login-field {
+  margin: var(--space-2) 0;
+  text-align: center;
+  
+  .ldap-login-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    background: var(--color-surface-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    
+    &:hover {
+      background: var(--color-surface-tertiary);
+      border-color: var(--color-primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    &:active {
+      transform: translateY(0);
+    }
+    
+    .ldap-icon {
+      font-size: 1rem;
+      transition: transform 0.3s ease;
+    }
+    
+    .ldap-login-text {
+      letter-spacing: 2px;
+      transition: filter 0.5s ease, letter-spacing 0.5s ease;
+      
+      &.blurred {
+        filter: blur(6px);
+        user-select: none;
+      }
+      
+      &.revealed {
+        filter: blur(0);
+        letter-spacing: normal;
+        color: var(--color-primary);
+        font-weight: 500;
+      }
+    }
+  }
+  
+  // Состояние загрузки
+  &.loading {
+    .ldap-login-toggle {
+      pointer-events: none;
+      opacity: 0.7;
+      
+      .ldap-icon {
+        animation: spin 1s linear infinite;
+      }
+    }
+  }
+  
+  // Состояние ошибки
+  &.error {
+    .ldap-login-toggle {
+      border-color: var(--color-danger);
+      background: rgba(var(--bs-danger-rgb), 0.1);
+    }
+  }
+  
+  // Раскрытое состояние
+  &.revealed {
+    .ldap-login-toggle {
+      border-color: var(--color-success);
+      background: rgba(var(--bs-success-rgb), 0.05);
+      
+      .ldap-icon {
+        transform: scale(1.1);
+      }
+    }
+  }
+}
+
+// Анимация вращения для загрузки
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Темная тема
+@media (prefers-color-scheme: dark) {
+  .ldap-login-field {
+    .ldap-login-toggle {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.1);
+      
+      &:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: var(--color-primary);
+      }
+    }
+  }
+}

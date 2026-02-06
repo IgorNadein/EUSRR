@@ -11,8 +11,11 @@
   import { initEmployeeForm } from '{% static "js/components/employeeFormHandler.js" %}';
   import { smoothScrollTo } from '{% static "js/utils/scroll.js" %}';
   import { initEmployeeProfile } from '{% static "js/components/employeeProfile.js" %}';
+  import { initLdapLoginFields } from '{% static "js/components/ldapLoginField.js" %}';
 
   document.addEventListener('DOMContentLoaded', () => {
+    // Инициализация LDAP login полей
+    initLdapLoginFields();
     // 0. Загрузка данных профиля через AJAX (аватар и посты с правильными URL)
     const employeeId = '{{ emp.id }}';
     if (employeeId) {
