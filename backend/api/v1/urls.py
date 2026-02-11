@@ -1,22 +1,18 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .calendar.views import (
-    CalendarEventsViewSet,
-    CalendarViewSet,
-    CalendarSubscriptionViewSet,
-)
-from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
-                              EmployeeActionViewSet, EmployeeViewSet,
-                              GroupViewSet, PositionViewSet,
-                              RegisterAPIView, ResendEmailAPIView,
-                              SkillViewSet, VerifyEmailAPIView)
-from .feed.views import CommentViewSet, PostViewSet
-from .documents.views import DocumentViewSet
-from .requests_app.views import RequestViewSet
-
+from .calendar.views import (CalendarEventsViewSet,
+                             CalendarSubscriptionViewSet, CalendarViewSet)
 # Communications ViewSets
 from .communications.views import ChatViewSet, MessageViewSet, PollViewSet
+from .documents.views import DocumentViewSet
+from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
+                              EmployeeActionViewSet, EmployeeViewSet,
+                              GroupViewSet, PositionViewSet, RegisterAPIView,
+                              ResendEmailAPIView, SkillViewSet,
+                              VerifyEmailAPIView)
+from .feed.views import CommentViewSet, PostViewSet
+from .requests_app.views import RequestViewSet
 
 app_name = "v1"
 
@@ -54,7 +50,9 @@ router.register(r"groups", GroupViewSet, basename="groups")
 
 # NEW: Communications ViewSets
 router.register(r"communications/chats", ChatViewSet, basename="chats")
-router.register(r"communications/messages", MessageViewSet, basename="messages")
+router.register(
+    r"communications/messages", MessageViewSet, basename="messages"
+)
 router.register(r"communications/polls", PollViewSet, basename="polls")
 
 
@@ -70,10 +68,10 @@ urlpatterns = [
         VerifyEmailAPIView.as_view(),
         name="verify-email",
     ),
-    
+
     # Notifications API
     path("notifications/", include("api.v1.notifications.urls")),
-    
+
     # Router URLs (включая все ViewSets)
     path("", include(router.urls)),
 ]
