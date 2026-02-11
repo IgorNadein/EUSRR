@@ -180,10 +180,19 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
   });
 
   // Привязываем кнопку создания календаря к модальному окну
-  const createCalendarBtn = document.querySelector('[data-bs-target="#calendarManageModal"]');
+  const createCalendarBtn = document.querySelector('[data-action="create-calendar"]');
   if (createCalendarBtn && manageModalInstance) {
     createCalendarBtn.addEventListener('click', () => {
       manageModalInstance.openForCreate();
+    });
+  }
+
+  // Обрабатываем событие редактирования календаря из списка
+  if (manageModalInstance) {
+    document.addEventListener('calendar:edit', (e) => {
+      const calendar = e.detail;
+      console.log('[CalendarIntegration] Edit calendar requested:', calendar);
+      manageModalInstance.openForEdit(calendar.id);
     });
   }
 
