@@ -1087,6 +1087,7 @@ export function initCalendarWidget(options = {}) {
         info.event.extendedProps?.color ||
         "#0d6efd";
       const calendarColor = info.event.extendedProps?.calendar_color || null;
+      const recurrence = info.event.extendedProps?.recurrence || null;
 
       // Применяем современный стиль с двойным цветом
       const eventEl = info.el;
