@@ -1331,6 +1331,9 @@ export function initCalendarWidget(options = {}) {
       updateWeekLists();
     } catch (err) {
       console.error('Create event error', err);
+      console.error('Payload sent:', payload);
+      console.error('Response data:', err?.data);
+      
       if (err && err.status === 403) {
         const where = state?.type === 'dept' ? `отделе «${currentDeptLabel()}»` : 'компании';
         alert(
@@ -1339,6 +1342,24 @@ export function initCalendarWidget(options = {}) {
             '.\n' +
             'Попросите руководителя назначить вам роль «Управлять календарём отдела».'
         );
+      } else if (err && err.status === 400) {
+        // Детальная информация о валидации
+        const errors = err?.data?.errors || err?.data;
+        const detail = err?.data?.detail || '';
+        let errorMsg = 'Ошибка валидации события:\n\n';
+        
+        if (detail) {
+          errorMsg += detail + '\n\n';
+        }
+        
+        if (typeof errors === 'object' && errors !== null) {
+          for (const [field, messages] of Object.entries(errors)) {
+            const msgs = Array.isArray(messages) ? messages : [messages];
+            errorMsg += `${field}: ${msgs.join(', ')}\n`;
+          }
+        }
+        
+        alert(errorMsg || 'Не удалось сохранить событие. Проверьте введенные данные.');
       } else {
         const detail =
           err?.data?.detail || (typeof err?.data === 'string' ? err.data : '');
