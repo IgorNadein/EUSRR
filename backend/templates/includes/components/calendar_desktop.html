@@ -6,28 +6,7 @@
       <div class="d-flex align-items-center gap-2 flex-shrink-1 min-w-0">
         <h6 class="card-title fw-semibold mb-0">Календарь</h6>
 
-        {# Выпадающий выбор: Компания / Отделы / Личный (LEGACY) #}
-        <div class="dropdown">
-          <button 
-            class="btn btn-sm btn-outline-secondary dropdown-toggle text-truncate" 
-            type="button"
-            id="calendarChooserBtn" 
-            data-bs-toggle="dropdown" 
-            aria-expanded="false"
-            style="max-width: 150px;"
-          >
-            Компания
-          </button>
-          <ul class="dropdown-menu" aria-labelledby="calendarChooserBtn" id="calendarChooserMenu">
-            <li><button class="dropdown-item" type="button" data-cal="personal">Личный</button></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><button class="dropdown-item" type="button" data-cal="company">Компания</button></li>
-            <li><hr class="dropdown-divider"></li>
-            {# пункты отделов добавим из JS по data-dept-id #}
-          </ul>
-        </div>
-
-        {# Кнопка списка календарей (NEW) #}
+        {# Кнопка списка календарей #}
         <button 
           class="btn btn-sm btn-outline-primary" 
           type="button"
@@ -35,9 +14,10 @@
           data-bs-target="#calendarListCollapse"
           aria-expanded="false" 
           aria-controls="calendarListCollapse"
-          title="Мои календари"
+          title="Список календарей"
         >
           <i class="bi-list-check"></i>
+          <span class="ms-1">Календари</span>
         </button>
       </div>
 
@@ -65,16 +45,16 @@
       </div>
     </div>
 
-    {# Список календарей (сворачиваемый) - НОВАЯ ФУНКЦИЯ #}
+    {# Список календарей (сворачиваемый) - унифицированный список legacy + новые #}
     <div class="collapse" id="calendarListCollapse">
       <div class="card-body border-bottom py-2">
         <small class="text-muted d-block mb-2">
           <i class="bi-info-circle me-1"></i>
-          Управление несколькими календарями
+          Выберите календари для отображения
         </small>
-        <div id="calendarListContainer" class="calendar-list-container" style="max-height: 200px;">
+        <div id="calendarListContainer" class="calendar-list-container" style="max-height: 250px; overflow-y: auto;">
 
-          {# Здесь будет JS-генерируемый список календарей #}
+          {# Здесь будет JS-генерируемый список календарей (legacy + новые) #}
           <div class="text-center py-3">
             <div class="spinner-border spinner-border-sm text-primary" role="status">
               <span class="visually-hidden">Загрузка...</span>

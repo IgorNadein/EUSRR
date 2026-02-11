@@ -36,24 +36,77 @@ export function initCalendarManager(options = {}) {
   let visibleCalendarIds = new Set();
 
   /**
+   * Создать псевдо-календари для legacy режима
+   * @returns {Array} Legacy календари
+   */
+  function createLegacyCalendars() {
+    const legacyCalendars = [
+      {
+        id: 'legacy-company',
+        title: 'Компания',
+        description: 'Корпоративные события',
+        color: '#dc3545',
+        calendar_type: 'company',
+        is_legacy: true,
+        is_global: true,
+        user_can_edit: false,
+        user_can_view: true,
+        is_subscribed: true
+      },
+      {
+        id: 'legacy-personal',
+        title: 'Личный календарь',
+        description: 'Мои личные события',
+        color: '#0d6efd',
+        calendar_type: 'personal',
+        is_legacy: true,
+        is_personal: true,
+        user_can_edit: true,
+        user_can_view: true,
+        is_subscribed: true
+      }
+    ];
+    
+    // Добавить календари отделов
+    const deptIds = window.calendarWidget?.getDepartments?.() || [];
+    deptIds.forEach((deptId, index) => {
+      legacyCalendars.push({
+        id: `legacy-dept-${deptId}`,
+        title: `Отдел ${deptId}`,
+        description: 'События отдела',
+        color: '#198754',
+        calendar_type: 'department',
+        department_id: deptId,
+        is_legacy: true,
+        is_department: true,
+        user_can_edit: false,
+        user_can_view: true,
+        is_subscribed: true
+      });
+    });
+    
+    return legacyCalendars;
+  }
+
+  /**
    * Загрузить список календарей
    */
   async function loadCalendars() {
     try {
-      calendars = await getMyCalendars();
+      // Загрузить новые Calendar записи
+      const newCalendars = await getMyCalendars();
       
-      // Если календарей нет - не обновляем состояние (используем legacy режим)
-      if (calendars.length === 0) {
-        console.log('[CalendarManager] No calendars found, keeping legacy mode');
-        container.innerHTML = `
-          <div class="text-center text-muted py-3">
-            <i class="bi-calendar-x mb-2" style="font-size: 2rem;"></i>
-            <p class="mb-0">Календари не настроены</p>
-            <small>События отображаются в классическом режиме</small>
-          </div>
-        `;
-        return;
-      }
+      // Добавить legacy календари
+      const legacyCalendars = createLegacyCalendars();
+      
+      // Объединить оба списка
+      calendars = [...legacyCalendars, ...newCalendars];
+      
+      console.log('[CalendarManager] Loaded calendars:', {
+        legacy: legacyCalendars.length,
+        new: newCalendars.length,
+        total: calendars.length
+      });
       
       // По умолчанию все календари видимы
       visibleCalendarIds = new Set(calendars.map(cal => cal.id));
