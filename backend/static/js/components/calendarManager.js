@@ -42,6 +42,19 @@ export function initCalendarManager(options = {}) {
     try {
       calendars = await getMyCalendars();
       
+      // Если календарей нет - не обновляем состояние (используем legacy режим)
+      if (calendars.length === 0) {
+        console.log('[CalendarManager] No calendars found, keeping legacy mode');
+        container.innerHTML = `
+          <div class="text-center text-muted py-3">
+            <i class="bi-calendar-x mb-2" style="font-size: 2rem;"></i>
+            <p class="mb-0">Календари не настроены</p>
+            <small>События отображаются в классическом режиме</small>
+          </div>
+        `;
+        return;
+      }
+      
       // По умолчанию все календари видимы
       visibleCalendarIds = new Set(calendars.map(cal => cal.id));
       
