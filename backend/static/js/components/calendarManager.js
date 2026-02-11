@@ -7,8 +7,8 @@ import {
   getMyCalendars,
   subscribeToCalendar,
   unsubscribeFromCalendar,
-  invalidateCalendarsCache
-} from '../api/calendarsApi.js';
+  invalidateCalendarsCache,
+} from "../api/calendarsApi.js";
 
 /**
  * Инициализация менеджера календарей
@@ -20,9 +20,9 @@ import {
  */
 export function initCalendarManager(options = {}) {
   const {
-    containerId = 'calendarListContainer',
+    containerId = "calendarListContainer",
     onCalendarToggle = () => {},
-    onCalendarsChange = () => {}
+    onCalendarsChange = () => {},
   } = options;
 
   const container = document.getElementById(containerId);
@@ -42,58 +42,58 @@ export function initCalendarManager(options = {}) {
   function createLegacyCalendars() {
     const legacyCalendars = [
       {
-        id: 'legacy-company',
-        title: 'Компания',
-        description: 'Корпоративные события',
-        color: '#dc3545',
-        calendar_type: 'company',
+        id: "legacy-company",
+        title: "Компания",
+        description: "Корпоративные события",
+        color: "#dc3545",
+        calendar_type: "company",
         is_legacy: true,
         is_global: true,
         user_can_edit: false,
         user_can_view: true,
-        is_subscribed: true
+        is_subscribed: true,
       },
       {
-        id: 'legacy-personal',
-        title: 'Личный календарь',
-        description: 'Мои личные события',
-        color: '#0d6efd',
-        calendar_type: 'personal',
+        id: "legacy-personal",
+        title: "Личный календарь",
+        description: "Мои личные события",
+        color: "#0d6efd",
+        calendar_type: "personal",
         is_legacy: true,
         is_personal: true,
         user_can_edit: true,
         user_can_view: true,
-        is_subscribed: true
-      }
+        is_subscribed: true,
+      },
     ];
-    
+
     // Добавить календари отделов из calendarWidget
     const deptObjects = window.calendarWidget?.getDepartments?.() || [];
-    console.log('[CalendarManager] Department objects:', deptObjects);
-    
+    console.log("[CalendarManager] Department objects:", deptObjects);
+
     deptObjects.forEach((dept) => {
       const deptId = dept?.id || dept?.pk || dept?.department_id;
       if (!deptId) {
-        console.warn('[CalendarManager] Department object missing ID:', dept);
+        console.warn("[CalendarManager] Department object missing ID:", dept);
         return;
       }
-      
+
       legacyCalendars.push({
         id: `legacy-dept-${deptId}`,
         title: dept.name || `Отдел ${deptId}`,
-        description: 'События отдела',
-        color: '#198754',
-        calendar_type: 'department',
+        description: "События отдела",
+        color: "#198754",
+        calendar_type: "department",
         department_id: parseInt(deptId, 10),
         is_legacy: true,
         is_department: true,
         user_can_edit: false,
         user_can_view: true,
-        is_subscribed: true
+        is_subscribed: true,
       });
     });
-    
-    console.log('[CalendarManager] Created legacy calendars:', legacyCalendars);
+
+    console.log("[CalendarManager] Created legacy calendars:", legacyCalendars);
     return legacyCalendars;
   }
 
@@ -104,33 +104,36 @@ export function initCalendarManager(options = {}) {
     try {
       // Загрузить новые Calendar записи
       const newCalendars = await getMyCalendars();
-      
+
       // Добавить legacy календари
       const legacyCalendars = createLegacyCalendars();
-      
+
       // Объединить оба списка
       calendars = [...legacyCalendars, ...newCalendars];
-      
-      console.log('[CalendarManager] Loaded calendars:', {
+
+      console.log("[CalendarManager] Loaded calendars:", {
         legacy: legacyCalendars.length,
         new: newCalendars.length,
         total: calendars.length,
-        calendarIds: calendars.map(c => ({ id: c.id, title: c.title }))
+        calendarIds: calendars.map((c) => ({ id: c.id, title: c.title })),
       });
-      
+
       // По умолчанию все календари видимы (фильтруем null/undefined)
       visibleCalendarIds = new Set(
         calendars
-          .map(cal => cal.id)
-          .filter(id => id !== null && id !== undefined)
+          .map((cal) => cal.id)
+          .filter((id) => id !== null && id !== undefined),
       );
-      
-      console.log('[CalendarManager] Visible calendar IDs:', Array.from(visibleCalendarIds));
-      
+
+      console.log(
+        "[CalendarManager] Visible calendar IDs:",
+        Array.from(visibleCalendarIds),
+      );
+
       render();
       onCalendarsChange(calendars, Array.from(visibleCalendarIds));
     } catch (error) {
-      console.error('[CalendarManager] Failed to load calendars:', error);
+      console.error("[CalendarManager] Failed to load calendars:", error);
       container.innerHTML = `
         <div class="alert alert-danger alert-sm">
           <i class="bi-exclamation-triangle me-2"></i>
@@ -150,7 +153,7 @@ export function initCalendarManager(options = {}) {
     } else {
       visibleCalendarIds.add(calendarId);
     }
-    
+
     render();
     onCalendarToggle(calendarId, visibleCalendarIds.has(calendarId));
   }
@@ -164,8 +167,8 @@ export function initCalendarManager(options = {}) {
       await subscribeToCalendar(calendarId);
       await loadCalendars(); // Перезагрузить список
     } catch (error) {
-      console.error('[CalendarManager] Subscribe failed:', error);
-      alert('Не удалось подписаться на календарь');
+      console.error("[CalendarManager] Subscribe failed:", error);
+      alert("Не удалось подписаться на календарь");
     }
   }
 
@@ -174,14 +177,14 @@ export function initCalendarManager(options = {}) {
    * @param {number} calendarId
    */
   async function unsubscribe(calendarId) {
-    if (!confirm('Отписаться от этого календаря?')) return;
-    
+    if (!confirm("Отписаться от этого календаря?")) return;
+
     try {
       await unsubscribeFromCalendar(calendarId);
       await loadCalendars(); // Перезагрузить список
     } catch (error) {
-      console.error('[CalendarManager] Unsubscribe failed:', error);
-      alert('Не удалось отписаться от календаря');
+      console.error("[CalendarManager] Unsubscribe failed:", error);
+      alert("Не удалось отписаться от календаря");
     }
   }
 
@@ -214,7 +217,7 @@ export function initCalendarManager(options = {}) {
     } else if (calendar.is_global) {
       return `<span class="badge bg-primary-subtle text-primary-emphasis rounded-pill ms-auto">Общий</span>`;
     }
-    return '';
+    return "";
   }
 
   /**
@@ -231,19 +234,20 @@ export function initCalendarManager(options = {}) {
       return;
     }
 
-    const html = calendars.map(calendar => {
-      const isVisible = visibleCalendarIds.has(calendar.id);
-      const canEdit = calendar.user_can_edit;
-      const isSubscribed = calendar.is_subscribed;
-      
-      return `
+    const html = calendars
+      .map((calendar) => {
+        const isVisible = visibleCalendarIds.has(calendar.id);
+        const canEdit = calendar.user_can_edit;
+        const isSubscribed = calendar.is_subscribed;
+
+        return `
         <div class="calendar-list-item" data-calendar-id="${calendar.id}">
           <div class="form-check">
-            <input 
-              class="form-check-input calendar-visibility-toggle" 
-              type="checkbox" 
+            <input
+              class="form-check-input calendar-visibility-toggle"
+              type="checkbox"
               id="cal_${calendar.id}"
-              ${isVisible ? 'checked' : ''}
+              ${isVisible ? "checked" : ""}
               data-calendar-id="${calendar.id}"
             >
             <label class="form-check-label d-flex align-items-center gap-2 w-100" for="cal_${calendar.id}">
@@ -253,39 +257,48 @@ export function initCalendarManager(options = {}) {
               ${getOwnerBadge(calendar)}
             </label>
           </div>
-          
+
           <div class="calendar-list-item-actions">
-            ${canEdit ? `
-              <button 
-                class="btn btn-sm btn-outline-secondary calendar-edit-btn" 
+            ${
+              canEdit
+                ? `
+              <button
+                class="btn btn-sm btn-outline-secondary calendar-edit-btn"
                 data-calendar-id="${calendar.id}"
                 title="Редактировать"
               >
                 <i class="bi-pencil"></i>
               </button>
-            ` : ''}
-            
-            ${!isSubscribed ? `
-              <button 
-                class="btn btn-sm btn-outline-primary calendar-subscribe-btn" 
+            `
+                : ""
+            }
+
+            ${
+              !isSubscribed
+                ? `
+              <button
+                class="btn btn-sm btn-outline-primary calendar-subscribe-btn"
                 data-calendar-id="${calendar.id}"
                 title="Подписаться"
               >
                 <i class="bi-plus-lg"></i>
               </button>
-            ` : `
-              <button 
-                class="btn btn-sm btn-outline-danger calendar-unsubscribe-btn" 
+            `
+                : `
+              <button
+                class="btn btn-sm btn-outline-danger calendar-unsubscribe-btn"
                 data-calendar-id="${calendar.id}"
                 title="Отписаться"
               >
                 <i class="bi-dash-lg"></i>
               </button>
-            `}
+            `
+            }
           </div>
         </div>
       `;
-    }).join('');
+      })
+      .join("");
 
     container.innerHTML = html;
     attachEventListeners();
@@ -296,37 +309,48 @@ export function initCalendarManager(options = {}) {
    */
   function attachEventListeners() {
     // Переключение видимости
-    container.querySelectorAll('.calendar-visibility-toggle').forEach(checkbox => {
-      checkbox.addEventListener('change', (e) => {
-        const calendarId = parseInt(e.target.dataset.calendarId);
-        toggleCalendarVisibility(calendarId);
+    container
+      .querySelectorAll(".calendar-visibility-toggle")
+      .forEach((checkbox) => {
+        checkbox.addEventListener("change", (e) => {
+          // НЕ парсим ID - он может быть строкой (legacy) или числом (новые календари)
+          const calendarId = e.target.dataset.calendarId;
+          // Конвертируем в число ТОЛЬКО если это число
+          const id = /^\d+$/.test(calendarId) ? parseInt(calendarId, 10) : calendarId;
+          toggleCalendarVisibility(id);
+        });
+      });
+
+    // Подписка (только для новых календарей с числовым ID)
+    container.querySelectorAll(".calendar-subscribe-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const calendarId = parseInt(e.currentTarget.dataset.calendarId, 10);
+        if (!isNaN(calendarId)) {
+          subscribe(calendarId);
+        }
       });
     });
 
-    // Подписка
-    container.querySelectorAll('.calendar-subscribe-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const calendarId = parseInt(e.currentTarget.dataset.calendarId);
-        subscribe(calendarId);
-      });
-    });
-
-    // Отписка
-    container.querySelectorAll('.calendar-unsubscribe-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const calendarId = parseInt(e.currentTarget.dataset.calendarId);
-        unsubscribe(calendarId);
+    // Отписка (только для новых календарей с числовым ID)
+    container.querySelectorAll(".calendar-unsubscribe-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const calendarId = parseInt(e.currentTarget.dataset.calendarId, 10);
+        if (!isNaN(calendarId)) {
+          unsubscribe(calendarId);
+        }
       });
     });
 
     // Редактирование (делегируем наверх)
-    container.querySelectorAll('.calendar-edit-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const calendarId = parseInt(e.currentTarget.dataset.calendarId);
-        const calendar = calendars.find(c => c.id === calendarId);
+    container.querySelectorAll(".calendar-edit-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const calendarId = parseInt(e.currentTarget.dataset.calendarId, 10);
+        const calendar = calendars.find((c) => c.id === calendarId);
         if (calendar) {
           // Dispatch custom event для открытия модального окна
-          document.dispatchEvent(new CustomEvent('calendar:edit', { detail: calendar }));
+          document.dispatchEvent(
+            new CustomEvent("calendar:edit", { detail: calendar }),
+          );
         }
       });
     });
@@ -366,6 +390,6 @@ export function initCalendarManager(options = {}) {
     refresh,
     getVisibleCalendarIds,
     setVisibleCalendars,
-    loadCalendars
+    loadCalendars,
   };
 }
