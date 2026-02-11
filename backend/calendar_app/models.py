@@ -48,7 +48,7 @@ class CalendarManager(models.Manager):
         q |= Q(owner_user=user, is_active=True)
         
         # Календари отделов, где пользователь член
-        user_departments = user.employee_departments.filter(
+        user_departments = user.departments_links.filter(
             is_active=True
         ).values_list("department_id", flat=True)
         
@@ -217,7 +217,7 @@ class Calendar(models.Model):
         # Календарь отдела
         if self.visibility == CalendarVisibility.DEPARTMENT and self.owner_department_id:
             # Проверяем, является ли пользователь членом отдела
-            return user.employee_departments.filter(
+            return user.departments_links.filter(
                 department_id=self.owner_department_id,
                 is_active=True
             ).exists()

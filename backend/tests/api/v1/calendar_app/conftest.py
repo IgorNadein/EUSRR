@@ -100,162 +100,33 @@ def Department() -> Optional[Type[models.Model]]:
     except LookupError:
         return None
 
-@pytest.fixture
-def make_user() -> callable:
-    """Фабрика пользователей, совместимая с кастомной моделью, где телефон обязателен.
 
-    По умолчанию:
-      - задаёт уникальный email;
-      - автоматически подставляет телефон в найденное поле;
-      - при необходимости выставляет флаги is_staff/is_superuser.
+
+@pytest.fixture
+def Calendar() -> Optional[Type[models.Model]]:
+    """Модель календаря.
 
     Returns:
-        Callable[..., models.Model]: Функция создания пользователя.
+        Optional[Type[models.Model]]: calendar_app.Calendar или None, если нет.
     """
-    User = get_user_model()
-    phone_field = _detect_phone_field(User)
+    try:
+        return django_apps.get_model("calendar_app", "Calendar")
+    except LookupError:
+        return None
 
-    def _make_user(
-        email: str = "user@example.com",
-        *,
-        is_staff: bool = False,
-        is_superuser: bool = False,
-        password: str = "pass",
-        phone: str | None = None,
-        **extra: object,
-    ) -> models.Model:
-        """Создаёт пользователя.
-
-        Args:
-            email (str): Email пользователя.
-            is_staff (bool): Признак персонала админки.
-            is_superuser (bool): Признак суперпользователя.
-            password (str): Пароль.
-            phone (str | None): Номер телефона; если не задан — сгенерируется автоматически.
-            **extra (object): Доп. поля, будут переданы в create_user.
-
-        Raises:
-            ValueError: Если у модели обязателен телефон, но поле не найдено.
-        """
-        kwargs: dict[str, object] = {"email": email, **extra}
-
-        # Если у модели есть поле телефона — заполняем.
-        if phone_field:
-            kwargs[phone_field] = phone or _next_ru_phone()
-        else:
-            # Если менеджер требует телефон, но поля мы не нашли — подскажем явно.
-            # (На практике сюда не дойдём, т.к. get_field выше обнаружит нужное поле)
-            if phone is not None:
-                kwargs["phone"] = (
-                    phone  # на случай, если менеджер принимает phone через **extra
-                )
-            # Иначе оставим как есть — если менеджер всё равно потребует, тест покажет точное поле.
-
-        # Создаём обычного пользователя и затем поднимем флаги (надёжнее, чем вызывать create_superuser)
-        user = User.objects.create_user(**kwargs)  # type: ignore[arg-type]
-        if password:
-            user.set_password(password)
-        if is_staff:
-            user.is_staff = True
-        if is_superuser:
-            user.is_superuser = True
-        user.save()
-        return user
-
-    return _make_user
 
 @pytest.fixture
-def admin_user(make_user) -> models.Model:
-    """Администратор (superuser)."""
-    return make_user("admin@example.com", is_staff=True, is_superuser=True)
-
-@pytest.fixture
-def regular_user(make_user) -> models.Model:
-    """Обычный пользователь без спецправ."""
-    return make_user("regular@example.com")
-
-@pytest.fixture
-def dept_manager_user(make_user) -> models.Model:
-    """Пользователь, которому потом выдадим право manage_department_events."""
-    return make_user("manager@example.com")
-
-@pytest.fixture
-def give_manage_calendar_perm(db) -> Callable[[DjangoModel, DjangoModel], None]:
-    """Возвращает функцию, которая назначает пользователю ролевое право управления календарём в указанном отделе.
-
-    Args:
-        db: Стандартная фикстура pytest-django для доступа к БД.
+def CalendarSubscription() -> Optional[Type[models.Model]]:
+    """Модель подписки на календарь.
 
     Returns:
-        Callable[[DjangoModel, DjangoModel], None]: Функция-замыкание, принимающая (user, department).
-
-    Raises:
-        TypeError: Если переданы объекты не являются Django-моделями.
-        ValueError: Если user или department не сохранены в БД (нет pk).
-        IntegrityError: При ошибке записи в БД.
+        Optional[Type[models.Model]]: calendar_app.CalendarSubscription или None.
     """
+    try:
+        return django_apps.get_model("calendar_app", "CalendarSubscription")
+    except LookupError:
+        return None
 
-    def _grant(user: DjangoModel, department: DjangoModel) -> None:
-        """Назначает пользователю роль с правом DeptPerm.MANAGE_CALENDAR в указанном отделе.
-
-        Args:
-            user (DjangoModel): Сотрудник, которому выдаётся право (ваша модель пользователя/Employee).
-            department (DjangoModel): Отдел, в котором выдаётся право.
-
-        Raises:
-            TypeError: Если объекты не наследуются от django.db.models.Model.
-            ValueError: Если объекты не имеют первичных ключей.
-            IntegrityError: Если нарушены ограничения БД при сохранении.
-        """
-        if not isinstance(user, DjangoModel) or not isinstance(department, DjangoModel):
-            raise TypeError("Ожидаются экземпляры моделей Django (user и department).")
-        if not getattr(user, "pk", None) or not getattr(department, "pk", None):
-            raise ValueError("user и department должны быть предварительно сохранены (иметь pk).")
-
-        # 1) Скоуп-пермишен отдела
-        perm, _ = DepartmentPermission.objects.get_or_create(
-            code=DeptPerm.MANAGE_CALENDAR,
-            defaults={"name": "Управлять календарём отдела"},
-        )
-
-        # 2) Роль внутри отдела
-        role, _ = DepartmentRole.objects.get_or_create(
-            department=department,
-            name="Manager",
-        )
-        role.scoped_permissions.add(perm)
-
-        # 3) Привязка сотрудника к отделу с этой ролью
-        EmployeeDepartment.objects.update_or_create(
-            employee=user,
-            department=department,
-            defaults={"role": role, "is_active": True},
-        )
-
-    return _grant
-
-@pytest.fixture
-def api_client() -> APIClient:
-    """Чистый DRF-клиент без авторизации."""
-    return APIClient()
-
-@pytest.fixture
-def auth_client() -> Callable[[models.Model], APIClient]:
-    """Создаёт авторизованный DRF-клиент.
-
-    Args:
-        user (models.Model): Пользователь.
-
-    Returns:
-        APIClient: Клиент с force_authenticate(user).
-    """
-
-    def _build(user: models.Model) -> APIClient:
-        client = APIClient()
-        client.force_authenticate(user=user)
-        return client
-
-    return _build
 
 @pytest.fixture
 def make_department(Department) -> Callable[..., models.Model]:
@@ -277,51 +148,192 @@ def make_department(Department) -> Callable[..., models.Model]:
 
     return _make_dept
 
-@pytest.fixture
-def make_event(CalendarEvent, Recurrence) -> Callable[..., models.Model]:
-    """Фабрика событий календаря.
 
-    Args:
-        CalendarEvent: Модель события.
-        Recurrence: Enum повторяемости.
+@pytest.fixture
+def give_manage_calendar_perm():
+    """Выдаёт сотруднику право управления календарём отдела."""
+    from employees.models import (DepartmentPermission, DepartmentRole,
+                                  EmployeeDepartment)
+    from employees.constants import DeptPerm
+
+    def _grant(user: models.Model, department: models.Model) -> None:
+        # Скоуп-пермишен отдела
+        perm, _ = DepartmentPermission.objects.get_or_create(
+            code=DeptPerm.MANAGE_CALENDAR,
+            defaults={"name": "Управлять календарём отдела"},
+        )
+
+        # Роль внутри отдела
+        role, _ = DepartmentRole.objects.get_or_create(
+            department=department,
+            name="Manager",
+        )
+        role.scoped_permissions.add(perm)
+
+        # Привязка сотрудника к отделу с этой ролью
+        EmployeeDepartment.objects.update_or_create(
+            employee=user,
+            department=department,
+            defaults={"role": role, "is_active": True},
+        )
+
+    return _grant
+
+
+@pytest.fixture
+def make_calendar(Calendar, User) -> Callable[..., models.Model]:
+    """Фабрика календарей.
 
     Returns:
-        Callable[..., models.Model]: Создатель событий с разумными дефолтами.
+        Callable[..., models.Model]: Создатель календарей.
+    """
+    if Calendar is None:
+        pytest.skip("calendar_app.Calendar отсутствует в проекте")
+
+    def _make(
+        *,
+        title: str = "Test Calendar",
+        description: str = "",
+        color: str = "#0d6efd",
+        icon: str = "",
+        owner_user: Optional[models.Model] = None,
+        owner_department: Optional[models.Model] = None,
+        visibility: str = "public",
+        default_can_edit: bool = False,
+        auto_subscribe_new_users: bool = False,
+        auto_subscribe_department_members: bool = False,
+        is_active: bool = True,
+        created_by: Optional[models.Model] = None,
+    ) -> models.Model:
+        return Calendar.objects.create(
+            title=title,
+            description=description,
+            color=color,
+            icon=icon,
+            owner_user=owner_user,
+            owner_department=owner_department,
+            visibility=visibility,
+            default_can_edit=default_can_edit,
+            auto_subscribe_new_users=auto_subscribe_new_users,
+            auto_subscribe_department_members=auto_subscribe_department_members,
+            is_active=is_active,
+            created_by=created_by,
+        )
+
+    return _make
+
+
+@pytest.fixture
+def make_subscription(CalendarSubscription) -> Callable[..., models.Model]:
+    """Фабрика подписок на календари.
+
+    Returns:
+        Callable[..., models.Model]: Создатель подписок.
+    """
+    if CalendarSubscription is None:
+        pytest.skip("calendar_app.CalendarSubscription отсутствует в проекте")
+
+    def _make(
+        *,
+        calendar: models.Model,
+        user: models.Model,
+        can_edit: bool = False,
+        can_manage: bool = False,
+        is_visible: bool = True,
+        color_override: Optional[str] = None,
+    ) -> models.Model:
+        return CalendarSubscription.objects.create(
+            calendar=calendar,
+            user=user,
+            can_edit=can_edit,
+            can_manage=can_manage,
+            is_visible=is_visible,
+            color_override=color_override,
+        )
+
+    return _make
+
+
+@pytest.fixture
+def make_user(User) -> Callable[..., models.Model]:
+    """Фабрика пользователей.
+
+    Returns:
+        Callable[..., models.Model]: Создатель пользователей.
     """
 
     def _make(
         *,
-        title: str = "Событие",
-        department: Optional[models.Model] = None,
-        start_date: date = date(2025, 1, 10),
-        end_date: Optional[date] = None,
-        start_time: Optional[time] = None,
-        end_time: Optional[time] = None,
-        all_day: bool = True,
-        recurrence: str = "one_time",
-        recurrence_interval: int = 1,
-        weekdays_mask: Optional[int] = None,
-        recurrence_until: Optional[date] = None,
-        recurrence_count: Optional[int] = None,
-        color: str = "",
-        location: str = "",
+        username: str,
+        email: Optional[str] = None,
+        password: str = "testpass123",
+        is_staff: bool = False,
+        is_superuser: bool = False,
     ) -> models.Model:
-        obj = CalendarEvent.objects.create(
-            title=title,
-            department=department,
-            start_date=start_date,
-            end_date=end_date,
-            start_time=start_time,
-            end_time=end_time,
-            all_day=all_day,
-            recurrence=recurrence or Recurrence.ONE_TIME,  # type: ignore[attr-defined]
-            recurrence_interval=recurrence_interval,
-            weekdays_mask=weekdays_mask,
-            recurrence_until=recurrence_until,
-            recurrence_count=recurrence_count,
-            color=color,
-            location=location,
-        )
-        return obj
+        phone_field = _detect_phone_field(User)
+        phone = _next_ru_phone() if phone_field else None
+        
+        user_data = {
+            "username": username,
+            "email": email or f"{username}@test.com",
+            "is_staff": is_staff,
+            "is_superuser": is_superuser,
+        }
+        
+        if phone_field and phone:
+            user_data[phone_field] = phone
+        
+        user = User.objects.create_user(**user_data)
+        user.set_password(password)
+        user.save()
+        return user
 
     return _make
+
+
+@pytest.fixture
+def api_client() -> APIClient:
+    """Чистый DRF-клиент без авторизации."""
+    return APIClient()
+
+
+@pytest.fixture
+def auth_client() -> Callable[[models.Model], APIClient]:
+    """Создаёт авторизованный DRF-клиент.
+
+    Args:
+        user (models.Model): Пользователь.
+
+    Returns:
+        APIClient: Клиент с force_authenticate(user).
+    """
+
+    def _build(user: models.Model) -> APIClient:
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    return _build
+
+
+@pytest.fixture
+def regular_user(make_user) -> models.Model:
+    """Обычный пользователь без спецправ."""
+    return make_user(username="regular", email="regular@example.com")
+
+
+@pytest.fixture
+def admin_user(make_user) -> models.Model:
+    """Пользователь с правами администратора."""
+    return make_user(
+        username="admin",
+        email="admin@example.com",
+        is_staff=True,
+        is_superuser=True
+    )
+
+
+@pytest.fixture
+def dept_manager_user(make_user) -> models.Model:
+    """Пользователь - менеджер отдела."""
+    return make_user(username="dept_manager", email="dept_manager@example.com")
