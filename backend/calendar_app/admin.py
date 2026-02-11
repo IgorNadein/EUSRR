@@ -9,7 +9,12 @@ from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from .models import CalendarEvent, Recurrence
+from .admin_calendar import CalendarAdmin  # noqa: F401
+from .admin_subscription import (  # noqa: F401
+    CalendarSubscriptionAdmin,
+    CalendarSubscriptionInline,
+)
+from .models import Calendar, CalendarEvent, CalendarSubscription, Recurrence
 
 
 class ScopeListFilter(admin.SimpleListFilter):
@@ -85,6 +90,7 @@ class CalendarEventAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "title",
+        "calendar_display",
         "scope_display",
         "start_date",
         "end_date",
@@ -96,36 +102,49 @@ class CalendarEventAdmin(admin.ModelAdmin):
         "created_by",
         "created_at",
     )
-    list_select_related = ("department", "created_by")
+    list_select_related = ("calendar", "department", "employee", "created_by")
     list_per_page = 50
-    ordering = ("department_id", "start_date", "start_time")
+    ordering = ("start_date", "start_time")
 
     # ===== Поиск/Фильтры/Иерархия =====
     search_fields = (
         "title",
         "description",
         "location",
+        "calendar__title",
         "department__name",
         "department__title",
         "department__code",
+        "employee__username",
+        "employee__first_name",
+        "employee__last_name",
     )
     list_filter = (
+        "calendar",
         "department",
         "recurrence",
         "all_day",
         ("start_date", admin.DateFieldListFilter),
         ("created_at", admin.DateFieldListFilter),
-        HasTimeListFilter,   # <— ПЕРЕДАЁМ КЛАСС, НЕ СТРОКУ
-        ScopeListFilter,     # <— ПЕРЕДАЁМ КЛАСС, НЕ СТРОКУ
+        HasTimeListFilter,
+        ScopeListFilter,
     )
     date_hierarchy = "start_date"
 
     # ===== Поля формы =====
     readonly_fields = ("created_at",)
-    raw_id_fields = ("department", "created_by")
+    raw_id_fields = ("calendar", "department", "employee", "created_by")
     fieldsets = (
-        (_("Основное"), {
-            "fields": ("title", "description", "department", "location"),
+        (_("Календарь"), {
+            "fields": ("calendar",),
+            "description": _(
+                "Если указан календарь, поля department и employee "
+                "игнорируются (новый режим)"
+            ),
+        }),
+        (_("Основное (LEGACY)"), {
+            "fields": ("title", "description", "department", "employee", "location"),
+            "description": _("Department/Employee используются только если calendar=NULL"),
         }),
         (_("Даты и время"), {
             "fields": (
@@ -145,9 +164,16 @@ class CalendarEventAdmin(admin.ModelAdmin):
     # ===== Экшены =====
     actions = ("make_all_day", "clear_time", "set_annual", "set_one_time")
 
-    @admin.display(description=_("Область"), ordering="department_id")
+    @admin.display(description=_("Календарь"), ordering="calendar__title")
+    def calendar_display(self, obj: CalendarEvent) -> str:
+        """Возвращает название календаря или '—'."""
+        if obj.calendar:
+            return str(obj.calendar)
+        return "—"
+
+    @admin.display(description=_("Область (LEGACY)"), ordering="department_id")
     def scope_display(self, obj: CalendarEvent) -> str:
-        """Возвращает 'Компания' или название отдела для строки списка.
+        """Возвращает область для legacy событий.
 
         Args:
             obj: Объект CalendarEvent.
@@ -155,7 +181,13 @@ class CalendarEventAdmin(admin.ModelAdmin):
         Returns:
             str: Человекочитаемое имя области.
         """
-        return _("Компания") if obj.department_id is None else str(obj.department)
+        if obj.calendar_id:
+            return _("→ используется Calendar")
+        if obj.employee_id:
+            return f"Личный ({obj.employee})"
+        if obj.department_id:
+            return str(obj.department)
+        return _("Компания")
 
     @admin.display(description=_("Цвет"))
     def color_swatch(self, obj: CalendarEvent) -> str:
@@ -224,3 +256,8 @@ class CalendarEventAdmin(admin.ModelAdmin):
         if not change and obj.created_by_id is None:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+
+
+# Добавляем инлайн подписок в админку календаря после импорта
+CalendarAdmin.inlines = [CalendarSubscriptionInline]
+
