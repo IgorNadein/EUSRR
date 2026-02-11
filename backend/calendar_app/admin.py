@@ -10,8 +10,8 @@ from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from .admin_calendar import CalendarAdmin  # noqa: F401
-from .admin_subscription import (  # noqa: F401
-    CalendarSubscriptionAdmin,
+from .admin_subscription import (
+    CalendarSubscriptionAdmin,  # noqa: F401
     CalendarSubscriptionInline,
 )
 from .models import Calendar, CalendarEvent, CalendarSubscription, Recurrence
@@ -24,10 +24,13 @@ class ScopeListFilter(admin.SimpleListFilter):
         - 'company' → department IS NULL
         - 'dept'    → department IS NOT NULL
     """
+
     title = _("Область")
     parameter_name = "scope"
 
-    def lookups(self, request: HttpRequest, model_admin: admin.ModelAdmin) -> Iterable[tuple[str, str]]:
+    def lookups(
+        self, request: HttpRequest, model_admin: admin.ModelAdmin
+    ) -> Iterable[tuple[str, str]]:
         """Возвращает варианты выбора фильтра.
 
         Args:
@@ -62,10 +65,13 @@ class ScopeListFilter(admin.SimpleListFilter):
 
 class HasTimeListFilter(admin.SimpleListFilter):
     """Фильтр наличия времени у события (есть оба time или нет ни одного)."""
+
     title = _("Есть время")
     parameter_name = "has_time"
 
-    def lookups(self, request: HttpRequest, model_admin: admin.ModelAdmin) -> Iterable[tuple[str, str]]:
+    def lookups(
+        self, request: HttpRequest, model_admin: admin.ModelAdmin
+    ) -> Iterable[tuple[str, str]]:
         """Опции фильтра (Да/Нет)."""
         return (
             ("yes", _("Да")),
@@ -135,30 +141,53 @@ class CalendarEventAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at",)
     raw_id_fields = ("calendar", "department", "employee", "created_by")
     fieldsets = (
-        (_("Календарь"), {
-            "fields": ("calendar",),
-            "description": _(
-                "Если указан календарь, поля department и employee "
-                "игнорируются (новый режим)"
-            ),
-        }),
-        (_("Основное (LEGACY)"), {
-            "fields": ("title", "description", "department", "employee", "location"),
-            "description": _("Department/Employee используются только если calendar=NULL"),
-        }),
-        (_("Даты и время"), {
-            "fields": (
-                ("start_date", "end_date"),
-                ("start_time", "end_time"),
-                "all_day",
-            ),
-        }),
-        (_("Отображение"), {
-            "fields": ("recurrence", "color"),
-        }),
-        (_("Служебное"), {
-            "fields": ("created_by", "created_at"),
-        }),
+        (
+            _("Календарь"),
+            {
+                "fields": ("calendar",),
+                "description": _(
+                    "Если указан календарь, поля department и employee "
+                    "игнорируются (новый режим)"
+                ),
+            },
+        ),
+        (
+            _("Основное (LEGACY)"),
+            {
+                "fields": (
+                    "title",
+                    "description",
+                    "department",
+                    "employee",
+                    "location",
+                ),
+                "description": _(
+                    "Department/Employee используются только если calendar=NULL"
+                ),
+            },
+        ),
+        (
+            _("Даты и время"),
+            {
+                "fields": (
+                    ("start_date", "end_date"),
+                    ("start_time", "end_time"),
+                    "all_day",
+                ),
+            },
+        ),
+        (
+            _("Отображение"),
+            {
+                "fields": ("recurrence", "color"),
+            },
+        ),
+        (
+            _("Служебное"),
+            {
+                "fields": ("created_by", "created_at"),
+            },
+        ),
     )
 
     # ===== Экшены =====
@@ -203,14 +232,17 @@ class CalendarEventAdmin(admin.ModelAdmin):
             return "—"
         return format_html(
             '<span style="display:inline-block;width:12px;height:12px;'
-            'border-radius:2px;border:1px solid #ccc;vertical-align:-2px;'
+            "border-radius:2px;border:1px solid #ccc;vertical-align:-2px;"
             'background:{};margin-right:6px;"></span><code>{}</code>',
-            obj.color, obj.color
+            obj.color,
+            obj.color,
         )
 
     # ===== Экшены логика =====
     @admin.action(description=_("Сделать целодневными (очистить время)"))
-    def make_all_day(self, request: HttpRequest, queryset: QuerySet[CalendarEvent]) -> None:
+    def make_all_day(
+        self, request: HttpRequest, queryset: QuerySet[CalendarEvent]
+    ) -> None:
         """Делает выбранные события целодневными.
 
         Args:
@@ -218,10 +250,14 @@ class CalendarEventAdmin(admin.ModelAdmin):
             queryset: Выбранные события.
         """
         updated = queryset.update(start_time=None, end_time=None, all_day=True)
-        self.message_user(request, _(f"Обновлено событий: {updated}"), level=messages.SUCCESS)
+        self.message_user(
+            request, _(f"Обновлено событий: {updated}"), level=messages.SUCCESS
+        )
 
     @admin.action(description=_("Очистить время (оставить даты как есть)"))
-    def clear_time(self, request: HttpRequest, queryset: QuerySet[CalendarEvent]) -> None:
+    def clear_time(
+        self, request: HttpRequest, queryset: QuerySet[CalendarEvent]
+    ) -> None:
         """Очищает время начала/окончания у выбранных событий.
 
         Args:
@@ -229,22 +265,30 @@ class CalendarEventAdmin(admin.ModelAdmin):
             queryset: Выбранные события.
         """
         updated = queryset.update(start_time=None, end_time=None)
-        self.message_user(request, _(f"Очищено время у событий: {updated}"), level=messages.SUCCESS)
+        self.message_user(
+            request, _(f"Очищено время у событий: {updated}"), level=messages.SUCCESS
+        )
 
     @admin.action(description=_("Пометить как ежегодные"))
-    def set_annual(self, request: HttpRequest, queryset: QuerySet[CalendarEvent]) -> None:
+    def set_annual(
+        self, request: HttpRequest, queryset: QuerySet[CalendarEvent]
+    ) -> None:
         """Ставит повторяемость 'Ежегодно' у выбранных событий."""
         updated = queryset.update(recurrence=Recurrence.ANNUAL)
         self.message_user(request, _(f"Обновлено: {updated}"), level=messages.SUCCESS)
 
     @admin.action(description=_("Пометить как одноразовые"))
-    def set_one_time(self, request: HttpRequest, queryset: QuerySet[CalendarEvent]) -> None:
+    def set_one_time(
+        self, request: HttpRequest, queryset: QuerySet[CalendarEvent]
+    ) -> None:
         """Ставит повторяемость 'Одноразовое' у выбранных событий."""
         updated = queryset.update(recurrence=Recurrence.ONE_TIME)
         self.message_user(request, _(f"Обновлено: {updated}"), level=messages.SUCCESS)
 
     # ===== Сохранение =====
-    def save_model(self, request: HttpRequest, obj: CalendarEvent, form, change: bool) -> None:
+    def save_model(
+        self, request: HttpRequest, obj: CalendarEvent, form, change: bool
+    ) -> None:
         """Проставляет автора при первом сохранении.
 
         Args:
@@ -260,4 +304,3 @@ class CalendarEventAdmin(admin.ModelAdmin):
 
 # Добавляем инлайн подписок в админку календаря после импорта
 CalendarAdmin.inlines = [CalendarSubscriptionInline]
-

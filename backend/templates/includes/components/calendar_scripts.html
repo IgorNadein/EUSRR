@@ -4,15 +4,15 @@
 <script type="module">
   import { initCalendarWidget } from '{% static "js/components/calendarWidget.js" %}';
   import { integrateCalendarManager } from '{% static "js/components/calendarWidgetIntegration.js" %}';
-  
+
   // Функция инициализации интеграции
   function initializeIntegration() {
     // Проверяем, есть ли уже виджет
     const widget = window.calendarWidget || initCalendarWidget();
-    
+
     if (widget) {
       window.calendarWidget = widget;
-      
+
       // Интеграция с менеджером календарей
       const integration = integrateCalendarManager(widget);
       if (integration) {
@@ -26,7 +26,7 @@
       setTimeout(initializeIntegration, 500);
     }
   }
-  
+
   // Инициализация после загрузки DOM
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeIntegration);

@@ -152,9 +152,9 @@ def make_department(Department) -> Callable[..., models.Model]:
 @pytest.fixture
 def give_manage_calendar_perm():
     """Выдаёт сотруднику право управления календарём отдела."""
+    from employees.constants import DeptPerm
     from employees.models import (DepartmentPermission, DepartmentRole,
                                   EmployeeDepartment)
-    from employees.constants import DeptPerm
 
     def _grant(user: models.Model, department: models.Model) -> None:
         # Скоуп-пермишен отдела
@@ -272,17 +272,17 @@ def make_user(User) -> Callable[..., models.Model]:
     ) -> models.Model:
         phone_field = _detect_phone_field(User)
         phone = _next_ru_phone() if phone_field else None
-        
+
         user_data = {
             "username": username,
             "email": email or f"{username}@test.com",
             "is_staff": is_staff,
             "is_superuser": is_superuser,
         }
-        
+
         if phone_field and phone:
             user_data[phone_field] = phone
-        
+
         user = User.objects.create_user(**user_data)
         user.set_password(password)
         user.save()
@@ -342,7 +342,7 @@ def dept_manager_user(make_user) -> models.Model:
 @pytest.fixture
 def make_event(db, CalendarEvent):
     """Фабрика для создания событий календаря.
-    
+
     Args:
         title (str): Название события
         start_date (date): Дата начала
@@ -354,11 +354,11 @@ def make_event(db, CalendarEvent):
         department (Department, optional): Отдел (legacy)
         employee (User, optional): Сотрудник (legacy)
         **kwargs: Дополнительные поля
-    
+
     Returns:
         CalendarEvent: Созданное событие
     """
-    
+
     def _make(
         title="Test Event",
         start_date=None,
@@ -373,7 +373,7 @@ def make_event(db, CalendarEvent):
     ):
         if start_date is None:
             start_date = date.today()
-        
+
         event = CalendarEvent.objects.create(
             title=title,
             start_date=start_date,
@@ -387,5 +387,13 @@ def make_event(db, CalendarEvent):
             **kwargs
         )
         return event
-    
+
+    return _make
+            calendar=calendar,
+            department=department,
+            employee=employee,
+            **kwargs
+        )
+        return event
+
     return _make

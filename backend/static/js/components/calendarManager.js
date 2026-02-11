@@ -316,7 +316,9 @@ export function initCalendarManager(options = {}) {
           // НЕ парсим ID - он может быть строкой (legacy) или числом (новые календари)
           const calendarId = e.target.dataset.calendarId;
           // Конвертируем в число ТОЛЬКО если это число
-          const id = /^\d+$/.test(calendarId) ? parseInt(calendarId, 10) : calendarId;
+          const id = /^\d+$/.test(calendarId)
+            ? parseInt(calendarId, 10)
+            : calendarId;
           toggleCalendarVisibility(id);
         });
       });

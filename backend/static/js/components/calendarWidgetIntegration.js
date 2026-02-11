@@ -82,7 +82,9 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
         } else if (legacyId === "legacy-personal") {
           // Личный: события текущего сотрудника
           if (!currentEmployeeId) {
-            console.warn("[CalendarIntegration] Cannot load personal events: currentEmployeeId not found");
+            console.warn(
+              "[CalendarIntegration] Cannot load personal events: currentEmployeeId not found",
+            );
             continue;
           }
           console.log(

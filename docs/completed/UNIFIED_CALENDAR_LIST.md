@@ -1,7 +1,7 @@
 # Унифицированный список календарей
 
-**Дата:** 2024-01-XX  
-**Коммит:** 91de84f  
+**Дата:** 2024-01-XX
+**Коммит:** 91de84f
 **Статус:** ✅ Завершено
 
 ## Проблема
@@ -110,22 +110,22 @@ async function loadCalendars() {
   try {
     // Загружаем новые календари из API
     const newCalendars = await getMyCalendars();
-    
+
     // Создаем legacy календари
     const legacyCalendars = createLegacyCalendars();
-    
+
     // ОБЪЕДИНЯЕМ оба массива
     calendars = [...legacyCalendars, ...newCalendars];
-    
+
     // Все календари видимы по умолчанию
     visibleCalendarIds = new Set(calendars.map(c => c.id));
-    
+
     console.log('[CalendarManager] Loaded calendars:', {
       legacy: legacyCalendars.length,
       new: newCalendars.length,
       total: calendars.length
     });
-    
+
     render();
     triggerChange();
   } catch (error) {
@@ -142,7 +142,7 @@ async function loadCalendars() {
 async function fetchEventsForVisibleCalendars(start, end) {
   const startStr = formatDate(start);
   const endStr = formatDate(end);
-  
+
   // Разделяем legacy и новые календари
   const legacyIds = [...visibleCalendarIds].filter(
     id => typeof id === 'string' && id.startsWith('legacy-')
@@ -150,18 +150,18 @@ async function fetchEventsForVisibleCalendars(start, end) {
   const newIds = [...visibleCalendarIds].filter(
     id => typeof id === 'number'
   );
-  
+
   let allEvents = [];
-  
+
   // Загружаем события для legacy календарей
   for (const legacyId of legacyIds) {
     let events = [];
     const calendar = calendars.find(c => c.id === legacyId);
-    
+
     if (legacyId === 'legacy-company') {
       // ВСЕ события без фильтров
       events = await getCalendarEvents({ start: startStr, end: endStr });
-      
+
     } else if (legacyId === 'legacy-personal') {
       // События текущего сотрудника
       events = await getCalendarEvents({
@@ -169,7 +169,7 @@ async function fetchEventsForVisibleCalendars(start, end) {
         end: endStr,
         employee_id: window.currentEmployeeId
       });
-      
+
     } else if (legacyId.startsWith('legacy-dept-')) {
       // События конкретного отдела
       const deptId = parseInt(legacyId.replace('legacy-dept-', ''), 10);
@@ -179,7 +179,7 @@ async function fetchEventsForVisibleCalendars(start, end) {
         department_id: deptId
       });
     }
-    
+
     // Применяем цвет календаря
     allEvents.push(...events.map(event => ({
       ...event,
@@ -187,7 +187,7 @@ async function fetchEventsForVisibleCalendars(start, end) {
       color: calendar?.color || event.color
     })));
   }
-  
+
   // Загружаем события для новых календарей
   const newEventChunks = await Promise.all(
     newIds.map(async (calendarId) => {
@@ -196,7 +196,7 @@ async function fetchEventsForVisibleCalendars(start, end) {
         end: endStr,
         calendar_id: calendarId  // Новый параметр фильтрации
       });
-      
+
       const calendar = calendars.find(c => c.id === calendarId);
       return events.map(event => ({
         ...event,
@@ -205,9 +205,9 @@ async function fetchEventsForVisibleCalendars(start, end) {
       }));
     })
   );
-  
+
   allEvents.push(...newEventChunks.flat());
-  
+
   // Дедупликация по ID
   return deduplicateEvents(allEvents);
 }
@@ -234,9 +234,9 @@ async function fetchEventsForVisibleCalendars(start, end) {
 
 ```html
 {# Кнопка списка календарей #}
-<button 
-  class="btn btn-sm btn-outline-primary" 
-  data-bs-toggle="collapse" 
+<button
+  class="btn btn-sm btn-outline-primary"
+  data-bs-toggle="collapse"
   data-bs-target="#calendarListCollapse"
 >
   <i class="bi-list-check"></i>

@@ -1,32 +1,32 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
-from typing import Optional, Type, List, Dict, Any
+from typing import Any, Dict, List, Optional, Type
 
+from calendar_app.models import CalendarEvent
+from calendar_app.services.recurrence import expand_event_occurrences
 from django.core.cache import cache
 from django.http import Http404
 from django.utils.dateparse import parse_date
+from employees.constants import DeptPerm
 from rest_framework import serializers, status
+from rest_framework.decorators import action as rest_action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
-from rest_framework.decorators import action as rest_action
 
-from calendar_app.models import CalendarEvent
+from ..permissions import AdminOrDeptAllowed
 from .serializers import (
     CalendarEventSerializer,
     CalendarEventWriteSerializer,
     CalendarSerializer,
-    CalendarWriteSerializer,
     CalendarSubscriptionSerializer,
     CalendarSubscriptionWriteSerializer,
+    CalendarWriteSerializer,
 )
-from calendar_app.services.recurrence import expand_event_occurrences
 
-from ..permissions import AdminOrDeptAllowed
-from employees.constants import DeptPerm
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -60,34 +60,34 @@ class CalendarEventsViewSet(ModelViewSet):
 
     def get_permissions(self):
         """Настройка прав доступа в зависимости от действия.
-        
+
         - list, retrieve: доступно всем авторизованным пользователям
         - create, update, partial_update, destroy для компании: требуется staff/superuser
         - create, update, partial_update, destroy для отдела: требуется MANAGE_CALENDAR
         - create, update, partial_update, destroy для личного календаря: только владелец
         """
         action = getattr(self, "action", None)
-        method = self.request.method if hasattr(self, 'request') else None
-        
+        method = self.request.method if hasattr(self, "request") else None
+
         # Если action ещё не установлен, определяем по методу
         if action is None:
-            if method in ['GET', 'HEAD', 'OPTIONS']:
+            if method in ["GET", "HEAD", "OPTIONS"]:
                 return [IsAuthenticated()]
-            elif method == 'POST':
-                action = 'create'
-            elif method in ['PUT', 'PATCH']:
-                action = 'update'
-            elif method == 'DELETE':
-                action = 'destroy'
-        
+            elif method == "POST":
+                action = "create"
+            elif method in ["PUT", "PATCH"]:
+                action = "update"
+            elif method == "DELETE":
+                action = "destroy"
+
         # Просмотр событий доступен всем авторизованным пользователям
         if action in ["list", "retrieve"]:
             return [IsAuthenticated()]
-        
+
         # Для изменений требуются права управления календарём
         emp = self._employee_id(required=False)
         dep = self._dept_id(required=False)
-        
+
         # Личный календарь — полный контроль только у владельца
         if emp is not None:
             # Проверка, что текущий пользователь = владелец календаря
@@ -96,21 +96,24 @@ class CalendarEventsViewSet(ModelViewSet):
             else:
                 # Другой пользователь не может изменять чужой личный календарь
                 from rest_framework.permissions import BasePermission
+
                 class DenyAll(BasePermission):
                     def has_permission(self, request, view):
                         return False
+
                 return [DenyAll()]
-        
+
         # Календарь компании — только администраторы
         if dep is None:
             from rest_framework.permissions import IsAdminUser
+
             return [IsAdminUser()]
-        
+
         # Календарь отдела — требуется право MANAGE_CALENDAR
         self.kwargs = dict(self.kwargs)
         self.kwargs.setdefault("department_id", dep)
         return [self.ManageCalendarPerm()]
-    
+
     # ---------- Сериализаторы ----------
 
     def get_serializer_class(self) -> Type[serializers.Serializer]:
@@ -169,7 +172,7 @@ class CalendarEventsViewSet(ModelViewSet):
         if required:
             raise Http404("Не указан department_id.")
         return None
-    
+
     def _employee_id(self, *, required: bool = False) -> Optional[int]:
         """Читает employee_id из kwargs/query/body для личного календаря.
 
@@ -233,21 +236,27 @@ class CalendarEventsViewSet(ModelViewSet):
                 return qs.filter(calendar_id=int(calendar_id))
             except ValueError:
                 raise Http404("Некорректный calendar_id.")
-        
+
         # Legacy логика: department_id / employee_id / company
         dep = self._dept_id(required=False)
         emp = self._employee_id(required=False)
-        
+
         # Приоритет: employee_id > department_id > company
         if emp is not None:
             # Личный календарь сотрудника (legacy)
-            return qs.filter(employee_id=emp, department__isnull=True, calendar__isnull=True)
+            return qs.filter(
+                employee_id=emp, department__isnull=True, calendar__isnull=True
+            )
         elif dep is not None:
             # Календарь отдела (legacy)
-            return qs.filter(department_id=dep, employee__isnull=True, calendar__isnull=True)
+            return qs.filter(
+                department_id=dep, employee__isnull=True, calendar__isnull=True
+            )
         else:
             # Календарь компании (legacy)
-            return qs.filter(department__isnull=True, employee__isnull=True, calendar__isnull=True)
+            return qs.filter(
+                department__isnull=True, employee__isnull=True, calendar__isnull=True
+            )
 
     # ---------- LIST: материализация повторов ----------
 
@@ -305,7 +314,7 @@ class CalendarEventsViewSet(ModelViewSet):
         """
         dep = self._dept_id(required=False)
         emp = self._employee_id(required=False)
-        
+
         # Приоритет: employee_id > department_id
         if emp is not None:
             serializer.save(
@@ -315,7 +324,9 @@ class CalendarEventsViewSet(ModelViewSet):
             )
         else:
             serializer.save(
-                department_id=dep if dep is not None else serializer.validated_data.get("department_id"),
+                department_id=dep
+                if dep is not None
+                else serializer.validated_data.get("department_id"),
                 employee_id=None,
                 created_by=self.request.user,
             )
@@ -405,7 +416,7 @@ class CalendarEventsViewSet(ModelViewSet):
 
 class CalendarViewSet(ModelViewSet):
     """CRUD операции для календарей.
-    
+
     Доступные действия:
     - list: список календарей (доступные текущему пользователю)
     - create: создание нового календаря (только владельцы/админы)
@@ -415,28 +426,29 @@ class CalendarViewSet(ModelViewSet):
     - subscribe: подписка на календарь
     - unsubscribe: отписка от календаря
     """
-    
+
     permission_classes = [IsAuthenticated]
     renderer_classes = [JSONRenderer]
-    
+
     def get_queryset(self):
         """Возвращает календари, доступные текущему пользователю."""
         from calendar_app.models import Calendar
+
         user = self.request.user
-        
+
         if self.action == "list":
             # Для списка показываем только доступные календари
             return Calendar.objects.get_available_for_user(user)
-        
+
         # Для остальных действий возвращаем все календари (права проверяются в permissions)
         return Calendar.objects.all()
-    
+
     def get_serializer_class(self):
         """Выбор сериализатора по действию."""
         if self.action in {"create", "update", "partial_update"}:
             return CalendarWriteSerializer
         return CalendarSerializer
-    
+
     def get_permissions(self):
         """Настройка прав доступа."""
         if self.action in ["list", "retrieve"]:
@@ -449,52 +461,57 @@ class CalendarViewSet(ModelViewSet):
             return [IsAuthenticated()]
         else:
             return [IsAuthenticated()]
-    
+
     def create(self, request, *args, **kwargs):
         """Создание календаря с корректным сериализатором для ответа."""
         write_serializer = self.get_serializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
         self.perform_create(write_serializer)
-        
+
         # Для ответа используем CalendarSerializer
         instance = write_serializer.instance
         read_serializer = CalendarSerializer(instance, context={"request": request})
-        
+
         from rest_framework import status
         from rest_framework.response import Response
+
         headers = self.get_success_headers(read_serializer.data)
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-    
+        return Response(
+            read_serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
     def perform_create(self, serializer):
         """Создание календаря."""
         # Владелец определяется в serializer.save()
         serializer.save()
         cache.clear()
-    
+
     def perform_update(self, serializer):
         """Обновление календаря."""
         # Проверяем права владельца
         calendar = self.get_object()
         user = self.request.user
-        
+
         if not (user.is_superuser or user.is_staff or calendar.is_owner(user)):
             from rest_framework.exceptions import PermissionDenied
+
             raise PermissionDenied("Только владелец может изменять календарь.")
-        
+
         serializer.save()
         cache.clear()
-    
+
     def perform_destroy(self, instance):
         """Удаление календаря."""
         user = self.request.user
-        
+
         if not (user.is_superuser or user.is_staff or instance.is_owner(user)):
             from rest_framework.exceptions import PermissionDenied
+
             raise PermissionDenied("Только владелец может удалять календарь.")
-        
+
         instance.delete()
         cache.clear()
-    
+
     @rest_action(
         detail=True,
         methods=["post"],
@@ -503,53 +520,54 @@ class CalendarViewSet(ModelViewSet):
     )
     def subscribe(self, request, pk=None):
         """Подписка на календарь.
-        
+
         Body params:
             can_edit (bool, optional): Право на редактирование событий
             can_manage (bool, optional): Право на управление календарем
         """
         from calendar_app.models import Calendar, CalendarSubscription
-        
+
         calendar = self.get_object()
         user = request.user
-        
+
         # Проверяем, доступен ли календарь для подписки
         if not calendar.can_user_view(user):
             from rest_framework.exceptions import PermissionDenied
+
             raise PermissionDenied("Календарь недоступен для подписки.")
-        
+
         # Проверяем, не подписан ли уже пользователь
         existing = CalendarSubscription.objects.filter(
             calendar=calendar, user=user
         ).first()
-        
+
         if existing:
             return Response(
                 {"detail": "Вы уже подписаны на этот календарь."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         # Создаем подписку
         can_edit = request.data.get("can_edit", False)
         can_manage = request.data.get("can_manage", False)
-        
+
         # Только владелец может выдавать права can_edit и can_manage
         if (can_edit or can_manage) and not calendar.is_owner(user):
             can_edit = False
             can_manage = False
-        
+
         subscription = CalendarSubscription.objects.create(
             calendar=calendar,
             user=user,
             can_edit=can_edit,
             can_manage=can_manage,
         )
-        
+
         serializer = CalendarSubscriptionSerializer(
             subscription, context={"request": request}
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
+
     @rest_action(
         detail=True,
         methods=["post"],
@@ -559,26 +577,26 @@ class CalendarViewSet(ModelViewSet):
     def unsubscribe(self, request, pk=None):
         """Отписка от календаря."""
         from calendar_app.models import CalendarSubscription
-        
+
         calendar = self.get_object()
         user = request.user
-        
+
         subscription = CalendarSubscription.objects.filter(
             calendar=calendar, user=user
         ).first()
-        
+
         if not subscription:
             return Response(
                 {"detail": "Вы не подписаны на этот календарь."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         subscription.delete()
         return Response(
             {"detail": "Подписка успешно отменена."},
             status=status.HTTP_200_OK,
         )
-    
+
     @rest_action(
         detail=False,
         methods=["get"],
@@ -588,10 +606,10 @@ class CalendarViewSet(ModelViewSet):
     def my_calendars(self, request):
         """Список всех календарей, доступных текущему пользователю."""
         from calendar_app.models import Calendar
-        
+
         user = request.user
         calendars = Calendar.objects.get_available_for_user(user)
-        
+
         serializer = CalendarSerializer(
             calendars, many=True, context={"request": request}
         )
@@ -600,7 +618,7 @@ class CalendarViewSet(ModelViewSet):
 
 class CalendarSubscriptionViewSet(ModelViewSet):
     """CRUD операции для подписок на календари.
-    
+
     Доступные действия:
     - list: список подписок текущего пользователя
     - create: создание новой подписки
@@ -608,59 +626,60 @@ class CalendarSubscriptionViewSet(ModelViewSet):
     - update/partial_update: обновление подписки (права доступа)
     - destroy: удаление подписки
     """
-    
+
     permission_classes = [IsAuthenticated]
     renderer_classes = [JSONRenderer]
-    
+
     def get_queryset(self):
         """Возвращает подписки текущего пользователя."""
         from calendar_app.models import CalendarSubscription
+
         user = self.request.user
-        
+
         if user.is_superuser or user.is_staff:
             # Админы видят все подписки
             return CalendarSubscription.objects.all()
-        
+
         # Обычные пользователи видят только свои подписки
         return CalendarSubscription.objects.filter(user=user)
-    
+
     def get_serializer_class(self):
         """Выбор сериализатора по действию."""
         if self.action in {"create", "update", "partial_update"}:
             return CalendarSubscriptionWriteSerializer
         return CalendarSubscriptionSerializer
-    
+
     def perform_create(self, serializer):
         """Создание подписки."""
         # Пользователь устанавливается автоматически в сериализаторе
         serializer.save(user=self.request.user)
         cache.clear()
-    
+
     def perform_update(self, serializer):
         """Обновление подписки."""
         subscription = self.get_object()
         user = self.request.user
-        
+
         # Только владелец календаря может изменять права подписки
         if not subscription.calendar.is_owner(user):
             from rest_framework.exceptions import PermissionDenied
+
             raise PermissionDenied(
                 "Только владелец календаря может изменять права подписки."
             )
-        
+
         serializer.save()
         cache.clear()
-    
+
     def perform_destroy(self, instance):
         """Удаление подписки."""
         user = self.request.user
-        
+
         # Удалять подписку может либо владелец подписки, либо владелец календаря
         if not (instance.user == user or instance.calendar.is_owner(user)):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied(
-                "Вы не можете удалить эту подписку."
-            )
-        
+
+            raise PermissionDenied("Вы не можете удалить эту подписку.")
+
         instance.delete()
         cache.clear()

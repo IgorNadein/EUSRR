@@ -49,30 +49,45 @@ class CalendarSubscriptionAdmin(admin.ModelAdmin):
     readonly_fields = ("subscribed_at",)
     raw_id_fields = ("user", "calendar")
     fieldsets = (
-        (_("Подписка"), {
-            "fields": ("user", "calendar"),
-        }),
-        (_("Отображение"), {
-            "fields": ("is_visible", "color_override"),
-        }),
-        (_("Права доступа"), {
-            "fields": ("can_edit", "can_manage"),
-            "description": _(
-                "can_edit - может создавать/редактировать события; "
-                "can_manage - может управлять календарем и правами"
-            ),
-        }),
-        (_("Уведомления"), {
-            "fields": (
-                "notifications_enabled",
-                "notify_on_new_event",
-                "notify_on_event_change",
-                "notify_on_event_delete",
-            ),
-        }),
-        (_("Служебное"), {
-            "fields": ("subscribed_at",),
-        }),
+        (
+            _("Подписка"),
+            {
+                "fields": ("user", "calendar"),
+            },
+        ),
+        (
+            _("Отображение"),
+            {
+                "fields": ("is_visible", "color_override"),
+            },
+        ),
+        (
+            _("Права доступа"),
+            {
+                "fields": ("can_edit", "can_manage"),
+                "description": _(
+                    "can_edit - может создавать/редактировать события; "
+                    "can_manage - может управлять календарем и правами"
+                ),
+            },
+        ),
+        (
+            _("Уведомления"),
+            {
+                "fields": (
+                    "notifications_enabled",
+                    "notify_on_new_event",
+                    "notify_on_event_change",
+                    "notify_on_event_delete",
+                ),
+            },
+        ),
+        (
+            _("Служебное"),
+            {
+                "fields": ("subscribed_at",),
+            },
+        ),
     )
 
     @admin.display(description=_("Пользователь"), ordering="user__username")
@@ -115,9 +130,7 @@ class CalendarSubscriptionAdmin(admin.ModelAdmin):
         if obj.can_manage and not obj.can_edit:
             from django.core.exceptions import ValidationError
 
-            raise ValidationError(
-                _("can_manage требует can_edit=True")
-            )
+            raise ValidationError(_("can_manage требует can_edit=True"))
 
         super().save_model(request, obj, form, change)
 

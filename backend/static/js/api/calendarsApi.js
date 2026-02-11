@@ -3,7 +3,7 @@
  * @module api/calendarsApi
  */
 
-import { dataManager } from '../managers/dataManager.js';
+import { dataManager } from "../managers/dataManager.js";
 
 /**
  * Получить токен авторизации
@@ -12,13 +12,13 @@ import { dataManager } from '../managers/dataManager.js';
  */
 function getAccessToken() {
   const meta = document.querySelector('meta[name="api-access"]');
-  const token = meta?.getAttribute('content')?.trim();
+  const token = meta?.getAttribute("content")?.trim();
   if (token) return token;
-  
+
   try {
-    return localStorage.getItem('api.access') || '';
+    return localStorage.getItem("api.access") || "";
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -28,9 +28,12 @@ function getAccessToken() {
  * @private
  */
 function getCsrfToken() {
-  return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-         document.querySelector('meta[name="csrf-token"]')?.content ||
-         getCookie('csrftoken') || '';
+  return (
+    document.querySelector("[name=csrfmiddlewaretoken]")?.value ||
+    document.querySelector('meta[name="csrf-token"]')?.content ||
+    getCookie("csrftoken") ||
+    ""
+  );
 }
 
 /**
@@ -42,8 +45,8 @@ function getCsrfToken() {
 function getCookie(name) {
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop().split(';').shift();
-  return '';
+  if (parts.length === 2) return parts.pop().split(";").shift();
+  return "";
 }
 
 /**
@@ -55,15 +58,15 @@ function getCookie(name) {
 function authHeaders(includeContentType = true) {
   const token = getAccessToken();
   const headers = {
-    'Accept': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    'X-CSRFToken': getCsrfToken()
+    Accept: "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    "X-CSRFToken": getCsrfToken(),
   };
-  
+
   if (includeContentType) {
-    headers['Content-Type'] = 'application/json';
+    headers["Content-Type"] = "application/json";
   }
-  
+
   return headers;
 }
 
@@ -73,30 +76,33 @@ function authHeaders(includeContentType = true) {
  * @returns {Promise<Array>} Массив календарей
  */
 export async function getMyCalendars(ttl = 60000) {
-  const key = 'calendars:my';
-  
+  const key = "calendars:my";
+
   return dataManager.fetch(
     key,
     async () => {
-      const url = new URL('/api/v1/calendar/calendars/', window.location.origin);
-      
+      const url = new URL(
+        "/api/v1/calendar/calendars/",
+        window.location.origin,
+      );
+
       const response = await fetch(url.toString(), {
-        headers: authHeaders(false)
+        headers: authHeaders(false),
       });
-      
+
       if (response.status === 401) {
-        console.warn('[CalendarsAPI] 401 Unauthorized');
+        console.warn("[CalendarsAPI] 401 Unauthorized");
         return [];
       }
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       return data.results || [];
     },
-    ttl
+    ttl,
   );
 }
 
@@ -108,23 +114,26 @@ export async function getMyCalendars(ttl = 60000) {
  */
 export async function getCalendar(calendarId, ttl = 60000) {
   const key = `calendars:${calendarId}`;
-  
+
   return dataManager.fetch(
     key,
     async () => {
-      const url = new URL(`/api/v1/calendar/calendars/${calendarId}/`, window.location.origin);
-      
+      const url = new URL(
+        `/api/v1/calendar/calendars/${calendarId}/`,
+        window.location.origin,
+      );
+
       const response = await fetch(url.toString(), {
-        headers: authHeaders(false)
+        headers: authHeaders(false),
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       return response.json();
     },
-    ttl
+    ttl,
   );
 }
 
@@ -141,22 +150,24 @@ export async function getCalendar(calendarId, ttl = 60000) {
  * @returns {Promise<Object>} Созданный календарь
  */
 export async function createCalendar(calendarData) {
-  const url = new URL('/api/v1/calendar/calendars/', window.location.origin);
-  
+  const url = new URL("/api/v1/calendar/calendars/", window.location.origin);
+
   const response = await fetch(url.toString(), {
-    method: 'POST',
+    method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify(calendarData)
+    body: JSON.stringify(calendarData),
   });
-  
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `HTTP ${response.status}`);
   }
-  
+
   // Инвалидируем кеш списка календарей
-  dataManager.invalidate('calendars:my');
-  
+  dataManager.invalidate("calendars:my");
+
   return response.json();
 }
 
@@ -167,23 +178,28 @@ export async function createCalendar(calendarData) {
  * @returns {Promise<Object>} Обновленный календарь
  */
 export async function updateCalendar(calendarId, updates) {
-  const url = new URL(`/api/v1/calendar/calendars/${calendarId}/`, window.location.origin);
-  
+  const url = new URL(
+    `/api/v1/calendar/calendars/${calendarId}/`,
+    window.location.origin,
+  );
+
   const response = await fetch(url.toString(), {
-    method: 'PATCH',
+    method: "PATCH",
     headers: authHeaders(),
-    body: JSON.stringify(updates)
+    body: JSON.stringify(updates),
   });
-  
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `HTTP ${response.status}`);
   }
-  
+
   // Инвалидируем кеш
   dataManager.invalidate(`calendars:${calendarId}`);
-  dataManager.invalidate('calendars:my');
-  
+  dataManager.invalidate("calendars:my");
+
   return response.json();
 }
 
@@ -193,21 +209,26 @@ export async function updateCalendar(calendarId, updates) {
  * @returns {Promise<void>}
  */
 export async function deleteCalendar(calendarId) {
-  const url = new URL(`/api/v1/calendar/calendars/${calendarId}/`, window.location.origin);
-  
+  const url = new URL(
+    `/api/v1/calendar/calendars/${calendarId}/`,
+    window.location.origin,
+  );
+
   const response = await fetch(url.toString(), {
-    method: 'DELETE',
-    headers: authHeaders(false)
+    method: "DELETE",
+    headers: authHeaders(false),
   });
-  
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `HTTP ${response.status}`);
   }
-  
+
   // Инвалидируем кеш
   dataManager.invalidate(`calendars:${calendarId}`);
-  dataManager.invalidate('calendars:my');
+  dataManager.invalidate("calendars:my");
 }
 
 /**
@@ -221,25 +242,27 @@ export async function deleteCalendar(calendarId) {
 export async function subscribeToCalendar(calendarId, options = {}) {
   const url = new URL(
     `/api/v1/calendar/calendars/${calendarId}/subscribe/`,
-    window.location.origin
+    window.location.origin,
   );
-  
+
   const response = await fetch(url.toString(), {
-    method: 'POST',
+    method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify(options)
+    body: JSON.stringify(options),
   });
-  
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `HTTP ${response.status}`);
   }
-  
+
   // Инвалидируем кеш
   dataManager.invalidate(`calendars:${calendarId}`);
-  dataManager.invalidate('calendars:my');
-  dataManager.invalidate('subscriptions:my');
-  
+  dataManager.invalidate("calendars:my");
+  dataManager.invalidate("subscriptions:my");
+
   return response.json();
 }
 
@@ -251,23 +274,25 @@ export async function subscribeToCalendar(calendarId, options = {}) {
 export async function unsubscribeFromCalendar(calendarId) {
   const url = new URL(
     `/api/v1/calendar/calendars/${calendarId}/unsubscribe/`,
-    window.location.origin
+    window.location.origin,
   );
-  
+
   const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: authHeaders(false)
+    method: "POST",
+    headers: authHeaders(false),
   });
-  
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `HTTP ${response.status}`);
   }
-  
+
   // Инвалидируем кеш
   dataManager.invalidate(`calendars:${calendarId}`);
-  dataManager.invalidate('calendars:my');
-  dataManager.invalidate('subscriptions:my');
+  dataManager.invalidate("calendars:my");
+  dataManager.invalidate("subscriptions:my");
 }
 
 /**
@@ -276,30 +301,33 @@ export async function unsubscribeFromCalendar(calendarId) {
  * @returns {Promise<Array>} Массив подписок
  */
 export async function getMySubscriptions(ttl = 60000) {
-  const key = 'subscriptions:my';
-  
+  const key = "subscriptions:my";
+
   return dataManager.fetch(
     key,
     async () => {
-      const url = new URL('/api/v1/calendar/subscriptions/', window.location.origin);
-      
+      const url = new URL(
+        "/api/v1/calendar/subscriptions/",
+        window.location.origin,
+      );
+
       const response = await fetch(url.toString(), {
-        headers: authHeaders(false)
+        headers: authHeaders(false),
       });
-      
+
       if (response.status === 401) {
-        console.warn('[CalendarsAPI] 401 Unauthorized');
+        console.warn("[CalendarsAPI] 401 Unauthorized");
         return [];
       }
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       return data.results || [];
     },
-    ttl
+    ttl,
   );
 }
 

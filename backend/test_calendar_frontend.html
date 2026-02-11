@@ -4,20 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Calendar Frontend Test</title>
-  
+
   <!-- Bootstrap CSS (offline fallback) -->
   <style>
     @import url('https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css');
     @import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css');
   </style>
-  
+
   <!-- Inline styles as fallback -->
   <style>
     body {
       padding: 20px;
       background: #f8f9fa;
     }
-    
+
     .test-section {
       background: white;
       border-radius: 8px;
@@ -25,7 +25,7 @@
       margin-bottom: 20px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    
+
     .test-header {
       display: flex;
       justify-content: space-between;
@@ -34,18 +34,18 @@
       padding-bottom: 15px;
       border-bottom: 2px solid #e9ecef;
     }
-    
+
     .status-badge {
       padding: 5px 10px;
       border-radius: 4px;
       font-size: 12px;
       font-weight: bold;
     }
-    
+
     .status-pending { background: #ffc107; color: #000; }
     .status-success { background: #28a745; color: #fff; }
     .status-error { background: #dc3545; color: #fff; }
-    
+
     .log-console {
       background: #2d2d2d;
       color: #f8f8f2;
@@ -57,24 +57,24 @@
       overflow-y: auto;
       margin-top: 15px;
     }
-    
+
     .log-entry {
       margin: 3px 0;
       padding: 2px 0;
     }
-    
+
     .log-info { color: #66d9ef; }
     .log-success { color: #a6e22e; }
     .log-error { color: #f92672; }
     .log-warn { color: #e6db74; }
-    
+
     #calendarContainer {
       min-height: 600px;
       background: white;
       padding: 20px;
       border-radius: 8px;
     }
-    
+
     .calendar-list-container {
       max-height: 400px;
       overflow-y: auto;
@@ -83,7 +83,7 @@
       padding: 10px;
       background: white;
     }
-    
+
     .calendar-list-item {
       padding: 10px;
       margin-bottom: 8px;
@@ -94,12 +94,12 @@
       gap: 10px;
       transition: all 0.2s;
     }
-    
+
     .calendar-list-item:hover {
       background: #f8f9fa;
       border-color: #0d6efd;
     }
-    
+
     .calendar-color-indicator {
       width: 12px;
       height: 12px;
@@ -107,12 +107,12 @@
       border: 2px solid rgba(0,0,0,0.1);
       flex-shrink: 0;
     }
-    
+
     .calendar-list-item-info {
       flex: 1;
       min-width: 0;
     }
-    
+
     .calendar-list-item-title {
       font-weight: 600;
       font-size: 14px;
@@ -121,13 +121,13 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    
+
     .calendar-list-item-meta {
       font-size: 12px;
       color: #6c757d;
       margin: 2px 0 0 0;
     }
-    
+
     .calendar-list-item-actions {
       display: flex;
       gap: 5px;
@@ -138,7 +138,7 @@
 <body>
   <div class="container-fluid">
     <h1 class="mb-4">🧪 Calendar Frontend Test Suite</h1>
-    
+
     <!-- Test Controls -->
     <div class="test-section">
       <div class="test-header">
@@ -152,7 +152,7 @@
           </button>
         </div>
       </div>
-      
+
       <div class="row g-3">
         <div class="col-md-4">
           <button id="testApiWrapper" class="btn btn-outline-primary w-100">
@@ -186,7 +186,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Test Results -->
     <div class="test-section">
       <div class="test-header">
@@ -195,7 +195,7 @@
           <span class="badge bg-secondary">Ready</span>
         </div>
       </div>
-      
+
       <div class="table-responsive">
         <table class="table table-sm">
           <thead>
@@ -214,7 +214,7 @@
         </table>
       </div>
     </div>
-    
+
     <!-- Calendar UI Demo -->
     <div class="test-section">
       <div class="test-header">
@@ -223,7 +223,7 @@
           <i class="bi-plus-lg"></i> Create Calendar
         </button>
       </div>
-      
+
       <div class="row">
         <div class="col-md-3">
           <h5>My Calendars</h5>
@@ -241,7 +241,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Console Log -->
     <div class="test-section">
       <div class="test-header">
@@ -253,7 +253,7 @@
       <div id="logConsole" class="log-console"></div>
     </div>
   </div>
-  
+
   <!-- Modal Template -->
   <div class="modal fade" id="calendarManageModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -298,30 +298,30 @@
       </div>
     </div>
   </div>
-  
+
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <!-- FullCalendar JS -->
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
-  
+
   <script>
     // =========================
     // Mock Data & API
     // =========================
-    
+
     let mockCalendars = [
       { id: 1, title: 'Personal', description: 'My personal calendar', color: '#0d6efd', calendar_type: 'personal', user_can_edit: true, user_can_view: true, is_subscribed: true },
       { id: 2, title: 'Work', description: 'Work events', color: '#198754', calendar_type: 'public', user_can_edit: true, user_can_view: true, is_subscribed: true },
       { id: 3, title: 'Team Meetings', description: 'Team sync meetings', color: '#ffc107', calendar_type: 'department', user_can_edit: false, user_can_view: true, is_subscribed: true },
     ];
-    
+
     let mockEvents = [
       { id: 1, title: 'Morning Standup', start: new Date(2026, 1, 11, 9, 0), end: new Date(2026, 1, 11, 9, 30), color: '#0d6efd', calendar_id: 1 },
       { id: 2, title: 'Client Meeting', start: new Date(2026, 1, 11, 14, 0), end: new Date(2026, 1, 11, 15, 0), color: '#198754', calendar_id: 2 },
       { id: 3, title: 'Sprint Planning', start: new Date(2026, 1, 12, 10, 0), end: new Date(2026, 1, 12, 12, 0), color: '#ffc107', calendar_id: 3 },
       { id: 4, title: 'Code Review', start: new Date(2026, 1, 13, 15, 0), end: new Date(2026, 1, 13, 16, 0), color: '#0d6efd', calendar_id: 1 },
     ];
-    
+
     // Mock API
     const mockAPI = {
       getMyCalendars: async () => {
@@ -329,7 +329,7 @@
         log('API: getMyCalendars() → ' + mockCalendars.length + ' calendars', 'info');
         return { ok: true, data: [...mockCalendars] };
       },
-      
+
       createCalendar: async (data) => {
         await delay(500);
         const newCalendar = {
@@ -343,7 +343,7 @@
         log('API: createCalendar() → Calendar #' + newCalendar.id + ' created', 'success');
         return { ok: true, data: newCalendar };
       },
-      
+
       updateCalendar: async (id, data) => {
         await delay(500);
         const index = mockCalendars.findIndex(c => c.id === id);
@@ -354,14 +354,14 @@
         }
         return { ok: false, error: 'Calendar not found' };
       },
-      
+
       deleteCalendar: async (id) => {
         await delay(500);
         mockCalendars = mockCalendars.filter(c => c.id !== id);
         log('API: deleteCalendar(' + id + ') → Deleted', 'success');
         return { ok: true };
       },
-      
+
       getCalendarEvents: async (params) => {
         await delay(300);
         let events = [...mockEvents];
@@ -372,15 +372,15 @@
         return { ok: true, data: events };
       }
     };
-    
+
     // =========================
     // Test Logger
     // =========================
-    
+
     const logConsole = document.getElementById('logConsole');
     const testResultsTable = document.getElementById('testResultsTable');
     let testResults = [];
-    
+
     function log(message, type = 'info') {
       const timestamp = new Date().toLocaleTimeString();
       const entry = document.createElement('div');
@@ -388,26 +388,26 @@
       entry.textContent = '[' + timestamp + '] ' + message;
       logConsole.appendChild(entry);
       logConsole.scrollTop = logConsole.scrollHeight;
-      
+
       // Also log to real console
       console.log('[Test]', message);
     }
-    
+
     function delay(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
-    
+
     function updateTestResult(testName, status, duration, details) {
       testResults.push({ testName, status, duration, details });
       renderTestResults();
     }
-    
+
     function renderTestResults() {
       if (testResults.length === 0) {
         testResultsTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No tests run yet</td></tr>';
         return;
       }
-      
+
       testResultsTable.innerHTML = testResults.map(result => `
         <tr>
           <td>${result.testName}</td>
@@ -416,7 +416,7 @@
           <td class="text-muted small">${result.details}</td>
         </tr>
       `).join('');
-      
+
       const passed = testResults.filter(r => r.status === 'passed').length;
       const failed = testResults.filter(r => r.status === 'failed').length;
       document.getElementById('testSummary').innerHTML = `
@@ -424,15 +424,15 @@
         <span class="badge bg-danger">${failed} Failed</span>
       `;
     }
-    
+
     // =========================
     // Tests
     // =========================
-    
+
     async function testApiWrapper() {
       log('=== Test 1: API Wrapper ===', 'info');
       const startTime = Date.now();
-      
+
       try {
         // Test getMyCalendars
         const calendars = await mockAPI.getMyCalendars();
@@ -440,7 +440,7 @@
           throw new Error('getMyCalendars failed');
         }
         log('✓ getMyCalendars works', 'success');
-        
+
         // Test createCalendar
         const newCal = await mockAPI.createCalendar({
           title: 'Test Calendar',
@@ -452,14 +452,14 @@
           throw new Error('createCalendar failed');
         }
         log('✓ createCalendar works', 'success');
-        
+
         // Test getCalendarEvents
         const events = await mockAPI.getCalendarEvents({ calendar_id: 1 });
         if (!events.ok || !Array.isArray(events.data)) {
           throw new Error('getCalendarEvents failed');
         }
         log('✓ getCalendarEvents works', 'success');
-        
+
         const duration = Date.now() - startTime;
         updateTestResult('API Wrapper', 'passed', duration, 'All API methods working');
         log('✅ Test 1: PASSED', 'success');
@@ -469,16 +469,16 @@
         log('❌ Test 1: FAILED - ' + error.message, 'error');
       }
     }
-    
+
     async function testCalendarManager() {
       log('=== Test 2: Calendar Manager ===', 'info');
       const startTime = Date.now();
-      
+
       try {
         // Render calendar list
         const calendars = await mockAPI.getMyCalendars();
         const container = document.getElementById('calendarListContainer');
-        
+
         container.innerHTML = calendars.data.map(cal => `
           <div class="calendar-list-item" data-calendar-id="${cal.id}">
             <input type="checkbox" class="form-check-input" ${cal.is_subscribed ? 'checked' : ''}>
@@ -492,9 +492,9 @@
             </div>
           </div>
         `).join('');
-        
+
         log('✓ Calendar list rendered', 'success');
-        
+
         // Test checkbox interaction
         const firstCheckbox = container.querySelector('input[type="checkbox"]');
         if (!firstCheckbox) {
@@ -502,7 +502,7 @@
         }
         firstCheckbox.click();
         log('✓ Checkbox interaction works', 'success');
-        
+
         const duration = Date.now() - startTime;
         updateTestResult('Calendar Manager', 'passed', duration, 'List rendering and interaction OK');
         log('✅ Test 2: PASSED', 'success');
@@ -512,19 +512,19 @@
         log('❌ Test 2: FAILED - ' + error.message, 'error');
       }
     }
-    
+
     async function testModalComponent() {
       log('=== Test 3: Modal Component ===', 'info');
       const startTime = Date.now();
-      
+
       try {
         const modal = new bootstrap.Modal(document.getElementById('calendarManageModal'));
-        
+
         // Test modal open
         modal.show();
         await delay(500);
         log('✓ Modal opens', 'success');
-        
+
         // Test form validation
         const titleInput = document.getElementById('calendarTitle');
         titleInput.value = 'Test Calendar';
@@ -532,12 +532,12 @@
           throw new Error('Form input failed');
         }
         log('✓ Form inputs work', 'success');
-        
+
         // Close modal
         modal.hide();
         await delay(500);
         log('✓ Modal closes', 'success');
-        
+
         const duration = Date.now() - startTime;
         updateTestResult('Modal Component', 'passed', duration, 'Modal and form working');
         log('✅ Test 3: PASSED', 'success');
@@ -547,11 +547,11 @@
         log('❌ Test 3: FAILED - ' + error.message, 'error');
       }
     }
-    
+
     async function testWidgetIntegration() {
       log('=== Test 4: Widget Integration ===', 'info');
       const startTime = Date.now();
-      
+
       try {
         // Initialize FullCalendar
         const calendarEl = document.getElementById('calendarContainer');
@@ -567,18 +567,18 @@
             }
           }
         });
-        
+
         calendar.render();
         await delay(1000);
         log('✓ FullCalendar initialized', 'success');
-        
+
         // Check if events loaded
         const eventCount = calendar.getEvents().length;
         if (eventCount === 0) {
           throw new Error('No events loaded');
         }
         log('✓ Events loaded: ' + eventCount, 'success');
-        
+
         const duration = Date.now() - startTime;
         updateTestResult('Widget Integration', 'passed', duration, eventCount + ' events loaded');
         log('✅ Test 4: PASSED', 'success');
@@ -588,23 +588,23 @@
         log('❌ Test 4: FAILED - ' + error.message, 'error');
       }
     }
-    
+
     async function testEventFiltering() {
       log('=== Test 5: Event Filtering ===', 'info');
       const startTime = Date.now();
-      
+
       try {
         // Test filtering by calendar_id
         const allEvents = await mockAPI.getCalendarEvents({});
         const filteredEvents = await mockAPI.getCalendarEvents({ calendar_id: 1 });
-        
+
         if (filteredEvents.data.length >= allEvents.data.length) {
           throw new Error('Filtering not working');
         }
         log('✓ Calendar filtering works', 'success');
         log('  All events: ' + allEvents.data.length, 'info');
         log('  Filtered (calendar 1): ' + filteredEvents.data.length, 'info');
-        
+
         const duration = Date.now() - startTime;
         updateTestResult('Event Filtering', 'passed', duration, 'Filtering by calendar_id works');
         log('✅ Test 5: PASSED', 'success');
@@ -614,11 +614,11 @@
         log('❌ Test 5: FAILED - ' + error.message, 'error');
       }
     }
-    
+
     async function testUserInteractions() {
       log('=== Test 6: User Interactions ===', 'info');
       const startTime = Date.now();
-      
+
       try {
         // Test create button
         const createBtn = document.getElementById('btnCreateCalendar');
@@ -626,21 +626,21 @@
           throw new Error('Create button not found');
         }
         log('✓ Create button exists', 'success');
-        
+
         // Test calendar list items
         const calendarItems = document.querySelectorAll('.calendar-list-item');
         if (calendarItems.length === 0) {
           throw new Error('No calendar items found');
         }
         log('✓ Calendar items rendered: ' + calendarItems.length, 'success');
-        
+
         // Test checkboxes
         const checkboxes = document.querySelectorAll('.calendar-list-item input[type="checkbox"]');
         if (checkboxes.length === 0) {
           throw new Error('No checkboxes found');
         }
         log('✓ Checkboxes present: ' + checkboxes.length, 'success');
-        
+
         const duration = Date.now() - startTime;
         updateTestResult('User Interactions', 'passed', duration, 'All UI elements interactive');
         log('✅ Test 6: PASSED', 'success');
@@ -650,15 +650,15 @@
         log('❌ Test 6: FAILED - ' + error.message, 'error');
       }
     }
-    
+
     // =========================
     // Event Listeners
     // =========================
-    
+
     document.getElementById('runAllTests').addEventListener('click', async () => {
       testResults = [];
       log('🚀 Running all tests...', 'info');
-      
+
       await testApiWrapper();
       await delay(500);
       await testCalendarManager();
@@ -670,15 +670,15 @@
       await testEventFiltering();
       await delay(500);
       await testUserInteractions();
-      
+
       log('🏁 All tests completed!', 'success');
     });
-    
+
     document.getElementById('clearLogs').addEventListener('click', () => {
       logConsole.innerHTML = '';
       log('Logs cleared', 'info');
     });
-    
+
     document.getElementById('toggleConsole').addEventListener('click', () => {
       const console = document.getElementById('logConsole');
       const btn = document.getElementById('toggleConsole');
@@ -690,60 +690,60 @@
         btn.innerHTML = '<i class="bi-chevron-down"></i> Expand';
       }
     });
-    
+
     document.getElementById('testApiWrapper').addEventListener('click', testApiWrapper);
     document.getElementById('testCalendarManager').addEventListener('click', testCalendarManager);
     document.getElementById('testModalComponent').addEventListener('click', testModalComponent);
     document.getElementById('testWidgetIntegration').addEventListener('click', testWidgetIntegration);
     document.getElementById('testEventFiltering').addEventListener('click', testEventFiltering);
     document.getElementById('testUserInteractions').addEventListener('click', testUserInteractions);
-    
+
     // Modal save button
     document.getElementById('saveCalendarBtn').addEventListener('click', async () => {
       const title = document.getElementById('calendarTitle').value;
       const description = document.getElementById('calendarDescription').value;
       const color = document.getElementById('calendarColor').value;
       const type = document.querySelector('input[name="calendarType"]:checked').value;
-      
+
       if (!title) {
         alert('Title is required');
         return;
       }
-      
+
       log('Creating calendar: ' + title, 'info');
       const result = await mockAPI.createCalendar({ title, description, color, calendar_type: type });
-      
+
       if (result.ok) {
         log('Calendar created successfully!', 'success');
         const modal = bootstrap.Modal.getInstance(document.getElementById('calendarManageModal'));
         modal.hide();
-        
+
         // Refresh calendar list
         await testCalendarManager();
       }
     });
-    
+
     // Create calendar button
     document.getElementById('btnCreateCalendar').addEventListener('click', () => {
       log('Opening create calendar modal', 'info');
       const modal = new bootstrap.Modal(document.getElementById('calendarManageModal'));
-      
+
       // Reset form
       document.getElementById('calendarTitle').value = '';
       document.getElementById('calendarDescription').value = '';
       document.getElementById('calendarColor').value = '#0d6efd';
       document.getElementById('typePersonal').checked = true;
-      
+
       modal.show();
     });
-    
+
     // =========================
     // Initialize
     // =========================
-    
+
     log('✅ Test suite initialized', 'success');
     log('Click "Run All Tests" to start', 'info');
-    
+
     // Auto-load calendar list on startup (wrapped in async IIFE)
     (async function init() {
       try {

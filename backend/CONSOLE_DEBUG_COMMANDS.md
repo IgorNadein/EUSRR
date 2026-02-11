@@ -187,7 +187,7 @@ Array.from(document.querySelectorAll('script[type="module"]'))
     scripts: Array.from(document.querySelectorAll('script[type="module"]')).length,
     errors: []
   };
-  
+
   if (window.calendarIntegration) {
     try {
       report.calendars = window.calendarIntegration.getCalendars().length;
@@ -196,7 +196,7 @@ Array.from(document.querySelectorAll('script[type="module"]'))
       report.errors.push('Error accessing integration: ' + e.message);
     }
   }
-  
+
   console.table(report);
   return report;
 })();

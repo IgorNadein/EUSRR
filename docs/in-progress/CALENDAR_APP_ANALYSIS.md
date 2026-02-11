@@ -1,6 +1,6 @@
 # Анализ приложения календаря EUSRR
 
-**Дата анализа:** 11 февраля 2026 г.  
+**Дата анализа:** 11 февраля 2026 г.
 **Задача:** Изучить приложение календаря и оценить возможность создания пользовательских календарей (глобального, локального или календаря отдела)
 
 ---
@@ -58,29 +58,29 @@ class CalendarEvent(models.Model):
     # Область видимости (взаимоисключающие)
     department = ForeignKey("employees.Department", null=True, blank=True)
     employee = ForeignKey(User, null=True, blank=True)  # ✅ УЖЕ РЕАЛИЗОВАНО
-    
+
     # Основные поля
     title = CharField(max_length=200)
     description = TextField(blank=True)
-    
+
     # Даты и время
     start_date = DateField()
     end_date = DateField(null=True, blank=True)
     start_time = TimeField(null=True, blank=True)
     end_time = TimeField(null=True, blank=True)
     all_day = BooleanField(default=True)
-    
+
     # Повторяемость
     recurrence = CharField(choices=Recurrence.choices)  # one_time, hourly, daily, weekly, monthly, annual
     recurrence_interval = PositiveSmallIntegerField(default=1)
     recurrence_count = PositiveIntegerField(null=True, blank=True)
     recurrence_until = DateField(null=True, blank=True)
     weekdays_mask = PositiveSmallIntegerField(default=0)  # Для weekly: битовая маска дней
-    
+
     # Отображение
     color = CharField(max_length=7, blank=True)  # HEX цвет
     location = CharField(max_length=200, blank=True)
-    
+
     # Служебные
     created_by = ForeignKey(User, on_delete=SET_NULL)
     created_at = DateTimeField(auto_now_add=True)
@@ -115,7 +115,7 @@ def clean(self):
     # ✅ Взаимоисключение: нельзя одновременно задавать отдел И сотрудника
     if self.department_id and self.employee_id:
         raise ValidationError("Событие не может одновременно принадлежать отделу и сотруднику.")
-    
+
     # Валидация дат/времени
     # Валидация повторяемости
     # Автоматическая настройка all_day
@@ -149,18 +149,18 @@ def get_permissions(self):
     # Просмотр: всем авторизованным
     if action in ["list", "retrieve"]:
         return [IsAuthenticated()]
-    
+
     # Личный календарь: только владелец
     if emp is not None:
         if request.user.id == emp:
             return [IsAuthenticated()]
         else:
             return [DenyAll()]  # Другие не могут редактировать
-    
+
     # Календарь компании: только администраторы
     if dep is None:
         return [IsAdminUser()]
-    
+
     # Календарь отдела: право MANAGE_CALENDAR
     return [ManageCalendarPerm()]  # AdminOrDeptAllowed с required_code=MANAGE_CALENDAR
 ```
@@ -241,7 +241,7 @@ Authorization: Bearer <token>
 #### State управление:
 
 ```javascript
-const state = { 
+const state = {
     type: 'company',     // 'company' | 'dept' | 'personal'
     deptId: null,        // PK отдела (если type='dept')
     employeeId: null     // PK сотрудника (если type='personal')
@@ -290,7 +290,7 @@ async function fetchEventsAllCalendars(start, end) {
     const sources = [
         // Компания
         { params: { start, end }, label: 'Компания', type: 'company', id: null },
-        
+
         // Все отделы пользователя
         ...departments.map(d => ({
             params: { start, end, department_id: d.id },
@@ -298,21 +298,21 @@ async function fetchEventsAllCalendars(start, end) {
             type: 'dept',
             id: d.id
         })),
-        
+
         // Личный календарь (если есть employee_id)
-        { 
+        {
             params: { start, end, employee_id: currentEmployeeId },
             label: 'Личный',
             type: 'personal',
             id: currentEmployeeId
         }
     ];
-    
+
     // Параллельная загрузка всех источников
     const results = await Promise.allSettled(
         sources.map(s => getCalendarEvents(s.params))
     );
-    
+
     return results.flatMap(/* ... */);
 }
 ```
@@ -484,7 +484,7 @@ function updateScopeIndicator() {
 // В calendarWidget.js
 function getEventColor(event) {
     if (event.color) return event.color;
-    
+
     // Дефолтные цвета по типу
     if (event.employee_id) return '#6C757D';  // Серый для личных
     if (event.department_id) return '#0D6EFD'; // Синий для отдела

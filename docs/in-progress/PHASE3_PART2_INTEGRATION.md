@@ -1,7 +1,7 @@
 # Phase 3 Part 2: Calendar Widget Integration
 
-**Дата:** 11 февраля 2026 г.  
-**Статус:** ✅ Завершено  
+**Дата:** 11 февраля 2026 г.
+**Статус:** ✅ Завершено
 **Цель:** Интеграция компонентов управления календарями с существующим виджетом FullCalendar
 
 ---
@@ -82,23 +82,23 @@ async function fetchEventsForVisibleCalendars(start, end) {
   if (calendars.length === 0) {
     return await getCalendarEvents({ start, end });
   }
-  
+
   // Если ни один не выбран - пустой массив
   if (visibleCalendarIds.length === 0) {
     return [];
   }
-  
+
   // Загружаем события для каждого видимого календаря
   const eventChunks = await Promise.all(
-    visibleCalendarIds.map(calendarId => 
+    visibleCalendarIds.map(calendarId =>
       getCalendarEvents({ start, end, calendar_id: calendarId })
     )
   );
-  
+
   // Объединяем и дедуплицируем
   const allEvents = eventChunks.flat();
   const uniqueEvents = deduplicateById(allEvents);
-  
+
   return uniqueEvents;
 }
 ```
@@ -129,19 +129,19 @@ return (events || []).map(event => ({
 {
   // Загрузить события для видимых календарей
   fetchEventsForVisibleCalendars: (start, end) => Promise<Event[]>,
-  
+
   // Получить ID видимых календарей
   getVisibleCalendarIds: () => number[],
-  
+
   // Получить все календари
   getCalendars: () => Calendar[],
-  
+
   // Установить видимые календари
   setVisibleCalendars: (ids: number[]) => void,
-  
+
   // Обновить список календарей
   refresh: () => Promise<void>,
-  
+
   // Доступ к экземплярам компонентов
   instances: {
     manager: CalendarManager,
@@ -234,5 +234,5 @@ git commit -m "feat(calendar): integrate calendar manager with widget (Phase 3 -
 
 ---
 
-**Автор:** GitHub Copilot  
+**Автор:** GitHub Copilot
 **Дата завершения:** 11 февраля 2026 г.

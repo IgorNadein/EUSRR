@@ -1,7 +1,7 @@
 # Упрощённая архитектура: Опциональные настраиваемые календари
 
-**Дата:** 11 февраля 2026 г.  
-**Подход:** Обратно совместимое расширение без поломки существующего функционала  
+**Дата:** 11 февраля 2026 г.
+**Подход:** Обратно совместимое расширение без поломки существующего функционала
 **Статус:** ✅ Phase 2 (API + Testing) завершена
 
 ---
@@ -144,17 +144,17 @@ class CalendarVisibility(models.TextChoices):
 
 class Calendar(models.Model):
     """Настраиваемый календарь (опциональный, расширенная функциональность).
-    
+
     Если событие создано БЕЗ calendar → работает старая логика (department/employee).
     Если событие создано С calendar → игнорируются department/employee, используются настройки календаря.
     """
-    
+
     # Основное
     title = models.CharField(_("Название"), max_length=200)
     description = models.TextField(_("Описание"), blank=True)
     color = models.CharField(_("Цвет"), max_length=7, default="#0d6efd")
     icon = models.CharField(_("Иконка"), max_length=50, blank=True, help_text="Bootstrap icon, например: calendar-event")
-    
+
     # Владение (опциональное)
     owner_user = models.ForeignKey(
         User,
@@ -165,7 +165,7 @@ class Calendar(models.Model):
         verbose_name=_("Владелец"),
         help_text=_("Если задано — личный календарь пользователя"),
     )
-    
+
     owner_department = models.ForeignKey(
         "employees.Department",
         on_delete=models.CASCADE,
@@ -175,7 +175,7 @@ class Calendar(models.Model):
         verbose_name=_("Отдел-владелец"),
         help_text=_("Если задано — календарь отдела"),
     )
-    
+
     # Настройки видимости
     visibility = models.CharField(
         _("Видимость"),
@@ -183,27 +183,27 @@ class Calendar(models.Model):
         choices=CalendarVisibility.choices,
         default=CalendarVisibility.CUSTOM,
     )
-    
+
     # Права по умолчанию для новых подписчиков
     default_can_edit = models.BooleanField(
         _("Могут редактировать по умолчанию"),
         default=False,
         help_text=_("Если True, все подписчики могут создавать/редактировать события"),
     )
-    
+
     # Автоподписка
     auto_subscribe_new_users = models.BooleanField(
         _("Автоподписка для новых пользователей"),
         default=False,
         help_text=_("Автоматически подписывать новых сотрудников"),
     )
-    
+
     auto_subscribe_department_members = models.BooleanField(
         _("Автоподписка для членов отдела"),
         default=False,
         help_text=_("Автоматически подписывать членов отдела-владельца"),
     )
-    
+
     # Служебное
     is_active = models.BooleanField(_("Активен"), default=True)
     created_by = models.ForeignKey(
@@ -215,7 +215,7 @@ class Calendar(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         verbose_name = _("Календарь")
         verbose_name_plural = _("Календари")
@@ -225,31 +225,31 @@ class Calendar(models.Model):
             models.Index(fields=["owner_department", "is_active"]),
             models.Index(fields=["visibility"]),
         ]
-    
+
     def __str__(self):
         if self.owner_user:
             return f"{self.title} ({self.owner_user.username})"
         if self.owner_department:
             return f"{self.title} ({self.owner_department.name})"
         return f"{self.title} (Глобальный)"
-    
+
     def clean(self):
         # Нельзя одновременно user и department
         if self.owner_user and self.owner_department:
             raise ValidationError(
                 _("Календарь не может одновременно принадлежать пользователю и отделу.")
             )
-    
+
     @property
     def is_global(self):
         """Глобальный календарь (без владельца)."""
         return not self.owner_user_id and not self.owner_department_id
-    
+
     @property
     def is_personal(self):
         """Личный календарь пользователя."""
         return bool(self.owner_user_id)
-    
+
     @property
     def is_department(self):
         """Календарь отдела."""
@@ -261,19 +261,19 @@ class Calendar(models.Model):
 ```python
 class CalendarSubscription(models.Model):
     """Подписка пользователя на календарь с настройками отображения."""
-    
+
     calendar = models.ForeignKey(
         Calendar,
         on_delete=models.CASCADE,
         related_name="subscriptions",
     )
-    
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name="calendar_subscriptions",
     )
-    
+
     # Настройки отображения
     is_visible = models.BooleanField(_("Отображать"), default=True)
     color_override = models.CharField(
@@ -282,26 +282,26 @@ class CalendarSubscription(models.Model):
         blank=True,
         help_text=_("Переопределяет цвет календаря"),
     )
-    
+
     # Права подписчика
     can_edit = models.BooleanField(
         _("Может редактировать"),
         default=False,
         help_text=_("Может создавать/редактировать события в этом календаре"),
     )
-    
+
     can_manage = models.BooleanField(
         _("Может управлять"),
         default=False,
         help_text=_("Может управлять правами других пользователей (только для не-владельцев)"),
     )
-    
+
     # Уведомления
     notify_on_new_event = models.BooleanField(_("Уведомлять о новых событиях"), default=True)
     notify_on_event_change = models.BooleanField(_("Уведомлять об изменениях"), default=True)
-    
+
     subscribed_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         verbose_name = _("Подписка на календарь")
         verbose_name_plural = _("Подписки на календари")
@@ -310,7 +310,7 @@ class CalendarSubscription(models.Model):
             models.Index(fields=["user", "is_visible"]),
             models.Index(fields=["calendar", "can_edit"]),
         ]
-    
+
     def __str__(self):
         return f"{self.user.username} → {self.calendar.title}"
 ```
@@ -320,12 +320,12 @@ class CalendarSubscription(models.Model):
 ```python
 class CalendarEvent(models.Model):
     """Событие календаря с поддержкой повторяемости.
-    
+
     ОБРАТНАЯ СОВМЕСТИМОСТЬ:
     - Если calendar = NULL → используется старая логика (department/employee)
     - Если calendar задан → игнорируются department/employee, используется calendar
     """
-    
+
     # ✨ НОВОЕ: Опциональная привязка к настраиваемому календарю
     calendar = models.ForeignKey(
         Calendar,
@@ -336,7 +336,7 @@ class CalendarEvent(models.Model):
         verbose_name=_("Календарь"),
         help_text=_("Если не задан — событие использует стандартную логику (department/employee)"),
     )
-    
+
     # ✅ ОСТАВЛЯЕМ: Старые поля для обратной совместимости
     department = models.ForeignKey(
         "employees.Department",
@@ -347,7 +347,7 @@ class CalendarEvent(models.Model):
         blank=True,
         help_text=_("LEGACY: используется если calendar=NULL"),
     )
-    
+
     employee = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -357,9 +357,9 @@ class CalendarEvent(models.Model):
         blank=True,
         help_text=_("LEGACY: используется если calendar=NULL"),
     )
-    
+
     # ... остальные поля БЕЗ ИЗМЕНЕНИЙ ...
-    
+
     class Meta:
         verbose_name = _("Событие календаря")
         verbose_name_plural = _("События календаря")
@@ -372,12 +372,12 @@ class CalendarEvent(models.Model):
             models.Index(fields=["employee", "start_date"]),
             models.Index(fields=["source"]),
         ]
-    
+
     def __str__(self):
         # Новая логика: приоритет calendar
         if self.calendar_id:
             return f"[{self.calendar.title}] {self.title} ({self.start_date:%d.%m.%Y})"
-        
+
         # Старая логика
         if self.employee_id:
             scope = f"Личный ({self.employee})"
@@ -385,21 +385,21 @@ class CalendarEvent(models.Model):
             scope = str(self.department)
         else:
             scope = _("Компания")
-        
+
         if self.end_date:
             return f"{scope}: {self.title} ({self.start_date:%d.%m.%Y}–{self.end_date:%d.%m.%Y})"
         return f"{scope}: {self.title} ({self.start_date:%d.%m.%Y})"
-    
+
     @property
     def is_legacy_event(self):
         """True если событие использует старую логику (без calendar)."""
         return self.calendar_id is None
-    
+
     @property
     def is_modern_event(self):
         """True если событие использует новую логику (с calendar)."""
         return self.calendar_id is not None
-    
+
     def clean(self):
         """Валидация с учётом новой/старой логики."""
         # Если указан calendar — department и employee должны быть пусты
@@ -408,14 +408,14 @@ class CalendarEvent(models.Model):
                 raise ValidationError(
                     _("При использовании календаря нельзя указывать department или employee.")
                 )
-        
+
         # Старая валидация (только если calendar = NULL)
         if not self.calendar_id:
             if self.department_id and self.employee_id:
                 raise ValidationError(
                     _("Событие не может одновременно принадлежать отделу и сотруднику.")
                 )
-        
+
         # ... остальная валидация БЕЗ ИЗМЕНЕНИЙ ...
 ```
 
@@ -502,23 +502,23 @@ all_events = CalendarEvent.objects.all()  # Все события работаю
 
 class CalendarEventsViewSet(ModelViewSet):
     """CRUD событий с поддержкой legacy и modern режимов."""
-    
+
     def get_queryset(self):
         """Фильтрация с учётом новой и старой логики."""
         qs = super().get_queryset()
-        
+
         if self.action != "list":
             return qs
-        
+
         # НОВОЕ: Если передан calendar_id
         calendar_id = self.request.query_params.get('calendar_id')
         if calendar_id:
             return qs.filter(calendar_id=calendar_id)
-        
+
         # СТАРОЕ: Логика department/employee (без изменений!)
         dep = self._dept_id(required=False)
         emp = self._employee_id(required=False)
-        
+
         if emp is not None:
             # Legacy: личный календарь
             return qs.filter(
@@ -538,7 +538,7 @@ class CalendarEventsViewSet(ModelViewSet):
                 employee__isnull=True,
                 calendar__isnull=True  # Только старые глобальные события
             )
-    
+
     def perform_create(self, serializer):
         """Создание с поддержкой обоих режимов."""
         # Если передан calendar_id — используем новую логику
@@ -554,12 +554,12 @@ class CalendarEventsViewSet(ModelViewSet):
             # Старая логика (без изменений)
             dep = self._dept_id(required=False)
             emp = self._employee_id(required=False)
-            
+
             if emp is not None:
                 serializer.save(employee_id=emp, department=None, created_by=self.request.user)
             else:
                 serializer.save(department_id=dep, employee=None, created_by=self.request.user)
-        
+
         cache.clear()
 ```
 
@@ -571,7 +571,7 @@ class CalendarEventsViewSet(ModelViewSet):
 urlpatterns = [
     # ✅ Старые эндпоинты РАБОТАЮТ БЕЗ ИЗМЕНЕНИЙ
     path('events/', CalendarEventsViewSet.as_view({'get': 'list', 'post': 'create'})),
-    
+
     # ✨ Новые эндпоинты для календарей
     path('calendars/', CalendarListCreateView.as_view()),
     path('calendars/<int:pk>/', CalendarDetailView.as_view()),
@@ -687,36 +687,36 @@ for dev in developers:
 def get_user_calendars(user):
     """Возвращает все доступные календари."""
     from django.db.models import Q
-    
+
     # 1. Личные календари
     owned = Calendar.objects.filter(
         owner_user=user,
         is_active=True
     )
-    
+
     # 2. Календари отделов пользователя
     user_depts = user.departments_links.filter(
         is_active=True
     ).values_list('department_id', flat=True)
-    
+
     dept_owned = Calendar.objects.filter(
         owner_department_id__in=user_depts,
         is_active=True
     )
-    
+
     # 3. Публичные календари
     public = Calendar.objects.filter(
         visibility=CalendarVisibility.PUBLIC,
         is_active=True
     )
-    
+
     # 4. Подписки
     subscribed = Calendar.objects.filter(
         subscriptions__user=user,
         subscriptions__is_visible=True,
         is_active=True
     )
-    
+
     return (owned | dept_owned | public | subscribed).distinct()
 ```
 
@@ -810,5 +810,5 @@ git checkout -b feature/optional-calendars
 
 ---
 
-**Автор:** GitHub Copilot  
+**Автор:** GitHub Copilot
 **Дата:** 11 февраля 2026 г.

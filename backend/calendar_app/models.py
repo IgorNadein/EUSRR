@@ -26,6 +26,7 @@ class Recurrence(models.TextChoices):
 
 class CalendarVisibility(models.TextChoices):
     """Видимость календаря."""
+
     PUBLIC = "public", _("Публичный (все видят)")
     DEPARTMENT = "department", _("Отдел (только члены отдела)")
     PRIVATE = "private", _("Приватный (только владелец)")
@@ -34,57 +35,59 @@ class CalendarVisibility(models.TextChoices):
 
 class CalendarManager(models.Manager):
     """Менеджер для модели Calendar с дополнительными методами."""
-    
+
     def get_available_for_user(self, user):
         """Возвращает календари, доступные для просмотра пользователю."""
         if user.is_superuser or user.is_staff:
             # Админы видят все активные календари
             return self.filter(is_active=True)
-        
+
         # Публичные календари
         q = Q(visibility=CalendarVisibility.PUBLIC, is_active=True)
-        
+
         # Календари, где пользователь владелец
         q |= Q(owner_user=user, is_active=True)
-        
+
         # Календари отделов, где пользователь член
-        user_departments = user.departments_links.filter(
-            is_active=True
-        ).values_list("department_id", flat=True)
-        
+        user_departments = user.departments_links.filter(is_active=True).values_list(
+            "department_id", flat=True
+        )
+
         q |= Q(
             owner_department_id__in=user_departments,
             visibility=CalendarVisibility.DEPARTMENT,
-            is_active=True
+            is_active=True,
         )
-        
+
         # Календари с подпиской пользователя
         subscribed_calendar_ids = user.calendar_subscriptions.values_list(
             "calendar_id", flat=True
         )
         q |= Q(id__in=subscribed_calendar_ids, is_active=True)
-        
+
         return self.filter(q).distinct()
 
 
 class Calendar(models.Model):
     """Настраиваемый календарь (опциональный, расширенная функциональность).
-    
+
     Если событие создано БЕЗ calendar → работает старая логика (department/employee).
     Если событие создано С calendar → игнорируются department/employee, используются настройки календаря.
     """
-    
+
     # Основное
     title = models.CharField(_("Название"), max_length=200)
     description = models.TextField(_("Описание"), blank=True)
-    color = models.CharField(_("Цвет"), max_length=7, default="#0d6efd", help_text="#RRGGBB")
+    color = models.CharField(
+        _("Цвет"), max_length=7, default="#0d6efd", help_text="#RRGGBB"
+    )
     icon = models.CharField(
         _("Иконка"),
         max_length=50,
         blank=True,
-        help_text=_("Bootstrap icon, например: calendar-event")
+        help_text=_("Bootstrap icon, например: calendar-event"),
     )
-    
+
     # Владение (опциональное)
     owner_user = models.ForeignKey(
         User,
@@ -95,7 +98,7 @@ class Calendar(models.Model):
         verbose_name=_("Владелец"),
         help_text=_("Если задано — личный календарь пользователя"),
     )
-    
+
     owner_department = models.ForeignKey(
         "employees.Department",
         on_delete=models.CASCADE,
@@ -105,7 +108,7 @@ class Calendar(models.Model):
         verbose_name=_("Отдел-владелец"),
         help_text=_("Если задано — календарь отдела"),
     )
-    
+
     # Настройки видимости
     visibility = models.CharField(
         _("Видимость"),
@@ -113,27 +116,27 @@ class Calendar(models.Model):
         choices=CalendarVisibility.choices,
         default=CalendarVisibility.CUSTOM,
     )
-    
+
     # Права по умолчанию для новых подписчиков
     default_can_edit = models.BooleanField(
         _("Могут редактировать по умолчанию"),
         default=False,
         help_text=_("Если True, все подписчики могут создавать/редактировать события"),
     )
-    
+
     # Автоподписка
     auto_subscribe_new_users = models.BooleanField(
         _("Автоподписка для новых пользователей"),
         default=False,
         help_text=_("Автоматически подписывать новых сотрудников"),
     )
-    
+
     auto_subscribe_department_members = models.BooleanField(
         _("Автоподписка для членов отдела"),
         default=False,
         help_text=_("Автоматически подписывать членов отдела-владельца"),
     )
-    
+
     # Служебное
     is_active = models.BooleanField(_("Активен"), default=True)
     created_by = models.ForeignKey(
@@ -146,9 +149,9 @@ class Calendar(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     objects = CalendarManager()
-    
+
     class Meta:
         verbose_name = _("Календарь")
         verbose_name_plural = _("Календари")
@@ -158,126 +161,132 @@ class Calendar(models.Model):
             models.Index(fields=["owner_department", "is_active"]),
             models.Index(fields=["visibility"]),
         ]
-    
+
     def __str__(self):
         if self.owner_user:
             return f"{self.title} ({self.owner_user.username})"
         if self.owner_department:
             return f"{self.title} ({self.owner_department.name})"
         return f"{self.title} (Глобальный)"
-    
+
     def clean(self):
         # Нельзя одновременно user и department
         if self.owner_user and self.owner_department:
             raise ValidationError(
                 _("Календарь не может одновременно принадлежать пользователю и отделу.")
             )
-    
+
     @property
     def is_global(self):
         """Глобальный календарь (без владельца)."""
         return not self.owner_user_id and not self.owner_department_id
-    
+
     @property
     def is_personal(self):
         """Личный календарь пользователя."""
         return bool(self.owner_user_id)
-    
+
     @property
     def is_department(self):
         """Календарь отдела."""
         return bool(self.owner_department_id)
-    
+
     def is_owner(self, user):
         """Проверяет, является ли пользователь владельцем календаря."""
         if self.owner_user_id:
             return self.owner_user_id == user.id
         if self.owner_department_id:
             # Владелец отдела = руководитель отдела
-            return self.owner_department.head_id == user.id if hasattr(self.owner_department, 'head_id') else False
+            return (
+                self.owner_department.head_id == user.id
+                if hasattr(self.owner_department, "head_id")
+                else False
+            )
         # Глобальный календарь — владелец только админы
         return user.is_superuser or user.is_staff
-    
+
     def can_user_view(self, user):
         """Проверяет, может ли пользователь просматривать календарь."""
         if not self.is_active:
             return False
-        
+
         if user.is_superuser or user.is_staff:
             return True
-        
+
         # Владелец всегда может просматривать
         if self.is_owner(user):
             return True
-        
+
         # Публичный календарь
         if self.visibility == CalendarVisibility.PUBLIC:
             return True
-        
+
         # Календарь отдела
-        if self.visibility == CalendarVisibility.DEPARTMENT and self.owner_department_id:
+        if (
+            self.visibility == CalendarVisibility.DEPARTMENT
+            and self.owner_department_id
+        ):
             # Проверяем, является ли пользователь членом отдела
             return user.departments_links.filter(
-                department_id=self.owner_department_id,
-                is_active=True
+                department_id=self.owner_department_id, is_active=True
             ).exists()
-        
+
         # Приватный или настраиваемый — проверяем подписку
         if self.visibility in [CalendarVisibility.PRIVATE, CalendarVisibility.CUSTOM]:
             return self.subscriptions.filter(user=user).exists()
-        
+
         return False
-    
+
     def can_user_edit(self, user):
         """Проверяет, может ли пользователь редактировать события в календаре."""
         if user.is_superuser or user.is_staff:
             return True
-        
+
         # Владелец всегда может редактировать
         if self.is_owner(user):
             return True
-        
+
         # Проверяем подписку с правом редактирования
         subscription = self.subscriptions.filter(user=user).first()
         if subscription:
             return subscription.can_edit
-        
+
         return False
-    
+
     def can_user_manage(self, user):
         """Проверяет, может ли пользователь управлять календарем."""
         if user.is_superuser or user.is_staff:
             return True
-        
+
         # Владелец всегда может управлять
         if self.is_owner(user):
             return True
-        
+
         # Проверяем подписку с правом управления
         subscription = self.subscriptions.filter(user=user).first()
         if subscription:
             return subscription.can_manage
-        
+
         return False
 
 
 class CalendarSubscription(models.Model):
     """Подписка пользователя на календарь с настройками отображения."""
-    
+
     calendar = models.ForeignKey(
         Calendar,
         on_delete=models.CASCADE,
         related_name="subscriptions",
         verbose_name=_("Календарь"),
     )
-    
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name="calendar_subscriptions",
         verbose_name=_("Пользователь"),
     )
-    
+
     # Настройки отображения
     is_visible = models.BooleanField(_("Отображать"), default=True)
     color_override = models.CharField(
@@ -287,26 +296,30 @@ class CalendarSubscription(models.Model):
         null=True,
         help_text=_("Переопределяет цвет календаря"),
     )
-    
+
     # Права подписчика
     can_edit = models.BooleanField(
         _("Может редактировать"),
         default=False,
         help_text=_("Может создавать/редактировать события в этом календаре"),
     )
-    
+
     can_manage = models.BooleanField(
         _("Может управлять"),
         default=False,
         help_text=_("Может управлять правами других пользователей"),
     )
-    
+
     # Уведомления
-    notify_on_new_event = models.BooleanField(_("Уведомлять о новых событиях"), default=True)
-    notify_on_event_change = models.BooleanField(_("Уведомлять об изменениях"), default=True)
-    
+    notify_on_new_event = models.BooleanField(
+        _("Уведомлять о новых событиях"), default=True
+    )
+    notify_on_event_change = models.BooleanField(
+        _("Уведомлять об изменениях"), default=True
+    )
+
     subscribed_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         verbose_name = _("Подписка на календарь")
         verbose_name_plural = _("Подписки на календари")
@@ -315,18 +328,18 @@ class CalendarSubscription(models.Model):
             models.Index(fields=["user", "is_visible"]),
             models.Index(fields=["calendar", "can_edit"]),
         ]
-    
+
     def __str__(self):
         return f"{self.user.username} → {self.calendar.title}"
 
 
 class CalendarEvent(models.Model):
     """Событие календаря с поддержкой повторяемости.
-    
+
     ОБРАТНАЯ СОВМЕСТИМОСТЬ:
     - Если calendar = NULL → используется старая логика (department/employee)
     - Если calendar задан → игнорируются department/employee
-    
+
     LEGACY (старая логика):
     - department = NULL и employee = NULL → событие компании (глобальное)
     - department задан и employee = NULL → событие отдела
@@ -342,11 +355,10 @@ class CalendarEvent(models.Model):
         blank=True,
         verbose_name=_("Календарь"),
         help_text=_(
-            "Если не задан — используется стандартная логика "
-            "(department/employee)"
+            "Если не задан — используется стандартная логика (department/employee)"
         ),
     )
-    
+
     # ✅ LEGACY: Старые поля для обратной совместимости
     department = models.ForeignKey(
         "employees.Department",
@@ -357,7 +369,7 @@ class CalendarEvent(models.Model):
         blank=True,
         help_text=_("LEGACY: используется если calendar=NULL"),
     )
-    
+
     employee = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -467,11 +479,8 @@ class CalendarEvent(models.Model):
     def __str__(self) -> str:
         # НОВОЕ: Приоритет calendar
         if self.calendar_id:
-            return (
-                f"[{self.calendar.title}] {self.title} "
-                f"({self.start_date:%d.%m.%Y})"
-            )
-        
+            return f"[{self.calendar.title}] {self.title} ({self.start_date:%d.%m.%Y})"
+
         # LEGACY: Старая логика
         if self.employee_id:
             scope = f"Личный ({self.employee})"
@@ -479,7 +488,7 @@ class CalendarEvent(models.Model):
             scope = str(self.department)
         else:
             scope = _("Компания")
-        
+
         if self.end_date:
             return (
                 f"{scope}: {self.title} "
@@ -491,7 +500,7 @@ class CalendarEvent(models.Model):
     def is_legacy_event(self) -> bool:
         """True если событие использует старую логику (без calendar)."""
         return self.calendar_id is None
-    
+
     @property
     def is_modern_event(self) -> bool:
         """True если событие использует новую логику (с calendar)."""
@@ -501,11 +510,11 @@ class CalendarEvent(models.Model):
     def is_company(self) -> bool:
         """True если событие глобальное (LEGACY: без отдела и сотрудника)."""
         return (
-            self.calendar_id is None and
-            self.department_id is None and
-            self.employee_id is None
+            self.calendar_id is None
+            and self.department_id is None
+            and self.employee_id is None
         )
-    
+
     @property
     def is_personal(self) -> bool:
         """True если событие личное (LEGACY или calendar.is_personal)."""
@@ -534,17 +543,14 @@ class CalendarEvent(models.Model):
                         "department или employee."
                     )
                 )
-        
+
         # LEGACY: Проверка взаимоисключающих полей (только если calendar=NULL)
         if not self.calendar_id:
             if self.department_id and self.employee_id:
                 raise ValidationError(
-                    _(
-                        "Событие не может одновременно принадлежать "
-                        "отделу и сотруднику."
-                    )
+                    _("Событие не может одновременно принадлежать отделу и сотруднику.")
                 )
-        
+
         # База дат
         if self.end_date and self.start_date and self.end_date < self.start_date:
             raise ValidationError(

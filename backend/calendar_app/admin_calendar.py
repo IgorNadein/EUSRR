@@ -53,32 +53,58 @@ class CalendarAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at", "event_count", "subscriber_count")
     raw_id_fields = ("owner_user", "owner_department", "created_by")
     fieldsets = (
-        (_("Основное"), {
-            "fields": ("title", "description", "icon"),
-        }),
-        (_("Владелец"), {
-            "fields": ("owner_user", "owner_department"),
-            "description": _("Указывается либо пользователь, либо отдел"),
-        }),
-        (_("Видимость"), {
-            "fields": ("visibility",),
-        }),
-        (_("Отображение"), {
-            "fields": ("color", "sort_order"),
-        }),
-        (_("Автоподписка"), {
-            "fields": (
-                "auto_subscribe_new_users",
-                "auto_subscribe_department_members",
-            ),
-        }),
-        (_("Статус"), {
-            "fields": ("is_active",),
-        }),
-        (_("Статистика"), {
-            "fields": ("event_count", "subscriber_count", "created_at", "updated_at"),
-            "classes": ("collapse",),
-        }),
+        (
+            _("Основное"),
+            {
+                "fields": ("title", "description", "icon"),
+            },
+        ),
+        (
+            _("Владелец"),
+            {
+                "fields": ("owner_user", "owner_department"),
+                "description": _("Указывается либо пользователь, либо отдел"),
+            },
+        ),
+        (
+            _("Видимость"),
+            {
+                "fields": ("visibility",),
+            },
+        ),
+        (
+            _("Отображение"),
+            {
+                "fields": ("color", "sort_order"),
+            },
+        ),
+        (
+            _("Автоподписка"),
+            {
+                "fields": (
+                    "auto_subscribe_new_users",
+                    "auto_subscribe_department_members",
+                ),
+            },
+        ),
+        (
+            _("Статус"),
+            {
+                "fields": ("is_active",),
+            },
+        ),
+        (
+            _("Статистика"),
+            {
+                "fields": (
+                    "event_count",
+                    "subscriber_count",
+                    "created_at",
+                    "updated_at",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
     @admin.display(description=_("Видимость"), ordering="visibility")
@@ -129,6 +155,5 @@ class CalendarAdmin(admin.ModelAdmin):
         # Проставляем created_by при создании
         if not change and obj.created_by_id is None:
             obj.created_by = request.user
-        
-        super().save_model(request, obj, form, change)
 
+        super().save_model(request, obj, form, change)

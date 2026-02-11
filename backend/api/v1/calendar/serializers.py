@@ -5,8 +5,12 @@ import re
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional
 
-from calendar_app.models import (Calendar, CalendarEvent, CalendarSubscription,
-                                 Recurrence)
+from calendar_app.models import (
+    Calendar,
+    CalendarEvent,
+    CalendarSubscription,
+    Recurrence,
+)
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -52,7 +56,13 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     # ---- helpers
-    def _coalesce(self, data: Dict[str, Any], instance: Optional[CalendarEvent], key: str, default=None):
+    def _coalesce(
+        self,
+        data: Dict[str, Any],
+        instance: Optional[CalendarEvent],
+        key: str,
+        default=None,
+    ):
         if key in data:
             return data.get(key)
         if instance is not None:
@@ -66,7 +76,7 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
             iv = int(v)
             if not (0 <= iv <= 6):
                 raise ValueError("weekday out of range")
-            mask |= (1 << iv)
+            mask |= 1 << iv
         return mask
 
     # ---- validation
@@ -90,7 +100,9 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
         try:
             interval = int(interval_val)
         except Exception:
-            raise serializers.ValidationError({"recurrence_interval": _("Интервал должен быть числом.")})
+            raise serializers.ValidationError(
+                {"recurrence_interval": _("Интервал должен быть числом.")}
+            )
 
         until: Optional[date] = self._coalesce(attrs, inst, "recurrence_until", None)
         rcount: Optional[int] = self._coalesce(attrs, inst, "recurrence_count", None)
@@ -101,7 +113,13 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
             try:
                 wmask = self._weekdays_to_mask(weekdays_input)
             except Exception:
-                raise serializers.ValidationError({"weekdays": _("Неверный формат дней недели (ожидаются числа 0..6).")})
+                raise serializers.ValidationError(
+                    {
+                        "weekdays": _(
+                            "Неверный формат дней недели (ожидаются числа 0..6)."
+                        )
+                    }
+                )
             attrs["weekdays_mask"] = wmask
             attrs.pop("weekdays", None)
 
@@ -109,30 +127,54 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
 
         # 1) База
         if interval < 1:
-            raise serializers.ValidationError({"recurrence_interval": _("Интервал должен быть ≥ 1.")})
+            raise serializers.ValidationError(
+                {"recurrence_interval": _("Интервал должен быть ≥ 1.")}
+            )
         if until is not None and until < s_date:
-            raise serializers.ValidationError({"recurrence_until": _("Дата окончания повторения не может быть раньше даты начала.")})
+            raise serializers.ValidationError(
+                {
+                    "recurrence_until": _(
+                        "Дата окончания повторения не может быть раньше даты начала."
+                    )
+                }
+            )
         # Конфликтующие параметры
         if until is not None and rcount is not None:
-            raise serializers.ValidationError({"recurrence_count": _("Нельзя одновременно задавать recurrence_until и recurrence_count.")})
+            raise serializers.ValidationError(
+                {
+                    "recurrence_count": _(
+                        "Нельзя одновременно задавать recurrence_until и recurrence_count."
+                    )
+                }
+            )
 
         if color and not re.fullmatch(r"#([0-9A-Fa-f]{6})", color):
-            raise serializers.ValidationError({"color": _("Цвет должен быть в формате #RRGGBB.")})
+            raise serializers.ValidationError(
+                {"color": _("Цвет должен быть в формате #RRGGBB.")}
+            )
 
         # 2) Время / all_day
         has_any_time = (s_time is not None) or (e_time is not None)
         if has_any_time and (s_time is None or e_time is None):
-            raise serializers.ValidationError(_("Если указываете время, заполните и начало, и окончание."))
+            raise serializers.ValidationError(
+                _("Если указываете время, заполните и начало, и окончание.")
+            )
 
         if all_day_raw is None:
             attrs["all_day"] = not has_any_time
         else:
             if all_day_raw and has_any_time:
-                raise serializers.ValidationError(_("Нельзя указывать время для события на весь день."))
+                raise serializers.ValidationError(
+                    _("Нельзя указывать время для события на весь день.")
+                )
             if (all_day_raw is False) and not has_any_time:
-                raise serializers.ValidationError(_("Для события с временем укажите start_time и end_time."))
+                raise serializers.ValidationError(
+                    _("Для события с временем укажите start_time и end_time.")
+                )
 
-        all_day: bool = attrs.get("all_day", inst.all_day if inst else (not has_any_time))
+        all_day: bool = attrs.get(
+            "all_day", inst.all_day if inst else (not has_any_time)
+        )
 
         # end_date по умолчанию = start_date
         if e_date is None:
@@ -142,37 +184,59 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
         # 3) Хронология
         if all_day:
             if e_date < s_date:
-                raise serializers.ValidationError({"end_date": _("Дата окончания не может быть раньше даты начала.")})
+                raise serializers.ValidationError(
+                    {"end_date": _("Дата окончания не может быть раньше даты начала.")}
+                )
         else:
             start_dt = datetime.combine(s_date, s_time)
             end_dt = datetime.combine(e_date, e_time)
             if end_dt <= start_dt:
-                raise serializers.ValidationError({"end_time": _("Окончание должно быть позже начала.")})
+                raise serializers.ValidationError(
+                    {"end_time": _("Окончание должно быть позже начала.")}
+                )
 
         # 4) Повторяемость
         if rec == Recurrence.HOURLY and all_day:
-            raise serializers.ValidationError({"recurrence": _("Ежечасное повторение возможно только для событий с временем.")})
+            raise serializers.ValidationError(
+                {
+                    "recurrence": _(
+                        "Ежечасное повторение возможно только для событий с временем."
+                    )
+                }
+            )
 
         if rec == Recurrence.WEEKLY:
             # create: требуем явные дни
             if is_create and wmask == 0:
-                raise serializers.ValidationError({"weekdays_mask": _("Для еженедельного события укажите дни недели (weekdays или weekdays_mask).")})
+                raise serializers.ValidationError(
+                    {
+                        "weekdays_mask": _(
+                            "Для еженедельного события укажите дни недели (weekdays или weekdays_mask)."
+                        )
+                    }
+                )
             # update: если маска не пришла и осталась 0 — подставим день недели старта
             if (not is_create) and ("weekdays_mask" not in attrs) and (wmask == 0):
                 wmask = 1 << s_date.weekday()
                 attrs["weekdays_mask"] = wmask
             if wmask < 0 or wmask > 0b1111111:
-                raise serializers.ValidationError({"weekdays_mask": _("Недопустимая маска дней недели.")})
+                raise serializers.ValidationError(
+                    {"weekdays_mask": _("Недопустимая маска дней недели.")}
+                )
         else:
             # для НЕ weekly игнорируем присланные weekdays/маску (если вдруг присланы пустыми)
             attrs.pop("weekdays", None)
             # маску не трогаем, если не прислана — оставляем как есть/0
 
         if rec not in Recurrence.values:
-            raise serializers.ValidationError({"recurrence": _("Недопустимый тип повторения.")})
+            raise serializers.ValidationError(
+                {"recurrence": _("Недопустимый тип повторения.")}
+            )
 
         if rcount is not None and rcount < 1:
-            raise serializers.ValidationError({"recurrence_count": _("Количество повторов должно быть ≥ 1.")})
+            raise serializers.ValidationError(
+                {"recurrence_count": _("Количество повторов должно быть ≥ 1.")}
+            )
 
         return attrs
 
@@ -183,12 +247,17 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
         calendar_id = validated_data.pop("calendar_id", None)
         if calendar_id is not None:
             from calendar_app.models import Calendar
+
             try:
                 calendar = Calendar.objects.get(id=calendar_id)
                 validated_data["calendar"] = calendar
             except Calendar.DoesNotExist:
                 raise serializers.ValidationError(
-                    {"calendar_id": _("Календарь с ID {} не найден.").format(calendar_id)}
+                    {
+                        "calendar_id": _("Календарь с ID {} не найден.").format(
+                            calendar_id
+                        )
+                    }
                 )
 
         # Legacy поддержка department_id и employee_id
@@ -197,40 +266,57 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
 
         if department_id is not None:
             from employees.models import Department
+
             try:
                 department = Department.objects.get(id=department_id)
                 validated_data["department"] = department
             except Department.DoesNotExist:
                 raise serializers.ValidationError(
-                    {"department_id": _("Отдел с ID {} не найден.").format(department_id)}
+                    {
+                        "department_id": _("Отдел с ID {} не найден.").format(
+                            department_id
+                        )
+                    }
                 )
 
         if employee_id is not None:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
             try:
                 employee = User.objects.get(id=employee_id)
                 validated_data["employee"] = employee
             except User.DoesNotExist:
                 raise serializers.ValidationError(
-                    {"employee_id": _("Сотрудник с ID {} не найден.").format(employee_id)}
+                    {
+                        "employee_id": _("Сотрудник с ID {} не найден.").format(
+                            employee_id
+                        )
+                    }
                 )
 
         return CalendarEvent.objects.create(**validated_data)
 
-    def update(self, instance: CalendarEvent, validated_data: Dict[str, Any]) -> CalendarEvent:
+    def update(
+        self, instance: CalendarEvent, validated_data: Dict[str, Any]
+    ) -> CalendarEvent:
         validated_data.pop("weekdays", None)
 
         # Поддержка calendar_id (новая архитектура)
         calendar_id = validated_data.pop("calendar_id", None)
         if calendar_id is not None:
             from calendar_app.models import Calendar
+
             try:
                 calendar = Calendar.objects.get(id=calendar_id)
                 validated_data["calendar"] = calendar
             except Calendar.DoesNotExist:
                 raise serializers.ValidationError(
-                    {"calendar_id": _("Календарь с ID {} не найден.").format(calendar_id)}
+                    {
+                        "calendar_id": _("Календарь с ID {} не найден.").format(
+                            calendar_id
+                        )
+                    }
                 )
 
         # Legacy поддержка department_id и employee_id
@@ -239,23 +325,33 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
 
         if department_id is not None:
             from employees.models import Department
+
             try:
                 department = Department.objects.get(id=department_id)
                 validated_data["department"] = department
             except Department.DoesNotExist:
                 raise serializers.ValidationError(
-                    {"department_id": _("Отдел с ID {} не найден.").format(department_id)}
+                    {
+                        "department_id": _("Отдел с ID {} не найден.").format(
+                            department_id
+                        )
+                    }
                 )
 
         if employee_id is not None:
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
             try:
                 employee = User.objects.get(id=employee_id)
                 validated_data["employee"] = employee
             except User.DoesNotExist:
                 raise serializers.ValidationError(
-                    {"employee_id": _("Сотрудник с ID {} не найден.").format(employee_id)}
+                    {
+                        "employee_id": _("Сотрудник с ID {} не найден.").format(
+                            employee_id
+                        )
+                    }
                 )
 
         for f, v in validated_data.items():
@@ -411,8 +507,14 @@ class CalendarWriteSerializer(serializers.ModelSerializer):
 
         # Для update нужно учитывать существующие значения
         if self.instance:
-            owner_user = owner_user if "owner_user" in attrs else self.instance.owner_user
-            owner_department = owner_department if "owner_department" in attrs else self.instance.owner_department
+            owner_user = (
+                owner_user if "owner_user" in attrs else self.instance.owner_user
+            )
+            owner_department = (
+                owner_department
+                if "owner_department" in attrs
+                else self.instance.owner_department
+            )
 
         if owner_user and owner_department:
             raise serializers.ValidationError(
@@ -473,7 +575,9 @@ class CalendarSubscriptionWriteSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Валидация подписки."""
-        calendar = attrs.get("calendar") or (self.instance.calendar if self.instance else None)
+        calendar = attrs.get("calendar") or (
+            self.instance.calendar if self.instance else None
+        )
         user = attrs.get("user") or (self.instance.user if self.instance else None)
 
         # Проверяем, что пользователь не подписывается на свой личный календарь дважды
@@ -482,4 +586,3 @@ class CalendarSubscriptionWriteSerializer(serializers.ModelSerializer):
             pass
 
         return attrs
-

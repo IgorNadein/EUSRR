@@ -5,6 +5,7 @@
 Проверяют функциональность опциональных календарей с настраиваемой видимостью
 и системой подписок.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -76,7 +77,9 @@ class TestCalendarCRUD:
         assert r.data.get("visibility") == "department"
         assert r.data.get("is_department") is True
 
-    def test_cannot_create_with_both_owners(self, auth_client, admin_user, make_department):
+    def test_cannot_create_with_both_owners(
+        self, auth_client, admin_user, make_department
+    ):
         """Нельзя создать календарь с двумя владельцами одновременно."""
         dept = make_department("HR")
         client = auth_client(admin_user)
@@ -106,13 +109,15 @@ class TestCalendarCRUD:
         r = client.patch(
             f"/api/v1/calendar/calendars/{calendar.id}/",
             {"title": "New Title", "color": "#ff00ff"},
-            format="json"
+            format="json",
         )
         assert r.status_code == 200
         assert r.data.get("title") == "New Title"
         assert r.data.get("color") == "#ff00ff"
 
-    def test_cannot_update_others_calendar(self, auth_client, regular_user, make_calendar, make_user):
+    def test_cannot_update_others_calendar(
+        self, auth_client, regular_user, make_calendar, make_user
+    ):
         """Нельзя обновить чужой календарь."""
         other_user = make_user(username="other")
         calendar = make_calendar(title="Other's Calendar", owner_user=other_user)
@@ -120,7 +125,7 @@ class TestCalendarCRUD:
         r = client.patch(
             f"/api/v1/calendar/calendars/{calendar.id}/",
             {"title": "Hacked"},
-            format="json"
+            format="json",
         )
         assert r.status_code == 403
 
@@ -131,7 +136,9 @@ class TestCalendarCRUD:
         r = client.delete(f"/api/v1/calendar/calendars/{calendar.id}/")
         assert r.status_code == 204
 
-    def test_cannot_delete_others_calendar(self, auth_client, regular_user, make_calendar, make_user):
+    def test_cannot_delete_others_calendar(
+        self, auth_client, regular_user, make_calendar, make_user
+    ):
         """Нельзя удалить чужой календарь."""
         other_user = make_user(username="other2")
         calendar = make_calendar(title="Other's Calendar", owner_user=other_user)
@@ -144,7 +151,9 @@ class TestCalendarCRUD:
 class TestCalendarSubscriptions:
     """Тесты для подписок на календари."""
 
-    def test_subscribe_to_public_calendar(self, auth_client, regular_user, make_calendar):
+    def test_subscribe_to_public_calendar(
+        self, auth_client, regular_user, make_calendar
+    ):
         """Подписка на публичный календарь."""
         calendar = make_calendar(title="Public", visibility="public")
         client = auth_client(regular_user)
@@ -153,7 +162,9 @@ class TestCalendarSubscriptions:
         assert r.data.get("calendar") == calendar.id
         assert r.data.get("user") == regular_user.id
 
-    def test_subscribe_with_permissions(self, auth_client, admin_user, regular_user, make_calendar):
+    def test_subscribe_with_permissions(
+        self, auth_client, admin_user, regular_user, make_calendar
+    ):
         """Владелец может выдать права при подписке."""
         calendar = make_calendar(title="Admin Calendar", owner_user=admin_user)
         client = auth_client(regular_user)
@@ -161,7 +172,7 @@ class TestCalendarSubscriptions:
         r = client.post(
             f"/api/v1/calendar/calendars/{calendar.id}/subscribe/",
             {"can_edit": True, "can_manage": True},
-            format="json"
+            format="json",
         )
         # Пользователь подпишется, но без прав (только владелец может выдавать права)
         assert r.status_code == 201
@@ -179,7 +190,9 @@ class TestCalendarSubscriptions:
         r2 = client.post(f"/api/v1/calendar/calendars/{calendar.id}/subscribe/")
         assert r2.status_code == 400
 
-    def test_unsubscribe_from_calendar(self, auth_client, regular_user, make_calendar, make_subscription):
+    def test_unsubscribe_from_calendar(
+        self, auth_client, regular_user, make_calendar, make_subscription
+    ):
         """Отписка от календаря."""
         calendar = make_calendar(title="Unsubscribe", visibility="public")
         subscription = make_subscription(calendar=calendar, user=regular_user)
@@ -187,20 +200,24 @@ class TestCalendarSubscriptions:
         r = client.post(f"/api/v1/calendar/calendars/{calendar.id}/unsubscribe/")
         assert r.status_code == 200
 
-    def test_unsubscribe_without_subscription(self, auth_client, regular_user, make_calendar):
+    def test_unsubscribe_without_subscription(
+        self, auth_client, regular_user, make_calendar
+    ):
         """Нельзя отписаться, если не подписан."""
         calendar = make_calendar(title="Not Subscribed", visibility="public")
         client = auth_client(regular_user)
         r = client.post(f"/api/v1/calendar/calendars/{calendar.id}/unsubscribe/")
         assert r.status_code == 400
 
-    def test_list_my_subscriptions(self, auth_client, regular_user, make_calendar, make_subscription):
+    def test_list_my_subscriptions(
+        self, auth_client, regular_user, make_calendar, make_subscription
+    ):
         """Список подписок текущего пользователя."""
         cal1 = make_calendar(title="Calendar 1", visibility="public")
         cal2 = make_calendar(title="Calendar 2", visibility="public")
         make_subscription(calendar=cal1, user=regular_user)
         make_subscription(calendar=cal2, user=regular_user)
-        
+
         client = auth_client(regular_user)
         r = client.get("/api/v1/calendar/subscriptions/")
         assert r.status_code == 200
@@ -214,7 +231,7 @@ class TestCalendarSubscriptions:
         make_calendar(title="Public", visibility="public")
         # Создаем личный календарь
         make_calendar(title="My Private", visibility="private", owner_user=regular_user)
-        
+
         client = auth_client(regular_user)
         r = client.get("/api/v1/calendar/calendars/my-calendars/")
         assert r.status_code == 200
@@ -226,7 +243,9 @@ class TestCalendarSubscriptions:
 class TestCalendarEventsWithCalendarId:
     """Тесты для событий с привязкой к календарю (новая архитектура)."""
 
-    def test_create_event_with_calendar_id(self, auth_client, admin_user, make_calendar):
+    def test_create_event_with_calendar_id(
+        self, auth_client, admin_user, make_calendar
+    ):
         """Создание события с привязкой к календарю."""
         calendar = make_calendar(title="Project Calendar", visibility="public")
         client = auth_client(admin_user)
@@ -240,54 +259,57 @@ class TestCalendarEventsWithCalendarId:
         assert r.status_code == 201
         assert r.data.get("title") == "Project Meeting"
 
-    def test_filter_events_by_calendar_id(self, auth_client, admin_user, make_calendar, make_event):
+    def test_filter_events_by_calendar_id(
+        self, auth_client, admin_user, make_calendar, make_event
+    ):
         """Фильтрация событий по calendar_id."""
         cal1 = make_calendar(title="Calendar 1")
         cal2 = make_calendar(title="Calendar 2")
-        
+
         # Создаем события в разных календарях
         event1 = make_event(title="Event 1", calendar=cal1, start_date="2025-09-10")
         event2 = make_event(title="Event 2", calendar=cal2, start_date="2025-09-10")
-        
+
         client = auth_client(admin_user)
         # Запрашиваем события первого календаря
-        r = client.get("/api/v1/calendar/events/", {
-            "calendar_id": cal1.id,
-            "start": "2025-09-01",
-            "end": "2025-09-30"
-        })
+        r = client.get(
+            "/api/v1/calendar/events/",
+            {"calendar_id": cal1.id, "start": "2025-09-01", "end": "2025-09-30"},
+        )
         assert r.status_code == 200
         titles = [item.get("title") for item in r.data]
         assert "Event 1" in titles
         assert "Event 2" not in titles
 
-    def test_legacy_events_not_mixed_with_calendar_events(self, auth_client, admin_user, make_calendar, make_event):
+    def test_legacy_events_not_mixed_with_calendar_events(
+        self, auth_client, admin_user, make_calendar, make_event
+    ):
         """Legacy события (без calendar) не смешиваются с календарными событиями."""
         calendar = make_calendar(title="New Calendar")
-        
+
         # Legacy событие (без calendar)
         legacy_event = make_event(title="Legacy Event", start_date="2025-09-10")
         # Событие нового календаря
-        calendar_event = make_event(title="Calendar Event", calendar=calendar, start_date="2025-09-10")
-        
+        calendar_event = make_event(
+            title="Calendar Event", calendar=calendar, start_date="2025-09-10"
+        )
+
         client = auth_client(admin_user)
-        
+
         # Запрос legacy событий (без calendar_id)
-        r1 = client.get("/api/v1/calendar/events/", {
-            "start": "2025-09-01",
-            "end": "2025-09-30"
-        })
+        r1 = client.get(
+            "/api/v1/calendar/events/", {"start": "2025-09-01", "end": "2025-09-30"}
+        )
         assert r1.status_code == 200
         legacy_titles = [item.get("title") for item in r1.data]
         assert "Legacy Event" in legacy_titles
         assert "Calendar Event" not in legacy_titles
-        
+
         # Запрос событий календаря
-        r2 = client.get("/api/v1/calendar/events/", {
-            "calendar_id": calendar.id,
-            "start": "2025-09-01",
-            "end": "2025-09-30"
-        })
+        r2 = client.get(
+            "/api/v1/calendar/events/",
+            {"calendar_id": calendar.id, "start": "2025-09-01", "end": "2025-09-30"},
+        )
         assert r2.status_code == 200
         calendar_titles = [item.get("title") for item in r2.data]
         assert "Calendar Event" in calendar_titles
@@ -298,7 +320,9 @@ class TestCalendarEventsWithCalendarId:
 class TestCalendarVisibility:
     """Тесты видимости календарей."""
 
-    def test_public_calendar_visible_to_all(self, auth_client, regular_user, make_calendar):
+    def test_public_calendar_visible_to_all(
+        self, auth_client, regular_user, make_calendar
+    ):
         """Публичный календарь виден всем."""
         calendar = make_calendar(title="Public", visibility="public")
         client = auth_client(regular_user)
@@ -307,26 +331,30 @@ class TestCalendarVisibility:
         titles = [c.get("title") for c in r.data["results"]]
         assert "Public" in titles
 
-    def test_private_calendar_only_visible_to_owner(self, auth_client, regular_user, make_calendar, make_user):
+    def test_private_calendar_only_visible_to_owner(
+        self, auth_client, regular_user, make_calendar, make_user
+    ):
         """Приватный календарь виден только владельцу."""
         other_user = make_user(username="other3")
-        calendar = make_calendar(title="Private", visibility="private", owner_user=other_user)
-        
+        calendar = make_calendar(
+            title="Private", visibility="private", owner_user=other_user
+        )
+
         client = auth_client(regular_user)
         r = client.get("/api/v1/calendar/calendars/")
         assert r.status_code == 200
         titles = [c.get("title") for c in r.data["results"]]
         assert "Private" not in titles
 
-    def test_department_calendar_visible_to_members(self, auth_client, dept_manager_user, make_department, make_calendar):
+    def test_department_calendar_visible_to_members(
+        self, auth_client, dept_manager_user, make_department, make_calendar
+    ):
         """Календарь отдела виден членам отдела."""
         dept = make_department("QA")
         calendar = make_calendar(
-            title="QA Calendar",
-            visibility="department",
-            owner_department=dept
+            title="QA Calendar", visibility="department", owner_department=dept
         )
-        
+
         # dept_manager_user должен видеть календарь отдела
         client = auth_client(dept_manager_user)
         r = client.get("/api/v1/calendar/calendars/")
@@ -355,14 +383,22 @@ class TestCalendarPermissions:
         calendar = make_calendar(title="Edit Test", owner_user=regular_user)
         assert calendar.can_user_edit(regular_user) is True
 
-    def test_can_user_edit_with_subscription(self, regular_user, make_calendar, make_subscription):
+    def test_can_user_edit_with_subscription(
+        self, regular_user, make_calendar, make_subscription
+    ):
         """Подписчик с правом can_edit может редактировать."""
         calendar = make_calendar(title="Edit Sub", visibility="custom")
-        subscription = make_subscription(calendar=calendar, user=regular_user, can_edit=True)
+        subscription = make_subscription(
+            calendar=calendar, user=regular_user, can_edit=True
+        )
         assert calendar.can_user_edit(regular_user) is True
 
-    def test_cannot_edit_without_permission(self, regular_user, make_calendar, make_user):
+    def test_cannot_edit_without_permission(
+        self, regular_user, make_calendar, make_user
+    ):
         """Нельзя редактировать без прав."""
         other_user = make_user(username="other4")
-        calendar = make_calendar(title="No Edit", owner_user=other_user, visibility="private")
+        calendar = make_calendar(
+            title="No Edit", owner_user=other_user, visibility="private"
+        )
         assert calendar.can_user_edit(regular_user) is False

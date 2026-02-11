@@ -1007,21 +1007,35 @@ export function initCalendarWidget(options = {}) {
       if (val != null) deptSel.value = String(val);
     }
 
-    // Заполняем селектор календарей
-    populateCalendarSelector();
+    // Заполняем чекбоксы календарей
+    populateCalendarCheckboxes();
 
-    // Устанавливаем текущий календарь в селекторе
-    const targetSelect = document.getElementById("targetCalendarSelect");
-    if (targetSelect && data) {
+    // При редактировании отмечаем только текущий календарь события
+    const checkboxes = document.querySelectorAll(
+      'input[name="target_calendars"]',
+    );
+    if (checkboxes.length > 0 && data) {
+      // Сначала снимаем все галочки
+      checkboxes.forEach((cb) => (cb.checked = false));
+
+      // Отмечаем текущий календарь
+      let targetValue = null;
       if (data.calendar_id) {
-        targetSelect.value = data.calendar_id;
+        targetValue = data.calendar_id.toString();
       } else if (data.employee_id) {
-        targetSelect.value = "personal";
+        targetValue = "personal";
       } else if (data.department_id) {
-        targetSelect.value = `dept-${data.department_id}`;
+        targetValue = `dept-${data.department_id}`;
       } else {
-        targetSelect.value = "company";
+        targetValue = "company";
       }
+
+      // Ищем и отмечаем нужный чекбокс
+      checkboxes.forEach((cb) => {
+        if (cb.value === targetValue) {
+          cb.checked = true;
+        }
+      });
     }
 
     // Открываем форму редактирования
@@ -1037,68 +1051,104 @@ export function initCalendarWidget(options = {}) {
     form.querySelector('[name="title"]')?.focus();
   }
 
-  /* ===== Функция заполнения селектора календарей ===== */
-  function populateCalendarSelector() {
-    const select = document.getElementById("targetCalendarSelect");
-    if (!select) return;
+  /* ===== Функция заполнения чекбоксов календарей ===== */
+  function populateCalendarCheckboxes() {
+    const container = document.getElementById("targetCalendarCheckboxes");
+    if (!container) return;
 
-    // Очищаем селект
-    select.innerHTML = "";
+    // Очищаем контейнер
+    container.innerHTML = "";
 
-    // Добавляем базовые опции (legacy)
-    const companyOption = document.createElement("option");
-    companyOption.value = "company";
-    companyOption.textContent = "Компания (общие события)";
-    select.appendChild(companyOption);
+    let checkboxIndex = 0;
 
-    const personalOption = document.createElement("option");
-    personalOption.value = "personal";
-    personalOption.textContent = "Личный календарь";
-    select.appendChild(personalOption);
+    // Функция создания чекбокса
+    function createCheckbox(value, label, checked = false, color = null) {
+      const div = document.createElement("div");
+      div.className = "form-check";
+
+      const input = document.createElement("input");
+      input.className = "form-check-input";
+      input.type = "checkbox";
+      input.value = value;
+      input.id = `cal-checkbox-${checkboxIndex++}`;
+      input.name = "target_calendars";
+      input.checked = checked;
+
+      const labelEl = document.createElement("label");
+      labelEl.className = "form-check-label";
+      labelEl.htmlFor = input.id;
+
+      // Добавляем цветовой индикатор, если указан цвет
+      if (color) {
+        const colorSpan = document.createElement("span");
+        colorSpan.style.display = "inline-block";
+        colorSpan.style.width = "12px";
+        colorSpan.style.height = "12px";
+        colorSpan.style.backgroundColor = color;
+        colorSpan.style.borderRadius = "2px";
+        colorSpan.style.marginRight = "6px";
+        colorSpan.style.verticalAlign = "middle";
+        labelEl.appendChild(colorSpan);
+      }
+
+      labelEl.appendChild(document.createTextNode(label));
+
+      div.appendChild(input);
+      div.appendChild(labelEl);
+      return div;
+    }
+
+    // Добавляем базовые чекбоксы (legacy)
+    container.appendChild(
+      createCheckbox("company", "Компания (общие события)", true, "#0d6efd"),
+    );
+    container.appendChild(
+      createCheckbox("personal", "Личный календарь", false, "#198754"),
+    );
 
     // Добавляем отделы, если есть
     if (window.departments && Array.isArray(window.departments)) {
       window.departments.forEach((dept) => {
-        const deptOption = document.createElement("option");
-        deptOption.value = `dept-${dept.id}`;
-        deptOption.textContent = `Отдел: ${dept.name}`;
-        select.appendChild(deptOption);
+        container.appendChild(
+          createCheckbox(
+            `dept-${dept.id}`,
+            `Отдел: ${dept.name}`,
+            false,
+            "#dc3545",
+          ),
+        );
       });
     }
 
-    // Добавляем новые календари из интеграции
+    // Добавляем разделитель, если есть новые календари
     if (window.calendarIntegration?.calendars) {
       const newCalendars = window.calendarIntegration.calendars.filter(
-        (cal) => !cal.id.toString().startsWith("legacy-")
+        (cal) => !cal.id.toString().startsWith("legacy-"),
       );
 
       if (newCalendars.length > 0) {
-        // Добавляем разделитель
-        const separator = document.createElement("option");
-        separator.disabled = true;
-        separator.textContent = "─────────────────";
-        select.appendChild(separator);
+        // Разделительная линия
+        const hr = document.createElement("hr");
+        hr.className = "my-2";
+        container.appendChild(hr);
+
+        const header = document.createElement("small");
+        header.className = "text-muted d-block mb-1";
+        header.textContent = "Мои календари:";
+        container.appendChild(header);
 
         // Добавляем новые календари
         newCalendars.forEach((cal) => {
-          const calOption = document.createElement("option");
-          calOption.value = cal.id;
-          calOption.textContent = `📅 ${cal.name}`;
-          if (cal.description) {
-            calOption.title = cal.description;
-          }
-          select.appendChild(calOption);
+          container.appendChild(
+            createCheckbox(
+              cal.id,
+              `📅 ${cal.name}`,
+              false,
+              cal.color || "#6c757d",
+            ),
+          );
         });
       }
-    }
-
-    // Устанавливаем значение по умолчанию в зависимости от текущего состояния
-    if (state.type === "personal") {
-      select.value = "personal";
-    } else if (state.type === "dept" && state.deptId) {
-      select.value = `dept-${state.deptId}`;
-    } else {
-      select.value = "company";
     }
   }
 
@@ -1123,6 +1173,24 @@ export function initCalendarWidget(options = {}) {
     height: "auto",
     displayEventTime: false,
     selectable: true, // Позволяет выбирать даты
+
+    // Улучшенное отображение накладывающихся событий
+    dayMaxEvents: true, // Автоматически показывать "+N еще" когда много событий
+    dayMaxEventRows: 4, // Максимум 4 строки событий на день
+    moreLinkClick: "popover", // Показывать popover при клике на "+N еще"
+    eventMaxStack: 3, // Максимум 3 события в стеке
+
+    // Улучшенный порядок событий
+    eventOrder: ["start", "-duration", "title"], // Сортировка: раньше начало, длиннее, по алфавиту
+
+    // Настройки отображения
+    eventDisplay: "block", // Блочное отображение для лучшей видимости
+    eventTimeFormat: {
+      hour: "2-digit",
+      minute: "2-digit",
+      meridiem: false,
+    },
+
     events: async (info, success, failure) => {
       try {
         let raw;
@@ -1145,11 +1213,20 @@ export function initCalendarWidget(options = {}) {
         // Нормализуем id и цвет для FullCalendar
         const mapped = (Array.isArray(raw) ? raw : []).map((ev) => {
           const id = ev.id ?? ev.pk ?? ev.uuid ?? ev.slug ?? ev._id;
-          const color = ev.color || ev.bgColor || null;
+          const eventColor = ev.color || ev.bgColor || null;
+          const calendarColor = ev.__calendar?.color || null;
+
           return {
             ...ev,
             ...(id != null ? { id } : {}),
-            ...(color ? { backgroundColor: color, borderColor: color } : {}),
+            ...(eventColor
+              ? { backgroundColor: eventColor, borderColor: eventColor }
+              : {}),
+            extendedProps: {
+              ...(ev.extendedProps || {}),
+              ...ev, // Копируем все свойства события
+              calendar_color: calendarColor, // Добавляем цвет календаря
+            },
           };
         });
         success(mapped);
@@ -1166,31 +1243,94 @@ export function initCalendarWidget(options = {}) {
       return { domNodes: [el] };
     },
     eventDidMount: (info) => {
-      const col = info.event.backgroundColor || info.event.extendedProps?.color;
-      if (col) {
-        info.el.style.backgroundColor = col;
-        info.el.style.borderColor = col;
-        info.el.style.color = "var(--bs-body-bg)";
+      // Получаем цвет события и цвет календаря
+      const eventColor =
+        info.event.backgroundColor ||
+        info.event.extendedProps?.color ||
+        "#0d6efd";
+      const calendarColor = info.event.extendedProps?.calendar_color || null;
+
+      // Применяем современный стиль с двойным цветом
+      const eventEl = info.el;
+
+      if (calendarColor) {
+        // Если есть цвет календаря - показываем оба цвета
+        // Левая граница = цвет календаря, фон = цвет события (полупрозрачный)
+        eventEl.style.borderLeft = `4px solid ${calendarColor}`;
+        eventEl.style.backgroundColor = eventColor + "CC"; // 80% прозрачности
+        eventEl.style.borderColor = eventColor;
+
+        // Добавляем тень для объёма
+        eventEl.style.boxShadow =
+          "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
+      } else {
+        // Если нет цвета календаря - используем только цвет события
+        eventEl.style.backgroundColor = eventColor;
+        eventEl.style.borderColor = eventColor;
+        eventEl.style.borderLeft = `3px solid ${eventColor}`;
+        eventEl.style.boxShadow = "0 1px 2px rgba(0,0,0,0.1)";
       }
+
+      // Улучшаем читаемость текста
+      eventEl.style.color = "#ffffff";
+      eventEl.style.textShadow = "0 1px 2px rgba(0,0,0,0.2)";
+
+      // Закругляем углы для современного вида
+      eventEl.style.borderRadius = "4px";
+      eventEl.style.overflow = "hidden";
+
+      // Добавляем отступы
+      eventEl.style.paddingLeft = "6px";
+      eventEl.style.paddingRight = "4px";
+
+      // Hover эффект
+      eventEl.addEventListener("mouseenter", () => {
+        eventEl.style.transform = "translateY(-1px)";
+        eventEl.style.boxShadow =
+          "0 4px 8px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.12)";
+        eventEl.style.transition = "all 0.2s ease";
+        eventEl.style.zIndex = "100";
+      });
+
+      eventEl.addEventListener("mouseleave", () => {
+        eventEl.style.transform = "translateY(0)";
+        if (calendarColor) {
+          eventEl.style.boxShadow =
+            "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
+        } else {
+          eventEl.style.boxShadow = "0 1px 2px rgba(0,0,0,0.1)";
+        }
+        eventEl.style.transition = "all 0.2s ease";
+      });
+
+      // Особый стиль для ежегодных событий
       if (info.event.extendedProps?.recurrence === "annual") {
-        info.el.style.outline = "1px dashed currentColor";
-        info.el.style.outlineOffset = "-2px";
+        eventEl.style.backgroundImage = `repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 10px,
+          rgba(255,255,255,0.1) 10px,
+          rgba(255,255,255,0.1) 20px
+        )`;
       }
+
+      // Стилизация текста события
       const t = info.el.querySelector(".fc-event-main, .fc-event-title");
       if (t) {
         const s = t.style;
-        s.fontSize = "10px";
-        s.lineHeight = "1.02";
-        s.letterSpacing = "-0.2px";
+        s.fontSize = "11px";
+        s.lineHeight = "1.3";
+        s.letterSpacing = "0";
         s.display = "-webkit-box";
         s.webkitLineClamp = "3";
         s.webkitBoxOrient = "vertical";
         s.overflow = "hidden";
         s.whiteSpace = "normal";
         s.textOverflow = "ellipsis";
-        s.fontWeight = "600";
+        s.fontWeight = "500";
         s.fontFamily =
-          '"Arial Narrow","Roboto Condensed",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+          'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+        s.padding = "2px 0";
       }
 
       // Добавляем обработчик правой кнопки мыши
@@ -1265,8 +1405,8 @@ export function initCalendarWidget(options = {}) {
         typeof syncUntilCount === "function" && syncUntilCount();
       } catch (_) {}
 
-      // Заполняем селектор календарей
-      populateCalendarSelector();
+      // Заполняем чекбоксы календарей
+      populateCalendarCheckboxes();
 
       // Открываем модал
       const createModalEl = document.getElementById("eventCreateModal");
@@ -1473,36 +1613,17 @@ export function initCalendarWidget(options = {}) {
       payload.weekdays = weekdays;
     }
 
-    // Получаем выбранный календарь из формы
-    const targetCalendar = fd.get("target_calendar");
+    // Получаем выбранные календари из чекбоксов
+    const selectedCalendars = [];
+    const checkboxes = document.querySelectorAll(
+      'input[name="target_calendars"]:checked',
+    );
+    checkboxes.forEach((cb) => selectedCalendars.push(cb.value));
 
-    // Определяем тип календаря и добавляем соответствующие параметры
-    if (targetCalendar && targetCalendar !== "company") {
-      if (targetCalendar === "personal") {
-        // Личный календарь - получаем employee_id
-        const userMeta = document.querySelector('meta[name="user-id"]');
-        const currentEmployeeId = userMeta
-          ? parseInt(userMeta.content, 10)
-          : null;
-        if (!currentEmployeeId) {
-          alert("Не удалось определить ID пользователя");
-          return;
-        }
-        payload.employee_id = currentEmployeeId;
-      } else if (targetCalendar.startsWith("dept-")) {
-        // Календарь отдела
-        const deptId = parseInt(targetCalendar.replace("dept-", ""), 10);
-        if (isNaN(deptId)) {
-          alert("Некорректный отдел");
-          return;
-        }
-        payload.department_id = deptId;
-      } else if (/^\d+$/.test(targetCalendar)) {
-        // Новый календарь - используем calendar_id
-        payload.calendar_id = parseInt(targetCalendar, 10);
-      }
+    if (selectedCalendars.length === 0) {
+      alert("Выберите хотя бы один календарь для создания события");
+      return;
     }
-    // Если targetCalendar === "company" или null, то это общие события компании (без дополнительных параметров)
 
     const postHeaders = {
       "Content-Type": "application/json",
@@ -1516,15 +1637,99 @@ export function initCalendarWidget(options = {}) {
 
     try {
       const isEdit = form.dataset.mode === "edit" && form.dataset.eventId;
-      const url = isEdit
-        ? API_EVENTS + String(form.dataset.eventId) + "/"
-        : API_EVENTS;
-      const method = isEdit ? "PATCH" : "POST";
-      await fetchJSON(url, {
-        method,
-        headers: postHeaders,
-        body: JSON.stringify(payload),
-      });
+
+      if (isEdit) {
+        // При редактировании - обновляем только первый выбранный календарь
+        const targetCalendar = selectedCalendars[0];
+
+        // Определяем тип календаря и добавляем соответствующие параметры
+        if (targetCalendar !== "company") {
+          if (targetCalendar === "personal") {
+            // Личный календарь - получаем employee_id
+            const userMeta = document.querySelector('meta[name="user-id"]');
+            const currentEmployeeId = userMeta
+              ? parseInt(userMeta.content, 10)
+              : null;
+            if (!currentEmployeeId) {
+              alert("Не удалось определить ID пользователя");
+              return;
+            }
+            payload.employee_id = currentEmployeeId;
+            // Очищаем другие поля
+            payload.department_id = null;
+            payload.calendar_id = null;
+          } else if (targetCalendar.startsWith("dept-")) {
+            // Календарь отдела
+            const deptId = parseInt(targetCalendar.replace("dept-", ""), 10);
+            if (isNaN(deptId)) {
+              alert("Некорректный отдел");
+              return;
+            }
+            payload.department_id = deptId;
+            // Очищаем другие поля
+            payload.employee_id = null;
+            payload.calendar_id = null;
+          } else if (/^\d+$/.test(targetCalendar)) {
+            // Новый календарь - используем calendar_id
+            payload.calendar_id = parseInt(targetCalendar, 10);
+            // Очищаем другие поля
+            payload.employee_id = null;
+            payload.department_id = null;
+          }
+        } else {
+          // Company - очищаем все специфичные поля
+          payload.employee_id = null;
+          payload.department_id = null;
+          payload.calendar_id = null;
+        }
+
+        const url = API_EVENTS + String(form.dataset.eventId) + "/";
+        await fetchJSON(url, {
+          method: "PATCH",
+          headers: postHeaders,
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // При создании - создаем событие для каждого выбранного календаря
+        const createPromises = selectedCalendars.map((targetCalendar) => {
+          const eventPayload = { ...payload };
+
+          // Определяем тип календаря и добавляем соответствующие параметры
+          if (targetCalendar !== "company") {
+            if (targetCalendar === "personal") {
+              // Личный календарь
+              const userMeta = document.querySelector('meta[name="user-id"]');
+              const currentEmployeeId = userMeta
+                ? parseInt(userMeta.content, 10)
+                : null;
+              if (!currentEmployeeId) {
+                throw new Error("Не удалось определить ID пользователя");
+              }
+              eventPayload.employee_id = currentEmployeeId;
+            } else if (targetCalendar.startsWith("dept-")) {
+              // Календарь отдела
+              const deptId = parseInt(targetCalendar.replace("dept-", ""), 10);
+              if (isNaN(deptId)) {
+                throw new Error("Некорректный отдел");
+              }
+              eventPayload.department_id = deptId;
+            } else if (/^\d+$/.test(targetCalendar)) {
+              // Новый календарь - используем calendar_id
+              eventPayload.calendar_id = parseInt(targetCalendar, 10);
+            }
+          }
+          // Если targetCalendar === "company", то без дополнительных параметров
+
+          return fetchJSON(API_EVENTS, {
+            method: "POST",
+            headers: postHeaders,
+            body: JSON.stringify(eventPayload),
+          });
+        });
+
+        // Ждем создания всех событий
+        await Promise.all(createPromises);
+      }
 
       document.querySelector("#eventCreateModal .btn-close")?.click();
       form.reset();

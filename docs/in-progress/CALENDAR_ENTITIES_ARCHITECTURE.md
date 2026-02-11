@@ -1,6 +1,6 @@
 # Архитектура: Календари как настраиваемые сущности
 
-**Дата:** 11 февраля 2026 г.  
+**Дата:** 11 февраля 2026 г.
 **Задача:** Реализация календарей как отдельных настраиваемых объектов с гибким управлением доступом
 
 ---
@@ -70,12 +70,12 @@ class CalendarType(models.TextChoices):
 
 class Calendar(models.Model):
     """Календарь как отдельная сущность с настраиваемым доступом."""
-    
+
     # Основное
     title = models.CharField(_("Название"), max_length=200)
     description = models.TextField(_("Описание"), blank=True)
     color = models.CharField(_("Цвет"), max_length=7, default="#0d6efd")
-    
+
     # Тип и владение
     calendar_type = models.CharField(
         _("Тип календаря"),
@@ -83,7 +83,7 @@ class Calendar(models.Model):
         choices=CalendarType.choices,
         default=CalendarType.PERSONAL,
     )
-    
+
     # Владельцы (взаимоисключающие для GLOBAL/DEPARTMENT/PERSONAL)
     owner_user = models.ForeignKey(
         User,
@@ -93,7 +93,7 @@ class Calendar(models.Model):
         blank=True,
         verbose_name=_("Владелец (пользователь)"),
     )
-    
+
     owner_department = models.ForeignKey(
         "employees.Department",
         on_delete=models.CASCADE,
@@ -102,14 +102,14 @@ class Calendar(models.Model):
         blank=True,
         verbose_name=_("Владелец (отдел)"),
     )
-    
+
     # Системный календарь (автоматически созданный)
     is_system = models.BooleanField(
         _("Системный"),
         default=False,
         help_text=_("Создан автоматически при регистрации/инициализации"),
     )
-    
+
     system_key = models.CharField(
         _("Системный ключ"),
         max_length=100,
@@ -119,26 +119,26 @@ class Calendar(models.Model):
         null=True,
         help_text=_("Уникальный идентификатор системного календаря"),
     )
-    
+
     # Настройки доступа
     is_public = models.BooleanField(
         _("Публичный"),
         default=False,
         help_text=_("Доступен всем для просмотра"),
     )
-    
+
     allow_subscription = models.BooleanField(
         _("Разрешить подписку"),
         default=True,
         help_text=_("Пользователи могут подписаться на этот календарь"),
     )
-    
+
     default_for_new_users = models.BooleanField(
         _("По умолчанию для новых пользователей"),
         default=False,
         help_text=_("Автоматически добавляется новым сотрудникам"),
     )
-    
+
     # Служебное
     created_by = models.ForeignKey(
         User,
@@ -150,9 +150,9 @@ class Calendar(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     is_active = models.BooleanField(_("Активен"), default=True)
-    
+
     class Meta:
         verbose_name = _("Календарь")
         verbose_name_plural = _("Календари")
@@ -178,7 +178,7 @@ class Calendar(models.Model):
                 name="unique_system_key"
             ),
         ]
-    
+
     def __str__(self):
         type_label = self.get_calendar_type_display()
         owner = ""
@@ -187,7 +187,7 @@ class Calendar(models.Model):
         elif self.owner_department:
             owner = f" ({self.owner_department.name})"
         return f"[{type_label}] {self.title}{owner}"
-    
+
     def clean(self):
         """Валидация владения календарём."""
         # GLOBAL не имеет владельца
@@ -196,7 +196,7 @@ class Calendar(models.Model):
                 raise ValidationError(
                     _("Глобальный календарь не может иметь владельца.")
                 )
-        
+
         # DEPARTMENT должен иметь owner_department
         if self.calendar_type == CalendarType.DEPARTMENT:
             if not self.owner_department:
@@ -207,7 +207,7 @@ class Calendar(models.Model):
                 raise ValidationError(
                     _("Календарь отдела не может иметь владельца-пользователя.")
                 )
-        
+
         # PERSONAL должен иметь owner_user
         if self.calendar_type == CalendarType.PERSONAL:
             if not self.owner_user:
@@ -218,21 +218,21 @@ class Calendar(models.Model):
                 raise ValidationError(
                     _("Личный календарь не может иметь владельца-отдел.")
                 )
-        
+
         # Системный календарь должен иметь уникальный system_key
         if self.is_system and not self.system_key:
             raise ValidationError(
                 _("Системный календарь должен иметь system_key.")
             )
-    
+
     @property
     def is_global(self):
         return self.calendar_type == CalendarType.GLOBAL
-    
+
     @property
     def is_department_calendar(self):
         return self.calendar_type == CalendarType.DEPARTMENT
-    
+
     @property
     def is_personal_calendar(self):
         return self.calendar_type == CalendarType.PERSONAL
@@ -250,14 +250,14 @@ class PermissionLevel(models.TextChoices):
 
 class CalendarPermission(models.Model):
     """Права доступа к календарю для пользователя или отдела."""
-    
+
     calendar = models.ForeignKey(
         Calendar,
         on_delete=models.CASCADE,
         related_name="permissions",
         verbose_name=_("Календарь"),
     )
-    
+
     # Кому предоставлен доступ (одно из двух)
     user = models.ForeignKey(
         User,
@@ -267,7 +267,7 @@ class CalendarPermission(models.Model):
         blank=True,
         verbose_name=_("Пользователь"),
     )
-    
+
     department = models.ForeignKey(
         "employees.Department",
         on_delete=models.CASCADE,
@@ -276,7 +276,7 @@ class CalendarPermission(models.Model):
         blank=True,
         verbose_name=_("Отдел"),
     )
-    
+
     # Уровень доступа
     level = models.CharField(
         _("Уровень доступа"),
@@ -284,7 +284,7 @@ class CalendarPermission(models.Model):
         choices=PermissionLevel.choices,
         default=PermissionLevel.VIEW,
     )
-    
+
     # Служебное
     granted_by = models.ForeignKey(
         User,
@@ -295,7 +295,7 @@ class CalendarPermission(models.Model):
         verbose_name=_("Предоставил"),
     )
     granted_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         verbose_name = _("Право доступа к календарю")
         verbose_name_plural = _("Права доступа к календарям")
@@ -324,11 +324,11 @@ class CalendarPermission(models.Model):
                 name="unique_dept_permission"
             ),
         ]
-    
+
     def __str__(self):
         target = self.user if self.user else self.department
         return f"{self.calendar.title} → {target} ({self.get_level_display()})"
-    
+
     def clean(self):
         """Валидация целевого получателя прав."""
         if not self.user and not self.department:
@@ -346,49 +346,49 @@ class CalendarPermission(models.Model):
 ```python
 class CalendarSubscription(models.Model):
     """Подписка пользователя на календарь."""
-    
+
     calendar = models.ForeignKey(
         Calendar,
         on_delete=models.CASCADE,
         related_name="subscriptions",
         verbose_name=_("Календарь"),
     )
-    
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name="calendar_subscriptions",
         verbose_name=_("Пользователь"),
     )
-    
+
     # Настройки подписки
     is_visible = models.BooleanField(
         _("Отображать"),
         default=True,
         help_text=_("Показывать события этого календаря в виджете"),
     )
-    
+
     color_override = models.CharField(
         _("Переопределить цвет"),
         max_length=7,
         blank=True,
         help_text=_("Личный цвет для событий этого календаря"),
     )
-    
+
     receive_notifications = models.BooleanField(
         _("Получать уведомления"),
         default=True,
     )
-    
+
     # Автоматическая подписка (по умолчанию для новых пользователей)
     is_auto_subscribed = models.BooleanField(
         _("Автоподписка"),
         default=False,
         help_text=_("Добавлена автоматически при регистрации"),
     )
-    
+
     subscribed_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         verbose_name = _("Подписка на календарь")
         verbose_name_plural = _("Подписки на календари")
@@ -397,7 +397,7 @@ class CalendarSubscription(models.Model):
             models.Index(fields=["user", "is_visible"]),
             models.Index(fields=["calendar", "is_visible"]),
         ]
-    
+
     def __str__(self):
         return f"{self.user.username} → {self.calendar.title}"
 ```
@@ -407,7 +407,7 @@ class CalendarSubscription(models.Model):
 ```python
 class CalendarEvent(models.Model):
     """Событие календаря с поддержкой повторяемости."""
-    
+
     # НОВОЕ: Связь с календарём
     calendar = models.ForeignKey(
         Calendar,
@@ -415,25 +415,25 @@ class CalendarEvent(models.Model):
         related_name="events",
         verbose_name=_("Календарь"),
     )
-    
+
     # УДАЛИТЬ: department, employee (теперь через calendar)
-    
+
     # Основное (без изменений)
     title = models.CharField(_("Название"), max_length=200)
     description = models.TextField(_("Описание"), blank=True)
-    
+
     # Даты/время (без изменений)
     start_date = models.DateField(_("Дата начала"))
     end_date = models.DateField(_("Дата окончания"), null=True, blank=True)
     start_time = models.TimeField(_("Время начала"), null=True, blank=True)
     end_time = models.TimeField(_("Время окончания"), null=True, blank=True)
     all_day = models.BooleanField(_("Весь день"), default=True)
-    
+
     # Повторяемость (без изменений)
     recurrence = models.CharField(...)
     recurrence_interval = models.PositiveSmallIntegerField(...)
     # ... остальные поля recurrence
-    
+
     # Отображение
     color = models.CharField(
         _("Цвет"),
@@ -442,12 +442,12 @@ class CalendarEvent(models.Model):
         help_text=_("Переопределяет цвет календаря для этого события"),
     )
     location = models.CharField(_("Локация"), max_length=200, blank=True)
-    
+
     # Служебное
     created_by = models.ForeignKey(...)
     created_at = models.DateTimeField(auto_now_add=True)
     source = models.CharField(...)  # Для системных событий (дни рождения)
-    
+
     class Meta:
         verbose_name = _("Событие календаря")
         verbose_name_plural = _("События календаря")
@@ -476,7 +476,7 @@ class Migration(migrations.Migration):
         ('calendar_app', '000X_previous_migration'),
         ('employees', '000X_department_migration'),
     ]
-    
+
     operations = [
         # Создание модели Calendar
         migrations.CreateModel(
@@ -498,7 +498,7 @@ class Migration(migrations.Migration):
                 # ForeignKeys будут добавлены отдельно
             ],
         ),
-        
+
         # Добавление ForeignKey полей
         migrations.AddField(
             model_name='calendar',
@@ -511,10 +511,10 @@ class Migration(migrations.Migration):
             ),
         ),
         # ... остальные FK
-        
+
         # Создание CalendarPermission
         migrations.CreateModel(name='CalendarPermission', ...),
-        
+
         # Создание CalendarSubscription
         migrations.CreateModel(name='CalendarSubscription', ...),
     ]
@@ -533,7 +533,7 @@ def migrate_events_to_calendars(apps, schema_editor):
     Calendar = apps.get_model('calendar_app', 'Calendar')
     User = apps.get_model('employees', 'Employee')
     Department = apps.get_model('employees', 'Department')
-    
+
     # 1. Создать глобальный календарь для событий компании
     company_calendar, _ = Calendar.objects.get_or_create(
         system_key='company_default',
@@ -546,7 +546,7 @@ def migrate_events_to_calendars(apps, schema_editor):
             'default_for_new_users': True,
         }
     )
-    
+
     # 2. Мигрировать события компании (department=NULL, employee=NULL)
     company_events = CalendarEvent.objects.filter(
         department__isnull=True,
@@ -555,9 +555,9 @@ def migrate_events_to_calendars(apps, schema_editor):
     for event in company_events:
         event.calendar = company_calendar
         event.save(update_fields=['calendar'])
-    
+
     print(f"✅ Мигрировано событий компании: {company_events.count()}")
-    
+
     # 3. Создать календари для отделов
     for dept in Department.objects.all():
         dept_calendar, created = Calendar.objects.get_or_create(
@@ -572,16 +572,16 @@ def migrate_events_to_calendars(apps, schema_editor):
                 'allow_subscription': True,
             }
         )
-        
+
         # Мигрировать события отдела
         dept_events = CalendarEvent.objects.filter(department=dept)
         for event in dept_events:
             event.calendar = dept_calendar
             event.save(update_fields=['calendar'])
-        
+
         if created:
             print(f"✅ Создан календарь отдела: {dept.name} ({dept_events.count()} событий)")
-    
+
     # 4. Создать личные календари для пользователей
     for user in User.objects.all():
         user_calendar, created = Calendar.objects.get_or_create(
@@ -596,20 +596,20 @@ def migrate_events_to_calendars(apps, schema_editor):
                 'allow_subscription': False,
             }
         )
-        
+
         # Мигрировать личные события
         personal_events = CalendarEvent.objects.filter(employee=user)
         for event in personal_events:
             event.calendar = user_calendar
             event.save(update_fields=['calendar'])
-        
+
         if created and personal_events.exists():
             print(f"✅ Создан личный календарь: {user.username} ({personal_events.count()} событий)")
 
 def reverse_migration(apps, schema_editor):
     """Откат: восстановление department/employee из calendar."""
     CalendarEvent = apps.get_model('calendar_app', 'CalendarEvent')
-    
+
     for event in CalendarEvent.objects.select_related('calendar').all():
         cal = event.calendar
         if cal.calendar_type == 'department' and cal.owner_department:
@@ -622,7 +622,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('calendar_app', '000X_add_calendar_field_to_events'),
     ]
-    
+
     operations = [
         migrations.RunPython(
             migrate_events_to_calendars,
@@ -640,7 +640,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('calendar_app', '000X_migrate_events_to_calendars'),
     ]
-    
+
     operations = [
         # Удалить старые поля department и employee из CalendarEvent
         migrations.RemoveField(
@@ -755,49 +755,49 @@ CalendarEvent.objects.create(
 def get_user_calendars(user):
     """Возвращает все календари, доступные пользователю."""
     from django.db.models import Q
-    
+
     # 1. Личные календари пользователя
     personal_cals = Calendar.objects.filter(
         calendar_type=CalendarType.PERSONAL,
         owner_user=user,
         is_active=True
     )
-    
+
     # 2. Публичные календари
     public_cals = Calendar.objects.filter(
         is_public=True,
         is_active=True
     )
-    
+
     # 3. Календари отделов пользователя
     user_departments = user.departments_links.filter(
         is_active=True
     ).values_list('department_id', flat=True)
-    
+
     dept_cals = Calendar.objects.filter(
         calendar_type=CalendarType.DEPARTMENT,
         owner_department_id__in=user_departments,
         is_active=True
     )
-    
+
     # 4. Календари с явными правами доступа
     permitted_cals = Calendar.objects.filter(
-        Q(permissions__user=user) | 
+        Q(permissions__user=user) |
         Q(permissions__department_id__in=user_departments),
         is_active=True
     ).distinct()
-    
+
     # 5. Подписки пользователя
     subscribed_cals = Calendar.objects.filter(
         subscriptions__user=user,
         subscriptions__is_visible=True,
         is_active=True
     )
-    
+
     # Объединение и удаление дубликатов
-    all_cals = (personal_cals | public_cals | dept_cals | 
+    all_cals = (personal_cals | public_cals | dept_cals |
                 permitted_cals | subscribed_cals).distinct()
-    
+
     return all_cals.order_by('calendar_type', 'title')
 ```
 
@@ -807,60 +807,60 @@ def get_user_calendars(user):
 def check_calendar_permission(calendar, user, required_level='view'):
     """Проверяет права пользователя на календарь."""
     from calendar_app.models import PermissionLevel
-    
+
     # Админы могут всё
     if user.is_superuser or user.is_staff:
         return True
-    
+
     # Владелец может всё
     if calendar.owner_user_id == user.id:
         return True
-    
+
     # Публичный календарь - просмотр для всех
     if required_level == 'view' and calendar.is_public:
         return True
-    
+
     # Проверка календаря отдела
     if calendar.calendar_type == CalendarType.DEPARTMENT:
         user_departments = user.departments_links.filter(
             is_active=True
         ).values_list('department_id', flat=True)
-        
+
         if calendar.owner_department_id in user_departments:
             if required_level == 'view':
                 return True
             # Для редактирования нужны явные права
-    
+
     # Проверка явных прав доступа
     level_hierarchy = {
         'view': 1,
         'edit': 2,
         'manage': 3
     }
-    
+
     required_int = level_hierarchy.get(required_level, 1)
-    
+
     # Права пользователя
     user_perm = calendar.permissions.filter(user=user).first()
     if user_perm:
         user_level = level_hierarchy.get(user_perm.level, 0)
         if user_level >= required_int:
             return True
-    
+
     # Права через отдел
     user_departments = user.departments_links.filter(
         is_active=True
     ).values_list('department_id', flat=True)
-    
+
     dept_perm = calendar.permissions.filter(
         department_id__in=user_departments
     ).order_by('-level').first()
-    
+
     if dept_perm:
         dept_level = level_hierarchy.get(dept_perm.level, 0)
         if dept_level >= required_int:
             return True
-    
+
     return False
 ```
 
@@ -881,11 +881,11 @@ urlpatterns = [
     path('calendars/<int:pk>/subscribe/', CalendarSubscribeView.as_view()),
     path('calendars/<int:pk>/unsubscribe/', CalendarUnsubscribeView.as_view()),
     path('calendars/my/', MyCalendarsView.as_view(), name='my-calendars'),
-    
+
     # События (обновлённый эндпоинт)
     path('calendars/<int:calendar_id>/events/', CalendarEventsView.as_view()),
     path('events/<int:pk>/', EventDetailView.as_view()),
-    
+
     # Подписки
     path('subscriptions/', MySubscriptionsView.as_view()),
 ]
@@ -950,7 +950,7 @@ def create_personal_calendar(sender, instance, created, **kwargs):
             system_key=f"personal_{instance.id}_default",
             color="#6C757D"
         )
-        
+
         # Автоподписка на календари по умолчанию
         default_calendars = Calendar.objects.filter(
             default_for_new_users=True,
@@ -1053,5 +1053,5 @@ def create_department_calendar(sender, instance, created, **kwargs):
 
 ---
 
-**Автор:** GitHub Copilot  
+**Автор:** GitHub Copilot
 **Дата:** 11 февраля 2026 г.

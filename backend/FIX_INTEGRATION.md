@@ -22,21 +22,21 @@ scripts.forEach((s, i) => {
 (async function manualInit() {
   try {
     console.log('🔄 Manually loading calendar integration...');
-    
+
     // Импорт модуля
     const module = await import('/static/js/components/calendarWidgetIntegration.js');
     console.log('✅ Module loaded:', module);
-    
+
     // Инициализация
     const { integrateCalendarManager } = module;
     const integration = integrateCalendarManager(window.calendarWidget);
-    
+
     if (integration) {
       window.calendarIntegration = integration;
       console.log('✅ Integration initialized successfully!');
       console.log('Calendars:', integration.getCalendars().length);
       console.log('Visible:', integration.getVisibleCalendarIds());
-      
+
       // Перезагрузить события
       if (window.calendarWidget.refetchEvents) {
         window.calendarWidget.refetchEvents();
