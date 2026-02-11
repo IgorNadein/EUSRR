@@ -4,87 +4,21 @@
  */
 
 import { dataManager } from "../managers/dataManager.js";
-
-/**
- * Получить токен авторизации
- * @returns {string}
- * @private
- */
-function getAccessToken() {
-  const meta = document.querySelector('meta[name="api-access"]');
-  const token = meta?.getAttribute("content")?.trim();
-  if (token) return token;
-
-  try {
-    return localStorage.getItem("api.access") || "";
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Получить CSRF токен
- * @returns {string}
- * @private
- */
-function getCsrfToken() {
-  return (
-    document.querySelector("[name=csrfmiddlewaretoken]")?.value ||
-    document.querySelector('meta[name="csrf-token"]')?.content ||
-    getCookie("csrftoken") ||
-    ""
-  );
-}
-
-/**
- * Получить cookie по имени
- * @param {string} name
- * @returns {string}
- * @private
- */
-function getCookie(name) {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop().split(";").shift();
-  return "";
-}
-
-/**
- * Создать заголовки с авторизацией
- * @param {boolean} [includeContentType=true] - Добавить Content-Type
- * @returns {Object}
- * @private
- */
-function authHeaders(includeContentType = true) {
-  const token = getAccessToken();
-  const headers = {
-    Accept: "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    "X-CSRFToken": getCsrfToken(),
-  };
-
-  if (includeContentType) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  return headers;
-}
+import { authHeaders, getCsrfToken } from "../utils/authUtils.js";
+import { API_URLS, API_DEFAULTS } from "../constants/apiUrls.js";
 
 /**
  * Получить список доступных календарей текущего пользователя
- * @param {number} [ttl=60000] - Time to live кеша в мс
+ * @param {number} [ttl] - Time to live кеша в мс
  * @returns {Promise<Array>} Массив календарей
  */
-export async function getMyCalendars(ttl = 60000) {
+export async function getMyCalendars(ttl = API_DEFAULTS.TTL.CALENDARS) {
   const key = "calendars:my";
 
   return dataManager.fetch(
     key,
     async () => {
-      const url = new URL(
-        "/api/v1/calendar/calendars/",
-        window.location.origin,
-      );
+      const url = new URL(API_URLS.CALENDARS, window.location.origin);
 
       const response = await fetch(url.toString(), {
         headers: authHeaders(false),
@@ -109,17 +43,17 @@ export async function getMyCalendars(ttl = 60000) {
 /**
  * Получить календарь по ID
  * @param {number} calendarId - ID календаря
- * @param {number} [ttl=60000] - Time to live кеша в мс
+ * @param {number} [ttl] - Time to live кеша в мс
  * @returns {Promise<Object>} Календарь
  */
-export async function getCalendar(calendarId, ttl = 60000) {
+export async function getCalendar(calendarId, ttl = API_DEFAULTS.TTL.CALENDARS) {
   const key = `calendars:${calendarId}`;
 
   return dataManager.fetch(
     key,
     async () => {
       const url = new URL(
-        `/api/v1/calendar/calendars/${calendarId}/`,
+        API_URLS.CALENDAR_DETAIL(calendarId),
         window.location.origin,
       );
 
@@ -241,7 +175,7 @@ export async function deleteCalendar(calendarId) {
  */
 export async function subscribeToCalendar(calendarId, options = {}) {
   const url = new URL(
-    `/api/v1/calendar/calendars/${calendarId}/subscribe/`,
+    API_URLS.CALENDAR_SUBSCRIBE(calendarId),
     window.location.origin,
   );
 
@@ -273,7 +207,7 @@ export async function subscribeToCalendar(calendarId, options = {}) {
  */
 export async function unsubscribeFromCalendar(calendarId) {
   const url = new URL(
-    `/api/v1/calendar/calendars/${calendarId}/unsubscribe/`,
+    API_URLS.CALENDAR_UNSUBSCRIBE(calendarId),
     window.location.origin,
   );
 

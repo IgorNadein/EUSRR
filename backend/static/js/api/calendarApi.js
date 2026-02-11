@@ -4,36 +4,8 @@
  */
 
 import { dataManager } from '../managers/dataManager.js';
-
-/**
- * Получить токен авторизации
- * @returns {string}
- * @private
- */
-function getAccessToken() {
-  const meta = document.querySelector('meta[name="api-access"]');
-  const token = meta?.getAttribute('content')?.trim();
-  if (token) return token;
-  
-  try {
-    return localStorage.getItem('api.access') || '';
-  } catch {
-    return '';
-  }
-}
-
-/**
- * Создать заголовки с авторизацией
- * @returns {Object}
- * @private
- */
-function authHeaders() {
-  const token = getAccessToken();
-  return {
-    'Accept': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-  };
-}
+import { authHeaders } from '../utils/authUtils.js';
+import { API_URLS, API_DEFAULTS } from '../constants/apiUrls.js';
 
 /**
  * Получить события календаря
@@ -41,10 +13,10 @@ function authHeaders() {
  * @param {string} params.start - Дата начала (YYYY-MM-DD)
  * @param {string} params.end - Дата конца (YYYY-MM-DD)
  * @param {number} [params.department_id] - ID отдела (опционально)
- * @param {number} [ttl=30000] - Time to live кеша в мс
+ * @param {number} [ttl] - Time to live кеша в мс
  * @returns {Promise<Array>} Массив событий
  */
-export async function getCalendarEvents(params, ttl = 30000) {
+export async function getCalendarEvents(params, ttl = API_DEFAULTS.TTL.EVENTS) {
   // Создаем уникальный ключ для кеша
   const sortedParams = Object.keys(params).sort().reduce((acc, key) => {
     acc[key] = params[key];
@@ -56,7 +28,7 @@ export async function getCalendarEvents(params, ttl = 30000) {
   return dataManager.fetch(
     key,
     async () => {
-      const url = new URL('/api/v1/calendar/events/', window.location.origin);
+      const url = new URL(API_URLS.EVENTS, window.location.origin);
       Object.keys(params).forEach(k => {
         if (params[k] != null) {
           url.searchParams.set(k, String(params[k]));
@@ -90,18 +62,18 @@ export async function getCalendarEvents(params, ttl = 30000) {
 /**
  * Получить событие по ID
  * @param {number|string} eventId - ID события
- * @param {number} [ttl=60000] - Time to live кеша в мс
+ * @param {number} [ttl] - Time to live кеша в мс
  * @returns {Promise<Object>} Событие
  */
-export async function getCalendarEvent(eventId, ttl = 60000) {
+export async function getCalendarEvent(eventId, ttl = API_DEFAULTS.TTL.EVENT_DETAIL) {
   const key = `calendar:event:${eventId}`;
   
   return dataManager.fetch(
     key,
     async () => {
-      const url = `/api/v1/calendar/events/${eventId}/`;
+      const url = API_URLS.EVENT_DETAIL(eventId);
       const response = await fetch(url, {
-        headers: authHeaders()
+        headers: authHeaders(false)
       });
       
       if (!response.ok) {

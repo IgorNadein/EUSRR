@@ -6,6 +6,8 @@
 import { initCalendarManager } from "./calendarManager.js";
 import { initCalendarManageModal } from "./calendarManageModal.js";
 import { getCalendarEvents } from "../api/calendarApi.js";
+import { formatDate } from "../utils/dateUtils.js";
+import { resolveCalendarParams } from "../utils/calendarTypeResolver.js";
 
 // Глобальное хранилище интеграции
 let globalIntegration = null;
@@ -50,115 +52,44 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
       return [];
     }
 
-    // Разделяем legacy и новые календари
-    const legacyIds = [...visibleCalendarIds].filter(
-      (id) => typeof id === "string" && id.startsWith("legacy-"),
-    );
-    const newIds = [...visibleCalendarIds].filter(
-      (id) => typeof id === "number",
-    );
-
-    console.log("[CalendarIntegration] Processing calendars:", {
-      legacyIds,
-      newIds,
-    });
-
     let allEvents = [];
 
-    // Получаем ID текущего пользователя из meta тега
-    const userMeta = document.querySelector('meta[name="user-id"]');
-    const currentEmployeeId = userMeta ? parseInt(userMeta.content, 10) : null;
-
-    // Загружаем события для legacy календарей
-    for (const legacyId of legacyIds) {
+    // Загружаем события для каждого выбранного календаря
+    for (const calendarId of visibleCalendarIds) {
       try {
-        let events = [];
-        const calendar = calendars.find((c) => c.id === legacyId);
+        const calendar = calendars.find((c) => c.id === calendarId);
+        
+        // Используем утилиту для определения параметров запроса
+        const params = resolveCalendarParams(calendarId, {
+          start: startStr,
+          end: endStr,
+        });
 
-        if (legacyId === "legacy-company") {
-          // Компания: все события без фильтров
-          console.log("[CalendarIntegration] Loading company events (all)");
-          events = await getCalendarEvents({ start: startStr, end: endStr });
-        } else if (legacyId === "legacy-personal") {
-          // Личный: события текущего сотрудника
-          if (!currentEmployeeId) {
-            console.warn(
-              "[CalendarIntegration] Cannot load personal events: currentEmployeeId not found",
-            );
-            continue;
-          }
-          console.log(
-            `[CalendarIntegration] Loading personal events for employee ${currentEmployeeId}`,
-          );
-          events = await getCalendarEvents({
-            start: startStr,
-            end: endStr,
-            employee_id: currentEmployeeId,
-          });
-        } else if (legacyId.startsWith("legacy-dept-")) {
-          // Отдел: события конкретного отдела
-          const deptId = parseInt(legacyId.replace("legacy-dept-", ""), 10);
-          console.log(
-            `[CalendarIntegration] Loading department events for dept ${deptId}`,
-          );
-          events = await getCalendarEvents({
-            start: startStr,
-            end: endStr,
-            department_id: deptId,
-          });
-        }
+        console.log(
+          `[CalendarIntegration] Loading events for calendar ${calendarId}:`,
+          params
+        );
 
-        // Добавляем информацию о legacy календаре (БЕЗ изменения цвета события)
+        const events = await getCalendarEvents(params);
+
+        // Добавляем информацию о календаре к событиям
         allEvents.push(
           ...(events || []).map((event) => ({
             ...event,
             __calendar: calendar,
-          })),
+          }))
         );
 
         console.log(
-          `[CalendarIntegration] Loaded ${events?.length || 0} events for legacy calendar ${legacyId}`,
+          `[CalendarIntegration] Loaded ${events?.length || 0} events for calendar ${calendarId}`
         );
       } catch (error) {
         console.error(
-          `[CalendarIntegration] Error loading legacy calendar ${legacyId}:`,
-          error,
+          `[CalendarIntegration] Error loading calendar ${calendarId}:`,
+          error
         );
       }
     }
-
-    // Загружаем события для новых календарей
-    const newEventChunks = await Promise.all(
-      newIds.map(async (calendarId) => {
-        try {
-          const events = await getCalendarEvents({
-            start: startStr,
-            end: endStr,
-            calendar_id: calendarId,
-          });
-
-          console.log(
-            `[CalendarIntegration] Loaded ${events?.length || 0} events for new calendar ${calendarId}`,
-          );
-
-          // Добавляем информацию о календаре (БЕЗ изменения цвета события)
-          const calendar = calendars.find((c) => c.id === calendarId);
-          return (events || []).map((event) => ({
-            ...event,
-            __calendar: calendar,
-          }));
-        } catch (error) {
-          console.error(
-            `[CalendarIntegration] Failed to load events for calendar ${calendarId}:`,
-            error,
-          );
-          return [];
-        }
-      }),
-    );
-
-    // Объединяем события из новых календарей
-    allEvents.push(...newEventChunks.flat());
 
     console.log(
       `[CalendarIntegration] Total events loaded: ${allEvents.length}`,
@@ -177,18 +108,6 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
       `[CalendarIntegration] Unique events after dedup: ${uniqueEvents.length}`,
     );
     return uniqueEvents;
-  }
-
-  /**
-   * Форматировать дату в YYYY-MM-DD
-   * @param {Date} date
-   * @returns {string}
-   */
-  function formatDate(date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
   }
 
   /**

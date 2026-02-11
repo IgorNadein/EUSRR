@@ -9,6 +9,11 @@ import {
   unsubscribeFromCalendar,
   invalidateCalendarsCache,
 } from "../api/calendarsApi.js";
+import {
+  CALENDAR_TYPES,
+  CALENDAR_COLORS,
+  createLegacyDeptId,
+} from "../constants/calendarTypes.js";
 
 /**
  * Инициализация менеджера календарей
@@ -42,11 +47,11 @@ export function initCalendarManager(options = {}) {
   function createLegacyCalendars() {
     const legacyCalendars = [
       {
-        id: "legacy-company",
+        id: CALENDAR_TYPES.LEGACY_COMPANY,
         title: "Компания",
         description: "Корпоративные события",
-        color: "#dc3545",
-        calendar_type: "company",
+        color: CALENDAR_COLORS.COMPANY,
+        calendar_type: CALENDAR_TYPES.COMPANY,
         is_legacy: true,
         is_global: true,
         user_can_edit: false,
@@ -54,11 +59,11 @@ export function initCalendarManager(options = {}) {
         is_subscribed: true,
       },
       {
-        id: "legacy-personal",
+        id: CALENDAR_TYPES.LEGACY_PERSONAL,
         title: "Личный календарь",
         description: "Мои личные события",
-        color: "#0d6efd",
-        calendar_type: "personal",
+        color: CALENDAR_COLORS.PERSONAL,
+        calendar_type: CALENDAR_TYPES.PERSONAL,
         is_legacy: true,
         is_personal: true,
         user_can_edit: true,
@@ -79,11 +84,11 @@ export function initCalendarManager(options = {}) {
       }
 
       legacyCalendars.push({
-        id: `legacy-dept-${deptId}`,
+        id: createLegacyDeptId(deptId),
         title: dept.name || `Отдел ${deptId}`,
         description: "События отдела",
-        color: "#198754",
-        calendar_type: "department",
+        color: CALENDAR_COLORS.DEPARTMENT,
+        calendar_type: CALENDAR_TYPES.DEPARTMENT,
         department_id: parseInt(deptId, 10),
         is_legacy: true,
         is_department: true,
