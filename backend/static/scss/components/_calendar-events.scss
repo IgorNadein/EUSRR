@@ -126,23 +126,122 @@ $event-max-lines: 2;
 // События на весь день
 .fc-event.fc-daygrid-block-event {
   padding: ($event-padding-y + 1px) $event-padding-x !important;
+  min-height: 20px;
 }
 
-// Многодневные события - закругления только с нужных сторон
+// ============================================================================
+// МНОГОДНЕВНЫЕ СОБЫТИЯ (УЛУЧШЕННАЯ ВИЗУАЛИЗАЦИЯ)
+// ============================================================================
+
+// Базовые стили для всех многодневных событий
+.fc-event.fc-daygrid-event {
+  // Убираем отступы между сегментами
+  margin-top: 0 !important;
+  margin-bottom: 2px !important;
+  
+  // Улучшенная высота для читаемости
+  min-height: 22px;
+  
+  // Выравнивание контента
+  display: flex;
+  align-items: center;
+}
+
+// Событие начинается (первый день)
 .fc-event.fc-event-start:not(.fc-event-end) {
   border-radius: $event-radius 0 0 $event-radius !important;
   margin-right: 0 !important;
+  padding-right: ($event-padding-x + 2px) !important;
+  
+  // Визуальный индикатор продолжения
+  position: relative;
+  
+  &::after {
+    content: '›';
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    font-weight: bold;
+    opacity: 0.7;
+  }
 }
 
-.fc-event:not(.fc-event-start).fc-event-end {
-  border-radius: 0 $event-radius $event-radius 0 !important;
-  margin-left: 0 !important;
-}
-
+// Событие продолжается (средние дни)
 .fc-event:not(.fc-event-start):not(.fc-event-end) {
   border-radius: 0 !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
+  padding-left: ($event-padding-x + 2px) !important;
+  padding-right: ($event-padding-x + 2px) !important;
+  
+  // Визуальные индикаторы продолжения с обеих сторон
+  position: relative;
+  
+  &::before {
+    content: '‹';
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    font-weight: bold;
+    opacity: 0.7;
+  }
+  
+  &::after {
+    content: '›';
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    font-weight: bold;
+    opacity: 0.7;
+  }
+}
+
+// Событие заканчивается (последний день)
+.fc-event:not(.fc-event-start).fc-event-end {
+  border-radius: 0 $event-radius $event-radius 0 !important;
+  margin-left: 0 !important;
+  padding-left: ($event-padding-x + 2px) !important;
+  
+  // Визуальный индикатор начала
+  position: relative;
+  
+  &::before {
+    content: '‹';
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    font-weight: bold;
+    opacity: 0.7;
+  }
+}
+
+// Событие в один день (начинается и заканчивается)
+.fc-event.fc-event-start.fc-event-end {
+  border-radius: $event-radius !important;
+  margin-left: 2px !important;
+  margin-right: 2px !important;
+  
+  // Убираем индикаторы
+  &::before,
+  &::after {
+    display: none;
+  }
+}
+
+// Для событий с цветом календаря - индикаторы белые
+.fc-event[data-has-calendar-color="true"] {
+  &::before,
+  &::after {
+    color: #ffffff;
+  }
 }
 
 // ============================================================================
@@ -185,6 +284,22 @@ $event-max-lines: 2;
 // Контейнер событий
 .fc-daygrid-event-harness {
   margin-bottom: 1px;
+}
+
+// Контейнер для многодневных событий (отдельная секция сверху)
+.fc-daygrid-event-harness-abs {
+  // Абсолютное позиционирование для многодневных
+  position: absolute;
+  left: 0;
+  right: 0;
+  
+  // Z-index выше обычных событий
+  z-index: 2;
+}
+
+// Убираем лишние отступы для многодневных событий
+.fc-daygrid-day-bg + .fc-daygrid-day-events {
+  margin-top: 2px;
 }
 
 // ============================================================================
