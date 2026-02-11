@@ -1304,33 +1304,8 @@ export function initCalendarWidget(options = {}) {
       });
 
       // Особый стиль для ежегодных событий
-      if (info.event.extendedProps?.recurrence === "annual") {
-        eventEl.style.backgroundImage = `repeating-linear-gradient(
-          45deg,
-          transparent,
-          transparent 10px,
-          rgba(255,255,255,0.1) 10px,
-          rgba(255,255,255,0.1) 20px
-        )`;
-      }
-
-      // Стилизация текста события
-      const t = info.el.querySelector(".fc-event-main, .fc-event-title");
-      if (t) {
-        const s = t.style;
-        s.fontSize = "11px";
-        s.lineHeight = "1.3";
-        s.letterSpacing = "0";
-        s.display = "-webkit-box";
-        s.webkitLineClamp = "3";
-        s.webkitBoxOrient = "vertical";
-        s.overflow = "hidden";
-        s.whiteSpace = "normal";
-        s.textOverflow = "ellipsis";
-        s.fontWeight = "500";
-        s.fontFamily =
-          'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-        s.padding = "2px 0";
+      if (recurrence === "annual") {
+        eventEl.setAttribute("data-recurrence", "annual");
       }
 
       // Добавляем обработчик правой кнопки мыши
