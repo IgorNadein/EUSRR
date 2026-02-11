@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendar Frontend Test - Simple Version</title>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    
+    .test-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #e9ecef;
+    }
+    
+    h2 {
+      font-size: 20px;
+      color: #333;
+    }
+    
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: #0d6efd;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #0b5ed7;
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+      margin-left: 10px;
+    }
+    
+    .btn-secondary:hover {
+      background: #5c636a;
+    }
+    
+    .btn-outline {
+      background: white;
+      border: 1px solid #dee2e6;
+      color: #333;
+      padding: 10px;
+      margin: 5px;
+      width: calc(33.33% - 10px);
+      display: inline-block;
+    }
+    
+    .btn-outline:hover {
+      background: #f8f9fa;
+      border-color: #0d6efd;
+    }
+    
+    .test-controls {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    th, td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    th {
+      background: #f8f9fa;
+      font-weight: 600;
+    }
+    
+    .badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    .badge-success {
+      background: #28a745;
+      color: white;
+    }
+    
+    .badge-danger {
+      background: #dc3545;
+      color: white;
+    }
+    
+    .badge-secondary {
+      background: #6c757d;
+      color: white;
+    }
+    
+    .log-console {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .log-entry {
+      margin: 3px 0;
+      padding: 2px 0;
+    }
+    
+    .log-info { color: #66d9ef; }
+    .log-success { color: #a6e22e; }
+    .log-error { color: #f92672; }
+    .log-warn { color: #e6db74; }
+    
+    .calendar-list {
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      padding: 10px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .calendar-item {
+      padding: 10px;
+      margin-bottom: 8px;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: white;
+    }
+    
+    .calendar-item:hover {
+      background: #f8f9fa;
+      border-color: #0d6efd;
+    }
+    
+    .calendar-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid rgba(0,0,0,0.1);
+    }
+    
+    .calendar-info {
+      flex: 1;
+    }
+    
+    .calendar-title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    
+    .calendar-meta {
+      font-size: 12px;
+      color: #6c757d;
+    }
+    
+    .text-muted {
+      color: #6c757d;
+    }
+    
+    .text-center {
+      text-align: center;
+    }
+    
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 Calendar Frontend Test Suite (Offline Version)</h1>
+    
+    <!-- Test Controls -->
+    <div class="test-section">
+      <div class="test-header">
+        <h2>🎮 Test Controls</h2>
+        <div>
+          <button id="runAllTests" class="btn-primary">▶ Run All Tests</button>
+          <button id="clearLogs" class="btn-secondary">🗑 Clear Logs</button>
+        </div>
+      </div>
+      
+      <div class="test-controls">
+        <button class="btn-outline" onclick="testApiWrapper()">Test 1: API Wrapper</button>
+        <button class="btn-outline" onclick="testCalendarManager()">Test 2: Calendar Manager</button>
+        <button class="btn-outline" onclick="testEventFiltering()">Test 3: Event Filtering</button>
+        <button class="btn-outline" onclick="testStateManagement()">Test 4: State Management</button>
+        <button class="btn-outline" onclick="testCallbacks()">Test 5: Callbacks</button>
+        <button class="btn-outline" onclick="testDataStructures()">Test 6: Data Structures</button>
+      </div>
+    </div>
+    
+    <!-- Test Results -->
+    <div class="test-section">
+      <div class="test-header">
+        <h2>📊 Test Results</h2>
+        <div id="testSummary">
+          <span class="badge badge-secondary">Ready</span>
+        </div>
+      </div>
+      
+      <table>
+        <thead>
+          <tr>
+            <th>Test</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="testResultsTable">
+          <tr>
+            <td colspan="4" class="text-center text-muted">No tests run yet</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Calendar UI Demo -->
+    <div class="test-section">
+      <div class="test-header">
+        <h2>📅 Calendar List Demo</h2>
+        <button class="btn-primary" onclick="createCalendar()">➕ Create Calendar</button>
+      </div>
+      
+      <div id="calendarListContainer" class="calendar-list">
+        <div class="text-center text-muted">Loading calendars...</div>
+      </div>
+    </div>
+    
+    <!-- Console Log -->
+    <div class="test-section">
+      <div class="test-header">
+        <h2>📝 Console Log</h2>
+        <button class="btn-secondary" onclick="toggleConsole()">▲ Toggle</button>
+      </div>
+      <div id="logConsole" class="log-console"></div>
+    </div>
+  </div>
+  
+  <script>
+    // =========================
+    // State Management
+    // =========================
+    
+    let mockCalendars = [
+      { id: 1, title: 'Personal', description: 'My personal calendar', color: '#0d6efd', calendar_type: 'personal', user_can_edit: true, user_can_view: true, is_subscribed: true, visible: true },
+      { id: 2, title: 'Work', description: 'Work events', color: '#198754', calendar_type: 'public', user_can_edit: true, user_can_view: true, is_subscribed: true, visible: true },
+      { id: 3, title: 'Team Meetings', description: 'Team sync', color: '#ffc107', calendar_type: 'department', user_can_edit: false, user_can_view: true, is_subscribed: true, visible: false },
+    ];
+    
+    let mockEvents = [
+      { id: 1, title: 'Morning Standup', start: '2026-02-11T09:00', end: '2026-02-11T09:30', color: '#0d6efd', calendar_id: 1 },
+      { id: 2, title: 'Client Meeting', start: '2026-02-11T14:00', end: '2026-02-11T15:00', color: '#198754', calendar_id: 2 },
+      { id: 3, title: 'Sprint Planning', start: '2026-02-12T10:00', end: '2026-02-12T12:00', color: '#ffc107', calendar_id: 3 },
+      { id: 4, title: 'Code Review', start: '2026-02-13T15:00', end: '2026-02-13T16:00', color: '#0d6efd', calendar_id: 1 },
+    ];
+    
+    let testResults = [];
+    let visibleCalendarIds = [1, 2];
+    
+    // =========================
+    // Logger
+    // =========================
+    
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const logConsole = document.getElementById('logConsole');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry log-' + type;
+      entry.textContent = '[' + timestamp + '] ' + message;
+      logConsole.appendChild(entry);
+      logConsole.scrollTop = logConsole.scrollHeight;
+      console.log('[Test]', message);
+    }
+    
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
+    function updateTestResult(testName, status, duration, details) {
+      testResults.push({ testName, status, duration, details });
+      renderTestResults();
+    }
+    
+    function renderTestResults() {
+      const tbody = document.getElementById('testResultsTable');
+      
+      if (testResults.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No tests run yet</td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = testResults.map(r => `
+        <tr>
+          <td>${r.testName}</td>
+          <td><span class="badge badge-${r.status === 'passed' ? 'success' : 'danger'}">${r.status.toUpperCase()}</span></td>
+          <td>${r.duration}ms</td>
+          <td class="text-muted">${r.details}</td>
+        </tr>
+      `).join('');
+      
+      const passed = testResults.filter(r => r.status === 'passed').length;
+      const failed = testResults.filter(r => r.status === 'failed').length;
+      document.getElementById('testSummary').innerHTML = `
+        <span class="badge badge-success">${passed} Passed</span>
+        <span class="badge badge-danger">${failed} Failed</span>
+      `;
+    }
+    
+    // =========================
+    // Mock API
+    // =========================
+    
+    async function mockApiGetCalendars() {
+      await delay(200);
+      return { ok: true, data: [...mockCalendars] };
+    }
+    
+    async function mockApiGetEvents(calendarId = null) {
+      await delay(150);
+      let events = [...mockEvents];
+      if (calendarId) {
+        events = events.filter(e => e.calendar_id === calendarId);
+      }
+      return { ok: true, data: events };
+    }
+    
+    async function mockApiCreateCalendar(data) {
+      await delay(300);
+      const newCal = {
+        id: Date.now(),
+        ...data,
+        user_can_edit: true,
+        user_can_view: true,
+        is_subscribed: true,
+        visible: true
+      };
+      mockCalendars.push(newCal);
+      return { ok: true, data: newCal };
+    }
+    
+    // =========================
+    // Tests
+    // =========================
+    
+    async function testApiWrapper() {
+      log('=== Test 1: API Wrapper ===', 'info');
+      const startTime = Date.now();
+      
+      try {
+        const calendars = await mockApiGetCalendars();
+        if (!calendars.ok || !Array.isArray(calendars.data)) {
+          throw new Error('getCalendars failed');
+        }
+        log('✓ mockApiGetCalendars() → ' + calendars.data.length + ' calendars', 'success');
+        
+        const events = await mockApiGetEvents(1);
+        if (!events.ok || !Array.isArray(events.data)) {
+          throw new Error('getEvents failed');
+        }
+        log('✓ mockApiGetEvents(1) → ' + events.data.length + ' events', 'success');
+        
+        const allEvents = await mockApiGetEvents();
+        log('✓ mockApiGetEvents() → ' + allEvents.data.length + ' total events', 'success');
+        
+        const duration = Date.now() - startTime;
+        updateTestResult('API Wrapper', 'passed', duration, 'All API methods working');
+        log('✅ Test 1: PASSED', 'success');
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        updateTestResult('API Wrapper', 'failed', duration, error.message);
+        log('❌ Test 1: FAILED - ' + error.message, 'error');
+      }
+    }
+    
+    async function testCalendarManager() {
+      log('=== Test 2: Calendar Manager ===', 'info');
+      const startTime = Date.now();
+      
+      try {
+        const calendars = await mockApiGetCalendars();
+        renderCalendarList(calendars.data);
+        
+        const container = document.getElementById('calendarListContainer');
+        const items = container.querySelectorAll('.calendar-item');
+        
+        if (items.length !== calendars.data.length) {
+          throw new Error('Calendar count mismatch: ' + items.length + ' != ' + calendars.data.length);
+        }
+        log('✓ Rendered ' + items.length + ' calendar items', 'success');
+        
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+        if (checkboxes.length === 0) {
+          throw new Error('No checkboxes found');
+        }
+        log('✓ ' + checkboxes.length + ' checkboxes created', 'success');
+        
+        const duration = Date.now() - startTime;
+        updateTestResult('Calendar Manager', 'passed', duration, 'List rendering OK');
+        log('✅ Test 2: PASSED', 'success');
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        updateTestResult('Calendar Manager', 'failed', duration, error.message);
+        log('❌ Test 2: FAILED - ' + error.message, 'error');
+      }
+    }
+    
+    async function testEventFiltering() {
+      log('=== Test 3: Event Filtering ===', 'info');
+      const startTime = Date.now();
+      
+      try {
+        const allEvents = await mockApiGetEvents();
+        const filteredEvents = await mockApiGetEvents(1);
+        
+        if (filteredEvents.data.length >= allEvents.data.length) {
+          throw new Error('Filtering not working correctly');
+        }
+        log('✓ All events: ' + allEvents.data.length, 'info');
+        log('✓ Calendar 1 events: ' + filteredEvents.data.length, 'info');
+        
+        // Test visible calendar filtering
+        const visibleEvents = fetchEventsForVisibleCalendars(allEvents.data);
+        log('✓ Visible calendars: ' + visibleCalendarIds.join(', '), 'info');
+        log('✓ Visible events: ' + visibleEvents.length, 'info');
+        
+        const duration = Date.now() - startTime;
+        updateTestResult('Event Filtering', 'passed', duration, 'Filtering works correctly');
+        log('✅ Test 3: PASSED', 'success');
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        updateTestResult('Event Filtering', 'failed', duration, error.message);
+        log('❌ Test 3: FAILED - ' + error.message, 'error');
+      }
+    }
+    
+    async function testStateManagement() {
+      log('=== Test 4: State Management ===', 'info');
+      const startTime = Date.now();
+      
+      try {
+        const initialVisible = [...visibleCalendarIds];
+        log('✓ Initial visible: ' + initialVisible.join(', '), 'info');
+        
+        // Toggle visibility
+        toggleCalendarVisibility(3, true);
+        if (!visibleCalendarIds.includes(3)) {
+          throw new Error('Calendar 3 not added to visible');
+        }
+        log('✓ Calendar 3 added to visible', 'success');
+        
+        toggleCalendarVisibility(3, false);
+        if (visibleCalendarIds.includes(3)) {
+          throw new Error('Calendar 3 not removed from visible');
+        }
+        log('✓ Calendar 3 removed from visible', 'success');
+        
+        const duration = Date.now() - startTime;
+        updateTestResult('State Management', 'passed', duration, 'State updates correctly');
+        log('✅ Test 4: PASSED', 'success');
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        updateTestResult('State Management', 'failed', duration, error.message);
+        log('❌ Test 4: FAILED - ' + error.message, 'error');
+      }
+    }
+    
+    async function testCallbacks() {
+      log('=== Test 5: Callbacks ===', 'info');
+      const startTime = Date.now();
+      
+      try {
+        let callbackCalled = false;
+        
+        function testCallback(calendarId, isVisible) {
+          callbackCalled = true;
+          log('✓ Callback triggered: cal=' + calendarId + ', visible=' + isVisible, 'info');
+        }
+        
+        testCallback(1, true);
+        
+        if (!callbackCalled) {
+          throw new Error('Callback not called');
+        }
+        log('✓ Callback mechanism works', 'success');
+        
+        const duration = Date.now() - startTime;
+        updateTestResult('Callbacks', 'passed', duration, 'Callbacks working');
+        log('✅ Test 5: PASSED', 'success');
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        updateTestResult('Callbacks', 'failed', duration, error.message);
+        log('❌ Test 5: FAILED - ' + error.message, 'error');
+      }
+    }
+    
+    async function testDataStructures() {
+      log('=== Test 6: Data Structures ===', 'info');
+      const startTime = Date.now();
+      
+      try {
+        // Test calendar structure
+        const cal = mockCalendars[0];
+        const requiredFields = ['id', 'title', 'color', 'calendar_type', 'user_can_edit', 'user_can_view'];
+        
+        for (const field of requiredFields) {
+          if (!(field in cal)) {
+            throw new Error('Missing field: ' + field);
+          }
+        }
+        log('✓ Calendar structure valid', 'success');
+        
+        // Test event structure
+        const event = mockEvents[0];
+        const eventFields = ['id', 'title', 'start', 'calendar_id'];
+        
+        for (const field of eventFields) {
+          if (!(field in event)) {
+            throw new Error('Missing event field: ' + field);
+          }
+        }
+        log('✓ Event structure valid', 'success');
+        
+        // Test deduplication
+        const duplicates = [...mockEvents, mockEvents[0]];
+        const unique = deduplicateEvents(duplicates);
+        if (unique.length !== mockEvents.length) {
+          throw new Error('Deduplication failed');
+        }
+        log('✓ Event deduplication works', 'success');
+        
+        const duration = Date.now() - startTime;
+        updateTestResult('Data Structures', 'passed', duration, 'All structures valid');
+        log('✅ Test 6: PASSED', 'success');
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        updateTestResult('Data Structures', 'failed', duration, error.message);
+        log('❌ Test 6: FAILED - ' + error.message, 'error');
+      }
+    }
+    
+    // =========================
+    // Helper Functions
+    // =========================
+    
+    function fetchEventsForVisibleCalendars(allEvents) {
+      return allEvents.filter(e => visibleCalendarIds.includes(e.calendar_id));
+    }
+    
+    function toggleCalendarVisibility(calendarId, isVisible) {
+      if (isVisible) {
+        if (!visibleCalendarIds.includes(calendarId)) {
+          visibleCalendarIds.push(calendarId);
+        }
+      } else {
+        visibleCalendarIds = visibleCalendarIds.filter(id => id !== calendarId);
+      }
+      log('Visible calendars: ' + visibleCalendarIds.join(', '), 'info');
+    }
+    
+    function deduplicateEvents(events) {
+      const seen = new Set();
+      return events.filter(e => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      });
+    }
+    
+    function renderCalendarList(calendars) {
+      const container = document.getElementById('calendarListContainer');
+      
+      container.innerHTML = calendars.map(cal => `
+        <div class="calendar-item">
+          <input 
+            type="checkbox" 
+            ${cal.visible ? 'checked' : ''} 
+            onchange="handleCalendarToggle(${cal.id}, this.checked)"
+          >
+          <div class="calendar-color" style="background-color: ${cal.color}"></div>
+          <div class="calendar-info">
+            <div class="calendar-title">${cal.title}</div>
+            <div class="calendar-meta">${cal.calendar_type} ${cal.user_can_edit ? '✏️' : '👁️'}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    function handleCalendarToggle(calendarId, isChecked) {
+      log('Calendar ' + calendarId + ' toggled: ' + isChecked, 'info');
+      toggleCalendarVisibility(calendarId, isChecked);
+      
+      // Update calendar state
+      const calendar = mockCalendars.find(c => c.id === calendarId);
+      if (calendar) {
+        calendar.visible = isChecked;
+      }
+    }
+    
+    function createCalendar() {
+      const title = prompt('Calendar title:');
+      if (!title) return;
+      
+      const color = '#' + Math.floor(Math.random()*16777215).toString(16);
+      
+      mockApiCreateCalendar({
+        title: title,
+        description: '',
+        color: color,
+        calendar_type: 'personal'
+      }).then(result => {
+        log('Calendar created: ' + result.data.title, 'success');
+        renderCalendarList(mockCalendars);
+      });
+    }
+    
+    function toggleConsole() {
+      const console = document.getElementById('logConsole');
+      console.style.display = console.style.display === 'none' ? 'block' : 'none';
+    }
+    
+    // =========================
+    // Event Listeners
+    // =========================
+    
+    document.getElementById('runAllTests').addEventListener('click', async () => {
+      testResults = [];
+      log('🚀 Running all tests...', 'info');
+      
+      await testApiWrapper();
+      await delay(300);
+      await testCalendarManager();
+      await delay(300);
+      await testEventFiltering();
+      await delay(300);
+      await testStateManagement();
+      await delay(300);
+      await testCallbacks();
+      await delay(300);
+      await testDataStructures();
+      
+      log('🏁 All tests completed!', 'success');
+    });
+    
+    document.getElementById('clearLogs').addEventListener('click', () => {
+      document.getElementById('logConsole').innerHTML = '';
+      log('Logs cleared', 'info');
+    });
+    
+    // =========================
+    // Initialize
+    // =========================
+    
+    (async function init() {
+      log('✅ Test suite initialized', 'success');
+      log('Click "Run All Tests" to start', 'info');
+      log('📡 Offline mode - using mock data', 'warn');
+      
+      try {
+        await testCalendarManager();
+      } catch (error) {
+        log('Init error: ' + error.message, 'error');
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -41,19 +41,22 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
       range: `${startStr} - ${endStr}`
     });
 
-    // Если нет календарей в новой системе, используем legacy режим
+    // Если нет календарей в новой системе, используем legacy режим (показываем ВСЕ события)
     if (calendars.length === 0) {
-      console.log('[CalendarIntegration] Using legacy mode (no calendars configured)');
+      console.log('[CalendarIntegration] No calendars configured, using legacy mode (showing all events)');
       return await getCalendarEvents({
         start: startStr,
         end: endStr
       });
     }
 
-    // Если ни один календарь не выбран, возвращаем пустой массив
+    // Если ни один календарь не выбран, ТОЖЕ показываем все события (legacy режим)
     if (visibleCalendarIds.length === 0) {
-      console.log('[CalendarIntegration] No calendars selected, returning empty array');
-      return [];
+      console.log('[CalendarIntegration] No calendars selected, falling back to legacy mode');
+      return await getCalendarEvents({
+        start: startStr,
+        end: endStr
+      });
     }
 
     // Загружаем события для каждого видимого календаря
