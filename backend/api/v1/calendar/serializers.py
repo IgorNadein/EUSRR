@@ -5,7 +5,7 @@ import re
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional
 
-from calendar_app.models import CalendarEvent, Recurrence
+from calendar_app.models import Calendar, CalendarEvent, CalendarSubscription, Recurrence
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -21,6 +21,7 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
         write_only=True,
         help_text="Список дней недели для WEEKLY (0=Mon..6=Sun).",
     )
+    calendar_id = serializers.IntegerField(required=False, allow_null=True)
     department_id = serializers.IntegerField(required=False, allow_null=True)
     employee_id = serializers.IntegerField(required=False, allow_null=True)
 
@@ -175,10 +176,86 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: Dict[str, Any]) -> CalendarEvent:
         validated_data.pop("weekdays", None)
+        
+        # Поддержка calendar_id (новая архитектура)
+        calendar_id = validated_data.pop("calendar_id", None)
+        if calendar_id is not None:
+            from calendar_app.models import Calendar
+            try:
+                calendar = Calendar.objects.get(id=calendar_id)
+                validated_data["calendar"] = calendar
+            except Calendar.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"calendar_id": _("Календарь с ID {} не найден.").format(calendar_id)}
+                )
+        
+        # Legacy поддержка department_id и employee_id
+        department_id = validated_data.pop("department_id", None)
+        employee_id = validated_data.pop("employee_id", None)
+        
+        if department_id is not None:
+            from employees.models import Department
+            try:
+                department = Department.objects.get(id=department_id)
+                validated_data["department"] = department
+            except Department.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"department_id": _("Отдел с ID {} не найден.").format(department_id)}
+                )
+        
+        if employee_id is not None:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            try:
+                employee = User.objects.get(id=employee_id)
+                validated_data["employee"] = employee
+            except User.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"employee_id": _("Сотрудник с ID {} не найден.").format(employee_id)}
+                )
+        
         return CalendarEvent.objects.create(**validated_data)
 
     def update(self, instance: CalendarEvent, validated_data: Dict[str, Any]) -> CalendarEvent:
         validated_data.pop("weekdays", None)
+        
+        # Поддержка calendar_id (новая архитектура)
+        calendar_id = validated_data.pop("calendar_id", None)
+        if calendar_id is not None:
+            from calendar_app.models import Calendar
+            try:
+                calendar = Calendar.objects.get(id=calendar_id)
+                validated_data["calendar"] = calendar
+            except Calendar.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"calendar_id": _("Календарь с ID {} не найден.").format(calendar_id)}
+                )
+        
+        # Legacy поддержка department_id и employee_id
+        department_id = validated_data.pop("department_id", None)
+        employee_id = validated_data.pop("employee_id", None)
+        
+        if department_id is not None:
+            from employees.models import Department
+            try:
+                department = Department.objects.get(id=department_id)
+                validated_data["department"] = department
+            except Department.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"department_id": _("Отдел с ID {} не найден.").format(department_id)}
+                )
+        
+        if employee_id is not None:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            try:
+                employee = User.objects.get(id=employee_id)
+                validated_data["employee"] = employee
+            except User.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"employee_id": _("Сотрудник с ID {} не найден.").format(employee_id)}
+                )
+        
         for f, v in validated_data.items():
             setattr(instance, f, v)
         instance.save()
@@ -204,3 +281,183 @@ class EventOccurrenceSerializer(serializers.Serializer):
     color = serializers.CharField(allow_null=True, required=False)
     recurrence = serializers.CharField()
     department_id = serializers.IntegerField(allow_null=True, required=False)
+
+
+# ===== Сериализаторы для новых моделей Calendar и CalendarSubscription =====
+
+
+class CalendarSerializer(serializers.ModelSerializer):
+    """Сериализатор для календаря (чтение)."""
+    
+    owner_user_name = serializers.SerializerMethodField()
+    owner_department_name = serializers.SerializerMethodField()
+    event_count = serializers.IntegerField(read_only=True)
+    subscriber_count = serializers.IntegerField(read_only=True)
+    is_subscribed = serializers.SerializerMethodField()
+    user_can_edit = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Calendar
+        fields = (
+            "id",
+            "title",
+            "description",
+            "color",
+            "icon",
+            "visibility",
+            "owner_user",
+            "owner_user_name",
+            "owner_department",
+            "owner_department_name",
+            "auto_subscribe_new_users",
+            "auto_subscribe_department_members",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "event_count",
+            "subscriber_count",
+            "is_subscribed",
+            "user_can_edit",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+    
+    def get_owner_user_name(self, obj):
+        """Возвращает имя владельца-пользователя."""
+        if obj.owner_user:
+            return obj.owner_user.get_full_name() or obj.owner_user.username
+        return None
+    
+    def get_owner_department_name(self, obj):
+        """Возвращает название отдела-владельца."""
+        return obj.owner_department.name if obj.owner_department else None
+    
+    def get_is_subscribed(self, obj):
+        """Проверяет, подписан ли текущий пользователь."""
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.subscriptions.filter(user=request.user).exists()
+        return False
+    
+    def get_user_can_edit(self, obj):
+        """Проверяет, может ли текущий пользователь редактировать календарь."""
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        
+        user = request.user
+        
+        # Админы могут всё
+        if user.is_superuser or user.is_staff:
+            return True
+        
+        # Владелец может редактировать
+        if obj.owner_user_id == user.id:
+            return True
+        
+        # Проверяем подписку с правом редактирования
+        subscription = obj.subscriptions.filter(user=user).first()
+        if subscription and (subscription.can_edit or subscription.can_manage):
+            return True
+        
+        return False
+
+
+class CalendarWriteSerializer(serializers.ModelSerializer):
+    """Сериализатор для создания/обновления календаря."""
+    
+    class Meta:
+        model = Calendar
+        fields = (
+            "id",
+            "title",
+            "description",
+            "color",
+            "icon",
+            "visibility",
+            "owner_user",
+            "owner_department",
+            "auto_subscribe_new_users",
+            "auto_subscribe_department_members",
+            "is_active",
+        )
+        read_only_fields = ("id",)
+    
+    def validate(self, attrs):
+        """Валидация: нельзя одновременно указывать owner_user и owner_department."""
+        owner_user = attrs.get("owner_user")
+        owner_department = attrs.get("owner_department")
+        
+        # Для update нужно учитывать существующие значения
+        if self.instance:
+            owner_user = owner_user if "owner_user" in attrs else self.instance.owner_user
+            owner_department = owner_department if "owner_department" in attrs else self.instance.owner_department
+        
+        if owner_user and owner_department:
+            raise serializers.ValidationError(
+                _("Календарь не может одновременно принадлежать пользователю и отделу.")
+            )
+        
+        return attrs
+
+
+class CalendarSubscriptionSerializer(serializers.ModelSerializer):
+    """Сериализатор для подписки на календарь (чтение)."""
+    
+    calendar_title = serializers.CharField(source="calendar.title", read_only=True)
+    calendar_color = serializers.CharField(source="calendar.color", read_only=True)
+    user_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CalendarSubscription
+        fields = (
+            "id",
+            "calendar",
+            "calendar_title",
+            "calendar_color",
+            "user",
+            "user_name",
+            "is_visible",
+            "color_override",
+            "can_edit",
+            "can_manage",
+            "notify_on_new_event",
+            "notify_on_event_change",
+            "subscribed_at",
+        )
+        read_only_fields = ("id", "subscribed_at")
+    
+    def get_user_name(self, obj):
+        """Возвращает имя пользователя."""
+        return obj.user.get_full_name() or obj.user.username
+
+
+class CalendarSubscriptionWriteSerializer(serializers.ModelSerializer):
+    """Сериализатор для создания/обновления подписки."""
+    
+    class Meta:
+        model = CalendarSubscription
+        fields = (
+            "id",
+            "calendar",
+            "user",
+            "is_visible",
+            "color_override",
+            "can_edit",
+            "can_manage",
+            "notify_on_new_event",
+            "notify_on_event_change",
+        )
+        read_only_fields = ("id",)
+    
+    def validate(self, attrs):
+        """Валидация подписки."""
+        calendar = attrs.get("calendar") or (self.instance.calendar if self.instance else None)
+        user = attrs.get("user") or (self.instance.user if self.instance else None)
+        
+        # Проверяем, что пользователь не подписывается на свой личный календарь дважды
+        if calendar and user and calendar.owner_user_id == user.id:
+            # Владелец может иметь подписку, но это optional
+            pass
+        
+        return attrs
+

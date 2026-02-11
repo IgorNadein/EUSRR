@@ -1,7 +1,11 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .calendar.views import CalendarEventsViewSet
+from .calendar.views import (
+    CalendarEventsViewSet,
+    CalendarViewSet,
+    CalendarSubscriptionViewSet,
+)
 from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
                               EmployeeActionViewSet, EmployeeViewSet,
                               GroupViewSet, PositionViewSet,
@@ -19,6 +23,12 @@ app_name = "v1"
 router = DefaultRouter()
 
 router.register(r"calendar/events", CalendarEventsViewSet, basename="events")
+router.register(r"calendar/calendars", CalendarViewSet, basename="calendars")
+router.register(
+    r"calendar/subscriptions",
+    CalendarSubscriptionViewSet,
+    basename="subscriptions",
+)
 
 router.register(r"documents", DocumentViewSet, basename="documents")
 

@@ -6,6 +6,7 @@ from datetime import datetime
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
@@ -29,6 +30,41 @@ class CalendarVisibility(models.TextChoices):
     DEPARTMENT = "department", _("Отдел (только члены отдела)")
     PRIVATE = "private", _("Приватный (только владелец)")
     CUSTOM = "custom", _("Настраиваемый (через права)")
+
+
+class CalendarManager(models.Manager):
+    """Менеджер для модели Calendar с дополнительными методами."""
+    
+    def get_available_for_user(self, user):
+        """Возвращает календари, доступные для просмотра пользователю."""
+        if user.is_superuser or user.is_staff:
+            # Админы видят все активные календари
+            return self.filter(is_active=True)
+        
+        # Публичные календари
+        q = Q(visibility=CalendarVisibility.PUBLIC, is_active=True)
+        
+        # Календари, где пользователь владелец
+        q |= Q(owner_user=user, is_active=True)
+        
+        # Календари отделов, где пользователь член
+        user_departments = user.employee_departments.filter(
+            is_active=True
+        ).values_list("department_id", flat=True)
+        
+        q |= Q(
+            owner_department_id__in=user_departments,
+            visibility=CalendarVisibility.DEPARTMENT,
+            is_active=True
+        )
+        
+        # Календари с подпиской пользователя
+        subscribed_calendar_ids = user.calendar_subscriptions.values_list(
+            "calendar_id", flat=True
+        )
+        q |= Q(id__in=subscribed_calendar_ids, is_active=True)
+        
+        return self.filter(q).distinct()
 
 
 class Calendar(models.Model):
@@ -111,6 +147,8 @@ class Calendar(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    objects = CalendarManager()
+    
     class Meta:
         verbose_name = _("Календарь")
         verbose_name_plural = _("Календари")
@@ -149,6 +187,78 @@ class Calendar(models.Model):
     def is_department(self):
         """Календарь отдела."""
         return bool(self.owner_department_id)
+    
+    def is_owner(self, user):
+        """Проверяет, является ли пользователь владельцем календаря."""
+        if self.owner_user_id:
+            return self.owner_user_id == user.id
+        if self.owner_department_id:
+            # Владелец отдела = руководитель отдела
+            return self.owner_department.head_id == user.id if hasattr(self.owner_department, 'head_id') else False
+        # Глобальный календарь — владелец только админы
+        return user.is_superuser or user.is_staff
+    
+    def can_user_view(self, user):
+        """Проверяет, может ли пользователь просматривать календарь."""
+        if not self.is_active:
+            return False
+        
+        if user.is_superuser or user.is_staff:
+            return True
+        
+        # Владелец всегда может просматривать
+        if self.is_owner(user):
+            return True
+        
+        # Публичный календарь
+        if self.visibility == CalendarVisibility.PUBLIC:
+            return True
+        
+        # Календарь отдела
+        if self.visibility == CalendarVisibility.DEPARTMENT and self.owner_department_id:
+            # Проверяем, является ли пользователь членом отдела
+            return user.employee_departments.filter(
+                department_id=self.owner_department_id,
+                is_active=True
+            ).exists()
+        
+        # Приватный или настраиваемый — проверяем подписку
+        if self.visibility in [CalendarVisibility.PRIVATE, CalendarVisibility.CUSTOM]:
+            return self.subscriptions.filter(user=user).exists()
+        
+        return False
+    
+    def can_user_edit(self, user):
+        """Проверяет, может ли пользователь редактировать события в календаре."""
+        if user.is_superuser or user.is_staff:
+            return True
+        
+        # Владелец всегда может редактировать
+        if self.is_owner(user):
+            return True
+        
+        # Проверяем подписку с правом редактирования
+        subscription = self.subscriptions.filter(user=user).first()
+        if subscription:
+            return subscription.can_edit
+        
+        return False
+    
+    def can_user_manage(self, user):
+        """Проверяет, может ли пользователь управлять календарем."""
+        if user.is_superuser or user.is_staff:
+            return True
+        
+        # Владелец всегда может управлять
+        if self.is_owner(user):
+            return True
+        
+        # Проверяем подписку с правом управления
+        subscription = self.subscriptions.filter(user=user).first()
+        if subscription:
+            return subscription.can_manage
+        
+        return False
 
 
 class CalendarSubscription(models.Model):
