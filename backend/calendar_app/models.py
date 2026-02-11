@@ -284,6 +284,7 @@ class CalendarSubscription(models.Model):
         _("Свой цвет"),
         max_length=7,
         blank=True,
+        null=True,
         help_text=_("Переопределяет цвет календаря"),
     )
     

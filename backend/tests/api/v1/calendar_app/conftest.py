@@ -337,3 +337,55 @@ def admin_user(make_user) -> models.Model:
 def dept_manager_user(make_user) -> models.Model:
     """Пользователь - менеджер отдела."""
     return make_user(username="dept_manager", email="dept_manager@example.com")
+
+
+@pytest.fixture
+def make_event(db, CalendarEvent):
+    """Фабрика для создания событий календаря.
+    
+    Args:
+        title (str): Название события
+        start_date (date): Дата начала
+        end_date (date, optional): Дата окончания
+        start_time (time, optional): Время начала
+        end_time (time, optional): Время окончания
+        all_day (bool): Весь день (по умолчанию True)
+        calendar (Calendar, optional): Календарь (новая логика)
+        department (Department, optional): Отдел (legacy)
+        employee (User, optional): Сотрудник (legacy)
+        **kwargs: Дополнительные поля
+    
+    Returns:
+        CalendarEvent: Созданное событие
+    """
+    
+    def _make(
+        title="Test Event",
+        start_date=None,
+        end_date=None,
+        start_time=None,
+        end_time=None,
+        all_day=True,
+        calendar=None,
+        department=None,
+        employee=None,
+        **kwargs
+    ):
+        if start_date is None:
+            start_date = date.today()
+        
+        event = CalendarEvent.objects.create(
+            title=title,
+            start_date=start_date,
+            end_date=end_date,
+            start_time=start_time,
+            end_time=end_time,
+            all_day=all_day,
+            calendar=calendar,
+            department=department,
+            employee=employee,
+            **kwargs
+        )
+        return event
+    
+    return _make

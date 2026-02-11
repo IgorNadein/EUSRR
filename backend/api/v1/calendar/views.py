@@ -450,6 +450,21 @@ class CalendarViewSet(ModelViewSet):
         else:
             return [IsAuthenticated()]
     
+    def create(self, request, *args, **kwargs):
+        """Создание календаря с корректным сериализатором для ответа."""
+        write_serializer = self.get_serializer(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        self.perform_create(write_serializer)
+        
+        # Для ответа используем CalendarSerializer
+        instance = write_serializer.instance
+        read_serializer = CalendarSerializer(instance, context={"request": request})
+        
+        from rest_framework import status
+        from rest_framework.response import Response
+        headers = self.get_success_headers(read_serializer.data)
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
     def perform_create(self, serializer):
         """Создание календаря."""
         # Владелец определяется в serializer.save()

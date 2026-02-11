@@ -292,10 +292,15 @@ class CalendarSerializer(serializers.ModelSerializer):
     
     owner_user_name = serializers.SerializerMethodField()
     owner_department_name = serializers.SerializerMethodField()
-    event_count = serializers.IntegerField(read_only=True)
-    subscriber_count = serializers.IntegerField(read_only=True)
+    event_count = serializers.IntegerField(read_only=True, required=False)
+    subscriber_count = serializers.IntegerField(read_only=True, required=False)
     is_subscribed = serializers.SerializerMethodField()
     user_can_edit = serializers.SerializerMethodField()
+    
+    # Computed-поля для типа календаря
+    is_personal = serializers.SerializerMethodField()
+    is_department = serializers.SerializerMethodField()
+    is_global = serializers.SerializerMethodField()
     
     class Meta:
         model = Calendar
@@ -319,6 +324,9 @@ class CalendarSerializer(serializers.ModelSerializer):
             "subscriber_count",
             "is_subscribed",
             "user_can_edit",
+            "is_personal",
+            "is_department",
+            "is_global",
         )
         read_only_fields = ("id", "created_at", "updated_at")
     
@@ -338,6 +346,18 @@ class CalendarSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.subscriptions.filter(user=request.user).exists()
         return False
+    
+    def get_is_personal(self, obj):
+        """Проверяет, является ли календарь личным."""
+        return obj.owner_user_id is not None and obj.owner_department_id is None
+    
+    def get_is_department(self, obj):
+        """Проверяет, является ли календарь отдела."""
+        return obj.owner_department_id is not None and obj.owner_user_id is None
+    
+    def get_is_global(self, obj):
+        """Проверяет, является ли календарь глобальным."""
+        return obj.owner_user_id is None and obj.owner_department_id is None
     
     def get_user_can_edit(self, obj):
         """Проверяет, может ли текущий пользователь редактировать календарь."""
