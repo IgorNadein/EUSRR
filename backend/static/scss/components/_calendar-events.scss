@@ -56,8 +56,8 @@ $event-max-lines: 2;
 
 // События С цветом календаря (новая система)
 .fc-event[data-has-calendar-color="true"] {
-  // Левая граница = цвет календаря (устанавливается через JS)
-  border-left: $event-border-width solid !important;
+  // Левая граница = цвет календаря (устанавливается через JS с шириной и цветом)
+  // border-left устанавливается через JS: border-left: 4px solid <calendarColor>
   padding-left: ($event-padding-x + 1px) !important;
   
   // Фон = цвет события с прозрачностью (устанавливается через JS)
@@ -69,7 +69,8 @@ $event-max-lines: 2;
 
 // События БЕЗ цвета календаря (legacy система)
 .fc-event:not([data-has-calendar-color="true"]) {
-  // Просто цвет события без границы
+  // Левая граница = цвет события (устанавливается через JS)
+  // border-left устанавливается через JS: border-left: 3px solid <eventColor>
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
 }
 

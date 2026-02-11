@@ -1017,13 +1017,14 @@ export function initCalendarWidget(options = {}) {
       if (calendarColor) {
         // Если есть цвет календаря - показываем оба цвета
         eventEl.setAttribute("data-has-calendar-color", "true");
-        eventEl.style.borderLeftColor = calendarColor;
-        eventEl.style.backgroundColor = eventColor + "CC"; // 80% прозрачности
+        eventEl.style.borderLeft = `4px solid ${calendarColor}`; // Левая граница = цвет календаря
+        eventEl.style.backgroundColor = eventColor + "CC"; // 80% прозрачности, фон = цвет события
         eventEl.style.borderColor = eventColor;
       } else {
         // Если нет цвета календаря - используем только цвет события
         eventEl.style.backgroundColor = eventColor;
         eventEl.style.borderColor = eventColor;
+        eventEl.style.borderLeft = `3px solid ${eventColor}`;
       }
 
       // Улучшаем читаемость текста
