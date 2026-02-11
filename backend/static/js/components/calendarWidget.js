@@ -1003,60 +1003,50 @@ export function initCalendarWidget(options = {}) {
 
       // Применяем современный стиль с двойным цветом
       const eventEl = info.el;
+      
+      // Проверяем, является ли событие многодневным
+      const isMultiDay = !info.event.allDay && info.event.start && info.event.end && 
+                        (info.event.end.getDate() !== info.event.start.getDate() ||
+                         info.event.end.getMonth() !== info.event.start.getMonth() ||
+                         info.event.end.getFullYear() !== info.event.start.getFullYear());
+      
+      // Проверяем тип сегмента многодневного события
+      const isStart = info.isStart;
+      const isEnd = info.isEnd;
 
       if (calendarColor) {
         // Если есть цвет календаря - показываем оба цвета
-        // Левая граница = цвет календаря, фон = цвет события (полупрозрачный)
-        eventEl.style.borderLeft = `4px solid ${calendarColor}`;
+        eventEl.setAttribute("data-has-calendar-color", "true");
+        eventEl.style.borderLeftColor = calendarColor;
         eventEl.style.backgroundColor = eventColor + "CC"; // 80% прозрачности
         eventEl.style.borderColor = eventColor;
-
-        // Добавляем тень для объёма
-        eventEl.style.boxShadow =
-          "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
       } else {
         // Если нет цвета календаря - используем только цвет события
         eventEl.style.backgroundColor = eventColor;
         eventEl.style.borderColor = eventColor;
-        eventEl.style.borderLeft = `3px solid ${eventColor}`;
-        eventEl.style.boxShadow = "0 1px 2px rgba(0,0,0,0.1)";
       }
 
       // Улучшаем читаемость текста
       eventEl.style.color = "#ffffff";
       eventEl.style.textShadow = "0 1px 2px rgba(0,0,0,0.2)";
 
-      // Закругляем углы для современного вида
-      eventEl.style.borderRadius = "4px";
-      eventEl.style.overflow = "hidden";
-
-      // Добавляем отступы
-      eventEl.style.paddingLeft = "6px";
-      eventEl.style.paddingRight = "4px";
-
-      // Hover эффект
-      eventEl.addEventListener("mouseenter", () => {
-        eventEl.style.transform = "translateY(-1px)";
-        eventEl.style.boxShadow =
-          "0 4px 8px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.12)";
-        eventEl.style.transition = "all 0.2s ease";
-        eventEl.style.zIndex = "100";
-      });
-
-      eventEl.addEventListener("mouseleave", () => {
-        eventEl.style.transform = "translateY(0)";
-        if (calendarColor) {
-          eventEl.style.boxShadow =
-            "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
-        } else {
-          eventEl.style.boxShadow = "0 1px 2px rgba(0,0,0,0.1)";
-        }
-        eventEl.style.transition = "all 0.2s ease";
-      });
-
       // Особый стиль для ежегодных событий
       if (recurrence === "annual") {
         eventEl.setAttribute("data-recurrence", "annual");
+      }
+
+      // Hover эффект (только если не применяются автоматически)
+      if (!eventEl.classList.contains("fc-event")) {
+        eventEl.addEventListener("mouseenter", () => {
+          eventEl.style.transform = "translateY(-1px)";
+          eventEl.style.transition = "all 0.2s ease";
+          eventEl.style.zIndex = "100";
+        });
+
+        eventEl.addEventListener("mouseleave", () => {
+          eventEl.style.transform = "translateY(0)";
+          eventEl.style.transition = "all 0.2s ease";
+        });
       }
 
       // Добавляем обработчик правой кнопки мыши

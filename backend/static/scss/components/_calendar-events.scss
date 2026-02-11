@@ -145,11 +145,17 @@ $event-max-lines: 2;
   // Выравнивание контента
   display: flex;
   align-items: center;
+  
+  // Растягиваем на всю ширину ячейки
+  width: 100% !important;
 }
 
 // Событие начинается (первый день)
 .fc-event.fc-event-start:not(.fc-event-end) {
-  border-radius: $event-radius 0 0 $event-radius !important;
+  border-top-left-radius: $event-radius !important;
+  border-bottom-left-radius: $event-radius !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
   margin-right: 0 !important;
   padding-right: ($event-padding-x + 2px) !important;
   
@@ -165,6 +171,7 @@ $event-max-lines: 2;
     font-size: 14px;
     font-weight: bold;
     opacity: 0.7;
+    color: rgba(255, 255, 255, 0.8);
   }
 }
 
@@ -188,6 +195,7 @@ $event-max-lines: 2;
     font-size: 14px;
     font-weight: bold;
     opacity: 0.7;
+    color: rgba(255, 255, 255, 0.8);
   }
   
   &::after {
@@ -199,12 +207,16 @@ $event-max-lines: 2;
     font-size: 14px;
     font-weight: bold;
     opacity: 0.7;
+    color: rgba(255, 255, 255, 0.8);
   }
 }
 
 // Событие заканчивается (последний день)
 .fc-event:not(.fc-event-start).fc-event-end {
-  border-radius: 0 $event-radius $event-radius 0 !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-top-right-radius: $event-radius !important;
+  border-bottom-right-radius: $event-radius !important;
   margin-left: 0 !important;
   padding-left: ($event-padding-x + 2px) !important;
   
@@ -220,6 +232,7 @@ $event-max-lines: 2;
     font-size: 14px;
     font-weight: bold;
     opacity: 0.7;
+    color: rgba(255, 255, 255, 0.8);
   }
 }
 
