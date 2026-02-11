@@ -12,6 +12,24 @@ import {
   invalidateCalendarEvents,
 } from "../api/calendarApi.js";
 import { getMyDepartments } from "../api/departmentsApi.js";
+import { 
+  getAccessToken, 
+  authHeaders as getAuthHeaders, 
+  getCookie 
+} from "../utils/authUtils.js";
+import { 
+  formatDate, 
+  ymdLocal, 
+  fmtDate, 
+  fmtTime 
+} from "../utils/dateUtils.js";
+import { 
+  CALENDAR_TYPES, 
+  CALENDAR_COLORS,
+  createLegacyDeptId 
+} from "../constants/calendarTypes.js";
+import { API_URLS } from "../constants/apiUrls.js";
+import { resolveEventPayload } from "../utils/calendarTypeResolver.js";
 
 /**
  * Инициализация виджета календаря
@@ -35,10 +53,10 @@ export function initCalendarWidget(options = {}) {
   const config = {
     deskContainerId: options.deskContainerId || "calendarRight",
     mobContainerId: options.mobContainerId || "calendarRightMobile",
-    apiEventsUrl: options.apiEventsUrl || "/api/v1/calendar/events/",
+    apiEventsUrl: options.apiEventsUrl || API_URLS.EVENTS,
     apiMyDeptsUrl:
-      options.apiMyDeptsUrl || "/api/v1/departments/my-departments/",
-    defaultColor: options.defaultColor || "#0d6efd",
+      options.apiMyDeptsUrl || API_URLS.MY_DEPARTMENTS,
+    defaultColor: options.defaultColor || CALENDAR_COLORS.DEFAULT,
   };
 
   const API_EVENTS = config.apiEventsUrl;
@@ -53,51 +71,11 @@ export function initCalendarWidget(options = {}) {
   const dayMs = 86400000;
   const hourMs = 3600000;
 
-  /* ===== Токен из meta ===== */
-  function getAccessToken() {
-    const meta = document.querySelector('meta[name="api-access"]');
-    const m = (meta && meta.getAttribute("content")) || "";
-    if (m) return m.trim();
-    try {
-      return localStorage.getItem("api.access") || "";
-    } catch (_) {
-      return "";
-    }
-  }
-
-  // Сохраняем токен глобально при загрузке, чтобы избежать timing issues
+  // Используем утилиты авторизации из authUtils
   const globalToken = getAccessToken();
-
+  
   function authHeaders() {
-    const headers = {};
-    if (globalToken) {
-      headers.Authorization = "Bearer " + globalToken;
-    }
-    // Добавляем CSRF токен для POST/PUT/PATCH/DELETE запросов
-    const csrfToken =
-      document.querySelector("[name=csrfmiddlewaretoken]")?.value ||
-      document.querySelector('meta[name="csrf-token"]')?.content ||
-      getCookie("csrftoken");
-    if (csrfToken) {
-      headers["X-CSRFToken"] = csrfToken;
-    }
-    return headers;
-  }
-
-  // Функция для получения cookie
-  function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== "") {
-      const cookies = document.cookie.split(";");
-      for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i].trim();
-        if (cookie.substring(0, name.length + 1) === name + "=") {
-          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-          break;
-        }
-      }
-    }
-    return cookieValue;
+    return getAuthHeaders();
   }
 
   /* ===== Только ЧИСЛОВОЙ PK отдела ===== */
@@ -110,13 +88,7 @@ export function initCalendarWidget(options = {}) {
     return null;
   }
 
-  // YYYY-MM-DD в ЛОКАЛИ (без TZ-сдвига)
-  function ymdLocal(date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
+  // Используем ymdLocal из dateUtils (импортировано выше)
 
   // Базовый URL событий: для отдела добавляем department_id, для личного - employee_id
   const eventsUrl = (deptId = null, employeeId = null) => {
@@ -248,18 +220,8 @@ export function initCalendarWidget(options = {}) {
   }
 
   /* ===== Helpers для форматирования и API детальной карточки ===== */
-  function pad(n) {
-    return (n < 10 ? "0" : "") + n;
-  }
-
-  function fmtDate(d) {
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  }
-
-  function fmtTime(d) {
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-
+  // Используем утилиты из dateUtils (fmtDate, fmtTime импортированы)
+  
   function fmtWhen(ev) {
     if (!ev) return "—";
     const allDay = !!ev.all_day;
@@ -1098,12 +1060,22 @@ export function initCalendarWidget(options = {}) {
       return div;
     }
 
-    // Добавляем базовые чекбоксы (legacy)
+    // Добавляем базовые чекбоксы (legacy) - используем константы
     container.appendChild(
-      createCheckbox("company", "Компания (общие события)", true, "#0d6efd"),
+      createCheckbox(
+        CALENDAR_TYPES.COMPANY, 
+        "Компания (общие события)", 
+        true, 
+        CALENDAR_COLORS.COMPANY
+      ),
     );
     container.appendChild(
-      createCheckbox("personal", "Личный календарь", false, "#198754"),
+      createCheckbox(
+        CALENDAR_TYPES.PERSONAL, 
+        "Личный календарь", 
+        false, 
+        CALENDAR_COLORS.PERSONAL
+      ),
     );
 
     // Добавляем отделы, если есть
@@ -1114,7 +1086,7 @@ export function initCalendarWidget(options = {}) {
             `dept-${dept.id}`,
             `Отдел: ${dept.name}`,
             false,
-            "#dc3545",
+            CALENDAR_COLORS.DEPARTMENT,
           ),
         );
       });
@@ -1617,83 +1589,20 @@ export function initCalendarWidget(options = {}) {
         // При редактировании - обновляем только первый выбранный календарь
         const targetCalendar = selectedCalendars[0];
 
-        // Определяем тип календаря и добавляем соответствующие параметры
-        if (targetCalendar !== "company") {
-          if (targetCalendar === "personal") {
-            // Личный календарь - получаем employee_id
-            const userMeta = document.querySelector('meta[name="user-id"]');
-            const currentEmployeeId = userMeta
-              ? parseInt(userMeta.content, 10)
-              : null;
-            if (!currentEmployeeId) {
-              alert("Не удалось определить ID пользователя");
-              return;
-            }
-            payload.employee_id = currentEmployeeId;
-            // Очищаем другие поля
-            payload.department_id = null;
-            payload.calendar_id = null;
-          } else if (targetCalendar.startsWith("dept-")) {
-            // Календарь отдела
-            const deptId = parseInt(targetCalendar.replace("dept-", ""), 10);
-            if (isNaN(deptId)) {
-              alert("Некорректный отдел");
-              return;
-            }
-            payload.department_id = deptId;
-            // Очищаем другие поля
-            payload.employee_id = null;
-            payload.calendar_id = null;
-          } else if (/^\d+$/.test(targetCalendar)) {
-            // Новый календарь - используем calendar_id
-            payload.calendar_id = parseInt(targetCalendar, 10);
-            // Очищаем другие поля
-            payload.employee_id = null;
-            payload.department_id = null;
-          }
-        } else {
-          // Company - очищаем все специфичные поля
-          payload.employee_id = null;
-          payload.department_id = null;
-          payload.calendar_id = null;
-        }
+        // Используем утилиту для определения payload
+        const eventPayload = resolveEventPayload(targetCalendar, payload);
 
         const url = API_EVENTS + String(form.dataset.eventId) + "/";
         await fetchJSON(url, {
           method: "PATCH",
           headers: postHeaders,
-          body: JSON.stringify(payload),
+          body: JSON.stringify(eventPayload),
         });
       } else {
         // При создании - создаем событие для каждого выбранного календаря
         const createPromises = selectedCalendars.map((targetCalendar) => {
-          const eventPayload = { ...payload };
-
-          // Определяем тип календаря и добавляем соответствующие параметры
-          if (targetCalendar !== "company") {
-            if (targetCalendar === "personal") {
-              // Личный календарь
-              const userMeta = document.querySelector('meta[name="user-id"]');
-              const currentEmployeeId = userMeta
-                ? parseInt(userMeta.content, 10)
-                : null;
-              if (!currentEmployeeId) {
-                throw new Error("Не удалось определить ID пользователя");
-              }
-              eventPayload.employee_id = currentEmployeeId;
-            } else if (targetCalendar.startsWith("dept-")) {
-              // Календарь отдела
-              const deptId = parseInt(targetCalendar.replace("dept-", ""), 10);
-              if (isNaN(deptId)) {
-                throw new Error("Некорректный отдел");
-              }
-              eventPayload.department_id = deptId;
-            } else if (/^\d+$/.test(targetCalendar)) {
-              // Новый календарь - используем calendar_id
-              eventPayload.calendar_id = parseInt(targetCalendar, 10);
-            }
-          }
-          // Если targetCalendar === "company", то без дополнительных параметров
+          // Используем утилиту для определения payload
+          const eventPayload = resolveEventPayload(targetCalendar, payload);
 
           return fetchJSON(API_EVENTS, {
             method: "POST",
