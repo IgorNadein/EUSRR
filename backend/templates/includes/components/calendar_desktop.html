@@ -4,32 +4,53 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
 
       <div class="d-flex align-items-center gap-2 flex-shrink-1 min-w-0">
-        <h6 class="card-title fw-semibold mb-0">Календари</h6>
+        <h6 class="card-title fw-semibold mb-0">Календарь</h6>
 
-        {# Кнопка управления календарями #}
+        {# Выпадающий выбор: Компания / Отделы / Личный (LEGACY) #}
+        <div class="dropdown">
+          <button 
+            class="btn btn-sm btn-outline-secondary dropdown-toggle text-truncate" 
+            type="button"
+            id="calendarChooserBtn" 
+            data-bs-toggle="dropdown" 
+            aria-expanded="false"
+            style="max-width: 150px;"
+          >
+            Компания
+          </button>
+          <ul class="dropdown-menu" aria-labelledby="calendarChooserBtn" id="calendarChooserMenu">
+            <li><button class="dropdown-item" type="button" data-cal="personal">Личный</button></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><button class="dropdown-item" type="button" data-cal="company">Компания</button></li>
+            <li><hr class="dropdown-divider"></li>
+            {# пункты отделов добавим из JS по data-dept-id #}
+          </ul>
+        </div>
+
+        {# Кнопка списка календарей (NEW) #}
         <button 
-          class="btn btn-sm btn-outline-secondary" 
+          class="btn btn-sm btn-outline-primary" 
           type="button"
           data-bs-toggle="collapse" 
           data-bs-target="#calendarListCollapse"
           aria-expanded="false" 
           aria-controls="calendarListCollapse"
-          title="Управление календарями"
+          title="Мои календари"
         >
-          <i class="bi-list"></i>
+          <i class="bi-list-check"></i>
         </button>
       </div>
 
       <div class="d-flex align-items-center gap-2 flex-shrink-0">
         <span class="card-sub text-muted d-none d-xl-inline">События</span>
         <button 
-          class="btn btn-sm btn-outline-primary" 
+          class="btn btn-sm btn-outline-success" 
           type="button" 
           data-action="create-calendar"
           aria-label="Создать календарь"
           title="Создать календарь"
         >
-          <i class="bi-plus-lg"></i>
+          <i class="bi-calendar-plus"></i>
         </button>
         <button 
           class="btn btn-sm btn-primary" 
@@ -39,15 +60,20 @@
           aria-label="Создать событие"
           title="Создать событие"
         >
-          <i class="bi-calendar-plus"></i>
+          <i class="bi-plus-lg"></i>
         </button>
       </div>
     </div>
 
-    {# Список календарей (сворачиваемый) #}
+    {# Список календарей (сворачиваемый) - НОВАЯ ФУНКЦИЯ #}
     <div class="collapse" id="calendarListCollapse">
-      <div class="card-body border-bottom">
-        <div id="calendarListContainer" class="calendar-list-container">
+      <div class="card-body border-bottom py-2">
+        <small class="text-muted d-block mb-2">
+          <i class="bi-info-circle me-1"></i>
+          Управление несколькими календарями
+        </small>
+        <div id="calendarListContainer" class="calendar-list-container" style="max-height: 200px;">
+
           {# Здесь будет JS-генерируемый список календарей #}
           <div class="text-center py-3">
             <div class="spinner-border spinner-border-sm text-primary" role="status">
