@@ -3,9 +3,20 @@
 
 <script type="module">
   import { initCalendarWidget } from '{% static "js/components/calendarWidget.js" %}';
+  import { integrateCalendarManager } from '{% static "js/components/calendarWidgetIntegration.js" %}';
   
+  // Инициализация базового виджета календаря
   const widget = initCalendarWidget();
+  
   if (widget) {
     window.calendarWidget = widget;
+    
+    // Интеграция с менеджером календарей
+    const integration = integrateCalendarManager(widget);
+    if (integration) {
+      window.calendarIntegration = integration;
+      console.log('[Calendar] Integration initialized with multiple calendars support');
+    }
   }
 </script>
+

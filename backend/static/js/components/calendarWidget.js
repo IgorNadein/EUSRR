@@ -962,7 +962,18 @@ export function initCalendarWidget(options = {}) {
     selectable: true, // Позволяет выбирать даты
     events: async (info, success, failure) => {
       try {
-        const raw = await fetchEventsCombined(info.start, info.end);
+        let raw;
+        
+        // Используем новую систему множественных календарей, если доступна
+        if (window.calendarIntegration?.fetchEventsForVisibleCalendars) {
+          console.log('[CalendarWidget] Using calendar integration for event loading');
+          raw = await window.calendarIntegration.fetchEventsForVisibleCalendars(info.start, info.end);
+        } else {
+          // Fallback на старую систему
+          console.log('[CalendarWidget] Using legacy fetchEventsCombined');
+          raw = await fetchEventsCombined(info.start, info.end);
+        }
+        
         // Нормализуем id и цвет для FullCalendar
         const mapped = (Array.isArray(raw) ? raw : []).map((ev) => {
           const id = ev.id ?? ev.pk ?? ev.uuid ?? ev.slug ?? ev._id;
