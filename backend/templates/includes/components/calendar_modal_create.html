@@ -119,9 +119,14 @@
           </div>
         </div>
 
-        <small class="text-secondary d-block mt-2">
-          Календарь: <span id="eventTargetLabel">Компания</span>
-        </small>
+        <div class="mt-3">
+          <label class="form-label">Календарь</label>
+          <select class="form-select" name="target_calendar" id="targetCalendarSelect">
+            <option value="company" selected>Компания (общие события)</option>
+            <option value="personal">Личный календарь</option>
+          </select>
+          <div class="form-text">События создаются в выбранном календаре</div>
+        </div>
       </div>
 
       <div class="modal-footer">
