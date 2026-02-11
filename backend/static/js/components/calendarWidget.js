@@ -30,6 +30,28 @@ import {
 } from "../constants/calendarTypes.js";
 import { API_URLS } from "../constants/apiUrls.js";
 import { resolveEventPayload } from "../utils/calendarTypeResolver.js";
+import { 
+  extractNumericPk, 
+  eventsUrl, 
+  addRange, 
+  isDateOnly, 
+  toDate, 
+  pick, 
+  startOfWeek, 
+  endOfWeek, 
+  overlaps, 
+  truncate, 
+  setWeekdaysFromMask, 
+  fmtWhen,
+  DIGITS_RE,
+  dayMs,
+  hourMs
+} from "./calendarWidget/helpers.js";
+import { 
+  fetchJSON, 
+  apiGet, 
+  apiDelete 
+} from "./calendarWidget/apiClient.js";
 
 /**
  * Инициализация виджета календаря
@@ -66,11 +88,6 @@ export function initCalendarWidget(options = {}) {
     document.querySelector(".rightbar-card") ||
     document.querySelector("#rightbarOffcanvas");
 
-  /* ===== Регулярки и константы ===== */
-  const DIGITS_RE = /^\d+$/;
-  const dayMs = 86400000;
-  const hourMs = 3600000;
-
   // Используем утилиты авторизации из authUtils
   const globalToken = getAccessToken();
   
@@ -78,36 +95,8 @@ export function initCalendarWidget(options = {}) {
     return getAuthHeaders();
   }
 
-  /* ===== Только ЧИСЛОВОЙ PK отдела ===== */
-  function extractNumericPk(d) {
-    const cands = [d?.pk, d?.id, d?.department_id];
-    for (const v of cands) {
-      const s = String(v ?? "").trim();
-      if (s && DIGITS_RE.test(s)) return s;
-    }
-    return null;
-  }
-
-  // Используем ymdLocal из dateUtils (импортировано выше)
-
-  // Базовый URL событий: для отдела добавляем department_id, для личного - employee_id
-  const eventsUrl = (deptId = null, employeeId = null) => {
-    const u = new URL(API_EVENTS, location.origin);
-    if (employeeId != null) {
-      u.searchParams.set("employee_id", String(employeeId));
-    } else if (deptId != null) {
-      u.searchParams.set("department_id", String(deptId));
-    }
-    return u.pathname + (u.search ? "?" + u.searchParams.toString() : "");
-  };
-
-  // Корректно вешаем диапазон дат на любой URL
-  function addRange(url, start, end) {
-    const u = new URL(url, location.origin);
-    u.searchParams.set("start", ymdLocal(start));
-    u.searchParams.set("end", ymdLocal(end));
-    return u.pathname + "?" + u.searchParams.toString();
-  }
+  // Используем ymdLocal, eventsUrl, addRange, extractNumericPk из helpers.js
+  // Используем DIGITS_RE, dayMs, hourMs из helpers.js
 
   // Обратная совместимость: data-dept-id="1,2,3"
   const legacyDeptIds = (holder?.dataset.deptId || "")
@@ -138,133 +127,10 @@ export function initCalendarWidget(options = {}) {
   // Защита от гонок при загрузке отделов
   let deptsLoadSeq = 0;
 
-  /* ===== Utils ===== */
-  const isDateOnly = (v) =>
-    typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
-
-  const toDate = (v) => {
-    if (!v) return null;
-    if (v instanceof Date) return v;
-    if (typeof v === "number") return new Date(v);
-    if (typeof v === "string") {
-      const s = v.trim();
-      if (isDateOnly(s)) {
-        const [y, m, d] = s.split("-").map(Number);
-        return new Date(y, m - 1, d);
-      }
-      const t = Date.parse(s);
-      if (!isNaN(t)) return new Date(t);
-    }
-    return null;
-  };
-
-  const pick = (o, ks) => {
-    for (const k of ks) if (o && o[k] != null && o[k] !== "") return o[k];
-    return null;
-  };
-
-  const startOfWeek = (d) => {
-    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const day = (x.getDay() + 6) % 7;
-    x.setDate(x.getDate() - day);
-    x.setHours(0, 0, 0, 0);
-    return x;
-  };
-
-  const endOfWeek = (d) => {
-    const s = startOfWeek(d);
-    const e = new Date(s);
-    e.setDate(s.getDate() + 7);
-    return e;
-  };
-
-  const overlaps = (ev, ws, we) => ev.start < we && ev.end > ws;
-
-  const truncate = (s, n = 20) => {
-    const t = (s ?? "").toString();
-    return t.length > n ? t.slice(0, n - 1) + "…" : t;
-  };
-
-  async function fetchJSON(url, opts = {}) {
-    const headers = {
-      Accept: "application/json",
-      ...authHeaders(),
-      ...(opts.headers || {}),
-    };
-    const r = await fetch(url, { headers, ...opts });
-    if (r.status === 401) {
-      console.warn("401 от API — нужен валидный access токен");
-      return [];
-    }
-    if (!r.ok) {
-      let text = await r.text();
-      try {
-        text = JSON.parse(text);
-      } catch {}
-      throw { status: r.status, data: text };
-    }
-    const data = await r.json();
-    return Array.isArray(data)
-      ? data
-      : data.results || data.items || data.events || [];
-  }
-
-  function setWeekdaysFromMask(mask) {
-    try {
-      const m = Number(mask) || 0;
-      for (let i = 0; i <= 6; i++) {
-        const el = document.getElementById("wd" + i);
-        if (el) el.checked = !!(m & (1 << i));
-      }
-    } catch (_) {}
-  }
-
-  /* ===== Helpers для форматирования и API детальной карточки ===== */
-  // Используем утилиты из dateUtils (fmtDate, fmtTime импортированы)
-  
-  function fmtWhen(ev) {
-    if (!ev) return "—";
-    const allDay = !!ev.all_day;
-    // Аккуратно парсим дату/дату-время (без UTC-сдвигов на простых датах)
-    const sd = toDate(ev.start || ev.start_date);
-    const ed = ev.end || ev.end_date ? toDate(ev.end || ev.end_date) : null;
-    if (allDay) {
-      if (ed && fmtDate(sd) !== fmtDate(ed))
-        return `${fmtDate(sd)} — ${fmtDate(ed)} (весь день)`;
-      return `${fmtDate(sd)} (весь день)`;
-    }
-    if (ed)
-      return `${fmtDate(sd)} ${fmtTime(sd)} — ${fmtDate(ed)} ${fmtTime(ed)}`;
-    return `${fmtDate(sd)} ${fmtTime(sd)}`;
-  }
-
-  async function apiGet(url) {
-    const r = await fetch(url, {
-      headers: { Accept: "application/json", ...authHeaders() },
-    });
-    const data = await r.json().catch(() => null);
-    if (!r.ok) {
-      const err = new Error("GET failed");
-      err.status = r.status;
-      err.data = data;
-      throw err;
-    }
-    return data;
-  }
-
-  async function apiDelete(url) {
-    const r = await fetch(url, {
-      method: "DELETE",
-      headers: { ...authHeaders() },
-    });
-    if (!r.ok) {
-      const data = await r.json().catch(() => null);
-      const err = new Error("DELETE failed");
-      err.status = r.status;
-      err.data = data;
-      throw err;
-    }
-  }
+  // Используем isDateOnly, toDate, pick, startOfWeek, endOfWeek, overlaps, truncate из helpers.js
+  // Используем fetchJSON из apiClient.js
+  // Используем setWeekdaysFromMask, fmtWhen из helpers.js
+  // Используем apiGet, apiDelete из apiClient.js
 
   // Узлы модала (если разметка подключена)
   const detailsModalEl = document.getElementById("eventDetailsModal");
