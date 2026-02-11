@@ -1,7 +1,71 @@
 # Упрощённая архитектура: Опциональные настраиваемые календари
 
 **Дата:** 11 февраля 2026 г.  
-**Подход:** Обратно совместимое расширение без поломки существующего функционала
+**Подход:** Обратно совместимое расширение без поломки существующего функционала  
+**Статус:** ✅ Phase 2 (API) завершена
+
+---
+
+## 📊 Прогресс реализации
+
+### ✅ Phase 1: Модели и миграции (Завершено)
+- ✅ Создана модель `Calendar` с настройками видимости
+- ✅ Создана модель `CalendarSubscription` с правами доступа
+- ✅ Добавлено опциональное поле `calendar` в `CalendarEvent`
+- ✅ Миграция 0011 создана и применена
+- ✅ Admin интерфейсы настроены
+- ✅ Коммит: `feat(calendar): add optional Calendar and CalendarSubscription models`
+
+### ✅ Phase 2: API Layer (Завершено)
+- ✅ `CalendarEventWriteSerializer` поддерживает `calendar_id`
+- ✅ Созданы сериализаторы для `Calendar` (read + write)
+- ✅ Созданы сериализаторы для `CalendarSubscription` (read + write)
+- ✅ `CalendarViewSet` с CRUD операциями
+- ✅ Эндпоинты subscribe/unsubscribe для календарей
+- ✅ `CalendarSubscriptionViewSet` для управления подписками
+- ✅ `CalendarEventsViewSet` обновлен для поддержки `calendar_id`
+- ✅ `CalendarManager.get_available_for_user()` метод
+- ✅ Методы проверки прав в модели `Calendar`
+- ✅ URL маршруты зарегистрированы
+- ✅ Коммит: `feat(calendar): add API layer for optional calendars`
+
+#### API эндпоинты (новые):
+```
+GET    /api/v1/calendar/calendars/              # Список доступных календарей
+POST   /api/v1/calendar/calendars/              # Создание календаря
+GET    /api/v1/calendar/calendars/{id}/         # Детали календаря
+PATCH  /api/v1/calendar/calendars/{id}/         # Обновление календаря
+DELETE /api/v1/calendar/calendars/{id}/         # Удаление календаря
+POST   /api/v1/calendar/calendars/{id}/subscribe/    # Подписка
+POST   /api/v1/calendar/calendars/{id}/unsubscribe/  # Отписка
+GET    /api/v1/calendar/calendars/my-calendars/ # Мои календари
+
+GET    /api/v1/calendar/subscriptions/          # Мои подписки
+POST   /api/v1/calendar/subscriptions/          # Создать подписку
+GET    /api/v1/calendar/subscriptions/{id}/     # Детали подписки
+PATCH  /api/v1/calendar/subscriptions/{id}/     # Обновить подписку
+DELETE /api/v1/calendar/subscriptions/{id}/     # Удалить подписку
+
+GET    /api/v1/calendar/events/?calendar_id={id}  # События календаря (legacy + new)
+```
+
+### ⏳ Phase 3: Frontend (В планах)
+- ⏳ UI для списка календарей с фильтрацией
+- ⏳ Кнопки подписки/отписки
+- ⏳ Модальное окно создания/редактирования календаря
+- ⏳ Переключатель отображения календарей
+- ⏳ Интеграция с FullCalendar.js
+
+### ⏳ Phase 4: Тестирование (В планах)
+- ⏳ Unit тесты для моделей
+- ⏳ API тесты для новых эндпоинтов
+- ⏳ Тесты прав доступа
+- ⏳ Тесты обратной совместимости
+
+### ⏳ Phase 5: Документация (В планах)
+- ⏳ Обновление README
+- ⏳ API документация (OpenAPI/Swagger)
+- ⏳ Руководство пользователя
 
 ---
 
