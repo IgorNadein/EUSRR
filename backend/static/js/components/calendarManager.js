@@ -67,16 +67,24 @@ export function initCalendarManager(options = {}) {
       }
     ];
     
-    // Добавить календари отделов
-    const deptIds = window.calendarWidget?.getDepartments?.() || [];
-    deptIds.forEach((deptId, index) => {
+    // Добавить календари отделов из calendarWidget
+    const deptObjects = window.calendarWidget?.getDepartments?.() || [];
+    console.log('[CalendarManager] Department objects:', deptObjects);
+    
+    deptObjects.forEach((dept) => {
+      const deptId = dept?.id || dept?.pk || dept?.department_id;
+      if (!deptId) {
+        console.warn('[CalendarManager] Department object missing ID:', dept);
+        return;
+      }
+      
       legacyCalendars.push({
         id: `legacy-dept-${deptId}`,
-        title: `Отдел ${deptId}`,
+        title: dept.name || `Отдел ${deptId}`,
         description: 'События отдела',
         color: '#198754',
         calendar_type: 'department',
-        department_id: deptId,
+        department_id: parseInt(deptId, 10),
         is_legacy: true,
         is_department: true,
         user_can_edit: false,
@@ -85,6 +93,7 @@ export function initCalendarManager(options = {}) {
       });
     });
     
+    console.log('[CalendarManager] Created legacy calendars:', legacyCalendars);
     return legacyCalendars;
   }
 
@@ -105,11 +114,18 @@ export function initCalendarManager(options = {}) {
       console.log('[CalendarManager] Loaded calendars:', {
         legacy: legacyCalendars.length,
         new: newCalendars.length,
-        total: calendars.length
+        total: calendars.length,
+        calendarIds: calendars.map(c => ({ id: c.id, title: c.title }))
       });
       
-      // По умолчанию все календари видимы
-      visibleCalendarIds = new Set(calendars.map(cal => cal.id));
+      // По умолчанию все календари видимы (фильтруем null/undefined)
+      visibleCalendarIds = new Set(
+        calendars
+          .map(cal => cal.id)
+          .filter(id => id !== null && id !== undefined)
+      );
+      
+      console.log('[CalendarManager] Visible calendar IDs:', Array.from(visibleCalendarIds));
       
       render();
       onCalendarsChange(calendars, Array.from(visibleCalendarIds));

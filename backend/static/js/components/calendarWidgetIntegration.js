@@ -84,11 +84,10 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
           });
         }
 
-        // Добавляем информацию о legacy календаре
+        // Добавляем информацию о legacy календаре (БЕЗ изменения цвета события)
         allEvents.push(...(events || []).map(event => ({
           ...event,
-          __calendar: calendar,
-          color: calendar?.color || event.color
+          __calendar: calendar
         })));
 
         console.log(`[CalendarIntegration] Loaded ${events?.length || 0} events for legacy calendar ${legacyId}`);
@@ -109,12 +108,11 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
 
           console.log(`[CalendarIntegration] Loaded ${events?.length || 0} events for new calendar ${calendarId}`);
 
-          // Добавляем информацию о календаре
+          // Добавляем информацию о календаре (БЕЗ изменения цвета события)
           const calendar = calendars.find(c => c.id === calendarId);
           return (events || []).map(event => ({
             ...event,
-            __calendar: calendar,
-            color: calendar?.color || event.color
+            __calendar: calendar
           }));
         } catch (error) {
           console.error(`[CalendarIntegration] Failed to load events for calendar ${calendarId}:`, error);
