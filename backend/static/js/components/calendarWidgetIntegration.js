@@ -3,9 +3,9 @@
  * @module components/calendarWidgetIntegration
  */
 
-import { initCalendarManager } from './calendarManager.js';
-import { initCalendarManageModal } from './calendarManageModal.js';
-import { getCalendarEvents } from '../api/calendarApi.js';
+import { initCalendarManager } from "./calendarManager.js";
+import { initCalendarManageModal } from "./calendarManageModal.js";
+import { getCalendarEvents } from "../api/calendarApi.js";
 
 // Глобальное хранилище интеграции
 let globalIntegration = null;
@@ -18,7 +18,7 @@ let globalIntegration = null;
  */
 export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
   if (!calendarWidgetInstance) {
-    console.warn('[CalendarIntegration] calendarWidget instance not provided');
+    console.warn("[CalendarIntegration] calendarWidget instance not provided");
     return null;
   }
 
@@ -35,64 +35,93 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
     const startStr = formatDate(start);
     const endStr = formatDate(end);
 
-    console.log('[CalendarIntegration] Fetching events for visible calendars:', {
-      visibleCount: visibleCalendarIds.length,
-      totalCalendars: calendars.length,
-      range: `${startStr} - ${endStr}`
-    });
+    console.log(
+      "[CalendarIntegration] Fetching events for visible calendars:",
+      {
+        visibleCount: visibleCalendarIds.length,
+        totalCalendars: calendars.length,
+        range: `${startStr} - ${endStr}`,
+      },
+    );
 
     // Если ни один календарь не выбран, показываем пустой результат
     if (visibleCalendarIds.length === 0) {
-      console.log('[CalendarIntegration] No calendars selected, showing empty');
+      console.log("[CalendarIntegration] No calendars selected, showing empty");
       return [];
     }
 
     // Разделяем legacy и новые календари
-    const legacyIds = [...visibleCalendarIds].filter(id => typeof id === 'string' && id.startsWith('legacy-'));
-    const newIds = [...visibleCalendarIds].filter(id => typeof id === 'number');
+    const legacyIds = [...visibleCalendarIds].filter(
+      (id) => typeof id === "string" && id.startsWith("legacy-"),
+    );
+    const newIds = [...visibleCalendarIds].filter(
+      (id) => typeof id === "number",
+    );
 
-    console.log('[CalendarIntegration] Processing calendars:', { legacyIds, newIds });
+    console.log("[CalendarIntegration] Processing calendars:", {
+      legacyIds,
+      newIds,
+    });
 
     let allEvents = [];
+
+    // Получаем ID текущего пользователя из meta тега
+    const userMeta = document.querySelector('meta[name="user-id"]');
+    const currentEmployeeId = userMeta ? parseInt(userMeta.content, 10) : null;
 
     // Загружаем события для legacy календарей
     for (const legacyId of legacyIds) {
       try {
         let events = [];
-        const calendar = calendars.find(c => c.id === legacyId);
+        const calendar = calendars.find((c) => c.id === legacyId);
 
-        if (legacyId === 'legacy-company') {
+        if (legacyId === "legacy-company") {
           // Компания: все события без фильтров
-          console.log('[CalendarIntegration] Loading company events (all)');
+          console.log("[CalendarIntegration] Loading company events (all)");
           events = await getCalendarEvents({ start: startStr, end: endStr });
-        } else if (legacyId === 'legacy-personal') {
+        } else if (legacyId === "legacy-personal") {
           // Личный: события текущего сотрудника
-          console.log('[CalendarIntegration] Loading personal events for current employee');
+          if (!currentEmployeeId) {
+            console.warn("[CalendarIntegration] Cannot load personal events: currentEmployeeId not found");
+            continue;
+          }
+          console.log(
+            `[CalendarIntegration] Loading personal events for employee ${currentEmployeeId}`,
+          );
           events = await getCalendarEvents({
             start: startStr,
             end: endStr,
-            employee_id: window.currentEmployeeId || null
+            employee_id: currentEmployeeId,
           });
-        } else if (legacyId.startsWith('legacy-dept-')) {
+        } else if (legacyId.startsWith("legacy-dept-")) {
           // Отдел: события конкретного отдела
-          const deptId = parseInt(legacyId.replace('legacy-dept-', ''), 10);
-          console.log(`[CalendarIntegration] Loading department events for dept ${deptId}`);
+          const deptId = parseInt(legacyId.replace("legacy-dept-", ""), 10);
+          console.log(
+            `[CalendarIntegration] Loading department events for dept ${deptId}`,
+          );
           events = await getCalendarEvents({
             start: startStr,
             end: endStr,
-            department_id: deptId
+            department_id: deptId,
           });
         }
 
         // Добавляем информацию о legacy календаре (БЕЗ изменения цвета события)
-        allEvents.push(...(events || []).map(event => ({
-          ...event,
-          __calendar: calendar
-        })));
+        allEvents.push(
+          ...(events || []).map((event) => ({
+            ...event,
+            __calendar: calendar,
+          })),
+        );
 
-        console.log(`[CalendarIntegration] Loaded ${events?.length || 0} events for legacy calendar ${legacyId}`);
+        console.log(
+          `[CalendarIntegration] Loaded ${events?.length || 0} events for legacy calendar ${legacyId}`,
+        );
       } catch (error) {
-        console.error(`[CalendarIntegration] Error loading legacy calendar ${legacyId}:`, error);
+        console.error(
+          `[CalendarIntegration] Error loading legacy calendar ${legacyId}:`,
+          error,
+        );
       }
     }
 
@@ -103,39 +132,48 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
           const events = await getCalendarEvents({
             start: startStr,
             end: endStr,
-            calendar_id: calendarId
+            calendar_id: calendarId,
           });
 
-          console.log(`[CalendarIntegration] Loaded ${events?.length || 0} events for new calendar ${calendarId}`);
+          console.log(
+            `[CalendarIntegration] Loaded ${events?.length || 0} events for new calendar ${calendarId}`,
+          );
 
           // Добавляем информацию о календаре (БЕЗ изменения цвета события)
-          const calendar = calendars.find(c => c.id === calendarId);
-          return (events || []).map(event => ({
+          const calendar = calendars.find((c) => c.id === calendarId);
+          return (events || []).map((event) => ({
             ...event,
-            __calendar: calendar
+            __calendar: calendar,
           }));
         } catch (error) {
-          console.error(`[CalendarIntegration] Failed to load events for calendar ${calendarId}:`, error);
+          console.error(
+            `[CalendarIntegration] Failed to load events for calendar ${calendarId}:`,
+            error,
+          );
           return [];
         }
-      })
+      }),
     );
 
     // Объединяем события из новых календарей
     allEvents.push(...newEventChunks.flat());
 
-    console.log(`[CalendarIntegration] Total events loaded: ${allEvents.length}`);
+    console.log(
+      `[CalendarIntegration] Total events loaded: ${allEvents.length}`,
+    );
 
     // Дедупликация по ID
     const seen = new Set();
-    const uniqueEvents = allEvents.filter(event => {
+    const uniqueEvents = allEvents.filter((event) => {
       const id = event.id || event.pk;
       if (!id || seen.has(id)) return false;
       seen.add(id);
       return true;
     });
 
-    console.log(`[CalendarIntegration] Unique events after dedup: ${uniqueEvents.length}`);
+    console.log(
+      `[CalendarIntegration] Unique events after dedup: ${uniqueEvents.length}`,
+    );
     return uniqueEvents;
   }
 
@@ -146,8 +184,8 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
    */
   function formatDate(date) {
     const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
 
@@ -157,15 +195,17 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
    * @param {boolean} isVisible
    */
   function handleCalendarToggle(calendarId, isVisible) {
-    console.log(`[CalendarIntegration] Calendar ${calendarId} visibility: ${isVisible}`);
-    
+    console.log(
+      `[CalendarIntegration] Calendar ${calendarId} visibility: ${isVisible}`,
+    );
+
     // Обновляем список видимых календарей
     if (isVisible) {
       if (!visibleCalendarIds.includes(calendarId)) {
         visibleCalendarIds.push(calendarId);
       }
     } else {
-      visibleCalendarIds = visibleCalendarIds.filter(id => id !== calendarId);
+      visibleCalendarIds = visibleCalendarIds.filter((id) => id !== calendarId);
     }
 
     // Перезагружаем события
@@ -182,9 +222,9 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
   function handleCalendarsChange(newCalendars, newVisibleIds) {
     console.log(`[CalendarIntegration] Calendars updated:`, {
       total: newCalendars.length,
-      visible: newVisibleIds.length
+      visible: newVisibleIds.length,
     });
-    
+
     calendars = newCalendars;
     visibleCalendarIds = newVisibleIds;
 
@@ -198,8 +238,8 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
    * Обработчик успешного сохранения календаря
    */
   function handleModalSuccess() {
-    console.log('[CalendarIntegration] Calendar saved, refreshing list');
-    
+    console.log("[CalendarIntegration] Calendar saved, refreshing list");
+
     // Обновляем список календарей
     if (calendarManagerInstance) {
       calendarManagerInstance.refresh();
@@ -208,29 +248,31 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
 
   // Инициализация менеджера календарей
   const calendarManagerInstance = initCalendarManager({
-    containerId: 'calendarListContainer',
+    containerId: "calendarListContainer",
     onCalendarToggle: handleCalendarToggle,
-    onCalendarsChange: handleCalendarsChange
+    onCalendarsChange: handleCalendarsChange,
   });
 
   // Инициализация модального окна управления
   const manageModalInstance = initCalendarManageModal({
-    onSuccess: handleModalSuccess
+    onSuccess: handleModalSuccess,
   });
 
   // Привязываем кнопку создания календаря к модальному окну
-  const createCalendarBtn = document.querySelector('[data-action="create-calendar"]');
+  const createCalendarBtn = document.querySelector(
+    '[data-action="create-calendar"]',
+  );
   if (createCalendarBtn && manageModalInstance) {
-    createCalendarBtn.addEventListener('click', () => {
+    createCalendarBtn.addEventListener("click", () => {
       manageModalInstance.openForCreate();
     });
   }
 
   // Обрабатываем событие редактирования календаря из списка
   if (manageModalInstance) {
-    document.addEventListener('calendar:edit', (e) => {
+    document.addEventListener("calendar:edit", (e) => {
       const calendar = e.detail;
-      console.log('[CalendarIntegration] Edit calendar requested:', calendar);
+      console.log("[CalendarIntegration] Edit calendar requested:", calendar);
       manageModalInstance.openForEdit(calendar.id);
     });
   }
@@ -241,17 +283,17 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
      * Получить события для видимых календарей
      */
     fetchEventsForVisibleCalendars,
-    
+
     /**
      * Получить ID видимых календарей
      */
     getVisibleCalendarIds: () => [...visibleCalendarIds],
-    
+
     /**
      * Получить все календари
      */
     getCalendars: () => [...calendars],
-    
+
     /**
      * Установить видимые календари
      */
@@ -260,7 +302,7 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
         calendarManagerInstance.setVisibleCalendars(ids);
       }
     },
-    
+
     /**
      * Обновить список календарей
      */
@@ -269,15 +311,15 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
         return calendarManagerInstance.refresh();
       }
     },
-    
+
     /**
      * Получить экземпляры компонентов
      */
     instances: {
       manager: calendarManagerInstance,
       modal: manageModalInstance,
-      widget: calendarWidgetInstance
-    }
+      widget: calendarWidgetInstance,
+    },
   };
 
   // Сохраняем глобально для доступа из других модулей
