@@ -9,17 +9,17 @@
  */
 export const CALENDAR_TYPES = {
   // Legacy типы (старая система)
-  LEGACY_COMPANY: 'legacy-company',
-  LEGACY_PERSONAL: 'legacy-personal',
-  LEGACY_DEPT_PREFIX: 'legacy-dept-',
+  LEGACY_COMPANY: "legacy-company",
+  LEGACY_PERSONAL: "legacy-personal",
+  LEGACY_DEPT_PREFIX: "legacy-dept-",
 
   // Новые типы (Calendar model)
-  COMPANY: 'company',
-  PERSONAL: 'personal',
-  DEPARTMENT: 'department',
-  PUBLIC: 'public',
-  PRIVATE: 'private',
-  CUSTOM: 'custom',
+  COMPANY: "company",
+  PERSONAL: "personal",
+  DEPARTMENT: "department",
+  PUBLIC: "public",
+  PRIVATE: "private",
+  CUSTOM: "custom",
 };
 
 /**
@@ -27,11 +27,11 @@ export const CALENDAR_TYPES = {
  * @enum {string}
  */
 export const CALENDAR_COLORS = {
-  COMPANY: '#dc3545',    // красный
-  PERSONAL: '#0d6efd',   // синий
-  DEPARTMENT: '#198754', // зелёный
-  PUBLIC: '#6c757d',     // серый
-  DEFAULT: '#0d6efd',    // синий (по умолчанию)
+  COMPANY: "#dc3545", // красный
+  PERSONAL: "#0d6efd", // синий
+  DEPARTMENT: "#198754", // зелёный
+  PUBLIC: "#6c757d", // серый
+  DEFAULT: "#0d6efd", // синий (по умолчанию)
 };
 
 /**
@@ -40,7 +40,7 @@ export const CALENDAR_COLORS = {
  * @returns {boolean} True если это legacy календарь
  */
 export function isLegacyCalendar(id) {
-  if (typeof id !== 'string') return false;
+  if (typeof id !== "string") return false;
   return (
     id === CALENDAR_TYPES.LEGACY_COMPANY ||
     id === CALENDAR_TYPES.LEGACY_PERSONAL ||
@@ -56,7 +56,8 @@ export function isLegacyCalendar(id) {
 export function getLegacyCalendarType(id) {
   if (id === CALENDAR_TYPES.LEGACY_COMPANY) return CALENDAR_TYPES.COMPANY;
   if (id === CALENDAR_TYPES.LEGACY_PERSONAL) return CALENDAR_TYPES.PERSONAL;
-  if (id.startsWith(CALENDAR_TYPES.LEGACY_DEPT_PREFIX)) return CALENDAR_TYPES.DEPARTMENT;
+  if (id.startsWith(CALENDAR_TYPES.LEGACY_DEPT_PREFIX))
+    return CALENDAR_TYPES.DEPARTMENT;
   return null;
 }
 
@@ -67,7 +68,10 @@ export function getLegacyCalendarType(id) {
  */
 export function extractDepartmentId(legacyId) {
   if (!legacyId.startsWith(CALENDAR_TYPES.LEGACY_DEPT_PREFIX)) return null;
-  const id = parseInt(legacyId.replace(CALENDAR_TYPES.LEGACY_DEPT_PREFIX, ''), 10);
+  const id = parseInt(
+    legacyId.replace(CALENDAR_TYPES.LEGACY_DEPT_PREFIX, ""),
+    10,
+  );
   return isNaN(id) ? null : id;
 }
 

@@ -192,16 +192,16 @@ const period = formatEventPeriod(event);
 ```javascript
 export function resolveCalendarParams(calendarId, baseParams)
   // Определить параметры для API запроса
-  
+
 export function resolveEventPayload(calendarId, eventData)
   // Определить payload для создания/обновления события
-  
+
 export function getCalendarTypeName(calendarId, calendars)
   // Получить человекочитаемое имя типа
-  
+
 export function canEditCalendar(calendarId, calendars)
   // Проверить права на редактирование
-  
+
 export function isValidCalendarId(calendarId)
   // Валидация ID календаря
 ```
@@ -322,17 +322,17 @@ const params = resolveCalendarParams(calendarId, { start, end });
    ```javascript
    // 1. Сторонние библиотеки (если есть)
    import { Calendar } from '@fullcalendar/core';
-   
+
    // 2. API слой
    import { getCalendarEvents } from '../api/calendarApi.js';
-   
+
    // 3. Константы
    import { CALENDAR_TYPES } from '../constants/calendarTypes.js';
-   
+
    // 4. Утилиты
    import { authHeaders } from '../utils/authUtils.js';
    import { formatDate } from '../utils/dateUtils.js';
-   
+
    // 5. Компоненты
    import { initCalendarManager } from './calendarManager.js';
    ```
@@ -528,6 +528,6 @@ import { CALENDAR_TYPES } from '../constants/calendarTypes.js';
 
 ---
 
-**Последнее обновление:** 11 февраля 2026  
-**Версия:** 1.0.0  
+**Последнее обновление:** 11 февраля 2026
+**Версия:** 1.0.0
 **Автор:** GitHub Copilot

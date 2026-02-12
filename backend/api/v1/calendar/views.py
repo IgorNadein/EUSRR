@@ -4,9 +4,13 @@ import logging
 from datetime import date
 from typing import Any, Dict, List, Optional, Type
 
+from calendar_app.cache import (
+    invalidate_calendar_cache,
+    invalidate_event_cache,
+    invalidate_subscription_cache,
+)
 from calendar_app.models import CalendarEvent
 from calendar_app.services.recurrence import expand_event_occurrences
-from django.core.cache import cache
 from django.http import Http404
 from django.utils.dateparse import parse_date
 from employees.constants import DeptPerm
@@ -21,6 +25,8 @@ from ..permissions import AdminOrDeptAllowed
 from .serializers import (
     CalendarEventSerializer,
     CalendarEventWriteSerializer,
+    CalendarInviteBulkSerializer,
+    CalendarInviteSerializer,
     CalendarSerializer,
     CalendarSubscriptionSerializer,
     CalendarSubscriptionWriteSerializer,
@@ -219,13 +225,16 @@ class CalendarEventsViewSet(ModelViewSet):
     # ---------- QuerySet ----------
 
     def get_queryset(self):
-        """QS для list фильтруем по компании/отделу/сотруднику/календарю, для detail — не фильтруем.
+        """QS для list/list_raw фильтруем по компании/отделу/сотруднику/календарю, для detail — не фильтруем.
 
         Returns:
             QuerySet: Набор для текущего действия.
         """
         qs = super().get_queryset()
-        if getattr(self, "action", None) != "list":
+        action = getattr(self, "action", None)
+
+        # Фильтруем для list и list_raw, для остальных (detail и т.д.) — полный QS
+        if action not in ("list", "list_raw"):
             # detail — нужен полный QS, чтобы по pk находить любой объект
             return qs
 
@@ -290,19 +299,52 @@ class CalendarEventsViewSet(ModelViewSet):
             for oc in expand_event_occurrences(
                 ev, range_start=r_start, range_end=r_end, max_instances=1000
             ):
+                # 🔧 FIX: Автоматически конвертируем многодневные события в allDay
+                # для корректного отображения в FullCalendar dayGridMonth
+                all_day = oc.all_day
+                start = oc.start
+                end = oc.end
+
+                if not all_day and start and end:
+                    # Проверяем длительность
+                    duration = end - start
+                    if duration.days > 1:
+                        # Многодневное событие -> делаем allDay и убираем время
+                        all_day = True
+                        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = end.replace(hour=0, minute=0, second=0, microsecond=0)
+
                 items.append(
                     {
-                        "id": ev.id,  # идентификатор «родителя»; можно заменить на oc.id, если нужен уникальный на каждое вхождение
+                        "id": ev.id,
                         "title": ev.title,
-                        "start": oc.start.isoformat(),
-                        "end": oc.end.isoformat(),
-                        "allDay": oc.all_day,
+                        "start": start.isoformat() if start else None,
+                        "end": end.isoformat() if end else None,
+                        "allDay": all_day,
                         "color": ev.color or None,
                         "recurrence": ev.recurrence,
                         "department_id": ev.department_id,
                     }
                 )
         return Response(items, status=status.HTTP_200_OK)
+
+    @rest_action(detail=False, methods=["GET"])
+    def list_raw(self, request, *args, **kwargs):
+        """Возвращает список событий БЕЗ материализации вхождений.
+
+        Используется для выбора события при перемещении между календарями.
+        Поддерживает те же параметры фильтрации, что и get_queryset():
+        - calendar_id (новая архитектура)
+        - department_id (legacy)
+        - employee_id (legacy)
+        - без параметров = события компании (legacy)
+
+        Returns:
+            Response: Массив объектов CalendarEvent (сериализованных).
+        """
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     # ---------- Создание/изменение/удаление ----------
 
@@ -330,17 +372,17 @@ class CalendarEventsViewSet(ModelViewSet):
                 employee_id=None,
                 created_by=self.request.user,
             )
-        cache.clear()
+        invalidate_event_cache()
 
     def perform_update(self, serializer: CalendarEventWriteSerializer) -> None:
         """Обновляет событие и чистит кеш."""
         serializer.save()
-        cache.clear()
+        invalidate_event_cache()
 
     def perform_destroy(self, instance: CalendarEvent) -> None:
         """Удаляет событие и чистит кеш."""
         instance.delete()
-        cache.clear()
+        invalidate_event_cache()
 
     # ---------- Проверка прав ----------
 
@@ -438,10 +480,17 @@ class CalendarViewSet(ModelViewSet):
 
         if self.action == "list":
             # Для списка показываем только доступные календари
-            return Calendar.objects.get_available_for_user(user)
+            # Сначала получаем доступные, потом оптимизируем
+            qs = Calendar.objects.get_available_for_user(user)
+        else:
+            # Для остальных действий возвращаем все календари
+            # (права проверяются в permissions)
+            qs = Calendar.objects.all()
 
-        # Для остальных действий возвращаем все календари (права проверяются в permissions)
-        return Calendar.objects.all()
+        # Оптимизация N+1 запросов для всех случаев
+        return qs.select_related(
+            "owner_user", "owner_department", "created_by"
+        ).prefetch_related("subscriptions", "subscriptions__user")
 
     def get_serializer_class(self):
         """Выбор сериализатора по действию."""
@@ -484,7 +533,7 @@ class CalendarViewSet(ModelViewSet):
         """Создание календаря."""
         # Владелец определяется в serializer.save()
         serializer.save()
-        cache.clear()
+        invalidate_calendar_cache()
 
     def perform_update(self, serializer):
         """Обновление календаря."""
@@ -497,8 +546,8 @@ class CalendarViewSet(ModelViewSet):
 
             raise PermissionDenied("Только владелец может изменять календарь.")
 
-        serializer.save()
-        cache.clear()
+        instance = serializer.save()
+        invalidate_calendar_cache(calendar_id=instance.id)
 
     def perform_destroy(self, instance):
         """Удаление календаря."""
@@ -509,8 +558,9 @@ class CalendarViewSet(ModelViewSet):
 
             raise PermissionDenied("Только владелец может удалять календарь.")
 
+        calendar_id = instance.id
         instance.delete()
-        cache.clear()
+        invalidate_calendar_cache(calendar_id=calendar_id)
 
     @rest_action(
         detail=True,
@@ -615,6 +665,292 @@ class CalendarViewSet(ModelViewSet):
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @rest_action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated],
+        url_path="invite",
+    )
+    def invite(self, request, pk=None):
+        """Приглашение пользователя в календарь.
+
+        Только владелец календаря может приглашать пользователей.
+
+        Body params:
+            user_id (int, optional): ID пользователя для приглашения
+            username (str, optional): Username пользователя
+            can_edit (bool, optional): Право редактирования событий
+            can_manage (bool, optional): Право управления календарем
+            notify (bool, optional): Отправить уведомление (default: True)
+        """
+        from calendar_app.models import CalendarSubscription
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        calendar = self.get_object()
+        owner = request.user
+
+        # Проверяем, что пользователь - владелец календаря
+        if not calendar.is_owner(owner):
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Только владелец календаря может приглашать пользователей."
+            )
+
+        # Валидация данных
+        serializer = CalendarInviteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Получаем пользователя по user_id или username
+        user_id = serializer.validated_data.get("user_id")
+        username = serializer.validated_data.get("username")
+
+        try:
+            if user_id:
+                invited_user = User.objects.get(id=user_id)
+            else:
+                invited_user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Пользователь не найден."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Проверяем, не приглашает ли владелец сам себя
+        if invited_user.id == owner.id:
+            return Response(
+                {"detail": "Вы не можете пригласить самого себя."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Проверяем, не подписан ли уже пользователь
+        existing = CalendarSubscription.objects.filter(
+            calendar=calendar, user=invited_user
+        ).first()
+
+        if existing:
+            return Response(
+                {
+                    "detail": "Пользователь уже подписан на этот календарь.",
+                    "subscription_id": existing.id,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Создаем подписку с правами
+        can_edit = serializer.validated_data.get("can_edit", False)
+        can_manage = serializer.validated_data.get("can_manage", False)
+        notify = serializer.validated_data.get("notify", True)
+
+        subscription = CalendarSubscription.objects.create(
+            calendar=calendar,
+            user=invited_user,
+            can_edit=can_edit,
+            can_manage=can_manage,
+            is_visible=True,
+        )
+
+        # Отправляем уведомление
+        if notify:
+            self._send_invitation_notification(
+                calendar=calendar,
+                invited_user=invited_user,
+                owner=owner,
+                can_edit=can_edit,
+                can_manage=can_manage,
+            )
+
+        invalidate_subscription_cache(user_id=invited_user.id)
+
+        response_serializer = CalendarSubscriptionSerializer(
+            subscription, context={"request": request}
+        )
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    @rest_action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated],
+        url_path="invite-bulk",
+    )
+    def invite_bulk(self, request, pk=None):
+        """Массовое приглашение пользователей в календарь.
+
+        Body params:
+            user_ids (list[int], optional): Список ID пользователей
+            usernames (list[str], optional): Список username
+            can_edit (bool, optional): Право редактирования событий
+            can_manage (bool, optional): Право управления календарем
+            notify (bool, optional): Отправить уведомления (default: True)
+        """
+        from calendar_app.models import CalendarSubscription
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        calendar = self.get_object()
+        owner = request.user
+
+        # Проверяем, что пользователь - владелец календаря
+        if not calendar.is_owner(owner):
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Только владелец календаря может приглашать пользователей."
+            )
+
+        # Валидация данных
+        serializer = CalendarInviteBulkSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Получаем список пользователей
+        user_ids = serializer.validated_data.get("user_ids")
+        usernames = serializer.validated_data.get("usernames")
+        can_edit = serializer.validated_data.get("can_edit", False)
+        can_manage = serializer.validated_data.get("can_manage", False)
+        notify = serializer.validated_data.get("notify", True)
+
+        # Находим пользователей
+        if user_ids:
+            users = User.objects.filter(id__in=user_ids)
+        else:
+            users = User.objects.filter(username__in=usernames)
+
+        if not users.exists():
+            return Response(
+                {"detail": "Ни один пользователь не найден."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Исключаем владельца из списка
+        users = users.exclude(id=owner.id)
+
+        # Создаем подписки
+        created_subscriptions = []
+        already_subscribed = []
+        errors = []
+
+        for user in users:
+            # Проверяем, не подписан ли уже
+            existing = CalendarSubscription.objects.filter(
+                calendar=calendar, user=user
+            ).first()
+
+            if existing:
+                already_subscribed.append(
+                    {
+                        "user_id": user.id,
+                        "username": user.username,
+                        "subscription_id": existing.id,
+                    }
+                )
+                continue
+
+            try:
+                subscription = CalendarSubscription.objects.create(
+                    calendar=calendar,
+                    user=user,
+                    can_edit=can_edit,
+                    can_manage=can_manage,
+                    is_visible=True,
+                )
+
+                # Отправляем уведомление
+                if notify:
+                    self._send_invitation_notification(
+                        calendar=calendar,
+                        invited_user=user,
+                        owner=owner,
+                        can_edit=can_edit,
+                        can_manage=can_manage,
+                    )
+
+                invalidate_subscription_cache(user_id=user.id)
+
+                created_subscriptions.append(
+                    CalendarSubscriptionSerializer(
+                        subscription, context={"request": request}
+                    ).data
+                )
+            except Exception as e:
+                logger.error(f"Error creating subscription for user {user.id}: {e}")
+                errors.append(
+                    {"user_id": user.id, "username": user.username, "error": str(e)}
+                )
+
+        return Response(
+            {
+                "created": created_subscriptions,
+                "already_subscribed": already_subscribed,
+                "errors": errors,
+                "total_created": len(created_subscriptions),
+                "total_already_subscribed": len(already_subscribed),
+                "total_errors": len(errors),
+            },
+            status=status.HTTP_201_CREATED
+            if created_subscriptions
+            else status.HTTP_200_OK,
+        )
+
+    def _send_invitation_notification(
+        self, calendar, invited_user, owner, can_edit, can_manage
+    ):
+        """Отправляет уведомление о приглашении в календарь."""
+        try:
+            from notifications.models import (
+                Notification,
+                NotificationCategory,
+                NotificationType,
+            )
+
+            # Получаем или создаем категорию
+            category, _ = NotificationCategory.objects.get_or_create(
+                code="calendar",
+                defaults={
+                    "name": "Календарь",
+                    "description": "Уведомления связанные с календарем",
+                    "icon": "calendar",
+                },
+            )
+
+            # Получаем или создаем тип уведомления
+            notification_type, _ = NotificationType.objects.get_or_create(
+                code="calendar_invitation",
+                defaults={
+                    "category": category,
+                    "name": "Приглашение в календарь",
+                    "description": "Уведомление о приглашении в календарь",
+                },
+            )
+
+            # Формируем текст уведомления
+            permissions_text = []
+            if can_edit:
+                permissions_text.append("редактирование событий")
+            if can_manage:
+                permissions_text.append("управление календарем")
+
+            permissions_str = (
+                f" с правами: {', '.join(permissions_text)}" if permissions_text else ""
+            )
+
+            owner_name = owner.get_full_name() or owner.username
+
+            Notification.objects.create(
+                recipient=invited_user,
+                title=f"Приглашение в календарь: {calendar.title}",
+                message=f"{owner_name} пригласил вас в календарь "
+                f'"{calendar.title}"{permissions_str}.',
+                notification_type=notification_type,
+                content_object=calendar,
+            )
+            logger.info(
+                f"Sent invitation notification to user {invited_user.id} "
+                f"for calendar {calendar.id}"
+            )
+        except Exception as e:
+            logger.error(f"Error sending invitation notification: {e}")
+
 
 class CalendarSubscriptionViewSet(ModelViewSet):
     """CRUD операции для подписок на календари.
@@ -631,8 +967,9 @@ class CalendarSubscriptionViewSet(ModelViewSet):
     renderer_classes = [JSONRenderer]
 
     def get_queryset(self):
-        """Возвращает подписки текущего пользователя."""
+        """Подписки пользователя + подписки на его календари."""
         from calendar_app.models import CalendarSubscription
+        from django.db.models import Q
 
         user = self.request.user
 
@@ -640,8 +977,13 @@ class CalendarSubscriptionViewSet(ModelViewSet):
             # Админы видят все подписки
             return CalendarSubscription.objects.all()
 
-        # Обычные пользователи видят только свои подписки
-        return CalendarSubscription.objects.filter(user=user)
+        # Обычные пользователи видят:
+        # 1. Свои подписки (user=user)
+        # 2. Подписки на календари, где они владельцы
+        return CalendarSubscription.objects.filter(
+            Q(user=user)  # Свои подписки
+            | Q(calendar__owner_user=user)  # Владелец календаря
+        ).distinct()
 
     def get_serializer_class(self):
         """Выбор сериализатора по действию."""
@@ -652,34 +994,59 @@ class CalendarSubscriptionViewSet(ModelViewSet):
     def perform_create(self, serializer):
         """Создание подписки."""
         # Пользователь устанавливается автоматически в сериализаторе
-        serializer.save(user=self.request.user)
-        cache.clear()
+        subscription = serializer.save(user=self.request.user)
+        invalidate_subscription_cache(user_id=subscription.user_id)
 
     def perform_update(self, serializer):
         """Обновление подписки."""
         subscription = self.get_object()
         user = self.request.user
 
-        # Только владелец календаря может изменять права подписки
-        if not subscription.calendar.is_owner(user):
+        # Получаем изменяемые поля
+        validated_data = serializer.validated_data
+
+        # Проверяем, какие поля пытаются изменить
+        permission_fields = {"can_edit", "can_manage"}
+        personal_fields = {"is_visible", "color_override"}
+
+        changing_permissions = any(
+            field in validated_data for field in permission_fields
+        )
+        changing_personal = any(field in validated_data for field in personal_fields)
+
+        # Права (can_edit, can_manage) - только владелец календаря
+        if changing_permissions and not subscription.calendar.is_owner(user):
             from rest_framework.exceptions import PermissionDenied
 
             raise PermissionDenied(
                 "Только владелец календаря может изменять права подписки."
             )
 
-        serializer.save()
-        cache.clear()
+        # Личные настройки (is_visible, color_override) - владелец подписки
+        is_subscription_owner = subscription.user == user
+        is_calendar_owner = subscription.calendar.is_owner(user)
+
+        if changing_personal and not is_subscription_owner:
+            if not is_calendar_owner:
+                from rest_framework.exceptions import PermissionDenied
+
+                raise PermissionDenied(
+                    "Вы можете изменять только свои личные настройки."
+                )
+
+        updated = serializer.save()
+        invalidate_subscription_cache(user_id=updated.user_id)
 
     def perform_destroy(self, instance):
         """Удаление подписки."""
         user = self.request.user
 
-        # Удалять подписку может либо владелец подписки, либо владелец календаря
+        # Удалять подписку может владелец подписки или календаря
         if not (instance.user == user or instance.calendar.is_owner(user)):
             from rest_framework.exceptions import PermissionDenied
 
             raise PermissionDenied("Вы не можете удалить эту подписку.")
 
+        user_id = instance.user_id
         instance.delete()
-        cache.clear()
+        invalidate_subscription_cache(user_id=user_id)

@@ -13,13 +13,19 @@ from django.contrib.auth.models import Permission
 from django.db import IntegrityError, models
 from django.db.models import Model as DjangoModel
 from employees.constants import DeptPerm
-from employees.models import (Department, DepartmentPermission, DepartmentRole,
-                              Employee, EmployeeDepartment)
+from employees.models import (
+    Department,
+    DepartmentPermission,
+    DepartmentRole,
+    Employee,
+    EmployeeDepartment,
+)
 from rest_framework.test import APIClient
 
 API_EVENTS = "/api/v1/calendar/events/"
 
 _phone_counter = itertools.count(100_000_000)  # 9 цифр
+
 
 def _detect_phone_field(User: type[models.Model]) -> str | None:
     """Возвращает имя телефонного поля модели пользователя, если оно есть.
@@ -41,6 +47,7 @@ def _detect_phone_field(User: type[models.Model]) -> str | None:
             continue
     return None
 
+
 def _next_ru_phone() -> str:
     """Генерирует уникальный российский номер в формате E.164.
 
@@ -51,6 +58,7 @@ def _next_ru_phone() -> str:
     """
     return f"+79{next(_phone_counter):09d}"
 
+
 @pytest.fixture
 def api_url() -> str:
     """Базовый URL API календаря.
@@ -60,6 +68,7 @@ def api_url() -> str:
     """
     return API_EVENTS
 
+
 @pytest.fixture
 def User() -> Type[models.Model]:
     """Модель пользователя проекта.
@@ -68,6 +77,7 @@ def User() -> Type[models.Model]:
         Type[models.Model]: Модель пользователя (get_user_model()).
     """
     return get_user_model()
+
 
 @pytest.fixture
 def CalendarEvent() -> Type[models.Model]:
@@ -81,12 +91,14 @@ def CalendarEvent() -> Type[models.Model]:
     """
     return django_apps.get_model("calendar_app", "CalendarEvent")
 
+
 @pytest.fixture
 def Recurrence():
     """Enum повторяемости из приложения (это не модель)."""
     from calendar_app.models import Recurrence as _Recurrence
 
     return _Recurrence
+
 
 @pytest.fixture
 def Department() -> Optional[Type[models.Model]]:
@@ -99,7 +111,6 @@ def Department() -> Optional[Type[models.Model]]:
         return django_apps.get_model("employees", "Department")
     except LookupError:
         return None
-
 
 
 @pytest.fixture
@@ -153,8 +164,11 @@ def make_department(Department) -> Callable[..., models.Model]:
 def give_manage_calendar_perm():
     """Выдаёт сотруднику право управления календарём отдела."""
     from employees.constants import DeptPerm
-    from employees.models import (DepartmentPermission, DepartmentRole,
-                                  EmployeeDepartment)
+    from employees.models import (
+        DepartmentPermission,
+        DepartmentRole,
+        EmployeeDepartment,
+    )
 
     def _grant(user: models.Model, department: models.Model) -> None:
         # Скоуп-пермишен отдела
@@ -326,10 +340,7 @@ def regular_user(make_user) -> models.Model:
 def admin_user(make_user) -> models.Model:
     """Пользователь с правами администратора."""
     return make_user(
-        username="admin",
-        email="admin@example.com",
-        is_staff=True,
-        is_superuser=True
+        username="admin", email="admin@example.com", is_staff=True, is_superuser=True
     )
 
 
@@ -369,7 +380,7 @@ def make_event(db, CalendarEvent):
         calendar=None,
         department=None,
         employee=None,
-        **kwargs
+        **kwargs,
     ):
         if start_date is None:
             start_date = date.today()
@@ -384,15 +395,7 @@ def make_event(db, CalendarEvent):
             calendar=calendar,
             department=department,
             employee=employee,
-            **kwargs
-        )
-        return event
-
-    return _make
-            calendar=calendar,
-            department=department,
-            employee=employee,
-            **kwargs
+            **kwargs,
         )
         return event
 

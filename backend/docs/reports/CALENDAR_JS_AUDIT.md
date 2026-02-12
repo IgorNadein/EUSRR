@@ -1,6 +1,6 @@
 # Полный аудит JavaScript файлов календарной системы
 
-**Дата:** 11 февраля 2026  
+**Дата:** 11 февраля 2026
 **Цель:** Комплексный анализ архитектуры, качества кода, производительности и безопасности
 
 ---
@@ -73,7 +73,7 @@ eventEl.style.boxShadow = "0 1px 3px rgba(0,0,0,0.12)";
 
 **Проблема:** Стили должны быть в SCSS, JS только для динамических значений (цветов).
 
-**Рекомендация:** 
+**Рекомендация:**
 ```javascript
 // Правильно:
 eventEl.classList.add('fc-event-with-calendar-color');
@@ -589,7 +589,7 @@ components/calendarWidget/
     border-left: 4px solid var(--calendar-color);
     background-color: var(--event-color);
     opacity: 0.8;
-    
+
     &:hover {
       transform: translateY(-1px);
       box-shadow: 0 4px 8px rgba(0,0,0,0.15);
@@ -604,7 +604,7 @@ components/calendarWidget/
 eventDidMount: (info) => {
   const calendarColor = info.event.extendedProps?.calendar_color;
   const eventColor = info.event.backgroundColor;
-  
+
   if (calendarColor) {
     info.el.setAttribute('data-has-calendar-color', 'true');
     info.el.style.setProperty('--calendar-color', calendarColor);
@@ -655,9 +655,9 @@ describe('Event Creation', () => {
   it('should create event in multiple calendars', async () => {
     const selectedCalendars = ['legacy-company', '123'];
     const payload = { title: 'Test', start_date: '2026-02-11' };
-    
+
     const result = await createEventInCalendars(payload, selectedCalendars);
-    
+
     expect(result).toHaveLength(2);
   });
 });
@@ -708,10 +708,10 @@ describe('Event Creation', () => {
 
 ### P0 - Критически важно (1-2 недели)
 
-1. ✅ **Переместить inline стили в SCSS** 
+1. ✅ **Переместить inline стили в SCSS**
    - Файл: `_calendar-events.scss` (УЖЕ СДЕЛАНО!)
    - Оценка: 4 часа
-   
+
 2. 🔧 **Исправить memory leak с event listeners**
    - Файл: `calendarWidget.js` (eventDidMount)
    - Внедрить event delegation
@@ -828,5 +828,5 @@ describe('Event Creation', () => {
 
 ---
 
-**Аудит проведён:** 11 февраля 2026  
+**Аудит проведён:** 11 февраля 2026
 **Следующая ревизия:** После завершения P0 задач

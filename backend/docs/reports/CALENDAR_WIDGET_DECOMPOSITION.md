@@ -1,6 +1,6 @@
 # Декомпозиция calendarWidget.js - Фаза 3
 
-**Дата:** 11 февраля 2026  
+**Дата:** 11 февраля 2026
 **Коммит:** Phase 3 - Extract helpers and API client modules
 
 ---
@@ -104,27 +104,27 @@ import { authHeaders as getAuthHeaders } from "../../utils/authUtils.js";
 ### Добавленные импорты
 
 ```javascript
-import { 
-  extractNumericPk, 
-  eventsUrl, 
-  addRange, 
-  isDateOnly, 
-  toDate, 
-  pick, 
-  startOfWeek, 
-  endOfWeek, 
-  overlaps, 
-  truncate, 
-  setWeekdaysFromMask, 
+import {
+  extractNumericPk,
+  eventsUrl,
+  addRange,
+  isDateOnly,
+  toDate,
+  pick,
+  startOfWeek,
+  endOfWeek,
+  overlaps,
+  truncate,
+  setWeekdaysFromMask,
   fmtWhen,
   DIGITS_RE,
   dayMs,
   hourMs
 } from "./calendarWidget/helpers.js";
-import { 
-  fetchJSON, 
-  apiGet, 
-  apiDelete 
+import {
+  fetchJSON,
+  apiGet,
+  apiDelete
 } from "./calendarWidget/apiClient.js";
 ```
 
@@ -409,6 +409,6 @@ git commit -m "refactor: вынести helpers и API client из calendarWidge
 
 ---
 
-**Статус:** ✅ **ГОТОВО**  
-**Дата:** 11 февраля 2026  
+**Статус:** ✅ **ГОТОВО**
+**Дата:** 11 февраля 2026
 **Время рефакторинга:** ~30 минут

@@ -2,29 +2,99 @@
 <div class="modal fade" id="eventDetailsModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header border-0 pb-0">
         <h5 class="modal-title d-flex align-items-center gap-2">
           <span id="detailColorDot" class="color-dot"></span>
-          <span id="detailTitle">Событие</span>
+          <span id="detailTitle" class="fw-semibold">Событие</span>
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
-      <div class="modal-body">
-        <dl class="row mb-0">
-          <dt class="col-4">Когда</dt>
-          <dd class="col-8" id="detailWhen">—</dd>
-          <dt class="col-4">Где</dt>
-          <dd class="col-8" id="detailLocation">—</dd>
-          <dt class="col-4">Описание</dt>
-          <dd class="col-8" id="detailDescription">—</dd>
-          <dt class="col-4">Контекст</dt>
-          <dd class="col-8" id="detailScope">—</dd>
-          <dt class="col-4">Повторение</dt>
-          <dd class="col-8" id="detailRecurrence">—</dd>
-        </dl>
+      <div class="modal-body pt-2">
+        {# Основная информация #}
+        <div class="mb-3">
+          <div class="d-flex align-items-start gap-2 mb-2" id="detailWhenWrapper">
+            <i class="bi bi-clock text-muted" style="margin-top: 2px;"></i>
+            <div class="flex-grow-1">
+              <small class="text-muted d-block">Время</small>
+              <span id="detailWhen" class="d-block">—</span>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-start gap-2 mb-2" id="detailLocationWrapper" style="display: none !important;">
+            <i class="bi bi-geo-alt text-muted" style="margin-top: 2px;"></i>
+            <div class="flex-grow-1">
+              <small class="text-muted d-block">Место</small>
+              <span id="detailLocation" class="d-block">—</span>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-start gap-2 mb-2" id="detailCalendarWrapper">
+            <i class="bi bi-calendar3 text-muted" style="margin-top: 2px;"></i>
+            <div class="flex-grow-1">
+              <small class="text-muted d-block">Календарь</small>
+              <span id="detailCalendar" class="d-block">—</span>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-start gap-2 mb-2" id="detailRecurrenceWrapper" style="display: none !important;">
+            <i class="bi bi-arrow-repeat text-muted" style="margin-top: 2px;"></i>
+            <div class="flex-grow-1">
+              <small class="text-muted d-block">Повторение</small>
+              <span id="detailRecurrence" class="d-block">—</span>
+            </div>
+          </div>
+        </div>
+
+        {# Описание #}
+        <div class="mb-3" id="detailDescriptionWrapper" style="display: none !important;">
+          <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-text-left text-muted" style="margin-top: 2px;"></i>
+            <div class="flex-grow-1">
+              <small class="text-muted d-block">Описание</small>
+              <p id="detailDescription" class="mb-0" style="white-space: pre-wrap;">—</p>
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        {# Метаинформация #}
+        <div class="small text-muted">
+          <div class="d-flex align-items-start gap-2 mb-1" id="detailCreatedByWrapper" style="display: none !important;">
+            <i class="bi bi-person" style="margin-top: 2px;"></i>
+            <div>
+              <span>Создал: </span>
+              <span id="detailCreatedBy">—</span>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-start gap-2 mb-1" id="detailCreatedAtWrapper" style="display: none !important;">
+            <i class="bi bi-calendar-plus" style="margin-top: 2px;"></i>
+            <div>
+              <span>Создано: </span>
+              <span id="detailCreatedAt">—</span>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-start gap-2" id="detailScopeWrapper" style="display: none !important;">
+            <i class="bi bi-building" style="margin-top: 2px;"></i>
+            <div>
+              <span>Контекст: </span>
+              <span id="detailScope">—</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-lg me-1"></i>Закрыть
+        </button>
+        <button type="button" class="btn btn-primary" id="btnEditEvent" style="display: none;">
+          <i class="bi bi-pencil me-1"></i>Редактировать
+        </button>
+        <button type="button" class="btn btn-danger" id="btnDeleteEvent" style="display: none;">
+          <i class="bi bi-trash me-1"></i>Удалить
+        </button>
       </div>
     </div>
   </div>

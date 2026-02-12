@@ -1,7 +1,7 @@
 # Отчёт о рефакторинге архитектуры JS файлов календаря
 
-**Дата:** 11 февраля 2026  
-**Ветка:** `feature/optional-calendars`  
+**Дата:** 11 февраля 2026
+**Ветка:** `feature/optional-calendars`
 **Тип изменений:** Архитектурный рефакторинг
 
 ---
@@ -55,7 +55,7 @@
 function getAccessToken() { /* 24 строки */ }
 function authHeaders() { /* ... */ }
 
-// В calendarsApi.js (строки 13-75)  
+// В calendarsApi.js (строки 13-75)
 function getAccessToken() { /* 24 строки */ }
 function getCsrfToken() { /* ... */ }
 function getCookie(name) { /* ... */ }
@@ -73,7 +73,7 @@ function getCookie(name) { /* 14 строк */ }
 import { authHeaders, getAccessToken, getCsrfToken, getCookie } from '../utils/authUtils.js';
 ```
 
-**Результат:** 
+**Результат:**
 - ❌ Удалено: ~100 строк дублированного кода
 - ✅ Создано: 88 строк переиспользуемого кода
 - 📉 Экономия: ~12 строк + улучшение поддерживаемости
@@ -302,7 +302,7 @@ static/js/
 -   if (legacyId === "legacy-company") { /* ... */ }
 -   else if (legacyId === "legacy-personal") { /* ... */ }
 -   else if (legacyId.startsWith("legacy-dept-")) { /* ... */ }
-    
+
 +   // Упрощено до цикла:
 +   for (const calendarId of visibleCalendarIds) {
 +     const params = resolveCalendarParams(calendarId, { start, end });
@@ -341,7 +341,7 @@ static/js/
         ...
       },
     ];
-    
+
     deptObjects.forEach((dept) => {
 -     const id = `legacy-dept-${deptId}`;
 +     const id = createLegacyDeptId(deptId);
@@ -511,7 +511,7 @@ describe('dateUtils', () => {
    ```javascript
    // ❌ Не создавайте дубликаты
    function myGetToken() { ... }
-   
+
    // ✅ Используйте существующие
    import { getAccessToken } from '../utils/authUtils.js';
    ```
@@ -520,7 +520,7 @@ describe('dateUtils', () => {
    ```javascript
    // ❌ Не используйте magic strings
    if (type === 'legacy-company') { ... }
-   
+
    // ✅ Используйте енумы
    import { CALENDAR_TYPES } from '../constants/calendarTypes.js';
    if (type === CALENDAR_TYPES.LEGACY_COMPANY) { ... }
@@ -530,13 +530,13 @@ describe('dateUtils', () => {
    ```javascript
    // 1. API
    import { getCalendarEvents } from '../api/calendarApi.js';
-   
+
    // 2. Константы
    import { CALENDAR_TYPES } from '../constants/calendarTypes.js';
-   
+
    // 3. Утилиты
    import { authHeaders } from '../utils/authUtils.js';
-   
+
    // 4. Компоненты
    import { initCalendarManager } from './calendarManager.js';
    ```
@@ -610,11 +610,11 @@ import { formatDate } from '../utils/dateUtils.js';
 
 ### Достигнуто
 
-✅ **Уменьшение дублирования:** с 8% до 1.5% (-81%)  
-✅ **Улучшение модульности:** с 3/10 до 8/10 (+166%)  
-✅ **Повышение поддерживаемости:** с 45 до 72 (+60%)  
-✅ **Устранение magic strings:** 100%  
-✅ **Создано переиспользуемых утилит:** 5 модулей (551 строка)  
+✅ **Уменьшение дублирования:** с 8% до 1.5% (-81%)
+✅ **Улучшение модульности:** с 3/10 до 8/10 (+166%)
+✅ **Повышение поддерживаемости:** с 45 до 72 (+60%)
+✅ **Устранение magic strings:** 100%
+✅ **Создано переиспользуемых утилит:** 5 модулей (551 строка)
 ✅ **Написана документация:** 1600+ строк
 
 ### Качественные улучшения
@@ -636,9 +636,9 @@ import { formatDate } from '../utils/dateUtils.js';
 
 ---
 
-**Выполнено:** 11 февраля 2026  
-**Время на рефакторинг:** ~2 часа  
-**Затронуто файлов:** 15 (6 обновлено, 5 создано, 4 документация)  
-**Добавлено строк:** +1100  
-**Удалено строк:** -300  
+**Выполнено:** 11 февраля 2026
+**Время на рефакторинг:** ~2 часа
+**Затронуто файлов:** 15 (6 обновлено, 5 создано, 4 документация)
+**Добавлено строк:** +1100
+**Удалено строк:** -300
 **Чистое изменение:** +800 строк (в основном документация и переиспользуемые утилиты)

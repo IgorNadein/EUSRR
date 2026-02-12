@@ -9,12 +9,12 @@
 // ============================================================================
 
 $event-border-width: 3px;
-$event-padding-y: 2px;
+$event-padding-y: 1px;      // Уменьшено с 2px до 1px
 $event-padding-x: 4px;
 $event-margin: 1px;
 $event-radius: 3px;
 $event-font-size: 10px;
-$event-line-height: 1.2;
+$event-line-height: 1.1;    // Уменьшено с 1.2 до 1.1
 $event-max-lines: 2;
 
 // ============================================================================
@@ -29,21 +29,21 @@ $event-max-lines: 2;
   padding: $event-padding-y $event-padding-x !important;
   cursor: pointer;
   overflow: hidden;
-  
+
   // Компактность
   font-size: $event-font-size;
   line-height: $event-line-height;
-  
+
   // Плавные переходы
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-  
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, z-index 0s;
+
   // Позиционирование для z-index
   position: relative;
-  z-index: 1;
-  
-  // Минимальная высота для читаемости
-  min-height: 18px;
-  
+  z-index: 3; // Базовый z-index для всех событий
+
+  // Минимальная высота - практически равна размеру текста
+  min-height: 14px;  // Уменьшено с 18px (10px шрифт + 1px отступы сверху/снизу + запас)
+
   // Убираем внутренние отступы FC
   .fc-event-main {
     padding: 0;
@@ -59,10 +59,10 @@ $event-max-lines: 2;
   // Левая граница = цвет календаря (устанавливается через JS с шириной и цветом)
   // border-left устанавливается через JS: border-left: 4px solid <calendarColor>
   padding-left: ($event-padding-x + 1px) !important;
-  
+
   // Фон = цвет события с прозрачностью (устанавливается через JS)
   // Прозрачность позволяет видеть подложку
-  
+
   // Лёгкая тень для объёма
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
@@ -82,7 +82,7 @@ $event-max-lines: 2;
   font-weight: 500;
   color: #ffffff;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
-  
+
   // Ограничение строк
   display: -webkit-box;
   -webkit-line-clamp: $event-max-lines;
@@ -105,12 +105,12 @@ $event-max-lines: 2;
 
 .fc-event:hover {
   transform: translateY(-1px);
-  z-index: 100 !important;
-  
+  z-index: 200 !important; // Очень высокий z-index при hover, чтобы быть поверх всего
+
   &[data-has-calendar-color="true"] {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
   }
-  
+
   &:not([data-has-calendar-color="true"]) {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
@@ -118,6 +118,7 @@ $event-max-lines: 2;
 
 .fc-event:active {
   transform: translateY(0);
+  z-index: 200 !important;
 }
 
 // ============================================================================
@@ -139,14 +140,14 @@ $event-max-lines: 2;
   // Убираем отступы между сегментами
   margin-top: 0 !important;
   margin-bottom: 2px !important;
-  
-  // Улучшенная высота для читаемости
-  min-height: 22px;
-  
+
+  // Компактная высота для многодневных событий
+  min-height: 14px;  // Уменьшено с 22px - теперь равна обычным событиям
+
   // Выравнивание контента
   display: flex;
   align-items: center;
-  
+
   // Растягиваем на всю ширину ячейки
   width: 100% !important;
 }
@@ -159,10 +160,10 @@ $event-max-lines: 2;
   border-bottom-right-radius: 0 !important;
   margin-right: 0 !important;
   padding-right: ($event-padding-x + 2px) !important;
-  
+
   // Визуальный индикатор продолжения
   position: relative;
-  
+
   &::after {
     content: '›';
     position: absolute;
@@ -183,10 +184,10 @@ $event-max-lines: 2;
   margin-right: 0 !important;
   padding-left: ($event-padding-x + 2px) !important;
   padding-right: ($event-padding-x + 2px) !important;
-  
+
   // Визуальные индикаторы продолжения с обеих сторон
   position: relative;
-  
+
   &::before {
     content: '‹';
     position: absolute;
@@ -198,7 +199,7 @@ $event-max-lines: 2;
     opacity: 0.7;
     color: rgba(255, 255, 255, 0.8);
   }
-  
+
   &::after {
     content: '›';
     position: absolute;
@@ -220,10 +221,10 @@ $event-max-lines: 2;
   border-bottom-right-radius: $event-radius !important;
   margin-left: 0 !important;
   padding-left: ($event-padding-x + 2px) !important;
-  
+
   // Визуальный индикатор начала
   position: relative;
-  
+
   &::before {
     content: '‹';
     position: absolute;
@@ -242,7 +243,7 @@ $event-max-lines: 2;
   border-radius: $event-radius !important;
   margin-left: 2px !important;
   margin-right: 2px !important;
-  
+
   // Убираем индикаторы
   &::before,
   &::after {
@@ -277,38 +278,47 @@ $event-max-lines: 2;
 // УПРАВЛЕНИЕ НАКЛАДЫВАЮЩИМИСЯ СОБЫТИЯМИ
 // ============================================================================
 
+// УДАЛЕНО: overflow: visible на таблице - это ломает позиционирование FullCalendar
+// Вместо этого просто убираем max-height ограничение и позволяем FullCalendar
+// самостоятельно управлять размещением событий
+
 // Ячейка дня
 .fc-daygrid-day-frame {
   min-height: 80px;
   position: relative;
-  
-  // Для лучшего отображения границ
-  border: 1px solid var(--fc-border-color);
+
+  // Убираем границу, чтобы не мешать многодневным событиям
+  // border: 1px solid var(--fc-border-color);
 }
 
 // События внутри дня
 .fc-daygrid-day-events {
-  // Ограничиваем количество видимых событий
-  max-height: 72px; // ~4 события по 18px
-  overflow: hidden;
+  // ВАЖНО: НЕ ограничиваем высоту - пусть FullCalendar сам управляет размещением
+  // max-height: 72px; // ОТКЛЮЧЕНО
   margin-bottom: 0;
   padding-bottom: 0;
+  position: relative;
 }
 
 // Контейнер событий
 .fc-daygrid-event-harness {
   margin-bottom: 1px;
+  position: relative;
+  z-index: 2; // Базовый z-index для контейнера обычных событий
 }
 
-// Контейнер для многодневных событий (отдельная секция сверху)
+// Контейнер для многодневных событий
 .fc-daygrid-event-harness-abs {
-  // Абсолютное позиционирование для многодневных
+  // КРИТИЧНО: position: absolute нужен для работы inline top/left/right от FullCalendar
   position: absolute;
   left: 0;
   right: 0;
-  
-  // Z-index выше обычных событий
-  z-index: 2;
+
+  // FullCalendar автоматически рассчитывает top для каждого ряда
+  // Главное: dayMaxEventRows в JS должно быть числом (не true/false)
+
+  // Z-index ниже, чем у обычных событий, чтобы однодневные были поверх многодневных
+  z-index: 1;
 }
 
 // Убираем лишние отступы для многодневных событий
@@ -330,7 +340,7 @@ $event-max-lines: 2;
   background: color-mix(in srgb, var(--bs-primary), transparent 90%) !important;
   transition: background-color 0.15s ease;
   display: inline-block;
-  
+
   &:hover {
     background: color-mix(in srgb, var(--bs-primary), transparent 85%) !important;
     text-decoration: none !important;
@@ -362,7 +372,7 @@ $event-max-lines: 2;
   padding: 6px !important;
   max-height: 300px;
   overflow-y: auto;
-  
+
   // Компактные события в popover
   .fc-event {
     margin-bottom: 2px !important;
@@ -381,7 +391,7 @@ $event-max-lines: 2;
 .fc-popover-body::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--bs-body-color), transparent 75%);
   border-radius: 2px;
-  
+
   &:hover {
     background: color-mix(in srgb, var(--bs-body-color), transparent 60%);
   }
@@ -392,20 +402,25 @@ $event-max-lines: 2;
 // ============================================================================
 
 // Текущий день
-.fc-day-today {
+.fc .fc-day-today {
   background-color: color-mix(in srgb, var(--bs-primary), transparent 95%) !important;
-  
+
   .fc-daygrid-day-number {
-    background-color: var(--bs-primary);
-    color: white;
+    background-color: var(--bs-primary) !important;
+    color: white !important;
     border-radius: 50%;
-    width: 22px;
-    height: 22px;
-    display: inline-flex;
+    min-width: 24px;
+    min-height: 24px;
+    width: auto;
+    height: auto;
+    line-height: 1;
+    display: inline-flex !important;
     align-items: center;
     justify-content: center;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 12px;
+    padding: 4px !important;
+    border: none !important; // Убираем рамку из rightbar-calendar
   }
 }
 
@@ -418,11 +433,11 @@ $event-max-lines: 2;
 // Прошедшие дни
 .fc-day-past:not(.fc-day-today) {
   background-color: color-mix(in srgb, var(--bs-body-color), transparent 98%);
-  
+
   .fc-daygrid-day-number {
     color: color-mix(in srgb, var(--bs-body-color), transparent 40%);
   }
-  
+
   .fc-event {
     opacity: 0.7;
   }
@@ -472,17 +487,17 @@ $event-max-lines: 2;
   .fc-daygrid-day-frame {
     min-height: 60px;
   }
-  
+
   .fc-daygrid-day-events {
     max-height: 54px; // ~3 события
   }
-  
+
   .fc-event {
     font-size: 9px;
     padding: 1px 3px !important;
     min-height: 16px;
   }
-  
+
   .fc-event-title {
     -webkit-line-clamp: 1; // Только 1 строка на мобильных
   }
@@ -507,7 +522,7 @@ $event-max-lines: 2;
 .fc-event {
   // Включаем аппаратное ускорение для трансформаций
   will-change: transform;
-  
+
   // Принудительное использование GPU слоя при hover
   &:hover {
     will-change: transform, box-shadow;

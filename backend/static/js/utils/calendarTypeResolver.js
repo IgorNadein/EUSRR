@@ -8,7 +8,7 @@ import {
   isLegacyCalendar,
   getLegacyCalendarType,
   extractDepartmentId,
-} from '../constants/calendarTypes.js';
+} from "../constants/calendarTypes.js";
 
 /**
  * Получить ID текущего пользователя из meta-тега
@@ -54,7 +54,7 @@ export function resolveCalendarParams(calendarId, baseParams = {}) {
         }
         break;
     }
-  } else if (typeof calendarId === 'number') {
+  } else if (typeof calendarId === "number") {
     // Новый календарь: используем calendar_id
     params.calendar_id = calendarId;
   }
@@ -70,6 +70,12 @@ export function resolveCalendarParams(calendarId, baseParams = {}) {
  */
 export function resolveEventPayload(calendarId, eventData) {
   const payload = { ...eventData };
+
+  console.log("[CalendarTypeResolver] Resolving payload:", {
+    calendarId,
+    calendarIdType: typeof calendarId,
+    isLegacy: isLegacyCalendar(calendarId),
+  });
 
   // Очищаем все специфичные поля календаря
   delete payload.employee_id;
@@ -101,11 +107,13 @@ export function resolveEventPayload(calendarId, eventData) {
         }
         break;
     }
-  } else if (typeof calendarId === 'number') {
+  } else if (typeof calendarId === "number") {
     // Новый календарь: добавляем calendar_id
+    console.log("[CalendarTypeResolver] Adding calendar_id:", calendarId);
     payload.calendar_id = calendarId;
   }
 
+  console.log("[CalendarTypeResolver] Final payload:", payload);
   return payload;
 }
 
@@ -120,19 +128,19 @@ export function getCalendarTypeName(calendarId, calendars = []) {
     const type = getLegacyCalendarType(calendarId);
     switch (type) {
       case CALENDAR_TYPES.COMPANY:
-        return 'Компания';
+        return "Компания";
       case CALENDAR_TYPES.PERSONAL:
-        return 'Личный календарь';
+        return "Личный календарь";
       case CALENDAR_TYPES.DEPARTMENT:
-        return 'Календарь отдела';
+        return "Календарь отдела";
       default:
-        return 'Календарь';
+        return "Календарь";
     }
   }
 
   // Ищем в списке календарей
   const calendar = calendars.find((c) => c.id === calendarId);
-  return calendar?.title || 'Календарь';
+  return calendar?.title || "Календарь";
 }
 
 /**
@@ -152,7 +160,10 @@ export function canEditCalendar(calendarId, calendars = []) {
     return true;
   }
 
-  if (typeof calendarId === 'string' && calendarId.startsWith(CALENDAR_TYPES.LEGACY_DEPT_PREFIX)) {
+  if (
+    typeof calendarId === "string" &&
+    calendarId.startsWith(CALENDAR_TYPES.LEGACY_DEPT_PREFIX)
+  ) {
     // Отдел: определяется правами на backend
     return false; // По умолчанию нет
   }
@@ -171,7 +182,7 @@ export function isValidCalendarId(calendarId) {
   if (!calendarId) return false;
 
   // Legacy календари
-  if (typeof calendarId === 'string') {
+  if (typeof calendarId === "string") {
     return (
       calendarId === CALENDAR_TYPES.LEGACY_COMPANY ||
       calendarId === CALENDAR_TYPES.LEGACY_PERSONAL ||
@@ -180,5 +191,5 @@ export function isValidCalendarId(calendarId) {
   }
 
   // Новые календари (числовой ID)
-  return typeof calendarId === 'number' && calendarId > 0;
+  return typeof calendarId === "number" && calendarId > 0;
 }

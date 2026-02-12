@@ -20,5 +20,8 @@
   "devDependencies": {
     "bootstrap": "^5.3.3",
     "sass": "^1.93.3"
+  },
+  "dependencies": {
+    "@toast-ui/calendar": "^2.1.3"
   }
 }

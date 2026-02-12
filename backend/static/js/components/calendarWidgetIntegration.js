@@ -58,7 +58,7 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
     for (const calendarId of visibleCalendarIds) {
       try {
         const calendar = calendars.find((c) => c.id === calendarId);
-        
+
         // Используем утилиту для определения параметров запроса
         const params = resolveCalendarParams(calendarId, {
           start: startStr,
@@ -67,7 +67,7 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
 
         console.log(
           `[CalendarIntegration] Loading events for calendar ${calendarId}:`,
-          params
+          params,
         );
 
         const events = await getCalendarEvents(params);
@@ -77,16 +77,16 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
           ...(events || []).map((event) => ({
             ...event,
             __calendar: calendar,
-          }))
+          })),
         );
 
         console.log(
-          `[CalendarIntegration] Loaded ${events?.length || 0} events for calendar ${calendarId}`
+          `[CalendarIntegration] Loaded ${events?.length || 0} events for calendar ${calendarId}`,
         );
       } catch (error) {
         console.error(
           `[CalendarIntegration] Error loading calendar ${calendarId}:`,
-          error
+          error,
         );
       }
     }
@@ -194,7 +194,7 @@ export function integrateCalendarManager(calendarWidgetInstance, options = {}) {
     document.addEventListener("calendar:edit", (e) => {
       const calendar = e.detail;
       console.log("[CalendarIntegration] Edit calendar requested:", calendar);
-      manageModalInstance.openForEdit(calendar.id);
+      manageModalInstance.openForEdit(calendar); // Передаём весь объект, а не только ID
     });
   }
 

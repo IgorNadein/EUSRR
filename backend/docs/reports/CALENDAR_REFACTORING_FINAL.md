@@ -1,6 +1,6 @@
 # Финальный отчёт: Полный рефакторинг календаря
 
-**Дата:** 11 февраля 2026  
+**Дата:** 11 февраля 2026
 **Статус:** ✅ **ЗАВЕРШЁН**
 
 ---
@@ -206,7 +206,7 @@ test("truncate shortens text", () => {
 import { fetchJSON } from "../apiClient.js";
 
 test("fetchJSON handles 401", async () => {
-  global.fetch = jest.fn(() => 
+  global.fetch = jest.fn(() =>
     Promise.resolve({ status: 401 })
   );
   const result = await fetchJSON("/api/test/");
@@ -406,10 +406,10 @@ import { updateWeekLists } from "./calendarWidget/weekListRenderer.js";
 
 ---
 
-**Статус:** ✅ **ЗАВЕРШЁН**  
-**Дата:** 11 февраля 2026  
-**Коммитов:** 5  
-**Изменений:** +4141, -625 строк  
-**Качество кода:** 9/10  
+**Статус:** ✅ **ЗАВЕРШЁН**
+**Дата:** 11 февраля 2026
+**Коммитов:** 5
+**Изменений:** +4141, -625 строк
+**Качество кода:** 9/10
 
 🎊 **Отличная работа!** 🎊

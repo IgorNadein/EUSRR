@@ -42,82 +42,95 @@
             ></textarea>
           </div>
 
-          {# Цвет #}
-          <div class="mb-3">
-            <label for="calendarColor" class="form-label">Цвет</label>
-            <div class="input-group">
-              <input
-                type="color"
-                class="form-control form-control-color"
-                id="calendarColor"
-                name="color"
-                value="#0d6efd"
-                title="Выберите цвет календаря"
-              >
+          {# Цвет и иконка #}
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="calendarColor" class="form-label">Цвет</label>
+              <div class="input-group">
+                <input
+                  type="color"
+                  class="form-control form-control-color"
+                  id="calendarColor"
+                  name="color"
+                  value="#0d6efd"
+                  title="Выберите цвет календаря"
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="calendarColorText"
+                  value="#0d6efd"
+                  pattern="^#[0-9A-Fa-f]{6}$"
+                  maxlength="7"
+                >
+              </div>
+              <div class="form-text">Для выделения событий</div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label for="calendarIcon" class="form-label">Иконка (опц.)</label>
               <input
                 type="text"
                 class="form-control"
-                id="calendarColorText"
-                value="#0d6efd"
-                pattern="^#[0-9A-Fa-f]{6}$"
-                maxlength="7"
+                id="calendarIcon"
+                name="icon"
+                placeholder="calendar-event"
+                maxlength="50"
               >
+              <div class="form-text">Bootstrap Icons</div>
             </div>
-            <div class="form-text">Используется для выделения событий</div>
           </div>
 
-          {# Тип календаря #}
+          {# Владелец календаря #}
           <div class="mb-3">
-            <label class="form-label">Тип календаря <span class="text-danger">*</span></label>
+            <label class="form-label">Владелец <span class="text-danger">*</span></label>
 
             <div class="form-check">
               <input
                 class="form-check-input"
                 type="radio"
-                name="calendar_type"
-                id="calendarTypePersonal"
+                name="owner_type"
+                id="ownerTypePersonal"
                 value="personal"
                 checked
               >
-              <label class="form-check-label" for="calendarTypePersonal">
+              <label class="form-check-label" for="ownerTypePersonal">
                 <i class="bi-person-fill me-1"></i>
-                Личный календарь
+                Я (личный календарь)
               </label>
-              <div class="form-text ms-4">Только вы можете видеть и редактировать</div>
             </div>
 
             <div class="form-check mt-2">
               <input
                 class="form-check-input"
                 type="radio"
-                name="calendar_type"
-                id="calendarTypePublic"
-                value="public"
-              >
-              <label class="form-check-label" for="calendarTypePublic">
-                <i class="bi-globe me-1"></i>
-                Публичный календарь
-              </label>
-              <div class="form-text ms-4">Все пользователи могут видеть</div>
-            </div>
-
-            <div class="form-check mt-2">
-              <input
-                class="form-check-input"
-                type="radio"
-                name="calendar_type"
-                id="calendarTypeDepartment"
+                name="owner_type"
+                id="ownerTypeDepartment"
                 value="department"
               >
-              <label class="form-check-label" for="calendarTypeDepartment">
+              <label class="form-check-label" for="ownerTypeDepartment">
                 <i class="bi-building me-1"></i>
-                Календарь отдела
+                Отдел
               </label>
-              <div class="form-text ms-4">Члены отдела могут видеть</div>
+            </div>
+
+            <div class="form-check mt-2">
+              <input
+                class="form-check-input"
+                type="radio"
+                name="owner_type"
+                id="ownerTypeGlobal"
+                value="global"
+              >
+              <label class="form-check-label" for="ownerTypeGlobal">
+                <i class="bi-globe me-1"></i>
+                Глобальный (без владельца)
+              </label>
+              <div class="form-text ms-4 text-muted">Только для администраторов</div>
             </div>
           </div>
 
-          {# Выбор отдела (показывается только для типа "department") #}
+          {# Выбор отдела (показывается только для owner_type="department") #}
           <div class="mb-3 d-none" id="calendarDepartmentSelect">
             <label for="calendarDepartment" class="form-label">
               Отдел <span class="text-danger">*</span>
@@ -128,9 +141,38 @@
             </select>
           </div>
 
+          {# Видимость #}
+          <div class="mb-3">
+            <label for="calendarVisibility" class="form-label">Видимость</label>
+            <select class="form-select" id="calendarVisibility" name="visibility">
+              <option value="custom">Настраиваемая (через подписки)</option>
+              <option value="public">Публичная (все видят)</option>
+              <option value="department">Отдел (только члены отдела)</option>
+              <option value="private">Приватная (только владелец)</option>
+            </select>
+            <div class="form-text">Кто может просматривать календарь</div>
+          </div>
+
           {# Дополнительные настройки #}
           <div class="mb-3">
-            <label class="form-label">Дополнительные настройки</label>
+            <label class="form-label">Настройки доступа</label>
+
+            <div class="form-check form-switch">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="calendarDefaultCanEdit"
+                name="default_can_edit"
+              >
+              <label class="form-check-label" for="calendarDefaultCanEdit">
+                Подписчики могут редактировать по умолчанию
+              </label>
+              <div class="form-text">Новые подписчики смогут создавать/редактировать события</div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Автоматическая подписка</label>
 
             <div class="form-check form-switch">
               <input

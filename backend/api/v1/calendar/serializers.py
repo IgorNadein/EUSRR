@@ -303,56 +303,67 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
         validated_data.pop("weekdays", None)
 
         # Поддержка calendar_id (новая архитектура)
-        calendar_id = validated_data.pop("calendar_id", None)
-        if calendar_id is not None:
-            from calendar_app.models import Calendar
+        if "calendar_id" in validated_data:
+            calendar_id = validated_data.pop("calendar_id")
+            if calendar_id is not None:
+                from calendar_app.models import Calendar
 
-            try:
-                calendar = Calendar.objects.get(id=calendar_id)
-                validated_data["calendar"] = calendar
-            except Calendar.DoesNotExist:
-                raise serializers.ValidationError(
-                    {
-                        "calendar_id": _("Календарь с ID {} не найден.").format(
-                            calendar_id
-                        )
-                    }
-                )
+                try:
+                    calendar = Calendar.objects.get(id=calendar_id)
+                    validated_data["calendar"] = calendar
+                except Calendar.DoesNotExist:
+                    raise serializers.ValidationError(
+                        {
+                            "calendar_id": _("Календарь с ID {} не найден.").format(
+                                calendar_id
+                            )
+                        }
+                    )
+            else:
+                # Явно обнуляем calendar, если передан null
+                validated_data["calendar"] = None
 
         # Legacy поддержка department_id и employee_id
-        department_id = validated_data.pop("department_id", None)
-        employee_id = validated_data.pop("employee_id", None)
+        if "department_id" in validated_data:
+            department_id = validated_data.pop("department_id")
+            if department_id is not None:
+                from employees.models import Department
 
-        if department_id is not None:
-            from employees.models import Department
+                try:
+                    department = Department.objects.get(id=department_id)
+                    validated_data["department"] = department
+                except Department.DoesNotExist:
+                    raise serializers.ValidationError(
+                        {
+                            "department_id": _("Отдел с ID {} не найден.").format(
+                                department_id
+                            )
+                        }
+                    )
+            else:
+                # Явно обнуляем department, если передан null
+                validated_data["department"] = None
 
-            try:
-                department = Department.objects.get(id=department_id)
-                validated_data["department"] = department
-            except Department.DoesNotExist:
-                raise serializers.ValidationError(
-                    {
-                        "department_id": _("Отдел с ID {} не найден.").format(
-                            department_id
-                        )
-                    }
-                )
+        if "employee_id" in validated_data:
+            employee_id = validated_data.pop("employee_id")
+            if employee_id is not None:
+                from django.contrib.auth import get_user_model
 
-        if employee_id is not None:
-            from django.contrib.auth import get_user_model
-
-            User = get_user_model()
-            try:
-                employee = User.objects.get(id=employee_id)
-                validated_data["employee"] = employee
-            except User.DoesNotExist:
-                raise serializers.ValidationError(
-                    {
-                        "employee_id": _("Сотрудник с ID {} не найден.").format(
-                            employee_id
-                        )
-                    }
-                )
+                User = get_user_model()
+                try:
+                    employee = User.objects.get(id=employee_id)
+                    validated_data["employee"] = employee
+                except User.DoesNotExist:
+                    raise serializers.ValidationError(
+                        {
+                            "employee_id": _("Сотрудник с ID {} не найден.").format(
+                                employee_id
+                            )
+                        }
+                    )
+            else:
+                # Явно обнуляем employee, если передан null
+                validated_data["employee"] = None
 
         for f, v in validated_data.items():
             setattr(instance, f, v)
@@ -363,9 +374,17 @@ class CalendarEventWriteSerializer(serializers.ModelSerializer):
 class CalendarEventSerializer(serializers.ModelSerializer):
     """Read-сериализатор (база модели, если нужен просмотр без развёртки)."""
 
+    created_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = CalendarEvent
         fields = "__all__"
+
+    def get_created_by_name(self, obj):
+        """Возвращает имя создателя события."""
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return None
 
 
 class EventOccurrenceSerializer(serializers.Serializer):
@@ -409,8 +428,10 @@ class CalendarSerializer(serializers.ModelSerializer):
             "icon",
             "visibility",
             "owner_user",
+            "owner_user_id",  # Добавлено: ID владельца-пользователя
             "owner_user_name",
             "owner_department",
+            "owner_department_id",  # Добавлено: ID отдела-владельца
             "owner_department_name",
             "auto_subscribe_new_users",
             "auto_subscribe_department_members",
@@ -584,5 +605,99 @@ class CalendarSubscriptionWriteSerializer(serializers.ModelSerializer):
         if calendar and user and calendar.owner_user_id == user.id:
             # Владелец может иметь подписку, но это optional
             pass
+
+        return attrs
+
+
+class CalendarInviteSerializer(serializers.Serializer):
+    """Сериализатор для приглашения пользователя в календарь."""
+
+    user_id = serializers.IntegerField(
+        required=False,
+        help_text=_("ID пользователя для приглашения"),
+    )
+    username = serializers.CharField(
+        required=False,
+        help_text=_("Username пользователя для приглашения"),
+    )
+    can_edit = serializers.BooleanField(
+        default=False,
+        help_text=_("Может редактировать события"),
+    )
+    can_manage = serializers.BooleanField(
+        default=False,
+        help_text=_("Может управлять правами других пользователей"),
+    )
+    notify = serializers.BooleanField(
+        default=True,
+        help_text=_("Отправить уведомление о приглашении"),
+    )
+
+    def validate(self, attrs):
+        """Проверяет, что указан user_id или username."""
+        if not attrs.get("user_id") and not attrs.get("username"):
+            raise serializers.ValidationError(
+                _("Необходимо указать user_id или username.")
+            )
+
+        if attrs.get("user_id") and attrs.get("username"):
+            raise serializers.ValidationError(
+                _("Укажите либо user_id, либо username, не оба параметра.")
+            )
+
+        return attrs
+
+
+class CalendarInviteBulkSerializer(serializers.Serializer):
+    """Сериализатор для массового приглашения пользователей."""
+
+    user_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text=_("Список ID пользователей для приглашения"),
+    )
+    usernames = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text=_("Список username пользователей для приглашения"),
+    )
+    can_edit = serializers.BooleanField(
+        default=False,
+        help_text=_("Может редактировать события"),
+    )
+    can_manage = serializers.BooleanField(
+        default=False,
+        help_text=_("Может управлять правами других пользователей"),
+    )
+    notify = serializers.BooleanField(
+        default=True,
+        help_text=_("Отправить уведомления о приглашении"),
+    )
+
+    def validate(self, attrs):
+        """Проверяет, что указан хотя бы один список."""
+        if not attrs.get("user_ids") and not attrs.get("usernames"):
+            raise serializers.ValidationError(
+                _("Необходимо указать user_ids или usernames.")
+            )
+
+        if attrs.get("user_ids") and attrs.get("usernames"):
+            raise serializers.ValidationError(
+                _("Укажите либо user_ids, либо usernames, не оба параметра.")
+            )
+
+        # Проверка на пустые списки
+        user_ids = attrs.get("user_ids", [])
+        usernames = attrs.get("usernames", [])
+
+        if user_ids and len(user_ids) == 0:
+            raise serializers.ValidationError(
+                _("Список user_ids не может быть пустым.")
+            )
+
+        if usernames and len(usernames) == 0:
+            raise serializers.ValidationError(
+                _("Список usernames не может быть пустым.")
+            )
 
         return attrs

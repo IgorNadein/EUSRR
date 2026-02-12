@@ -35,11 +35,16 @@ export function initCalendarManageModal(options = {}) {
   const descInput = document.getElementById("calendarDescription");
   const colorInput = document.getElementById("calendarColor");
   const colorTextInput = document.getElementById("calendarColorText");
-  const typeInputs = document.querySelectorAll('input[name="calendar_type"]');
+  const iconInput = document.getElementById("calendarIcon");
+  const ownerTypeInputs = document.querySelectorAll('input[name="owner_type"]');
+  const visibilitySelect = document.getElementById("calendarVisibility");
   const deptSelect = document.getElementById("calendarDepartment");
   const deptSelectWrapper = document.getElementById("calendarDepartmentSelect");
   const autoSubscribeDeptWrapper = document.getElementById(
     "calendarAutoSubscribeDeptWrapper",
+  );
+  const defaultCanEditCheckbox = document.getElementById(
+    "calendarDefaultCanEdit",
   );
   const saveBtn = document.getElementById("calendarSaveBtn");
   const deleteBtn = document.getElementById("calendarDeleteBtn");
@@ -63,6 +68,8 @@ export function initCalendarManageModal(options = {}) {
    * @param {Object} calendar - Данные календаря
    */
   function openForEdit(calendar) {
+    console.log("[CalendarManageModal] openForEdit called with:", calendar);
+
     currentCalendar = calendar;
     titleEl.textContent = "Редактировать календарь";
     deleteBtn.classList.remove("d-none");
@@ -73,17 +80,21 @@ export function initCalendarManageModal(options = {}) {
     descInput.value = calendar.description || "";
     colorInput.value = calendar.color || "#0d6efd";
     colorTextInput.value = calendar.color || "#0d6efd";
+    iconInput.value = calendar.icon || "";
+    visibilitySelect.value = calendar.visibility || "custom";
 
-    // Определить тип
-    let type = "personal";
+    // Определить тип владельца
+    let ownerType = "personal";
     if (calendar.is_global) {
-      type = "public";
-    } else if (calendar.is_department) {
-      type = "department";
+      ownerType = "global";
+    } else if (calendar.is_department || calendar.owner_department) {
+      ownerType = "department";
+    } else if (calendar.is_personal || calendar.owner_user) {
+      ownerType = "personal";
     }
 
-    typeInputs.forEach((input) => {
-      input.checked = input.value === type;
+    ownerTypeInputs.forEach((input) => {
+      input.checked = input.value === ownerType;
     });
 
     // Если отдел, выбрать его
@@ -92,12 +103,13 @@ export function initCalendarManageModal(options = {}) {
     }
 
     // Настройки
+    defaultCanEditCheckbox.checked = calendar.default_can_edit || false;
     document.getElementById("calendarAutoSubscribeNewUsers").checked =
       calendar.auto_subscribe_new_users || false;
     document.getElementById("calendarAutoSubscribeDept").checked =
       calendar.auto_subscribe_department_members || false;
 
-    updateTypeVisibility();
+    updateOwnerTypeVisibility();
     bsModal.show();
   }
 
@@ -109,16 +121,17 @@ export function initCalendarManageModal(options = {}) {
     calendarIdInput.value = "";
     colorInput.value = "#0d6efd";
     colorTextInput.value = "#0d6efd";
+    visibilitySelect.value = "custom";
     errorEl.classList.add("d-none");
-    updateTypeVisibility();
+    updateOwnerTypeVisibility();
   }
 
   /**
-   * Обновить видимость полей в зависимости от типа
+   * Обновить видимость полей в зависимости от типа владельца
    */
-  function updateTypeVisibility() {
+  function updateOwnerTypeVisibility() {
     const selectedType = document.querySelector(
-      'input[name="calendar_type"]:checked',
+      'input[name="owner_type"]:checked',
     )?.value;
 
     if (selectedType === "department") {
@@ -157,6 +170,9 @@ export function initCalendarManageModal(options = {}) {
       title: titleInput.value.trim(),
       description: descInput.value.trim(),
       color: colorInput.value,
+      icon: iconInput.value.trim(),
+      visibility: visibilitySelect.value,
+      default_can_edit: defaultCanEditCheckbox.checked,
       auto_subscribe_new_users: document.getElementById(
         "calendarAutoSubscribeNewUsers",
       ).checked,
@@ -165,22 +181,25 @@ export function initCalendarManageModal(options = {}) {
       ).checked,
     };
 
-    const type = document.querySelector(
-      'input[name="calendar_type"]:checked',
+    const ownerType = document.querySelector(
+      'input[name="owner_type"]:checked',
     )?.value;
 
-    if (type === "personal") {
-      data.visibility = "private";
+    if (ownerType === "personal") {
       // owner_user будет установлен автоматически на backend
-    } else if (type === "public") {
-      data.visibility = "public";
-    } else if (type === "department") {
-      data.visibility = "department";
+      data.owner_user = null; // Явно указываем что это личный календарь
+      data.owner_department = null;
+    } else if (ownerType === "department") {
+      data.owner_user = null;
       data.owner_department = parseInt(deptSelect.value);
 
       if (!data.owner_department) {
         throw new Error("Выберите отдел");
       }
+    } else if (ownerType === "global") {
+      // Глобальный календарь - без владельца
+      data.owner_user = null;
+      data.owner_department = null;
     }
 
     return data;
@@ -257,9 +276,9 @@ export function initCalendarManageModal(options = {}) {
     }
   });
 
-  // Изменение типа календаря
-  typeInputs.forEach((input) => {
-    input.addEventListener("change", updateTypeVisibility);
+  // Изменение типа владельца
+  ownerTypeInputs.forEach((input) => {
+    input.addEventListener("change", updateOwnerTypeVisibility);
   });
 
   // Сохранить

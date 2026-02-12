@@ -10,7 +10,7 @@
  * @private
  */
 function pad(n) {
-  return String(n).padStart(2, '0');
+  return String(n).padStart(2, "0");
 }
 
 /**
@@ -43,7 +43,7 @@ export function ymdLocal(date) {
  * @returns {string} Дата в формате ДД.ММ.ГГГГ
  */
 export function fmtDate(date) {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = typeof date === "string" ? new Date(date) : date;
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
 }
 
@@ -53,7 +53,7 @@ export function fmtDate(date) {
  * @returns {string} Время в формате ЧЧ:ММ
  */
 export function fmtTime(date) {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = typeof date === "string" ? new Date(date) : date;
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
@@ -75,8 +75,8 @@ export function formatEventPeriod(event) {
     return start === end ? start : `${start} — ${end}`;
   }
 
-  const startTime = event.start_time || '00:00';
-  const endTime = event.end_time || '23:59';
+  const startTime = event.start_time || "00:00";
+  const endTime = event.end_time || "23:59";
 
   if (start === end) {
     return `${start} ${startTime} — ${endTime}`;
@@ -93,8 +93,8 @@ export function formatEventPeriod(event) {
  * @returns {URL} URL с добавленными параметрами
  */
 export function addDateRangeToUrl(url, start, end) {
-  url.searchParams.set('start', formatDate(start));
-  url.searchParams.set('end', formatDate(end));
+  url.searchParams.set("start", formatDate(start));
+  url.searchParams.set("end", formatDate(end));
   return url;
 }
 

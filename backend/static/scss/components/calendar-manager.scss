@@ -32,6 +32,122 @@
 }
 
 // ──────────────────────────────────────────────────────────────
+// Calendar Folder (папки legacy календарей)
+// ──────────────────────────────────────────────────────────────
+.calendar-folder {
+  margin-bottom: var(--space-3);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  // Drag & Drop: drop target подсветка для папок
+  &.drop-target-active {
+    .calendar-folder-header {
+      background-color: var(--bs-primary-bg-subtle);
+      border: 2px solid var(--bs-primary);
+      border-radius: var(--radius-md);
+      transition: all 0.2s ease;
+
+      .calendar-title {
+        color: var(--bs-primary);
+        font-weight: 600;
+      }
+    }
+  }
+}
+
+.calendar-folder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .form-check {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  .form-check-label {
+    cursor: pointer;
+    user-select: none;
+    min-width: 0;
+  }
+
+  .calendar-title {
+    font-size: 0.95rem;
+  }
+}
+
+.calendar-folder-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+
+  .calendar-folder-header:hover & {
+    opacity: 1;
+  }
+}
+
+.calendar-folder-children {
+  padding-left: var(--space-4);
+  margin-top: var(--space-1);
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.calendar-folder-empty {
+  padding: var(--space-2) var(--space-4);
+  font-style: italic;
+  opacity: 0.6;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Calendar Section (группировка календарей)
+// ──────────────────────────────────────────────────────────────
+.calendar-section {
+  margin-bottom: var(--space-3);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.calendar-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font-size: 0.875rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: var(--space-2);
+
+  i {
+    font-size: 1rem;
+  }
+
+  span {
+    font-weight: 600;
+  }
+
+  small {
+    margin-left: auto;
+    font-size: 0.75rem;
+    opacity: 0.7;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
 // Calendar List Item
 // ──────────────────────────────────────────────────────────────
 .calendar-list-item {
@@ -45,6 +161,17 @@
 
   &:hover {
     background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  // Дочерний элемент в папке
+  &--child {
+    padding-left: var(--space-3);
+    font-size: 0.9rem;
+
+    .calendar-color-indicator {
+      width: 10px;
+      height: 10px;
+    }
   }
 
   // Чекбокс и лейбл
@@ -94,6 +221,20 @@
 
   &:hover .calendar-list-item-actions {
     opacity: 1;
+  }
+
+  // Drag & Drop: drop target подсветка
+  &.drop-target-active {
+    background-color: var(--bs-primary-bg-subtle);
+    border-color: var(--bs-primary);
+    border-left: 3px solid var(--bs-primary);
+    padding-left: calc(var(--space-3) - 3px);
+    transition: all 0.2s ease;
+
+    .calendar-title {
+      color: var(--bs-primary);
+      font-weight: 600;
+    }
   }
 
   // Кнопки действий

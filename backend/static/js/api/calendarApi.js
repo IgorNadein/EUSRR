@@ -3,9 +3,9 @@
  * @module api/calendarApi
  */
 
-import { dataManager } from '../managers/dataManager.js';
-import { authHeaders } from '../utils/authUtils.js';
-import { API_URLS, API_DEFAULTS } from '../constants/apiUrls.js';
+import { dataManager } from "../managers/dataManager.js";
+import { authHeaders } from "../utils/authUtils.js";
+import { API_URLS, API_DEFAULTS } from "../constants/apiUrls.js";
 
 /**
  * Получить события календаря
@@ -18,44 +18,46 @@ import { API_URLS, API_DEFAULTS } from '../constants/apiUrls.js';
  */
 export async function getCalendarEvents(params, ttl = API_DEFAULTS.TTL.EVENTS) {
   // Создаем уникальный ключ для кеша
-  const sortedParams = Object.keys(params).sort().reduce((acc, key) => {
-    acc[key] = params[key];
-    return acc;
-  }, {});
-  
+  const sortedParams = Object.keys(params)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = params[key];
+      return acc;
+    }, {});
+
   const key = `calendar:events:${JSON.stringify(sortedParams)}`;
-  
+
   return dataManager.fetch(
     key,
     async () => {
       const url = new URL(API_URLS.EVENTS, window.location.origin);
-      Object.keys(params).forEach(k => {
+      Object.keys(params).forEach((k) => {
         if (params[k] != null) {
           url.searchParams.set(k, String(params[k]));
         }
       });
-      
+
       const response = await fetch(url.toString(), {
-        headers: authHeaders()
+        headers: authHeaders(),
       });
-      
+
       if (response.status === 401) {
-        console.warn('[CalendarAPI] 401 Unauthorized');
+        console.warn("[CalendarAPI] 401 Unauthorized");
         return [];
       }
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Поддержка разных форматов ответа
-      return Array.isArray(data) 
-        ? data 
+      return Array.isArray(data)
+        ? data
         : data.results || data.items || data.events || [];
     },
-    ttl
+    ttl,
   );
 }
 
@@ -65,24 +67,27 @@ export async function getCalendarEvents(params, ttl = API_DEFAULTS.TTL.EVENTS) {
  * @param {number} [ttl] - Time to live кеша в мс
  * @returns {Promise<Object>} Событие
  */
-export async function getCalendarEvent(eventId, ttl = API_DEFAULTS.TTL.EVENT_DETAIL) {
+export async function getCalendarEvent(
+  eventId,
+  ttl = API_DEFAULTS.TTL.EVENT_DETAIL,
+) {
   const key = `calendar:event:${eventId}`;
-  
+
   return dataManager.fetch(
     key,
     async () => {
       const url = API_URLS.EVENT_DETAIL(eventId);
       const response = await fetch(url, {
-        headers: authHeaders(false)
+        headers: authHeaders(false),
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       return response.json();
     },
-    ttl
+    ttl,
   );
 }
 
@@ -92,10 +97,12 @@ export async function getCalendarEvent(eventId, ttl = API_DEFAULTS.TTL.EVENT_DET
  */
 export function invalidateCalendarEvents(params = null) {
   if (params) {
-    const sortedParams = Object.keys(params).sort().reduce((acc, key) => {
-      acc[key] = params[key];
-      return acc;
-    }, {});
+    const sortedParams = Object.keys(params)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = params[key];
+        return acc;
+      }, {});
     const key = `calendar:events:${JSON.stringify(sortedParams)}`;
     dataManager.invalidate(key);
   } else {
@@ -118,10 +125,12 @@ export function invalidateCalendarEvent(eventId) {
  * @param {Array} events - Данные событий
  */
 export function preloadCalendarEvents(params, events) {
-  const sortedParams = Object.keys(params).sort().reduce((acc, key) => {
-    acc[key] = params[key];
-    return acc;
-  }, {});
+  const sortedParams = Object.keys(params)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = params[key];
+      return acc;
+    }, {});
   const key = `calendar:events:${JSON.stringify(sortedParams)}`;
   dataManager.preload(key, events);
 }

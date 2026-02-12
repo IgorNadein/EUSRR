@@ -4,12 +4,12 @@
  * @module calendarWidget/weekListRenderer
  */
 
-import { 
-  startOfWeek, 
-  endOfWeek, 
-  overlaps, 
+import {
+  startOfWeek,
+  endOfWeek,
+  overlaps,
   truncate,
-  dayMs 
+  dayMs,
 } from "./helpers.js";
 
 /**
@@ -24,14 +24,14 @@ import {
  * @param {string} defaultColor - Цвет по умолчанию
  */
 export function renderVertical(
-  container, 
-  rangeLabel, 
-  events, 
-  ws, 
+  container,
+  rangeLabel,
+  events,
+  ws,
   we,
   normalizeEvent,
   openEventDetailsById,
-  defaultColor
+  defaultColor,
 ) {
   if (!container) return;
   container.innerHTML = "";
@@ -124,7 +124,7 @@ export async function updateWeekLists(
   fetchEventsAllCalendars,
   normalizeEvent,
   openEventDetailsById,
-  defaultColor
+  defaultColor,
 ) {
   const now = new Date();
   const ws = startOfWeek(now),
@@ -140,7 +140,7 @@ export async function updateWeekLists(
     we,
     normalizeEvent,
     openEventDetailsById,
-    defaultColor
+    defaultColor,
   );
   renderVertical(
     document.getElementById("weekListMobile"),
@@ -150,6 +150,6 @@ export async function updateWeekLists(
     we,
     normalizeEvent,
     openEventDetailsById,
-    defaultColor
+    defaultColor,
   );
 }
