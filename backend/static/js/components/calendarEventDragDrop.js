@@ -405,6 +405,13 @@ export function initCalendarEventDragDrop(options = {}) {
     const badge = element.querySelector(".badge.bg-secondary-subtle.text-secondary, .badge.bg-info-subtle.text-info");
     if (!badge) return;
 
+    // Определяем, является ли это папкой
+    const isFolder = element.classList.contains("calendar-folder");
+    // Для папок используем только header для drop zone
+    const dropTarget = isFolder ? element.querySelector(".calendar-folder-header") : element;
+    
+    if (!dropTarget) return;
+
     badge.setAttribute("draggable", "true");
     badge.style.cursor = "grab";
     badge.title = "Перетащите для перемещения событий";
@@ -423,7 +430,7 @@ export function initCalendarEventDragDrop(options = {}) {
       });
     });
 
-    element.addEventListener("dragover", (e) => {
+    dropTarget.addEventListener("dragover", (e) => {
       const targetId = element.dataset.calendarId || element.dataset.folderId;
       const sourceId = e.dataTransfer.getData("text/plain");
       if (targetId === sourceId) return;
@@ -431,16 +438,18 @@ export function initCalendarEventDragDrop(options = {}) {
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = "move";
+      
+      // Подсвечиваем весь элемент (папку или календарь)
       element.classList.add("drop-target-active");
     });
 
-    element.addEventListener("dragleave", (e) => {
-      if (!element.contains(e.relatedTarget)) {
+    dropTarget.addEventListener("dragleave", (e) => {
+      if (!dropTarget.contains(e.relatedTarget)) {
         element.classList.remove("drop-target-active");
       }
     });
 
-    element.addEventListener("drop", (e) => {
+    dropTarget.addEventListener("drop", (e) => {
       e.preventDefault();
       e.stopPropagation();
       element.classList.remove("drop-target-active");
