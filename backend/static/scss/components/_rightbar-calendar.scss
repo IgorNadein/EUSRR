@@ -59,7 +59,7 @@
 // Не перемещается с основным скролом страницы, скролл только внутри .card-body
 @media (min-width: 992px) {
   .rightbar {
-    position: sticky; 
+    position: sticky;
     top: calc(var(--navbar-h) + var(--layout-padding-y, 12px));
     height: calc(100dvh - var(--navbar-h) - 2 * var(--layout-padding-y, 12px));
     overflow: hidden;
@@ -82,82 +82,78 @@
   --fc-event-text-color: var(--bs-body-bg);
 
   // Убираем границы
-  .fc-theme-standard .fc-scrollgrid { 
-    border: 0 !important; 
+  .fc-theme-standard .fc-scrollgrid {
+    border: 0 !important;
   }
 
-  .fc-theme-standard td, 
-  .fc-theme-standard th { 
-    border: 0 !important; 
+  .fc-theme-standard td,
+  .fc-theme-standard th {
+    border: 0 !important;
   }
 
   // Toolbar
-  .fc-toolbar { 
-    padding: var(--space-2); 
-    background: var(--bs-tertiary-bg); 
-    border-bottom: 1px solid var(--bs-border-color); 
-    justify-content: space-between; 
+  .fc-toolbar {
+    padding: var(--space-2);
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    justify-content: space-between;
   }
 
-  .fc-toolbar-title { 
-    font-size: 1rem; 
-    font-weight: 600; 
-    color: var(--bs-body-color); 
+  .fc-toolbar-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--bs-body-color);
   }
 
-  .fc-button { 
-    border-radius: 8px; 
-    font-size: .82rem; 
-    padding: var(--space-1); 
-    background: transparent; 
-    border: none; 
+  .fc-button {
+    border-radius: 8px;
+    font-size: .82rem;
+    padding: var(--space-1);
+    background: transparent;
+    border: none;
     color: var(--bs-primary);
 
-    &:hover { 
-      background: rgba(var(--bs-primary-rgb), .1); 
+    &:hover {
+      background: rgba(var(--bs-primary-rgb), .1);
     }
   }
 
   // Day cells
-  .fc-daygrid-day-frame { 
-    padding: 2px 3px !important; 
+  .fc-daygrid-day-frame {
+    padding: 2px 3px !important;
   }
 
   .fc-daygrid-day-number {
-    font-size: .82rem; 
-    width: 100%; 
-    height: 1.6rem; 
-    display: flex; 
-    align-items: center; 
+    font-size: .82rem;
+    width: 100%;
+    height: 1.6rem;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    font-weight: 600; 
-    color: var(--bs-body-color); 
+    font-weight: 600;
+    color: var(--bs-body-color);
     text-decoration: none !important;
   }
 
-  .fc-day-today { 
+  .fc-day-today {
     background: none !important;
 
-    .fc-daygrid-day-number {
-      color: var(--bs-primary); 
-      font-weight: 700; 
-      border: 1px solid var(--bs-primary); 
-      border-radius: 50%;
-    }
+    // Стили для бейджа текущего дня перенесены в _calendar-events.scss
+    // чтобы избежать конфликтов
   }
 
-  .fc-day-other .fc-daygrid-day-number { 
-    opacity: .4; 
+  .fc-day-other .fc-daygrid-day-number {
+    opacity: .4;
   }
 
   // Events
-  .fc-daygrid-day-events { 
-    padding: 0 2px 2px !important; 
-    row-gap: 2px !important; 
+  .fc-daygrid-day-events {
+    padding: 0 2px 2px !important;
+    row-gap: 2px !important;
   }
 
-  .fc-daygrid-event-harness { 
-    margin: 0 0 2px 0 !important; 
+  .fc-daygrid-event-harness {
+    margin: 0 0 2px 0 !important;
   }
 
   .fc-daygrid-event {
@@ -168,22 +164,22 @@
     border: 1px solid color-mix(in srgb, var(--bs-primary), transparent 60%);
     color: var(--bs-body-color);
 
-    .fc-event-time { 
-      display: none !important; 
+    .fc-event-time {
+      display: none !important;
     }
 
     .fc-event-title {
-      font-size: .62rem !important; 
-      line-height: 1.02 !important; 
-      letter-spacing: -0.2px; 
+      font-size: .62rem !important;
+      line-height: 1.02 !important;
+      letter-spacing: -0.2px;
       font-weight: 600;
       font-family: "Arial Narrow","Roboto Condensed",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-      display: -webkit-box !important; 
-      -webkit-line-clamp: 3; 
+      display: -webkit-box !important;
+      -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
-      overflow: hidden !important; 
-      white-space: normal !important; 
-      text-overflow: ellipsis; 
+      overflow: hidden !important;
+      white-space: normal !important;
+      text-overflow: ellipsis;
       max-height: calc(1.02em * 3);
     }
   }
@@ -193,78 +189,78 @@
    ВЕРТИКАЛЬНАЯ ЛЕНТА НЕДЕЛИ
 ===================================== */
 
-.week-strip-header { 
-  margin-top: var(--space-2); 
-  display: flex; 
-  align-items: center; 
-  justify-content: space-between; 
-  color: var(--bs-secondary-color); 
-  font-size: .8rem; 
+.week-strip-header {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--bs-secondary-color);
+  font-size: .8rem;
 }
 
-.week-vertical { 
-  margin-top: var(--space-1); 
-  display: flex; 
-  flex-direction: column; 
+.week-vertical {
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-1);
 
-  .week-row { 
-    display: grid; 
-    grid-template-columns: 56px 1fr; 
-    align-items: start; 
-    gap: var(--space-1); 
-    padding: var(--space-1); 
-    border-radius: 12px; 
-    background: color-mix(in srgb, var(--bs-primary), var(--bs-body-bg) 86%); 
+  .week-row {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    align-items: start;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bs-primary), var(--bs-body-bg) 86%);
     border: 1px solid color-mix(in srgb, var(--bs-primary), transparent 70%);
 
-    &:hover { 
-      background: color-mix(in srgb, var(--bs-primary), var(--bs-body-bg) 82%); 
+    &:hover {
+      background: color-mix(in srgb, var(--bs-primary), var(--bs-body-bg) 82%);
     }
   }
 
   .content {
-    .title { 
-      font-size: .8rem; 
-      font-weight: 600; 
-      color: var(--bs-body-color); 
-      display: -webkit-box; 
-      -webkit-line-clamp: 2; 
-      -webkit-box-orient: vertical; 
-      overflow: hidden; 
-      text-overflow: ellipsis; 
-      white-space: normal; 
+    .title {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--bs-body-color);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: normal;
     }
 
-    .meta { 
-      margin-top: .15rem; 
-      font-size: .72rem; 
-      color: var(--bs-secondary-color); 
+    .meta {
+      margin-top: .15rem;
+      font-size: .72rem;
+      color: var(--bs-secondary-color);
     }
   }
 }
 
-.date-badge { 
-  display: grid; 
-  place-items: center; 
-  border-radius: 10px; 
-  padding: .35rem .25rem; 
-  background: color-mix(in srgb, var(--bs-primary), var(--bs-body-bg) 92%); 
-  border: 1px solid color-mix(in srgb, var(--bs-primary), transparent 75%); 
-  text-align: center; 
+.date-badge {
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  padding: .35rem .25rem;
+  background: color-mix(in srgb, var(--bs-primary), var(--bs-body-bg) 92%);
+  border: 1px solid color-mix(in srgb, var(--bs-primary), transparent 75%);
+  text-align: center;
   line-height: 1.05;
 
-  .dow { 
-    font-size: .7rem; 
-    font-weight: 700; 
-    color: var(--bs-primary); 
-    text-transform: uppercase; 
+  .dow {
+    font-size: .7rem;
+    font-weight: 700;
+    color: var(--bs-primary);
+    text-transform: uppercase;
   }
 
-  .md { 
-    font-size: .74rem; 
-    font-weight: 700; 
-    color: var(--bs-body-color); 
+  .md {
+    font-size: .74rem;
+    font-weight: 700;
+    color: var(--bs-body-color);
   }
 }
 
@@ -272,28 +268,28 @@
    OFFCANVAS (МОБАЙЛ)
 ===================================== */
 
-#rightbarOffcanvas { 
-  height: 100dvh; 
+#rightbarOffcanvas {
+  height: 100dvh;
   height: 100svh;
 
   .offcanvas-body {
-    display: flex; 
-    flex-direction: column; 
+    display: flex;
+    flex-direction: column;
     gap: var(--space-1);
     height: calc(100dvh - var(--rb-offcanvas-head, 56px));
     height: calc(100svh - var(--rb-offcanvas-head, 56px));
-    min-height: 0; 
-    overflow-y: auto; 
-    -webkit-overflow-scrolling: touch; 
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
 
-  .calendar-wrap { 
-    flex: 0 0 auto; 
+  .calendar-wrap {
+    flex: 0 0 auto;
   }
 
-  .week-vertical { 
-    flex: 0 0 auto; 
+  .week-vertical {
+    flex: 0 0 auto;
   }
 }
 
@@ -302,7 +298,7 @@
 ===================================== */
 
 .color-swatch {
-  width: 26px; 
+  width: 26px;
   height: 26px;
   border: 1px solid var(--bs-border-color);
   border-radius: 9999px;
@@ -321,11 +317,11 @@
 ===================================== */
 
 .color-dot {
-  width: 12px; 
-  height: 12px; 
-  border-radius: 9999px; 
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
   display: inline-block;
-  vertical-align: middle; 
-  margin-right: 6px; 
+  vertical-align: middle;
+  margin-right: 6px;
   border: 1px solid #00000022;
 }

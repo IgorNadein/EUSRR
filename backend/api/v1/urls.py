@@ -1,24 +1,41 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .calendar.views import CalendarEventsViewSet
-from .employees.views import (DepartmentRoleViewSet, DepartmentViewSet,
-                              EmployeeActionViewSet, EmployeeViewSet,
-                              GroupViewSet, PositionViewSet,
-                              RegisterAPIView, ResendEmailAPIView,
-                              SkillViewSet, VerifyEmailAPIView)
-from .feed.views import CommentViewSet, PostViewSet
-from .documents.views import DocumentViewSet
-from .requests_app.views import RequestViewSet
+from .calendar.views import (
+    CalendarEventsViewSet,
+    CalendarSubscriptionViewSet,
+    CalendarViewSet,
+)
 
 # Communications ViewSets
 from .communications.views import ChatViewSet, MessageViewSet, PollViewSet
+from .documents.views import DocumentViewSet
+from .employees.views import (
+    DepartmentRoleViewSet,
+    DepartmentViewSet,
+    EmployeeActionViewSet,
+    EmployeeViewSet,
+    GroupViewSet,
+    PositionViewSet,
+    RegisterAPIView,
+    ResendEmailAPIView,
+    SkillViewSet,
+    VerifyEmailAPIView,
+)
+from .feed.views import CommentViewSet, PostViewSet
+from .requests_app.views import RequestViewSet
 
 app_name = "v1"
 
 router = DefaultRouter()
 
 router.register(r"calendar/events", CalendarEventsViewSet, basename="events")
+router.register(r"calendar/calendars", CalendarViewSet, basename="calendars")
+router.register(
+    r"calendar/subscriptions",
+    CalendarSubscriptionViewSet,
+    basename="subscriptions",
+)
 
 router.register(r"documents", DocumentViewSet, basename="documents")
 
@@ -60,10 +77,8 @@ urlpatterns = [
         VerifyEmailAPIView.as_view(),
         name="verify-email",
     ),
-    
     # Notifications API
     path("notifications/", include("api.v1.notifications.urls")),
-    
     # Router URLs (включая все ViewSets)
     path("", include(router.urls)),
 ]
