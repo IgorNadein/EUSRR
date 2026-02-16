@@ -644,8 +644,3 @@ class TestPollEdgeCases:
 
         # total_voters должен быть 1, не 2
         assert response.data['results']['total_voters'] == 1
-            url, {'option_ids': [opt1.id, opt2.id]}, format='json'
-        )
-
-        # total_voters должен быть 1, не 2
-        assert response.data['results']['total_voters'] == 1
