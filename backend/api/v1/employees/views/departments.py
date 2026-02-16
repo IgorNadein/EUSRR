@@ -185,6 +185,72 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
     # --- частичное изменение ---
 
+    def _perform_set_head(self, instance: Department, desired_head_id: int | None, request) -> Response | Department:
+        """Общая логика назначения руководителя для set_head action и partial_update.
+        
+        Возвращает Response при ошибке или обновлённый Department при успехе.
+        """
+        # Проверка прав
+        perm = self.ChangeHeadPerm()
+        has_perm = perm.has_permission(request, self) and perm.has_object_permission(
+            request, self, instance
+        )
+        if not has_perm:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Если тот же руководитель — пропустим
+        if (desired_head_id or None) == (instance.head_id or None):
+            return instance
+
+        # Валидация кандидата
+        new_head = None
+        if desired_head_id is not None:
+            employee_model = Department._meta.get_field("head").remote_field.model
+            new_head = get_object_or_404(employee_model, id=desired_head_id)
+
+            require_verified = not (
+                instance.head_id
+                and instance.head_id == getattr(request.user, "id", None)
+            )
+            ok, errs = _validate_head_active(
+                instance,
+                desired_head_id,
+                require_email_verified=require_verified,
+            )
+            if not ok:
+                return Response(errs, status=status.HTTP_400_BAD_REQUEST)
+
+        # LDAP → DB
+        ldap_enabled = _is_ldap_enabled()
+        if ldap_enabled:
+            svc = DirectoryService()
+            try:
+                instance = svc.set_head(instance, new_head)
+            except (
+                DirectoryLdapError,
+                DirectoryDbError,
+                DirectoryServiceError,
+            ) as e:
+                code = (
+                    status.HTTP_502_BAD_GATEWAY
+                    if isinstance(e, DirectoryLdapError)
+                    else (
+                        status.HTTP_400_BAD_REQUEST
+                        if isinstance(e, DirectoryServiceError)
+                        else status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                )
+                return Response({"detail": str(e)}, status=code)
+        else:
+            instance.head = new_head
+            if new_head:
+                instance.head_appointed_at = timezone.now()
+            else:
+                instance.head_appointed_at = None
+            instance.save(update_fields=["head", "head_appointed_at"])
+
+        return instance
+
     def partial_update(self, request, *args, **kwargs) -> Response:
         """Частичный апдейт отдела через сервисный слой (LDAP → DB)."""
         instance = self.get_object()
@@ -213,64 +279,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     {"head_id": [str(e)]}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # --- права ---
-            perm = self.ChangeHeadPerm()
-            has_perm = perm.has_permission(
-                request, self
-            ) and perm.has_object_permission(request, self, instance)
-            if not has_perm:
-                return Response(
-                    {"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN
-                )
-
-            # Если указали того же руководителя — пропустим лишнюю работу
-            if (desired_head_id or None) != (instance.head_id or None):
-                # --- валидация кандидата ---
-                new_head = None
-                if desired_head_id is not None:
-                    employee_model = (
-                        type(instance)._meta.get_field("head").remote_field.model
-                    )
-                    new_head = get_object_or_404(employee_model, id=desired_head_id)
-
-                    require_verified = not (
-                        instance.head_id
-                        and instance.head_id == getattr(request.user, "id", None)
-                    )
-                    ok, errs = _validate_head_active(
-                        instance,
-                        desired_head_id,
-                        require_email_verified=require_verified,
-                    )
-                    if not ok:
-                        return Response(errs, status=status.HTTP_400_BAD_REQUEST)
-
-                # --- LDAP → DB ---
-                if ldap_enabled:
-                    try:
-                        instance = svc.set_head(instance, new_head)
-                    except (
-                        DirectoryLdapError,
-                        DirectoryDbError,
-                        DirectoryServiceError,
-                    ) as e:
-                        code = (
-                            status.HTTP_502_BAD_GATEWAY
-                            if isinstance(e, DirectoryLdapError)
-                            else (
-                                status.HTTP_400_BAD_REQUEST
-                                if isinstance(e, DirectoryServiceError)
-                                else status.HTTP_500_INTERNAL_SERVER_ERROR
-                            )
-                        )
-                        return Response({"detail": str(e)}, status=code)
-                else:
-                    instance.head = new_head
-                    if new_head:
-                        instance.head_appointed_at = timezone.now()
-                    else:
-                        instance.head_appointed_at = None
-                    instance.save(update_fields=["head", "head_appointed_at"])
+            # Используем общий метод
+            result = self._perform_set_head(instance, desired_head_id, request)
+            if isinstance(result, Response):
+                return result
+            instance = result
 
         # --- NAME / DESCRIPTION ---
         changes: Dict[str, Any] = {}
@@ -310,59 +323,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         payload.is_valid(raise_exception=True)
         head_id = payload.validated_data.get("head_id")
 
-        employee_model = Department._meta.get_field("head").remote_field.model
-        new_head = (
-            get_object_or_404(employee_model, id=head_id)
-            if head_id is not None
-            else None
-        )
-
-        # --- права ---
-        perm = self.ChangeHeadPerm()
-        has_perm = perm.has_permission(request, self) and perm.has_object_permission(
-            request, self, dept
-        )
-        if not has_perm:
-            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
-
-        # --- валидация кандидата ---
-        if head_id is not None:
-            require_verified = not (
-                dept.head_id and dept.head_id == getattr(request.user, "id", None)
-            )
-            ok, errs = _validate_head_active(
-                dept, head_id, require_email_verified=require_verified
-            )
-            if not ok:
-                return Response(errs, status=status.HTTP_400_BAD_REQUEST)
-
-        # --- применение ---
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            svc = DirectoryService()
-            try:
-                dept = svc.set_head(dept, new_head)
-            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
-                status_code = (
-                    status.HTTP_502_BAD_GATEWAY
-                    if isinstance(e, DirectoryLdapError)
-                    else (
-                        status.HTTP_400_BAD_REQUEST
-                        if isinstance(e, DirectoryServiceError)
-                        else status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-                )
-                return Response({"detail": str(e)}, status=status_code)
-        else:
-            dept.head = new_head
-            if new_head:
-                dept.head_appointed_at = timezone.now()
-            else:
-                dept.head_appointed_at = None
-            dept.save(update_fields=["head", "head_appointed_at"])
-
-        return Response(self.get_serializer(dept).data, status=status.HTTP_200_OK)
+        # Используем общий метод
+        result = self._perform_set_head(dept, head_id, request)
+        if isinstance(result, Response):
+            return result
+        
+        return Response(self.get_serializer(result).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     @transaction.atomic

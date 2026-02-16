@@ -78,6 +78,169 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         "ldap_info": "employees.view_ldap_info",
     }
 
+    def _perform_user_update(self, instance: Employee, request_data, is_partial=True):
+        """Общая логика обновления пользователя для me PATCH и partial_update.
+        
+        Возвращает Response при ошибке или dict с 'data' и 'instance' при успехе.
+        """
+        old_email = instance.email
+
+        # Удаляем пустое поле avatar
+        data = request_data.copy() if hasattr(request_data, "copy") else dict(request_data)
+        if hasattr(data, "_mutable") and not data._mutable:
+            data._mutable = True
+        avatar_raw = data.get("avatar")
+        if avatar_raw in ("", None):
+            data.pop("avatar", None)
+
+        ser = self.get_serializer(instance, data=data, partial=is_partial)
+        ser.is_valid(raise_exception=True)
+        vd = dict(ser.validated_data)
+
+        # Проверяем изменение email
+        new_email = vd.get("email")
+        email_changed = new_email and new_email.lower() != old_email.lower()
+
+        ldap_enabled = _is_ldap_enabled()
+
+        # --- LDAP часть ---
+        ldap_keys = {
+            "first_name",
+            "last_name",
+            "email",
+            "phone_number",
+            "is_active",
+        }
+        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
+
+        svc_changes = dict(ldap_changes)
+        pos_key_present = ("position" in data) or ("position_id" in data)
+        if pos_key_present:
+            pos_raw = (
+                data.get("position") if "position" in data else data.get("position_id")
+            )
+            svc_changes["position"] = pos_raw
+            vd.pop("position", None)
+            vd.pop("position_id", None)
+
+        move_to_department_dn = data.get("department_dn")
+        group_cns = data.get("group_cns")
+
+        # avatar → bytes
+        avatar_file = ser.validated_data.get("avatar")
+        if avatar_file and hasattr(avatar_file, "read"):
+            try:
+                svc_changes["avatar_bytes"] = avatar_file.read()
+                if hasattr(avatar_file, "seek"):
+                    avatar_file.seek(0)
+            except Exception:
+                pass
+
+        # Проверяем, есть ли у пользователя ldap_dn
+        has_ldap_dn = False
+        if ldap_enabled:
+            has_ldap_dn = LdapSyncState.objects.filter(
+                model="employee", object_pk=str(instance.pk), ldap_dn__isnull=False
+            ).exists() or (hasattr(instance, "ldap_dn") and instance.ldap_dn)
+
+        if ldap_enabled and has_ldap_dn:
+            svc = DirectoryService()
+            if svc_changes or move_to_department_dn or group_cns is not None:
+                try:
+                    instance = svc.update_user(
+                        instance,
+                        changes=svc_changes,
+                        group_cns=group_cns if group_cns is not None else None,
+                        move_to_department_dn=move_to_department_dn,
+                    )
+                except (
+                    DirectoryLdapError,
+                    DirectoryDbError,
+                    DirectoryServiceError,
+                ) as e:
+                    return Response(
+                        {"detail": str(e)},
+                        status=(502 if isinstance(e, DirectoryLdapError) else 500),
+                    )
+        else:
+            # Non-LDAP mode
+            vd.update(ldap_changes)
+
+            if pos_key_present:
+                pos_raw = (
+                    data.get("position")
+                    if "position" in data
+                    else data.get("position_id")
+                )
+                if pos_raw is None:
+                    vd["position"] = None
+                elif isinstance(pos_raw, int):
+                    try:
+                        vd["position"] = Position.objects.get(id=pos_raw)
+                    except Position.DoesNotExist:
+                        return Response(
+                            {"detail": f"Position {pos_raw} not found"},
+                            status=400,
+                        )
+                elif isinstance(pos_raw, dict) and "id" in pos_raw:
+                    try:
+                        vd["position"] = Position.objects.get(id=pos_raw["id"])
+                    except Position.DoesNotExist:
+                        return Response(
+                            {"detail": f"Position {pos_raw['id']} not found"},
+                            status=400,
+                        )
+
+            if avatar_file and hasattr(avatar_file, "read"):
+                try:
+                    if hasattr(avatar_file, "seek"):
+                        avatar_file.seek(0)
+                    avatar_bytes = avatar_file.read()
+                    instance.avatar.save(
+                        avatar_file.name,
+                        ContentFile(avatar_bytes),
+                        save=False,
+                    )
+                    vd.pop("avatar", None)
+                except Exception:
+                    pass
+
+        # --- DB-only часть ---
+        if "avatar" in vd:
+            vd.pop("avatar")
+
+        if vd:
+            ser_db = self.get_serializer(instance, data=vd, partial=is_partial)
+            try:
+                ser_db.is_valid(raise_exception=True)
+                ser_db.save()
+                instance = ser_db.instance
+                result_data = ser_db.data
+            except ValidationError as exc:
+                return Response(exc.detail, status=400)
+        else:
+            result_data = self.get_serializer(instance).data
+
+        # Сброс email_verified при изменении email
+        if email_changed:
+            instance.email_verified = False
+            instance.email_activation_code = get_random_string(6, "0123456789")
+            instance.save(update_fields=["email_verified", "email_activation_code"])
+
+            try:
+                send_templated_mail(
+                    subject="Подтверждение нового email",
+                    to=[instance.email],
+                    template_base="emails/registration_verify_code",
+                    context={"code": instance.email_activation_code, "user": instance},
+                )
+            except Exception:
+                pass
+
+            result_data["email_verified"] = False
+
+        return {"data": result_data, "instance": instance}
+
     def get_permissions(self):
         if self.action == "create":
             return [IsAuthenticated(), AdminOrActionOrModelPerms()]
@@ -363,165 +526,12 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             data = self.get_serializer(instance, context=ctx).data
             return Response(data, status=200)
 
-        # PATCH
+        # PATCH — используем общий метод
         try:
-            old_email = instance.email
-
-            # Удаляем пустое поле avatar ДО валидации
-            data_for_serializer = request.data
-            if "avatar" in request.data:
-                avatar_value = request.data.get("avatar")
-                if avatar_value == "":
-                    data_for_serializer = {
-                        k: v for k, v in request.data.items() if k != "avatar"
-                    }
-
-            ser = self.get_serializer(
-                instance, data=data_for_serializer, partial=True
-            )
-            ser.is_valid(raise_exception=True)
-
-            vd = dict(ser.validated_data)
-
-            # Проверяем изменение email
-            new_email = vd.get("email")
-            email_changed = new_email and new_email.lower() != old_email.lower()
-
-            # Бизнес-валидация каналов связи
-            if all(k not in vd for k in ("whatsapp", "telegram", "wechat")):
-                new_whatsapp = vd.get("whatsapp", instance.whatsapp)
-                new_telegram = vd.get("telegram", instance.telegram)
-                new_wechat = vd.get("wechat", instance.wechat)
-                if not (new_whatsapp or new_telegram or new_wechat):
-                    return Response(
-                        {
-                            "detail": "Должен быть указан хотя бы один канал связи (WhatsApp/Telegram/WeChat)."
-                        },
-                        status=400,
-                    )
-
-            ldap_enabled = _is_ldap_enabled()
-
-            # LDAP-часть
-            ldap_keys = {
-                "first_name",
-                "last_name",
-                "email",
-                "phone_number",
-                "is_active",
-            }
-            ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
-
-            svc_changes = dict(ldap_changes)
-            pos_key_present = ("position" in request.data) or (
-                "position_id" in request.data
-            )
-            if pos_key_present:
-                pos_raw = (
-                    request.data.get("position")
-                    if "position" in request.data
-                    else request.data.get("position_id")
-                )
-                svc_changes["position"] = pos_raw
-                vd.pop("position", None)
-                vd.pop("position_id", None)
-
-            move_to_department_dn = request.data.get("department_dn")
-            group_cns = request.data.get("group_cns")
-
-            # Проверяем аватар
-            avatar_file = ser.validated_data.get("avatar") or request.FILES.get(
-                "avatar"
-            )
-            if avatar_file and hasattr(avatar_file, "read"):
-                try:
-                    svc_changes["avatar_bytes"] = avatar_file.read()
-                except Exception:
-                    pass
-
-            # Проверяем, есть ли у пользователя ldap_dn
-            has_ldap_dn = False
-            if ldap_enabled:
-                has_ldap_dn = LdapSyncState.objects.filter(
-                    model="employee", object_pk=str(instance.pk), ldap_dn__isnull=False
-                ).exists() or (hasattr(instance, "ldap_dn") and instance.ldap_dn)
-
-            if (
-                ldap_enabled
-                and has_ldap_dn
-                and (svc_changes or move_to_department_dn or group_cns is not None)
-            ):
-                svc = DirectoryService()
-                try:
-                    instance = svc.update_user(
-                        instance,
-                        changes=svc_changes,
-                        group_cns=group_cns if group_cns is not None else None,
-                        move_to_department_dn=move_to_department_dn,
-                    )
-                except (
-                    DirectoryLdapError,
-                    DirectoryDbError,
-                    DirectoryServiceError,
-                ) as e:
-                    return Response(
-                        {"detail": str(e)},
-                        status=502 if isinstance(e, DirectoryLdapError) else 500,
-                    )
-            elif (not ldap_enabled or not has_ldap_dn) and svc_changes:
-                for k, v in svc_changes.items():
-                    if k != "position" and k != "avatar_bytes":
-                        setattr(instance, k, v)
-                    elif k == "position":
-                        instance.position_id = v
-                    elif k == "avatar_bytes" and v:
-                        filename = f"avatar_{instance.id}.jpg"
-                        instance.avatar.save(
-                            filename,
-                            ContentFile(v),
-                            save=False,
-                        )
-                instance.save()
-
-            # DB-only
-            if "avatar" in vd:
-                vd.pop("avatar")
-
-            if vd:
-                ser_db = self.get_serializer(instance, data=vd, partial=True)
-                try:
-                    ser_db.is_valid(raise_exception=True)
-                    ser_db.save()
-                    instance = ser_db.instance
-                    data = ser_db.data
-                except ValidationError as ve:
-                    return Response(ve.detail, status=400)
-            else:
-                data = self.get_serializer(instance).data
-
-            # Сброс email_verified при изменении email
-            if email_changed:
-                instance.email_verified = False
-                instance.email_activation_code = get_random_string(6, "0123456789")
-                instance.save(update_fields=["email_verified", "email_activation_code"])
-
-                try:
-                    send_templated_mail(
-                        subject="Подтверждение нового email",
-                        to=[instance.email],
-                        template_base="emails/registration_verify_code",
-                        context={
-                            "code": instance.email_activation_code,
-                            "user": instance,
-                        },
-                    )
-                except Exception:
-                    pass
-
-                data["email_verified"] = False
-
-            return Response(data, status=200)
-
+            result = self._perform_user_update(instance, request.data, is_partial=True)
+            if isinstance(result, Response):
+                return result
+            return Response(result["data"], status=200)
         except Exception as e:
             logger.error(f"[ME PATCH] FATAL ERROR: {e}", exc_info=True)
             return Response({"detail": f"Internal server error: {str(e)}"}, status=500)
@@ -775,156 +785,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         """Частичное обновление: сначала LDAP-совместимые поля → затем DB-only."""
         emp = self.get_object()
-        old_email = emp.email
-
-        data = request.data.copy()
-        if hasattr(data, "_mutable") and not data._mutable:
-            data._mutable = True
-        avatar_raw = data.get("avatar")
-        if avatar_raw in ("", None):
-            data.pop("avatar", None)
-
-        ser = self.get_serializer(emp, data=data, partial=True)
-        ser.is_valid(raise_exception=True)
-        vd = dict(ser.validated_data)
-        ldap_enabled = _is_ldap_enabled()
-
-        # Проверяем изменение email
-        new_email = vd.get("email")
-        email_changed = new_email and new_email.lower() != old_email.lower()
-
-        # --- LDAP часть ---
-        ldap_keys = {
-            "first_name",
-            "last_name",
-            "email",
-            "phone_number",
-            "is_active",
-        }
-        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
-
-        svc_changes = dict(ldap_changes)
-        pos_key_present = ("position" in data) or ("position_id" in data)
-        if pos_key_present:
-            pos_raw = (
-                data.get("position") if "position" in data else data.get("position_id")
-            )
-            svc_changes["position"] = pos_raw
-            vd.pop("position", None)
-            vd.pop("position_id", None)
-
-        move_to_department_dn = data.get("department_dn")
-        group_cns = data.get("group_cns")
-
-        # avatar → bytes
-        avatar_file = ser.validated_data.get("avatar")
-        if avatar_file and hasattr(avatar_file, "read"):
-            try:
-                svc_changes["avatar_bytes"] = avatar_file.read()
-                if hasattr(avatar_file, "seek"):
-                    avatar_file.seek(0)
-            except Exception:
-                pass
-
-        # Проверяем, есть ли у пользователя ldap_dn
-        has_ldap_dn = False
-        if ldap_enabled:
-            has_ldap_dn = LdapSyncState.objects.filter(
-                model="employee", object_pk=str(emp.pk), ldap_dn__isnull=False
-            ).exists() or (hasattr(emp, "ldap_dn") and emp.ldap_dn)
-
-        if ldap_enabled and has_ldap_dn:
-            svc = DirectoryService()
-            if svc_changes or move_to_department_dn or group_cns is not None:
-                try:
-                    emp = svc.update_user(
-                        emp,
-                        changes=svc_changes,
-                        group_cns=group_cns if group_cns is not None else None,
-                        move_to_department_dn=move_to_department_dn,
-                    )
-                except (
-                    DirectoryLdapError,
-                    DirectoryDbError,
-                    DirectoryServiceError,
-                ) as e:
-                    return Response(
-                        {"detail": str(e)},
-                        status=(502 if isinstance(e, DirectoryLdapError) else 500),
-                    )
-        else:
-            # Non-LDAP mode
-            vd.update(ldap_changes)
-
-            if pos_key_present:
-                pos_raw = (
-                    request.data.get("position")
-                    if "position" in request.data
-                    else request.data.get("position_id")
-                )
-                if pos_raw is None:
-                    vd["position"] = None
-                elif isinstance(pos_raw, int):
-                    try:
-                        vd["position"] = Position.objects.get(id=pos_raw)
-                    except Position.DoesNotExist:
-                        return Response(
-                            {"detail": f"Position {pos_raw} not found"},
-                            status=400,
-                        )
-                elif isinstance(pos_raw, dict) and "id" in pos_raw:
-                    try:
-                        vd["position"] = Position.objects.get(id=pos_raw["id"])
-                    except Position.DoesNotExist:
-                        return Response(
-                            {"detail": f"Position {pos_raw['id']} not found"},
-                            status=400,
-                        )
-
-            if avatar_file and hasattr(avatar_file, "read"):
-                try:
-                    avatar_bytes = avatar_file.read()
-                    emp.avatar.save(
-                        avatar_file.name,
-                        ContentFile(avatar_bytes),
-                        save=False,
-                    )
-                    vd.pop("avatar", None)
-                except Exception:
-                    pass
-
-        # --- DB-only часть ---
-        if "avatar" in vd:
-            vd.pop("avatar")
-
-        if vd:
-            ser_db = self.get_serializer(emp, data=vd, partial=True)
-            try:
-                ser_db.is_valid(raise_exception=True)
-                ser_db.save()
-                emp = ser_db.instance
-                data = ser_db.data
-            except ValidationError as exc:
-                return Response(exc.detail, status=400)
-        else:
-            data = self.get_serializer(emp).data
-
-        # Сброс email_verified при изменении email
-        if email_changed:
-            emp.email_verified = False
-            emp.email_activation_code = get_random_string(6, "0123456789")
-            emp.save(update_fields=["email_verified", "email_activation_code"])
-
-            try:
-                send_templated_mail(
-                    subject="Подтверждение нового email",
-                    to=[emp.email],
-                    template_base="emails/registration_verify_code",
-                    context={"code": emp.email_activation_code, "user": emp},
-                )
-            except Exception:
-                pass
-
-            data["email_verified"] = False
-
-        return Response(data, status=200)
+        result = self._perform_user_update(emp, request.data, is_partial=True)
+        if isinstance(result, Response):
+            return result
+        return Response(result["data"], status=200)
