@@ -8,6 +8,7 @@ from rest_framework import status
 from employees.models import Department, DepartmentRole, EmployeeDepartment, Employee
 from tests.conftest import _unique_phone
 from tests.test_config import DEFAULT_PASSWORD
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department
 
 User = get_user_model()
 
@@ -19,28 +20,11 @@ def _unique_phone() -> str:
     base = 79000000000  # 79 + 9 нулей
     return str(base + User.objects.count())
 
-@pytest.fixture
-def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
-    """Fixture для создания пользователей."""
-
-    u = User.objects.create_user(
-        email=email,
-        password="pwd12345",
-        phone_number=_unique_phone(),
-        send_activation_email=False,
-        email_verified=True,
-    )
-    # 👇 явная активация для тестов управленческих прав
-    if not u.is_active:
-        u.is_active = True
-        u.save(update_fields=["is_active"])
-    return u
+# Используем make_user из test_helpers
 
 def _unique_email() -> str:
     base = "asd@mail.com"
     return str(Employee.objects.count()) + base
-
-def _make_user(staff=False, superuser=False) -> Employee:
     """
     Создаёт активного и 'email_verified' пользователя, чтобы не споткнуться о
     валидацию при назначении руководителя.

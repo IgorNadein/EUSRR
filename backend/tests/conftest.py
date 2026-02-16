@@ -28,6 +28,9 @@ from tests.test_config import (
     TEST_IMAGE_DATA_URI,
 )
 
+# Импортируем LDAP фикстуры
+from tests.ldap_fixtures import *  # noqa
+
 pytestmark = pytest.mark.django_db
 
 User = get_user_model()
