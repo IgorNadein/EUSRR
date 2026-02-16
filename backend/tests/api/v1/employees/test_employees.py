@@ -35,7 +35,6 @@ def _unique_phone() -> str:
     # валидный уникальный E.164
     return f"+7999000{next(_phone_seq):03d}"
 
-@pytest.fixture
 def make_user(
     email: str,
     *,
@@ -45,7 +44,7 @@ def make_user(
     active: bool = True,
     **extra,
 ) -> User:
-    """Fixture для создания пользователей."""
+    """Helper для создания пользователей в тестах."""
     """
     Создаём пользователя напрямую (без менеджера, чтобы не слать почту).
     """

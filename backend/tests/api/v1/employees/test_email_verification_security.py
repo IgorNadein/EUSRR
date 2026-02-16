@@ -18,7 +18,7 @@ Employee = get_user_model()
 @pytest.fixture(autouse=True)
 def disable_ldap():
     """Отключает LDAP для всех тестов."""
-    with patch("api.v1.employees.views._is_ldap_enabled", return_value=False):
+    with patch("api.v1.employees.views._helpers._is_ldap_enabled", return_value=False):
         yield
 
 @pytest.fixture

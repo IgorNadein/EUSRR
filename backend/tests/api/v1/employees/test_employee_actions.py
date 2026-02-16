@@ -217,7 +217,7 @@ def test_delete_requires_perm_or_staff(api_client):
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_dismissal_syncs_to_ldap_if_has_dn(
     mock_update, mock_is_enabled, api_client
@@ -262,7 +262,7 @@ def test_dismissal_syncs_to_ldap_if_has_dn(
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_dismissal_handles_ldap_error_gracefully(
     mock_update, mock_is_enabled, api_client
@@ -308,7 +308,7 @@ def test_dismissal_handles_ldap_error_gracefully(
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_non_dismissal_syncs_activation_to_ldap(
     mock_update, mock_is_enabled, api_client
@@ -355,7 +355,7 @@ def test_non_dismissal_syncs_activation_to_ldap(
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_dismissal_skips_ldap_if_no_dn(
     mock_update, mock_is_enabled, api_client
@@ -388,7 +388,7 @@ def test_dismissal_skips_ldap_if_no_dn(
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_dismissal_works_when_ldap_disabled(
     mock_update, mock_is_enabled, api_client
@@ -431,7 +431,7 @@ def test_dismissal_works_when_ldap_disabled(
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.directory_service.DirectoryService.remove_member')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_dismissal_moves_to_dismissed_ou(
@@ -491,7 +491,7 @@ def test_dismissal_moves_to_dismissed_ou(
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.infrastructure.connections._ldap')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_restoration_moves_from_dismissed_to_users(
@@ -550,7 +550,7 @@ def test_restoration_moves_from_dismissed_to_users(
 
 
 @pytest.mark.django_db
-@patch('api.v1.employees.views._is_ldap_enabled')
+@patch('api.v1.employees.views._helpers._is_ldap_enabled')
 @patch('employees.ldap.infrastructure.connections._ldap')
 @patch('employees.ldap.directory_service.DirectoryService.update_user')
 def test_dismissal_without_department_moves_to_dismissed(
