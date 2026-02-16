@@ -89,28 +89,19 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         if ldap_enabled:
-            from employees.ldap.services.department_service import \
-                DepartmentService
-            from employees.ldap.services.group_service import GroupService
-            from employees.ldap.services.user_service import UserService
+            svc = DirectoryService()
 
-            group_service = GroupService()
-            user_service = UserService(group_service)
-            dept_service = DepartmentService(group_service, user_service)
-
-            scoped_permissions = None
+            permission_codes = None
             if codes is not None:
-                scoped_permissions = list(
-                    DepartmentPermission.objects.filter(code__in=codes)
-                )
+                permission_codes = codes
             elif perms is not None:
-                scoped_permissions = list(perms)
+                permission_codes = [p.code for p in perms]
 
             try:
-                role = dept_service.create_role(
-                    department=dept,
+                role = svc.create_role(
+                    dept=dept,
                     name=name,
-                    scoped_permissions=scoped_permissions,
+                    permission_codes=permission_codes,
                 )
                 return Response(
                     self.get_serializer(
@@ -149,27 +140,12 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         if ldap_enabled:
-            from employees.ldap.services.department_service import \
-                DepartmentService
-            from employees.ldap.services.group_service import GroupService
-            from employees.ldap.services.user_service import UserService
+            svc = DirectoryService()
 
-            group_service = GroupService()
-            user_service = UserService(group_service)
-            dept_service = DepartmentService(group_service, user_service)
-
-            changes = {}
-            if "name" in ser.validated_data:
-                changes["name"] = ser.validated_data["name"]
-            if "scoped_permissions" in ser.validated_data:
-                changes["scoped_permissions"] = ser.validated_data["scoped_permissions"]
-            if "scoped_permission_codes" in ser.validated_data:
-                changes["scoped_permission_codes"] = ser.validated_data[
-                    "scoped_permission_codes"
-                ]
+            new_name = ser.validated_data.get("name")
 
             try:
-                role = dept_service.update_role(instance, changes)
+                role = svc.update_role(instance, name=new_name)
                 return Response(self.get_serializer(role).data)
             except DirectoryLdapError as e:
                 return Response(
@@ -195,17 +171,10 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         if ldap_enabled:
-            from employees.ldap.services.department_service import \
-                DepartmentService
-            from employees.ldap.services.group_service import GroupService
-            from employees.ldap.services.user_service import UserService
-
-            group_service = GroupService()
-            user_service = UserService(group_service)
-            dept_service = DepartmentService(group_service, user_service)
+            svc = DirectoryService()
 
             try:
-                dept_service.delete_role(instance)
+                svc.delete_role(instance)
                 return Response(status=status.HTTP_204_NO_CONTENT)
             except DirectoryLdapError as e:
                 return Response(
@@ -312,16 +281,9 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
         if ldap_enabled:
             try:
-                from employees.ldap.services.department_service import \
-                    DepartmentService
-                from employees.ldap.services.group_service import GroupService
-                from employees.ldap.services.user_service import UserService
+                svc = DirectoryService()
 
-                group_service = GroupService()
-                user_service = UserService(group_service)
-                dept_service = DepartmentService(group_service, user_service)
-
-                assignment = dept_service.assign_role(
+                assignment = svc.assign_role(
                     employee, role, assigned_by)
 
                 return Response(
@@ -384,16 +346,9 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
         if ldap_enabled:
             try:
-                from employees.ldap.services.department_service import \
-                    DepartmentService
-                from employees.ldap.services.group_service import GroupService
-                from employees.ldap.services.user_service import UserService
+                svc = DirectoryService()
 
-                group_service = GroupService()
-                user_service = UserService(group_service)
-                dept_service = DepartmentService(group_service, user_service)
-
-                dept_service.revoke_role(employee, role)
+                svc.revoke_role(employee, role)
 
                 return Response(status=204)
             except DirectoryLdapError as e:

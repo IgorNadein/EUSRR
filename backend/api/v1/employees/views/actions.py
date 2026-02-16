@@ -128,10 +128,6 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
                         if not departments_processed:
                             try:
-                                from employees.ldap.infrastructure.connections import \
-                                    _ldap
-                                from employees.ldap.repositories.ldap_repository import \
-                                    ensure_container_exists
                                 from employees.ldap.utils.ldap_utils import \
                                     get_base_dn_for_employee
 
@@ -146,20 +142,17 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                                     if not current_dn.lower().endswith(
                                         target_base.lower()
                                     ):
-                                        with _ldap() as conn:
-                                            ensure_container_exists(
-                                                conn, target_base)
-                                            new_dn = (
-                                                svc._user_service._move_user_to_base(
-                                                    conn, current_dn, target_base
-                                                )
-                                            )
-                                            sync_state.touch(
-                                                ldap_dn=new_dn, sync_dir="ldap"
+                                        try:
+                                            new_dn = svc.move_user_to_base(
+                                                emp, target_base
                                             )
                                             logger.info(
                                                 f"Dismissed employee without department moved to OU=Dismissed: "
                                                 f"employee_id={emp.id}, new_dn={new_dn}"
+                                            )
+                                        except Exception as move_err:
+                                            logger.error(
+                                                f"Failed to move dismissed employee: {move_err}"
                                             )
                             except Exception as e:
                                 logger.error(
@@ -209,25 +202,17 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                                         settings, "LDAP_USERS_BASE", None
                                     ) or getattr(settings, "LDAP_USER_BASE", None)
                                     if users_base:
-                                        from employees.ldap.infrastructure.connections import \
-                                            _ldap
-                                        from employees.ldap.repositories.ldap_repository import \
-                                            ensure_container_exists
-
-                                        with _ldap() as conn:
-                                            ensure_container_exists(
-                                                conn, users_base)
-                                            new_dn = (
-                                                svc._user_service._move_user_to_base(
-                                                    conn, current_dn, users_base
-                                                )
-                                            )
-                                            sync_state.touch(
-                                                ldap_dn=new_dn, sync_dir="ldap"
+                                        try:
+                                            new_dn = svc.move_user_to_base(
+                                                emp, users_base
                                             )
                                             logger.info(
                                                 f"Restored employee moved from Dismissed to Users: "
                                                 f"employee_id={emp.id}, new_dn={new_dn}"
+                                            )
+                                        except Exception as move_err:
+                                            logger.error(
+                                                f"Failed to move restored employee: {move_err}"
                                             )
                             except Exception as e:
                                 logger.error(
