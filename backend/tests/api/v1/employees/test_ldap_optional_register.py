@@ -2,9 +2,10 @@
 """
 Тесты для RegisterAPIView с опциональной LDAP интеграцией.
 Покрывает тест-кейсы R1-R9 из плана тестирования.
+
+Использует реальный LDAP контейнер для интеграционного тестирования.
 """
 import itertools
-from unittest.mock import Mock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -12,7 +13,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from employees.models import Employee
+from employees.models import Employee, LdapSyncState
 from tests.conftest import _unique_phone
 
 User = get_user_model()
@@ -29,8 +30,8 @@ def test_user_data():
     """Базовые данные для регистрации"""
     return {
         "email": f"test{next(_phone_seq)}@example.com",
-        "first_name": "Test",
-        "last_name": "User",
+        "first_name": "TestUser",
+        "last_name": "LastName",
         "phone_number": _unique_phone(),
         "password": "SecurePass123!",
         "whatsapp": _unique_phone(),
@@ -39,10 +40,9 @@ def test_user_data():
 
 # ---------- Тесты С LDAP (LDAP_ENABLED=True) ----------
 
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
+@pytest.mark.ldap_required
 def test_register_with_ldap_creates_user_in_ldap_and_db(
-    mock_ds_class, api_client, test_user_data, settings
+    api_client, test_user_data, ensure_ldap_enabled, ldap_cleanup
 ):
     """
     R1: Успешная регистрация с LDAP.
@@ -51,17 +51,6 @@ def test_register_with_ldap_creates_user_in_ldap_and_db(
     - Создана запись в БД (unusable_password)
     - is_active=False
     """
-    settings.LDAP_ENABLED = True
-    
-    # Mock DirectoryService
-    mock_service = Mock()
-    mock_service.create_user.return_value = Mock(
-        id=1,
-        email=test_user_data["email"],
-        ldap_dn=f"CN={test_user_data['first_name']} {test_user_data['last_name']},OU=Users,DC=example,DC=com"
-    )
-    mock_ds_class.return_value = mock_service
-    
     url = reverse("api:v1:register")
     response = api_client.post(url, test_user_data, format="json")
     
@@ -73,19 +62,23 @@ def test_register_with_ldap_creates_user_in_ldap_and_db(
     assert user.email_verified is False
     assert not user.has_usable_password()  # Пароль в LDAP, не в БД
     
-    # Проверяем вызов DirectoryService.create_user
-    mock_service.create_user.assert_called_once()
-    call_args = mock_service.create_user.call_args[0][0]  # первый позиционный аргумент (dto)
-    assert call_args.email == test_user_data["email"]
-    assert call_args.password == test_user_data["password"]
+    # Проверяем создание в LDAP
+    sync_state = LdapSyncState.objects.filter(
+        model="employee",
+        object_pk=str(user.pk)
+    ).first()
+    
+    assert sync_state is not None, "Пользователь должен быть синхронизирован с LDAP"
+    assert sync_state.ldap_dn is not None
+    
+    # Добавляем DN в cleanup
+    ldap_cleanup.add_for_deletion(sync_state.ldap_dn)
 
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
+@pytest.mark.ldap_required
 def test_register_with_ldap_duplicate_email_returns_400(
-    mock_ds_class, api_client, test_user_data, settings
+    api_client, test_user_data, ensure_ldap_enabled
 ):
     """R3: Дублирование email возвращает 400"""
-    settings.LDAP_ENABLED = True
     
     # Создаём существующего пользователя
     Employee.objects.create(
@@ -104,7 +97,7 @@ def test_register_with_ldap_duplicate_email_returns_400(
 # ---------- Тесты БЕЗ LDAP (LDAP_ENABLED=False) ----------
 
 def test_register_without_ldap_creates_user_only_in_db(
-    api_client, test_user_data, settings
+    api_client, test_user_data, ensure_ldap_disabled
 ):
     """
     R7: Успешная регистрация без LDAP.
@@ -112,8 +105,6 @@ def test_register_without_ldap_creates_user_only_in_db(
     - Пароль установлен в БД (set_password)
     - is_active=False
     """
-    settings.LDAP_ENABLED = False
-    
     url = reverse("api:v1:register")
     response = api_client.post(url, test_user_data, format="json")
     
@@ -125,12 +116,18 @@ def test_register_without_ldap_creates_user_only_in_db(
     assert user.email_verified is False
     assert user.has_usable_password()  # Пароль в БД
     assert user.check_password(test_user_data["password"])
+    
+    # Проверяем что НЕ создан в LDAP
+    sync_state = LdapSyncState.objects.filter(
+        model="employee",
+        object_pk=str(user.pk)
+    ).first()
+    assert sync_state is None, "Пользователь не должен быть в LDAP"
 
 def test_register_without_ldap_duplicate_email_returns_400(
-    api_client, test_user_data, settings
+    api_client, test_user_data, ensure_ldap_disabled
 ):
     """R9: Дублирование email без LDAP возвращает 400"""
-    settings.LDAP_ENABLED = False
     
     # Создаём существующего пользователя с верифицированным email
     Employee.objects.create(
@@ -148,20 +145,19 @@ def test_register_without_ldap_duplicate_email_returns_400(
 
 # ---------- Параметризованные тесты (оба режима) ----------
 
-@pytest.mark.skip(reason="Requires LDAP mocking improvements")
+@pytest.mark.ldap_optional
 @pytest.mark.parametrize(
     "ldap_enabled", [True, False], ids=["with_ldap", "without_ldap"]
 )
-@patch("api.v1.employees.views.DirectoryService")
 def test_register_validates_required_fields(
-    mock_ds_class, api_client, ldap_enabled, settings
+    api_client, ldap_enabled, settings, ensure_ldap_enabled, ensure_ldap_disabled
 ):
     """Проверка валидации обязательных полей в обоих режимах"""
-    settings.LDAP_ENABLED = ldap_enabled
-    
+    # Используем нужную фикстуру в зависимости от параметра
     if ldap_enabled:
-        mock_service = Mock()
-        mock_ds_class.return_value = mock_service
+        settings.LDAP_ENABLED = True
+    else:
+        settings.LDAP_ENABLED = False
     
     url = reverse("api:v1:register")
     
@@ -170,6 +166,7 @@ def test_register_validates_required_fields(
         "first_name": "Test",
         "last_name": "User",
         "password": "Pass123!",
+        "birth_date": "1990-01-01",
     }, format="json")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     
@@ -178,5 +175,6 @@ def test_register_validates_required_fields(
         "email": "test@example.com",
         "first_name": "Test",
         "last_name": "User",
+        "birth_date": "1990-01-01",
     }, format="json")
     assert response.status_code == status.HTTP_400_BAD_REQUEST

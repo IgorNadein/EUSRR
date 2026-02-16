@@ -59,10 +59,10 @@ class RegisterSerializer(serializers.Serializer):
 
     gender = serializers.ChoiceField(
         required=False,
-        allow_null=True,
-        choices=((1, "Мужской"), (2, "Женский")),
+        default=0,  # "Не указан"
+        choices=((0, "Не указан"), (1, "Мужской"), (2, "Женский")),
         error_messages={
-            'invalid_choice': 'Укажите пол: 1 - Мужской, 2 - Женский.'
+            'invalid_choice': 'Укажите пол: 0 - Не указан, 1 - Мужской, 2 - Женский.'
         }
     )
 

@@ -288,7 +288,7 @@ class RegisterAPIView(APIView):
         emp.whatsapp = v.get("whatsapp", "")
         emp.wechat = v.get("wechat", "")
         emp.birth_date = v["birth_date"]
-        emp.gender = v["gender"]  # обязательное поле
+        emp.gender = v.get("gender")  # опциональное поле
 
         if v.get("patronymic"):
             emp.patronymic = v["patronymic"]

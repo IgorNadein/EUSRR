@@ -30,8 +30,8 @@ def admin_user():
 
 # ---------- Создание группы ----------
 
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
+@pytest.mark.ldap_required
+@patch("api.v1.employees.views.auth.DirectoryService")
 def test_create_group_with_ldap(
     mock_ds_class, api_client, admin_user, settings
 ):
@@ -77,8 +77,8 @@ def test_create_group_without_ldap(
 
 # ---------- Добавление участников ----------
 
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
+@pytest.mark.ldap_required
+@patch("api.v1.employees.views.auth.DirectoryService")
 def test_add_members_with_ldap(
     mock_ds_class, api_client, admin_user, settings
 ):
@@ -141,8 +141,8 @@ def test_add_members_without_ldap(
 
 # ---------- Удаление группы ----------
 
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
+@pytest.mark.ldap_required
+@patch("api.v1.employees.views.auth.DirectoryService")
 def test_destroy_group_with_ldap(
     mock_ds_class, api_client, admin_user, settings
 ):
@@ -190,8 +190,8 @@ def test_destroy_group_without_ldap(
 
 # ---------- Получение участников ----------
 
-@pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
-@patch("api.v1.employees.views.DirectoryService")
+@pytest.mark.ldap_required
+@patch("api.v1.employees.views.auth.DirectoryService")
 def test_get_members_with_ldap(
     mock_ds_class, api_client, admin_user, settings
 ):
