@@ -53,7 +53,7 @@ def api_client() -> APIClient:
 # =========================
 
 @pytest.mark.django_db
-def test_list_filtered_by_department(api_client: APIClient):
+def test_list_filtered_by_department(api_client: APIClient, ensure_ldap_disabled):
     d1 = Department.objects.create(name="Dept A")
     d2 = Department.objects.create(name="Dept B")
 
@@ -83,7 +83,7 @@ def test_list_filtered_by_department(api_client: APIClient):
     assert ids == {r1.id, r2.id}
 
 @pytest.mark.django_db
-def test_create_requires_assign_department_role(api_client: APIClient):
+def test_create_requires_assign_department_role(api_client: APIClient, ensure_ldap_disabled):
     d = Department.objects.create(name="Dept")
     user = make_user("m@example.com")
     api_client.force_authenticate(user=user)
@@ -106,7 +106,7 @@ def test_create_requires_assign_department_role(api_client: APIClient):
     assert "permissions" in data and isinstance(data["permissions"], list)
 
 @pytest.mark.django_db
-def test_update_and_destroy_scope_enforced(api_client: APIClient):
+def test_update_and_destroy_scope_enforced(api_client: APIClient, ensure_ldap_disabled):
     d1 = Department.objects.create(name="Dept1")
     d2 = Department.objects.create(name="Dept2")
     user = make_user("m@example.com")
@@ -136,7 +136,7 @@ def test_update_and_destroy_scope_enforced(api_client: APIClient):
     assert resp.status_code in (status.HTTP_204_NO_CONTENT, status.HTTP_200_OK)
 
 @pytest.mark.django_db
-def test_perm_choices_and_perms_and_set_perms(api_client: APIClient):
+def test_perm_choices_and_perms_and_set_perms(api_client: APIClient, ensure_ldap_disabled):
     # засеем три стандартных кода
     ensure_dept_perm("manage_department", "Управлять отделом")
     ensure_dept_perm("change_department_head", "Назначать руководителя")
@@ -185,7 +185,7 @@ def test_perm_choices_and_perms_and_set_perms(api_client: APIClient):
     assert role.scoped_permissions.count() == 0
 
 @pytest.mark.django_db
-def test_set_perms_validates_payload(api_client: APIClient):
+def test_set_perms_validates_payload(api_client: APIClient, ensure_ldap_disabled):
     d = Department.objects.create(name="Dept")
     user = make_user("m@example.com")
     api_client.force_authenticate(user=user)
@@ -203,7 +203,7 @@ def test_set_perms_validates_payload(api_client: APIClient):
     assert resp.status_code == 400
 
 @pytest.mark.django_db
-def test_back_compat_permissions_field_contains_ids(api_client: APIClient):
+def test_back_compat_permissions_field_contains_ids(api_client: APIClient, ensure_ldap_disabled):
     d = Department.objects.create(name="Dept")
     user = make_user("m@example.com")
     api_client.force_authenticate(user=user)
@@ -221,7 +221,7 @@ def test_back_compat_permissions_field_contains_ids(api_client: APIClient):
     assert set(data["permissions"]) == {dp_manage.id, dp_assign.id}
 
 @pytest.mark.django_db
-def test_create_with_scoped_permission_codes_and_update_name(api_client: APIClient):
+def test_create_with_scoped_permission_codes_and_update_name(api_client: APIClient, ensure_ldap_disabled):
     d = Department.objects.create(name="Dept")
     ensure_dept_perm("manage_department")
 
@@ -251,7 +251,7 @@ def test_create_with_scoped_permission_codes_and_update_name(api_client: APIClie
     assert resp.json()["name"] == "Lead+1"
 
 @pytest.mark.django_db
-def test_cross_department_access_denied_for_set_perms(api_client: APIClient):
+def test_cross_department_access_denied_for_set_perms(api_client: APIClient, ensure_ldap_disabled):
     d1 = Department.objects.create(name="Dept1")
     d2 = Department.objects.create(name="Dept2")
 

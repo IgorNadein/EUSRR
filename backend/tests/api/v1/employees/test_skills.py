@@ -66,7 +66,7 @@ def test_create_allowed_for_regular_user(api_client):
     assert Skill.objects.filter(name="Go").exists()
 
 @pytest.mark.django_db
-def test_update_delete_permissions(api_client):
+def test_update_delete_permissions(api_client, ensure_ldap_disabled):
     user = _mk_user()
     api_client.force_authenticate(user=user)
     s = Skill.objects.create(name="Docker")
@@ -121,7 +121,7 @@ def test_bulk_create_by_regular_user(api_client):
     assert created_names == {"Python", "SQL"}
 
 @pytest.mark.django_db
-def test_merge_requires_perm_and_reassigns(api_client):
+def test_merge_requires_perm_and_reassigns(api_client, ensure_ldap_disabled):
     user = _mk_user()
     api_client.force_authenticate(user=user)
 

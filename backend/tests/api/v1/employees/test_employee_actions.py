@@ -29,7 +29,7 @@ def _any_non_dismissed():
     pytest.skip("No non-dismissed action in ACTION_CHOICES")
 
 @pytest.mark.django_db
-def test_list_requires_auth_and_filtering(api_client):
+def test_list_requires_auth_and_filtering(api_client, ensure_ldap_disabled):
     url = reverse("api:v1:employee-actions-list")
     # unauth
     assert api_client.get(url).status_code in (401, 403)
@@ -62,7 +62,7 @@ def test_list_requires_auth_and_filtering(api_client):
     assert ids == baseline_emp | {a1.id}
 
 @pytest.mark.django_db
-def test_create_requires_perm_or_staff(api_client):
+def test_create_requires_perm_or_staff(api_client, ensure_ldap_disabled):
     actor = make_user()
     target = make_user()
     api_client.force_authenticate(user=actor)
@@ -95,7 +95,7 @@ def test_create_requires_perm_or_staff(api_client):
     assert EmployeeAction.objects.filter(employee=target).count() == baseline2 + 1
 
 @pytest.mark.django_db
-def test_dismissal_deactivates_employee_and_links(api_client):
+def test_dismissal_deactivates_employee_and_links(api_client, ensure_ldap_disabled):
     staff = make_user(staff=True)
     api_client.force_authenticate(user=staff)
     emp = make_user()
@@ -120,7 +120,7 @@ def test_dismissal_deactivates_employee_and_links(api_client):
     assert link.is_active is False and link.date_to is not None
 
 @pytest.mark.django_db
-def test_non_dismissal_activates_employee(api_client):
+def test_non_dismissal_activates_employee(api_client, ensure_ldap_disabled):
     staff = make_user(staff=True)
     api_client.force_authenticate(user=staff)
     emp = make_user()
@@ -142,7 +142,7 @@ def test_non_dismissal_activates_employee(api_client):
     assert emp.is_active is True
 
 @pytest.mark.django_db
-def test_update_to_dismissed_applies_effects(api_client):
+def test_update_to_dismissed_applies_effects(api_client, ensure_ldap_disabled):
     actor = make_user()
     api_client.force_authenticate(user=actor)
     grant_permission(actor, "employees.add_employeeaction")
@@ -160,7 +160,7 @@ def test_update_to_dismissed_applies_effects(api_client):
     assert emp.is_active is False
 
 @pytest.mark.django_db
-def test_delete_requires_perm_or_staff(api_client):
+def test_delete_requires_perm_or_staff(api_client, ensure_ldap_disabled):
     actor = make_user()
     api_client.force_authenticate(user=actor)
     emp = make_user()

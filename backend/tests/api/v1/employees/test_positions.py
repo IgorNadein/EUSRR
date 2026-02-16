@@ -25,7 +25,7 @@ def _flush_perm_cache(user):
 # ---------- tests ----------
 
 @pytest.mark.django_db
-def test_list_requires_auth(api_client):
+def test_list_requires_auth(api_client, ensure_ldap_disabled):
     url = reverse("api:v1:positions-list")
 
     # unauth -> 401
@@ -45,7 +45,7 @@ def test_list_requires_auth(api_client):
     assert {"Manager", "Engineer"} <= set(names)
 
 @pytest.mark.django_db
-def test_create_permissions(api_client):
+def test_create_permissions(api_client, ensure_ldap_disabled):
     url = reverse("api:v1:positions-list")
 
     # обычный пользователь без прав -> 403
@@ -67,7 +67,7 @@ def test_create_permissions(api_client):
     assert resp.status_code == status.HTTP_201_CREATED
 
 @pytest.mark.django_db
-def test_update_permissions_and_search_ordering(api_client):
+def test_update_permissions_and_search_ordering(api_client, ensure_ldap_disabled):
     p1 = Position.objects.create(name="Alpha", description="one")
     p2 = Position.objects.create(name="Beta", description="two")
 
@@ -99,7 +99,7 @@ def test_update_permissions_and_search_ordering(api_client):
     assert names == sorted(names, reverse=True)
 
 @pytest.mark.django_db
-def test_delete_permissions(api_client):
+def test_delete_permissions(api_client, ensure_ldap_disabled):
     pos = Position.objects.create(name="ToDelete")
     user = make_user("user@example.com")
     api_client.force_authenticate(user=user)
@@ -116,7 +116,7 @@ def test_delete_permissions(api_client):
     assert not Position.objects.filter(id=pos.id).exists()
 
 @pytest.mark.django_db
-def test_set_groups_requires_special_perm(api_client):
+def test_set_groups_requires_special_perm(api_client, ensure_ldap_disabled):
     pos = Position.objects.create(name="RoleOwner")
     grp1 = Group.objects.create(name="grp1")
     grp2 = Group.objects.create(name="grp2")
@@ -138,7 +138,7 @@ def test_set_groups_requires_special_perm(api_client):
     assert set(pos.groups.values_list("id", flat=True)) == {grp1.id, grp2.id}
 
 @pytest.mark.django_db
-def test_add_and_remove_groups_and_permissions_endpoint(api_client):
+def test_add_and_remove_groups_and_permissions_endpoint(api_client, ensure_ldap_disabled):
     # используем гарантированно существующие права
     perm_view_employee = Permission.objects.get(
         content_type__app_label="employees", codename="view_employee"
@@ -192,7 +192,7 @@ def test_add_and_remove_groups_and_permissions_endpoint(api_client):
     assert any(g["name"] == "B" for g in resp.data["groups_verbose"])
 
 @pytest.mark.django_db
-def test_groups_payload_validation(api_client):
+def test_groups_payload_validation(api_client, ensure_ldap_disabled):
     pos = Position.objects.create(name="Validator")
     user = make_user("user@example.com")
     api_client.force_authenticate(user=user)

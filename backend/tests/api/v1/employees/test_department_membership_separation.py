@@ -88,7 +88,7 @@ def url_set_member_role(dept_id: int) -> str:
 # =========================
 
 @pytest.mark.django_db
-def test_add_member_requires_manage_and_does_not_assign_role(api_client: APIClient):
+def test_add_member_requires_manage_and_does_not_assign_role(api_client: APIClient, ensure_ldap_disabled):
     """
     add_member:
       - 401 без авторизации
@@ -123,7 +123,7 @@ def test_add_member_requires_manage_and_does_not_assign_role(api_client: APIClie
     assert link.role_id is None  # add_member не должен трогать роль
 
 @pytest.mark.django_db
-def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
+def test_all_three_actions_require_auth_and_permissions(api_client: APIClient, ensure_ldap_disabled):
     """
     Сетка проверок прав для трёх эндпоинтов отдела:
       - без авторизации все три эндпоинта возвращают 401
@@ -219,7 +219,7 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
 # =========================
 
 @pytest.mark.django_db
-def test_set_member_role_requires_assign_not_manage(api_client: APIClient):
+def test_set_member_role_requires_assign_not_manage(api_client: APIClient, ensure_ldap_disabled):
     """
     set_member_role:
       - 403 с manage_department, если нет assign_department_role
@@ -304,7 +304,7 @@ def test_set_member_role_does_not_create_membership_and_does_not_toggle_active(
 # =========================
 
 @pytest.mark.django_db
-def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
+def test_all_three_actions_require_auth_and_permissions(api_client: APIClient, ensure_ldap_disabled):
     """
     Сетка проверок прав для трёх эндпоинтов отдела:
       - без авторизации все три эндпоинта возвращают 401
@@ -396,7 +396,7 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
     )
 
 @pytest.mark.django_db
-def test_add_member_ignores_role_parameter(api_client: APIClient):
+def test_add_member_ignores_role_parameter(api_client: APIClient, ensure_ldap_disabled):
     """
     add_member не должен назначать роль даже если клиент прислал role_id.
     """
@@ -420,7 +420,7 @@ def test_add_member_ignores_role_parameter(api_client: APIClient):
     assert link.role_id is None, "add_member не должен трогать роль"
 
 @pytest.mark.django_db
-def test_remove_member_requires_manage_and_does_not_touch_role(api_client: APIClient):
+def test_remove_member_requires_manage_and_does_not_touch_role(api_client: APIClient, ensure_ldap_disabled):
     """
     remove_member (hard delete):
       - 403 при отсутствии manage_department (даже если есть assign_department_role)
