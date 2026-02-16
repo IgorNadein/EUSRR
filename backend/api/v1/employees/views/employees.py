@@ -96,7 +96,7 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             password = self.request.data.get('password')
             avatar_file = self.request.data.get('avatar')
             avatar_bytes = None
-            
+
             if avatar_file and hasattr(avatar_file, 'read'):
                 try:
                     if hasattr(avatar_file, 'seek'):
@@ -104,13 +104,14 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
                     avatar_bytes = avatar_file.read()
                 except Exception:
                     pass
-            
+
             dto = DirectoryUserDTO(
                 username=instance.username if instance.username else None,
                 first_name=instance.first_name,
                 last_name=instance.last_name,
                 email=instance.email,
-                phone_e164=str(instance.phone_number) if instance.phone_number else '',
+                phone_e164=str(
+                    instance.phone_number) if instance.phone_number else '',
                 department_dn=self.request.data.get('department_dn'),
                 group_cns=self.request.data.get('group_cns', []) or [],
                 initial_password=password,
@@ -123,13 +124,14 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             # При обновлении передаем инстанс и изменения
             changes = {}
             request_data = dict(self.request.data)
-            
+
             # Поля которые идут в LDAP
-            ldap_fields = {'first_name', 'last_name', 'email', 'phone_number', 'is_active', 'password'}
+            ldap_fields = {'first_name', 'last_name', 'email',
+                           'phone_number', 'is_active', 'password'}
             for field in ldap_fields:
                 if field in request_data:
                     changes[field] = request_data[field]
-            
+
             # Аватар -> avatar_bytes
             avatar_file = request_data.get('avatar')
             if avatar_file and hasattr(avatar_file, 'read'):
@@ -139,15 +141,16 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
                     changes['avatar_bytes'] = avatar_file.read()
                 except Exception:
                     pass
-            
+
             # Должность
             if 'position' in request_data or 'position_id' in request_data:
-                changes['position'] = request_data.get('position') or request_data.get('position_id')
-            
+                changes['position'] = request_data.get(
+                    'position') or request_data.get('position_id')
+
             # Отдел (для перемещения)
             move_to_department_dn = request_data.get('department_dn')
             group_cns = request_data.get('group_cns')
-            
+
             return {
                 'instance': instance,
                 'changes': changes,
@@ -180,21 +183,21 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             {'detail': f'Ошибка внешней системы: {str(error)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    
+
     def handle_external_sync_result(self, instance, result, action):
         """Обработка успешного результата синхронизации с LDAP.
-        
+
         Вызывается миксином после успешной синхронизации.
         """
         if action != 'create' or not isinstance(result, dict):
             return
-        
+
         dn = result.get('dn')
         guid = result.get('guid')
-        
+
         if not dn:
             return
-        
+
         # Сохраняем sync state
         st, _ = LdapSyncState.objects.get_or_create(
             model="employee", object_pk=str(instance.pk)
@@ -205,13 +208,15 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             sync_dir="ldap",
             last_django_modify_ts=timezone.now(),
         )
-        
+
         # Записываем Django PK в LDAP employeeNumber для обратной связки
         try:
             from employees.ldap.infrastructure.connections import _ldap
-            from employees.ldap.repositories.ldap_repository import modify_user_attrs
-            
-            employee_id_attr = getattr(settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
+            from employees.ldap.repositories.ldap_repository import \
+                modify_user_attrs
+
+            employee_id_attr = getattr(
+                settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
             with _ldap() as conn:
                 modify_user_attrs(
                     conn, dn,
@@ -220,7 +225,7 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
                 )
         except Exception as e:
             logger.warning(f"Failed to set employeeNumber in LDAP: {e}")
-        
+
         # Назначаем должность если указана
         if instance.position_id:
             try:
@@ -366,57 +371,14 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             return EmployeeListSerializer
         return EmployeeSerializer
 
-    def create(self, request, *args, **kwargs):
-        """Создание пользователя админом.
-        
-        Использует ExternalSystemSyncMixin для автоматической синхронизации с LDAP.
-        Миксин управляет транзакциями и откатывает БД если LDAP упал.
-        """
-        if not (request.user.is_staff or request.user.is_superuser):
-            return Response({"detail": "Only staff can create users."}, status=403)
-
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        # Валидация обязательных полей
-        if not serializer.validated_data.get("email"):
-            return Response({"detail": "email обязателен"}, status=400)
-        if not serializer.validated_data.get("phone_number"):
-            return Response({"detail": "phone_number обязателен"}, status=400)
-        if not request.data.get("password"):
-            return Response({"detail": "password обязателен"}, status=400)
-        
-        # Проверка контактов
-        vd = serializer.validated_data
-        if not (vd.get("whatsapp") or vd.get("telegram") or vd.get("wechat")):
-            return Response(
-                {"detail": "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram"},
-                status=400,
-            )
-        
-        # Миксин автоматически вызовет perform_create() -> LDAP sync
-        return super().create(request, *args, **kwargs)
-    
     def perform_create(self, serializer):
-        """Переопределяем для кастомной логики создания.
-        
-        ExternalSystemSyncMixin автоматически обернет это в транзакцию
-        и вызовет LDAP синхронизацию после успешного сохранения.
+        """Кастомная логика создания: unusable password для LDAP пользователей.
+
+        Миксин автоматически обернет в транзакцию и вызовет LDAP sync.
         """
         password = self.request.data.get("password")
-        avatar_bytes = None
-        avatar_file = serializer.validated_data.get("avatar")
-        
-        if avatar_file and hasattr(avatar_file, "read"):
-            try:
-                avatar_bytes = avatar_file.read()
-                if hasattr(avatar_file, "seek"):
-                    avatar_file.seek(0)
-            except Exception:
-                pass
-        
         ldap_enabled = _is_ldap_enabled()
-        
+
         # Создаем пользователя в БД
         if ldap_enabled:
             # LDAP-managed пользователь с unusable password
@@ -429,22 +391,41 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             instance = serializer.save(is_ldap_managed=False)
             instance.set_password(password)
             instance.save(update_fields=["password"])
-        
-        # Сохраняем аватар если есть
-        if avatar_bytes:
-            instance.avatar.save(
-                f"avatar_{instance.id}.jpg",
-                ContentFile(avatar_bytes),
-                save=False,
-            )
-            instance.save(update_fields=["avatar"])
-        
-        # Навыки
+
+        # Навыки (если есть)
         skills_ids = self.request.data.get("skills_ids", [])
         if skills_ids:
             instance.skills.set(skills_ids)
-        
-        # Миксин вызовет LDAP синхронизацию автоматически после этого
+
+    def perform_update(self, serializer):
+        """Обработка изменения email для верификации.
+
+        Миксин автоматически обернет в транзакцию и вызовет LDAP sync.
+        """
+        instance = serializer.instance
+        old_email = instance.email
+
+        # Стандартное сохранение (миксин добавит LDAP sync)
+        serializer.save()
+
+        # Если email изменился - сбрасываем верификацию
+        new_email = instance.email
+        if new_email and new_email.lower() != old_email.lower():
+            instance.email_verified = False
+            instance.email_activation_code = get_random_string(6, "0123456789")
+            instance.save(
+                update_fields=["email_verified", "email_activation_code"])
+
+            try:
+                send_templated_mail(
+                    subject="Подтверждение нового email",
+                    to=[instance.email],
+                    template_base="emails/registration_verify_code",
+                    context={"code": instance.email_activation_code,
+                             "user": instance},
+                )
+            except Exception:
+                pass
 
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
@@ -475,8 +456,9 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             data = self.get_serializer(instance, context=ctx).data
             return Response(data, status=200)
 
-        # PATCH — используем стандартный механизм partial_update
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        # PATCH — используем стандартный механизм (миксин управляет LDAP sync)
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data, status=200)
@@ -729,69 +711,3 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             ctx["include_actions"] = True
             ctx["include_action_history"] = True
         return ctx
-
-    def partial_update(self, request, *args, **kwargs):
-        """Частичное обновление.
-        
-        Миксин автоматически управляет транзакциями и LDAP синхронизацией.
-        """
-        # Обработка изменения email для отправки верификации
-        instance = self.get_object()
-        old_email = instance.email
-        
-        # Вызываем стандартный механизм обновления через миксин
-        response = super().partial_update(request, *args, **kwargs)
-        
-        # После успешного обновления проверяем изменение email
-        if response.status_code == 200:
-            instance.refresh_from_db()
-            new_email = instance.email
-            
-            if new_email and new_email.lower() != old_email.lower():
-                # Email изменился - сбрасываем верификацию
-                instance.email_verified = False
-                instance.email_activation_code = get_random_string(6, "0123456789")
-                instance.save(update_fields=["email_verified", "email_activation_code"])
-                
-                try:
-                    send_templated_mail(
-                        subject="Подтверждение нового email",
-                        to=[instance.email],
-                        template_base="emails/registration_verify_code",
-                        context={"code": instance.email_activation_code, "user": instance},
-                    )
-                except Exception:
-                    pass
-                
-                # Обновляем response data
-                if isinstance(response.data, dict):
-                    response.data["email_verified"] = False
-        
-        return response
-    
-    def perform_update(self, serializer):
-        """Переопределяем для обработки аватара и специальных полей.
-        
-        Миксин автоматически обернет в транзакцию и вызовет LDAP sync.
-        """
-        # Обработка аватара
-        avatar_file = serializer.validated_data.get("avatar")
-        if avatar_file and hasattr(avatar_file, "read"):
-            try:
-                if hasattr(avatar_file, "seek"):
-                    avatar_file.seek(0)
-                avatar_bytes = avatar_file.read()
-                
-                instance = serializer.instance
-                instance.avatar.save(
-                    avatar_file.name,
-                    ContentFile(avatar_bytes),
-                    save=False,
-                )
-                # Убираем avatar из validated_data чтобы serializer не пытался его сохранить
-                serializer.validated_data.pop("avatar", None)
-            except Exception as e:
-                logger.warning(f"Failed to save avatar: {e}")
-        
-        # Стандартное сохранение
-        serializer.save()
