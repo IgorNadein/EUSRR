@@ -36,13 +36,13 @@ from employees.ldap.directory_service import DirectoryService
 class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
-    
+
     # Сервис для работы с внешней системой
     external_sync_service = DirectoryService()
-    
+
     # Включить/выключить синхронизацию
     external_sync_enabled = True
-    
+
     def get_external_sync_method(self, action):
         """Маппинг: action ViewSet -> метод внешнего сервиса"""
         return {
@@ -51,7 +51,7 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             'partial_update': 'update_user_ldap',   # PATCH /employees/{id}/
             'destroy': 'delete_user_ldap',          # DELETE /employees/{id}/
         }.get(action)
-    
+
     def prepare_external_data(self, instance, action):
         """Подготовка данных для передачи в LDAP"""
         if action == 'create':
@@ -67,11 +67,11 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
         elif action == 'destroy':
             return {'user_dn': instance.ldap_dn}
         return {}
-    
+
     def handle_external_sync_error(self, error, instance, action):
         """Кастомная обработка ошибок LDAP"""
         from employees.ldap.errors import LDAPConnectionError, LDAPOperationError
-        
+
         if isinstance(error, LDAPConnectionError):
             return Response(
                 {'detail': 'LDAP сервер недоступен. Попробуйте позже.'},
@@ -82,7 +82,7 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
                 {'detail': f'Ошибка LDAP операции: {error.message}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Для остальных ошибок - стандартная обработка
         return super().handle_external_sync_error(error, instance, action)
 ```
@@ -96,7 +96,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
     external_sync_service = DirectoryService()
-    
+
     @with_external_sync(method_map={
         'create': 'create_user_ldap',
         'update': 'update_user_ldap',
@@ -140,10 +140,10 @@ try:
         # 1. Сохраняем в БД
         db_operation(serializer)
         instance = serializer.instance
-        
+
         # 2. Синхронизируем с LDAP
         ldap_service.create_user_ldap(user=instance)
-        
+
         # Если все ОК - commit
 except LDAPError as e:
     # При ошибке LDAP - автоматический rollback БД
@@ -157,14 +157,14 @@ except LDAPError as e:
 ```python
 class DepartmentViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
     external_sync_service = DirectoryService()
-    
+
     def get_external_sync_method(self, action):
         return {
             'create': 'create_department_ldap',
             'update': 'update_department_ldap',
             'destroy': 'delete_department_ldap',
         }.get(action)
-    
+
     def prepare_external_data(self, instance, action):
         return {'department': instance}
 ```
@@ -178,7 +178,7 @@ class DepartmentViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
 def create_user_ldap(self, user):
     """Создает пользователя в LDAP и возвращает DN."""
     dn = self._user_service.create_in_ldap(user)
-    
+
     # Возвращаем данные для обновления БД
     return {
         'update_db': {
@@ -201,11 +201,11 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
         # Синхронизируем только если LDAP включен в настройках
         if not settings.LDAP_ENABLED:
             return None
-        
+
         # Синхронизируем только активных пользователей
         if action == 'create' and not self.request.data.get('is_active'):
             return None
-        
+
         return {
             'create': 'create_user_ldap',
             'update': 'update_user_ldap',
@@ -220,18 +220,18 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
     def activate(self, request, pk=None):
         """Активация пользователя."""
         instance = self.get_object()
-        
+
         with transaction.atomic():
             instance.is_active = True
             instance.save()
-            
+
             # Синхронизируем с LDAP
             try:
                 self.external_sync_service.activate_user_ldap(user=instance)
             except LDAPError:
                 transaction.set_rollback(True)
                 raise
-        
+
         return Response({'status': 'activated'})
 ```
 
@@ -244,13 +244,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         try:
             with transaction.atomic():
                 # Создаем в БД
                 self.perform_create(serializer)
                 instance = serializer.instance
-                
+
                 # Синхронизируем с LDAP
                 svc = DirectoryService()
                 try:
@@ -258,11 +258,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 except LDAPError as e:
                     # Откат
                     raise ValidationError({'ldap': str(e)})
-                
+
             return Response(serializer.data, status=201)
         except Exception as e:
             return Response({'detail': str(e)}, status=500)
-    
+
     # Аналогично для update, partial_update, destroy...
     # Дублирование кода в каждом методе!
 ```
@@ -278,14 +278,14 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 ```python
 class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
     external_sync_service = DirectoryService()
-    
+
     def get_external_sync_method(self, action):
         return {
             'create': 'create_user_ldap',
             'update': 'update_user_ldap',
             'destroy': 'delete_user_ldap',
         }.get(action)
-    
+
     def prepare_external_data(self, instance, action):
         return {'user': instance}
 ```
@@ -323,17 +323,17 @@ def mock_ldap_service(monkeypatch):
     """Мокает DirectoryService."""
     mock = Mock()
     mock.create_user_ldap = Mock(return_value={'update_db': {'ldap_dn': 'cn=test'}})
-    
+
     from api.v1.employees.views import EmployeeViewSet
     monkeypatch.setattr(EmployeeViewSet, 'external_sync_service', mock)
-    
+
     return mock
 
 def test_create_employee_with_mock_ldap(api_client, mock_ldap_service):
     """Тест с моком LDAP."""
     response = api_client.post('/api/v1/employees/', {...})
     assert response.status_code == 201
-    
+
     # Проверяем что LDAP вызвался
     mock_ldap_service.create_user_ldap.assert_called_once()
 ```
@@ -349,7 +349,7 @@ class DirectoryService:
         """ТОЛЬКО LDAP операция, БД не трогает."""
         dn = self._user_service.create_in_ldap(user, password)
         return {'update_db': {'ldap_dn': dn}}
-    
+
     # Старый метод для обратной совместимости
     def create_user(self, dto):
         """DEPRECATED: Использует create_user_ldap."""
@@ -368,10 +368,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 # После
 class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
     external_sync_service = DirectoryService()
-    
+
     def get_external_sync_method(self, action):
         return {'create': 'create_user_ldap'}.get(action)
-    
+
     def prepare_external_data(self, instance, action):
         return {'user': instance, 'password': self.request.data.get('password')}
 ```
