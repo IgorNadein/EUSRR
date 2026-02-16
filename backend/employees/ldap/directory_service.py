@@ -95,7 +95,9 @@ class DirectoryService:
     def update_user_in_ldap_only(
         self,
         instance: Employee,
-        changes: Dict[str, Any]
+        changes: Dict[str, Any],
+        move_to_department_dn: Optional[str] = None,
+        group_cns: Optional[List[str]] = None
     ) -> dict[str, Any]:
         """Обновляет пользователя ТОЛЬКО в LDAP.
 
@@ -104,6 +106,8 @@ class DirectoryService:
         Args:
             instance (Employee): Инстанс сотрудника с актуальными данными из БД.
             changes (Dict[str, Any]): Изменения из request.data для синхронизации в LDAP.
+            move_to_department_dn (Optional[str]): DN отдела для перемещения.
+            group_cns (Optional[List[str]]): Список CN групп для синхронизации.
 
         Returns:
             dict: Пустой dict или данные для дополнительного обновления БД.
@@ -111,7 +115,9 @@ class DirectoryService:
         Raises:
             DirectoryLdapError: Ошибка синхронизации с LDAP.
         """
-        return self._user_service.update_user_in_ldap_only(instance, changes)
+        return self._user_service.update_user_in_ldap_only(
+            instance, changes, move_to_department_dn, group_cns
+        )
 
     def delete_user_in_ldap_only(self, instance: Employee) -> None:
         """Удаляет пользователя ТОЛЬКО из LDAP.

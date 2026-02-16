@@ -121,9 +121,38 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
 
         elif action in ['update', 'partial_update']:
             # При обновлении передаем инстанс и изменения
+            changes = {}
+            request_data = dict(self.request.data)
+            
+            # Поля которые идут в LDAP
+            ldap_fields = {'first_name', 'last_name', 'email', 'phone_number', 'is_active', 'password'}
+            for field in ldap_fields:
+                if field in request_data:
+                    changes[field] = request_data[field]
+            
+            # Аватар -> avatar_bytes
+            avatar_file = request_data.get('avatar')
+            if avatar_file and hasattr(avatar_file, 'read'):
+                try:
+                    if hasattr(avatar_file, 'seek'):
+                        avatar_file.seek(0)
+                    changes['avatar_bytes'] = avatar_file.read()
+                except Exception:
+                    pass
+            
+            # Должность
+            if 'position' in request_data or 'position_id' in request_data:
+                changes['position'] = request_data.get('position') or request_data.get('position_id')
+            
+            # Отдел (для перемещения)
+            move_to_department_dn = request_data.get('department_dn')
+            group_cns = request_data.get('group_cns')
+            
             return {
                 'instance': instance,
-                'changes': dict(self.request.data)
+                'changes': changes,
+                'move_to_department_dn': move_to_department_dn,
+                'group_cns': group_cns
             }
 
         elif action == 'destroy':
@@ -876,9 +905,67 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
         return ctx
 
     def partial_update(self, request, *args, **kwargs):
-        """Частичное обновление: сначала LDAP-совместимые поля → затем DB-only."""
-        emp = self.get_object()
-        result = self._perform_user_update(emp, request.data, is_partial=True)
-        if isinstance(result, Response):
-            return result
-        return Response(result["data"], status=200)
+        """Частичное обновление.
+        
+        Миксин автоматически управляет транзакциями и LDAP синхронизацией.
+        """
+        # Обработка изменения email для отправки верификации
+        instance = self.get_object()
+        old_email = instance.email
+        
+        # Вызываем стандартный механизм обновления через миксин
+        response = super().partial_update(request, *args, **kwargs)
+        
+        # После успешного обновления проверяем изменение email
+        if response.status_code == 200:
+            instance.refresh_from_db()
+            new_email = instance.email
+            
+            if new_email and new_email.lower() != old_email.lower():
+                # Email изменился - сбрасываем верификацию
+                instance.email_verified = False
+                instance.email_activation_code = get_random_string(6, "0123456789")
+                instance.save(update_fields=["email_verified", "email_activation_code"])
+                
+                try:
+                    send_templated_mail(
+                        subject="Подтверждение нового email",
+                        to=[instance.email],
+                        template_base="emails/registration_verify_code",
+                        context={"code": instance.email_activation_code, "user": instance},
+                    )
+                except Exception:
+                    pass
+                
+                # Обновляем response data
+                if isinstance(response.data, dict):
+                    response.data["email_verified"] = False
+        
+        return response
+    
+    def perform_update(self, serializer):
+        """Переопределяем для обработки аватара и специальных полей.
+        
+        Миксин автоматически обернет в транзакцию и вызовет LDAP sync.
+        """
+        # Обработка аватара
+        avatar_file = serializer.validated_data.get("avatar")
+        if avatar_file and hasattr(avatar_file, "read"):
+            try:
+                if hasattr(avatar_file, "seek"):
+                    avatar_file.seek(0)
+                avatar_bytes = avatar_file.read()
+                
+                instance = serializer.instance
+                instance.avatar.save(
+                    avatar_file.name,
+                    ContentFile(avatar_bytes),
+                    save=False,
+                )
+                # Убираем avatar из validated_data чтобы serializer не пытался его сохранить
+                serializer.validated_data.pop("avatar", None)
+            except Exception as e:
+                logger.warning(f"Failed to save avatar: {e}")
+        
+        # Стандартное сохранение
+        serializer.save()
