@@ -1,6 +1,7 @@
 # api/auth/serializers.py
-from api.v1.employees.views import PHONE_FIELD, _normalize_phone
+from api.v1.employees.views._helpers import PHONE_FIELD
 from django.contrib.auth import get_user_model
+from employees.utils import _normalize_phone
 from employees.models import Employee
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
