@@ -64,6 +64,70 @@ class DirectoryService:
 
     # ============================ USERS ============================ #
 
+    # ==================== NEW ARCHITECTURE: PURE LDAP METHODS ==================== #
+
+    def create_user_in_ldap_only(self, dto: DirectoryUserDTO, password: str = None) -> dict[str, Any]:
+        """Создаёт пользователя ТОЛЬКО в LDAP, возвращает данные для БД.
+        
+        Новая архитектура для разделения ответственности:
+        - View создает Employee в БД (в транзакции)
+        - Затем вызывает этот метод для синхронизации в LDAP
+        - View обрабатывает результат и откатывает БД при ошибке LDAP
+        
+        Args:
+            dto (DirectoryUserDTO): Данные нового пользователя.
+            password (str, optional): Пароль пользователя для LDAP.
+            
+        Returns:
+            dict: Данные для сохранения в БД:
+                - ldap_dn (str): DN пользователя в LDAP
+                - ldap_guid (str): GUID пользователя в LDAP
+        
+        Raises:
+            DirectoryLdapError: Ошибка на этапе создания/настройки LDAP.
+        """
+        # Если передан пароль, устанавливаем его в DTO
+        if password and not dto.initial_password:
+            dto.initial_password = password
+            
+        return self._user_service.create_user_in_ldap_only(dto)
+
+    def update_user_in_ldap_only(
+        self,
+        instance: Employee,
+        changes: Dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет пользователя ТОЛЬКО в LDAP.
+        
+        Новая архитектура: View обновляет БД, затем синхронизирует в LDAP.
+        
+        Args:
+            instance (Employee): Инстанс сотрудника с актуальными данными из БД.
+            changes (Dict[str, Any]): Изменения из request.data для синхронизации в LDAP.
+            
+        Returns:
+            dict: Пустой dict или данные для дополнительного обновления БД.
+        
+        Raises:
+            DirectoryLdapError: Ошибка синхронизации с LDAP.
+        """
+        return self._user_service.update_user_in_ldap_only(instance, changes)
+
+    def delete_user_in_ldap_only(self, instance: Employee) -> None:
+        """Удаляет пользователя ТОЛЬКО из LDAP.
+        
+        Новая архитектура: View удаляет из БД, затем удаляет из LDAP.
+        
+        Args:
+            instance (Employee): Сотрудник для удаления из LDAP.
+        
+        Raises:
+            DirectoryLdapError: Ошибка удаления из LDAP.
+        """
+        return self._user_service.delete_user_in_ldap_only(instance)
+
+    # ==================== OLD ARCHITECTURE: LDAP + DB ==================== #
+
     def create_user(self, dto: DirectoryUserDTO) -> Employee:
         """Создаёт учётку в LDAP и запись в БД (DN/связь — только в LdapSyncState).
 

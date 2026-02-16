@@ -63,6 +63,181 @@ class UserService:
         self.employee_repository = employee_repository
         self.sync_state_repository = sync_state_repository
 
+    # ==================== NEW ARCHITECTURE: PURE LDAP METHODS ==================== #
+
+    def create_user_in_ldap_only(self, dto: DirectoryUserDTO) -> dict[str, Any]:
+        """Создаёт пользователя ТОЛЬКО в LDAP, возвращает данные для БД.
+        
+        Это новый метод для разделения ответственности:
+        - View создает Employee в БД (в транзакции)
+        - Затем вызывает этот метод для синхронизации в LDAP
+        - View обрабатывает результат и откатывает БД при ошибке LDAP
+        
+        Args:
+            dto (DirectoryUserDTO): Данные нового пользователя.
+            
+        Returns:
+            dict: Данные для сохранения в БД:
+                - 'dn': DN пользователя в LDAP
+                - 'guid': GUID пользователя из LDAP
+                - 'employee_pk': PK из employeeNumber (если был установлен)
+        
+        Raises:
+            DirectoryLdapError: Ошибка на этапе создания/настройки LDAP.
+        """
+        with _ldap() as conn:
+            try:
+                # 1) Создаём пользователя в LDAP
+                dn = self._create_user_in_ldap(conn, dto)
+                
+                # 2) Устанавливаем пароль
+                self._set_password(conn, dn, dto.initial_password)
+                
+                # 3) Активируем если нужно
+                if dto.is_active:
+                    self._enable_user(conn, dn)
+                
+                # 4) Читаем GUID для синхронизации
+                attrs = read_attrs(conn, dn, ["objectGUID"])
+                guid = get_guid_str(attrs)
+                
+                # 5) Post-actions (best effort) - группы и аватар
+                if dto.group_cns:
+                    try:
+                        sync_user_groups_by_cns(conn, dn, set(dto.group_cns), do_write=True)
+                    except Exception:
+                        pass
+                
+                if dto.avatar_bytes:
+                    try:
+                        avatar = normalize_avatar_to_jpeg(
+                            dto.avatar_bytes, size_px=384, max_kb=100
+                        )
+                        if avatar:
+                            modify_user_attrs(
+                                conn, dn, {"thumbnailPhoto": avatar}, do_write=True
+                            )
+                    except Exception:
+                        pass
+                
+                return {
+                    'dn': dn,
+                    'guid': guid,
+                }
+                
+            except Exception as e:
+                raise DirectoryLdapError(f"LDAP create failed: {e}") from e
+
+    def update_user_in_ldap_only(
+        self,
+        instance: Employee,
+        changes: Dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет пользователя ТОЛЬКО в LDAP.
+        
+        Новая архитектура: View обновляет БД, затем синхронизирует в LDAP.
+        
+        Args:
+            instance (Employee): Инстанс сотрудника с актуальными данными из БД.
+            changes (Dict[str, Any]): Изменения из request.data для синхронизации в LDAP.
+            
+        Returns:
+            dict: Данные для дополнительного обновления БД если нужно:
+                - 'dn': новый DN если переместили пользователя
+        
+        Raises:
+            DirectoryLdapError: Ошибка синхронизации с LDAP.
+        """
+        try:
+            current_dn = self._get_employee_dn(instance)
+        except DirectoryServiceError as e:
+            raise DirectoryLdapError(f"Cannot get employee DN: {e}") from e
+        
+        with _ldap() as conn:
+            ldap_changes = dict(changes)
+            
+            # Определяем куда переместить пользователя если меняется department
+            move_to_department_dn = None
+            if 'department' in changes or 'department_id' in changes:
+                # Если передан department объект или ID, получаем его DN
+                dept_val = changes.get('department') or changes.get('department_id')
+                if dept_val:
+                    from .department_service import DepartmentService
+                    dept_svc = DepartmentService()
+                    if isinstance(dept_val, int):
+                        from employees.models import Department
+                        dept = Department.objects.filter(id=dept_val).first()
+                    else:
+                        dept = dept_val
+                    
+                    if dept:
+                        try:
+                            move_to_department_dn = dept_svc._get_department_dn(dept)
+                        except Exception:
+                            pass
+            
+            # Определяем группы если нужно синхронизировать
+            group_cns = None
+            if 'groups' in changes:
+                group_cns = changes.get('groups', [])
+            
+            try:
+                result = self._update_user_in_ldap(
+                    conn=conn,
+                    current_dn=current_dn,
+                    model_changes=ldap_changes,
+                    move_to_department_dn=move_to_department_dn,
+                    group_cns=group_cns,
+                )
+                
+                # Распаковываем результат
+                if isinstance(result, tuple):
+                    new_dn, _ = result
+                else:
+                    new_dn = result
+                
+                # Если DN изменился - возвращаем для обновления БД
+                if new_dn and new_dn != current_dn:
+                    return {'dn': new_dn}
+                
+                return {}
+                
+            except Exception as e:
+                raise DirectoryLdapError(f"LDAP update failed: {e}") from e
+
+    def delete_user_in_ldap_only(self, instance: Employee) -> None:
+        """Удаляет пользователя ТОЛЬКО из LDAP.
+        
+        Новая архитектура: View удаляет из БД, затем удаляет из LDAP.
+        
+        Args:
+            instance (Employee): Сотрудник для удаления из LDAP.
+        
+        Raises:
+            DirectoryLdapError: Ошибка удаления из LDAP.
+        """
+        try:
+            dn = self._get_employee_dn(instance)
+        except DirectoryServiceError:
+            # Если нет DN - ничего удалять не нужно
+            logger.warning(f"Cannot get DN for employee {instance.pk}, skipping LDAP delete")
+            return
+        
+        with _ldap() as conn:
+            try:
+                # 1. Soft-disable перед удалением
+                modify_user_attrs(conn, dn, {"userAccountControl": 0x0202})
+            except Exception as e:
+                logger.warning(f"LDAP soft-disable failed (continuing): {e}")
+            
+            try:
+                # 2. Hard delete
+                self._hard_delete_user_in_ldap(conn, dn)
+            except Exception as e:
+                raise DirectoryLdapError(f"LDAP hard delete failed: {e}") from e
+
+    # ==================== OLD ARCHITECTURE: LDAP + DB ==================== #
+
     def create_user(self, dto: DirectoryUserDTO) -> Employee:
         """Создаёт учётку в LDAP и запись в БД (DN/связь — только в LdapSyncState).
 

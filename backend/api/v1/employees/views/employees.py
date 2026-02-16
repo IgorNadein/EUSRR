@@ -6,11 +6,13 @@ import logging
 import traceback
 
 from common.emails import send_templated_mail
+from common.external_sync_mixin import ExternalSystemSyncMixin
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q, Subquery
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
 from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
@@ -34,7 +36,7 @@ from ._helpers import Employee, _is_ldap_enabled
 logger = logging.getLogger(__name__)
 
 
-class EmployeeViewSet(viewsets.ModelViewSet):
+class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
     """
     /api/v1/employees/
 
@@ -46,6 +48,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
       - POST {id}/add_skill|remove_skill — требуется employees.manage_employee_skills.
 
     Поиск: last_name, first_name, patronymic, email, phone_number
+    
+    Использует ExternalSystemSyncMixin для автоматической синхронизации с LDAP.
     """
 
     serializer_class = EmployeeSerializer
@@ -59,6 +63,82 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         "remove_skill": "employees.manage_employee_skills",
         "ldap_info": "employees.view_ldap_info",
     }
+    
+    # ExternalSystemSyncMixin configuration
+    external_sync_service = None  # Инициализируется в __init__ для каждого инстанса
+    external_sync_enabled = True  # Можно отключить через settings или для тестов
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Создаем DirectoryService для каждого инстанса ViewSet
+        if _is_ldap_enabled():
+            self.external_sync_service = DirectoryService()
+            self.external_sync_enabled = True
+        else:
+            self.external_sync_enabled = False
+    
+    def get_external_sync_method(self, action):
+        """Маппинг ViewSet action -> метод DirectoryService."""
+        if not _is_ldap_enabled():
+            return None
+        
+        return {
+            'create': 'create_user_in_ldap_only',
+            'update': 'update_user_in_ldap_only',
+            'partial_update': 'update_user_in_ldap_only',
+            'destroy': 'delete_user_in_ldap_only',
+        }.get(action)
+    
+    def prepare_external_data(self, instance, action):
+        """Подготовка данных для передачи в LDAP сервис."""
+        if action == 'create':
+            # При создании передаем DTO
+            dto = DirectoryUserDTO(
+                username=instance.username,
+                first_name=instance.first_name,
+                last_name=instance.last_name,
+                email=instance.email,
+                phone_number=instance.phone_number or '',
+                is_active=instance.is_active,
+                department_id=instance.department_id,
+                position_id=instance.position_id,
+            )
+            # Пароль из request (не сохраняется в БД)
+            password = self.request.data.get('password')
+            return {'dto': dto, 'password': password}
+        
+        elif action in ['update', 'partial_update']:
+            # При обновлении передаем инстанс и изменения
+            return {
+                'instance': instance,
+                'changes': dict(self.request.data)
+            }
+        
+        elif action == 'destroy':
+            # При удалении передаем только инстанс
+            return {'instance': instance}
+        
+        return {}
+    
+    def handle_external_sync_error(self, error, instance, action):
+        """Обработка ошибок синхронизации с LDAP."""
+        logger.error(
+            f"LDAP sync failed for {action} on Employee {instance.id}: {error}",
+            exc_info=True
+        )
+        
+        # Возвращаем понятную ошибку пользователю
+        if isinstance(error, (DirectoryLdapError, DirectoryServiceError)):
+            return Response(
+                {'detail': f'Ошибка синхронизации с LDAP: {str(error)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Для остальных ошибок - стандартная обработка
+        return Response(
+            {'detail': f'Ошибка внешней системы: {str(error)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
     def _perform_user_update(self, instance: Employee, request_data, is_partial=True):
         """Общая логика обновления пользователя для me PATCH и partial_update.
@@ -402,48 +482,99 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         if ldap_enabled:
-            dto = DirectoryUserDTO(
-                first_name=vd.get("first_name", ""),
-                last_name=vd.get("last_name", ""),
-                email=email.lower(),
-                phone_e164=phone_number,
-                department_dn=vd.pop("department_dn", None),
-                group_cns=vd.pop("group_cns", []) or [],
-                initial_password=password,
-                avatar_bytes=avatar_bytes,
-                is_active=vd.get("is_active", True),
-            )
-
+            # NEW ARCHITECTURE: View управляет БД, LDAP сервис делает только LDAP
             try:
-                user = DirectoryService().create_user(dto)
-                for k in (
-                    "patronymic",
-                    "birth_date",
-                    "telegram",
-                    "whatsapp",
-                    "wechat",
-                    "position",
-                ):
-                    if k in vd:
-                        setattr(user, k + ("_id" if k ==
-                                "position" else ""), vd[k])
-                user.save()
-                if user.position_id:
-                    try:
-                        DirectoryService().assign_position(user, user.position)
-                    except Exception:
-                        pass
-                skills = vd.get("skills_ids") or []
-                if skills:
-                    user.skills.set(skills)
+                with transaction.atomic():
+                    # 1) Создаём пользователя в БД
+                    user = Employee.objects.create(
+                        first_name=vd.get("first_name", ""),
+                        last_name=vd.get("last_name", ""),
+                        email=email.lower(),
+                        phone_number=phone_number,
+                        is_active=vd.get("is_active", True),
+                        is_ldap_managed=True,
+                    )
+                    if hasattr(user, "set_unusable_password"):
+                        user.set_unusable_password()
+                        user.save(update_fields=["password"])
+                    
+                    # 2) Устанавливаем дополнительные поля
+                    for k in (
+                        "patronymic",
+                        "birth_date",
+                        "telegram",
+                        "whatsapp",
+                        "wechat",
+                        "position",
+                    ):
+                        if k in vd:
+                            setattr(user, k + ("_id" if k == "position" else ""), vd[k])
+                    user.save()
+                    
+                    # 3) Синхронизируем в LDAP
+                    dto = DirectoryUserDTO(
+                        first_name=vd.get("first_name", ""),
+                        last_name=vd.get("last_name", ""),
+                        email=email.lower(),
+                        phone_e164=phone_number,
+                        department_dn=vd.pop("department_dn", None),
+                        group_cns=vd.pop("group_cns", []) or [],
+                        initial_password=password,
+                        avatar_bytes=avatar_bytes,
+                        is_active=vd.get("is_active", True),
+                    )
+                    
+                    svc = DirectoryService()
+                    ldap_result = svc.create_user_in_ldap_only(dto)
+                    
+                    # 4) Сохраняем sync state
+                    from employees.models import LdapSyncState
+                    st, _ = LdapSyncState.objects.get_or_create(
+                        model="employee", object_pk=str(user.pk)
+                    )
+                    st.touch(
+                        ldap_dn=ldap_result['dn'],
+                        ldap_guid=ldap_result['guid'],
+                        sync_dir="ldap",
+                        last_django_modify_ts=timezone.now(),
+                    )
+                    
+                    # 5) Записываем Django PK в LDAP employeeNumber
+                    from ldap3 import MODIFY_REPLACE
+                    from employees.ldap.infrastructure.connections import _ldap
+                    from employees.ldap.repositories.ldap_repository import modify_user_attrs
+                    
+                    employee_id_attr = getattr(settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
+                    with _ldap() as conn:
+                        modify_user_attrs(
+                            conn, ldap_result['dn'], 
+                            {employee_id_attr: str(user.pk)}, 
+                            do_write=True
+                        )
+                    
+                    # 6) Назначаем должность если указана
+                    if user.position_id:
+                        try:
+                            svc.assign_position(user, user.position)
+                        except Exception:
+                            pass
+                    
+                    # 7) Устанавливаем навыки
+                    skills = vd.get("skills_ids") or []
+                    if skills:
+                        user.skills.set(skills)
+                
                 out = self.get_serializer(user)
                 return Response(
                     out.data, status=201, headers=self.get_success_headers(out.data)
                 )
             except DirectoryLdapError as e:
                 return Response({"detail": str(e)}, status=502)
-            except DirectoryDbError as e:
-                return Response({"detail": str(e)}, status=500)
+            except Exception as e:
+                return Response(
+                    {"detail": f"Ошибка создания пользователя: {str(e)}"},
+                    status=500,
+                )
         else:
             try:
                 with transaction.atomic():
