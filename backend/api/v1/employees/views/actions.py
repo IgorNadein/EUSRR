@@ -9,16 +9,9 @@ from django.db import transaction
 from django.utils import timezone
 from employees.constants import ACTION_DISMISSED
 from employees.ldap.directory_service import DirectoryService
-from employees.ldap.errors import (
-    DirectoryDbError,
-    DirectoryLdapError,
-    DirectoryServiceError,
-)
-from employees.models import (
-    EmployeeAction,
-    EmployeeDepartment,
-    LdapSyncState,
-)
+from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
+                                   DirectoryServiceError)
+from employees.models import EmployeeAction, EmployeeDepartment, LdapSyncState
 from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -50,7 +43,8 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
     history_diff_fields = ["action", "date", "comment", "extra", "employee_id"]
 
     def get_queryset(self):
-        qs = EmployeeAction.objects.select_related("employee").order_by(*self.ordering)
+        qs = EmployeeAction.objects.select_related(
+            "employee").order_by(*self.ordering)
         qp = self.request.query_params
         emp = qp.get("employee")
         if emp:
@@ -134,15 +128,12 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
                         if not departments_processed:
                             try:
-                                from employees.ldap.infrastructure.connections import (
-                                    _ldap,
-                                )
-                                from employees.ldap.repositories.ldap_repository import (
-                                    ensure_container_exists,
-                                )
-                                from employees.ldap.utils.ldap_utils import (
-                                    get_base_dn_for_employee,
-                                )
+                                from employees.ldap.infrastructure.connections import \
+                                    _ldap
+                                from employees.ldap.repositories.ldap_repository import \
+                                    ensure_container_exists
+                                from employees.ldap.utils.ldap_utils import \
+                                    get_base_dn_for_employee
 
                                 sync_state = LdapSyncState.objects.filter(
                                     model="employee", object_pk=str(emp.pk)
@@ -156,7 +147,8 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                                         target_base.lower()
                                     ):
                                         with _ldap() as conn:
-                                            ensure_container_exists(conn, target_base)
+                                            ensure_container_exists(
+                                                conn, target_base)
                                             new_dn = (
                                                 svc._user_service._move_user_to_base(
                                                     conn, current_dn, target_base
@@ -217,15 +209,14 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                                         settings, "LDAP_USERS_BASE", None
                                     ) or getattr(settings, "LDAP_USER_BASE", None)
                                     if users_base:
-                                        from employees.ldap.infrastructure.connections import (
-                                            _ldap,
-                                        )
-                                        from employees.ldap.repositories.ldap_repository import (
-                                            ensure_container_exists,
-                                        )
+                                        from employees.ldap.infrastructure.connections import \
+                                            _ldap
+                                        from employees.ldap.repositories.ldap_repository import \
+                                            ensure_container_exists
 
                                         with _ldap() as conn:
-                                            ensure_container_exists(conn, users_base)
+                                            ensure_container_exists(
+                                                conn, users_base)
                                             new_dn = (
                                                 svc._user_service._move_user_to_base(
                                                     conn, current_dn, users_base

@@ -7,63 +7,30 @@ import traceback
 from typing import Any, Dict
 
 from django.db import transaction
-from django.db.models import (
-    Case,
-    Count,
-    Exists,
-    F,
-    IntegerField,
-    OuterRef,
-    Q,
-    Subquery,
-    Value,
-    When,
-)
+from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
+                              Q, Subquery, Value, When)
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from employees.ldap.directory_service import (
-    DirectoryDepartmentDTO,
-    DirectoryService,
-)
-from employees.ldap.errors import (
-    DirectoryDbError,
-    DirectoryLdapError,
-    DirectoryServiceError,
-)
-from employees.models import (
-    Department,
-    DepartmentRole,
-    DeptPerm,
-    EmployeeDepartment,
-    RoleAssignment,
-)
-from employees.utils import (
-    _build_links_for_dept,
-    _head_choices_for_dept,
-    _perm_choices_synced,
-    _validate_head_active,
-)
+from employees.ldap.directory_service import (DirectoryDepartmentDTO,
+                                              DirectoryService)
+from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
+                                   DirectoryServiceError)
+from employees.models import (Department, DepartmentRole, DeptPerm,
+                              EmployeeDepartment, RoleAssignment)
+from employees.utils import (_build_links_for_dept, _head_choices_for_dept,
+                             _perm_choices_synced, _validate_head_active)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ...permissions import (
-    AdminOrActionOrModelPerms,
-    AdminOrDeptAllowed,
-    has_dept_perm,
-)
-from ..serializers import (
-    AddMemberInput,
-    DepartmentBriefSerializer,
-    DepartmentRoleSerializer,
-    DepartmentSerializer,
-    EmployeeBriefSerializer,
-    RemoveMemberInput,
-    SetHeadInput,
-    SetMemberRoleInput,
-)
+from ...permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
+                            has_dept_perm)
+from ..serializers import (AddMemberInput, DepartmentBriefSerializer,
+                           DepartmentRoleSerializer, DepartmentSerializer,
+                           EmployeeBriefSerializer, RemoveMemberInput,
+                           SetHeadInput, SetMemberRoleInput)
 from ._helpers import _is_ldap_enabled
 
 logger = logging.getLogger(__name__)
@@ -85,7 +52,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
       - чтение                    → аутентифицированным
     """
 
-    queryset = Department.objects.select_related("head").prefetch_related("roles").all()
+    queryset = Department.objects.select_related(
+        "head").prefetch_related("roles").all()
     serializer_class = DepartmentSerializer
 
     # пермишены (скоуп-право по отделу)
@@ -149,7 +117,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 Subquery(active_count_subq, output_field=IntegerField()),
                 Value(0),
             ),
-            head_in_active=Exists(active_links.filter(employee_id=OuterRef("head_id"))),
+            head_in_active=Exists(active_links.filter(
+                employee_id=OuterRef("head_id"))),
         ).annotate(
             employees_count=F("active_count")
             + Case(
@@ -187,7 +156,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
     def _perform_set_head(self, instance: Department, desired_head_id: int | None, request) -> Response | Department:
         """Общая логика назначения руководителя для set_head action и partial_update.
-        
+
         Возвращает Response при ошибке или обновлённый Department при успехе.
         """
         # Проверка прав
@@ -205,7 +174,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         # Валидация кандидата
         new_head = None
         if desired_head_id is not None:
-            employee_model = Department._meta.get_field("head").remote_field.model
+            employee_model = Department._meta.get_field(
+                "head").remote_field.model
             new_head = get_object_or_404(employee_model, id=desired_head_id)
 
             require_verified = not (
@@ -271,9 +241,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     desired_head_id = None
                 else:
                     try:
-                        desired_head_id = int(raw_desired) if raw_desired is not None else None
+                        desired_head_id = int(
+                            raw_desired) if raw_desired is not None else None
                     except (TypeError, ValueError):
-                        raise ValueError("head_id должен быть целым числом или null")
+                        raise ValueError(
+                            "head_id должен быть целым числом или null")
             except ValueError as e:
                 return Response(
                     {"head_id": [str(e)]}, status=status.HTTP_400_BAD_REQUEST
@@ -327,7 +299,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         result = self._perform_set_head(dept, head_id, request)
         if isinstance(result, Response):
             return result
-        
+
         return Response(self.get_serializer(result).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -407,7 +379,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             via_assignment = True
 
             if role:
-                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.department_service import \
+                    DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
 
@@ -415,7 +388,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     try:
                         group_service = GroupService()
                         user_service = UserService(group_service)
-                        dept_service = DepartmentService(group_service, user_service)
+                        dept_service = DepartmentService(
+                            group_service, user_service)
                         dept_service.assign_role(employee, role, request.user)
                     except Exception as e:
                         return Response({"detail": str(e)}, status=400)
@@ -423,10 +397,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     RoleAssignment.objects.update_or_create(
                         employee=employee,
                         role=role,
-                        defaults={"is_active": True, "assigned_by": request.user},
+                        defaults={"is_active": True,
+                                  "assigned_by": request.user},
                     )
             else:
-                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.department_service import \
+                    DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
 
@@ -438,7 +414,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     try:
                         group_service = GroupService()
                         user_service = UserService(group_service)
-                        dept_service = DepartmentService(group_service, user_service)
+                        dept_service = DepartmentService(
+                            group_service, user_service)
                         for assignment in active_assignments:
                             dept_service.revoke_role(employee, assignment.role)
                     except Exception as e:
@@ -571,7 +548,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 )
         else:
             link, created = EmployeeDepartment.objects.get_or_create(
-                employee_id=emp_id, department_id=dept.id, defaults={"is_active": True}
+                employee_id=emp_id, department_id=dept.id, defaults={
+                    "is_active": True}
             )
             if not created and not link.is_active:
                 link.is_active = True
@@ -653,7 +631,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             employee_id=user.id,
             is_active=True,
         )
-        user_qs = qs.filter(Q(head_id=user.id) | Exists(active_link_exists)).distinct()
+        user_qs = qs.filter(Q(head_id=user.id) | Exists(
+            active_link_exists)).distinct()
 
         user_qs = user_qs.order_by("name", "id")
         data = DepartmentBriefSerializer(user_qs, many=True).data
@@ -664,9 +643,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         head = None
-        head_id = ser.validated_data.get("head") or ser.validated_data.get("head_id")
+        head_id = ser.validated_data.get(
+            "head") or ser.validated_data.get("head_id")
         if head_id:
-            employee_model = Department._meta.get_field("head").remote_field.model
+            employee_model = Department._meta.get_field(
+                "head").remote_field.model
             head = get_object_or_404(employee_model, id=head_id)
 
         ldap_enabled = _is_ldap_enabled()
@@ -681,7 +662,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             try:
                 dept = svc.create_department(dto)
                 return Response(
-                    self.get_serializer(dept).data, status=status.HTTP_201_CREATED
+                    self.get_serializer(
+                        dept).data, status=status.HTTP_201_CREATED
                 )
             except DirectoryLdapError as e:
                 return Response({"detail": str(e)}, status=502)

@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from common.emails import send_templated_mail
-from datetime import timedelta
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
-from employees.ldap.errors import (
-    DirectoryDbError,
-    DirectoryLdapError,
-    DirectoryServiceError,
-)
+from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
+                                   DirectoryServiceError)
 from employees.models import Position, Skill
 from employees.utils import _normalize_phone
 from rest_framework import status
@@ -24,7 +21,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..serializers import EmailSerializer, EmailVerifySerializer, RegisterSerializer
+from ..serializers import (EmailSerializer, EmailVerifySerializer,
+                           RegisterSerializer)
 from ._helpers import Employee, _is_ldap_enabled
 
 logger = logging.getLogger(__name__)
@@ -105,7 +103,8 @@ class VerifyEmailAPIView(APIView):
                     model="employee", object_pk=str(user.pk)
                 ).first()
 
-                has_ldap = sync_state and (sync_state.ldap_dn or sync_state.ldap_guid)
+                has_ldap = sync_state and (
+                    sync_state.ldap_dn or sync_state.ldap_guid)
 
                 if has_ldap:
                     # Запись существует - активируем через DirectoryService
@@ -190,7 +189,8 @@ class RegisterAPIView(APIView):
         if not phone_norm:
             return Response({"ok": False, "error": "invalid_phone"}, status=400)
 
-        existing_phone = Employee.objects.filter(phone_number=phone_norm).first()
+        existing_phone = Employee.objects.filter(
+            phone_number=phone_norm).first()
         if existing_phone:
             logger.warning(
                 "[REGISTER] Phone %s already used by user id=%s",
@@ -222,7 +222,8 @@ class RegisterAPIView(APIView):
                     status=200,
                 )
 
-        avatar_file = v.get("avatar") or getattr(request, "FILES", {}).get("avatar")
+        avatar_file = v.get("avatar") or getattr(
+            request, "FILES", {}).get("avatar")
         avatar_bytes = None
         avatar_name = None
         if avatar_file:
@@ -230,7 +231,8 @@ class RegisterAPIView(APIView):
                 avatar_bytes = (
                     avatar_file.read() if hasattr(avatar_file, "read") else None
                 )
-                avatar_name = getattr(avatar_file, "name", None) or "avatar.jpg"
+                avatar_name = getattr(
+                    avatar_file, "name", None) or "avatar.jpg"
             except Exception:
                 avatar_bytes = None
                 avatar_name = None
@@ -277,7 +279,8 @@ class RegisterAPIView(APIView):
         # 2) Заполняем доп.поля БД
         if avatar_bytes:
             try:
-                emp.avatar.save(avatar_name, ContentFile(avatar_bytes), save=False)
+                emp.avatar.save(avatar_name, ContentFile(
+                    avatar_bytes), save=False)
             except Exception:
                 pass
 

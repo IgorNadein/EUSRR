@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from django.db import transaction
+from employees.models import Skill
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -11,8 +12,6 @@ from rest_framework.response import Response
 from ...permissions import AdminOrActionOrModelPerms
 from ..serializers import SkillSerializer
 from ._helpers import Employee
-
-from employees.models import Skill
 
 
 class SkillViewSet(viewsets.ModelViewSet):
@@ -67,7 +66,8 @@ class SkillViewSet(viewsets.ModelViewSet):
             cleaned.append(s)
 
         existing = set(
-            Skill.objects.filter(name__in=cleaned).values_list("name", flat=True)
+            Skill.objects.filter(name__in=cleaned).values_list(
+                "name", flat=True)
         )
         to_create = [Skill(name=n) for n in cleaned if n not in existing]
         Skill.objects.bulk_create(to_create, ignore_conflicts=True)

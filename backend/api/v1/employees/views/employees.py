@@ -9,32 +9,16 @@ from common.emails import send_templated_mail
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import (
-    Exists,
-    OuterRef,
-    Prefetch,
-    Q,
-    Subquery,
-)
+from django.db.models import Exists, OuterRef, Prefetch, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
 from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
-from employees.ldap.errors import (
-    DirectoryDbError,
-    DirectoryLdapError,
-    DirectoryServiceError,
-)
+from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
+                                   DirectoryServiceError)
 from employees.ldap.infrastructure.connections import _conn
-from employees.models import (
-    Department,
-    EmployeeAction,
-    EmployeeDepartment,
-    LdapSyncState,
-    Position,
-    RoleAssignment,
-    Skill,
-)
+from employees.models import (Department, EmployeeAction, EmployeeDepartment,
+                              LdapSyncState, Position, RoleAssignment, Skill)
 from employees.utils import _to_bool
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -43,11 +27,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ...permissions import AdminOrActionOrModelPerms, IsSelfOrStaff
-from ..serializers import (
-    EmployeeListSerializer,
-    EmployeeSerializer,
-    SkillSerializer,
-)
+from ..serializers import (EmployeeListSerializer, EmployeeSerializer,
+                           SkillSerializer)
 from ._helpers import Employee, _is_ldap_enabled
 
 logger = logging.getLogger(__name__)
@@ -69,7 +50,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
     serializer_class = EmployeeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["last_name", "first_name", "patronymic", "email", "phone_number"]
+    search_fields = ["last_name", "first_name",
+                     "patronymic", "email", "phone_number"]
     ordering_fields = ["last_name", "first_name", "created_at", "id"]
     ordering = ["last_name", "first_name"]
     required_perms_by_action = {
@@ -80,13 +62,14 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
     def _perform_user_update(self, instance: Employee, request_data, is_partial=True):
         """Общая логика обновления пользователя для me PATCH и partial_update.
-        
+
         Возвращает Response при ошибке или dict с 'data' и 'instance' при успехе.
         """
         old_email = instance.email
 
         # Удаляем пустое поле avatar
-        data = request_data.copy() if hasattr(request_data, "copy") else dict(request_data)
+        data = request_data.copy() if hasattr(
+            request_data, "copy") else dict(request_data)
         if hasattr(data, "_mutable") and not data._mutable:
             data._mutable = True
         avatar_raw = data.get("avatar")
@@ -111,13 +94,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             "phone_number",
             "is_active",
         }
-        ldap_changes = {k: vd.pop(k) for k in list(vd.keys()) if k in ldap_keys}
+        ldap_changes = {k: vd.pop(k)
+                        for k in list(vd.keys()) if k in ldap_keys}
 
         svc_changes = dict(ldap_changes)
         pos_key_present = ("position" in data) or ("position_id" in data)
         if pos_key_present:
             pos_raw = (
-                data.get("position") if "position" in data else data.get("position_id")
+                data.get("position") if "position" in data else data.get(
+                    "position_id")
             )
             svc_changes["position"] = pos_raw
             vd.pop("position", None)
@@ -160,7 +145,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 ) as e:
                     return Response(
                         {"detail": str(e)},
-                        status=(502 if isinstance(e, DirectoryLdapError) else 500),
+                        status=(502 if isinstance(
+                            e, DirectoryLdapError) else 500),
                     )
         else:
             # Non-LDAP mode
@@ -225,14 +211,16 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         if email_changed:
             instance.email_verified = False
             instance.email_activation_code = get_random_string(6, "0123456789")
-            instance.save(update_fields=["email_verified", "email_activation_code"])
+            instance.save(
+                update_fields=["email_verified", "email_activation_code"])
 
             try:
                 send_templated_mail(
                     subject="Подтверждение нового email",
                     to=[instance.email],
                     template_base="emails/registration_verify_code",
-                    context={"code": instance.email_activation_code, "user": instance},
+                    context={"code": instance.email_activation_code,
+                             "user": instance},
                 )
             except Exception:
                 pass
@@ -295,7 +283,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 member_ids = EmployeeDepartment.objects.filter(
                     department_id=dep_id
                 ).values("employee_id")
-                head_ids = Department.objects.filter(id=dep_id).values("head_id")
+                head_ids = Department.objects.filter(
+                    id=dep_id).values("head_id")
                 role_assignment_ids = RoleAssignment.objects.filter(
                     role__department_id=dep_id, is_active=True
                 ).values("employee_id")
@@ -315,7 +304,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         )
                     ),
                     _is_dept_head=Exists(
-                        Department.objects.filter(id=dep_id, head_id=OuterRef("pk"))
+                        Department.objects.filter(
+                            id=dep_id, head_id=OuterRef("pk"))
                     ),
                     _has_role_assignment=Exists(
                         RoleAssignment.objects.filter(
@@ -435,7 +425,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     "position",
                 ):
                     if k in vd:
-                        setattr(user, k + ("_id" if k == "position" else ""), vd[k])
+                        setattr(user, k + ("_id" if k ==
+                                "position" else ""), vd[k])
                 user.save()
                 if user.position_id:
                     try:
@@ -475,7 +466,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         "gender",
                     ):
                         if k in vd:
-                            setattr(user, k + ("_id" if k == "position" else ""), vd[k])
+                            setattr(user, k + ("_id" if k ==
+                                    "position" else ""), vd[k])
                     if avatar_bytes:
                         user.avatar.save(
                             f"avatar_{user.id}.jpg",
@@ -528,7 +520,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         # PATCH — используем общий метод
         try:
-            result = self._perform_user_update(instance, request.data, is_partial=True)
+            result = self._perform_user_update(
+                instance, request.data, is_partial=True)
             if isinstance(result, Response):
                 return result
             return Response(result["data"], status=200)
@@ -584,7 +577,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         from employees.ldap.repositories.ldap_repository import LdapRepository
 
         emp = self.get_object()
-        force_refresh = request.query_params.get('force_refresh', '').lower() == 'true'
+        force_refresh = request.query_params.get(
+            'force_refresh', '').lower() == 'true'
 
         if not force_refresh and emp.username:
             return Response(
@@ -705,7 +699,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             departments = emp.departments_links.filter(is_active=True)
             dept_names = ", ".join(
                 [
-                    f"{d.department.name}" + (f" ({d.role.name})" if d.role else "")
+                    f"{d.department.name}" +
+                    (f" ({d.role.name})" if d.role else "")
                     for d in departments
                 ]
             )
@@ -739,7 +734,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 emp.position.name if emp.position else "",
                 dept_names,
                 emp.birth_date.strftime("%d.%m.%Y") if emp.birth_date else "",
-                emp.created_at.strftime("%d.%m.%Y %H:%M") if emp.created_at else "",
+                emp.created_at.strftime(
+                    "%d.%m.%Y %H:%M") if emp.created_at else "",
                 "Да" if emp.is_active else "Нет",
                 "Да" if emp.email_verified else "Нет",
                 skills,

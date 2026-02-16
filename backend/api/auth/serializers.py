@@ -1,8 +1,8 @@
 # api/auth/serializers.py
 from api.v1.employees.views._helpers import PHONE_FIELD
 from django.contrib.auth import get_user_model
-from employees.utils import _normalize_phone
 from employees.models import Employee
+from employees.utils import _normalize_phone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -21,11 +21,14 @@ class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         # <- КЛЮЧЕВОЕ: email (username_field) не обязателен
         self.fields[self.username_field].required = False
         # добавляем телефонные поля
-        self.fields["phone"] = serializers.CharField(required=False, allow_blank=True)
-        self.fields["phone_number"] = serializers.CharField(required=False, allow_blank=True)
+        self.fields["phone"] = serializers.CharField(
+            required=False, allow_blank=True)
+        self.fields["phone_number"] = serializers.CharField(
+            required=False, allow_blank=True)
 
     def validate(self, attrs):
-        raw_phone = self.initial_data.get("phone") or self.initial_data.get("phone_number")
+        raw_phone = self.initial_data.get(
+            "phone") or self.initial_data.get("phone_number")
         if raw_phone and not attrs.get(self.username_field):
             qfield = PHONE_FIELD or "phone_number"
             norm = _normalize_phone(raw_phone) or str(raw_phone).strip()
@@ -40,6 +43,7 @@ class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # не выдаём токены, если email не подтверждён/аккаунт не активен
         if not self.user.email_verified or not self.user.is_active:
-            raise AuthenticationFailed("email_not_verified", code="email_not_verified")
+            raise AuthenticationFailed(
+                "email_not_verified", code="email_not_verified")
 
         return data

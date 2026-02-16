@@ -7,11 +7,8 @@ import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from employees.ldap.errors import (
-    DirectoryDbError,
-    DirectoryLdapError,
-    DirectoryServiceError,
-)
+from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
+                                   DirectoryServiceError)
 from employees.utils import _detect_phone_field
 from rest_framework import status
 from rest_framework.decorators import action

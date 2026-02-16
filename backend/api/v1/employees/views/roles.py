@@ -4,18 +4,9 @@ from __future__ import annotations
 
 from django.shortcuts import get_object_or_404
 from employees.ldap.directory_service import DirectoryService
-from employees.ldap.errors import (
-    DirectoryDbError,
-    DirectoryLdapError,
-)
-from employees.models import (
-    Department,
-    DepartmentPermission,
-    DepartmentRole,
-    DeptPerm,
-    EmployeeDepartment,
-    RoleAssignment,
-)
+from employees.ldap.errors import DirectoryDbError, DirectoryLdapError
+from employees.models import (Department, DepartmentPermission, DepartmentRole,
+                              DeptPerm, EmployeeDepartment, RoleAssignment)
 from employees.utils import _ensure_department_permissions
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -98,7 +89,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         if ldap_enabled:
-            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.department_service import \
+                DepartmentService
             from employees.ldap.services.group_service import GroupService
             from employees.ldap.services.user_service import UserService
 
@@ -121,7 +113,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                     scoped_permissions=scoped_permissions,
                 )
                 return Response(
-                    self.get_serializer(role).data, status=status.HTTP_201_CREATED
+                    self.get_serializer(
+                        role).data, status=status.HTTP_201_CREATED
                 )
             except DirectoryLdapError as e:
                 return Response(
@@ -156,7 +149,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         if ldap_enabled:
-            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.department_service import \
+                DepartmentService
             from employees.ldap.services.group_service import GroupService
             from employees.ldap.services.user_service import UserService
 
@@ -201,7 +195,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
         ldap_enabled = _is_ldap_enabled()
 
         if ldap_enabled:
-            from employees.ldap.services.department_service import DepartmentService
+            from employees.ldap.services.department_service import \
+                DepartmentService
             from employees.ldap.services.group_service import GroupService
             from employees.ldap.services.user_service import UserService
 
@@ -317,7 +312,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
         if ldap_enabled:
             try:
-                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.department_service import \
+                    DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
 
@@ -325,7 +321,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
                 user_service = UserService(group_service)
                 dept_service = DepartmentService(group_service, user_service)
 
-                assignment = dept_service.assign_role(employee, role, assigned_by)
+                assignment = dept_service.assign_role(
+                    employee, role, assigned_by)
 
                 return Response(
                     {
@@ -387,7 +384,8 @@ class DepartmentRoleViewSet(viewsets.ModelViewSet):
 
         if ldap_enabled:
             try:
-                from employees.ldap.services.department_service import DepartmentService
+                from employees.ldap.services.department_service import \
+                    DepartmentService
                 from employees.ldap.services.group_service import GroupService
                 from employees.ldap.services.user_service import UserService
 

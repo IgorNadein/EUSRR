@@ -126,14 +126,16 @@ class GroupViewSet(viewsets.ModelViewSet):
         dns: list[str] = []
         raw_dns = payload.get("member_dns") or []
         if isinstance(raw_dns, list):
-            dns.extend([d.strip() for d in raw_dns if isinstance(d, str) and d.strip()])
+            dns.extend([d.strip()
+                       for d in raw_dns if isinstance(d, str) and d.strip()])
 
         ids = payload.get("member_ids") or []
         if isinstance(ids, list) and ids:
             if _is_ldap_enabled():
                 svc = DirectoryService()
                 dns.extend(
-                    svc.employee_ids_to_dns([i for i in ids if isinstance(i, int)])
+                    svc.employee_ids_to_dns(
+                        [i for i in ids if isinstance(i, int)])
                 )
 
         uniq, seen = [], set()
@@ -146,7 +148,8 @@ class GroupViewSet(viewsets.ModelViewSet):
             return []
 
         if not uniq:
-            raise ValueError("Не переданы корректные member_dns или member_ids")
+            raise ValueError(
+                "Не переданы корректные member_dns или member_ids")
         return uniq
 
     def _dns_to_users(self, dns):
