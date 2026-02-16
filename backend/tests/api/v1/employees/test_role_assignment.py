@@ -11,21 +11,11 @@ from employees.models import (
     EmployeeDepartment, RoleAssignment,
 )
 from tests.conftest import _unique_phone
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 User = get_user_model()
 # В этом проекте User == Employee (кастомная модель)
 Employee = User
-
-@pytest.fixture
-def make_user(email: str, is_staff: bool = False) -> User:
-    """Создаёт пользователя (Employee)."""
-    return User.objects.create_user(
-        email=email,
-        password="pwd12345",
-        phone_number=_unique_phone(),
-        is_staff=is_staff,
-        send_activation_email=False,
-    )
 
 def make_dept(name: str, head: User = None) -> Department:
     """Создаёт отдел."""

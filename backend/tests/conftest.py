@@ -11,7 +11,8 @@
 import itertools
 import mimetypes
 import os
-from datetime import datetime, date
+from datetime import date, datetime
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -19,17 +20,11 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from employees.models import Department, DepartmentRole, EmployeeDepartment
 from rest_framework.test import APIClient
-
-from tests.test_config import (
-    DEFAULT_PASSWORD,
-    DEFAULT_TEST_PHONE_PREFIX,
-    TEST_EMAIL_DOMAIN,
-    TEST_IMAGE_1X1_PNG_B64,
-    TEST_IMAGE_DATA_URI,
-)
-
 # Импортируем LDAP фикстуры
 from tests.ldap_fixtures import *  # noqa
+from tests.test_config import (DEFAULT_PASSWORD, DEFAULT_TEST_PHONE_PREFIX,
+                               TEST_EMAIL_DOMAIN, TEST_IMAGE_1X1_PNG_B64,
+                               TEST_IMAGE_DATA_URI)
 
 pytestmark = pytest.mark.django_db
 
@@ -61,7 +56,8 @@ def _unique_email(prefix: str = "user") -> str:
 @pytest.fixture(autouse=True)
 def _fast_hashers_and_email(settings, tmp_path):
     # быстрые хеши паролей и локальная почта
-    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+    settings.PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.MD5PasswordHasher"]
     settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     # изоляция медиа
     media_root = tmp_path / "test_media"
@@ -103,11 +99,11 @@ def auth_client_factory():
 def user_factory():
     """
     Фабрика для создания пользователей.
-    
+
     Пример использования:
         user = user_factory(email="x@example.com", staff=False, superuser=False,
                             verified=True, active=True, **extra)
-    
+
     Создаёт пользователя напрямую (без менеджера create_user, чтобы не слать письма).
     """
 
@@ -123,7 +119,7 @@ def user_factory():
     ):
         if email is None:
             email = _unique_email()
-            
+
         u = User.objects.create(
             email=email,
             phone_number=extra.pop("phone_number", _unique_phone()),

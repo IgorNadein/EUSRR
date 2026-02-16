@@ -13,30 +13,12 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import _unique_phone
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 _phone_seq = itertools.count(5000)
-
-@pytest.fixture
-def make_user(email, **kwargs):
-    """Fixture для создания пользователей."""
-    """Создаёт пользователя напрямую"""
-    u = User.objects.create(
-        email=email,
-        phone_number=kwargs.pop("phone_number", _unique_phone()),
-        first_name=kwargs.pop("first_name", "Test"),
-        last_name=kwargs.pop("last_name", "User"),
-        is_staff=kwargs.pop("staff", False),
-        is_superuser=kwargs.pop("superuser", False),
-        is_active=kwargs.pop("active", True),
-        email_verified=kwargs.pop("verified", True),
-        **kwargs
-    )
-    u.set_password("pass")
-    u.save()
-    return u
 
 @pytest.fixture
 def api_client():

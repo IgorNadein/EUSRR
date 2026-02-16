@@ -6,12 +6,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from ldap3 import MODIFY_REPLACE, Connection
+
+logger = logging.getLogger(__name__)
 
 from ...models import Employee, LdapSyncState, Position
 from ..domain.dtos import DirectoryUserDTO

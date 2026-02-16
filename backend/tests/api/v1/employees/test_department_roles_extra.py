@@ -12,28 +12,13 @@ from employees.models import (
     EmployeeDepartment,  # если у вас EmployeeDepartmentLink, замените импорт и упоминания ниже
 )
 from tests.conftest import _unique_phone
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 User = get_user_model()
 
 # =========================
 # Helpers
 # =========================
-
-@pytest.fixture
-def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
-    """Fixture для создания пользователей."""
-    extra = {
-        "phone_number": _unique_phone(),
-        "is_staff": staff,
-        "send_activation_email": False,
-    }
-    # добавим verified если поле есть
-    try:
-        User._meta.get_field("verified")
-        extra["verified"] = verified
-    except Exception:
-        pass
-    return User.objects.create_user(email=email, password="pwd12345", **extra)
 
 def ensure_perm(code: str, name: str | None = None) -> DepartmentPermission:
     return DepartmentPermission.objects.get_or_create(

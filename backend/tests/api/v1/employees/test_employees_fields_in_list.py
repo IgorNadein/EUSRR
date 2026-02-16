@@ -9,6 +9,7 @@ from employees.models import (Department, DepartmentRole, EmployeeDepartment,
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import _unique_phone
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 pytestmark = pytest.mark.django_db
 User = get_user_model()
@@ -20,37 +21,6 @@ def api():
     return APIClient()
 
 _phone_seq = itertools.count(3000)
-
-@pytest.fixture
-def make_user(
-    email: str,
-    *,
-    staff: bool = False,
-    superuser: bool = False,
-    verified: bool = True,
-    active: bool = True,
-    **extra,
-) -> User:
-    """Fixture для создания пользователей."""
-    u = User.objects.create(
-        email=email,
-        phone_number=extra.pop("phone_number", _unique_phone()),
-        first_name=extra.pop("first_name", "FN"),
-        last_name=extra.pop("last_name", "LN"),
-        is_staff=staff,
-        is_superuser=superuser,
-        is_active=active,
-        email_verified=verified,
-        **extra,
-    )
-    u.set_password("pass")
-    u.save()
-    return u
-
-def extract_results(data):
-    if isinstance(data, dict) and "results" in data:
-        return data["results"]
-    return data
 
 def _get_item(items, emp_id):
     for it in items:

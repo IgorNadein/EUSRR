@@ -59,6 +59,7 @@ from employees.models import (
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import _unique_phone
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 pytestmark = pytest.mark.django_db
 
@@ -71,33 +72,6 @@ def api_client():
     return APIClient()
 
 _phone_seq = itertools.count(1000)
-
-def _unique_phone() -> str:
-    # +7999000XXX — валидный E.164, и всегда уникальный в рамках тестов
-    return f"+7999000{next(_phone_seq):03d}"
-
-@pytest.fixture
-def make_user(
-    email: str, *, staff=False, superuser=False, verified=True, active=True, **extra
-):
-    """Fixture для создания пользователей."""
-    """
-    Создаём пользователя напрямую (без менеджера, чтобы не отправлять почту).
-    """
-    u = User.objects.create(
-        email=email,
-        phone_number=extra.pop("phone_number", _unique_phone()),
-        first_name=extra.pop("first_name", "FN"),
-        last_name=extra.pop("last_name", "LN"),
-        is_staff=staff,
-        is_superuser=superuser,
-        is_active=active,
-        email_verified=verified,
-        **extra,
-    )
-    u.set_password("pass")
-    u.save()
-    return u
 
 def perm_for_department(code: str) -> DepartmentPermission:
     """Безопасно получаем/создаём скоуп-право отдела по коду."""
@@ -113,11 +87,6 @@ def make_role(
     if codes:
         r.scoped_permissions.add(*[perm_for_department(c) for c in codes])
     return r
-
-def extract_results(data):
-    if isinstance(data, dict) and "results" in data:
-        return data["results"]
-    return data
 
 # ---------- tests: auth/list/basic ----------
 

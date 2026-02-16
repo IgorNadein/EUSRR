@@ -11,6 +11,7 @@ from employees.models import (
     EmployeeDepartment,
     Employee,
 )
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 # =========================
 # Helpers
@@ -24,23 +25,6 @@ def _unique_phone_from_email(email: str) -> str:
     n = int(hashlib.sha256(email.encode("utf-8")).hexdigest(), 16) % 10**9
     # "+79" + 9 цифр = 11-значный номер РФ
     return f"+79{n:09d}"
-
-@pytest.fixture
-def make_user(email: str, *, staff: bool = False, superuser: bool = False) -> Employee:
-    """Fixture для создания пользователей."""
-    """
-    Фабрика пользователя для тестов. Учитывает ограничение уникальности phone_number.
-    """
-    return Employee.objects.create(
-        email=email,
-        phone_number=_unique_phone_from_email(email),
-        first_name="T",
-        last_name="U",
-        is_staff=staff,
-        is_superuser=superuser,
-        email_verified=True,
-        is_active=True,
-    )
 
 def ensure_dept_perm(code: str, name: str | None = None) -> DepartmentPermission:
     """

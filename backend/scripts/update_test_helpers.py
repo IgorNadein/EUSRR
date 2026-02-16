@@ -25,31 +25,32 @@ files_to_update = [
     "test_skills.py",
 ]
 
+
 def add_import_if_missing(content: str) -> str:
     """Добавляет импорт test_helpers если его нет."""
     import_line = "from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results"
-    
+
     if "test_helpers" in content:
         return content
-    
+
     # Находим последний import
     import_pattern = r'^(import |from )'
     lines = content.split('\n')
     last_import_idx = 0
-    
+
     for i, line in enumerate(lines):
         if re.match(import_pattern, line):
             last_import_idx = i
-    
+
     # Вставляем после последнего импорта
     lines.insert(last_import_idx + 1, import_line)
-    
+
     return '\n'.join(lines)
 
 
 def remove_local_functions(content: str) -> str:
     """Удаляет локальные определения helper функций."""
-    
+
     # Паттерны для удаления
     patterns = [
         # make_user fixture
@@ -67,10 +68,10 @@ def remove_local_functions(content: str) -> str:
         # extract_results
         r'def extract_results\([^)]*\)[^:]*:.*?(?=\n(?:def |class |@pytest|$))',
     ]
-    
+
     for pattern in patterns:
         content = re.sub(pattern, '', content, flags=re.DOTALL | re.MULTILINE)
-    
+
     return content
 
 
@@ -82,31 +83,31 @@ def replace_function_calls(content: str) -> str:
         r'\b_grant\(': 'grant_permission(',
         r'\b_grant_perm\(': 'grant_permission(',
     }
-    
+
     for old, new in replacements.items():
         content = re.sub(old, new, content)
-    
+
     return content
 
 
 def update_file(filepath: Path):
     """Обновляет один файл."""
     print(f"Обновляем {filepath.name}...")
-    
+
     content = filepath.read_text(encoding='utf-8')
-    
+
     # Добавляем импорт
     content = add_import_if_missing(content)
-    
+
     # Удаляем локальные функции
     content = remove_local_functions(content)
-    
+
     # Заменяем вызовы
     content = replace_function_calls(content)
-    
+
     # Убираем лишние пустые строки
     content = re.sub(r'\n{3,}', '\n\n', content)
-    
+
     filepath.write_text(content, encoding='utf-8')
     print(f"  ✓ {filepath.name} обновлен")
 
@@ -122,7 +123,7 @@ def main():
                 print(f"  ✗ Ошибка в {filename}: {e}", file=sys.stderr)
         else:
             print(f"  ! {filename} не найден")
-    
+
     print("\n✅ Обновление завершено!")
 
 

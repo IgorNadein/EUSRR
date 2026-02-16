@@ -7,11 +7,13 @@
 3. Повторная отправка кода работает корректно
 """
 
+from unittest.mock import patch
+
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient
-from unittest.mock import patch
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 Employee = get_user_model()
 
@@ -20,27 +22,6 @@ def disable_ldap():
     """Отключает LDAP для всех тестов."""
     with patch("api.v1.employees.views._helpers._is_ldap_enabled", return_value=False):
         yield
-
-@pytest.fixture
-def make_user(email, verified=True, **kwargs):
-    """Fixture для создания пользователей."""
-    """Создаёт пользователя для тестов."""
-    phone = kwargs.get(
-        "phone_number", f"+7900{email[:7].replace('@', '').replace('.', '')}"
-    )
-    user = Employee.objects.create_user(
-        email=email,
-        password="TestPass123!",
-        first_name=kwargs.get("first_name", "Test"),
-        last_name=kwargs.get("last_name", "User"),
-        phone_number=phone,
-        telegram=kwargs.get("telegram", f"@{email.split('@')[0]}"),
-        send_activation_email=False,
-    )
-    user.email_verified = verified
-    user.is_active = True
-    user.save(update_fields=["email_verified", "is_active"])
-    return user
 
 @pytest.mark.django_db
 class TestEmailChangeResetsVerification:

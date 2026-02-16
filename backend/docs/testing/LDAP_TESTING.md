@@ -186,7 +186,7 @@ def test_employee_creation(api_client, with_ldap, settings):
         settings.LDAP_ENABLED = True
     else:
         settings.LDAP_ENABLED = False
-    
+
     # Тест проверяет оба сценария
     # ...
 ```
@@ -238,7 +238,7 @@ steps:
       LDAP_ENABLED: true
       LDAP_URI: ldap://localhost:389
     run: pytest tests/api/v1/employees/ -m ldap_required
-  
+
   - name: Run tests without LDAP
     env:
       LDAP_ENABLED: false

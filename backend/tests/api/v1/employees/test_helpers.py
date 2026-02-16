@@ -4,10 +4,10 @@
 Используйте эти функции вместо создания собственных в каждом тестовом файле.
 """
 import itertools
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from employees.models import Employee, Department, DepartmentRole, Position
-
+from employees.models import Department, DepartmentRole, Employee, Position
 from tests.test_config import DEFAULT_PASSWORD, TEST_EMAIL_DOMAIN
 
 User = get_user_model()
@@ -39,7 +39,7 @@ def make_user(
 ) -> User:
     """
     Создает пользователя для тестов.
-    
+
     Args:
         email: Email пользователя (если None, генерируется автоматически)
         staff: Флаг is_staff
@@ -48,22 +48,22 @@ def make_user(
         active: Флаг is_active
         password: Пароль (по умолчанию DEFAULT_PASSWORD)
         **extra: Дополнительные поля
-        
+
     Returns:
         User: Созданный пользователь
     """
     if email is None:
         email = make_unique_email()
-    
+
     if 'phone_number' not in extra:
         extra['phone_number'] = make_unique_phone()
-    
+
     if 'first_name' not in extra:
         extra['first_name'] = 'Test'
-    
+
     if 'last_name' not in extra:
         extra['last_name'] = 'User'
-    
+
     user = User.objects.create(
         email=email,
         is_staff=staff,
@@ -74,14 +74,14 @@ def make_user(
     )
     user.set_password(password)
     user.save()
-    
+
     return user
 
 
 def grant_permission(user: User, permission_codename: str):
     """
     Выдает пользователю указанное разрешение.
-    
+
     Args:
         user: Пользователь
         permission_codename: Codename разрешения в формате 'app_label.codename'
@@ -96,7 +96,7 @@ def grant_permission(user: User, permission_codename: str):
     else:
         # Пытаемся найти по codename
         perm = Permission.objects.get(codename=permission_codename)
-    
+
     user.user_permissions.add(perm)
     user.save()
 
@@ -104,49 +104,49 @@ def grant_permission(user: User, permission_codename: str):
 def make_department(**kwargs) -> Department:
     """
     Создает отдел для тестов.
-    
+
     Args:
         **kwargs: Поля модели Department
-        
+
     Returns:
         Department: Созданный отдел
     """
     if 'name' not in kwargs:
         kwargs['name'] = f"Test Department {Department.objects.count() + 1}"
-    
+
     return Department.objects.create(**kwargs)
 
 
 def make_position(**kwargs) -> Position:
     """
     Создает должность для тестов.
-    
+
     Args:
         **kwargs: Поля модели Position
-        
+
     Returns:
         Position: Созданная должность
     """
     if 'name' not in kwargs:
         kwargs['name'] = f"Test Position {Position.objects.count() + 1}"
-    
+
     return Position.objects.create(**kwargs)
 
 
 def make_department_role(department: Department, **kwargs) -> DepartmentRole:
     """
     Создает роль отдела для тестов.
-    
+
     Args:
         department: Отдел
         **kwargs: Дополнительные поля
-        
+
     Returns:
         DepartmentRole: Созданная роль
     """
     if 'name' not in kwargs:
         kwargs['name'] = f"Test Role {DepartmentRole.objects.count() + 1}"
-    
+
     return DepartmentRole.objects.create(
         department=department,
         **kwargs
@@ -156,10 +156,10 @@ def make_department_role(department: Department, **kwargs) -> DepartmentRole:
 def extract_results(data):
     """
     Извлекает результаты из пагинированного ответа API.
-    
+
     Args:
         data: Данные ответа (dict или list)
-        
+
     Returns:
         list: Список результатов
     """

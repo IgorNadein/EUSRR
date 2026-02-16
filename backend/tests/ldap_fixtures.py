@@ -7,6 +7,7 @@
 - ldap_config: конфигурация LDAP для тестов
 """
 import os
+
 import pytest
 from django.conf import settings
 
@@ -15,13 +16,13 @@ from django.conf import settings
 def ldap_available():
     """
     Проверяет доступность LDAP сервера.
-    
+
     Returns:
         bool: True если LDAP доступен и настроен
     """
     if not settings.LDAP_ENABLED:
         return False
-    
+
     try:
         from employees.ldap.infrastructure.connections import _ldap
         with _ldap() as conn:
@@ -77,20 +78,20 @@ def ensure_ldap_disabled(settings):
 def ldap_cleanup():
     """
     Cleanup фикстура для удаления тестовых данных из LDAP после теста.
-    
+
     Usage:
         def test_something(ldap_cleanup):
             # создаем объекты в LDAP
             ldap_cleanup.add_for_deletion(dn)
     """
     cleanup_list = []
-    
+
     class Cleanup:
         def add_for_deletion(self, dn):
             cleanup_list.append(dn)
-    
+
     yield Cleanup()
-    
+
     # Cleanup после теста
     if cleanup_list and settings.LDAP_ENABLED:
         try:
@@ -129,9 +130,9 @@ def pytest_collection_modifyitems(config, items):
                 ldap_available = conn.bind()
         except:
             pass
-    
+
     skip_ldap = pytest.mark.skip(reason="LDAP сервер недоступен")
-    
+
     for item in items:
         if "ldap_required" in item.keywords and not ldap_available:
             item.add_marker(skip_ldap)

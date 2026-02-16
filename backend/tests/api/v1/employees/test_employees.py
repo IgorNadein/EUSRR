@@ -1,23 +1,17 @@
 # tests/api/v1/employees/test_employees.py
-import itertools
 import datetime as dt
+import itertools
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from employees.constants import ACTION_DISMISSED  # для фильтра actually_active
+from employees.models import (Department, Employee, EmployeeAction,
+                              EmployeeDepartment, Position, Skill)
 from rest_framework import status
 from rest_framework.test import APIClient
-
-from employees.models import (
-    Department,
-    Employee,
-    EmployeeAction,
-    EmployeeDepartment,
-    Position,
-    Skill,
-)
-from employees.constants import ACTION_DISMISSED  # для фильтра actually_active
 from tests.conftest import _unique_phone
+from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 pytestmark = pytest.mark.django_db
 
@@ -30,43 +24,6 @@ def api_client():
     return APIClient()
 
 _phone_seq = itertools.count(2000)
-
-def _unique_phone() -> str:
-    # валидный уникальный E.164
-    return f"+7999000{next(_phone_seq):03d}"
-
-def make_user(
-    email: str,
-    *,
-    staff: bool = False,
-    superuser: bool = False,
-    verified: bool = True,
-    active: bool = True,
-    **extra,
-) -> User:
-    """Helper для создания пользователей в тестах."""
-    """
-    Создаём пользователя напрямую (без менеджера, чтобы не слать почту).
-    """
-    u = User.objects.create(
-        email=email,
-        phone_number=extra.pop("phone_number", _unique_phone()),
-        first_name=extra.pop("first_name", "FN"),
-        last_name=extra.pop("last_name", "LN"),
-        is_staff=staff,
-        is_superuser=superuser,
-        is_active=active,
-        email_verified=verified,
-        **extra,
-    )
-    u.set_password("pass")
-    u.save()
-    return u
-
-def extract_results(data):
-    if isinstance(data, dict) and "results" in data:
-        return data["results"]
-    return data
 
 # ---------- basic auth / list / retrieve ----------
 
@@ -150,7 +107,8 @@ def test_filter_by_department_includes_members_and_head(api_client: APIClient):
     outsider = make_user("out@example.com", last_name="Out")
 
     d = Department.objects.create(name="Dept", head=head)
-    EmployeeDepartment.objects.create(employee=member, department=d, is_active=True)
+    EmployeeDepartment.objects.create(
+        employee=member, department=d, is_active=True)
 
     url = reverse("api:v1:employees-list")
     r = api_client.get(url, {"department": d.id})
@@ -231,7 +189,8 @@ def test_filter_actually_active_logic(api_client: APIClient):
     # e_dismissed: email_verified=True, последнее действие — DISMISSED => не активен
     e_d = make_user("d@example.com", verified=True, active=True)
     EmployeeAction.objects.create(
-        employee=e_d, action=ACTION_DISMISSED, date=dt.datetime.now(dt.timezone.utc)
+        employee=e_d, action=ACTION_DISMISSED, date=dt.datetime.now(
+            dt.timezone.utc)
     )
 
     # e_unver: email_verified=False, даже при active=True — не включается при actually_active=true
@@ -265,7 +224,8 @@ def test_create_requires_staff(api_client: APIClient):
         # контакт специально НЕ передаём -> 400 из-за валидации контактов
     }
     resp = api_client.post(url, payload, format="json")
-    assert resp.status_code in (status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED)
+    assert resp.status_code in (
+        status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED)
 
     # staff -> но без контактов всё равно 400
     staff = make_user("staff@example.com", staff=True)
