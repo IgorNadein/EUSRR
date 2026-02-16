@@ -23,7 +23,7 @@ from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..permissions import AdminOrActionOrModelPerms
+from ...permissions import AdminOrActionOrModelPerms
 from ..serializers import EmployeeActionSerializer
 from ._helpers import HistoryActionMixin, _is_ldap_enabled
 

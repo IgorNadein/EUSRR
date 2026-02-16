@@ -22,7 +22,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..permissions import AdminOrDeptAllowed
+from ...permissions import AdminOrDeptAllowed
 from ..serializers import DepartmentRoleSerializer
 from ._helpers import Employee, _is_ldap_enabled
 

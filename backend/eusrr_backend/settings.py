@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     # Основные приложения
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
-    "hikcentral.apps.HikcentralConfig",
+
     "calendar_app.apps.CalendarAppConfig",
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
@@ -100,15 +100,7 @@ USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 DATABASES = {
     "default": {},
-    "hikcentral": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "cms",
-        "USER": "postgres",
-        "PASSWORD": None,
-        "HOST": "127.0.0.1",
-        "PORT": "5432",
-        "OPTIONS": {"options": "-c search_path=platform"},
-    },
+    
 }
 
 if USE_SQLITE:

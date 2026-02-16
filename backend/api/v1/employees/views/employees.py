@@ -42,7 +42,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..permissions import AdminOrActionOrModelPerms, IsSelfOrStaff
+from ...permissions import AdminOrActionOrModelPerms, IsSelfOrStaff
 from ..serializers import (
     EmployeeListSerializer,
     EmployeeSerializer,

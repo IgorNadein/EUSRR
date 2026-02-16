@@ -16,7 +16,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..permissions import AdminOrActionOrModelPerms
+from ...permissions import AdminOrActionOrModelPerms
 from ..serializers import GroupSerializer
 from ._helpers import Employee, _is_ldap_enabled
 
