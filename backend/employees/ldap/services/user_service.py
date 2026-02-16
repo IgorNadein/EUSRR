@@ -122,7 +122,9 @@ class UserService:
     def update_user_in_ldap_only(
         self,
         instance: Employee,
-        changes: Dict[str, Any]
+        changes: Dict[str, Any],
+        move_to_department_dn: Optional[str] = None,
+        group_cns: Optional[List[str]] = None
     ) -> dict[str, Any]:
         """Обновляет пользователя ТОЛЬКО в LDAP.
 
@@ -131,6 +133,8 @@ class UserService:
         Args:
             instance (Employee): Инстанс сотрудника с актуальными данными из БД.
             changes (Dict[str, Any]): Изменения из request.data для синхронизации в LDAP.
+            move_to_department_dn (Optional[str]): DN отдела для перемещения (готовый).
+            group_cns (Optional[List[str]]): Список CN групп для синхронизации (готовый).
 
         Returns:
             dict: Данные для дополнительного обновления БД если нужно:
@@ -146,33 +150,6 @@ class UserService:
 
         with _ldap() as conn:
             ldap_changes = dict(changes)
-
-            # Определяем куда переместить пользователя если меняется department
-            move_to_department_dn = None
-            if 'department' in changes or 'department_id' in changes:
-                # Если передан department объект или ID, получаем его DN
-                dept_val = changes.get(
-                    'department') or changes.get('department_id')
-                if dept_val:
-                    from .department_service import DepartmentService
-                    dept_svc = DepartmentService()
-                    if isinstance(dept_val, int):
-                        from employees.models import Department
-                        dept = Department.objects.filter(id=dept_val).first()
-                    else:
-                        dept = dept_val
-
-                    if dept:
-                        try:
-                            move_to_department_dn = dept_svc._get_department_dn(
-                                dept)
-                        except Exception:
-                            pass
-
-            # Определяем группы если нужно синхронизировать
-            group_cns = None
-            if 'groups' in changes:
-                group_cns = changes.get('groups', [])
 
             try:
                 result = self._update_user_in_ldap(

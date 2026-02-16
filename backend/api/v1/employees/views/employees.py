@@ -147,8 +147,28 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
                 changes['position'] = request_data.get(
                     'position') or request_data.get('position_id')
 
-            # Отдел (для перемещения)
-            move_to_department_dn = request_data.get('department_dn')
+            # Отдел (для перемещения) - резолвим DN здесь в ViewSet
+            move_to_department_dn = None
+            if 'department' in request_data or 'department_id' in request_data:
+                dept_val = request_data.get('department') or request_data.get('department_id')
+                if dept_val:
+                    # Если передан ID - получаем инстанс из БД
+                    if isinstance(dept_val, int):
+                        from employees.models import Department
+                        dept = Department.objects.filter(id=dept_val).first()
+                    else:
+                        dept = dept_val
+
+                    # Резолвим DN отдела
+                    if dept:
+                        try:
+                            from employees.ldap.services.department_service import DepartmentService
+                            dept_svc = DepartmentService()
+                            move_to_department_dn = dept_svc._get_department_dn(dept)
+                        except Exception as e:
+                            logger.warning(f"Failed to resolve department DN: {e}")
+
+            # Группы - берем готовый список CN если передан
             group_cns = request_data.get('group_cns')
 
             return {
