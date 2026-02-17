@@ -1,0 +1,1094 @@
+{
+	"info": {
+		"_postman_id": "eusrr-api-collection",
+		"name": "EUSRR API",
+		"description": "API коллекция для тестирования системы EUSRR",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refresh_token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login (Obtain Token)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+								"    pm.environment.set(\"access_token\", jsonData.access);",
+								"    pm.environment.set(\"refresh_token\", jsonData.refresh);",
+									"    console.log(\"Access token saved: \" + jsonData.access);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"password\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/token/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "token", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+								"    pm.environment.set(\"access_token\", jsonData.access);",
+									"    console.log(\"Access token refreshed: \" + jsonData.access);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refresh\": \"{{refresh_token}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/token/refresh/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "token", "refresh", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Register",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"newuser@example.com\",\n    \"password\": \"StrongPass123!\",\n    \"password2\": \"StrongPass123!\",\n    \"first_name\": \"Иван\",\n    \"last_name\": \"Иванов\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/register/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "register", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Employees",
+			"item": [
+				{
+					"name": "List Employees",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/?page=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "search",
+									"value": "Иванов",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Employee by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/1/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "1", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Employee",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"first_name\": \"Иван\",\n    \"last_name\": \"Петров\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/1/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "1", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current User (Me)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/me/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "me", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update My Profile",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"first_name\": \"Обновленное Имя\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/me/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "me", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Employee",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"newemployee@example.com\",\n    \"password\": \"SecurePass123\",\n    \"first_name\": \"Новый\",\n    \"last_name\": \"Сотрудник\",\n    \"phone_number\": \"+79991234568\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Employee",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/2/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "2", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Skill to Employee",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"skill_name\": \"Python\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/1/add_skill/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "1", "add_skill", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Skill from Employee",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"skill_name\": \"Python\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/1/remove_skill/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "1", "remove_skill", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Employee LDAP Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/1/ldap-info/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "1", "ldap-info", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Export Employees to Excel",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employees/export-excel/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employees", "export-excel", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Departments",
+			"item": [
+				{
+					"name": "List Departments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/departments/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "departments", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Department by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/departments/1/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "departments", "1", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Department",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Новый отдел\",\n    \"description\": \"Описание отдела\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/departments/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "departments", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Documents",
+			"item": [
+				{
+					"name": "List Documents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/documents/?page=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "documents", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Document by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/documents/1/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "documents", "1", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Document",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Новый документ\",\n    \"content\": \"Содержание документа\",\n    \"document_type\": \"report\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/documents/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "documents", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Feed (Posts)",
+			"item": [
+				{
+					"name": "List Posts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/posts/?page=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "posts", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"content\": \"Новый пост в ленте\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/posts/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "posts", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Like Post",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/posts/1/like/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "posts", "1", "like", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Comments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/comments/?post=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "comments", ""],
+							"query": [
+								{
+									"key": "post",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Comment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post\": 1,\n    \"content\": \"Отличный пост!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/comments/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "comments", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Communications (Messenger)",
+			"item": [
+				{
+					"name": "List Chats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/communications/chats/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "communications", "chats", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Chat by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/communications/chats/1/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "communications", "chats", "1", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Chat",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Новый чат\",\n    \"chat_type\": \"group\",\n    \"participants\": [1, 2, 3]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/communications/chats/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "communications", "chats", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Messages",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/communications/messages/?chat=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "communications", "messages", ""],
+							"query": [
+								{
+									"key": "chat",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Send Message",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"chat\": 1,\n    \"content\": \"Привет! Это тестовое сообщение\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/communications/messages/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "communications", "messages", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Calendar",
+			"item": [
+				{
+					"name": "List Events",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/calendar/events/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "calendar", "events", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Встреча\",\n    \"start\": \"2026-02-20T10:00:00Z\",\n    \"end\": \"2026-02-20T11:00:00Z\",\n    \"description\": \"Важная встреча\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/calendar/events/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "calendar", "events", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Calendars",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/calendar/calendars/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "calendar", "calendars", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Requests",
+			"item": [
+				{
+					"name": "List Requests",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/requests/?page=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "requests", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "status",
+									"value": "pending",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Request by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/requests/1/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "requests", "1", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Новая заявка\",\n    \"description\": \"Описание заявки\",\n    \"request_type\": \"support\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/requests/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "requests", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Notifications",
+			"item": [
+				{
+					"name": "List Notifications",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/notifications/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "notifications", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Mark as Read",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/notifications/1/mark_as_read/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "notifications", "1", "mark_as_read", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Mark All as Read",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/notifications/mark_all_as_read/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "notifications", "mark_all_as_read", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Employee Actions",
+			"item": [
+				{
+					"name": "List Employee Actions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employee-actions/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employee-actions", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Employee Action by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/employee-actions/1/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employee-actions", "1", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Employee Action",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"employee\": 1,\n    \"action_type\": \"hired\",\n    \"date\": \"2026-02-17\",\n    \"notes\": \"Принят на работу\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/employee-actions/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "employee-actions", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Department Roles",
+			"item": [
+				{
+					"name": "List Department Roles",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/department-roles/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "department-roles", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Role Assignments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/department-roles/1/assignments/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "department-roles", "1", "assignments", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Assign Role to Employee",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"employee_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/department-roles/1/assign/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "department-roles", "1", "assign", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Advanced Skills",
+			"item": [
+				{
+					"name": "Bulk Create Skills",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"names\": [\"Python\", \"JavaScript\", \"Docker\", \"Kubernetes\"]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/skills/bulk_create/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "skills", "bulk_create", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Merge Skills",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"source_id\": 2,\n    \"target_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/skills/merge/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "skills", "merge", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Advanced Groups",
+			"item": [
+				{
+					"name": "Get Group Permissions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/groups/1/permissions/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "groups", "1", "permissions", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set Group Permissions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"permission_ids\": [1, 2, 3]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/groups/1/set-permissions/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "groups", "1", "set-permissions", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Group Employees",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/groups/1/employees/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "groups", "1", "employees", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Group Members",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"employee_ids\": [1, 2, 3]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/groups/1/add-members/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "groups", "1", "add-members", ""]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Group Members",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"employee_ids\": [1]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/groups/1/remove-members/",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "groups", "1", "remove-members", ""]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
