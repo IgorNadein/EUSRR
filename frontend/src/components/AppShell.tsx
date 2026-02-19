@@ -2,8 +2,9 @@
 
 import { Bell, Building2, FileSignature, FileText, Home as HomeIcon, MessageSquare, Search, Users, Wallet } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ReactNode, useEffect } from "react";
+import { useUser } from "@/contexts/UserContext";
 
 type AppShellProps = {
   children: ReactNode;
@@ -37,6 +38,15 @@ const calendarWeeks = [
 ];
 
 function Header() {
+  const { user, logout } = useUser();
+
+  const userInitials = user
+    ? `${user.last_name?.[0] || ''}${user.first_name?.[0] || ''}`
+    : 'Г';
+  const userName = user
+    ? `${user.last_name} ${user.first_name}`.trim()
+    : 'Гость';
+
   return (
     <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-8">
@@ -57,7 +67,21 @@ function Header() {
           <button className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100">
             <Bell size={18} className="text-gray-600" />
           </button>
-          <div className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white">КМ</div>
+          <div
+            className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white cursor-pointer hover:bg-sky-500 overflow-hidden"
+            title={userName}
+            onClick={() => {
+              if (confirm('Выйти из системы?')) {
+                logout();
+              }
+            }}
+          >
+            {user?.avatar ? (
+              <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
+            ) : (
+              userInitials
+            )}
+          </div>
         </div>
       </div>
     </header>
@@ -66,10 +90,17 @@ function Header() {
 
 function LeftNav() {
   const pathname = usePathname();
+  const { user } = useUser();
+
+  const userInitials = user
+    ? `${user.last_name?.[0] || ''}${user.first_name?.[0] || ''}`
+    : 'Г';
+  const userName = user
+    ? `${user.last_name} ${user.first_name}`.trim()
+    : 'Гость';
 
   const navLinkClass = (href: string) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-gray-50 ${
-      pathname === href ? "bg-sky-50 text-sky-700 ring-1 ring-sky-100" : "text-gray-700"
+    `flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-gray-50 ${pathname === href ? "bg-sky-50 text-sky-700 ring-1 ring-sky-100" : "text-gray-700"
     }`;
 
   const navIconClass = (href: string) => (pathname === href ? "text-sky-700" : "text-gray-400");
@@ -79,10 +110,16 @@ function LeftNav() {
       <div className="sticky top-8 space-y-4">
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
           <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white">КМ</div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
+              ) : (
+                userInitials
+              )}
+            </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">Константин Макаев</p>
-              <p className="text-xs text-gray-500">Онлайн</p>
+              <p className="text-sm font-semibold text-gray-900">{userName}</p>
+              <p className="text-xs text-gray-500">{user?.is_active ? 'Онлайн' : 'Оффлайн'}</p>
             </div>
           </div>
           <div className="space-y-2 text-sm text-gray-700">
@@ -122,13 +159,12 @@ function Calendar() {
                 return (
                   <div
                     key={`${wi}-${di}`}
-                    className={`flex h-9 items-center justify-center rounded-full ${
-                      day
-                        ? isToday
-                          ? "bg-sky-100 text-sky-800 font-semibold ring-1 ring-sky-200"
-                          : "hover:bg-sky-50"
-                        : ""
-                    }`}
+                    className={`flex h-9 items-center justify-center rounded-full ${day
+                      ? isToday
+                        ? "bg-sky-100 text-sky-800 font-semibold ring-1 ring-sky-200"
+                        : "hover:bg-sky-50"
+                      : ""
+                      }`}
                   >
                     {day}
                   </div>
@@ -160,6 +196,33 @@ export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }:
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const { user, loading } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Если загрузка завершена и пользователь не авторизован - редирект на логин
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  // Показываем загрузку, пока проверяем авторизацию
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-sky-400 border-t-transparent"></div>
+          <p className="text-sm text-gray-500">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Если пользователь не авторизован, ничего не показываем (уже редиректим)
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white text-gray-900">
       <Header />

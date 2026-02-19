@@ -1,39 +1,70 @@
+"use client";
+
 import { Heart, MessageSquare, Search, Star } from "lucide-react";
 import { AppShell } from "../components/AppShell";
-
-const feedItems = [
-  {
-    id: 1,
-    author: "Алексей Пономарёв",
-    time: "2 часа назад",
-    text: "Обновил подборку треков для фокуса. Делюсь плейлистом, если тоже любите работать под легкий электро." ,
-    tags: ["Музыка", "Работа"],
-    actions: { likes: 42, comments: 8, saves: 5 },
-  },
-  {
-    id: 2,
-    author: "Виктория Зацарина",
-    time: "3 часа назад",
-    text: "Собрали командой фотографии с последней пробежки в парке. Город оживает, когда выходит солнце." ,
-    tags: ["Спорт", "Фото"],
-    actions: { likes: 65, comments: 12, saves: 7 },
-  },
-  {
-    id: 3,
-    author: "Unity C#",
-    time: "5 часов назад",
-    text: "Сегодня делимся лучшими гайдами по микроанимациям в интерфейсах. Собрали 7 примеров с кодом и видео." ,
-    tags: ["Дизайн", "Guides"],
-    actions: { likes: 88, comments: 16, saves: 21 },
-  },
-];
+import { apiClient } from "@/lib/api";
+import { useEffect, useState } from "react";
+import type { Post } from "@/types/api";
+import { useUser } from "@/contexts/UserContext";
 
 export default function Home() {
+  const { user } = useUser();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const userInitials = user
+    ? `${user.last_name?.[0] || ''}${user.first_name?.[0] || ''}`
+    : 'Г';
+
+  useEffect(() => {
+    async function loadPosts() {
+      try {
+        const response = await apiClient.getPosts();
+        setPosts(response.results);
+      } catch (err: any) {
+        console.error('Ошибка загрузки ленты:', err);
+        setError('Не удалось загрузить ленту');
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadPosts();
+  }, []);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent"></div>
+            <p className="text-sm text-gray-500">Загрузка ленты...</p>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppShell>
+        <div className="rounded-2xl bg-red-50 p-6 text-center">
+          <p className="text-sm text-red-800">{error}</p>
+        </div>
+      </AppShell>
+    );
+  }
   return (
     <AppShell>
       <div className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white">КМ</div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
+            {user?.avatar ? (
+              <img src={user.avatar} alt={user ? `${user.last_name} ${user.first_name}`.trim() : 'Пользователь'} className="h-full w-full object-cover" />
+            ) : (
+              userInitials
+            )}
+          </div>
           <div className="relative w-full">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -53,40 +84,65 @@ export default function Home() {
       </div>
 
       <div className="space-y-4">
-        {feedItems.map((item) => (
-          <article key={item.id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-            <header className="mb-3 flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white">
-                  {item.author[0]}
+        {posts.length === 0 ? (
+          <div className="rounded-2xl bg-gray-50 p-8 text-center">
+            <p className="text-sm text-gray-500">Пока нет постов в ленте</p>
+          </div>
+        ) : (
+          posts.map((post) => {
+            const authorName = post.author
+              ? `${post.author.last_name} ${post.author.first_name}`.trim()
+              : 'Аноним';
+            const authorInitials = post.author
+              ? `${post.author.last_name?.[0] || ''}${post.author.first_name?.[0] || ''}`
+              : 'А';
+
+            // Форматируем дату
+            const postDate = new Date(post.created_at);
+            const now = new Date();
+            const diffMs = now.getTime() - postDate.getTime();
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const timeAgo = diffHours < 1
+              ? 'только что'
+              : diffHours < 24
+                ? `${diffHours} ч. назад`
+                : `${Math.floor(diffHours / 24)} дн. назад`;
+
+            return (
+              <article key={post.id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+                <header className="mb-3 flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
+                      {post.author?.avatar ? (
+                        <img src={post.author.avatar} alt={authorName} className="h-full w-full object-cover" />
+                      ) : (
+                        authorInitials
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{authorName}</p>
+                      <p className="text-xs text-gray-500">{timeAgo}</p>
+                    </div>
+                  </div>
+                </header>
+                <p className="text-sm leading-6 text-gray-800">{post.content}</p>
+                {post.image && (
+                  <div className="mt-3 overflow-hidden rounded-lg">
+                    <img src={post.image} alt="" className="w-full" />
+                  </div>
+                )}
+                <div className="mt-4 flex items-center gap-4 text-sm text-gray-600">
+                  <button className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-gray-50">
+                    <Heart size={16} className="text-gray-400" /> {post.likes_count || 0}
+                  </button>
+                  <button className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-gray-50">
+                    <MessageSquare size={16} className="text-gray-400" /> {post.comments_count || 0}
+                  </button>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{item.author}</p>
-                  <p className="text-xs text-gray-500">{item.time}</p>
-                </div>
-              </div>
-            </header>
-            <p className="text-sm leading-6 text-gray-800">{item.text}</p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-sky-700">
-              {item.tags.map((tag) => (
-                <span key={tag} className="rounded-full bg-sky-50 px-3 py-1">
-                  {tag}
-                </span>
-              ))}
-            </div>
-            <div className="mt-4 flex items-center gap-4 text-sm text-gray-600">
-              <button className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-gray-50">
-                <Heart size={16} className="text-gray-400" /> {item.actions.likes}
-              </button>
-              <button className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-gray-50">
-                <MessageSquare size={16} className="text-gray-400" /> {item.actions.comments}
-              </button>
-              <button className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-gray-50">
-                <Star size={16} className="text-gray-400" /> {item.actions.saves}
-              </button>
-            </div>
-          </article>
-        ))}
+              </article>
+            );
+          })
+        )}
       </div>
     </AppShell>
   );
