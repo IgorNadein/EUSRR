@@ -1,52 +1,16 @@
 // Common types
-export interface Skill {
-  id: number;
-  name: string;
-  description?: string;
-}
-
-export interface EmployeeAction {
-  id: number;
-  employee: number;
-  action_type: string;
-  description?: string;
-  date: string;
-  created_at: string;
-}
-
-export interface EmployeeDepartment {
-  id: number;
-  name: string;
-  role_id?: number;
-  role_name?: string;
-  is_head: boolean;
-  via_assignment?: boolean;
-}
-
 export interface User {
   id: number;
   email: string;
   phone_number?: string;
   first_name: string;
   last_name: string;
-  patronymic?: string; // отчество (было middle_name)
+  middle_name?: string;
   position?: Position;
-  departments?: EmployeeDepartment[]; // массив отделов с ролями (было department)
+  department?: Department;
   avatar?: string;
   is_active: boolean;
   telegram?: string;
-  whatsapp?: string;
-  wechat?: string;
-  gender?: string;
-  birth_date?: string;
-  skills?: Skill[];
-  actions?: EmployeeAction[];
-  email_verified?: boolean;
-  created_at?: string;
-  updated_at?: string;
-  last_login?: string;
-  date_joined?: string;
-  auth?: Record<string, boolean>; // глобальные права пользователя
 }
 
 export interface Department {
@@ -193,7 +157,7 @@ export interface RegisterData {
   password: string;
   first_name: string;
   last_name: string;
-  patronymic?: string; // было middle_name
+  middle_name?: string;
   telegram?: string;
   whatsapp?: string;
   wechat?: string;

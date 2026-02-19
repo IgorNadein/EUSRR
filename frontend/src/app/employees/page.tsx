@@ -1,13 +1,60 @@
-import { AppShell, PageHeader } from "../../components/AppShell";
+"use client";
 
-const employees = [
-  { id: 1, name: "Константин Макаев", role: "Руководитель проектов", status: "Онлайн", department: "ИТ" },
-  { id: 2, name: "Виктория Зацарина", role: "Дизайнер", status: "Недавно", department: "Маркетинг" },
-  { id: 3, name: "Алексей Пономарёв", role: "Разработчик", status: "Оффлайн", department: "ИТ" },
-  { id: 4, name: "Эдуард Иванов", role: "Директор", status: "Онлайн", department: "Финансы" },
-];
+import { AppShell, PageHeader } from "../../components/AppShell";
+import { apiClient } from "@/lib/api";
+import { useEffect, useState } from "react";
+import type { User } from "@/types/api";
+
 export default function EmployeesPage() {
-  const sortedEmployees = [...employees].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const [employees, setEmployees] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadEmployees() {
+      try {
+        const response = await apiClient.getEmployees();
+        setEmployees(response.results);
+      } catch (err: any) {
+        console.error('Ошибка загрузки сотрудников:', err);
+        setError('Не удалось загрузить список сотрудников');
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadEmployees();
+  }, []);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <PageHeader title="Сотрудники" eyebrow="Команда" />
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent"></div>
+            <p className="text-sm text-gray-500">Загрузка...</p>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppShell>
+        <PageHeader title="Сотрудники" eyebrow="Команда" />
+        <div className="rounded-2xl bg-red-50 p-6 text-center">
+          <p className="text-sm text-red-800">{error}</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const sortedEmployees = [...employees].sort((a, b) => {
+    const nameA = `${a.last_name} ${a.first_name}`.trim();
+    const nameB = `${b.last_name} ${b.first_name}`.trim();
+    return nameA.localeCompare(nameB, "ru");
+  });
 
   return (
     <AppShell>
@@ -15,27 +62,35 @@ export default function EmployeesPage() {
 
       <div className="space-y-3">
         {sortedEmployees.map((employee) => {
-          const isOnline = employee.status === "Онлайн";
-          const statusColor = isOnline ? "text-green-600" : employee.status === "Недавно" ? "text-amber-600" : "text-gray-500";
-          const dotColor = isOnline ? "bg-green-500" : employee.status === "Недавно" ? "bg-amber-500" : "bg-gray-400";
+          const fullName = `${employee.last_name} ${employee.first_name} ${employee.patronymic || ''}`.trim();
+          const initials = `${employee.last_name?.[0] || ''}${employee.first_name?.[0] || ''}`;
+          const position = employee.position?.name || 'Сотрудник';
+          const isOnline = employee.is_active;
+          const statusText = isOnline ? 'Активен' : 'Неактивен';
+          const dotColor = isOnline ? 'bg-green-500' : 'bg-gray-400';
+          const statusColor = isOnline ? 'text-green-600' : 'text-gray-500';
 
           return (
             <article key={employee.id} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white">
-                {employee.name
-                  .split(" ")
-                  .slice(0, 2)
-                  .map((part) => part[0])
-                  .join("")}
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
+                {employee.avatar ? (
+                  <img src={employee.avatar} alt={fullName} className="h-full w-full object-cover" />
+                ) : (
+                  initials
+                )}
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-gray-900">{employee.name}</p>
-                <p className="text-xs text-gray-500">{employee.role}</p>
+                <p className="text-sm font-semibold text-gray-900">{fullName}</p>
+                <p className="text-xs text-gray-500">{position}</p>
                 <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
                   <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-                  <span className={statusColor}>{employee.status}</span>
-                  <span className="mx-1 text-gray-300">•</span>
-                  <span className="text-gray-500">{employee.department}</span>
+                  <span className={statusColor}>{statusText}</span>
+                  {employee.email && (
+                    <>
+                      <span className="mx-1 text-gray-300">•</span>
+                      <span className="text-gray-500">{employee.email}</span>
+                    </>
+                  )}
                 </div>
               </div>
             </article>
