@@ -1,9 +1,9 @@
-import { AppShell, PageHeader } from "../../components/AppShell";
+import { AppShell } from "../../components/AppShell";
 
 export default function DepartmentsPage() {
   return (
     <AppShell>
-      <PageHeader title="Отделы" subtitle="Здесь будут списки отделов и контакты." badge="В разработке" />
+      <p className="text-sm text-gray-500">Раздел в разработке.</p>
     </AppShell>
   );
 }

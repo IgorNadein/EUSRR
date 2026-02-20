@@ -1,9 +1,9 @@
-import { AppShell, PageHeader } from "../../components/AppShell";
+import { AppShell } from "../../components/AppShell";
 
 export default function FinancesPage() {
   return (
     <AppShell>
-      <PageHeader title="Финансы" subtitle="Здесь появится аналитика и отчётность." badge="В разработке" />
+      <p className="text-sm text-gray-500">Раздел в разработке.</p>
     </AppShell>
   );
 }

@@ -69,6 +69,7 @@ export interface Post {
   id: number;
   author: User;
   content: string;
+  image?: string;
   tags?: string[];
   created_at: string;
   updated_at: string;
@@ -116,7 +117,9 @@ export interface Request {
 export interface Chat {
   id: number;
   name?: string;
-  chat_type: 'direct' | 'group' | 'department';
+  avatar?: string | null;
+  chat_type?: 'direct' | 'group' | 'department';
+  type?: 'private' | 'group' | 'department' | 'announcement';
   participants: User[];
   last_message?: Message;
   unread_count?: number;
@@ -125,11 +128,33 @@ export interface Chat {
 
 export interface Message {
   id: number;
-  chat: number;
-  sender: User;
+  chat?: number;
+  sender?: User;
+  author?: User;
+  author_id?: number;
+  author_name?: string;
+  avatar?: string;
   content: string;
-  is_read: boolean;
-  created_at: string;
+  is_read?: boolean;
+  created_at?: string;
+  created?: string;
+  created_ts?: number;
+  is_edited?: boolean;
+  is_deleted?: boolean;
+  has_attachments?: boolean;
+  attachments?: MessageAttachment[];
+}
+
+export interface MessageAttachment {
+  id: number;
+  file_name: string;
+  file_type?: string;
+  file_url: string;
+  file_size?: number;
+  mime_type?: string;
+  width?: number;
+  height?: number;
+  thumbnail?: string | null;
 }
 
 // Calendar types

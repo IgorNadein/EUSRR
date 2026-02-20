@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
     NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
   },
+
+  // Полностью отключаем Next.js Dev Tools UI (кружок "N")
+  devIndicators: false,
 };
 
 export default nextConfig;

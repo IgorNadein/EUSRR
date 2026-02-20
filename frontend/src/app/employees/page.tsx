@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, PageHeader } from "../../components/AppShell";
+import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useState } from "react";
 import type { User } from "@/types/api";
@@ -28,7 +28,6 @@ export default function EmployeesPage() {
   if (loading) {
     return (
       <AppShell>
-        <PageHeader title="Сотрудники" eyebrow="Команда" />
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent"></div>
@@ -42,7 +41,6 @@ export default function EmployeesPage() {
   if (error) {
     return (
       <AppShell>
-        <PageHeader title="Сотрудники" eyebrow="Команда" />
         <div className="rounded-2xl bg-red-50 p-6 text-center">
           <p className="text-sm text-red-800">{error}</p>
         </div>
@@ -58,8 +56,6 @@ export default function EmployeesPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Сотрудники" eyebrow="Команда" badge={`Всего: ${employees.length}`} />
-
       <div className="space-y-3">
         {sortedEmployees.map((employee) => {
           const fullName = `${employee.last_name} ${employee.first_name} ${employee.patronymic || ''}`.trim();
@@ -72,12 +68,17 @@ export default function EmployeesPage() {
 
           return (
             <article key={employee.id} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
-                {employee.avatar ? (
-                  <img src={employee.avatar} alt={fullName} className="h-full w-full object-cover" />
-                ) : (
-                  initials
-                )}
+              <div className="relative h-12 w-12">
+                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
+                  {employee.avatar ? (
+                    <img src={employee.avatar} alt={fullName} className="h-full w-full object-cover" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                {isOnline ? (
+                  <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
+                ) : null}
               </div>
               <div className="flex-1">
                 <p className="text-sm font-semibold text-gray-900">{fullName}</p>
