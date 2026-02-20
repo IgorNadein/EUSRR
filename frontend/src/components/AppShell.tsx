@@ -68,7 +68,7 @@ function Header() {
             <Bell size={18} className="text-gray-600" />
           </button>
           <div
-            className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white cursor-pointer hover:bg-sky-500 overflow-hidden"
+            className="ml-1 relative h-10 w-10 cursor-pointer"
             title={userName}
             onClick={() => {
               if (confirm('Выйти из системы?')) {
@@ -76,11 +76,16 @@ function Header() {
               }
             }}
           >
-            {user?.avatar ? (
-              <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
-            ) : (
-              userInitials
-            )}
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white hover:bg-sky-500">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
+              ) : (
+                userInitials
+              )}
+            </div>
+            {user?.is_active ? (
+              <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
+            ) : null}
           </div>
         </div>
       </div>
@@ -106,16 +111,21 @@ function LeftNav() {
   const navIconClass = (href: string) => (pathname === href ? "text-sky-700" : "text-gray-400");
 
   return (
-    <aside className="hidden w-64 flex-shrink-0 lg:block">
-      <div className="sticky top-8 space-y-4">
+    <aside className="hidden w-64 flex-shrink-0 lg:block lg:sticky lg:self-start lg:top-22 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto">
+      <div className="space-y-4">
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
           <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
-              {user?.avatar ? (
-                <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
-              ) : (
-                userInitials
-              )}
+            <div className="relative h-11 w-11">
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
+                ) : (
+                  userInitials
+                )}
+              </div>
+              {user?.is_active ? (
+                <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
+              ) : null}
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-900">{userName}</p>
@@ -138,8 +148,8 @@ function LeftNav() {
 
 function Calendar() {
   return (
-    <aside className="hidden w-72 flex-shrink-0 space-y-4 lg:block">
-      <div className="sticky top-8 space-y-4">
+    <aside className="hidden w-72 flex-shrink-0 space-y-4 lg:block lg:sticky lg:self-start lg:top-22 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto">
+      <div className="space-y-4">
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
           <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
             <span>Календарь</span>
@@ -226,9 +236,9 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white text-gray-900">
       <Header />
-      <div className="mx-auto flex min-h-screen max-w-6xl gap-6 px-4 py-8 sm:px-8">
+      <div className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-6xl gap-6 px-4 py-8 sm:px-8">
         <LeftNav />
-        <main className="flex-1 space-y-6">{children}</main>
+        <main className="flex-1 min-w-0 space-y-6">{children}</main>
         <Calendar />
       </div>
     </div>

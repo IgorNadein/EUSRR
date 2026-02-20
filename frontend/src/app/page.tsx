@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, MessageSquare, Search, Star } from "lucide-react";
+import { Heart, MessageSquare } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useState } from "react";
@@ -56,33 +56,6 @@ export default function Home() {
   }
   return (
     <AppShell>
-      <div className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
-            {user?.avatar ? (
-              <img src={user.avatar} alt={user ? `${user.last_name} ${user.first_name}`.trim() : 'Пользователь'} className="h-full w-full object-cover" />
-            ) : (
-              userInitials
-            )}
-          </div>
-          <div className="relative w-full">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              className="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-              placeholder="Поиск по ленте"
-            />
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs text-sky-700">
-          <span className="rounded-full bg-sky-50 px-3 py-1">Статья</span>
-          <span className="rounded-full bg-sky-50 px-3 py-1">Фото</span>
-          <span className="rounded-full bg-sky-50 px-3 py-1">Ссылка</span>
-          <span className="rounded-full bg-sky-50 px-3 py-1">Опрос</span>
-          <span className="rounded-full bg-sky-50 px-3 py-1">Событие</span>
-        </div>
-      </div>
-
       <div className="space-y-4">
         {posts.length === 0 ? (
           <div className="rounded-2xl bg-gray-50 p-8 text-center">
@@ -96,6 +69,10 @@ export default function Home() {
             const authorInitials = post.author
               ? `${post.author.last_name?.[0] || ''}${post.author.first_name?.[0] || ''}`
               : 'А';
+            const isAuthorOnline =
+              typeof post.author?.is_active === 'boolean'
+                ? post.author.is_active
+                : Boolean(post.author?.id && user?.id && post.author.id === user.id && user.is_active);
 
             // Форматируем дату
             const postDate = new Date(post.created_at);
@@ -112,12 +89,17 @@ export default function Home() {
               <article key={post.id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
                 <header className="mb-3 flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-400 text-sm font-semibold text-white overflow-hidden">
-                      {post.author?.avatar ? (
-                        <img src={post.author.avatar} alt={authorName} className="h-full w-full object-cover" />
-                      ) : (
-                        authorInitials
-                      )}
+                    <div className="relative h-10 w-10">
+                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
+                        {post.author?.avatar ? (
+                          <img src={post.author.avatar} alt={authorName} className="h-full w-full object-cover" />
+                        ) : (
+                          authorInitials
+                        )}
+                      </div>
+                      {isAuthorOnline ? (
+                        <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
+                      ) : null}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-900">{authorName}</p>

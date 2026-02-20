@@ -1,9 +1,9 @@
-import { AppShell, PageHeader } from "../../components/AppShell";
+import { AppShell } from "../../components/AppShell";
 
 export default function RequestsPage() {
   return (
     <AppShell>
-      <PageHeader title="Заявления" subtitle="Здесь появятся заявки и согласования." badge="В разработке" />
+      <p className="text-sm text-gray-500">Раздел в разработке.</p>
     </AppShell>
   );
 }
