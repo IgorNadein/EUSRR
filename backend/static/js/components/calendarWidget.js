@@ -11,7 +11,6 @@ import {
   getCalendarEvents,
   invalidateCalendarEvents,
 } from "../api/calendarApi.js";
-import { getCalendar } from "../api/calendarsApi.js";
 import { getMyDepartments } from "../api/departmentsApi.js";
 import {
   getAccessToken,
@@ -146,18 +145,9 @@ export function initCalendarWidget(options = {}) {
     title: document.getElementById("detailTitle"),
     when: document.getElementById("detailWhen"),
     loc: document.getElementById("detailLocation"),
-    locWrapper: document.getElementById("detailLocationWrapper"),
     desc: document.getElementById("detailDescription"),
-    descWrapper: document.getElementById("detailDescriptionWrapper"),
-    calendar: document.getElementById("detailCalendar"),
     scope: document.getElementById("detailScope"),
-    scopeWrapper: document.getElementById("detailScopeWrapper"),
     rec: document.getElementById("detailRecurrence"),
-    recWrapper: document.getElementById("detailRecurrenceWrapper"),
-    createdBy: document.getElementById("detailCreatedBy"),
-    createdByWrapper: document.getElementById("detailCreatedByWrapper"),
-    createdAt: document.getElementById("detailCreatedAt"),
-    createdAtWrapper: document.getElementById("detailCreatedAtWrapper"),
     dot: document.getElementById("detailColorDot"),
     btnEdit: document.getElementById("btnEditEvent"),
     btnDel: document.getElementById("btnDeleteEvent"),
@@ -165,191 +155,33 @@ export function initCalendarWidget(options = {}) {
 
   let currentDetail = null;
 
-  /**
-   * Утилита для показа/скрытия элементов с контентом
-   */
-  function toggleElement(element, wrapper, content, isEmpty = false) {
-    if (!element || !wrapper) return;
-
-    if (isEmpty || !content || content === "—" || content.trim() === "") {
-      wrapper.style.display = "none";
-    } else {
-      wrapper.style.removeProperty("display");
-      element.textContent = content;
-    }
-  }
-
-  /**
-   * Форматирование даты для отображения
-   */
-  function formatDateTime(dateString) {
-    if (!dateString) return null;
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString("ru-RU", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateString;
-    }
-  }
-
   function fillDetails(ev) {
     if (!$dt.title) return; // Модала нет — тихо выходим
-
-    // Заголовок
     $dt.title.textContent = ev.title || "Событие";
-
-    // Цвет
+    $dt.when.textContent = fmtWhen(ev);
+    $dt.loc.textContent = ev.location || "—";
+    $dt.desc.textContent = ev.description || "—";
+    $dt.scope.textContent = ev.department
+      ? `Отдел: ${ev.department.name || ev.department}`
+      : "Компания";
+    $dt.rec.textContent = ev.recurrence_interval
+      ? `${ev.recurrence} ×${ev.recurrence_interval}`
+      : ev.recurrence || "—";
     const col = ev.color || DEFAULT_EVENT_COLOR;
     if ($dt.dot) $dt.dot.style.backgroundColor = col;
-
-    // Время
-    $dt.when.textContent = fmtWhen(ev);
-
-    // Место (скрываем если пусто)
-    toggleElement($dt.loc, $dt.locWrapper, ev.location);
-
-    // Описание (скрываем если пусто)
-    toggleElement($dt.desc, $dt.descWrapper, ev.description);
-
-    // Календарь
-    let calendarName = "—";
-    let calendarContext = null; // Контекст отдельно: тип и владелец
-
-    // Приоритет: __calendar объект (полные данные)
-    if (ev.__calendar) {
-      const cal = ev.__calendar;
-      calendarName = cal.title || cal.name || `Календарь #${cal.id}`;
-
-      // Определяем контекст на основе owner_user / owner_department
-      if (cal.is_personal || cal.owner_user || cal.owner_user_id) {
-        calendarContext = "👤 Личный";
-        if (cal.owner_user_name) {
-          calendarContext += ` (${cal.owner_user_name})`;
-        }
-      } else if (
-        cal.is_department ||
-        cal.owner_department ||
-        cal.owner_department_id
-      ) {
-        calendarContext = "🏢 Отдел";
-        if (cal.owner_department_name) {
-          calendarContext += ` (${cal.owner_department_name})`;
-        }
-      } else if (cal.is_global) {
-        calendarContext = "📅 Компания";
-      }
-    }
-    // Fallback: если нет __calendar, используем старые поля
-    else if (ev.calendar) {
-      if (typeof ev.calendar === "object") {
-        calendarName =
-          ev.calendar.title ||
-          ev.calendar.name ||
-          `Календарь #${ev.calendar.id}`;
-      } else {
-        calendarName = `Календарь #${ev.calendar}`;
-      }
-    } else if (ev.calendar_id) {
-      calendarName = `Календарь #${ev.calendar_id}`;
-    } else if (ev.employee_id) {
-      calendarName = "Личный календарь";
-      calendarContext = "👤 Личное событие";
-    } else if (ev.department_id || ev.department) {
-      const deptName = ev.department?.name || `Отдел #${ev.department_id}`;
-      calendarName = `Календарь отдела`;
-      calendarContext = `🏢 ${deptName}`;
-    } else {
-      calendarName = "Компания (общие события)";
-      calendarContext = "📅 Общий календарь";
-    }
-
-    // Календарь - только название
-    $dt.calendar.textContent = calendarName;
-
-    // Повторение (скрываем если нет)
-    let recText = null;
-    if (ev.recurrence && ev.recurrence !== "one_time") {
-      const recNames = {
-        hourly: "Ежечасно",
-        daily: "Ежедневно",
-        weekly: "Еженедельно",
-        monthly: "Ежемесячно",
-        annual: "Ежегодно",
-      };
-      recText = recNames[ev.recurrence] || ev.recurrence;
-      if (ev.recurrence_interval && ev.recurrence_interval > 1) {
-        recText += ` (каждые ${ev.recurrence_interval})`;
-      }
-      if (ev.recurrence_until) {
-        recText += ` до ${ev.recurrence_until}`;
-      } else if (ev.recurrence_count) {
-        recText += ` (${ev.recurrence_count} раз)`;
-      }
-    }
-    toggleElement($dt.rec, $dt.recWrapper, recText);
-
-    // Автор (скрываем если нет)
-    let createdByText = null;
-    if (ev.created_by_name) {
-      // Используем готовое имя из бэкенда
-      createdByText = ev.created_by_name;
-    } else if (ev.created_by) {
-      // Fallback на старую логику для совместимости
-      if (typeof ev.created_by === "object") {
-        createdByText =
-          ev.created_by.username ||
-          ev.created_by.email ||
-          ev.created_by.full_name ||
-          `ID: ${ev.created_by.id}`;
-      } else {
-        createdByText = `ID: ${ev.created_by}`;
-      }
-    }
-    toggleElement($dt.createdBy, $dt.createdByWrapper, createdByText);
-
-    // Дата создания (скрываем если нет)
-    const createdAtText = ev.created_at ? formatDateTime(ev.created_at) : null;
-    toggleElement($dt.createdAt, $dt.createdAtWrapper, createdAtText);
-
-    // Контекст - тип и владелец календаря (из переменной выше)
-    toggleElement($dt.scope, $dt.scopeWrapper, calendarContext);
-
-    // Кнопки действий (пока скрываем, потом добавим проверку прав)
-    if ($dt.btnEdit) $dt.btnEdit.style.display = "none";
-    if ($dt.btnDel) $dt.btnDel.style.display = "none";
   }
 
   async function openEventDetailsById(eventId) {
+    console.log("[CalendarWidget] openEventDetailsById called with:", eventId);
     try {
       const url = `${API_EVENTS}${eventId}/`;
+      console.log("[CalendarWidget] Fetching event details from:", url);
       const data = await apiGet(url);
-
-      // Если нет __calendar объекта, но есть calendar ID - загружаем данные календаря
-      if (!data.__calendar && data.calendar) {
-        const calendarId =
-          typeof data.calendar === "object" ? data.calendar.id : data.calendar;
-        if (calendarId) {
-          try {
-            const calendarData = await getCalendar(calendarId);
-            data.__calendar = calendarData;
-          } catch (calErr) {
-            console.warn(
-              "[CalendarWidget] Failed to load calendar data:",
-              calErr,
-            );
-          }
-        }
-      }
-
+      console.log("[CalendarWidget] Event details loaded:", data);
       currentDetail = data;
       fillDetails(data);
       if (detailsModal) {
+        console.log("[CalendarWidget] Showing details modal");
         detailsModal.show();
       } else {
         console.error("[CalendarWidget] detailsModal is not initialized!");
@@ -917,86 +749,18 @@ export function initCalendarWidget(options = {}) {
     if (select && data) {
       // Определяем текущий календарь
       let targetValue = null;
-
-      console.log("[CalendarWidget] Event data for calendar select:", {
-        calendar_id: data.calendar_id,
-        calendar: data.calendar,
-        calendar_type: typeof data.calendar,
-        employee_id: data.employee_id,
-        department_id: data.department_id,
-        department: data.department,
-      });
-
-      // Сначала проверяем новые календари
       if (data.calendar_id) {
-        // Прямое поле calendar_id
-        targetValue = String(data.calendar_id);
-      } else if (data.calendar) {
-        // Поле calendar может быть:
-        // 1. Числом (ID календаря)
-        // 2. Объектом с полем id
-        if (
-          typeof data.calendar === "number" ||
-          typeof data.calendar === "string"
-        ) {
-          targetValue = String(data.calendar);
-        } else if (data.calendar?.id) {
-          targetValue = String(data.calendar.id);
-        }
+        targetValue = data.calendar_id.toString();
+      } else if (data.employee_id) {
+        targetValue = "personal";
+      } else if (data.department_id) {
+        targetValue = `dept-${data.department_id}`;
+      } else {
+        targetValue = "company";
       }
-      // Затем legacy календари
-      if (!targetValue) {
-        if (data.employee_id) {
-          targetValue = "legacy-personal";
-        } else if (data.department_id || data.department) {
-          const deptId =
-            data.department_id || data.department?.id || data.department;
-          targetValue = `legacy-dept-${deptId}`;
-        } else {
-          // По умолчанию - глобальный legacy календарь
-          targetValue = "legacy-company";
-        }
-      }
-
-      console.log("[CalendarWidget] Setting calendar select to:", targetValue);
-      console.log(
-        "[CalendarWidget] Available options:",
-        Array.from(select.options).map((opt) => ({
-          value: opt.value,
-          text: opt.textContent,
-        })),
-      );
 
       // Устанавливаем значение в dropdown
       select.value = targetValue;
-
-      // Если значение не установилось (нет такой опции), пробуем найти похожее
-      if (select.value !== targetValue) {
-        console.warn("[CalendarWidget] Value not found, trying fallback");
-
-        // Для новых календарей пробуем найти по ID
-        if (data.calendar_id || data.calendar?.id) {
-          const calId = data.calendar_id || data.calendar?.id;
-          const found = Array.from(select.options).find(
-            (opt) => opt.value == calId || opt.value == String(calId),
-          );
-          if (found) {
-            select.value = found.value;
-          }
-        }
-      }
-
-      console.log(
-        "[CalendarWidget] Calendar select value after set:",
-        select.value,
-      );
-
-      // Если все еще не установилось - предупреждение
-      if (select.value !== targetValue && select.value === "") {
-        console.error(
-          "[CalendarWidget] Failed to set calendar select! Event may be from unavailable calendar.",
-        );
-      }
     }
 
     // Открываем форму редактирования
@@ -1130,7 +894,7 @@ export function initCalendarWidget(options = {}) {
         optgroup.label = "📂 Компания";
         folders.global.forEach((cal) => {
           const opt = document.createElement("option");
-          opt.value = String(cal.id); // Явно конвертируем в строку
+          opt.value = cal.id;
           opt.textContent = `  🗓️ ${cal.title || cal.name}`;
           optgroup.appendChild(opt);
         });
@@ -1143,7 +907,7 @@ export function initCalendarWidget(options = {}) {
         optgroup.label = "📂 Личные";
         folders.personal.forEach((cal) => {
           const opt = document.createElement("option");
-          opt.value = String(cal.id); // Явно конвертируем в строку
+          opt.value = cal.id;
           opt.textContent = `  🗓️ ${cal.title || cal.name}`;
           optgroup.appendChild(opt);
         });
@@ -1157,7 +921,7 @@ export function initCalendarWidget(options = {}) {
         optgroup.label = `📂 ${dept.name}`;
         dept.calendars.forEach((cal) => {
           const opt = document.createElement("option");
-          opt.value = String(cal.id); // Явно конвертируем в строку
+          opt.value = cal.id;
           opt.textContent = `  🗓️ ${cal.title || cal.name}`;
           optgroup.appendChild(opt);
         });
@@ -1293,8 +1057,6 @@ export function initCalendarWidget(options = {}) {
           const id = ev.id ?? ev.pk ?? ev.uuid ?? ev.slug ?? ev._id;
           const eventColor = ev.color || ev.bgColor || null;
           const calendarColor = ev.__calendar?.color || null;
-          const calendarTitle =
-            ev.__calendar?.title || ev.__calendar?.name || null;
 
           // Преобразуем строковые даты в Date объекты для FullCalendar
           const start = ev.start ? toDate(ev.start) : null;
@@ -1328,7 +1090,6 @@ export function initCalendarWidget(options = {}) {
               ...(ev.extendedProps || {}),
               ...ev, // Копируем все свойства события
               calendar_color: calendarColor, // Добавляем цвет календаря
-              calendar_title: calendarTitle, // Добавляем название календаря
             },
           };
         });
@@ -1713,25 +1474,12 @@ export function initCalendarWidget(options = {}) {
 
     // Получаем выбранный календарь из dropdown
     const selectEl = document.querySelector('select[name="target_calendar"]');
-    let targetCalendar = selectEl?.value;
+    const targetCalendar = selectEl?.value;
 
     if (!targetCalendar) {
       alert("Выберите календарь для создания события");
       return;
     }
-
-    // Парсим в число, если это новый календарь (numeric ID)
-    // Legacy календари остаются строками ("company", "personal", "dept-X")
-    const parsedId = parseInt(targetCalendar, 10);
-    if (!isNaN(parsedId) && parsedId > 0) {
-      targetCalendar = parsedId;
-    }
-
-    console.log("[CalendarWidget] Selected calendar:", {
-      raw: selectEl?.value,
-      parsed: targetCalendar,
-      type: typeof targetCalendar,
-    });
 
     const postHeaders = {
       "Content-Type": "application/json",

@@ -515,6 +515,7 @@ class CalendarWriteSerializer(serializers.ModelSerializer):
             "visibility",
             "owner_user",
             "owner_department",
+            "default_can_edit",
             "auto_subscribe_new_users",
             "auto_subscribe_department_members",
             "is_active",
