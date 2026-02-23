@@ -248,11 +248,11 @@ class Calendar(models.Model):
 
         # Проверяем подписку с правом редактирования
         subscription = self.subscriptions.filter(user=user).first()
-        if subscription:
-            return subscription.can_edit
+        if subscription and subscription.can_edit:
+            return True
 
-        # Если подписки нет, проверяем default_can_edit
-        # (для публичных календарей, где пользователь может видеть, но не подписан)
+        # Если подписки нет или can_edit=False, проверяем default_can_edit
+        # (для публичных календарей или календарей с общими правами редактирования)
         if self.default_can_edit:
             return True
 
