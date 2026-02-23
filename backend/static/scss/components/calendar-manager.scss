@@ -40,21 +40,6 @@
   &:last-child {
     margin-bottom: 0;
   }
-
-  // Drag & Drop: drop target подсветка для папок
-  &.drop-target-active {
-    .calendar-folder-header {
-      background-color: var(--bs-primary-bg-subtle);
-      border: 2px solid var(--bs-primary);
-      border-radius: var(--radius-md);
-      transition: all 0.2s ease;
-
-      .calendar-title {
-        color: var(--bs-primary);
-        font-weight: 600;
-      }
-    }
-  }
 }
 
 .calendar-folder-header {

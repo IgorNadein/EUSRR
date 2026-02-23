@@ -68,9 +68,14 @@ class CalendarEventsViewSet(ModelViewSet):
         """Настройка прав доступа в зависимости от действия.
 
         - list, retrieve: доступно всем авторизованным пользователям
-        - create, update, partial_update, destroy для компании: требуется staff/superuser
-        - create, update, partial_update, destroy для отдела: требуется MANAGE_CALENDAR
-        - create, update, partial_update, destroy для личного календаря: только владелец
+        - create, update, partial_update, destroy для новой архитектуры:
+          проверка через calendar.can_user_edit()
+        - create, update, partial_update, destroy для компании (legacy):
+          требуется staff/superuser
+        - create, update, partial_update, destroy для отдела (legacy):
+          требуется MANAGE_CALENDAR
+        - create, update, partial_update, destroy для личного календаря
+          (legacy): только владелец
         """
         action = getattr(self, "action", None)
         method = self.request.method if hasattr(self, "request") else None
@@ -90,7 +95,62 @@ class CalendarEventsViewSet(ModelViewSet):
         if action in ["list", "retrieve"]:
             return [IsAuthenticated()]
 
-        # Для изменений требуются права управления календарём
+        # Для изменений проверяем новую архитектуру (calendar_id)
+        from rest_framework.permissions import BasePermission
+
+        class CalendarEditPermission(BasePermission):
+            """Проверка прав редактирования через календари."""
+
+            def has_permission(self, request, view):
+                from calendar_app.models import Calendar
+
+                # Пытаемся получить calendar_id из разных источников
+                calendar_id = None
+
+                # 1. Из тела запроса (create)
+                if hasattr(request, "data") and isinstance(request.data, dict):
+                    calendar_id = request.data.get("calendar_id")
+
+                # 2. Из query параметров
+                if calendar_id is None:
+                    calendar_id = request.query_params.get("calendar_id")
+
+                # 3. Для update/delete из объекта события
+                if calendar_id is None and hasattr(view, "get_object"):
+                    try:
+                        event = view.get_object()
+                        calendar_id = event.calendar_id
+                    except Exception:
+                        pass
+
+                # Если calendar_id указан — используем новую логику
+                if calendar_id is not None:
+                    try:
+                        calendar = Calendar.objects.get(id=int(calendar_id))
+                        return calendar.can_user_edit(request.user)
+                    except (Calendar.DoesNotExist, ValueError):
+                        return False
+
+                # Если calendar_id не указан — используем legacy логику
+                return None  # Пропускаем дальше к legacy проверкам
+
+        # Проверяем через новую архитектуру
+        calendar_perm = CalendarEditPermission()
+        has_perm = calendar_perm.has_permission(self.request, self)
+
+        # Если новая архитектура вернула результат — используем его
+        if has_perm is not None:
+            if has_perm:
+                return [IsAuthenticated()]
+            else:
+                # Нет прав на редактирование календаря
+                class DenyAll(BasePermission):
+                    def has_permission(self, request, view):
+                        return False
+
+                return [DenyAll()]
+
+        # LEGACY ЛОГИКА: calendar_id не указан, используем старую логику
         emp = self._employee_id(required=False)
         dep = self._dept_id(required=False)
 
@@ -101,15 +161,13 @@ class CalendarEventsViewSet(ModelViewSet):
                 return [IsAuthenticated()]
             else:
                 # Другой пользователь не может изменять чужой личный календарь
-                from rest_framework.permissions import BasePermission
-
                 class DenyAll(BasePermission):
                     def has_permission(self, request, view):
                         return False
 
                 return [DenyAll()]
 
-        # Календарь компании — только администраторы
+        # Календарь компании (legacy) — только администраторы
         if dep is None:
             from rest_framework.permissions import IsAdminUser
 
