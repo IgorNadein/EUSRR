@@ -147,6 +147,7 @@ export function initCalendarWidget(options = {}) {
     loc: document.getElementById("detailLocation"),
     desc: document.getElementById("detailDescription"),
     scope: document.getElementById("detailScope"),
+    scopeWrapper: document.getElementById("detailScopeWrapper"),
     rec: document.getElementById("detailRecurrence"),
     dot: document.getElementById("detailColorDot"),
     createdBy: document.getElementById("detailCreatedBy"),
@@ -167,12 +168,12 @@ export function initCalendarWidget(options = {}) {
     $dt.when.textContent = fmtWhen(ev);
     $dt.loc.textContent = ev.location || "—";
     $dt.desc.textContent = ev.description || "—";
-    $dt.scope.textContent = ev.department
-      ? `Отдел: ${ev.department.name || ev.department}`
-      : "Компания";
+
+    // Повторение
     $dt.rec.textContent = ev.recurrence_interval
       ? `${ev.recurrence} ×${ev.recurrence_interval}`
       : ev.recurrence || "—";
+
     const col = ev.color || DEFAULT_EVENT_COLOR;
     if ($dt.dot) $dt.dot.style.backgroundColor = col;
 
@@ -204,19 +205,28 @@ export function initCalendarWidget(options = {}) {
     }
 
     // Информация о календаре
+    // Приоритет: новый календарь > legacy (department/employee)
     if ($dt.calendar && $dt.calendarWrapper) {
       if (ev.calendar_title) {
+        // Событие из нового календаря
         $dt.calendar.textContent = ev.calendar_title;
         $dt.calendarWrapper.style.display = "";
-      } else if (ev.department) {
-        $dt.calendar.textContent = `Календарь отдела: ${ev.department.name || ev.department}`;
-        $dt.calendarWrapper.style.display = "";
-      } else if (ev.employee) {
-        $dt.calendar.textContent = "Личный календарь";
-        $dt.calendarWrapper.style.display = "";
+        // Скрываем старое поле "Контекст"
+        if ($dt.scopeWrapper) $dt.scopeWrapper.style.display = "none";
       } else {
-        $dt.calendar.textContent = "Календарь компании";
-        $dt.calendarWrapper.style.display = "";
+        // Legacy событие - скрываем новое поле "Календарь"
+        $dt.calendarWrapper.style.display = "none";
+        // Показываем старое поле "Контекст"
+        if ($dt.scope && $dt.scopeWrapper) {
+          if (ev.department) {
+            $dt.scope.textContent = `Отдел: ${ev.department.name || ev.department}`;
+          } else if (ev.employee) {
+            $dt.scope.textContent = "Личный календарь";
+          } else {
+            $dt.scope.textContent = "Компания";
+          }
+          $dt.scopeWrapper.style.display = "";
+        }
       }
     }
   }
