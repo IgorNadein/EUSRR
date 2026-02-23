@@ -54,9 +54,12 @@ export function resolveCalendarParams(calendarId, baseParams = {}) {
         }
         break;
     }
-  } else if (typeof calendarId === "number") {
-    // Новый календарь: используем calendar_id
-    params.calendar_id = calendarId;
+  } else {
+    // Новый календарь: используем calendar_id (преобразуем в число)
+    const numericId = typeof calendarId === "number" ? calendarId : parseInt(calendarId, 10);
+    if (!isNaN(numericId)) {
+      params.calendar_id = numericId;
+    }
   }
 
   return params;
@@ -107,10 +110,13 @@ export function resolveEventPayload(calendarId, eventData) {
         }
         break;
     }
-  } else if (typeof calendarId === "number") {
-    // Новый календарь: добавляем calendar_id
-    console.log("[CalendarTypeResolver] Adding calendar_id:", calendarId);
-    payload.calendar_id = calendarId;
+  } else {
+    // Новый календарь: добавляем calendar_id (преобразуем в число)
+    const numericId = typeof calendarId === "number" ? calendarId : parseInt(calendarId, 10);
+    if (!isNaN(numericId)) {
+      console.log("[CalendarTypeResolver] Adding calendar_id:", numericId);
+      payload.calendar_id = numericId;
+    }
   }
 
   console.log("[CalendarTypeResolver] Final payload:", payload);
