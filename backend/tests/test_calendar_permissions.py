@@ -8,11 +8,7 @@
 from datetime import date
 
 import pytest
-from calendar_app.models import (
-    Calendar,
-    CalendarSubscription,
-    CalendarVisibility,
-)
+from calendar_app.models import Calendar, CalendarSubscription, CalendarVisibility
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APIClient

@@ -1,3 +1,6 @@
 import Picker from './picker.js'
-import Database from './database.js'
-export { Picker, Database }
+// Database не используется, закомментировано чтобы избежать 404
+// import Database from './database.js'
+export { Picker }
+// export { Picker, Database }
+

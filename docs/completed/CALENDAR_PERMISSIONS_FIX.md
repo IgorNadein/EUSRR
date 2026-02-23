@@ -1,6 +1,6 @@
 # Исправление прав доступа для глобальных календарей
 
-**Дата:** 23 февраля 2026 г.  
+**Дата:** 23 февраля 2026 г.
 **Статус:** ✅ Выполнено
 
 ## Проблема
@@ -16,7 +16,7 @@
 def get_permissions(self):
     emp = self._employee_id(required=False)
     dep = self._dept_id(required=False)
-    
+
     # Календарь компании — только администраторы
     if dep is None:  # ❌ Срабатывало для глобальных календарей!
         return [IsAdminUser()]
@@ -50,11 +50,11 @@ class CalendarEditPermission(BasePermission):
         # 1. Теле запроса (create)
         # 2. Query параметрах
         # 3. Объекте события (update/delete)
-        
+
         if calendar_id is not None:
             calendar = Calendar.objects.get(id=int(calendar_id))
             return calendar.can_user_edit(request.user)
-        
+
         return None  # Переход к legacy логике
 ```
 
@@ -179,5 +179,5 @@ POST /api/v1/calendar/events/
 
 ---
 
-**Автор:** GitHub Copilot  
+**Автор:** GitHub Copilot
 **Проверено:** Требуется тестирование
