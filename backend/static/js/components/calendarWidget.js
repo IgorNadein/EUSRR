@@ -149,6 +149,12 @@ export function initCalendarWidget(options = {}) {
     scope: document.getElementById("detailScope"),
     rec: document.getElementById("detailRecurrence"),
     dot: document.getElementById("detailColorDot"),
+    createdBy: document.getElementById("detailCreatedBy"),
+    createdByWrapper: document.getElementById("detailCreatedByWrapper"),
+    createdAt: document.getElementById("detailCreatedAt"),
+    createdAtWrapper: document.getElementById("detailCreatedAtWrapper"),
+    calendar: document.getElementById("detailCalendar"),
+    calendarWrapper: document.getElementById("detailCalendarWrapper"),
     btnEdit: document.getElementById("btnEditEvent"),
     btnDel: document.getElementById("btnDeleteEvent"),
   };
@@ -169,6 +175,50 @@ export function initCalendarWidget(options = {}) {
       : ev.recurrence || "—";
     const col = ev.color || DEFAULT_EVENT_COLOR;
     if ($dt.dot) $dt.dot.style.backgroundColor = col;
+
+    // Информация о создателе
+    if ($dt.createdBy && $dt.createdByWrapper) {
+      if (ev.created_by_name) {
+        $dt.createdBy.textContent = ev.created_by_name;
+        $dt.createdByWrapper.style.display = "";
+      } else {
+        $dt.createdByWrapper.style.display = "none";
+      }
+    }
+
+    // Дата создания
+    if ($dt.createdAt && $dt.createdAtWrapper) {
+      if (ev.created_at) {
+        const createdDate = new Date(ev.created_at);
+        $dt.createdAt.textContent = createdDate.toLocaleString("ru-RU", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        $dt.createdAtWrapper.style.display = "";
+      } else {
+        $dt.createdAtWrapper.style.display = "none";
+      }
+    }
+
+    // Информация о календаре
+    if ($dt.calendar && $dt.calendarWrapper) {
+      if (ev.calendar_title) {
+        $dt.calendar.textContent = ev.calendar_title;
+        $dt.calendarWrapper.style.display = "";
+      } else if (ev.department) {
+        $dt.calendar.textContent = `Календарь отдела: ${ev.department.name || ev.department}`;
+        $dt.calendarWrapper.style.display = "";
+      } else if (ev.employee) {
+        $dt.calendar.textContent = "Личный календарь";
+        $dt.calendarWrapper.style.display = "";
+      } else {
+        $dt.calendar.textContent = "Календарь компании";
+        $dt.calendarWrapper.style.display = "";
+      }
+    }
   }
 
   async function openEventDetailsById(eventId) {
