@@ -251,6 +251,11 @@ class Calendar(models.Model):
         if subscription:
             return subscription.can_edit
 
+        # Если подписки нет, проверяем default_can_edit
+        # (для публичных календарей, где пользователь может видеть, но не подписан)
+        if self.default_can_edit:
+            return True
+
         return False
 
     def can_user_manage(self, user):
