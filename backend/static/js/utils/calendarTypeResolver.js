@@ -56,7 +56,8 @@ export function resolveCalendarParams(calendarId, baseParams = {}) {
     }
   } else {
     // Новый календарь: используем calendar_id (преобразуем в число)
-    const numericId = typeof calendarId === "number" ? calendarId : parseInt(calendarId, 10);
+    const numericId =
+      typeof calendarId === "number" ? calendarId : parseInt(calendarId, 10);
     if (!isNaN(numericId)) {
       params.calendar_id = numericId;
     }
@@ -112,7 +113,8 @@ export function resolveEventPayload(calendarId, eventData) {
     }
   } else {
     // Новый календарь: добавляем calendar_id (преобразуем в число)
-    const numericId = typeof calendarId === "number" ? calendarId : parseInt(calendarId, 10);
+    const numericId =
+      typeof calendarId === "number" ? calendarId : parseInt(calendarId, 10);
     if (!isNaN(numericId)) {
       console.log("[CalendarTypeResolver] Adding calendar_id:", numericId);
       payload.calendar_id = numericId;
