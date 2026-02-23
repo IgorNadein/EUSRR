@@ -375,6 +375,9 @@ class CalendarEventSerializer(serializers.ModelSerializer):
     """Read-сериализатор (база модели, если нужен просмотр без развёртки)."""
 
     created_by_name = serializers.SerializerMethodField()
+    calendar_title = serializers.CharField(
+        source="calendar.title", read_only=True
+    )
 
     class Meta:
         model = CalendarEvent
