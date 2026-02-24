@@ -48,14 +48,6 @@ type SidebarCalendarEvent = {
   color?: string | null;
 };
 
-type SidebarCalendarOption = {
-  id: string;
-  title: string;
-  color?: string | null;
-  /** Параметры для запроса событий */
-  queryParams: Record<string, string | number>;
-};
-
 const pad = (v: number) => String(v).padStart(2, "0");
 
 const formatDateKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -296,46 +288,52 @@ function LeftNav() {
 }
 
 function CalendarCard() {
-  const { user } = useUser();
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [events, setEvents] = useState<SidebarCalendarEvent[]>([]);
-  const [selectedCalendarKey, setSelectedCalendarKey] = useState<string>("company");
+  const [calendars, setCalendars] = useState<Array<{ id: number; name: string }>>([]);
+  const [selectedCalendarId, setSelectedCalendarId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Строим список вариантов из данных пользователя (legacy: department_id / employee_id)
-  const calendarOptions = useMemo<SidebarCalendarOption[]>(() => {
-    const opts: SidebarCalendarOption[] = [
-      { id: "company", title: "Компания", queryParams: {} },
-    ];
-
-    // Отделы пользователя
-    if (user?.departments) {
-      user.departments.forEach((dept) => {
-        opts.push({
-          id: `dept-${dept.id}`,
-          title: dept.name,
-          queryParams: { department_id: dept.id },
-        });
-      });
-    }
-
-    // Личный календарь
-    if (user?.id) {
-      opts.push({
-        id: "personal",
-        title: "Личный",
-        queryParams: { employee_id: user.id },
-      });
-    }
-
-    return opts;
-  }, [user]);
-
+  // Загрузка списка календарей при монтировании
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadCalendars() {
+      try {
+        const result = await apiClient.getCalendars();
+        if (!cancelled) {
+          const cals = Array.isArray(result) ? result : [];
+          setCalendars(cals);
+          // Автоматически выбираем первый календарь
+          if (cals.length > 0 && selectedCalendarId === null) {
+            setSelectedCalendarId(cals[0].id);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Ошибка загрузки календарей:", err);
+        }
+      }
+    }
+
+    loadCalendars();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Загрузка событий выбранно календаря
+  useEffect(() => {
+    if (selectedCalendarId === null) {
+      setEvents([]);
+      return;
+    }
+
     let cancelled = false;
 
     const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -352,13 +350,10 @@ function CalendarCard() {
         setLoading(true);
         setError(null);
 
-        const selected = calendarOptions.find((c) => c.id === selectedCalendarKey);
-        const extraParams = selected?.queryParams ?? {};
-
         const result = await apiClient.getCalendarEvents({
           start: formatDateKey(fetchStart),
           end: formatDateKey(fetchEnd),
-          ...extraParams,
+          calendar: selectedCalendarId,
         });
 
         if (!cancelled) {
@@ -369,7 +364,7 @@ function CalendarCard() {
           const message = err instanceof Error ? err.message : String(err || "");
           const isNetworkLike = message === "NetworkError" || /fetch failed/i.test(message);
           if (!isNetworkLike) {
-            console.error("Ошибка загрузки календаря:", err);
+            console.error("Ошибка загрузки событий календаря:", err);
           }
           setError("Не удалось загрузить события");
           setEvents([]);
@@ -386,7 +381,7 @@ function CalendarCard() {
     return () => {
       cancelled = true;
     };
-  }, [monthDate, selectedCalendarKey, calendarOptions]);
+  }, [monthDate, selectedCalendarId]);
 
   const monthLabel = useMemo(() => {
     const label = monthDate.toLocaleDateString("ru-RU", {
@@ -450,17 +445,21 @@ function CalendarCard() {
     <>
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Календарь</p>
-        <select
-          value={selectedCalendarKey}
-          onChange={(e) => setSelectedCalendarKey(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-        >
-          {calendarOptions.map((opt) => (
-            <option key={opt.id} value={opt.id}>
-              {opt.title}
-            </option>
-          ))}
-        </select>
+        {calendars.length === 0 ? (
+          <p className="text-xs text-gray-500">Календарей нет</p>
+        ) : (
+          <select
+            value={selectedCalendarId || ""}
+            onChange={(e) => setSelectedCalendarId(Number(e.target.value))}
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          >
+            {calendars.map((cal) => (
+              <option key={cal.id} value={cal.id}>
+                {cal.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">

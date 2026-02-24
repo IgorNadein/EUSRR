@@ -1,13 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .calendar.views import (
-    CalendarEventsViewSet,
-    CalendarSubscriptionViewSet,
-    CalendarViewSet,
-)
-
-# django-scheduler ViewSets (новая система, проверенный код)
+# django-scheduler ViewSets (проверенная библиотека для календаря)
 from .schedule.views import (
     ScheduleCalendarViewSet,
     ScheduleEventViewSet,
@@ -38,15 +32,7 @@ app_name = "v1"
 
 router = DefaultRouter()
 
-router.register(r"calendar/events", CalendarEventsViewSet, basename="events")
-router.register(r"calendar/calendars", CalendarViewSet, basename="calendars")
-router.register(
-    r"calendar/subscriptions",
-    CalendarSubscriptionViewSet,
-    basename="subscriptions",
-)
-
-# django-scheduler endpoints (новая система)
+# django-scheduler endpoints (проверенная библиотека)
 router.register(r"schedule/calendars", ScheduleCalendarViewSet, basename="schedule-calendars")
 router.register(r"schedule/events", ScheduleEventViewSet, basename="schedule-events")
 router.register(r"schedule/rules", ScheduleRuleViewSet, basename="schedule-rules")
