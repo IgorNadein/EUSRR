@@ -10,6 +10,8 @@ import { CalendarProvider, useCalendar } from "@/contexts/CalendarContext";
 import { CalendarModal } from "@/components/CalendarModal";
 import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
 import { EventModal } from "@/components/EventModal";
+import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
+import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
 
 type AppShellProps = {
   children: ReactNode;
@@ -299,13 +301,15 @@ function CalendarCard({
   onOpenEventModal,
   onOpenParticipantsModal,
   eventsRefreshTrigger,
-  setEventsRefreshTrigger
+  setEventsRefreshTrigger,
+  setSidebarEvents
 }: {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: any, date?: Date) => void;
   onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
+  setSidebarEvents: (events: any[]) => void;
 }) {
   const { calendars, selectedCalendarId, setSelectedCalendarId, loading: calendarsLoading, reloadCalendars } = useCalendar();
 
@@ -353,6 +357,7 @@ function CalendarCard({
           if (!cancelled) {
             const eventsList = Array.isArray(myEventsResult) ? myEventsResult : (myEventsResult?.results || []);
             setEvents(eventsList);
+            setSidebarEvents(eventsList); // Передаем события наружу
           }
           return;
         }
@@ -382,7 +387,9 @@ function CalendarCard({
           const recurringOccurrences = occurrencesList.filter((occ: any) => occ.is_recurring);
 
           // Объединяем оба типа событий
-          setEvents([...regularEvents, ...recurringOccurrences]);
+          const allEvents = [...regularEvents, ...recurringOccurrences];
+          setEvents(allEvents);
+          setSidebarEvents(allEvents); // Передаем события наружу для ViewDayEventsModal
         }
       } catch (err) {
         if (!cancelled) {
@@ -803,13 +810,15 @@ function Calendar({
   onOpenEventModal,
   onOpenParticipantsModal,
   eventsRefreshTrigger,
-  setEventsRefreshTrigger
+  setEventsRefreshTrigger,
+  setSidebarEvents
 }: {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: any, date?: Date) => void;
   onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
+  setSidebarEvents: (events: any[]) => void;
 }) {
   return (
     <aside className="hidden w-72 flex-shrink-0 space-y-4 lg:block">
@@ -820,6 +829,7 @@ function Calendar({
           onOpenParticipantsModal={onOpenParticipantsModal}
           eventsRefreshTrigger={eventsRefreshTrigger}
           setEventsRefreshTrigger={setEventsRefreshTrigger}
+          setSidebarEvents={setSidebarEvents}
         />
       </div>
     </aside>
@@ -860,6 +870,13 @@ export function AppShell({ children }: AppShellProps) {
   const [editingEvent, setEditingEvent] = useState<any>(null);
   const [participantsCalendar, setParticipantsCalendar] = useState<{ id: number; name: string; user_role?: string } | null>(null);
   const [eventsRefreshTrigger, setEventsRefreshTrigger] = useState(0);
+  
+  // Новые модалы для просмотра
+  const [showDayEventsModal, setShowDayEventsModal] = useState(false);
+  const [selectedDateForModal, setSelectedDateForModal] = useState<Date | null>(null);
+  const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
+  const [viewingEvent, setViewingEvent] = useState<any>(null);
+  const [sidebarEvents, setSidebarEvents] = useState<any[]>([]); // Для ViewDayEventsModal
 
   // Обработчики модалов
   const handleOpenCalendarModal = (calendar?: { id?: number; name: string }) => {
@@ -868,9 +885,74 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const handleOpenEventModal = (event: any, date?: Date) => {
-    setEditingEvent(event);
-    setShowEventModal(true);
+    // Если передана дата (клик на дату), открываем модал просмотра дня
+    if (date && !event.id) {
+      setSelectedDateForModal(date);
+      setShowDayEventsModal(true);
+    } 
+    // Если передано событие с id (клик на событие), открываем детали
+    else if (event.id) {
+      setViewingEvent(event);
+      setShowEventDetailsModal(true);
+    }
+    // Fallback - создание нового события
+    else {
+      setEditingEvent(event);
+      setShowEventModal(true);
+    }
   };
+
+  // Создание события из модала просмотра дня
+  const handleCreateEventFromDay = useCallback(() => {
+    if (!selectedDateForModal) return;
+
+    const startDate = new Date(selectedDateForModal);
+    startDate.setHours(10, 0, 0, 0);
+    const endDate = new Date(selectedDateForModal);
+    endDate.setHours(11, 0, 0, 0);
+
+    setEditingEvent({
+      title: "",
+      description: "",
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+      calendar: null,
+      color_event: "#3498db",
+    });
+    
+    setShowDayEventsModal(false);
+    setShowEventModal(true);
+  }, [selectedDateForModal]);
+
+  // Переход к редактированию из модала просмотра
+  const handleEditFromDetails = useCallback(() => {
+    setEditingEvent(viewingEvent);
+    setShowEventDetailsModal(false);
+    setShowEventModal(true);
+  }, [viewingEvent]);
+
+  // Клик на событие из модала просмотра дня
+  const handleEventClickFromDay = useCallback(async (event: any) => {
+    setShowDayEventsModal(false);
+    
+    // Если это occurrence, загружаем базовое событие
+    if (event.is_recurring && event.event_id) {
+      try {
+        const fullEvent = await apiClient.getEvent(event.event_id);
+        setViewingEvent({
+          ...fullEvent,
+          start: event.start,
+          end: event.end,
+        });
+        setShowEventDetailsModal(true);
+      } catch (err) {
+        console.error("Ошибка загрузки события:", err);
+      }
+    } else {
+      setViewingEvent(event);
+      setShowEventDetailsModal(true);
+    }
+  }, []);
 
   const handleEventSaved = useCallback(() => {
     // Обновляем список событий в CalendarCard
@@ -953,6 +1035,7 @@ export function AppShell({ children }: AppShellProps) {
             onOpenParticipantsModal={handleOpenParticipantsModal}
             eventsRefreshTrigger={eventsRefreshTrigger}
             setEventsRefreshTrigger={setEventsRefreshTrigger}
+            setSidebarEvents={setSidebarEvents}
           />
         </div>
 
@@ -1010,6 +1093,7 @@ export function AppShell({ children }: AppShellProps) {
               onOpenParticipantsModal={handleOpenParticipantsModal}
               eventsRefreshTrigger={eventsRefreshTrigger}
               setEventsRefreshTrigger={setEventsRefreshTrigger}
+              setSidebarEvents={setSidebarEvents}
             />
           </div>
         </div>
@@ -1047,6 +1131,45 @@ export function AppShell({ children }: AppShellProps) {
           }}
           event={editingEvent}
           onSave={handleEventSaved}
+          showParticipants={true}
+        />
+
+        {/* Модальное окно просмотра событий дня */}
+        <ViewDayEventsModal
+          isOpen={showDayEventsModal}
+          onClose={() => {
+            setShowDayEventsModal(false);
+            setSelectedDateForModal(null);
+          }}
+          date={selectedDateForModal}
+          events={sidebarEvents}
+          onEventClick={handleEventClickFromDay}
+          onCreateEvent={handleCreateEventFromDay}
+        />
+
+        {/* Модальное окно просмотра деталей события */}
+        <ViewEventDetailsModal
+          isOpen={showEventDetailsModal}
+          onClose={() => {
+            setShowEventDetailsModal(false);
+            setViewingEvent(null);
+          }}
+          event={viewingEvent}
+          onEdit={handleEditFromDetails}
+          onDelete={async () => {
+            if (!viewingEvent?.id) return;
+            if (!confirm("Удалить это событие?")) return;
+            
+            try {
+              await apiClient.deleteEvent(viewingEvent.id);
+              setShowEventDetailsModal(false);
+              setViewingEvent(null);
+              handleEventSaved(); // Обновляем список событий
+            } catch (err) {
+              console.error("Ошибка удаления события:", err);
+              alert("Не удалось удалить событие");
+            }
+          }}
           showParticipants={true}
         />
       </div>
