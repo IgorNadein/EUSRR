@@ -7,6 +7,15 @@ from .calendar.views import (
     CalendarViewSet,
 )
 
+# django-scheduler ViewSets (новая система, проверенный код)
+from .schedule.views import (
+    ScheduleCalendarViewSet,
+    ScheduleEventViewSet,
+    ScheduleRuleViewSet,
+    ScheduleOccurrenceViewSet,
+    ScheduleEventRelationViewSet,
+)
+
 # Communications ViewSets
 from .communications.views import ChatViewSet, MessageViewSet, PollViewSet
 from .documents.views import DocumentViewSet
@@ -36,6 +45,13 @@ router.register(
     CalendarSubscriptionViewSet,
     basename="subscriptions",
 )
+
+# django-scheduler endpoints (новая система)
+router.register(r"schedule/calendars", ScheduleCalendarViewSet, basename="schedule-calendars")
+router.register(r"schedule/events", ScheduleEventViewSet, basename="schedule-events")
+router.register(r"schedule/rules", ScheduleRuleViewSet, basename="schedule-rules")
+router.register(r"schedule/occurrences", ScheduleOccurrenceViewSet, basename="schedule-occurrences")
+router.register(r"schedule/relations", ScheduleEventRelationViewSet, basename="schedule-relations")
 
 router.register(r"documents", DocumentViewSet, basename="documents")
 
