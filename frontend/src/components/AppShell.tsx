@@ -833,6 +833,7 @@ export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }:
 
 export function AppShell({ children }: AppShellProps) {
   const { user, loading } = useUser();
+  const { selectedCalendarId } = useCalendar();
   const router = useRouter();
   const pathname = usePathname();
   const isMessageDialogPage = pathname.startsWith('/messages/') && pathname !== '/messages';
@@ -882,6 +883,11 @@ export function AppShell({ children }: AppShellProps) {
 
   // Создание события из модала просмотра дня
   const handleCreateEventFromDay = useCallback(() => {
+    if (!selectedCalendarId) {
+      alert("Сначала выберите календарь");
+      return;
+    }
+
     if (!selectedDateForModal) return;
 
     const startDate = new Date(selectedDateForModal);
@@ -894,13 +900,13 @@ export function AppShell({ children }: AppShellProps) {
       description: "",
       start: startDate.toISOString(),
       end: endDate.toISOString(),
-      calendar: null,
+      calendar: selectedCalendarId,
       color_event: "#3498db",
     });
     
     setShowDayEventsModal(false);
     setShowEventModal(true);
-  }, [selectedDateForModal]);
+  }, [selectedCalendarId, selectedDateForModal]);
 
   // Переход к редактированию из модала просмотра
   const handleEditFromDetails = useCallback(() => {
