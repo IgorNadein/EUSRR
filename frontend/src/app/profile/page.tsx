@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
@@ -275,15 +276,28 @@ export default function ProfilePage() {
 								{departments.length === 0 ? (
 									<p className="text-sm text-gray-500">Отделы не указаны</p>
 								) : (
-									departments.map((d) => (
-										<div key={d.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-800">
-											<div className="min-w-0">
-												<p className="truncate font-medium">{d.name}</p>
-												{d.role_name ? <p className="truncate text-xs text-gray-500">{d.role_name}</p> : null}
+									departments.map((d, index) => {
+										const deptId = Number((d as any).id ?? (d as any).department_id);
+										const isValidDeptId = Number.isFinite(deptId) && deptId > 0;
+
+										return isValidDeptId ? (
+											<Link key={deptId} href={`/departments/${deptId}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-800 transition hover:bg-gray-100">
+												<div className="min-w-0">
+													<p className="truncate font-medium">{d.name}</p>
+													{d.role_name ? <p className="truncate text-xs text-gray-500">{d.role_name}</p> : null}
+												</div>
+												{d.is_head ? <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700">Руководитель</span> : null}
+											</Link>
+										) : (
+											<div key={`${d.name || "dept"}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-800">
+												<div className="min-w-0">
+													<p className="truncate font-medium">{d.name}</p>
+													{d.role_name ? <p className="truncate text-xs text-gray-500">{d.role_name}</p> : null}
+												</div>
+												{d.is_head ? <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700">Руководитель</span> : null}
 											</div>
-											{d.is_head ? <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700">Руководитель</span> : null}
-										</div>
-									))
+										);
+									})
 								)}
 							</div>
 						</div>

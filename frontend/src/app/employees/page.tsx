@@ -3,6 +3,7 @@
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { User } from "@/types/api";
 
 export default function EmployeesPage() {
@@ -116,7 +117,7 @@ export default function EmployeesPage() {
           const statusColor = isOnline ? 'text-green-600' : 'text-gray-500';
 
           return (
-            <article key={employee.id} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+            <Link key={employee.id} href={`/users/${employee.id}`} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 transition hover:bg-gray-50">
               <div className="relative h-12 w-12">
                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
                   {employee.avatar ? (
@@ -143,7 +144,7 @@ export default function EmployeesPage() {
                   )}
                 </div>
               </div>
-            </article>
+            </Link>
           );
         })}
 
