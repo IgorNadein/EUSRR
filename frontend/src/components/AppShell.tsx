@@ -53,6 +53,7 @@ type SidebarCalendarEvent = {
   end?: string | null;
   allDay?: boolean;
   color?: string | null;
+  color_event?: string | null; // Цвет события (альтернативное поле)
   rule?: number | null; // ID правила повторения
   is_recurring?: boolean; // Флаг из occurrences API
 };
@@ -787,6 +788,10 @@ function CalendarCard({
                   className="w-full rounded-lg bg-gray-50 px-2.5 py-2 text-left transition hover:bg-gray-100"
                 >
                   <div className="flex items-center gap-1">
+                    <div 
+                      className="h-2 w-2 rounded-full flex-shrink-0" 
+                      style={{ backgroundColor: event.color_event || event.color || "#3498db" }}
+                    />
                     <p className="truncate text-xs font-medium text-gray-800">{event.title}</p>
                     {(event.is_recurring || event.rule) && (
                       <span className="text-[10px] text-sky-600 flex-shrink-0" title="Повторяющееся событие">⟲</span>
