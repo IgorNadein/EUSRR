@@ -309,6 +309,7 @@ class EventSerializer(serializers.ModelSerializer):
     
     calendar_name = serializers.CharField(source='calendar.name', read_only=True)
     rule_description = serializers.CharField(source='rule.description', read_only=True, allow_null=True)
+    rule_data = serializers.SerializerMethodField()
     
     class Meta:
         model = Event
@@ -322,6 +323,7 @@ class EventSerializer(serializers.ModelSerializer):
             'calendar_name',
             'rule',
             'rule_description',
+            'rule_data',
             'end_recurring_period',
             'color_event',
             'creator',
@@ -329,6 +331,20 @@ class EventSerializer(serializers.ModelSerializer):
             'updated_on',
         ]
         read_only_fields = ['id', 'created_on', 'updated_on']
+    
+    def get_rule_data(self, obj):
+        """Возвращает детальную информацию о правиле повторения."""
+        if not obj.rule:
+            return None
+        
+        rule = obj.rule
+        params = rule.get_params()
+        
+        return {
+            'frequency': rule.frequency,
+            'params': params,
+            'description': rule.description,
+        }
     
     def validate(self, attrs):
         """Валидация start/end."""
