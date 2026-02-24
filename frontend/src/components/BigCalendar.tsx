@@ -9,6 +9,8 @@ import { useCalendar } from "@/contexts/CalendarContext";
 import { X, Plus, Trash2, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { CalendarModal } from "@/components/CalendarModal";
 import { EventModal } from "@/components/EventModal";
+import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
+import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../app/calendar/calendar.css";
 
@@ -132,6 +134,12 @@ export function BigCalendar() {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [editingCalendar, setEditingCalendar] = useState<{ id?: number; name: string } | null>(null);
 
+  // Новые модалы для просмотра
+  const [showDayEventsModal, setShowDayEventsModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
+  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+
   // Загрузка событий
   const loadEvents = useCallback(async () => {
     try {
@@ -232,34 +240,43 @@ export function BigCalendar() {
 
   // Обработчики календаря
   const handleSelectSlot = useCallback(
-    ({ start, end }: { start: Date; end: Date }) => {
-      if (!selectedCalendarId) {
-        alert("Сначала выберите календарь");
-        return;
-      }
-
-      // Если клик на весь день (00:00 - 00:00), устанавливаем разумное время
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-
-      // Проверяем, если время 00:00 (клик на день в режиме месяца)
-      if (startDate.getHours() === 0 && startDate.getMinutes() === 0) {
-        startDate.setHours(10, 0, 0, 0); // 10:00
-        endDate.setHours(11, 0, 0, 0);   // 11:00
-      }
-
-      setEditingEvent({
-        title: "",
-        description: "",
-        start: startDate,
-        end: endDate,
-        calendar: selectedCalendarId,
-        color_event: "#3498db",
-      });
-      setShowEventModal(true);
+    ({ start }: { start: Date; end: Date }) => {
+      // Открываем модальное окно просмотра событий в этот день
+      setSelectedDate(start);
+      setShowDayEventsModal(true);
     },
-    [selectedCalendarId]
+    []
   );
+
+  // Создание события из модала просмотра дня
+  const handleCreateEventFromDay = useCallback(() => {
+    if (!selectedCalendarId) {
+      alert("Сначала выберите календарь");
+      return;
+    }
+
+    if (!selectedDate) return;
+
+    // Устанавливаем время по умолчанию 10:00 - 11:00
+    const startDate = new Date(selectedDate);
+    startDate.setHours(10, 0, 0, 0);
+
+    const endDate = new Date(selectedDate);
+    endDate.setHours(11, 0, 0, 0);
+
+    setEditingEvent({
+      title: "",
+      description: "",
+      start: startDate,
+      end: endDate,
+      calendar: selectedCalendarId,
+      color_event: "#3498db",
+    });
+
+    // Закрываем модал просмотра дня и открываем модал создания
+    setShowDayEventsModal(false);
+    setShowEventModal(true);
+  }, [selectedCalendarId, selectedDate]);
 
   const handleSelectEvent = useCallback(async (calEvent: CalendarEvent) => {
     // Если это occurrence (повторяющееся событие), загружаем базовое событие
@@ -267,21 +284,52 @@ export function BigCalendar() {
       try {
         const fullEvent = await apiClient.getEvent(calEvent.event_id);
         // Устанавливаем время из occurrence, но остальные данные из базового события
-        setEditingEvent({
+        setViewingEvent({
           ...fullEvent,
           start: calEvent.start,
           end: calEvent.end,
         });
-        setShowEventModal(true);
+        setShowEventDetailsModal(true);
       } catch (err) {
         console.error("Ошибка загрузки базового события:", err);
       }
     } else {
-      // Обычное событие - данные уже полные
-      setEditingEvent(calEvent);
-      setShowEventModal(true);
+      // Обычное событие - открываем детали
+      setViewingEvent(calEvent);
+      setShowEventDetailsModal(true);
     }
   }, []);
+
+  // Переход к редактированию из модала просмотра
+  const handleEditFromDetails = useCallback(() => {
+    setEditingEvent(viewingEvent);
+    setShowEventDetailsModal(false);
+    setShowEventModal(true);
+  }, [viewingEvent]);
+
+  // Клик на событие из модала просмотра дня
+  const handleEventClickFromDay = useCallback(async (event: any) => {
+    setShowDayEventsModal(false);
+
+    // Если это occurrence, загружаем базовое событие
+    if (event.isOccurrence && event.event_id) {
+      try {
+        const fullEvent = await apiClient.getEvent(event.event_id);
+        setViewingEvent({
+          ...fullEvent,
+          start: event.start,
+          end: event.end,
+        });
+        setShowEventDetailsModal(true);
+      } catch (err) {
+        console.error("Ошибка загрузки события:", err);
+      }
+    } else {
+      setViewingEvent(event);
+      setShowEventDetailsModal(true);
+    }
+  }, []);
+
 
   // Стилизация событий по цвету
   const eventStyleGetter = (event: CalendarEvent) => {
@@ -414,6 +462,46 @@ export function BigCalendar() {
         }}
         showParticipants={true}
       />
+
+      {/* Модальное окно просмотра событий дня */}
+      <ViewDayEventsModal
+        isOpen={showDayEventsModal}
+        onClose={() => {
+          setShowDayEventsModal(false);
+          setSelectedDate(null);
+        }}
+        date={selectedDate}
+        events={events}
+        onEventClick={handleEventClickFromDay}
+        onCreateEvent={handleCreateEventFromDay}
+      />
+
+      {/* Модальное окно просмотра деталей события */}
+      <ViewEventDetailsModal
+        isOpen={showEventDetailsModal}
+        onClose={() => {
+          setShowEventDetailsModal(false);
+          setViewingEvent(null);
+        }}
+        event={viewingEvent}
+        onEdit={handleEditFromDetails}
+        onDelete={async () => {
+          if (!viewingEvent?.id) return;
+          if (!confirm("Удалить это событие?")) return;
+
+          try {
+            await apiClient.deleteEvent(viewingEvent.id);
+            setShowEventDetailsModal(false);
+            setViewingEvent(null);
+            loadEvents();
+          } catch (err) {
+            console.error("Ошибка удаления события:", err);
+            alert("Не удалось удалить событие");
+          }
+        }}
+        showParticipants={true}
+      />
+
       {/* Модальное окно управления календарем */}
       <CalendarModal
         isOpen={showCalendarModal}

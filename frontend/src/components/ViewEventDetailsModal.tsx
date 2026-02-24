@@ -1,0 +1,204 @@
+"use client";
+
+import { X, Edit2, Trash2, Clock, Calendar, FileText, Users } from "lucide-react";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+import { useState, useEffect } from "react";
+import { apiClient } from "@/lib/api";
+
+interface ViewEventDetailsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  event: any | null;
+  onEdit: () => void;
+  onDelete: () => void;
+  showParticipants?: boolean;
+}
+
+export function ViewEventDetailsModal({
+  isOpen,
+  onClose,
+  event,
+  onEdit,
+  onDelete,
+  showParticipants = false,
+}: ViewEventDetailsModalProps) {
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && event?.id && showParticipants) {
+      loadParticipants();
+    } else {
+      setParticipants([]);
+    }
+  }, [isOpen, event?.id, showParticipants]);
+
+  const loadParticipants = async () => {
+    if (!event?.id) return;
+
+    try {
+      setLoadingParticipants(true);
+      const result = await apiClient.getEventParticipants(event.id);
+      const participantsList = Array.isArray(result) ? result : (result?.results || []);
+      setParticipants(participantsList);
+    } catch (error) {
+      console.error("Failed to load participants:", error);
+    } finally {
+      setLoadingParticipants(false);
+    }
+  };
+
+  if (!isOpen || !event) return null;
+
+  const formatDateTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return format(date, "d MMMM yyyy, HH:mm", { locale: ru });
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return format(date, "d MMMM yyyy", { locale: ru });
+  };
+
+  const capitalizedStart = formatDateTime(event.start).charAt(0).toUpperCase() + formatDateTime(event.start).slice(1);
+  const capitalizedEnd = formatDateTime(event.end).charAt(0).toUpperCase() + formatDateTime(event.end).slice(1);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4">
+          <div className="flex-1 min-w-0 pr-4">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-semibold text-gray-900 truncate">
+                {event.title}
+              </h3>
+              {event.rule && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded flex-shrink-0">
+                  🔁 Повторяется
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-gray-500">
+              <div
+                className="h-3 w-3 rounded-full flex-shrink-0"
+                style={{ backgroundColor: event.color_event || "#3498db" }}
+              />
+              <span className="truncate">Календарь #{event.calendar}</span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 hover:bg-gray-100 transition flex-shrink-0"
+          >
+            <X size={20} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {/* Time */}
+          <div className="flex items-start gap-3">
+            <Clock size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-700">Время</p>
+              <p className="text-sm text-gray-600 mt-1">
+                <span className="font-medium">Начало:</span> {capitalizedStart}
+              </p>
+              <p className="text-sm text-gray-600 mt-0.5">
+                <span className="font-medium">Конец:</span> {capitalizedEnd}
+              </p>
+            </div>
+          </div>
+
+          {/* Recurring Info */}
+          {event.rule && event.end_recurring_period && (
+            <div className="flex items-start gap-3">
+              <Calendar size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-700">Повторение</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  До {formatDate(event.end_recurring_period)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Description */}
+          {event.description && (
+            <div className="flex items-start gap-3">
+              <FileText size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-700 mb-1">Описание</p>
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                  {event.description}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Participants */}
+          {showParticipants && (
+            <div className="flex items-start gap-3">
+              <Users size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Участники {participants.length > 0 && `(${participants.length})`}
+                </p>
+                {loadingParticipants ? (
+                  <p className="text-xs text-gray-500">Загрузка...</p>
+                ) : participants.length > 0 ? (
+                  <div className="space-y-2">
+                    {participants.map((participant: any) => (
+                      <div
+                        key={participant.id}
+                        className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2"
+                      >
+                        <div className="h-7 w-7 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs font-medium text-sky-700">
+                            {participant.user_name?.[0] || "?"}
+                          </span>
+                        </div>
+                        <div className="text-xs flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 truncate">
+                            {participant.user_name}
+                          </div>
+                          <div className="text-gray-500">
+                            {participant.distinction || "attendee"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">Нет участников</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-200 px-6 py-4">
+          <div className="flex gap-2">
+            <button
+              onClick={onEdit}
+              className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
+            >
+              <Edit2 size={16} />
+              Редактировать
+            </button>
+            <button
+              onClick={onDelete}
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
+              title="Удалить событие"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
