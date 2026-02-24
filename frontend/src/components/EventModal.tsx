@@ -168,6 +168,17 @@ export function EventModal({
     try {
       const rule = await apiClient.getRule(ruleId);
       setRuleDetails(rule);
+      
+      // Заполняем поля редактирования параметрами из загруженного правила
+      setEditingEvent((prev: any) => ({
+        ...prev,
+        isRecurring: true,
+        frequency: rule.frequency,
+        interval: rule.params?.interval || 1,
+        byweekday: rule.params?.byweekday || [],
+        count: rule.params?.count || undefined,
+        useCount: !!rule.params?.count,
+      }));
     } catch (error) {
       console.error('Failed to load rule:', error);
     }
@@ -427,49 +438,11 @@ export function EventModal({
           </div>
 
           {/* Повторяющееся событие */}
-          {editingEvent.id && ruleDetails ? (
-            // Для существующих повторяющихся событий - readonly информация
-            <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-blue-700 font-medium text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
-                  <line x1="16" x2="16" y1="2" y2="6"></line>
-                  <line x1="8" x2="8" y1="2" y2="6"></line>
-                  <line x1="3" x2="21" y1="10" y2="10"></line>
-                </svg>
-                <span>Повторяющееся событие</span>
-              </div>
-              <div className="text-sm text-blue-600 space-y-1">
-                <div>Частота: <span className="font-medium">
-                  {ruleDetails.frequency === 'DAILY' && 'Каждый день'}
-                  {ruleDetails.frequency === 'WEEKLY' && 'Каждую неделю'}
-                  {ruleDetails.frequency === 'MONTHLY' && 'Каждый месяц'}
-                  {ruleDetails.frequency === 'YEARLY' && 'Каждый год'}
-                </span></div>
-                {ruleDetails.params?.interval && ruleDetails.params.interval > 1 && (
-                  <div>Интервал: <span className="font-medium">{ruleDetails.params.interval}</span></div>
-                )}
-                {ruleDetails.params?.byweekday && ruleDetails.params.byweekday.length > 0 && (
-                  <div>Дни недели: <span className="font-medium">
-                    {ruleDetails.params.byweekday.map((d: number) => ['ПН','ВТ','СР','ЧТ','ПТ','СБ','ВС'][d]).join(', ')}
-                  </span></div>
-                )}
-                {ruleDetails.params?.count && (
-                  <div>Повторений: <span className="font-medium">{ruleDetails.params.count}</span></div>
-                )}
-              </div>
-              <div className="text-xs text-blue-600 mt-2">
-                💡 Редактирование параметров повторения пока не поддерживается
-              </div>
-            </div>
-          ) : (!editingEvent.id || !editingEvent.rule) && (
-            <>
-
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editingEvent.isRecurring || false}
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editingEvent.isRecurring || false}
                     onChange={(e) => setEditingEvent({
                       ...editingEvent,
                       isRecurring: e.target.checked,
@@ -483,7 +456,6 @@ export function EventModal({
                   />
                   <span className="text-sm font-medium text-gray-700">Повторяющееся событие</span>
                 </label>
-              </div>
 
               {editingEvent.isRecurring && (
                 <div className="space-y-3 rounded-lg bg-gray-50 p-3">
@@ -628,8 +600,7 @@ export function EventModal({
                   </div>
                 </div>
               )}
-            </>
-          )}
+          </div>
 
           {/* Event Participants */}
           {showParticipants && (
