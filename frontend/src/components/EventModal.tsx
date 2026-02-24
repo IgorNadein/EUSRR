@@ -72,10 +72,18 @@ export function EventModal({
   useEffect(() => {
     if (isOpen && event) {
       // Инициализируем все boolean поля дефолтными значениями
+      // Определяем repeatMode: 'until' | 'count' | 'forever'
+      let repeatMode = 'until';
+      if (event.count) {
+        repeatMode = 'count';
+      } else if (!event.end_recurring_period && event.isRecurring) {
+        repeatMode = 'forever';
+      }
+      
       setEditingEvent({
         ...event,
         isRecurring: event.isRecurring ?? false,
-        useCount: event.useCount ?? false,
+        repeatMode,
       });
 
       // Загружаем участников для существующего события
@@ -170,15 +178,25 @@ export function EventModal({
       setRuleDetails(rule);
       
       // Заполняем поля редактирования параметрами из загруженного правила
-      setEditingEvent((prev: any) => ({
-        ...prev,
-        isRecurring: true,
-        frequency: rule.frequency,
-        interval: rule.params?.interval || 1,
-        byweekday: rule.params?.byweekday || [],
-        count: rule.params?.count || undefined,
-        useCount: !!rule.params?.count,
-      }));
+      setEditingEvent((prev: any) => {
+        // Определяем repeatMode на основе параметров правила
+        let repeatMode: 'until' | 'count' | 'forever' = 'until';
+        if (rule.params?.count) {
+          repeatMode = 'count';
+        } else if (!prev.end_recurring_period) {
+          repeatMode = 'forever';
+        }
+        
+        return {
+          ...prev,
+          isRecurring: true,
+          frequency: rule.frequency,
+          interval: rule.params?.interval || 1,
+          byweekday: rule.params?.byweekday || [],
+          count: rule.params?.count || undefined,
+          repeatMode,
+        };
+      });
     } catch (error) {
       console.error('Failed to load rule:', error);
     }
@@ -448,6 +466,7 @@ export function EventModal({
                       isRecurring: e.target.checked,
                       frequency: e.target.checked ? 'WEEKLY' : undefined,
                       interval: e.target.checked ? 1 : undefined,
+                      repeatMode: e.target.checked ? 'until' : undefined,
                       end_recurring_period: e.target.checked && !editingEvent.end_recurring_period
                         ? new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString().slice(0, 10)
                         : editingEvent.end_recurring_period
@@ -561,8 +580,8 @@ export function EventModal({
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
-                          checked={editingEvent.useCount === false}
-                          onChange={() => setEditingEvent({ ...editingEvent, useCount: false, count: undefined })}
+                          checked={editingEvent.repeatMode === 'until'}
+                          onChange={() => setEditingEvent({ ...editingEvent, repeatMode: 'until', count: undefined })}
                           className="h-4 w-4 text-sky-500 focus:ring-sky-500"
                         />
                         <span className="text-sm text-gray-700">До даты</span>
@@ -570,15 +589,24 @@ export function EventModal({
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
-                          checked={editingEvent.useCount === true}
-                          onChange={() => setEditingEvent({ ...editingEvent, useCount: true, end_recurring_period: undefined })}
+                          checked={editingEvent.repeatMode === 'count'}
+                          onChange={() => setEditingEvent({ ...editingEvent, repeatMode: 'count', end_recurring_period: undefined })}
                           className="h-4 w-4 text-sky-500 focus:ring-sky-500"
                         />
                         <span className="text-sm text-gray-700">Количество раз</span>
                       </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={editingEvent.repeatMode === 'forever'}
+                          onChange={() => setEditingEvent({ ...editingEvent, repeatMode: 'forever', count: undefined, end_recurring_period: undefined })}
+                          className="h-4 w-4 text-sky-500 focus:ring-sky-500"
+                        />
+                        <span className="text-sm text-gray-700">Бесконечно</span>
+                      </label>
                     </div>
 
-                    {editingEvent.useCount ? (
+                    {editingEvent.repeatMode === 'count' ? (
                       <input
                         type="number"
                         min="1"
@@ -588,7 +616,7 @@ export function EventModal({
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                         placeholder="Количество повторений"
                       />
-                    ) : (
+                    ) : editingEvent.repeatMode === 'until' ? (
                       <input
                         type="date"
                         value={editingEvent.end_recurring_period || ''}
@@ -596,6 +624,10 @@ export function EventModal({
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                         min={new Date().toISOString().slice(0, 10)}
                       />
+                    ) : (
+                      <p className="text-xs text-gray-500 italic">
+                        Событие будет повторяться бесконечно
+                      </p>
                     )}
                   </div>
                 </div>
