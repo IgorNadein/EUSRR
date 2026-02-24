@@ -4,13 +4,16 @@
 - _is_ldap_enabled()
 - _ldap_try()
 """
-from unittest.mock import Mock
-
 import pytest
-from api.v1.employees.views._helpers import _is_ldap_enabled, _ldap_try
-from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
-                                   DirectoryServiceError)
+from unittest.mock import Mock
 from rest_framework.response import Response
+
+from api.v1.employees.views import _is_ldap_enabled, _ldap_try
+from employees.ldap.errors import (
+    DirectoryLdapError,
+    DirectoryServiceError,
+    DirectoryDbError,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -43,10 +46,10 @@ def test_is_ldap_enabled_returns_false_when_not_set(settings):
 def test_ldap_try_success_with_ldap_enabled(settings):
     """H4: Успешное выполнение функции при LDAP_ENABLED=True"""
     settings.LDAP_ENABLED = True
-
+    
     mock_fn = Mock()
     result = _ldap_try(mock_fn)
-
+    
     assert result is None
     mock_fn.assert_called_once()
 
@@ -54,12 +57,12 @@ def test_ldap_try_success_with_ldap_enabled(settings):
 def test_ldap_try_ldap_error_returns_502(settings):
     """H5: Ошибка DirectoryLdapError возвращает Response(502)"""
     settings.LDAP_ENABLED = True
-
+    
     def failing_fn():
         raise DirectoryLdapError("LDAP connection failed")
-
+    
     result = _ldap_try(failing_fn)
-
+    
     assert isinstance(result, Response)
     assert result.status_code == 502
     assert "LDAP sync failed" in str(result.data)
@@ -68,10 +71,10 @@ def test_ldap_try_ldap_error_returns_502(settings):
 def test_ldap_try_skips_when_ldap_disabled(settings):
     """H6: Функция не вызывается при LDAP_ENABLED=False"""
     settings.LDAP_ENABLED = False
-
+    
     mock_fn = Mock()
     result = _ldap_try(mock_fn)
-
+    
     assert result is None
     mock_fn.assert_not_called()
 
@@ -79,12 +82,12 @@ def test_ldap_try_skips_when_ldap_disabled(settings):
 def test_ldap_try_service_error_returns_502(settings):
     """H7: DirectoryServiceError возвращает Response(502)"""
     settings.LDAP_ENABLED = True
-
+    
     def failing_fn():
         raise DirectoryServiceError("Service error")
-
+    
     result = _ldap_try(failing_fn)
-
+    
     assert isinstance(result, Response)
     assert result.status_code == 502
 
@@ -92,11 +95,11 @@ def test_ldap_try_service_error_returns_502(settings):
 def test_ldap_try_db_error_returns_502(settings):
     """H7: DirectoryDbError возвращает Response(502)"""
     settings.LDAP_ENABLED = True
-
+    
     def failing_fn():
         raise DirectoryDbError("Database error")
-
+    
     result = _ldap_try(failing_fn)
-
+    
     assert isinstance(result, Response)
     assert result.status_code == 502

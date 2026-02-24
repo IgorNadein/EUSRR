@@ -6,7 +6,7 @@ from employees.models import LdapSyncState
 from ldap3 import Connection
 
 from ..models import Department, DepartmentRole, Employee, Position
-from .domain.dtos import DirectoryDepartmentDTO, DirectoryUserDTO
+from .domain.dtos import DirectoryUserDTO, DirectoryDepartmentDTO
 
 # ------------------------- Сервис LDAP → DB ------------------------- #
 
@@ -28,9 +28,9 @@ class DirectoryService:
     def __init__(self):
         """Инициализация сервиса и подсервисов."""
         from .services.department_service import DepartmentService
+        from .services.user_service import UserService
         from .services.group_service import GroupService
         from .services.position_service import PositionService
-        from .services.user_service import UserService
 
         self._user_service = UserService()
         self._group_service = GroupService(directory_service=self)
@@ -63,76 +63,6 @@ class DirectoryService:
         return st
 
     # ============================ USERS ============================ #
-
-    # ==================== NEW ARCHITECTURE: PURE LDAP METHODS ==================== #
-
-    def create_user_in_ldap_only(self, dto: DirectoryUserDTO, password: str = None) -> dict[str, Any]:
-        """Создаёт пользователя ТОЛЬКО в LDAP, возвращает данные для БД.
-
-        Новая архитектура для разделения ответственности:
-        - View создает Employee в БД (в транзакции)
-        - Затем вызывает этот метод для синхронизации в LDAP
-        - View обрабатывает результат и откатывает БД при ошибке LDAP
-
-        Args:
-            dto (DirectoryUserDTO): Данные нового пользователя.
-            password (str, optional): Пароль пользователя для LDAP.
-
-        Returns:
-            dict: Данные для сохранения в БД:
-                - ldap_dn (str): DN пользователя в LDAP
-                - ldap_guid (str): GUID пользователя в LDAP
-
-        Raises:
-            DirectoryLdapError: Ошибка на этапе создания/настройки LDAP.
-        """
-        # Если передан пароль, устанавливаем его в DTO
-        if password and not dto.initial_password:
-            dto.initial_password = password
-
-        return self._user_service.create_user_in_ldap_only(dto)
-
-    def update_user_in_ldap_only(
-        self,
-        instance: Employee,
-        changes: Dict[str, Any],
-        move_to_department_dn: Optional[str] = None,
-        group_cns: Optional[List[str]] = None
-    ) -> dict[str, Any]:
-        """Обновляет пользователя ТОЛЬКО в LDAP.
-
-        Новая архитектура: View обновляет БД, затем синхронизирует в LDAP.
-
-        Args:
-            instance (Employee): Инстанс сотрудника с актуальными данными из БД.
-            changes (Dict[str, Any]): Изменения из request.data для синхронизации в LDAP.
-            move_to_department_dn (Optional[str]): DN отдела для перемещения.
-            group_cns (Optional[List[str]]): Список CN групп для синхронизации.
-
-        Returns:
-            dict: Пустой dict или данные для дополнительного обновления БД.
-
-        Raises:
-            DirectoryLdapError: Ошибка синхронизации с LDAP.
-        """
-        return self._user_service.update_user_in_ldap_only(
-            instance, changes, move_to_department_dn, group_cns
-        )
-
-    def delete_user_in_ldap_only(self, instance: Employee) -> None:
-        """Удаляет пользователя ТОЛЬКО из LDAP.
-
-        Новая архитектура: View удаляет из БД, затем удаляет из LDAP.
-
-        Args:
-            instance (Employee): Сотрудник для удаления из LDAP.
-
-        Raises:
-            DirectoryLdapError: Ошибка удаления из LDAP.
-        """
-        return self._user_service.delete_user_in_ldap_only(instance)
-
-    # ==================== OLD ARCHITECTURE: LDAP + DB ==================== #
 
     def create_user(self, dto: DirectoryUserDTO) -> Employee:
         """Создаёт учётку в LDAP и запись в БД (DN/связь — только в LdapSyncState).
@@ -238,133 +168,6 @@ class DirectoryService:
     ) -> None:
         """Меняет роль участника с синхронизацией LDAP-групп Roles."""
         return self._department_service.set_member_role(dept, employee, role)
-
-    def assign_role(
-        self,
-        employee: Employee,
-        role: DepartmentRole,
-        assigned_by: Optional[Employee] = None,
-    ):
-        """Назначает роль сотруднику (не требует членства в отделе).
-
-        NOTE: Метод делегирует к DepartmentService.
-
-        Args:
-            employee: Сотрудник.
-            role: Роль для назначения.
-            assigned_by: Кто назначил (опционально).
-
-        Returns:
-            RoleAssignment: Созданное/обновлённое назначение.
-        """
-        return self._department_service.assign_role(employee, role, assigned_by)
-
-    def revoke_role(self, employee: Employee, role: DepartmentRole) -> None:
-        """Отзывает роль у сотрудника.
-
-        NOTE: Метод делегирует к DepartmentService.
-
-        Args:
-            employee: Сотрудник.
-            role: Роль для отзыва.
-        """
-        return self._department_service.revoke_role(employee, role)
-
-    def create_role(
-        self,
-        dept: Department,
-        name: str,
-        permission_codes: Optional[List[str]] = None,
-    ) -> DepartmentRole:
-        """Создаёт роль отдела с LDAP-группой.
-
-        NOTE: Метод делегирует к DepartmentService.
-
-        Args:
-            dept: Отдел.
-            name: Название роли.
-            permission_codes: Коды прав (опционально).
-
-        Returns:
-            DepartmentRole: Созданная роль.
-        """
-        from employees.models import DepartmentPermission
-
-        scoped_permissions = None
-        if permission_codes:
-            scoped_permissions = list(
-                DepartmentPermission.objects.filter(code__in=permission_codes)
-            )
-
-        return self._department_service.create_role(
-            department=dept,
-            name=name,
-            scoped_permissions=scoped_permissions,
-        )
-
-    def update_role(
-        self, role: DepartmentRole, name: Optional[str] = None
-    ) -> DepartmentRole:
-        """Обновляет роль (переименование LDAP-группы + БД).
-
-        NOTE: Метод делегирует к DepartmentService.
-
-        Args:
-            role: Роль.
-            name: Новое название (опционально).
-
-        Returns:
-            DepartmentRole: Обновлённая роль.
-        """
-        changes = {}
-        if name:
-            changes["name"] = name
-
-        return self._department_service.update_role(role, changes)
-
-    def delete_role(self, role: DepartmentRole) -> None:
-        """Удаляет роль: LDAP-группу + БД.
-
-        NOTE: Метод делегирует к DepartmentService.
-
-        Args:
-            role: Роль для удаления.
-        """
-        return self._department_service.delete_role(role)
-
-    def move_user_to_base(self, employee: Employee, base_dn: str) -> str:
-        """Перемещает пользователя в указанный базовый OU.
-
-        NOTE: Метод делегирует к UserService.
-
-        Args:
-            employee: Сотрудник для перемещения.
-            base_dn: DN базового OU.
-
-        Returns:
-            str: Новый DN пользователя.
-
-        Raises:
-            DirectoryLdapError: Ошибка LDAP.
-            DirectoryServiceError: Пользователь не имеет DN.
-        """
-        from .infrastructure.connections import _ldap
-
-        sync_state = LdapSyncState.objects.filter(
-            model="employee", object_pk=str(employee.pk)
-        ).first()
-
-        if not sync_state or not sync_state.ldap_dn:
-            from .errors import DirectoryServiceError
-            raise DirectoryServiceError(
-                f"Employee {employee.pk} has no LDAP DN")
-
-        with _ldap() as conn:
-            new_dn = self._user_service._move_user_to_base(
-                conn, sync_state.ldap_dn, base_dn
-            )
-            sync_state.touch(ldap_dn=new_dn, sync_dir="ldap")
-            return new_dn
 
     # =========================== POSITIONS =========================== #
 

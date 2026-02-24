@@ -1,13 +1,11 @@
 # backend/tests/api/v1/employees/test_department_head_rights.py
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
-from employees.models import (Department, DepartmentRole, Employee,
-                              EmployeeDepartment)
-from rest_framework import status
+from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
-from tests.api.v1.employees.test_helpers import (grant_permission,
-                                                 make_department, make_user)
+from rest_framework import status
+
+from employees.models import Department, DepartmentRole, EmployeeDepartment, Employee
 from tests.conftest import _unique_phone
 from tests.test_config import DEFAULT_PASSWORD
 
@@ -17,7 +15,50 @@ User = get_user_model()
 # Helpers
 # =========================
 
-# Используем make_user из test_helpers
+def _unique_phone() -> str:
+    base = 79000000000  # 79 + 9 нулей
+    return str(base + User.objects.count())
+
+@pytest.fixture
+def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
+    """Fixture для создания пользователей."""
+
+    u = User.objects.create_user(
+        email=email,
+        password="pwd12345",
+        phone_number=_unique_phone(),
+        send_activation_email=False,
+        email_verified=True,
+    )
+    # 👇 явная активация для тестов управленческих прав
+    if not u.is_active:
+        u.is_active = True
+        u.save(update_fields=["is_active"])
+    return u
+
+def _unique_email() -> str:
+    base = "asd@mail.com"
+    return str(Employee.objects.count()) + base
+
+def _make_user(staff=False, superuser=False) -> Employee:
+    """
+    Создаёт активного и 'email_verified' пользователя, чтобы не споткнуться о
+    валидацию при назначении руководителя.
+    """
+    u = Employee.objects.create_user(
+        email=_unique_email(),
+        password=DEFAULT_PASSWORD,
+        phone_number=_unique_phone(),
+        send_activation_email=False,
+        first_name="T",
+        last_name="U",
+    )
+    u.is_staff = staff
+    u.is_superuser = superuser
+    u.email_verified = True  # <- критично для твоей нынешней валидации
+    u.is_active = True  # <- тоже нужен для твоей ветки is_active
+    u.save(update_fields=["is_staff", "is_superuser", "email_verified", "is_active"])
+    return u
 
 def make_role(
     dept: Department, name: str, codes: list[str] | None = None
@@ -52,7 +93,7 @@ def api_client() -> APIClient:
 # =========================
 
 @pytest.mark.django_db
-def test_head_can_update_department_without_explicit_role_perms(api_client: APIClient, ensure_ldap_disabled):
+def test_head_can_update_department_without_explicit_role_perms(api_client: APIClient):
     head = make_user("head@example.com")
     d = Department.objects.create(name="Dept", description="old", head=head)
 
@@ -66,7 +107,7 @@ def test_head_can_update_department_without_explicit_role_perms(api_client: APIC
     assert resp.json()["description"] == "new"
 
 @pytest.mark.django_db
-def test_head_can_set_member_role_and_non_head_cannot(api_client: APIClient, ensure_ldap_disabled):
+def test_head_can_set_member_role_and_non_head_cannot(api_client: APIClient):
     head = make_user("head@example.com")
     d = Department.objects.create(name="Dept", head=head)
 
@@ -78,8 +119,7 @@ def test_head_can_set_member_role_and_non_head_cannot(api_client: APIClient, ens
     # руководитель назначает роль участнику
     api_client.force_authenticate(user=head)
     url = reverse("api:v1:departments-set-member-role", args=[d.id])
-    payload = {"employee_id": worker.id,
-               "role_id": role_worker.id, "is_active": True}
+    payload = {"employee_id": worker.id, "role_id": role_worker.id, "is_active": True}
     resp = api_client.post(url, payload, format="json")
     assert resp.status_code == status.HTTP_200_OK
     data = resp.json()
@@ -94,7 +134,7 @@ def test_head_can_set_member_role_and_non_head_cannot(api_client: APIClient, ens
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 
 @pytest.mark.django_db
-def test_head_can_change_head_and_loses_rights_afterwards(api_client: APIClient, ensure_ldap_disabled):
+def test_head_can_change_head_and_loses_rights_afterwards(api_client: APIClient):
     old_head = make_user("old@example.com")
     d = Department.objects.create(name="Dept", head=old_head)
 
@@ -103,15 +143,13 @@ def test_head_can_change_head_and_loses_rights_afterwards(api_client: APIClient,
     # старый руководитель меняет руководителя на другого
     api_client.force_authenticate(user=old_head)
     url_set_head = reverse("api:v1:departments-set-head", args=[d.id])
-    resp = api_client.post(
-        url_set_head, {"head_id": new_head.id}, format="json")
+    resp = api_client.post(url_set_head, {"head_id": new_head.id}, format="json")
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["head"]["id"] == new_head.id
 
     # теперь старый руководитель больше не глава — у него не должно быть прав управления отделом
     url_detail = reverse("api:v1:departments-detail", args=[d.id])
-    resp = api_client.patch(
-        url_detail, {"description": "after"}, format="json")
+    resp = api_client.patch(url_detail, {"description": "after"}, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 
     # а у нового руководителя — есть

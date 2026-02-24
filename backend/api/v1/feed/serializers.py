@@ -120,12 +120,7 @@ class PostListSerializer(serializers.ModelSerializer):
 
 
 class PostSerializer(PostListSerializer):
-    """Сериализатор для деталей поста с комментариями.
-
-    image/attachment наследуются от PostListSerializer как SerializerMethodField (read-only).
-    Запись файлов происходит вручную во view через request.FILES
-    (PostViewSet._attach_files), по аналогии с upload в communications.
-    """
+    """Сериализатор для деталей поста с комментариями"""
     comments = serializers.SerializerMethodField()
     user_has_liked = serializers.SerializerMethodField()
 

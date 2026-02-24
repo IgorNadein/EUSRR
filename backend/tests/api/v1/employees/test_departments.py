@@ -59,7 +59,6 @@ from employees.models import (
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import _unique_phone
-from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 pytestmark = pytest.mark.django_db
 
@@ -72,6 +71,33 @@ def api_client():
     return APIClient()
 
 _phone_seq = itertools.count(1000)
+
+def _unique_phone() -> str:
+    # +7999000XXX — валидный E.164, и всегда уникальный в рамках тестов
+    return f"+7999000{next(_phone_seq):03d}"
+
+@pytest.fixture
+def make_user(
+    email: str, *, staff=False, superuser=False, verified=True, active=True, **extra
+):
+    """Fixture для создания пользователей."""
+    """
+    Создаём пользователя напрямую (без менеджера, чтобы не отправлять почту).
+    """
+    u = User.objects.create(
+        email=email,
+        phone_number=extra.pop("phone_number", _unique_phone()),
+        first_name=extra.pop("first_name", "FN"),
+        last_name=extra.pop("last_name", "LN"),
+        is_staff=staff,
+        is_superuser=superuser,
+        is_active=active,
+        email_verified=verified,
+        **extra,
+    )
+    u.set_password("pass")
+    u.save()
+    return u
 
 def perm_for_department(code: str) -> DepartmentPermission:
     """Безопасно получаем/создаём скоуп-право отдела по коду."""
@@ -88,14 +114,19 @@ def make_role(
         r.scoped_permissions.add(*[perm_for_department(c) for c in codes])
     return r
 
+def extract_results(data):
+    if isinstance(data, dict) and "results" in data:
+        return data["results"]
+    return data
+
 # ---------- tests: auth/list/basic ----------
 
-def test_list_requires_auth(api_client: APIClient, ensure_ldap_disabled):
+def test_list_requires_auth(api_client: APIClient):
     url = reverse("api:v1:departments-list")
     resp = api_client.get(url)
     assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
-def test_list_ok_for_authenticated(api_client: APIClient, ensure_ldap_disabled):
+def test_list_ok_for_authenticated(api_client: APIClient):
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
 
@@ -109,7 +140,7 @@ def test_list_ok_for_authenticated(api_client: APIClient, ensure_ldap_disabled):
     assert isinstance(items, list)
     assert len(items) == 2
 
-def test_search_and_ordering(api_client: APIClient, ensure_ldap_disabled):
+def test_search_and_ordering(api_client: APIClient):
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
 
@@ -137,7 +168,7 @@ def test_search_and_ordering(api_client: APIClient, ensure_ldap_disabled):
 
 # ---------- tests: employees_count annotation ----------
 
-def test_employees_count_adds_head_if_not_in_links(api_client: APIClient, ensure_ldap_disabled):
+def test_employees_count_adds_head_if_not_in_links(api_client: APIClient):
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
 
@@ -155,7 +186,7 @@ def test_employees_count_adds_head_if_not_in_links(api_client: APIClient, ensure
     data = resp.json()
     assert data["employees_count"] == 3  # 2 + head вне связей
 
-def test_employees_count_not_double_count_head_if_in_links(api_client: APIClient, ensure_ldap_disabled):
+def test_employees_count_not_double_count_head_if_in_links(api_client: APIClient):
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
 
@@ -175,7 +206,7 @@ def test_employees_count_not_double_count_head_if_in_links(api_client: APIClient
 
 # ---------- tests: create/destroy ----------
 
-def test_create_requires_staff(api_client: APIClient, ensure_ldap_disabled):
+def test_create_requires_staff(api_client: APIClient):
     user = make_user("u@example.com")
     api_client.force_authenticate(user=user)
 
@@ -192,7 +223,7 @@ def test_create_requires_staff(api_client: APIClient, ensure_ldap_disabled):
     assert resp.status_code == status.HTTP_201_CREATED
     assert Department.objects.filter(name="New").exists()
 
-def test_destroy_requires_staff(api_client: APIClient, ensure_ldap_disabled):
+def test_destroy_requires_staff(api_client: APIClient):
     d = Department.objects.create(name="X")
     url = reverse("api:v1:departments-detail", args=[d.pk])
 
@@ -209,7 +240,7 @@ def test_destroy_requires_staff(api_client: APIClient, ensure_ldap_disabled):
 
 # ---------- tests: update/partial_update perms ----------
 
-def test_partial_update_name_requires_manage_perm(api_client: APIClient, ensure_ldap_disabled):
+def test_partial_update_name_requires_manage_perm(api_client: APIClient):
     head = make_user("head@example.com")
     d = Department.objects.create(name="Dept", head=head)
 
@@ -235,7 +266,7 @@ def test_partial_update_name_requires_manage_perm(api_client: APIClient, ensure_
     d.refresh_from_db()
     assert d.name == "New Name"
 
-def test_partial_update_head_requires_change_head_perm(api_client: APIClient, ensure_ldap_disabled):
+def test_partial_update_head_requires_change_head_perm(api_client: APIClient):
     a = make_user("a@example.com")  # текущий head
     b = make_user("b@example.com")  # кандидат
     d = Department.objects.create(name="Dept", head=a)
@@ -290,7 +321,7 @@ def test_partial_update_head_same_value_does_not_require_extra_perm(
 
 # ---------- tests: action set_head ----------
 
-def test_set_head_by_role_with_perm(api_client: APIClient, ensure_ldap_disabled):
+def test_set_head_by_role_with_perm(api_client: APIClient):
     head = make_user("head@example.com")
     d = Department.objects.create(name="Dept", head=head)
     candidate = make_user("cand@example.com")
@@ -308,7 +339,7 @@ def test_set_head_by_role_with_perm(api_client: APIClient, ensure_ldap_disabled)
     d.refresh_from_db()
     assert d.head_id == candidate.id
 
-def test_set_head_validation_inactive_employee(api_client: APIClient, ensure_ldap_disabled):
+def test_set_head_validation_inactive_employee(api_client: APIClient):
     head = make_user("head@example.com")
     d = Department.objects.create(name="Dept", head=head)
     inactive = make_user(
@@ -328,7 +359,7 @@ def test_set_head_validation_inactive_employee(api_client: APIClient, ensure_lda
         == status.HTTP_400_BAD_REQUEST
     )
 
-def test_set_head_remove_with_null(api_client: APIClient, ensure_ldap_disabled):
+def test_set_head_remove_with_null(api_client: APIClient):
     head = make_user("head@example.com")
     d = Department.objects.create(name="Dept", head=head)
 
@@ -347,7 +378,7 @@ def test_set_head_remove_with_null(api_client: APIClient, ensure_ldap_disabled):
     d.refresh_from_db()
     assert d.head_id is None
 
-def test_set_head_requires_perm(api_client: APIClient, ensure_ldap_disabled):
+def test_set_head_requires_perm(api_client: APIClient):
     head = make_user("head@example.com")
     d = Department.objects.create(name="Dept", head=head)
     candidate = make_user("cand@example.com")
@@ -366,7 +397,7 @@ def test_set_head_requires_perm(api_client: APIClient, ensure_ldap_disabled):
 
 # ---------- tests: action set_member_role ----------
 
-def test_set_member_role_happy_path(api_client: APIClient, ensure_ldap_disabled):
+def test_set_member_role_happy_path(api_client: APIClient):
     d = Department.objects.create(name="Dept")
 
     manager = make_user("m@example.com")
@@ -390,7 +421,7 @@ def test_set_member_role_happy_path(api_client: APIClient, ensure_ldap_disabled)
     assert data["role_id"] == r_worker.id
     assert data["is_active"] is True
 
-def test_set_member_role_reject_foreign_role(api_client: APIClient, ensure_ldap_disabled):
+def test_set_member_role_reject_foreign_role(api_client: APIClient):
     d1 = Department.objects.create(name="D1")
     d2 = Department.objects.create(name="D2")
 
@@ -412,7 +443,7 @@ def test_set_member_role_reject_foreign_role(api_client: APIClient, ensure_ldap_
     )
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
-def test_set_member_role_requires_perm(api_client: APIClient, ensure_ldap_disabled):
+def test_set_member_role_requires_perm(api_client: APIClient):
     d = Department.objects.create(name="Dept")
     manager = make_user("m@example.com")
     api_client.force_authenticate(user=manager)
@@ -430,7 +461,7 @@ def test_set_member_role_requires_perm(api_client: APIClient, ensure_ldap_disabl
     )
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 
-def test_set_member_role_missing_employee_id(api_client: APIClient, ensure_ldap_disabled):
+def test_set_member_role_missing_employee_id(api_client: APIClient):
     d = Department.objects.create(name="Dept")
     manager = make_user("m@example.com")
     api_client.force_authenticate(user=manager)

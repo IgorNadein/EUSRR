@@ -5,7 +5,6 @@ from employees.models import Employee, Skill
 from rest_framework import status
 from tests.conftest import _unique_email, _unique_phone
 from tests.test_config import DEFAULT_PASSWORD
-from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 # --- helpers ---
 
@@ -25,7 +24,23 @@ def _mk_user(staff=False, superuser=False) -> Employee:
     u.save(update_fields=["is_staff", "is_superuser", "email_verified", "is_active"])
     return u
 
+
+def _grant_perm(user: Employee, perm_code: str):
+    app_label, codename = perm_code.split(".", 1)
+    p = Permission.objects.get(content_type__app_label=app_label, codename=codename)
+    user.user_permissions.add(p)
+    user.save()
+    for a in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        if hasattr(user, a):
+            try:
+                delattr(user, a)
+            except:
+                pass
+    return p
+
+
 # --- tests ---
+
 
 @pytest.mark.django_db
 def test_list_search_ordering_requires_auth(api_client):
@@ -56,6 +71,7 @@ def test_list_search_ordering_requires_auth(api_client):
     names = [r["name"] for r in resp.data]
     assert names == sorted(names, reverse=True)
 
+
 @pytest.mark.django_db
 def test_create_allowed_for_regular_user(api_client):
     user = _mk_user()
@@ -65,8 +81,9 @@ def test_create_allowed_for_regular_user(api_client):
     assert resp.status_code == 201
     assert Skill.objects.filter(name="Go").exists()
 
+
 @pytest.mark.django_db
-def test_update_delete_permissions(api_client, ensure_ldap_disabled):
+def test_update_delete_permissions(api_client):
     user = _mk_user()
     api_client.force_authenticate(user=user)
     s = Skill.objects.create(name="Docker")
@@ -81,17 +98,18 @@ def test_update_delete_permissions(api_client, ensure_ldap_disabled):
     assert resp.status_code == 403
 
     # с правом change_skill -> PATCH разрешён
-    grant_permission(user, "employees.change_skill")
+    _grant_perm(user, "employees.change_skill")
     resp = api_client.patch(url_det, {"name": "Docker+"}, format="json")
     assert resp.status_code == 200
     s.refresh_from_db()
     assert s.name == "Docker+"
 
     # с правом delete_skill -> DELETE разрешён
-    grant_permission(user, "employees.delete_skill")
+    _grant_perm(user, "employees.delete_skill")
     resp = api_client.delete(url_det)
     assert resp.status_code == 204
     assert not Skill.objects.filter(id=s.id).exists()
+
 
 @pytest.mark.django_db
 def test_staff_bypasses_permissions(api_client):
@@ -104,6 +122,7 @@ def test_staff_bypasses_permissions(api_client):
         == 200
     )
     assert api_client.delete(url_det).status_code == 204
+
 
 @pytest.mark.django_db
 def test_bulk_create_by_regular_user(api_client):
@@ -120,8 +139,9 @@ def test_bulk_create_by_regular_user(api_client):
     created_names = {row["name"] for row in data["created"]}
     assert created_names == {"Python", "SQL"}
 
+
 @pytest.mark.django_db
-def test_merge_requires_perm_and_reassigns(api_client, ensure_ldap_disabled):
+def test_merge_requires_perm_and_reassigns(api_client):
     user = _mk_user()
     api_client.force_authenticate(user=user)
 
@@ -141,7 +161,7 @@ def test_merge_requires_perm_and_reassigns(api_client, ensure_ldap_disabled):
     )
     assert resp.status_code == 403
 
-    grant_permission(user, "employees.change_skill")
+    _grant_perm(user, "employees.change_skill")
     resp = api_client.post(
         url, {"source_id": src.id, "target_id": dst.id}, format="json"
     )
@@ -154,11 +174,12 @@ def test_merge_requires_perm_and_reassigns(api_client, ensure_ldap_disabled):
         id=src.id
     ).exists()  # по умолчанию delete_source=True
 
+
 @pytest.mark.django_db
 def test_merge_same_id_and_invalid_ids(api_client):
     user = _mk_user()
     api_client.force_authenticate(user=user)
-    grant_permission(user, "employees.change_skill")
+    _grant_perm(user, "employees.change_skill")
     s = Skill.objects.create(name="A")
 
     url = reverse("api:v1:skills-merge")
@@ -170,11 +191,12 @@ def test_merge_same_id_and_invalid_ids(api_client):
     resp = api_client.post(url, {"source_id": 999999, "target_id": s.id}, format="json")
     assert resp.status_code in (404,)
 
+
 @pytest.mark.django_db
 def test_merge_without_reassign_or_delete(api_client):
     user = _mk_user()
     api_client.force_authenticate(user=user)
-    grant_permission(user, "employees.change_skill")
+    _grant_perm(user, "employees.change_skill")
 
     src = Skill.objects.create(name="ML")
     dst = Skill.objects.create(name="Machine Learning")
@@ -201,11 +223,12 @@ def test_merge_without_reassign_or_delete(api_client):
     # источник не удалили
     assert Skill.objects.filter(id=src.id).exists()
 
+
 @pytest.mark.django_db
 def test_merge_idempotent_if_employee_already_has_target(api_client):
     user = _mk_user()
     api_client.force_authenticate(user=user)
-    grant_permission(user, "employees.change_skill")
+    _grant_perm(user, "employees.change_skill")
 
     src = Skill.objects.create(name="Golang")
     dst = Skill.objects.create(name="Go")

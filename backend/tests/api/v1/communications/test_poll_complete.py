@@ -153,8 +153,7 @@ class TestPollVoting:
     @pytest.fixture
     def simple_poll(self, private_chat, user1):
         """Простое голосование с опциями"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
         poll = Poll.objects.create(
             message=message,
             author=user1,
@@ -171,8 +170,7 @@ class TestPollVoting:
         poll, opt1, opt2 = simple_poll
 
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
-        response = auth_client.post(
-            url, {'option_ids': [opt1.id]}, format='json')
+        response = auth_client.post(url, {'option_ids': [opt1.id]}, format='json')
 
         assert response.status_code == status.HTTP_200_OK
         results = response.data['results']
@@ -184,8 +182,7 @@ class TestPollVoting:
         poll, opt1, opt2 = simple_poll
 
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
-        response = auth_client.post(
-            url, {'option_ids': [opt1.id, opt2.id]}, format='json')
+        response = auth_client.post(url, {'option_ids': [opt1.id, opt2.id]}, format='json')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -198,8 +195,7 @@ class TestPollVoting:
         auth_client.post(url, {'option_ids': [opt1.id]}, format='json')
 
         # Второе голосование
-        response = auth_client.post(
-            url, {'option_ids': [opt2.id]}, format='json')
+        response = auth_client.post(url, {'option_ids': [opt2.id]}, format='json')
 
         assert response.status_code == status.HTTP_200_OK
         results = response.data['results']
@@ -215,8 +211,7 @@ class TestPollVoting:
         poll.save()
 
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
-        response = auth_client.post(
-            url, {'option_ids': [opt1.id]}, format='json')
+        response = auth_client.post(url, {'option_ids': [opt1.id]}, format='json')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -234,8 +229,7 @@ class TestPollVoting:
         poll, opt1, opt2 = simple_poll
 
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
-        response = auth_client.post(
-            url, {'option_ids': [99999]}, format='json')
+        response = auth_client.post(url, {'option_ids': [99999]}, format='json')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -247,8 +241,7 @@ class TestMultipleChoicePolls:
     @pytest.fixture
     def multiple_choice_poll(self, private_chat, user1):
         """Голосование с multiple choice"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
         poll = Poll.objects.create(
             message=message,
             author=user1,
@@ -319,8 +312,7 @@ class TestAnonymousPolls:
     @pytest.fixture
     def anonymous_poll(self, private_chat, user1):
         """Анонимное голосование"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
         poll = Poll.objects.create(
             message=message,
             author=user1,
@@ -336,8 +328,7 @@ class TestAnonymousPolls:
         poll, opt1, opt2 = anonymous_poll
 
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
-        response = auth_client.post(
-            url, {'option_ids': [opt1.id]}, format='json')
+        response = auth_client.post(url, {'option_ids': [opt1.id]}, format='json')
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -364,20 +355,16 @@ class TestQuizPolls:
     @pytest.fixture
     def quiz_poll(self, private_chat, user1):
         """Викторина с правильным ответом"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Quiz')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Quiz')
         poll = Poll.objects.create(
             message=message,
             author=user1,
             question='2 + 2 = ?',
             is_quiz=True
         )
-        opt1 = PollOption.objects.create(
-            poll=poll, text='3', position=0, is_correct=False)
-        opt2 = PollOption.objects.create(
-            poll=poll, text='4', position=1, is_correct=True)
-        opt3 = PollOption.objects.create(
-            poll=poll, text='5', position=2, is_correct=False)
+        opt1 = PollOption.objects.create(poll=poll, text='3', position=0, is_correct=False)
+        opt2 = PollOption.objects.create(poll=poll, text='4', position=1, is_correct=True)
+        opt3 = PollOption.objects.create(poll=poll, text='5', position=2, is_correct=False)
         return poll, opt1, opt2, opt3
 
     def test_vote_correct_answer(self, auth_client, quiz_poll):
@@ -385,8 +372,7 @@ class TestQuizPolls:
         poll, opt1, opt2, opt3 = quiz_poll
 
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
-        response = auth_client.post(
-            url, {'option_ids': [opt2.id]}, format='json')
+        response = auth_client.post(url, {'option_ids': [opt2.id]}, format='json')
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -395,8 +381,7 @@ class TestQuizPolls:
         poll, opt1, opt2, opt3 = quiz_poll
 
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
-        response = auth_client.post(
-            url, {'option_ids': [opt1.id]}, format='json')
+        response = auth_client.post(url, {'option_ids': [opt1.id]}, format='json')
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -421,8 +406,7 @@ class TestPollClosing:
     @pytest.fixture
     def poll_with_votes(self, private_chat, user1, user2):
         """Голосование с голосами"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
         poll = Poll.objects.create(
             message=message,
             author=user1,
@@ -460,8 +444,7 @@ class TestPollClosing:
         url = f'/api/v1/communications/polls/{poll.id}/close/'
         response = auth_client.post(url)
 
-        assert response.status_code in [
-            status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST]
+        assert response.status_code in [status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST]
 
     def test_close_already_closed_poll(self, auth_client, poll_with_votes):
         """Попытка закрыть уже закрытый опрос"""
@@ -473,13 +456,11 @@ class TestPollClosing:
         response = auth_client.post(url)
 
         # Должно быть успешно или 400 (опрос уже закрыт)
-        assert response.status_code in [
-            status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
 
     def test_poll_auto_closes_after_deadline(self, private_chat, user1):
         """Голосование автоматически закрывается после дедлайна"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
 
         # Создаем poll с прошедшим дедлайном
         past_time = timezone.now() - timedelta(hours=1)
@@ -508,8 +489,7 @@ class TestPollResults:
     @pytest.fixture
     def poll_with_results(self, private_chat, user1, user2):
         """Голосование с результатами"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
         poll = Poll.objects.create(
             message=message,
             author=user1,
@@ -582,8 +562,7 @@ class TestPollEdgeCases:
 
     def test_poll_with_empty_question_fails(self, auth_client, private_chat, user1):
         """Голосование с пустым вопросом должно провалиться"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
 
         url = '/api/v1/communications/polls/'
         data = {
@@ -597,8 +576,7 @@ class TestPollEdgeCases:
 
     def test_poll_with_very_long_question(self, auth_client, private_chat, user1):
         """Голосование с очень длинным вопросом (> 500 символов)"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
 
         url = '/api/v1/communications/polls/'
         data = {
@@ -630,8 +608,7 @@ class TestPollEdgeCases:
 
     def test_vote_in_poll_without_options_fails(self, auth_client, private_chat, user1):
         """Голосование в опросе без опций должно провалиться"""
-        message = Message.objects.create(
-            chat=private_chat, author=user1, content='Poll')
+        message = Message.objects.create(chat=private_chat, author=user1, content='Poll')
         poll = Poll.objects.create(
             message=message,
             author=user1,
@@ -662,6 +639,11 @@ class TestPollEdgeCases:
         # Один user голосует за 2 опции
         url = f'/api/v1/communications/polls/{poll.id}/vote/'
         response = auth_client.post(
+            url, {'option_ids': [opt1.id, opt2.id]}, format='json'
+        )
+
+        # total_voters должен быть 1, не 2
+        assert response.data['results']['total_voters'] == 1
             url, {'option_ids': [opt1.id, opt2.id]}, format='json'
         )
 
