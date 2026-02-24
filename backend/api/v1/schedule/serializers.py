@@ -9,18 +9,45 @@ import pytz
 
 
 class CalendarSerializer(serializers.ModelSerializer):
-    """Сериализатор для Calendar (django-scheduler)."""
+    """Сериализатор для Calendar (django-scheduler) с совместимостью EUSRR."""
     
+    # Совместимость с EUSRR API - принимаем title, конвертируем в name
+    title = serializers.CharField(source='name', required=False)
     events_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Calendar
-        fields = ['id', 'name', 'slug', 'events_count']
+        fields = ['id', 'name', 'title', 'slug', 'events_count']
         read_only_fields = ['id']
+        extra_kwargs = {
+            'slug': {'required': False},  # Сделаем auto-generated если не указан
+        }
     
     def get_events_count(self, obj):
         """Количество событий в календаре."""
         return obj.event_set.count()
+    
+    def create(self, validated_data):
+        """Создать календарь с автогенерацией slug из name/title."""
+        from django.utils.text import slugify
+        
+        # Если slug не указан - генерируем из name
+        if 'slug' not in validated_data or not validated_data.get('slug'):
+            name = validated_data.get('name', 'calendar')
+            base_slug = slugify(name)
+            if not base_slug:
+                base_slug = 'calendar'
+            
+            # Проверяем уникальность slug
+            slug = base_slug
+            counter = 1
+            while Calendar.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            validated_data['slug'] = slug
+        
+        return super().create(validated_data)
 
 
 class RuleSerializer(serializers.ModelSerializer):

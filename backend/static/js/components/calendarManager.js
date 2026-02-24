@@ -5,10 +5,6 @@
 
 import {
   getMyCalendars,
-  getMySubscriptions,
-  updateSubscription,
-  subscribeToCalendar,
-  unsubscribeFromCalendar,
   invalidateCalendarsCache,
   invalidateCalendarEventsCache,
 } from "../api/calendarsApi.js";
@@ -42,7 +38,6 @@ export function initCalendarManager(options = {}) {
 
   // Состояние
   let calendars = [];
-  let subscriptions = []; // Подписки пользователя
   let visibleCalendarIds = new Set();
   let eventCounts = new Map(); // Счётчики событий для папок: folderId -> count
   let dragDropInstance = null;
@@ -114,13 +109,8 @@ export function initCalendarManager(options = {}) {
    */
   async function loadCalendars() {
     try {
-      // Загрузить новые Calendar записи и подписки
-      const [newCalendars, userSubscriptions] = await Promise.all([
-        getMyCalendars(),
-        getMySubscriptions(),
-      ]);
-
-      subscriptions = userSubscriptions;
+      // Загрузить календари из django-scheduler API
+      const newCalendars = await getMyCalendars();
 
       // Добавить legacy календари
       const legacyCalendars = createLegacyCalendars();
@@ -141,39 +131,19 @@ export function initCalendarManager(options = {}) {
         newCalendars.map((c) => ({
           id: c.id,
           title: c.title,
-          is_global: c.is_global,
-          is_personal: c.is_personal,
-          is_department: c.is_department,
-          owner_user_id: c.owner_user_id,
-          owner_department_id: c.owner_department_id,
-          visibility: c.visibility,
+          name: c.name,
+          slug: c.slug,
         })),
       );
 
-      // Загрузить видимость календарей из подписок и localStorage
+      // Загрузить видимость календарей из localStorage
       visibleCalendarIds = new Set();
 
       calendars.forEach((cal) => {
-        let isVisible = true;
-
-        if (cal.is_legacy || !cal.user_can_edit) {
-          // Legacy календари или календари без прав редактирования - используем localStorage
-          const storageKey = `calendar_visible_${cal.id}`;
-          const stored = localStorage.getItem(storageKey);
-          isVisible = stored === null ? true : stored === "true";
-        } else {
-          // Новые календари с правами редактирования - используем подписки
-          const subscription = subscriptions.find((s) => s.calendar === cal.id);
-          if (subscription) {
-            // Если есть подписка - используем её is_visible
-            isVisible = subscription.is_visible;
-          } else {
-            // Если подписки нет - проверяем localStorage (fallback)
-            const storageKey = `calendar_visible_${cal.id}`;
-            const stored = localStorage.getItem(storageKey);
-            isVisible = stored === null ? true : stored === "true";
-          }
-        }
+        // Используем localStorage для всех календарей
+        const storageKey = `calendar_visible_${cal.id}`;
+        const stored = localStorage.getItem(storageKey);
+        const isVisible = stored === null ? true : stored === "true";
 
         if (isVisible) {
           visibleCalendarIds.add(cal.id);
@@ -296,65 +266,13 @@ export function initCalendarManager(options = {}) {
       visibleCalendarIds.delete(calendarId);
     }
 
-    // Найти календарь
-    const calendar = calendars.find((c) => c.id === calendarId);
-
-    // Сохранить изменение
+    // Сохранить в localStorage (django-scheduler не имеет subscriptions)
     try {
-      // Проверяем, можно ли использовать API для этого календаря
-      const canUseAPI =
-        calendar && !calendar.is_legacy && calendar.user_can_edit;
-
-      if (!canUseAPI) {
-        // Legacy календари или календари без прав редактирования - сохраняем в localStorage
-        const storageKey = `calendar_visible_${calendarId}`;
-        localStorage.setItem(storageKey, String(isVisible));
-        console.log(
-          `[CalendarManager] Saved calendar visibility to localStorage: ${calendarId} = ${isVisible}`,
-        );
-      } else {
-        // Новые календари с правами редактирования - обновляем подписку через API
-        const subscription = subscriptions.find(
-          (s) => s.calendar === calendarId,
-        );
-
-        if (subscription) {
-          await updateSubscription(subscription.id, { is_visible: isVisible });
-          console.log(
-            `[CalendarManager] Updated subscription ${subscription.id} visibility: ${isVisible}`,
-          );
-        } else {
-          // Если подписки нет - создаём её автоматически
-          try {
-            // Сначала создаём подписку
-            const newSubscription = await subscribeToCalendar(calendarId);
-
-            // Если visibility не по умолчанию (false), обновляем её
-            if (!isVisible) {
-              await updateSubscription(newSubscription.id, {
-                is_visible: isVisible,
-              });
-            }
-
-            // Обновляем локальный список подписок
-            subscriptions.push({ ...newSubscription, is_visible: isVisible });
-            console.log(
-              `[CalendarManager] Created subscription ${newSubscription.id} for calendar ${calendarId} with visibility: ${isVisible}`,
-            );
-          } catch (subError) {
-            // Если создание подписки не удалось - сохраняем в localStorage как fallback
-            console.warn(
-              `[CalendarManager] Failed to create subscription for calendar ${calendarId}:`,
-              subError,
-            );
-            const storageKey = `calendar_visible_${calendarId}`;
-            localStorage.setItem(storageKey, String(isVisible));
-            console.log(
-              `[CalendarManager] Saved to localStorage as fallback: ${isVisible}`,
-            );
-          }
-        }
-      }
+      const storageKey = `calendar_visible_${calendarId}`;
+      localStorage.setItem(storageKey, String(isVisible));
+      console.log(
+        `[CalendarManager] Saved calendar visibility to localStorage: ${calendarId} = ${isVisible}`,
+      );
     } catch (error) {
       console.error("[CalendarManager] Failed to save visibility:", error);
       // Откатить изменение при ошибке
@@ -370,32 +288,38 @@ export function initCalendarManager(options = {}) {
   }
 
   /**
-   * Подписаться на календарь
+   * Подписаться на календарь (заглушка для совместимости)
+   * @deprecated django-scheduler не использует subscriptions
    * @param {number} calendarId
    */
   async function subscribe(calendarId) {
-    try {
-      await subscribeToCalendar(calendarId);
-      await loadCalendars(); // Перезагрузить список
-    } catch (error) {
-      console.error("[CalendarManager] Subscribe failed:", error);
-      alert("Не удалось подписаться на календарь");
+    console.warn(
+      "[CalendarManager] subscribe() deprecated - django-scheduler doesn't use subscriptions",
+    );
+    const calendar = calendars.find((c) => c.id === calendarId);
+    if (calendar) {
+      // Просто показываем календарь
+      if (!visibleCalendarIds.has(calendarId)) {
+        await toggleCalendarVisibility(calendarId);
+      }
     }
   }
 
   /**
-   * Отписаться от календаря
+   * Отписаться от календаря (заглушка для совместимости)
+   * @deprecated django-scheduler не использует subscriptions
    * @param {number} calendarId
    */
   async function unsubscribe(calendarId) {
-    if (!confirm("Отписаться от этого календаря?")) return;
-
-    try {
-      await unsubscribeFromCalendar(calendarId);
-      await loadCalendars(); // Перезагрузить список
-    } catch (error) {
-      console.error("[CalendarManager] Unsubscribe failed:", error);
-      alert("Не удалось отписаться от календаря");
+    console.warn(
+      "[CalendarManager] unsubscribe() deprecated - django-scheduler doesn't use subscriptions",
+    );
+    const calendar = calendars.find((c) => c.id === calendarId);
+    if (calendar) {
+      // Просто скрываем календарь
+      if (visibleCalendarIds.has(calendarId)) {
+        await toggleCalendarVisibility(calendarId);
+      }
     }
   }
 
