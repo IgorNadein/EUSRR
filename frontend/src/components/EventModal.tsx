@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Trash2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
@@ -31,6 +31,43 @@ export function EventModal({
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [addingParticipants, setAddingParticipants] = useState(false);
   const [pendingParticipantIds, setPendingParticipantIds] = useState<number[]>([]);
+  
+  // Ref для отслеживания, был ли уже выполнен авто-выбор дня (чтобы не перезаписывать выбор пользователя)
+  const autoWeekdaySetRef = useRef(false);
+
+  // Сброс флага при открытии/закрытии модала
+  useEffect(() => {
+    if (!isOpen) {
+      autoWeekdaySetRef.current = false;
+    }
+  }, [isOpen]);
+
+  // Автоматический выбор дня начала при включении WEEKLY (как в Apple Calendar)
+  useEffect(() => {
+    // Если уже устанавливали автоматически - не трогаем выбор пользователя
+    if (autoWeekdaySetRef.current) {
+      return;
+    }
+    
+    if (editingEvent?.frequency === 'WEEKLY' && editingEvent?.start) {
+      const startDate = new Date(editingEvent.start);
+      const startDay = startDate.getDay();
+      // Конвертируем: JS (0=Вс, 1=Пн...) -> наш формат (0=Пн, 6=Вс)
+      const dayIndex = startDay === 0 ? 6 : startDay - 1;
+      
+      // Если дни недели еще не выбраны - добавляем день начала
+      if (!editingEvent.byweekday || editingEvent.byweekday.length === 0) {
+        setEditingEvent((prev: any) => ({
+          ...prev,
+          byweekday: [dayIndex]
+        }));
+        autoWeekdaySetRef.current = true;
+      } else {
+        // Дни уже выбраны (например, при редактировании события)
+        autoWeekdaySetRef.current = true;
+      }
+    }
+  }, [editingEvent?.frequency, editingEvent?.start]);
 
   useEffect(() => {
     if (isOpen && event) {
@@ -74,6 +111,45 @@ export function EventModal({
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  // Вычисляет дату первого вхождения еженедельного события
+  const getFirstOccurrenceDate = (): string | null => {
+    if (editingEvent?.frequency !== 'WEEKLY' || !editingEvent?.start || !editingEvent?.byweekday || editingEvent.byweekday.length === 0) {
+      return null;
+    }
+
+    const startDate = new Date(editingEvent.start);
+    const startDay = startDate.getDay();
+    const startDayIndex = startDay === 0 ? 6 : startDay - 1;
+
+    // Если день начала выбран - первое вхождение это сам день начала
+    if (editingEvent.byweekday.includes(startDayIndex)) {
+      return null; // Не показываем подсказку
+    }
+
+    // Ищем ближайший выбранный день недели
+    const sortedDays = [...editingEvent.byweekday].sort((a, b) => a - b);
+    let daysToAdd = 0;
+
+    // Ищем день после startDayIndex
+    const nextDay = sortedDays.find(d => d > startDayIndex);
+    if (nextDay !== undefined) {
+      daysToAdd = nextDay - startDayIndex;
+    } else {
+      // Если все дни до текущего - берем первый день следующей недели
+      daysToAdd = 7 - startDayIndex + sortedDays[0];
+    }
+
+    const firstOccurrence = new Date(startDate);
+    firstOccurrence.setDate(firstOccurrence.getDate() + daysToAdd);
+
+    return firstOccurrence.toLocaleDateString('ru-RU', { 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric',
+      weekday: 'short'
+    });
   };
 
   const loadEventParticipants = async (eventId: number) => {
@@ -489,6 +565,19 @@ export function EventModal({
                           );
                         })}
                       </div>
+                      {(() => {
+                        const firstOccurrence = getFirstOccurrenceDate();
+                        return firstOccurrence ? (
+                          <div className="mt-2 flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 border border-blue-200">
+                            <svg className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p className="text-xs text-blue-800">
+                              Первое событие: <span className="font-medium">{firstOccurrence}</span>
+                            </p>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   )}
 

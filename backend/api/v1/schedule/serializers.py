@@ -165,9 +165,16 @@ class CalendarSerializer(serializers.ModelSerializer):
 
 
 class RuleSerializer(serializers.ModelSerializer):
-    """Сериализатор для Rule (rrule RFC 5545)."""
+    """
+    Сериализатор для Rule (rrule RFC 5545).
     
-    # Удобные поля для frontend
+    Преобразует параметры между форматами:
+    - Frontend: dict {"byweekday": [0, 4], "interval": 1}
+    - django-scheduler: string "byweekday:0,4;interval:1"
+    """
+    
+    VALID_FREQUENCIES = ['YEARLY', 'MONTHLY', 'WEEKLY', 'DAILY', 'HOURLY', 'MINUTELY', 'SECONDLY']
+    
     frequency_display = serializers.CharField(source='get_frequency_display', read_only=True)
     
     class Meta:
@@ -175,29 +182,124 @@ class RuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'frequency', 'frequency_display', 'params']
         read_only_fields = ['id', 'frequency_display']
     
-    def to_representation(self, instance):
-        """Десериализация params из JSON-строки в dict."""
+    def _dict_to_params_string(self, params_dict):
+        """
+        Преобразует dict в строковый формат django-scheduler.
+        
+        Args:
+            params_dict: {"byweekday": [0, 3], "interval": 1}
+        
+        Returns:
+            "byweekday:0,3;interval:1"
+        """
+        if not params_dict or not isinstance(params_dict, dict):
+            return ""
+        
+        parts = []
+        for key, value in params_dict.items():
+            if isinstance(value, (list, tuple)):
+                value_str = ",".join(str(v) for v in value)
+            else:
+                value_str = str(value)
+            parts.append(f"{key}:{value_str}")
+        
+        return ";".join(parts)
+    
+    def _params_string_to_dict(self, params_str):
+        """
+        Преобразует строку django-scheduler в dict.
+        
+        Args:
+            params_str: "byweekday:0,3;interval:1"
+        
+        Returns:
+            {"byweekday": [0, 3], "interval": 1}
+        """
+        if not params_str:
+            return {}
+        
+        result = {}
+        for param_pair in params_str.split(";"):
+            if ":" not in param_pair:
+                continue
+            
+            key, value_str = param_pair.split(":", 1)
+            key = key.strip()
+            
+            # Если значение содержит запятые - это список
+            if "," in value_str:
+                try:
+                    result[key] = [int(v.strip()) for v in value_str.split(",")]
+                except ValueError:
+                    result[key] = [v.strip() for v in value_str.split(",")]
+            else:
+                # Пробуем преобразовать в число
+                try:
+                    result[key] = int(value_str.strip())
+                except ValueError:
+                    result[key] = value_str.strip()
+        
+        return result
+    
+    def _parse_params_input(self, params):
+        """
+        Парсит params из любого формата в dict.
+        
+        Поддерживает:
+        - dict (прямо от JSON)
+        - JSON-string (от некоторых клиентов)
+        - django-scheduler string (для обратной совместимости)
+        
+        Args:
+            params: dict, JSON-string или django-scheduler string
+        
+        Returns:
+            dict с параметрами
+        """
         import json
+        
+        # Уже dict - возвращаем как есть
+        if isinstance(params, dict):
+            return params
+        
+        # Пробуем распарсить как JSON-строку
+        if isinstance(params, str):
+            # Если начинается с { - это JSON
+            if params.strip().startswith('{'):
+                try:
+                    return json.loads(params)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            # Иначе пробуем как django-scheduler формат
+            return self._params_string_to_dict(params)
+        
+        return {}
+    
+    def to_representation(self, instance):
+        """Преобразует params из БД (django-scheduler format) в dict для frontend."""
         data = super().to_representation(instance)
-        
-        # Парсим params из строки в объект для frontend
-        if data.get('params'):
-            try:
-                if isinstance(data['params'], str):
-                    data['params'] = json.loads(data['params'])
-            except (json.JSONDecodeError, TypeError):
-                data['params'] = {}
-        else:
-            data['params'] = {}
-        
+        data['params'] = self._params_string_to_dict(data.get('params', ''))
         return data
     
+    def to_internal_value(self, data):
+        """Преобразует params от frontend (dict/JSON) в django-scheduler format для БД."""
+        # Парсим params в dict из любого формата
+        params_dict = self._parse_params_input(data.get('params'))
+        
+        # Вызываем родительский метод для валидации остальных полей
+        validated_data = super().to_internal_value(data)
+        
+        # Конвертируем dict в формат django-scheduler для сохранения в БД
+        validated_data['params'] = self._dict_to_params_string(params_dict)
+        
+        return validated_data
+    
     def validate_frequency(self, value):
-        """Валидация frequency."""
-        valid_frequencies = ['YEARLY', 'MONTHLY', 'WEEKLY', 'DAILY', 'HOURLY', 'MINUTELY', 'SECONDLY']
-        if value not in valid_frequencies:
+        """Валидация поля frequency."""
+        if value not in self.VALID_FREQUENCIES:
             raise serializers.ValidationError(
-                f'Invalid frequency. Must be one of: {", ".join(valid_frequencies)}'
+                f'Invalid frequency. Must be one of: {", ".join(self.VALID_FREQUENCIES)}'
             )
         return value
 
