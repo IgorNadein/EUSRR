@@ -54,6 +54,14 @@ export function EventModal({
       } else {
         setRuleDetails(null);
       }
+    } else if (!isOpen) {
+      // Сбрасываем временные состояния при закрытии модала
+      setShowAddParticipants(false);
+      setSelectedEmployeeIds([]);
+      setPendingParticipantIds([]);
+      setSearchQuery('');
+      setAvailableEmployees([]);
+      setRuleDetails(null);
     }
   }, [isOpen, event, showParticipants]);
 
