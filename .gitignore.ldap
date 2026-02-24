@@ -1,5 +1,0 @@
-# Добавляем в .gitignore данные LDAP (чтобы не коммитить)
-
-# LDAP test data
-backend/ldap_test_data/
-backend/ldap_test_config/
