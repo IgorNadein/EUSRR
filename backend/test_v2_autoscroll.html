@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test ChatControllerV2 - Smart Autoscroll</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        #chat-container {
+            border: 1px solid #ccc;
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            margin-bottom: 20px;
+            position: relative;
+            background: #f9f9f9;
+        }
+        
+        .message {
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 8px;
+            background: white;
+        }
+        
+        .message.own {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+            max-width: 70%;
+        }
+        
+        .message.other {
+            background: #e9ecef;
+            max-width: 70%;
+        }
+        
+        .new-messages-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        
+        .new-messages-indicator.show {
+            display: flex;
+        }
+        
+        .new-messages-indicator .badge {
+            background: rgba(255,255,255,0.3);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .test-results {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #f9f9f9;
+        }
+        
+        .test-pass {
+            color: green;
+            font-weight: bold;
+        }
+        
+        .test-fail {
+            color: red;
+            font-weight: bold;
+        }
+        
+        .log {
+            margin-top: 10px;
+            padding: 10px;
+            background: #222;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>ChatControllerV2 - Smart Autoscroll Test</h1>
+    
+    <div class="controls">
+        <button onclick="testAddOwnMessage()">Добавить своё сообщение</button>
+        <button onclick="testAddOtherMessage()">Добавить чужое сообщение</button>
+        <button onclick="testScrollUp()">Прокрутить вверх</button>
+        <button onclick="testScrollDown()">Прокрутить вниз</button>
+        <button onclick="runAllTests()">Запустить все тесты</button>
+    </div>
+    
+    <div id="chat-container"></div>
+    
+    <div class="test-results">
+        <h3>Результаты тестов:</h3>
+        <div id="test-output">Нажмите "Запустить все тесты"</div>
+    </div>
+    
+    <div class="log" id="log"></div>
+
+    <script type="module">
+        import { ChatControllerV2 } from './static/js/controllers/chatControllerV2.js';
+        import { MessageStoreV2 } from './static/js/stores/messageStoreV2.js';
+        
+        // Логирование
+        const log = (msg) => {
+            const logEl = document.getElementById('log');
+            logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(msg);
+        };
+        
+        // Инициализация
+        let controller;
+        let messageId = 1;
+        const currentUserId = 1;
+        const otherUserId = 2;
+        
+        async function init() {
+            const scrollEl = document.getElementById('chat-container');
+            
+            controller = new ChatControllerV2({
+                chatId: 1,
+                scrollElement: scrollEl,
+                containerId: 'chat-container',
+                currentUserId: currentUserId
+            });
+            
+            // Добавляем несколько начальных сообщений
+            for (let i = 0; i < 10; i++) {
+                const msg = {
+                    id: messageId++,
+                    chat_id: 1,
+                    author_id: i % 2 === 0 ? currentUserId : otherUserId,
+                    content: `Тестовое сообщение ${i + 1}`,
+                    created_at: new Date().toISOString(),
+                    author_name: i % 2 === 0 ? 'Я' : 'Собеседник'
+                };
+                
+                controller.store.addMessage(msg);
+            }
+            
+            await controller.init();
+            log('✅ ChatControllerV2 инициализирован');
+        }
+        
+        // Тестовые функции
+        window.testAddOwnMessage = async function() {
+            const msg = {
+                id: messageId++,
+                chat_id: 1,
+                author_id: currentUserId,
+                content: `Моё сообщение ${messageId}`,
+                created_at: new Date().toISOString(),
+                author_name: 'Я'
+            };
+            
+            controller.store.addMessage(msg);
+            log(`📤 Добавлено своё сообщение #${msg.id}`);
+        };
+        
+        window.testAddOtherMessage = async function() {
+            const msg = {
+                id: messageId++,
+                chat_id: 1,
+                author_id: otherUserId,
+                content: `Чужое сообщение ${messageId}`,
+                created_at: new Date().toISOString(),
+                author_name: 'Собеседник'
+            };
+            
+            controller.store.addMessage(msg);
+            log(`📥 Добавлено чужое сообщение #${msg.id}`);
+        };
+        
+        window.testScrollUp = function() {
+            const scrollEl = document.getElementById('chat-container');
+            scrollEl.scrollTop = 0;
+            log('⬆️ Прокручено вверх');
+        };
+        
+        window.testScrollDown = function() {
+            const scrollEl = document.getElementById('chat-container');
+            scrollEl.scrollTop = scrollEl.scrollHeight;
+            log('⬇️ Прокручено вниз');
+        };
+        
+        // Автотесты
+        window.runAllTests = async function() {
+            const output = document.getElementById('test-output');
+            output.innerHTML = '<p>Запуск тестов...</p>';
+            
+            const results = [];
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            
+            // Тест 1: Своё сообщение - автоскролл вниз
+            log('🧪 Тест 1: Своё сообщение → автоскролл');
+            testScrollDown();
+            await sleep(200);
+            const oldScroll = controller.scrollElement.scrollTop;
+            testAddOwnMessage();
+            await sleep(500);
+            const newScroll = controller.scrollElement.scrollTop;
+            const test1 = newScroll > oldScroll;
+            results.push({ name: 'Своё сообщение автоскроллит', pass: test1 });
+            log(test1 ? '✅ PASS' : '❌ FAIL');
+            
+            // Тест 2: Чужое сообщение внизу - автоскролл
+            log('🧪 Тест 2: Чужое сообщение внизу → автоскролл');
+            testScrollDown();
+            await sleep(200);
+            const oldScroll2 = controller.scrollElement.scrollTop;
+            testAddOtherMessage();
+            await sleep(500);
+            const newScroll2 = controller.scrollElement.scrollTop;
+            const test2 = newScroll2 > oldScroll2;
+            results.push({ name: 'Чужое сообщение внизу автоскроллит', pass: test2 });
+            log(test2 ? '✅ PASS' : '❌ FAIL');
+            
+            // Тест 3: Чужое сообщение вверху - индикатор
+            log('🧪 Тест 3: Чужое сообщение вверху → индикатор');
+            testScrollUp();
+            await sleep(200);
+            testAddOtherMessage();
+            await sleep(500);
+            const indicator = document.getElementById('new-messages-btn');
+            const test3 = indicator && indicator.style.display !== 'none';
+            results.push({ name: 'Индикатор показывается', pass: test3 });
+            log(test3 ? '✅ PASS' : '❌ FAIL');
+            
+            // Тест 4: Счётчик увеличивается
+            log('🧪 Тест 4: Счётчик увеличивается');
+            const countBefore = controller._newMessagesCount;
+            testAddOtherMessage();
+            await sleep(500);
+            const countAfter = controller._newMessagesCount;
+            const test4 = countAfter > countBefore;
+            results.push({ name: 'Счётчик увеличивается', pass: test4 });
+            log(test4 ? '✅ PASS' : '❌ FAIL');
+            
+            // Тест 5: Клик по индикатору → скролл вниз + скрытие
+            log('🧪 Тест 5: Клик по индикатору → скролл + скрытие');
+            if (indicator) {
+                indicator.click();
+                await sleep(500);
+                const isHidden = indicator.style.display === 'none';
+                const isBottom = controller.scrollManager.isNearBottom();
+                const test5 = isHidden && isBottom;
+                results.push({ name: 'Клик работает корректно', pass: test5 });
+                log(test5 ? '✅ PASS' : '❌ FAIL');
+            }
+            
+            // Вывод результатов
+            const passed = results.filter(r => r.pass).length;
+            const total = results.length;
+            const passRate = ((passed / total) * 100).toFixed(1);
+            
+            let html = `<h4>Результаты: ${passed}/${total} (${passRate}%)</h4><ul>`;
+            results.forEach(r => {
+                html += `<li class="${r.pass ? 'test-pass' : 'test-fail'}">${r.pass ? '✅' : '❌'} ${r.name}</li>`;
+            });
+            html += '</ul>';
+            
+            output.innerHTML = html;
+            log(`\n📊 Итого: ${passed}/${total} тестов пройдено (${passRate}%)`);
+        };
+        
+        // Автозапуск
+        init();
+    </script>
+</body>
+</html>

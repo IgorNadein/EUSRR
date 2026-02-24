@@ -11,11 +11,21 @@ from employees.models import (
     EmployeeDepartment, RoleAssignment,
 )
 from tests.conftest import _unique_phone
-from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 User = get_user_model()
 # В этом проекте User == Employee (кастомная модель)
 Employee = User
+
+@pytest.fixture
+def make_user(email: str, is_staff: bool = False) -> User:
+    """Создаёт пользователя (Employee)."""
+    return User.objects.create_user(
+        email=email,
+        password="pwd12345",
+        phone_number=_unique_phone(),
+        is_staff=is_staff,
+        send_activation_email=False,
+    )
 
 def make_dept(name: str, head: User = None) -> Department:
     """Создаёт отдел."""
@@ -46,7 +56,7 @@ def api_client() -> APIClient:
 class TestRoleAssignmentEndpoints:
     """Тесты для /department-roles/{id}/assign/, revoke, assignments."""
     
-    def test_assign_role_to_any_employee(self, api_client: APIClient, ensure_ldap_disabled):
+    def test_assign_role_to_any_employee(self, api_client: APIClient):
         """Роль можно назначить любому сотруднику, не только члену отдела."""
         # Создаём admin, отдел и роль
         admin = make_user("admin@test.com", is_staff=True)
@@ -76,7 +86,7 @@ class TestRoleAssignmentEndpoints:
             employee=other_user, role=role, is_active=True
         ).exists()
     
-    def test_revoke_role(self, api_client: APIClient, ensure_ldap_disabled):
+    def test_revoke_role(self, api_client: APIClient):
         """Отзыв роли деактивирует RoleAssignment."""
         admin = make_user("admin@test.com", is_staff=True)
         dept = make_dept("IT")
@@ -100,7 +110,7 @@ class TestRoleAssignmentEndpoints:
         assignment.refresh_from_db()
         assert assignment.is_active is False
     
-    def test_assignments_list(self, api_client: APIClient, ensure_ldap_disabled):
+    def test_assignments_list(self, api_client: APIClient):
         """Список назначений роли."""
         admin = make_user("admin@test.com", is_staff=True)
         dept = make_dept("IT")
@@ -127,7 +137,7 @@ class TestRoleAssignmentEndpoints:
         resp = api_client.get(url + "?active=all")
         assert resp.data["count"] == 2
     
-    def test_assign_requires_permission(self, api_client: APIClient, ensure_ldap_disabled):
+    def test_assign_requires_permission(self, api_client: APIClient):
         """Назначение требует право assign_department_role."""
         dept = make_dept("IT")
         role = make_role(dept, "Developer", [])
@@ -143,7 +153,7 @@ class TestRoleAssignmentEndpoints:
         
         assert resp.status_code == status.HTTP_403_FORBIDDEN
     
-    def test_assign_with_dept_permission(self, api_client: APIClient, ensure_ldap_disabled):
+    def test_assign_with_dept_permission(self, api_client: APIClient):
         """Пользователь с assign_department_role может назначать роли."""
         dept = make_dept("IT")
         role = make_role(dept, "Developer", [])
@@ -164,7 +174,7 @@ class TestRoleAssignmentEndpoints:
 class TestRoleAssignmentPermissions:
     """Тесты для проверки прав через RoleAssignment."""
     
-    def test_permission_check_via_role_assignment(self, api_client: APIClient, ensure_ldap_disabled):
+    def test_permission_check_via_role_assignment(self, api_client: APIClient):
         """Права проверяются через RoleAssignment, не требуя членства в отделе."""
         from api.v1.permissions import has_dept_perm
         
@@ -186,7 +196,7 @@ class TestRoleAssignmentPermissions:
         assert has_dept_perm(user, dept.id, "view_request")
         assert not has_dept_perm(user, dept.id, "change_department_head")
     
-    def test_inactive_assignment_does_not_grant_permission(self, api_client: APIClient, ensure_ldap_disabled):
+    def test_inactive_assignment_does_not_grant_permission(self, api_client: APIClient):
         """Неактивное назначение не даёт прав."""
         from api.v1.permissions import has_dept_perm
         

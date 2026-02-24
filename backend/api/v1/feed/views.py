@@ -22,12 +22,7 @@ from ..permissions import (
     user_is_dept_head,
     user_is_staffish,
 )
-from .serializers import (
-    AuthorMiniSerializer,
-    CommentSerializer,
-    PostListSerializer,
-    PostSerializer,
-)
+from .serializers import CommentSerializer, PostListSerializer, PostSerializer
 
 Employee = get_user_model()
 
@@ -64,7 +59,6 @@ class PostViewSet(viewsets.ModelViewSet):
         .annotate(comments_count=Count("comments", distinct=True))
         .order_by("-pinned", "-created_at")
     )
-    serializer_class = PostSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["title", "body"]
@@ -104,9 +98,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
         # --- CREATE: смотрим на тип из тела запроса ---
         if self.action == "create":
-            req_data = getattr(self.request, "data", {})
-            raw_type = req_data.get("type") if hasattr(req_data, "get") else ""
-            t = (raw_type or "").strip()
+            t = (self.request.data.get("type") or "").strip()
             if t == TYPE_COMPANY:
                 return [IsAuthenticated(), AdminOrActionOrModelPerms()]
             # department → департаментное право на создание
@@ -139,6 +131,9 @@ class PostViewSet(viewsets.ModelViewSet):
 
         # дефолт: просто аутентификация
         return [IsAuthenticated()]
+
+    def get_serializer_class(self):
+        return PostListSerializer if self.action == "list" else PostSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -186,7 +181,7 @@ class PostViewSet(viewsets.ModelViewSet):
         if ids:
             last_comments_map = Comment.objects.select_related("author").in_bulk(ids)
 
-        serializer = PostListSerializer(
+        serializer = self.get_serializer(
             objects,
             many=True,
             context={
@@ -198,42 +193,14 @@ class PostViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
-    # --- Файлы из request.FILES сохраняются вручную ---
-    # Аналогично механизму upload в communications (MessageViewSet.upload),
-    # где файлы берутся напрямую из request.FILES, а не через сериализатор.
-
+    # --- ВАЖНО: возвращаем perform_create, чтобы заполнить author ---
     def perform_create(self, serializer: PostSerializer) -> None:
-        """Сохраняет пост, проставляя автора.
-        Файлы (image/attachment) записываются через _attach_files.
+        """Сохраняет пост, проставляя автора текущим пользователем.
+
+        Raises:
+            ValidationError: если сериализатор невалиден (обрабатывается DRF).
         """
-        instance = serializer.save(author=self.request.user)
-        self._attach_files(instance)
-
-    def perform_update(self, serializer) -> None:
-        """Обновляет пост. Файлы записываются через _attach_files."""
-        instance = serializer.save()
-        self._attach_files(instance)
-
-    def _attach_files(self, instance: Post) -> None:
-        """Сохраняет файлы из request.FILES в инстанс поста.
-
-        По аналогии с communications.views.MessageViewSet.upload:
-        файлы берутся напрямую из request.FILES, минуя сериализатор.
-        """
-        files = self.request.FILES
-        image = files.get("image")
-        attachment = files.get("attachment")
-
-        update_fields = []
-        if image:
-            instance.image = image  # type: ignore[assignment]
-            update_fields.append("image")
-        if attachment:
-            instance.attachment = attachment  # type: ignore[assignment]
-            update_fields.append("attachment")
-
-        if update_fields:
-            instance.save(update_fields=update_fields)
+        serializer.save(author=self.request.user)
 
     # --- actions (pin/unpin и лайки) ---
 
@@ -280,32 +247,6 @@ class PostViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @action(
-        detail=True,
-        methods=["get"],
-        permission_classes=[IsAuthenticated],
-        url_path="likes-users",
-    )
-    def likes_users(self, request, pk=None):
-        """Возвращает список пользователей, поставивших лайк посту."""
-        post = self.get_object()
-
-        likes_qs = (
-            PostLike.objects.filter(post=post)
-            .select_related("user")
-            .order_by("-created_at")[:50]
-        )
-        users = [like.user for like in likes_qs]
-
-        serializer = AuthorMiniSerializer(users, many=True, context={"request": request})
-        return Response(
-            {
-                "count": post.likes_count,
-                "results": serializer.data,
-            },
-            status=status.HTTP_200_OK,
-        )
-
 
 class CommentViewSet(viewsets.ModelViewSet):
     """
@@ -329,17 +270,6 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
-
-    def perform_update(self, serializer):
-        """Редактирование только своих комментариев.
-
-        Staff/superuser могут удалять чужие комментарии, но не редактировать.
-        """
-        instance = serializer.instance
-        user_pk = getattr(self.request.user, "pk", None)
-        if not instance or instance.author_id != user_pk:
-            raise PermissionDenied("Редактировать можно только свои комментарии.")
-        serializer.save()
 
     def get_queryset(self):
         qs = super().get_queryset()

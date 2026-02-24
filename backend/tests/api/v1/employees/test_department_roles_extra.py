@@ -12,13 +12,28 @@ from employees.models import (
     EmployeeDepartment,  # если у вас EmployeeDepartmentLink, замените импорт и упоминания ниже
 )
 from tests.conftest import _unique_phone
-from tests.api.v1.employees.test_helpers import make_user, grant_permission, make_department, extract_results
 
 User = get_user_model()
 
 # =========================
 # Helpers
 # =========================
+
+@pytest.fixture
+def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
+    """Fixture для создания пользователей."""
+    extra = {
+        "phone_number": _unique_phone(),
+        "is_staff": staff,
+        "send_activation_email": False,
+    }
+    # добавим verified если поле есть
+    try:
+        User._meta.get_field("verified")
+        extra["verified"] = verified
+    except Exception:
+        pass
+    return User.objects.create_user(email=email, password="pwd12345", **extra)
 
 def ensure_perm(code: str, name: str | None = None) -> DepartmentPermission:
     return DepartmentPermission.objects.get_or_create(
@@ -56,13 +71,13 @@ def api_client() -> APIClient:
 # =========================
 
 @pytest.mark.django_db
-def test_unauth_cannot_list_or_get(ensure_ldap_disabled):
+def test_unauth_cannot_list_or_get():
     client = APIClient()
     url_list = reverse("api:v1:department-roles-list")
     assert client.get(url_list).status_code in (401, 403)
 
 @pytest.mark.django_db
-def test_read_only_allowed_without_assign(api_client: APIClient, ensure_ldap_disabled):
+def test_read_only_allowed_without_assign(api_client: APIClient):
     d = Department.objects.create(name="Dept")
     r = make_role(d, "Worker", [])
     u = make_user("u@example.com")
@@ -80,7 +95,7 @@ def test_read_only_allowed_without_assign(api_client: APIClient, ensure_ldap_dis
     assert api_client.get(url_detail).status_code == 200
 
 @pytest.mark.django_db
-def test_staff_override_for_write(api_client: APIClient, ensure_ldap_disabled):
+def test_staff_override_for_write(api_client: APIClient):
     d = Department.objects.create(name="Dept")
     staff = make_user("s@example.com", staff=True)
     api_client.force_authenticate(user=staff)
@@ -111,7 +126,7 @@ def test_staff_override_for_write(api_client: APIClient, ensure_ldap_disabled):
     )
 
 @pytest.mark.django_db
-def test_ordering_stable_by_name_then_id(api_client: APIClient, ensure_ldap_disabled):
+def test_ordering_stable_by_name_then_id(api_client: APIClient):
     d1 = Department.objects.create(name="Dept1")
     d2 = Department.objects.create(name="Dept2")
     u = make_user("u@example.com")
@@ -135,7 +150,7 @@ def test_ordering_stable_by_name_then_id(api_client: APIClient, ensure_ldap_disa
     assert picked[2] == r3.id
 
 @pytest.mark.django_db
-def test_set_perms_ids_take_precedence_over_codes(api_client: APIClient, ensure_ldap_disabled):
+def test_set_perms_ids_take_precedence_over_codes(api_client: APIClient):
     d = Department.objects.create(name="Dept")
     u = make_user("u@example.com")
     api_client.force_authenticate(user=u)
@@ -161,7 +176,7 @@ def test_set_perms_ids_take_precedence_over_codes(api_client: APIClient, ensure_
     assert codes == {"manage_department"}  # ids приоритетнее
 
 @pytest.mark.django_db
-def test_serializer_codes_override_scoped_permissions_on_create(api_client: APIClient, ensure_ldap_disabled):
+def test_serializer_codes_override_scoped_permissions_on_create(api_client: APIClient):
     d = Department.objects.create(name="Dept")
     ensure_perm("manage_department")
     ensure_perm("assign_department_role")
@@ -192,7 +207,7 @@ def test_serializer_codes_override_scoped_permissions_on_create(api_client: APIC
     assert codes == {"assign_department_role"}
 
 @pytest.mark.django_db
-def test_perm_choices_fields_and_nonempty(api_client: APIClient, ensure_ldap_disabled):
+def test_perm_choices_fields_and_nonempty(api_client: APIClient):
     ensure_perm("manage_department", "Управлять")
     ensure_perm("change_department_head", "Глава")
     ensure_perm("assign_department_role", "Назначение")
@@ -206,7 +221,7 @@ def test_perm_choices_fields_and_nonempty(api_client: APIClient, ensure_ldap_dis
     assert results and {"id", "code", "name"}.issubset(results[0].keys())
 
 @pytest.mark.django_db
-def test_destroy_requires_assign_in_same_department(api_client: APIClient, ensure_ldap_disabled):
+def test_destroy_requires_assign_in_same_department(api_client: APIClient):
     d1 = Department.objects.create(name="D1")
     d2 = Department.objects.create(name="D2")
     u = make_user("u@example.com")
@@ -227,7 +242,7 @@ def test_destroy_requires_assign_in_same_department(api_client: APIClient, ensur
     assert api_client.delete(url).status_code in (204, 200)
 
 @pytest.mark.django_db
-def test_set_perms_dedup_and_replace_semantics(api_client: APIClient, ensure_ldap_disabled):
+def test_set_perms_dedup_and_replace_semantics(api_client: APIClient):
     d = Department.objects.create(name="Dept")
     u = make_user("u@example.com")
     api_client.force_authenticate(user=u)

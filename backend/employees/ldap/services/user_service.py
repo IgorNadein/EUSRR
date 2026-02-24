@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.conf import settings
@@ -14,20 +13,28 @@ from django.db import transaction
 from django.utils import timezone
 from ldap3 import MODIFY_REPLACE, Connection
 
-logger = logging.getLogger(__name__)
-
 from ...models import Employee, LdapSyncState, Position
 from ..domain.dtos import DirectoryUserDTO
-from ..errors import (DirectoryDbError, DirectoryLdapError,
-                      DirectoryServiceError)
-from ..infrastructure.connections import _ldap
-from ..repositories.ldap_repository import (ensure_container_exists, is_taken,
-                                            ldap_modify_or_ignore,
-                                            modify_user_attrs, read_attrs)
+from ..errors import (
+    DirectoryDbError,
+    DirectoryLdapError,
+    DirectoryServiceError,
+)
 from ..utils.group_utils import sync_user_groups_by_cns
+from ..infrastructure.connections import _ldap
+from ..repositories.ldap_repository import (
+    ensure_container_exists,
+    is_taken,
+    ldap_modify_or_ignore,
+    modify_user_attrs,
+    read_attrs,
+)
 from ..utils.image_utils import normalize_avatar_to_jpeg
-from ..utils.ldap_utils import (build_logins_for_user, cn_candidates,
-                                get_guid_str)
+from ..utils.ldap_utils import (
+    build_logins_for_user,
+    cn_candidates,
+    get_guid_str,
+)
 from ..utils.text_utils import esc_rdn
 
 # Константы UAC (User Account Control)
@@ -46,7 +53,7 @@ class UserService:
     ):
         """
         Инициализация сервиса.
-
+        
         Args:
             ldap_repository: Репозиторий для работы с LDAP (optional)
             employee_repository: Репозиторий для работы с Employee (optional)
@@ -55,163 +62,6 @@ class UserService:
         self.ldap_repository = ldap_repository
         self.employee_repository = employee_repository
         self.sync_state_repository = sync_state_repository
-
-    # ==================== NEW ARCHITECTURE: PURE LDAP METHODS ==================== #
-
-    def create_user_in_ldap_only(self, dto: DirectoryUserDTO) -> dict[str, Any]:
-        """Создаёт пользователя ТОЛЬКО в LDAP, возвращает данные для БД.
-
-        Это новый метод для разделения ответственности:
-        - View создает Employee в БД (в транзакции)
-        - Затем вызывает этот метод для синхронизации в LDAP
-        - View обрабатывает результат и откатывает БД при ошибке LDAP
-
-        Args:
-            dto (DirectoryUserDTO): Данные нового пользователя.
-
-        Returns:
-            dict: Данные для сохранения в БД:
-                - 'dn': DN пользователя в LDAP
-                - 'guid': GUID пользователя из LDAP
-                - 'employee_pk': PK из employeeNumber (если был установлен)
-
-        Raises:
-            DirectoryLdapError: Ошибка на этапе создания/настройки LDAP.
-        """
-        with _ldap() as conn:
-            try:
-                # 1) Создаём пользователя в LDAP
-                dn = self._create_user_in_ldap(conn, dto)
-
-                # 2) Устанавливаем пароль
-                self._set_password(conn, dn, dto.initial_password)
-
-                # 3) Активируем если нужно
-                if dto.is_active:
-                    self._enable_user(conn, dn)
-
-                # 4) Читаем GUID для синхронизации
-                attrs = read_attrs(conn, dn, ["objectGUID"])
-                guid = get_guid_str(attrs)
-
-                # 5) Post-actions (best effort) - группы и аватар
-                if dto.group_cns:
-                    try:
-                        sync_user_groups_by_cns(
-                            conn, dn, set(dto.group_cns), do_write=True)
-                    except Exception:
-                        pass
-
-                if dto.avatar_bytes:
-                    try:
-                        avatar = normalize_avatar_to_jpeg(
-                            dto.avatar_bytes, size_px=384, max_kb=100
-                        )
-                        if avatar:
-                            modify_user_attrs(
-                                conn, dn, {"thumbnailPhoto": avatar}, do_write=True
-                            )
-                    except Exception:
-                        pass
-
-                return {
-                    'dn': dn,
-                    'guid': guid,
-                }
-
-            except Exception as e:
-                raise DirectoryLdapError(f"LDAP create failed: {e}") from e
-
-    def update_user_in_ldap_only(
-        self,
-        instance: Employee,
-        changes: Dict[str, Any],
-        move_to_department_dn: Optional[str] = None,
-        group_cns: Optional[List[str]] = None
-    ) -> dict[str, Any]:
-        """Обновляет пользователя ТОЛЬКО в LDAP.
-
-        Новая архитектура: View обновляет БД, затем синхронизирует в LDAP.
-
-        Args:
-            instance (Employee): Инстанс сотрудника с актуальными данными из БД.
-            changes (Dict[str, Any]): Изменения из request.data для синхронизации в LDAP.
-            move_to_department_dn (Optional[str]): DN отдела для перемещения (готовый).
-            group_cns (Optional[List[str]]): Список CN групп для синхронизации (готовый).
-
-        Returns:
-            dict: Данные для дополнительного обновления БД если нужно:
-                - 'dn': новый DN если переместили пользователя
-
-        Raises:
-            DirectoryLdapError: Ошибка синхронизации с LDAP.
-        """
-        try:
-            current_dn = self._get_employee_dn(instance)
-        except DirectoryServiceError as e:
-            raise DirectoryLdapError(f"Cannot get employee DN: {e}") from e
-
-        with _ldap() as conn:
-            ldap_changes = dict(changes)
-
-            try:
-                result = self._update_user_in_ldap(
-                    conn=conn,
-                    current_dn=current_dn,
-                    model_changes=ldap_changes,
-                    move_to_department_dn=move_to_department_dn,
-                    group_cns=group_cns,
-                )
-
-                # Распаковываем результат
-                if isinstance(result, tuple):
-                    new_dn, _ = result
-                else:
-                    new_dn = result
-
-                # Если DN изменился - возвращаем для обновления БД
-                if new_dn and new_dn != current_dn:
-                    return {'dn': new_dn}
-
-                return {}
-
-            except Exception as e:
-                raise DirectoryLdapError(f"LDAP update failed: {e}") from e
-
-    def delete_user_in_ldap_only(self, instance: Employee) -> None:
-        """Удаляет пользователя ТОЛЬКО из LDAP.
-
-        Новая архитектура: View удаляет из БД, затем удаляет из LDAP.
-
-        Args:
-            instance (Employee): Сотрудник для удаления из LDAP.
-
-        Raises:
-            DirectoryLdapError: Ошибка удаления из LDAP.
-        """
-        try:
-            dn = self._get_employee_dn(instance)
-        except DirectoryServiceError:
-            # Если нет DN - ничего удалять не нужно
-            logger.warning(
-                f"Cannot get DN for employee {instance.pk}, skipping LDAP delete")
-            return
-
-        with _ldap() as conn:
-            try:
-                # 1. Soft-disable перед удалением
-                modify_user_attrs(conn, dn, {"userAccountControl": 0x0202})
-            except Exception as e:
-                logger.warning(f"LDAP soft-disable failed (continuing): {e}")
-
-            try:
-                # 2. Hard delete
-                self._hard_delete_user_in_ldap(conn, dn)
-            except Exception as e:
-                raise DirectoryLdapError(
-                    f"LDAP hard delete failed: {e}") from e
-
-    # ==================== OLD ARCHITECTURE: LDAP + DB ==================== #
 
     def create_user(self, dto: DirectoryUserDTO) -> Employee:
         """Создаёт учётку в LDAP и запись в БД (DN/связь — только в LdapSyncState).
@@ -297,8 +147,7 @@ class UserService:
             # 3) Post-actions (best effort)
             try:
                 if dto.group_cns:
-                    sync_user_groups_by_cns(
-                        conn, dn, set(dto.group_cns), do_write=True)
+                    sync_user_groups_by_cns(conn, dn, set(dto.group_cns), do_write=True)
                 if dto.avatar_bytes:
                     # Увеличен размер до 384px для максимального качества в LDAP
                     avatar = normalize_avatar_to_jpeg(
@@ -344,9 +193,8 @@ class UserService:
                 is_active_val = bool(changes.get("is_active"))
             except Exception:
                 is_active_val = None
-
-        old_pos = getattr(emp, "position", None) if hasattr(
-            emp, "position") else None
+        
+        old_pos = getattr(emp, "position", None) if hasattr(emp, "position") else None
         new_pos = None
         pos_in_payload = False
         if "position" in changes or "position_id" in changes:
@@ -364,7 +212,7 @@ class UserService:
                     new_pos = Position.objects.filter(pk=int(val)).first()
                 except Exception:
                     new_pos = None
-
+        
         with _ldap() as conn:
             ldap_changes = dict(changes)
             try:
@@ -424,8 +272,7 @@ class UserService:
                     if move_to_department_dn and hasattr(emp, "set_active_department"):
                         from .department_service import DepartmentService
                         dept_svc = DepartmentService()
-                        dept = dept_svc._get_department_by_dn(
-                            move_to_department_dn)
+                        dept = dept_svc._get_department_by_dn(move_to_department_dn)
                         if dept:
                             emp.set_active_department(dept)
 
@@ -433,8 +280,7 @@ class UserService:
                     if saved_avatar_bytes and hasattr(emp, "avatar"):
                         from django.core.files.base import ContentFile
                         filename = f"avatar_{emp.pk}.jpg"
-                        emp.avatar.save(filename, ContentFile(
-                            saved_avatar_bytes), save=False)
+                        emp.avatar.save(filename, ContentFile(saved_avatar_bytes), save=False)
                         if "avatar" not in updated_fields:
                             updated_fields.append("avatar")
 
@@ -442,19 +288,18 @@ class UserService:
                         emp.save(update_fields=list(set(updated_fields)))
             except Exception as e:
                 raise DirectoryDbError(str(e)) from e
-
+            
             try:
                 if pos_in_payload and (old_pos != new_pos):
                     # Используем PositionService для синхронизации должностей
-                    import logging
-
-                    from ..directory_service import DirectoryService
                     from .position_service import PositionService
+                    from ..directory_service import DirectoryService
+                    import logging
                     logger = logging.getLogger(__name__)
-
+                    
                     pos_svc = PositionService()
                     dir_svc = DirectoryService()
-
+                    
                     if old_pos:
                         old_dn = (old_pos.ldap_group_dn or "").strip()
                         if not old_dn:
@@ -519,8 +364,7 @@ class UserService:
                 try:
                     modify_user_attrs(conn, dn, {"userAccountControl": 0x0202})
                 except Exception as e:
-                    raise DirectoryLdapError(
-                        f"LDAP soft-disable failed: {e}") from e
+                    raise DirectoryLdapError(f"LDAP soft-disable failed: {e}") from e
 
             try:
                 with transaction.atomic():
@@ -536,8 +380,7 @@ class UserService:
                 try:
                     self._hard_delete_user_in_ldap(conn, dn)
                 except Exception as e:
-                    raise DirectoryLdapError(
-                        f"LDAP hard delete failed: {e}") from e
+                    raise DirectoryLdapError(f"LDAP hard delete failed: {e}") from e
 
     # ==================== DN ↔ ID Conversion Methods ==================== #
 
@@ -554,8 +397,7 @@ class UserService:
             return []
         id_strs = [str(i) for i in ids if isinstance(i, int)]
         return list(
-            LdapSyncState.objects.filter(
-                model="employee", object_pk__in=id_strs)
+            LdapSyncState.objects.filter(model="employee", object_pk__in=id_strs)
             .exclude(ldap_dn__isnull=True)
             .exclude(ldap_dn__exact="")
             .values_list("ldap_dn", flat=True)
@@ -624,15 +466,13 @@ class UserService:
             msg = conn.result or {}
             raw = (msg.get("message") or "").upper()
             if "0000052D" in raw:
-                raise RuntimeError(
-                    "Пароль не соответствует политике сложности AD")
+                raise RuntimeError("Пароль не соответствует политике сложности AD")
             raise RuntimeError(f"LDAP set password failed: {msg}")
 
     def _enable_user(self, conn: Connection, dn: str) -> None:
         """Включает учётку (UAC=512)."""
         ldap_modify_or_ignore(
-            conn, dn, {"userAccountControl": [
-                (MODIFY_REPLACE, [UAC_ENABLED])]}, set()
+            conn, dn, {"userAccountControl": [(MODIFY_REPLACE, [UAC_ENABLED])]}, set()
         )
 
     def _unique_logins(
@@ -644,15 +484,12 @@ class UserService:
             last_name=dto.last_name,
             email=dto.email,
             upn_suffix=upn_suffix,
-            is_taken_sam=lambda s: is_taken(
-                conn, attributes={"sAMAccountName": s}),
-            is_taken_upn=lambda u: is_taken(
-                conn, attributes={"userPrincipalName": u}),
+            is_taken_sam=lambda s: is_taken(conn, attributes={"sAMAccountName": s}),
+            is_taken_upn=lambda u: is_taken(conn, attributes={"userPrincipalName": u}),
             guid=getattr(dto, "ldap_guid", None),
         )
         if not sam or not upn:
-            raise ValueError(
-                "Не удалось сгенерировать уникальные sAMAccountName/UPN")
+            raise ValueError("Не удалось сгенерировать уникальные sAMAccountName/UPN")
         return sam, upn
 
     def _phone_write_attr(self) -> str:
@@ -720,8 +557,7 @@ class UserService:
         ensure_container_exists(conn, base_dn)
 
         upn_suffix = getattr(settings, "LDAP_UPN_SUFFIX", "") or (
-            dto.email.split(
-                "@", 1)[1] if dto.email and "@" in dto.email else ""
+            dto.email.split("@", 1)[1] if dto.email and "@" in dto.email else ""
         )
         if not upn_suffix:
             raise ValueError(
@@ -759,14 +595,14 @@ class UserService:
         group_cns: Optional[Iterable[str]] = None,
     ) -> str:
         """Применяет LDAP-изменения к существующему пользователю и возвращает (возможный новый) DN.
-
+        
         NOTE: Этот метод слишком большой (~150 строк) и должен быть рефакторен в будущем.
         Сейчас просто перенесём как есть для совместимости.
         """
         # Временно используем DirectoryService для _move_to_department
         from ..directory_service import DirectoryService
         svc = DirectoryService()
-
+        
         if not isinstance(current_dn, str) or not current_dn.strip():
             raise TypeError("current_dn должен быть непустой строкой")
         if not isinstance(model_changes, dict):
@@ -788,8 +624,7 @@ class UserService:
         # 3) UAC
         if is_active_val is not None:
             uac_val = UAC_ENABLED if is_active_val else UAC_DISABLED
-            modify_user_attrs(
-                conn, dn, {"userAccountControl": uac_val}, do_write=True)
+            modify_user_attrs(conn, dn, {"userAccountControl": uac_val}, do_write=True)
 
         # 4) Прочие атрибуты
         ldap_attrs_map = {
@@ -805,7 +640,7 @@ class UserService:
                 val = model_changes[model_key]
                 if val or ldap_attr == "sn":
                     attrs_to_update[ldap_attr] = val if val else "."
-
+        
         if attrs_to_update:
             modify_user_attrs(conn, dn, attrs_to_update, do_write=True)
 
@@ -817,8 +652,7 @@ class UserService:
                 avatar_bytes, size_px=384, max_kb=100
             )
             if avatar:
-                modify_user_attrs(
-                    conn, dn, {"thumbnailPhoto": avatar}, do_write=True)
+                modify_user_attrs(conn, dn, {"thumbnailPhoto": avatar}, do_write=True)
                 avatar_saved = True  # Флаг для сохранения в БД
 
         # 6) Группы
@@ -830,45 +664,45 @@ class UserService:
 
     def _get_employee_dn(self, employee: Employee) -> str:
         """Возвращает DN сотрудника из LdapSyncState или модели.
-
+        
         Args:
             employee: Экземпляр Employee.
-
+            
         Returns:
             str: Полный DN пользователя в LDAP.
-
+            
         Raises:
             DirectoryServiceError: Если DN не найден.
         """
         # Сначала проверяем LdapSyncState
         dn = (
             LdapSyncState.objects.filter(
-                model="employee",
+                model="employee", 
                 object_pk=str(employee.pk)
             )
             .values_list("ldap_dn", flat=True)
             .first()
         )
-
+        
         # Если не найден в LdapSyncState, проверяем поле модели
         if not dn and hasattr(employee, 'ldap_dn'):
             dn = employee.ldap_dn
-
+        
         if not dn:
             raise DirectoryServiceError("Employee has no ldap_dn")
         return dn
 
     def _move_user_to_base(self, conn: Connection, user_dn: str, base_dn: str) -> str:
         """Перемещает пользовательский объект в указанный контейнер.
-
+        
         Args:
             conn: LDAP соединение.
             user_dn: Текущий DN пользователя.
             base_dn: DN целевого контейнера.
-
+            
         Returns:
             str: Новый DN пользователя после перемещения.
-
+            
         Raises:
             RuntimeError: Если операция перемещения не удалась.
         """

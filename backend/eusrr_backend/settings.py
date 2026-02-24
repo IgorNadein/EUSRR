@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     # Основные приложения
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
-
+    "hikcentral.apps.HikcentralConfig",
     "calendar_app.apps.CalendarAppConfig",
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
@@ -99,23 +99,44 @@ ASGI_APPLICATION = "eusrr_backend.asgi.application"
 USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3" if USE_SQLITE else "django.db.backends.postgresql",
-        "NAME": os.path.join(BASE_DIR, "db.sqlite3") if USE_SQLITE else os.getenv("POSTGRES_DB", "django"),
-    }
+    "default": {},
+    "hikcentral": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "cms",
+        "USER": "postgres",
+        "PASSWORD": None,
+        "HOST": "127.0.0.1",
+        "PORT": "5432",
+        "OPTIONS": {"options": "-c search_path=platform"},
+    },
 }
 
-if not USE_SQLITE:
-    DATABASES["default"].update({
+if USE_SQLITE:
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
+    }
+else:
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("POSTGRES_DB", "django"),
         "USER": os.getenv("POSTGRES_USER", "django"),
         "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "127.0.0.1"),
         "PORT": os.getenv("DB_PORT", "5432"),
-    })
+    }
 
 # -----------------------------------------------------------------------------
 # АВТОРИЗАЦИЯ / ПАРОЛИ
 # -----------------------------------------------------------------------------
+# AUTH_PASSWORD_VALIDATORS = [
+#     {
+#         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+#     },
+#     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+#     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+#     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+# ]
 
 LANGUAGE_CODE = "ru"
 TIME_ZONE = "Europe/Moscow"
@@ -171,222 +192,35 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 # -----------------------------------------------------------------------------
 # ЛОГИРОВАНИЕ
 # -----------------------------------------------------------------------------
-# Создаем директорию для логов
-LOGS_DIR = BASE_DIR / "logs"
-LOGS_DIR.mkdir(exist_ok=True)
-
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        #Detalized format for development
         "verbose": {
-            "format": "[{levelname:8s}] {asctime} | {name:30s} | {funcName:20s}:{lineno:4d} | {message}",
+            "format": "[{levelname}] {asctime} {name}:{lineno} {message}",
             "style": "{",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-        # Simple format for production console
-        "simple": {
-            "format": "[{levelname:8s}] {asctime} | {name} | {message}",
-            "style": "{",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-        # Structured format for parsing
-        "json_style": {
-            "format": "%(asctime)s | %(levelname)s | %(name)s | %(funcName)s:%(lineno)d | %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-    },
-    "filters": {
-        "require_debug_false": {
-            "()": "django.utils.log.RequireDebugFalse",
-        },
-        "require_debug_true": {
-            "()": "django.utils.log.RequireDebugTrue",
         },
     },
     "handlers": {
-        # Console output
         "console": {
-            "level": "DEBUG" if DEBUG else "INFO",
-            "class": "logging.StreamHandler",
-            "formatter": "verbose" if DEBUG else "simple",
-        },
-        # All logs (INFO+) with rotation
-        "file_all": {
-            "level": "INFO",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": LOGS_DIR / "all.log",
-            "maxBytes": 10 * 1024 * 1024,  # 10 MB
-            "backupCount": 5,
-            "formatter": "json_style",
-            "encoding": "utf-8",
-        },
-        # Error logs (ERROR+) with rotation
-        "file_error": {
-            "level": "ERROR",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": LOGS_DIR / "error.log",
-            "maxBytes": 10 * 1024 * 1024,  # 10 MB
-            "backupCount": 10,
-            "formatter": "verbose",
-            "encoding": "utf-8",
-        },
-        # Debug logs (only in DEBUG mode)
-        "file_debug": {
             "level": "DEBUG",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": LOGS_DIR / "debug.log",
-            "maxBytes": 20 * 1024 * 1024,  # 20 MB
-            "backupCount": 3,
-            "formatter": "verbose",
-            "encoding": "utf-8",
-            "filters": ["require_debug_true"],
-        },
-        # Security logs (authentication, permissions, etc)
-        "file_security": {
-            "level": "INFO",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": LOGS_DIR / "security.log",
-            "maxBytes": 10 * 1024 * 1024,  # 10 MB
-            "backupCount": 20,
-            "formatter": "json_style",
-            "encoding": "utf-8",
-        },
-        # Django request logs
-        "file_requests": {
-            "level": "INFO",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": LOGS_DIR / "requests.log",
-            "maxBytes": 20 * 1024 * 1024,  # 20 MB
-            "backupCount": 5,
-            "formatter": "json_style",
-            "encoding": "utf-8",
-        },
-        # Mail admins on errors (production only)
-        "mail_admins": {
-            "level": "ERROR",
-            "class": "django.utils.log.AdminEmailHandler",
-            "filters": ["require_debug_false"],
+            "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
     },
     "loggers": {
-        # Root logger
-        "": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "DEBUG" if DEBUG else "INFO",
-        },
-        # Django core
-        "django": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "django.request": {
-            "handlers": ["console", "file_requests", "file_error", "mail_admins"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        "django.server": {
-            "handlers": ["console", "file_requests"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        # SQL queries (only in DEBUG mode)
-        "django.db.backends": {
-            "handlers": ["console", "file_debug"] if DEBUG else [],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        # Security events
-        "django.security": {
-            "handlers": ["console", "file_security", "mail_admins"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        # Application loggers
-        "employees": {
-            "handlers": ["console", "file_all", "file_debug", "file_error"],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        "employees.ldap": {
-            "handlers": ["console", "file_all", "file_security", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "documents": {
-            "handlers": ["console", "file_all", "file_debug", "file_error"],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        "communications": {
-            "handlers": ["console", "file_all", "file_debug", "file_error"],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        "api.v1.communications": {
-            "handlers": ["console", "file_all", "file_debug", "file_error"],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        "notifications": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "requests_app": {
-            "handlers": ["console", "file_all", "file_debug", "file_error"],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        "bots": {
-            "handlers": ["console", "file_all", "file_debug", "file_error"],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        "feed": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "calendar_app": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "finance": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "common": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        # Third-party integrations
-        "ldap3": {
-            "handlers": ["console", "file_security", "file_error"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        "aiogram": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "celery": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "channels": {
-            "handlers": ["console", "file_all", "file_error"],
-            "level": "INFO",
-            "propagate": False,
-        },
+        "documents": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "bots": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "api.v1.communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "notifications": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "requests_app": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "employees": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "common": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "aiogram": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # полезно видеть ошибки и отладку ldap3
+        "ldap3": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 }
 
@@ -508,78 +342,79 @@ AUTHENTICATION_BACKENDS = [
 # -----------------------------------------------------------------------------
 # LDAP (двусторонний обмен + LWW)
 # -----------------------------------------------------------------------------
-LDAP_ENABLED = os.getenv("LDAP_ENABLED", "false").lower() == "true"
+LDAP_ENABLED = os.getenv("LDAP_ENABLED", "true").lower() == "true"
 
 # Основное подключение
-LDAP_URI = os.getenv("LDAP_URI", "ldap://127.0.0.1:389")
+LDAP_URI = os.getenv("LDAP_URI", "ldaps://dcii.robotail.local:636")
 LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")
 LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
 
 # TLS/CA
-LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")
-LDAP_TLS_REQUIRED = os.getenv("LDAP_TLS_REQUIRED", "false").lower() == "true"
+LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")  # путь к CA bundle/серту (если нужен)
+LDAP_TLS_REQUIRED = os.getenv("LDAP_TLS_REQUIRED", "true").lower() == "true"
 
-# DN базы пользователей
-LDAP_USER_BASE = os.getenv("LDAP_USER_BASE", "ou=users,dc=eusrr,dc=local")
+# Где искать пользователей
+LDAP_USER_BASE = os.getenv("LDAP_USER_BASE", "OU=company,DC=robotail,DC=local")
+# Где создавать новых пользователей (может отличаться от базы поиска)
 LDAP_USERS_BASE = os.getenv("LDAP_USERS_BASE", LDAP_USER_BASE)
+# Базовый DN для операций создания (если не указан department_dn)
 LDAP_BASE_DN = os.getenv("LDAP_BASE_DN", LDAP_USERS_BASE)
+# UPN-суффикс для создания пользователей (userPrincipalName) - домен БЕЗ @
+LDAP_UPN_SUFFIX = os.getenv("LDAP_USER_UPN_SUFFIX", "robotail.local")
 
-# UPN суффикс (домен БЕЗ @)
-LDAP_UPN_SUFFIX = os.getenv("LDAP_USER_UPN_SUFFIX", "eusrr.local")
-
-# Фильтры поиска (для OpenLDAP по умолчанию)
 LDAP_USER_FILTER = os.getenv(
-    "LDAP_USER_FILTER", "(&(objectClass=inetOrgPerson))"
+    "LDAP_USER_FILTER", "(&(objectCategory=person)(objectClass=user))"
 )
-LDAP_ACTIVE_FILTER = os.getenv("LDAP_ACTIVE_FILTER", "")
+# Для AD по умолчанию; для OpenLDAP можно обнулить в .env
+LDAP_ACTIVE_FILTER = os.getenv(
+    "LDAP_ACTIVE_FILTER",
+    "(!(userAccountControl:1.2.840.113556.1.4.803:=2))",  # битовый NOT DISABLED
+)
 
 
-# Атрибуты LDAP
 LDAP_ATTR_MAIL = os.getenv("LDAP_ATTR_MAIL", "mail")
 LDAP_ATTR_GIVENNAME = os.getenv("LDAP_ATTR_GIVENNAME", "givenName")
 LDAP_ATTR_SN = os.getenv("LDAP_ATTR_SN", "sn")
 LDAP_ATTR_PHONE = os.getenv("LDAP_ATTR_PHONE", "telephoneNumber")
+# Атрибут LDAP для хранения Django pk сотрудника (employeeNumber по RFC 2798, employeeID для AD)
 LDAP_EMPLOYEE_ID_ATTR = os.getenv("LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
 LDAP_PHONE_ATTRS = tuple(
     _split_env_list(os.getenv("LDAP_PHONE_ATTRS", "mobile,telephoneNumber"))
 )
 
-# Отделы и группы
-LDAP_DEPT_ATTR = os.getenv("LDAP_DEPT_ATTR", "")
-LDAP_DEPARTMENTS_BASE = os.getenv(
-    "LDAP_DEPARTMENTS_BASE", "OU=Departments,OU=company,DC=eusrr,DC=local"
-)
-LDAP_DISMISSED_BASE = os.getenv(
-    "LDAP_DISMISSED_BASE", "OU=Dismissed,OU=company,DC=eusrr,DC=local"
-)
-LDAP_POSITIONS_BASE = os.getenv(
-    "LDAP_POSITIONS_BASE", "OU=Positions,OU=company,DC=eusrr,DC=local"
-)
-LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE", "")
-
+LDAP_DEPT_ATTR = os.getenv("LDAP_DEPT_ATTR", "")  # например, departmentNumber
 LDAP_SYNC_GROUPS = os.getenv("LDAP_SYNC_GROUPS", "false").lower() == "true"
 LDAP_GROUP_ATTR = os.getenv("LDAP_GROUP_ATTR", "memberOf")
+# Пример: {"CN=HR,OU=Groups,DC=...,DC=...": "hr"}
 LDAP_GROUP_MAP = {}
 LDAP_GROUPS_EXCLUSIVE = os.getenv("LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
 
-# WRITE-BACK (двусторонняя синхронизация)
+# WRITE-BACK
 LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
 LDAP_WRITE_DN = os.getenv("LDAP_WRITE_DN", LDAP_BIND_DN)
 LDAP_WRITE_PASSWORD = os.getenv("LDAP_WRITE_PASSWORD", LDAP_BIND_PASSWORD)
 LDAP_WRITE_TIMEOUT = int(os.getenv("LDAP_WRITE_TIMEOUT", "5"))
 
-# Маппинг локальных полей на LDAP атрибуты
+# UPN суффикс для создания пользователей (домен БЕЗ @, например robotail.local)
+LDAP_UPN_SUFFIX = os.getenv("LDAP_USER_UPN_SUFFIX", "robotail.local")
+
+# Белый список: локальные поля -> LDAP-атрибуты
 LDAP_WRITE_ATTRS = {
     "first_name": LDAP_ATTR_GIVENNAME,
     "last_name": LDAP_ATTR_SN,
+    # фактическое имя локального телефонного поля подставляет код
     "phone": LDAP_ATTR_PHONE,
+    # "photo": "jpegPhoto",
 }
 
-# LWW (Last Writer Wins) для разрешения конфликтов синхронизации
-LDAP_ASSERT_ATTR = os.getenv("LDAP_ASSERT_ATTR", "modifyTimestamp")  # modifyTimestamp (OpenLDAP) или whenChanged (AD)
-LOCAL_ASSERT_FIELD = os.getenv("LOCAL_ASSERT_FIELD", "updated_at")
+# LWW (Last Writer Wins) — сравнение меток изменения
+# Для AD обычно whenChanged, для OpenLDAP — modifyTimestamp
+LDAP_ASSERT_ATTR_AD = "whenChanged"
+LDAP_ASSERT_ATTR_OL = "modifyTimestamp"
+LDAP_ASSERT_ATTR = os.getenv("LDAP_ASSERT_ATTR", LDAP_ASSERT_ATTR_AD)
 
-# Дополнительные атрибуты при создании пользователя в LDAP
+# Локальное поле «последнее изменение» (ваше поле модели, напр. updated_at)
+LOCAL_ASSERT_FIELD = os.getenv("LOCAL_ASSERT_FIELD", "updated_at")
 LDAP_CREATE_EXTRA_ATTRS = {
     "sAMAccountName": "{username20}",
     "userPrincipalName": "{upn}",
@@ -588,18 +423,29 @@ LDAP_CREATE_EXTRA_ATTRS = {
     "displayName": "{cn}",
     "mail": "{email}",
 }
-
-# Режим синхронизации и таймауты
 LDAP_SYNC_MODE = os.getenv("LDAP_SYNC_MODE", "lww")  # lww|ldap|django
 LDAP_PURGE = os.getenv("LDAP_PURGE", "false").lower() == "true"
+
 LDAP_CONNECT_TIMEOUT = int(os.getenv("LDAP_CONNECT_TIMEOUT", "5"))
 LDAP_OPERATION_TIMEOUT = int(os.getenv("LDAP_OPERATION_TIMEOUT", "10"))
 
-# Флаги поведения
-LDAP_AUTO_CREATE = os.getenv("LDAP_AUTO_CREATE", "False").lower() == "true"
+
+LDAP_USERS_BASE = os.getenv("LDAP_USERS_BASE")
+LDAP_USER_BASE = os.getenv("LDAP_USER_BASE")
+LDAP_DEPARTMENTS_BASE = os.getenv(
+    "LDAP_DEPARTMENTS_BASE", "OU=Departments,OU=company,DC=robotail,DC=local"
+)
+LDAP_DISMISSED_BASE = os.getenv(
+    "LDAP_DISMISSED_BASE", "OU=Dismissed,OU=company,DC=robotail,DC=local"
+)
+LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE")
+
+LDAP_AUTO_CREATE = os.getenv("LDAP_AUTO_CREATE", "False")
+
 LDAP_RESPECT_IS_ACTIVE = True
 LDAP_RESPECT_AD_DISABLED = True
 LDAP_REGISTRATION_CREATE = True
+LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE")
 
 
 

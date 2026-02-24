@@ -54,15 +54,15 @@ class RegisterSerializer(serializers.Serializer):
     whatsapp = serializers.CharField(required=False, allow_blank=True, default="")
     wechat = serializers.CharField(required=False, allow_blank=True, default="")
 
-    avatar = Base64ImageField(required=False, allow_null=True)
+    avatar = Base64ImageField(required=True)
     patronymic = serializers.CharField(required=False, allow_blank=True, default="")
 
     gender = serializers.ChoiceField(
-        required=False,
-        default=0,  # "Не указан"
-        choices=((0, "Не указан"), (1, "Мужской"), (2, "Женский")),
+        required=True,
+        choices=((1, "Мужской"), (2, "Женский")),
         error_messages={
-            'invalid_choice': 'Укажите пол: 0 - Не указан, 1 - Мужской, 2 - Женский.'
+            'required': 'Поле "Пол" обязательно для заполнения.',
+            'invalid_choice': 'Укажите пол: 1 - Мужской, 2 - Женский.'
         }
     )
 
