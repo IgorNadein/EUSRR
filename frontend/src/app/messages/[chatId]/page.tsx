@@ -1,22 +1,72 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText } from "lucide-react";
+import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText, ChevronRight, Reply, Pencil, Trash2, Smile } from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import type { Chat, Message, MessageAttachment } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
 
-function getChatTitle(chat: Chat): string {
-  return chat.name?.trim() || "Диалог";
+function getUserFullName(lastName?: string, firstName?: string): string {
+  return `${lastName || ""} ${firstName || ""}`.trim();
 }
 
-function getChatInitials(chat: Chat): string {
-  const title = getChatTitle(chat);
+function getInterlocutorFromParticipants(chat: Chat, currentUserId?: number) {
+  const participants = (chat.participants || []).filter(
+    (p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null
+  );
+  return participants.find((p) => p.id !== currentUserId);
+}
+
+function getInterlocutorFromParticipantDetails(chat: Chat, currentUserId?: number) {
+  return (chat.participant_details || []).find((p) => p.id !== currentUserId);
+}
+
+function getChatTitle(chat: Chat, currentUserId?: number): string {
+  const chatKind = chat.chat_type || chat.type;
+  const rawName = (chat.name || "").trim();
+
+  if (chatKind === "direct" || chatKind === "private" || !rawName || rawName.toLowerCase() === "диалог") {
+    if (chat.interlocutor?.name?.trim()) {
+      return chat.interlocutor.name.trim();
+    }
+
+    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
+    if (detailsOther?.name?.trim()) {
+      return detailsOther.name.trim();
+    }
+
+    const other = getInterlocutorFromParticipants(chat, currentUserId);
+    if (other && typeof other === "object") {
+      const name = getUserFullName(other.last_name, other.first_name);
+      if (name) return name;
+      if (other.email) return other.email;
+    }
+  }
+
+  return rawName || "Диалог";
+}
+
+function getChatAvatar(chat: Chat, currentUserId?: number): string {
+  const chatKind = chat.chat_type || chat.type;
+  if (chatKind === "direct" || chatKind === "private" || (chat.name || "").trim().toLowerCase() === "диалог") {
+    if (chat.interlocutor?.avatar) return chat.interlocutor.avatar;
+
+    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
+    if (detailsOther?.avatar) return detailsOther.avatar;
+
+    const other = getInterlocutorFromParticipants(chat, currentUserId);
+    if (other?.avatar) return other.avatar;
+  }
+  return chat.avatar || "";
+}
+
+function getChatInitials(chat: Chat, currentUserId?: number): string {
+  const title = getChatTitle(chat, currentUserId);
   return (
     title
       .split(" ")
@@ -123,30 +173,105 @@ function isAudioAttachment(att: MessageAttachment): boolean {
   return mime.startsWith("audio/") || type === "audio";
 }
 
+function normalizePossiblyEncodedUrl(value: string): string {
+  const input = (value || "").trim();
+  if (!input) return "";
+
+  try {
+    // В API URL может приходить уже закодированным (%D0...).
+    // Декодируем один раз и кодируем обратно, чтобы избежать %25D0... (double-encoding).
+    return encodeURI(decodeURI(input));
+  } catch {
+    return encodeURI(input);
+  }
+}
+
 function resolveAttachmentUrl(url?: string | null): string {
   if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return encodeURI(url);
-  if (url.startsWith("//")) return encodeURI(`https:${url}`);
+  if (url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url)) return normalizePossiblyEncodedUrl(url);
+  if (url.startsWith("//")) return normalizePossiblyEncodedUrl(`https:${url}`);
   if (url.startsWith("/") && BACKEND_URL) {
-    return encodeURI(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
+    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
   }
-  return encodeURI(url);
+  if (BACKEND_URL) {
+    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}/${url.replace(/^\/+/, "")}`);
+  }
+  return normalizePossiblyEncodedUrl(url);
 }
 
 function resolveAvatarUrl(url?: string | null): string {
   if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return encodeURI(url);
-  if (url.startsWith("//")) return encodeURI(`https:${url}`);
+  if (url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url)) return normalizePossiblyEncodedUrl(url);
+  if (url.startsWith("//")) return normalizePossiblyEncodedUrl(`https:${url}`);
   if (url.startsWith("/") && BACKEND_URL) {
-    return encodeURI(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
+    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
   }
-  return encodeURI(url);
+  if (BACKEND_URL) {
+    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}/${url.replace(/^\/+/, "")}`);
+  }
+  return normalizePossiblyEncodedUrl(url);
+}
+
+function uniqueMessagesById(items: Message[]): Message[] {
+  const map = new Map<number, Message>();
+  items.forEach((msg) => {
+    map.set(msg.id, msg);
+  });
+  return Array.from(map.values());
+}
+
+function getMessagePreviewText(message: Message): string {
+  if (message.content?.trim()) return message.content.trim();
+  if (message.attachments?.length) return "[Вложение]";
+  return "[Сообщение]";
+}
+
+function getReplyToId(message: Message): number | null {
+  if (typeof message.reply_to_id === "number") return message.reply_to_id;
+  if (typeof message.reply_to === "number") return message.reply_to;
+  if (message.reply_to && typeof message.reply_to === "object" && typeof message.reply_to.id === "number") {
+    return message.reply_to.id;
+  }
+  if (message.reply_to_message && typeof message.reply_to_message.id === "number") {
+    return message.reply_to_message.id;
+  }
+  return null;
+}
+
+type ReplyTarget = {
+  id: number;
+  author: string;
+  preview: string;
+};
+
+const RECENT_REACTIONS_KEY = "eusrr_recent_reactions";
+const MAX_RECENT_REACTIONS = 5;
+const ALL_REACTIONS = [
+  "👍", "❤️", "😂", "🔥", "👏", "🎉", "😊", "😉", "😁", "🤝",
+  "🙏", "😮", "😢", "😡", "💯", "✅", "👀", "🤔", "😍", "😎",
+  "🤩", "🥳", "😴", "🫡", "👌", "💪", "🙌", "🧠", "💡", "🚀",
+  "🎯", "⭐", "✨", "🌟", "🫶", "🤗", "😅", "🤯", "🥲", "🫠",
+];
+
+function uniqueEmoji(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  items.forEach((item) => {
+    if (!item || seen.has(item)) return;
+    seen.add(item);
+    out.push(item);
+  });
+
+  return out;
 }
 
 export default function MessageDialogPage() {
   const params = useParams<{ chatId: string }>();
   const chatId = Number(params.chatId);
-  const { user } = useUser();
+  const { user, loading: userLoading } = useUser();
 
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -155,22 +280,147 @@ export default function MessageDialogPage() {
   const [error, setError] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [expandedReplyActionForId, setExpandedReplyActionForId] = useState<number | null>(null);
+  const [actionsMenuAnchor, setActionsMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [reactionPickerForMessageId, setReactionPickerForMessageId] = useState<number | null>(null);
+  const [showComposerEmojiPicker, setShowComposerEmojiPicker] = useState(false);
+  const [recentReactions, setRecentReactions] = useState<string[]>(ALL_REACTIONS.slice(0, MAX_RECENT_REACTIONS));
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [brokenMedia, setBrokenMedia] = useState<Record<number, boolean>>({});
+  const [useOriginalImage, setUseOriginalImage] = useState<Record<number, boolean>>({});
   const [mediaPreview, setMediaPreview] = useState<{ type: "image" | "video"; src: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [hasMoreNewer, setHasMoreNewer] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [loadingNewer, setLoadingNewer] = useState(false);
   const [initialAnchorId, setInitialAnchorId] = useState<number | null>(null);
+  const [initialAnchorIndex, setInitialAnchorIndex] = useState<number | null>(null);
+  const [allowOneOlderProbe, setAllowOneOlderProbe] = useState(false);
+  const initialScrolledRef = useRef(false);
+  const anchorScrollAttemptsRef = useRef(0);
+  const anchorOlderLoadAttemptsRef = useRef(0);
+  const prependAdjustRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+  const [anchorRetryTick, setAnchorRetryTick] = useState(0);
+  const messagesById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  const selectedActionMessage = expandedReplyActionForId ? messagesById.get(expandedReplyActionForId) || null : null;
+  const selectedActionCanManage = Boolean(
+    selectedActionMessage &&
+    user?.id &&
+    !selectedActionMessage.is_deleted &&
+    (selectedActionMessage.author_id === user.id ||
+      selectedActionMessage.author?.id === user.id ||
+      selectedActionMessage.sender?.id === user.id)
+  );
+  const selectedActionCanReply = Boolean(selectedActionMessage && !selectedActionMessage.is_deleted);
+  const selectedActionRecentReactions = useMemo(
+    () => uniqueEmoji(recentReactions).slice(0, MAX_RECENT_REACTIONS),
+    [recentReactions]
+  );
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined" || !window.history) return;
+    const prev = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    return () => {
+      window.history.scrollRestoration = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(RECENT_REACTIONS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const normalized = uniqueEmoji(parsed.filter((v): v is string => typeof v === "string")).slice(0, MAX_RECENT_REACTIONS);
+      if (normalized.length > 0) {
+        setRecentReactions(normalized);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const pushRecentReaction = (emoji: string) => {
+    const next = uniqueEmoji([emoji, ...recentReactions]).slice(0, MAX_RECENT_REACTIONS);
+    setRecentReactions(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(RECENT_REACTIONS_KEY, JSON.stringify(next));
+    }
+  };
+
+  const appendEmojiToComposer = (emoji: string) => {
+    setMessageText((prev) => `${prev}${emoji}`);
+    requestAnimationFrame(() => {
+      const input = messageInputRef.current;
+      if (!input) return;
+      input.focus();
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    });
+  };
+
+  const updateMessageReactionsSummary = (
+    messageId: number,
+    summary?: Record<string, { count: number; users?: number[]; user_names?: string[] }>
+  ) => {
+    if (!summary) return;
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions_summary: summary } : m)));
+  };
+
+  const hasMyReaction = (message: Message, emoji: string): boolean => {
+    if (!user?.id) return false;
+    const users = message.reactions_summary?.[emoji]?.users || [];
+    return users.includes(user.id);
+  };
+
+  const handleReact = async (message: Message, emoji: string) => {
+    try {
+      const response = hasMyReaction(message, emoji)
+        ? await apiClient.unreactToMessage(message.id, emoji)
+        : await apiClient.reactToMessage(message.id, emoji);
+
+      pushRecentReaction(emoji);
+      updateMessageReactionsSummary(message.id, response.reactions_summary);
+    } catch (e) {
+      console.error("Ошибка реакции:", e);
+    }
+  };
 
   useEffect(() => {
     async function loadChats() {
+      if (!chatId || Number.isNaN(chatId)) {
+        setChat(null);
+        setLoading(false);
+        return;
+      }
+
+      // На full reload дожидаемся восстановления auth-состояния,
+      // иначе возможен первый 401 и «залипание» без повторной загрузки.
+      if (userLoading) {
+        setLoading(true);
+        return;
+      }
+
+      if (!user) {
+        setChat(null);
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
-        const response = await apiClient.getChats();
-        const items = response.results || [];
-        setChat(items.find((c) => c.id === chatId) || null);
+        const loadedChat = await apiClient.getChat(chatId);
+        setChat(loadedChat);
       } catch (e: any) {
+        setChat(null);
         setError("Не удалось загрузить чат. Проверьте подключение и попробуйте снова.");
       } finally {
         setLoading(false);
@@ -178,29 +428,57 @@ export default function MessageDialogPage() {
     }
 
     loadChats();
-  }, [chatId]);
+  }, [chatId, userLoading, user?.id]);
 
   useEffect(() => {
     async function loadMessages() {
-      if (!chatId || Number.isNaN(chatId) || !chat) {
+      if (!chatId || Number.isNaN(chatId)) {
         setMessages([]);
+        setHasMoreOlder(false);
+        setHasMoreNewer(false);
         setInitialAnchorId(null);
+        setInitialAnchorIndex(null);
+        setAllowOneOlderProbe(false);
+        initialScrolledRef.current = false;
+        return;
+      }
+
+      // Ключевой фикс для полного reload: грузим сообщения только
+      // после завершения инициализации пользователя.
+      if (userLoading || !user) {
         return;
       }
 
       try {
         setMessagesLoading(true);
-        const around = await apiClient.getChatMessagesAround(chatId, { limit: 40 });
+        const around = await apiClient.getChatMessagesAround(chatId, { limit: 50 });
         const aroundMessages = around.messages || [];
 
         if (aroundMessages.length > 0) {
-          setMessages(aroundMessages);
+          const normalized = uniqueMessagesById(aroundMessages);
+          setMessages(normalized);
+          // fallback на случай, если API не вернул флаг has_more_before
+          setHasMoreOlder(
+            typeof around.has_more_before === "boolean" ? around.has_more_before : normalized.length >= 50
+          );
+          setHasMoreNewer(Boolean(around.has_more_after));
           setInitialAnchorId(around.anchor_id ?? null);
+          setInitialAnchorIndex(typeof around.anchor_index === "number" ? around.anchor_index : null);
+          setAllowOneOlderProbe(Boolean(around.anchor_id));
         } else {
           const response = await apiClient.getChatMessages(chatId, { limit: 50 });
-          setMessages(response.messages || []);
+          setMessages(uniqueMessagesById(response.messages || []));
+          setHasMoreOlder(Boolean(response.has_more));
+          setHasMoreNewer(false);
           setInitialAnchorId(null);
+          setInitialAnchorIndex(null);
+          setAllowOneOlderProbe(false);
         }
+
+        initialScrolledRef.current = false;
+        anchorScrollAttemptsRef.current = 0;
+        anchorOlderLoadAttemptsRef.current = 0;
+        setAnchorRetryTick(0);
       } catch (e: any) {
         if (String(e?.message || "").includes("403")) {
           setError("Нет доступа к этому чату");
@@ -208,17 +486,25 @@ export default function MessageDialogPage() {
         } else {
           console.error("Ошибка загрузки сообщений:", e);
         }
+        setHasMoreOlder(false);
+        setHasMoreNewer(false);
         setInitialAnchorId(null);
+        setInitialAnchorIndex(null);
+        setAllowOneOlderProbe(false);
+        initialScrolledRef.current = false;
+        anchorScrollAttemptsRef.current = 0;
+        anchorOlderLoadAttemptsRef.current = 0;
+        setAnchorRetryTick(0);
       } finally {
         setMessagesLoading(false);
       }
     }
 
     loadMessages();
-  }, [chatId, chat]);
+  }, [chatId, userLoading, user?.id]);
 
   useEffect(() => {
-    if (messagesLoading || !messagesViewportRef.current || messages.length === 0) return;
+    if (messagesLoading || !messagesViewportRef.current || messages.length === 0 || initialScrolledRef.current) return;
 
     const viewport = messagesViewportRef.current;
 
@@ -226,29 +512,200 @@ export default function MessageDialogPage() {
       const el = viewport.querySelector(`[data-message-id="${initialAnchorId}"]`) as HTMLElement | null;
       if (el) {
         el.scrollIntoView({ block: "center" });
+        initialScrolledRef.current = true;
+        anchorScrollAttemptsRef.current = 0;
+        // Якорь уже применили один раз — больше к нему не возвращаемся
+        setInitialAnchorId(null);
+        setInitialAnchorIndex(null);
+        return;
+      }
+
+      if (typeof initialAnchorIndex === "number" && initialAnchorIndex >= 0) {
+        const children = viewport.querySelectorAll("[data-message-id]");
+        const byIndex = children.item(initialAnchorIndex) as HTMLElement | null;
+        if (byIndex) {
+          byIndex.scrollIntoView({ block: "center" });
+          initialScrolledRef.current = true;
+          anchorScrollAttemptsRef.current = 0;
+          // Якорь уже применили один раз — больше к нему не возвращаемся
+          setInitialAnchorId(null);
+          setInitialAnchorIndex(null);
+          return;
+        }
+      }
+
+      // На reload DOM иногда дорисовывается чуть позже — повторяем поиск якоря несколько раз
+      if (anchorScrollAttemptsRef.current < 8) {
+        anchorScrollAttemptsRef.current += 1;
+        setTimeout(() => setAnchorRetryTick((v) => v + 1), 40);
+        return;
+      }
+
+      // Если якорь не найден в текущей выборке, пробуем автоматически догрузить старые
+      if ((hasMoreOlder || allowOneOlderProbe) && anchorOlderLoadAttemptsRef.current < 3 && !loadingOlder) {
+        anchorOlderLoadAttemptsRef.current += 1;
+        loadOlderMessages();
+        setTimeout(() => setAnchorRetryTick((v) => v + 1), 60);
         return;
       }
     }
 
     viewport.scrollTop = viewport.scrollHeight;
-  }, [messagesLoading, messages, initialAnchorId]);
+    initialScrolledRef.current = true;
+    anchorScrollAttemptsRef.current = 0;
+    anchorOlderLoadAttemptsRef.current = 0;
+    // Если якорь не найден и ушли в fallback вниз — очищаем якорь,
+    // чтобы последующая дозагрузка не пыталась снова скроллить к нему.
+    if (initialAnchorId || initialAnchorIndex !== null) {
+      setInitialAnchorId(null);
+      setInitialAnchorIndex(null);
+    }
+  }, [
+    messagesLoading,
+    messages,
+    initialAnchorId,
+    initialAnchorIndex,
+    anchorRetryTick,
+    hasMoreOlder,
+    allowOneOlderProbe,
+    loadingOlder,
+  ]);
+
+  useLayoutEffect(() => {
+    const pending = prependAdjustRef.current;
+    if (!pending) return;
+
+    const vp = messagesViewportRef.current;
+    if (!vp) {
+      prependAdjustRef.current = null;
+      return;
+    }
+
+    const { prevHeight, prevTop } = pending;
+    const delta = vp.scrollHeight - prevHeight;
+    vp.scrollTop = Math.max(0, prevTop + delta);
+    prependAdjustRef.current = null;
+  }, [messages]);
+
+  const loadOlderMessages = async () => {
+    if (!chatId || Number.isNaN(chatId) || loadingOlder || messagesLoading || messages.length === 0) {
+      return;
+    }
+
+    if (!hasMoreOlder && !allowOneOlderProbe) {
+      return;
+    }
+
+    const oldestMessage = messages[0];
+    const viewport = messagesViewportRef.current;
+    const prevHeight = viewport?.scrollHeight || 0;
+    const prevTop = viewport?.scrollTop || 0;
+
+    try {
+      setLoadingOlder(true);
+      const response = await apiClient.getChatMessages(chatId, {
+        limit: 40,
+        before_id: oldestMessage.id,
+      });
+
+      const olderMessages = response.messages || [];
+      if (olderMessages.length > 0) {
+        prependAdjustRef.current = { prevHeight, prevTop };
+        setMessages((prev) => uniqueMessagesById([...olderMessages, ...prev]));
+      }
+
+      setHasMoreOlder(Boolean(response.has_more));
+      setAllowOneOlderProbe(false);
+      if (!response.has_more && (!response.messages || response.messages.length === 0)) {
+        anchorOlderLoadAttemptsRef.current = 3;
+      }
+    } catch (e) {
+      console.error("Ошибка подгрузки старых сообщений:", e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
+  const loadNewerMessages = async () => {
+    if (!chatId || Number.isNaN(chatId) || loadingNewer || messagesLoading || !hasMoreNewer || messages.length === 0) {
+      return;
+    }
+
+    const newestMessage = messages[messages.length - 1];
+
+    try {
+      setLoadingNewer(true);
+      const response = await apiClient.getChatMessages(chatId, {
+        limit: 40,
+        after_id: newestMessage.id,
+      });
+
+      const newerMessages = response.messages || [];
+      if (newerMessages.length > 0) {
+        setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
+      }
+
+      setHasMoreNewer(Boolean(response.has_more));
+    } catch (e) {
+      console.error("Ошибка подгрузки новых сообщений:", e);
+    } finally {
+      setLoadingNewer(false);
+    }
+  };
+
+  useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+
+    const onScroll = () => {
+      if (viewport.scrollTop <= 120) {
+        loadOlderMessages();
+      }
+
+      if (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 120) {
+        loadNewerMessages();
+      }
+    };
+
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => viewport.removeEventListener("scroll", onScroll);
+  }, [chatId, hasMoreOlder, hasMoreNewer, loadingOlder, loadingNewer, messagesLoading, messages]);
 
   const handleSend = async () => {
     const text = messageText.trim();
     if (!chatId || sending) return;
-    if (!text && attachedFiles.length === 0) return;
+    if (editingMessageId) {
+      if (!text) return;
+    } else if (!text && attachedFiles.length === 0) {
+      return;
+    }
 
     try {
       setSending(true);
-      const sent = attachedFiles.length
-        ? await apiClient.sendMessageWithFiles(chatId, text, attachedFiles)
-        : await apiClient.sendMessage(chatId, text);
-      setMessages((prev) => [...prev, sent]);
+      if (editingMessageId) {
+        const updated = await apiClient.updateMessage(editingMessageId, text);
+        setMessages((prev) => prev.map((m) => (m.id === editingMessageId ? { ...m, ...updated } : m)));
+      } else {
+        const sent = attachedFiles.length
+          ? await apiClient.sendMessageWithFiles(chatId, text, attachedFiles, replyTo?.id)
+          : await apiClient.sendMessage(chatId, text, replyTo?.id);
+        setMessages((prev) => uniqueMessagesById([...prev, sent]));
+      }
+
+      setEditingMessageId(null);
       setMessageText("");
+      setReplyTo(null);
+      setExpandedReplyActionForId(null);
       setAttachedFiles([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+
+      requestAnimationFrame(() => {
+        const viewport = messagesViewportRef.current;
+        if (!viewport) return;
+        viewport.scrollTop = viewport.scrollHeight;
+      });
     } catch (e) {
       console.error("Ошибка отправки сообщения:", e);
     } finally {
@@ -257,6 +714,7 @@ export default function MessageDialogPage() {
   };
 
   const handlePickFiles = () => {
+    if (editingMessageId) return;
     fileInputRef.current?.click();
   };
 
@@ -270,15 +728,140 @@ export default function MessageDialogPage() {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const focusMessageInput = () => {
+    const input = messageInputRef.current;
+    if (!input) return;
+    input.focus();
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
+  };
+
+  const handleReplyToMessage = (message: Message) => {
+    const author = message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник";
+    const preview = getMessagePreviewText(message);
+    setEditingMessageId(null);
+    setReplyTo({ id: message.id, author, preview });
+    setExpandedReplyActionForId(null);
+    setActionsMenuAnchor(null);
+    requestAnimationFrame(focusMessageInput);
+  };
+
+  const canManageMessage = (message: Message): boolean => {
+    if (!user?.id || message.is_deleted) return false;
+    return message.author_id === user.id || message.author?.id === user.id || message.sender?.id === user.id;
+  };
+
+  const handleStartEditMessage = (message: Message) => {
+    if (!canManageMessage(message)) return;
+
+    setEditingMessageId(message.id);
+    setReplyTo(null);
+    setExpandedReplyActionForId(null);
+    setMessageText(message.content || "");
+    setAttachedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    requestAnimationFrame(focusMessageInput);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setMessageText("");
+  };
+
+  const handleDeleteMessage = async (message: Message) => {
+    if (!canManageMessage(message)) return;
+
+    try {
+      await apiClient.deleteMessage(message.id);
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === message.id
+            ? {
+                ...m,
+                content: "",
+                attachments: [],
+                has_attachments: false,
+                is_deleted: true,
+              }
+            : m
+        )
+      );
+
+      if (replyTo?.id === message.id) {
+        setReplyTo(null);
+      }
+      if (editingMessageId === message.id) {
+        setEditingMessageId(null);
+        setMessageText("");
+      }
+
+      setExpandedReplyActionForId(null);
+      setActionsMenuAnchor(null);
+    } catch (e) {
+      console.error("Ошибка удаления сообщения:", e);
+    }
+  };
+
+  useEffect(() => {
+    const onWindowClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-actions-menu='true']")) return;
+      if (target.closest("[data-actions-trigger='true']")) return;
+      if (target.closest("[data-reaction-picker='true']")) return;
+      if (target.closest("[data-composer-emoji='true']")) return;
+
+      setExpandedReplyActionForId(null);
+      setActionsMenuAnchor(null);
+      setReactionPickerForMessageId(null);
+      setShowComposerEmojiPicker(false);
+    };
+
+    window.addEventListener("mousedown", onWindowClick);
+    return () => window.removeEventListener("mousedown", onWindowClick);
+  }, []);
+
+  const isInteractiveArea = (target: HTMLElement): boolean =>
+    Boolean(target.closest("textarea, input, button, a, video, audio, [contenteditable='true']"));
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setMediaPreview(null);
+        setExpandedReplyActionForId(null);
+        setActionsMenuAnchor(null);
+        setReactionPickerForMessageId(null);
+        setShowComposerEmojiPicker(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    const onGlobalWheel = (e: WheelEvent) => {
+      if (e.defaultPrevented || mediaPreview) return;
+
+      const viewport = messagesViewportRef.current;
+      if (!viewport) return;
+
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      if (viewport.contains(target)) return;
+      if (isInteractiveArea(target)) return;
+
+      e.preventDefault();
+      viewport.scrollTop += e.deltaY;
+    };
+
+    window.addEventListener("wheel", onGlobalWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onGlobalWheel);
+  }, [mediaPreview]);
 
   return (
     <AppShell>
@@ -292,21 +875,21 @@ export default function MessageDialogPage() {
           <p className="text-sm text-red-800">{error}</p>
         </div>
       ) : (
-        <div className="sticky top-22 self-start h-[calc(100vh-7.5rem)] overflow-hidden">
+        <div className="min-h-0 h-full lg:sticky lg:top-22 lg:h-[calc(100dvh-7.5rem)]">
         <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
           {chat ? (
             <>
               <header className="mb-4 flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
-                    {chat.avatar ? (
-                      <img src={resolveAvatarUrl(chat.avatar)} alt={getChatTitle(chat)} className="h-full w-full object-cover" />
+                    {getChatAvatar(chat, user?.id) ? (
+                      <img src={resolveAvatarUrl(getChatAvatar(chat, user?.id))} alt={getChatTitle(chat, user?.id)} className="h-full w-full object-cover" />
                     ) : (
-                      getChatInitials(chat)
+                      getChatInitials(chat, user?.id)
                     )}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{getChatTitle(chat)}</p>
+                    <p className="text-sm font-semibold text-gray-900">{getChatTitle(chat, user?.id)}</p>
                     <p className="text-xs text-gray-500">{(chat.type || chat.chat_type) === "group" ? "Групповой чат" : "Диалог"}</p>
                   </div>
                 </div>
@@ -322,26 +905,39 @@ export default function MessageDialogPage() {
               </header>
 
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div ref={messagesViewportRef} className="min-h-0 flex-1 overflow-y-auto rounded-xl bg-gray-50 p-4">
+                <div
+                  ref={messagesViewportRef}
+                  className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl bg-gray-50 p-4"
+                  style={{ overflowAnchor: "none" }}
+                >
                   {messagesLoading ? (
                     <p className="text-center text-sm text-gray-500">Загрузка сообщений...</p>
                   ) : messages.length === 0 ? (
                     <p className="text-center text-sm text-gray-500">Пока нет сообщений. Напишите первым.</p>
                   ) : (
                     <div className="flex min-h-full flex-col justify-end">
+                      {loadingOlder ? (
+                        <p className="mb-3 text-center text-xs text-gray-500">Подгружаем старые сообщения...</p>
+                      ) : null}
                       {messages.map((message, index) => {
                         const currentDate = getMessageDate(message);
                         const prevDate = index > 0 ? getMessageDate(messages[index - 1]) : null;
                         const showDayDivider = index === 0 || !isSameDay(currentDate, prevDate);
+                        const replyToId = getReplyToId(message);
+                        const repliedMessage = replyToId ? messagesById.get(replyToId) : null;
+                        const isReplyMenuOpen = expandedReplyActionForId === message.id;
 
                         const isMine =
                           user?.id &&
                           (message.author_id === user.id || message.author?.id === user.id || message.sender?.id === user.id);
+                        const canManage = canManageMessage(message);
+                        const canReply = !message.is_deleted;
+                        const hasActions = canReply || canManage;
 
                         return (
-                          <div key={message.id} data-message-id={message.id} className="mb-3 last:mb-0">
+                          <div key={message.id} data-message-id={message.id} className="mb-3 overflow-x-hidden last:mb-0">
                             {showDayDivider && currentDate ? (
-                              <div className="sticky top-2 z-10 mb-2 text-center">
+                              <div className="sticky top-2 z-10 mb-4 text-center">
                                 <span className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur">
                                   {formatDayDivider(currentDate)}
                                 </span>
@@ -369,95 +965,213 @@ export default function MessageDialogPage() {
                               ) : null}
 
                               <div
-                                className={`max-w-[78%] rounded-2xl px-3 py-2 ${
-                                  isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"
+                                className={`flex min-w-0 items-start gap-1 ${
+                                  isMine ? "max-w-[88%] flex-row-reverse" : "max-w-[calc(100%-2.5rem)]"
                                 }`}
                               >
-                                {!isMine ? (
-                                  <p className="mb-1 text-[11px] font-medium text-gray-500">
-                                    {message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник"}
-                                  </p>
-                                ) : null}
+                                <div
+                                  className={`relative min-w-0 rounded-2xl px-3 py-2 pr-9 ${
+                                    isMine ? "bg-sky-500 text-white" : "bg-white text-gray-900 ring-1 ring-gray-100"
+                                  }`}
+                                >
+                                  {hasActions ? (
+                                    <div className="absolute right-1 top-1 z-20">
+                                      <button
+                                        type="button"
+                                        data-actions-trigger="true"
+                                        onClick={(e) => {
+                                          const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                          setExpandedReplyActionForId((prev) => {
+                                            if (prev === message.id) {
+                                              setActionsMenuAnchor(null);
+                                              return null;
+                                            }
 
-                                {message.content ? (
-                                  <p className="whitespace-pre-wrap text-sm leading-5">{message.content}</p>
-                                ) : null}
+                                            setReactionPickerForMessageId(null);
+                                            setShowComposerEmojiPicker(false);
+                                            setActionsMenuAnchor({ x: rect.right, y: rect.top });
+                                            return message.id;
+                                          });
+                                        }}
+                                        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent bg-transparent text-gray-500 transition hover:text-sky-600 ${
+                                          isReplyMenuOpen ? "rotate-90" : ""
+                                        }`}
+                                        title="Действия"
+                                        aria-label="Действия сообщения"
+                                      >
+                                        <ChevronRight size={14} />
+                                      </button>
+                                    </div>
+                                  ) : null}
 
-                                {message.attachments && message.attachments.length > 0 ? (
-                                  <div className="mt-2 space-y-2">
-                                    {message.attachments.map((att) => (
-                                      <div key={att.id}>
-                                        {isImageAttachment(att) ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => setMediaPreview({ type: "image", src: resolveAttachmentUrl(att.file_url), name: att.file_name })}
-                                            className="block w-full overflow-hidden rounded-lg"
-                                          >
-                                            <img
-                                              src={resolveAttachmentUrl(att.thumbnail || att.file_url)}
-                                              alt={att.file_name}
-                                              className="max-h-64 w-full rounded-lg object-cover"
-                                            />
-                                          </button>
-                                        ) : isVideoAttachment(att) ? (
-                                          brokenMedia[att.id] ? (
+                                  {!isMine ? (
+                                    <p className="mb-1 text-[11px] font-medium text-gray-500">
+                                      {message.author_name || message.author?.last_name || message.sender?.last_name || "Сотрудник"}
+                                    </p>
+                                  ) : null}
+
+                                  {replyToId ? (
+                                    <div
+                                      className={`mb-2 rounded-lg border-l-2 px-2 py-1 text-xs ${
+                                        isMine
+                                          ? "border-sky-200 bg-sky-400/30 text-sky-50"
+                                          : "border-gray-300 bg-gray-100 text-gray-600"
+                                      }`}
+                                    >
+                                      <p className="font-medium">{repliedMessage?.author_name || "Ответ на сообщение"}</p>
+                                      <p className="truncate">{repliedMessage ? getMessagePreviewText(repliedMessage) : `Сообщение #${replyToId}`}</p>
+                                    </div>
+                                  ) : null}
+
+                                  {message.is_deleted ? (
+                                    <p className={`italic text-sm ${isMine ? "text-sky-100" : "text-gray-500"}`}>Сообщение удалено</p>
+                                  ) : message.content ? (
+                                    <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.content}</p>
+                                  ) : null}
+
+                                  {message.attachments && message.attachments.length > 0 ? (
+                                    <div className="mt-2 space-y-2">
+                                      {message.attachments.map((att) => (
+                                        <div key={att.id}>
+                                          {isImageAttachment(att) ? (
+                                            brokenMedia[att.id] ? (
+                                              <a
+                                                href={resolveAttachmentUrl(att.file_url)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                                              >
+                                                <FileText size={16} className="shrink-0" />
+                                                <span className="min-w-0 flex-1 truncate">Предпросмотр недоступен — открыть файл</span>
+                                              </a>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => setMediaPreview({ type: "image", src: resolveAttachmentUrl(att.file_url), name: att.file_name })}
+                                                className="block w-full overflow-hidden rounded-lg"
+                                              >
+                                                {(() => {
+                                                  const hasThumbnail = Boolean(att.thumbnail);
+                                                  const src = useOriginalImage[att.id]
+                                                    ? resolveAttachmentUrl(att.file_url)
+                                                    : resolveAttachmentUrl(att.thumbnail || att.file_url);
+
+                                                  return (
+                                                <img
+                                                  src={src}
+                                                  alt={att.file_name}
+                                                  className="max-h-64 w-full rounded-lg object-cover"
+                                                  onError={() => {
+                                                    if (hasThumbnail && !useOriginalImage[att.id]) {
+                                                      setUseOriginalImage((prev) => ({ ...prev, [att.id]: true }));
+                                                      return;
+                                                    }
+                                                    setBrokenMedia((prev) => ({ ...prev, [att.id]: true }));
+                                                  }}
+                                                  onLoad={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: false }))}
+                                                />
+                                                  );
+                                                })()}
+                                              </button>
+                                            )
+                                          ) : isVideoAttachment(att) ? (
+                                            brokenMedia[att.id] ? (
+                                              <a
+                                                href={resolveAttachmentUrl(att.file_url)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                                              >
+                                                <FileText size={16} className="shrink-0" />
+                                                <span className="min-w-0 flex-1 truncate">
+                                                  Видео не поддерживается в браузере — открыть файл
+                                                </span>
+                                              </a>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => setMediaPreview({ type: "video", src: resolveAttachmentUrl(att.file_url), name: att.file_name })}
+                                                className="block w-full overflow-hidden rounded-lg"
+                                              >
+                                                <video
+                                                  preload="metadata"
+                                                  playsInline
+                                                  muted
+                                                  src={resolveAttachmentUrl(att.file_url)}
+                                                  className="max-h-64 w-full rounded-lg bg-black"
+                                                  onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
+                                                  onLoadedData={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: false }))}
+                                                />
+                                              </button>
+                                            )
+                                          ) : isAudioAttachment(att) ? (
+                                            brokenMedia[att.id] ? (
+                                              <a
+                                                href={resolveAttachmentUrl(att.file_url)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                                              >
+                                                <FileText size={16} className="shrink-0" />
+                                                <span className="min-w-0 flex-1 truncate">Аудио не поддерживается — открыть файл</span>
+                                              </a>
+                                            ) : (
+                                              <audio
+                                                controls
+                                                preload="metadata"
+                                                className="w-full"
+                                                onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
+                                                onCanPlay={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: false }))}
+                                              >
+                                                <source src={resolveAttachmentUrl(att.file_url)} type={att.mime_type || "audio/mpeg"} />
+                                              </audio>
+                                            )
+                                          ) : (
                                             <a
                                               href={resolveAttachmentUrl(att.file_url)}
                                               target="_blank"
                                               rel="noreferrer"
-                                              className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                                              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm text-sky-700 hover:bg-white"
                                             >
                                               <FileText size={16} className="shrink-0" />
-                                              <span className="min-w-0 flex-1 truncate">
-                                                Видео не поддерживается в браузере — открыть файл
-                                              </span>
+                                              <span className="min-w-0 flex-1 truncate">{att.file_name}</span>
+                                              <span className="shrink-0 text-xs text-gray-500">{formatFileSize(att.file_size)}</span>
                                             </a>
-                                          ) : (
-                                            <button
-                                              type="button"
-                                              onClick={() => setMediaPreview({ type: "video", src: resolveAttachmentUrl(att.file_url), name: att.file_name })}
-                                              className="block w-full overflow-hidden rounded-lg"
-                                            >
-                                              <video
-                                                preload="metadata"
-                                                playsInline
-                                                muted
-                                                src={resolveAttachmentUrl(att.file_url)}
-                                                className="max-h-64 w-full rounded-lg bg-black"
-                                                onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
-                                                onLoadedData={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: false }))}
-                                              />
-                                            </button>
-                                          )
-                                        ) : isAudioAttachment(att) ? (
-                                          <audio
-                                            controls
-                                            preload="metadata"
-                                            className="w-full"
-                                            onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
-                                          >
-                                            <source src={resolveAttachmentUrl(att.file_url)} type={att.mime_type || "audio/mpeg"} />
-                                          </audio>
-                                        ) : (
-                                          <a
-                                            href={resolveAttachmentUrl(att.file_url)}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm text-sky-700 hover:bg-white"
-                                          >
-                                            <FileText size={16} className="shrink-0" />
-                                            <span className="min-w-0 flex-1 truncate">{att.file_name}</span>
-                                            <span className="shrink-0 text-xs text-gray-500">{formatFileSize(att.file_size)}</span>
-                                          </a>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : null}
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
 
-                                <p className={`mt-1 text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>
-                                  {messageTime(message)}
-                                </p>
+                                  <p className={`mt-1 text-right text-[11px] ${isMine ? "text-sky-100" : "text-gray-400"}`}>
+                                    {messageTime(message)}
+                                  </p>
+
+                                  {Object.keys(message.reactions_summary || {}).length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      {Object.entries(message.reactions_summary || {}).map(([emoji, meta]) => {
+                                        const mine = hasMyReaction(message, emoji);
+                                        return (
+                                          <button
+                                            key={`${message.id}-${emoji}`}
+                                            type="button"
+                                            onClick={() => handleReact(message, emoji)}
+                                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition ${
+                                              mine
+                                                ? "bg-sky-100 text-sky-700 ring-1 ring-sky-300"
+                                                : "bg-white/80 text-gray-700 ring-1 ring-gray-200 hover:bg-white"
+                                            }`}
+                                            title="Реакция"
+                                          >
+                                            <span>{emoji}</span>
+                                            <span>{meta.count}</span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : null}
+                                </div>
+
                               </div>
                             </div>
                           </div>
@@ -468,6 +1182,40 @@ export default function MessageDialogPage() {
                 </div>
 
                 <div className="mt-3 shrink-0 border-t border-gray-100 bg-white pt-3">
+                  {editingMessageId ? (
+                    <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <div className="min-w-0">
+                        <p className="font-semibold">Режим редактирования</p>
+                        <p className="truncate">Измените текст сообщения и отправьте</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="rounded-full p-0.5 text-amber-700 hover:bg-amber-100"
+                        aria-label="Отменить редактирование"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {replyTo ? (
+                    <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                      <div className="min-w-0">
+                        <p className="font-semibold">Ответ: {replyTo.author}</p>
+                        <p className="truncate">{replyTo.preview}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReplyTo(null)}
+                        className="rounded-full p-0.5 text-sky-700 hover:bg-sky-100"
+                        aria-label="Отменить ответ"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : null}
+
                   {attachedFiles.length > 0 ? (
                     <div className="mb-2 flex flex-wrap gap-2">
                       {attachedFiles.map((file, index) => (
@@ -500,30 +1248,66 @@ export default function MessageDialogPage() {
                     <button
                       type="button"
                       onClick={handlePickFiles}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700"
-                      title="Добавить файлы"
+                      disabled={Boolean(editingMessageId)}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
                     >
                       <Paperclip size={16} />
                     </button>
-                  <textarea
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    rows={2}
-                    placeholder="Введите сообщение..."
-                    className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
+                  <div className="relative w-full" data-composer-emoji="true">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowComposerEmojiPicker((prev) => !prev);
+                        setExpandedReplyActionForId(null);
+                        setActionsMenuAnchor(null);
+                        setReactionPickerForMessageId(null);
+                      }}
+                      className="absolute right-2 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-sky-600"
+                      title="Смайлы"
+                    >
+                      <Smile size={14} />
+                    </button>
+
+                    {showComposerEmojiPicker ? (
+                      <div className="absolute bottom-full right-0 z-20 mb-2 w-[260px] rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
+                        <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
+                          {ALL_REACTIONS.map((emoji) => (
+                            <button
+                              key={`composer-${emoji}`}
+                              type="button"
+                              onClick={() => appendEmojiToComposer(emoji)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base hover:bg-sky-50"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <textarea
+                      ref={messageInputRef}
+                      value={messageText}
+                      onChange={(e) => setMessageText(e.target.value)}
+                      onClick={() => setShowComposerEmojiPicker(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      rows={2}
+                      placeholder={editingMessageId ? "Редактируйте сообщение..." : "Введите сообщение..."}
+                      className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleSend}
-                    disabled={sending || (!messageText.trim() && attachedFiles.length === 0)}
+                    disabled={sending || (editingMessageId ? !messageText.trim() : (!messageText.trim() && attachedFiles.length === 0))}
                     className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white leading-none transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Отправить"
+                    title={editingMessageId ? "Сохранить" : "Отправить"}
                   >
                     <Send size={16} />
                   </button>
@@ -563,6 +1347,117 @@ export default function MessageDialogPage() {
             ) : (
               <video controls autoPlay className="max-h-[88vh] max-w-[92vw] rounded-lg bg-black" src={mediaPreview.src} />
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {expandedReplyActionForId && actionsMenuAnchor && selectedActionMessage ? (
+        <div
+          data-actions-menu="true"
+          className="fixed z-[90] flex min-w-[176px] flex-col gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-xl"
+          style={{
+            left: actionsMenuAnchor.x,
+            top: actionsMenuAnchor.y - 6,
+            transform: "translate(-100%, -100%)",
+          }}
+        >
+          {selectedActionCanReply ? (
+            <div className="mb-1 flex items-center gap-1 rounded-md bg-gray-50 p-1">
+              {selectedActionRecentReactions.map((emoji) => (
+                <button
+                  key={`recent-${emoji}`}
+                  type="button"
+                  onClick={() => {
+                    handleReact(selectedActionMessage, emoji);
+                    setExpandedReplyActionForId(null);
+                    setActionsMenuAnchor(null);
+                  }}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-base hover:bg-sky-50"
+                  title="Быстрая реакция"
+                >
+                  {emoji}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setReactionPickerForMessageId(selectedActionMessage.id)}
+                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-gray-600 hover:bg-sky-50 hover:text-sky-700"
+                title="Все смайлы"
+              >
+                <Smile size={14} />
+              </button>
+            </div>
+          ) : null}
+
+          {selectedActionCanReply ? (
+            <button
+              type="button"
+              onClick={() => handleReplyToMessage(selectedActionMessage)}
+              className="inline-flex w-full items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100"
+            >
+              <Reply size={12} />
+              Ответить
+            </button>
+          ) : null}
+
+          {selectedActionCanManage ? (
+            <>
+              <button
+                type="button"
+                onClick={() => handleStartEditMessage(selectedActionMessage)}
+                className="inline-flex w-full items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <Pencil size={12} />
+                Редактировать
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDeleteMessage(selectedActionMessage)}
+                className="inline-flex w-full items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+              >
+                <Trash2 size={12} />
+                Удалить
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {reactionPickerForMessageId ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/30 p-4" data-reaction-picker="true">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-3 shadow-2xl">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-800">Выберите реакцию</p>
+              <button
+                type="button"
+                onClick={() => setReactionPickerForMessageId(null)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+                aria-label="Закрыть"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="grid max-h-[55vh] grid-cols-8 gap-1 overflow-y-auto">
+              {ALL_REACTIONS.map((emoji) => (
+                <button
+                  key={`picker-${emoji}`}
+                  type="button"
+                  onClick={() => {
+                    const msg = messagesById.get(reactionPickerForMessageId);
+                    if (msg) {
+                      handleReact(msg, emoji);
+                    }
+                    setReactionPickerForMessageId(null);
+                    setExpandedReplyActionForId(null);
+                    setActionsMenuAnchor(null);
+                  }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-lg hover:bg-sky-50"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}

@@ -6,16 +6,103 @@ import { apiClient } from "@/lib/api";
 import type { Chat } from "@/types/api";
 import { Search, MessageCircle } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
 
-function getChatTitle(chat: Chat): string {
-  return chat.name?.trim() || "Диалог";
+function getUserFullName(lastName?: string, firstName?: string): string {
+  return `${lastName || ""} ${firstName || ""}`.trim();
 }
 
-function getChatInitials(chat: Chat): string {
-  const title = getChatTitle(chat);
+function normalizeName(value?: string | null): string {
+  return (value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function isLikelyCurrentUserName(candidate: string, user?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): boolean {
+  if (!user) return false;
+
+  const c = normalizeName(candidate);
+  if (!c) return false;
+
+  const fn = normalizeName(user.first_name);
+  const ln = normalizeName(user.last_name);
+  const pn = normalizeName(user.patronymic);
+  const email = normalizeName(user.email);
+
+  if (email && c === email) return true;
+
+  const variants = new Set<string>([
+    normalizeName(`${ln} ${fn}`),
+    normalizeName(`${fn} ${ln}`),
+    normalizeName(`${ln} ${fn} ${pn}`),
+    normalizeName(`${fn} ${pn} ${ln}`),
+    normalizeName(`${fn} ${pn}`),
+  ]);
+
+  if (variants.has(c)) return true;
+
+  if (fn && ln && c.includes(fn) && c.includes(ln)) return true;
+
+  return false;
+}
+
+function getInterlocutorFromParticipants(chat: Chat, currentUserId?: number) {
+  const participants = (chat.participants || []).filter(
+    (p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null
+  );
+  return participants.find((p) => p.id !== currentUserId);
+}
+
+function getInterlocutorFromParticipantDetails(chat: Chat, currentUserId?: number) {
+  return (chat.participant_details || []).find((p) => p.id !== currentUserId);
+}
+
+function getInterlocutorNameFromParticipantNames(chat: Chat, currentUser?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): string {
+  const names = (chat.participant_names || []).map((n) => (n || "").trim()).filter(Boolean);
+  if (!names.length) return "";
+  const other = names.find((n) => !isLikelyCurrentUserName(n, currentUser));
+  return other || names[0] || "";
+}
+
+function getChatTitle(chat: Chat, currentUserId?: number, currentUser?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): string {
+  const chatKind = chat.chat_type || chat.type;
+  const rawName = (chat.name || "").trim();
+
+  if (chatKind === "direct" || chatKind === "private" || !rawName || rawName.toLowerCase() === "диалог") {
+    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
+    if (detailsOther?.name?.trim()) {
+      return detailsOther.name.trim();
+    }
+
+    const other = getInterlocutorFromParticipants(chat, currentUserId);
+    if (other && typeof other === "object") {
+      const name = getUserFullName(other.last_name, other.first_name);
+      if (name) return name;
+      if (other.email) return other.email;
+    }
+
+    const namesFallback = getInterlocutorNameFromParticipantNames(chat, currentUser);
+    if (namesFallback) return namesFallback;
+  }
+
+  return rawName || "Диалог";
+}
+
+function getChatAvatar(chat: Chat, currentUserId?: number): string {
+  const chatKind = chat.chat_type || chat.type;
+  if (chatKind === "direct" || chatKind === "private" || (chat.name || "").trim().toLowerCase() === "диалог") {
+    const detailsOther = getInterlocutorFromParticipantDetails(chat, currentUserId);
+    if (detailsOther?.avatar) return detailsOther.avatar;
+
+    const other = getInterlocutorFromParticipants(chat, currentUserId);
+    if (other?.avatar) return other.avatar;
+  }
+  return chat.avatar || "";
+}
+
+function getChatInitials(chat: Chat, currentUserId?: number, currentUser?: { first_name?: string; last_name?: string; patronymic?: string; email?: string } | null): string {
+  const title = getChatTitle(chat, currentUserId, currentUser);
   return title
     .split(" ")
     .filter(Boolean)
@@ -26,10 +113,14 @@ function getChatInitials(chat: Chat): string {
 
 function resolveAvatarUrl(url?: string | null): string {
   if (!url) return "";
+  if (url.startsWith("data:")) return url;
   if (/^https?:\/\//i.test(url)) return encodeURI(url);
   if (url.startsWith("//")) return encodeURI(`https:${url}`);
   if (url.startsWith("/") && BACKEND_URL) {
     return encodeURI(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
+  }
+  if (BACKEND_URL) {
+    return encodeURI(`${BACKEND_URL.replace(/\/$/, "")}/${url.replace(/^\/+/, "")}`);
   }
   return encodeURI(url);
 }
@@ -46,15 +137,49 @@ function formatTime(date?: string): string {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 }
 
+function getChatSortTimestamp(chat: Chat): number {
+  const lastMessage = chat.last_message;
+
+  if (typeof lastMessage?.created_ts === "number") {
+    return lastMessage.created_ts;
+  }
+
+  const lastCreatedRaw = lastMessage?.created_at || lastMessage?.created;
+  if (lastCreatedRaw) {
+    const ts = new Date(lastCreatedRaw).getTime();
+    if (!Number.isNaN(ts)) return ts;
+  }
+
+  const chatCreatedTs = new Date(chat.created_at).getTime();
+  return Number.isNaN(chatCreatedTs) ? 0 : chatCreatedTs;
+}
+
 function isChatOnline(chat: Chat, currentUserId?: number): boolean {
   const chatKind = chat.chat_type || chat.type;
   if (chatKind !== "direct" && chatKind !== "private") return false;
-  const otherParticipant = (chat.participants || []).find((p) => p.id !== currentUserId);
+  const otherParticipant = (chat.participants || [])
+    .filter((p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null)
+    .find((p) => p.id !== currentUserId);
   return Boolean(otherParticipant?.is_active);
 }
 
 export default function MessagesPage() {
   const { user } = useUser();
+  const currentUserId = user?.id;
+  const currentUserFirstName = user?.first_name;
+  const currentUserLastName = user?.last_name;
+  const currentUserPatronymic = user?.patronymic;
+  const currentUserEmail = user?.email;
+
+  const currentUserForMatch = useMemo(
+    () => ({
+      first_name: currentUserFirstName,
+      last_name: currentUserLastName,
+      patronymic: currentUserPatronymic,
+      email: currentUserEmail,
+    }),
+    [currentUserEmail, currentUserFirstName, currentUserLastName, currentUserPatronymic]
+  );
   const [chats, setChats] = useState<Chat[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -67,8 +192,53 @@ export default function MessagesPage() {
         setError(null);
         const response = await apiClient.getChats();
         const items = response.results || [];
-        setChats(items);
-      } catch (e: any) {
+
+        // FRONTEND-ONLY: добираем детали чатов, чтобы получить имя/аватар собеседника
+        // для private/direct в случае, когда list не отдает avatar/participant_details.
+        const needDetails = items.filter((chat) => {
+          const kind = chat.chat_type || chat.type;
+          if (kind !== "private" && kind !== "direct") return false;
+
+          const hasOtherAvatar = Boolean(getChatAvatar(chat, currentUserId));
+          const resolvedTitle = getChatTitle(chat, currentUserId, currentUserForMatch).trim();
+          const hasOtherName = Boolean(resolvedTitle && resolvedTitle.toLowerCase() !== "диалог");
+          return !(hasOtherAvatar && hasOtherName);
+        });
+
+        if (!needDetails.length) {
+          setChats(items);
+          return;
+        }
+
+        const details = await Promise.all(
+          needDetails.map(async (chat) => {
+            try {
+              return await apiClient.getChat(chat.id);
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        const detailsMap = new Map<number, Chat>();
+        details.forEach((d) => {
+          if (d) detailsMap.set(d.id, d);
+        });
+
+        const merged = items.map((chat) => {
+          const detail = detailsMap.get(chat.id);
+          if (!detail) return chat;
+          return {
+            ...chat,
+            participants: detail.participants ?? chat.participants,
+            participant_details: detail.participant_details ?? chat.participant_details,
+            avatar: chat.avatar || detail.avatar,
+            name: chat.name || detail.name,
+          };
+        });
+
+        setChats(merged);
+      } catch (e: unknown) {
         console.error("Ошибка загрузки чатов:", e);
         setError("Не удалось загрузить чаты");
       } finally {
@@ -77,18 +247,20 @@ export default function MessagesPage() {
     }
 
     loadChats();
-  }, []);
+  }, [currentUserForMatch, currentUserId]);
 
   const filteredChats = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return chats;
+    const sorted = [...chats].sort((a, b) => getChatSortTimestamp(b) - getChatSortTimestamp(a));
 
-    return chats.filter((chat) => {
-      const title = getChatTitle(chat).toLowerCase();
+    if (!q) return sorted;
+
+    return sorted.filter((chat) => {
+      const title = getChatTitle(chat, currentUserId, currentUserForMatch).toLowerCase();
       const lastMessage = chat.last_message?.content?.toLowerCase() || "";
       return title.includes(q) || lastMessage.includes(q);
     });
-  }, [chats, search]);
+  }, [chats, currentUserForMatch, currentUserId, search]);
 
   return (
     <AppShell>
@@ -120,6 +292,10 @@ export default function MessagesPage() {
               </div>
             ) : (
               filteredChats.map((chat) => (
+                (() => {
+                  const chatTitle = getChatTitle(chat, currentUserId, currentUserForMatch);
+                  const chatAvatar = getChatAvatar(chat, currentUserId);
+                  return (
                 <Link
                   key={chat.id}
                   href={`/messages/${chat.id}`}
@@ -128,14 +304,17 @@ export default function MessagesPage() {
                   <div className="flex items-start gap-3">
                     <div className="relative h-10 w-10">
                       <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-xs font-semibold text-white">
-                        {chat.avatar ? (
-                          <img
-                            src={resolveAvatarUrl(chat.avatar)}
-                            alt={getChatTitle(chat)}
+                        {chatAvatar ? (
+                          <Image
+                            src={resolveAvatarUrl(chatAvatar)}
+                            alt={chatTitle}
+                            width={40}
+                            height={40}
+                            unoptimized
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          getChatInitials(chat)
+                          getChatInitials(chat, currentUserId, currentUserForMatch)
                         )}
                       </div>
                       {isChatOnline(chat, user?.id) ? (
@@ -144,7 +323,7 @@ export default function MessagesPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-gray-900">{getChatTitle(chat)}</p>
+                        <p className="truncate text-sm font-semibold text-gray-900">{chatTitle}</p>
                         <span className="shrink-0 text-xs text-gray-500">{formatTime(chat.last_message?.created_at)}</span>
                       </div>
                       <p className="mt-1 truncate text-xs text-gray-500">
@@ -153,6 +332,8 @@ export default function MessagesPage() {
                     </div>
                   </div>
                 </Link>
+                  );
+                })()
               ))
             )}
           </div>

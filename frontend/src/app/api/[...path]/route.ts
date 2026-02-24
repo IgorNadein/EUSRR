@@ -50,10 +50,13 @@ async function proxyRequest(request: NextRequest, method: string) {
             }
         });
 
-        // Получаем тело запроса если есть
-        const body = method !== 'GET' && method !== 'HEAD'
-            ? await request.text()
-            : undefined;
+        // Получаем тело запроса как бинарные данные.
+        // ВАЖНО: text() ломает бинарные файлы (png/mp4) при multipart/form-data.
+        let body: BodyInit | undefined = undefined;
+        if (method !== 'GET' && method !== 'HEAD') {
+            const rawBody = await request.arrayBuffer();
+            body = rawBody.byteLength > 0 ? rawBody : undefined;
+        }
 
         // Делаем запрос к backend
         const response = await fetch(fullUrl, {
@@ -67,6 +70,27 @@ async function proxyRequest(request: NextRequest, method: string) {
         response.headers.forEach((value, key) => {
             responseHeaders.set(key, value);
         });
+
+        // Для 204/205/304 тело ответа запрещено по HTTP-спецификации.
+        // Иначе NextResponse выбрасывает: "Invalid response status code 204".
+        const noBodyStatuses = new Set([204, 205, 304]);
+        if (noBodyStatuses.has(response.status)) {
+            responseHeaders.delete('content-length');
+            responseHeaders.delete('content-type');
+
+            return new NextResponse(null, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: responseHeaders,
+            });
+        }
+
+        // response.text() уже декодирует gzip/br/deflate.
+        // Удаляем encoding-заголовки, иначе браузер попытается
+        // распаковать повторно → ERR_CONTENT_DECODING_FAILED.
+        responseHeaders.delete('content-encoding');
+        responseHeaders.delete('content-length');
+        responseHeaders.delete('transfer-encoding');
 
         // Возвращаем ответ от backend
         const responseBody = await response.text();

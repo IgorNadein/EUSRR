@@ -2,28 +2,77 @@
 
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { User } from "@/types/api";
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const loaderRef = useRef<HTMLDivElement | null>(null);
+  const isFetchingRef = useRef(false);
+
+  const loadEmployees = async (pageToLoad: number, append: boolean) => {
+    if (isFetchingRef.current) return;
+
+    try {
+      isFetchingRef.current = true;
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      const response = await apiClient.getEmployees({ page: pageToLoad, limit: 20 });
+      const nextChunk = response.results || [];
+
+      setEmployees((prev) => (append ? [...prev, ...nextChunk] : nextChunk));
+      setHasMore(Boolean(response.next));
+      setPage(pageToLoad);
+    } catch (err: any) {
+      console.error("Ошибка загрузки сотрудников:", err);
+      setError("Не удалось загрузить список сотрудников");
+    } finally {
+      isFetchingRef.current = false;
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadEmployees() {
-      try {
-        const response = await apiClient.getEmployees();
-        setEmployees(response.results);
-      } catch (err: any) {
-        console.error('Ошибка загрузки сотрудников:', err);
-        setError('Не удалось загрузить список сотрудников');
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadEmployees();
+    loadEmployees(1, false);
   }, []);
+
+  useEffect(() => {
+    if (!hasMore || loading) return;
+
+    const target = loaderRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (!first?.isIntersecting) return;
+        if (isFetchingRef.current || loadingMore || !hasMore) return;
+        loadEmployees(page + 1, true);
+      },
+      {
+        root: null,
+        rootMargin: "300px 0px",
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(target);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [page, hasMore, loading, loadingMore]);
 
   if (loading) {
     return (
@@ -97,6 +146,14 @@ export default function EmployeesPage() {
             </article>
           );
         })}
+
+        <div ref={loaderRef} className="py-2">
+          {loadingMore ? (
+            <p className="text-center text-xs text-gray-500">Подгружаем сотрудников...</p>
+          ) : !hasMore && employees.length > 0 ? (
+            <p className="text-center text-xs text-gray-400">Все сотрудники загружены</p>
+          ) : null}
+        </div>
       </div>
     </AppShell>
   );

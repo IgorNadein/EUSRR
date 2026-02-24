@@ -13,7 +13,10 @@ Endpoints:
 - Миграция с FBV на ViewSets завершена: 14 января 2026
 - Удаление legacy кода: 15 января 2026
 """
+# pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false
+
 import logging
+from typing import Any, cast
 from datetime import datetime, timezone as dt_tz
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -64,13 +67,16 @@ class ChatViewSet(viewsets.ModelViewSet):
     """
     
     permission_classes = [IsAuthenticated]
+    # Явно задаем базовые атрибуты для корректной типизации DRF/Pylance
+    queryset = Chat.objects.none()
+    serializer_class = ChatDetailSerializer
     
-    def get_serializer_class(self):
+    def get_serializer_class(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         if self.action == 'list':
             return ChatListSerializer
         return ChatDetailSerializer
     
-    def get_queryset(self):
+    def get_queryset(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         """Чаты доступные пользователю с аннотацией непрочитанных"""
         user = self.request.user
         
@@ -454,8 +460,11 @@ class MessageViewSet(viewsets.ModelViewSet):
     
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    # Явно задаем базовые атрибуты для корректной типизации DRF/Pylance
+    queryset = Message.objects.none()
+    serializer_class = MessageDetailSerializer
     
-    def get_serializer_class(self):
+    def get_serializer_class(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         if self.action in ['create', 'upload']:
             return MessageCreateSerializer
         elif self.action == 'update' or self.action == 'partial_update':
@@ -464,7 +473,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             return MessageListSerializer
         return MessageDetailSerializer
     
-    def get_queryset(self):
+    def get_queryset(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         """Сообщения доступные пользователю"""
         user = self.request.user
         
@@ -879,9 +888,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Переслать сообщения в другой чат"""
         serializer = ForwardMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
-        message_ids = serializer.validated_data['message_ids']
-        target_chat_id = serializer.validated_data['target_chat_id']
+
+        validated = cast(dict[str, Any], serializer.validated_data)
+        message_ids = validated['message_ids']
+        target_chat_id = validated['target_chat_id']
         
         # Получаем целевой чат
         try:
@@ -940,8 +950,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Массовое удаление сообщений"""
         serializer = BulkDeleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
-        message_ids = serializer.validated_data['message_ids']
+
+        validated = cast(dict[str, Any], serializer.validated_data)
+        message_ids = validated['message_ids']
         
         # Удаляем только свои сообщения
         deleted_count = Message.objects.filter(

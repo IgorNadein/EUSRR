@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Указываем корень проекта для Turbopack, чтобы не путался с lockfile в корне монорепо
+  turbopack: {
+    root: __dirname,
+  },
+
   // Отключаем автоматический редирект trailing slash
   // Django требует слэш в конце URL, а Next.js по умолчанию его убирает
   skipTrailingSlashRedirect: true,

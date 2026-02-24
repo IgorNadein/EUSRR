@@ -46,7 +46,15 @@ export interface User {
   updated_at?: string;
   last_login?: string;
   date_joined?: string;
-  auth?: Record<string, boolean>; // глобальные права пользователя
+  auth?: {
+    id?: number;
+    email?: string;
+    is_staff?: boolean;
+    is_superuser?: boolean;
+    groups?: string[];
+    permissions?: string[];
+    permissions_by_app?: Record<string, string[]>;
+  };
 }
 
 export interface Department {
@@ -68,7 +76,13 @@ export interface Position {
 export interface Post {
   id: number;
   author: User;
-  content: string;
+  author_id?: number;
+  type?: 'company' | 'department' | 'employee';
+  department?: number | null;
+  department_id?: number | null;
+  content?: string;
+  body?: string;
+  title?: string;
   image?: string;
   tags?: string[];
   created_at: string;
@@ -82,7 +96,8 @@ export interface Comment {
   id: number;
   post: number;
   author: User;
-  content: string;
+  content?: string;
+  text?: string;
   created_at: string;
   updated_at: string;
 }
@@ -118,9 +133,12 @@ export interface Chat {
   id: number;
   name?: string;
   avatar?: string | null;
+  interlocutor?: { id: number; name?: string; avatar?: string | null } | null;
   chat_type?: 'direct' | 'group' | 'department';
   type?: 'private' | 'group' | 'department' | 'announcement';
-  participants: User[];
+  participants?: Array<User | number>;
+  participant_names?: string[];
+  participant_details?: Array<{ id: number; name?: string; avatar?: string | null }>;
   last_message?: Message;
   unread_count?: number;
   created_at: string;
@@ -143,6 +161,14 @@ export interface Message {
   is_deleted?: boolean;
   has_attachments?: boolean;
   attachments?: MessageAttachment[];
+  reply_to_id?: number;
+  reply_to?: number | Message | null;
+  reply_to_message?: Message | null;
+  reactions_summary?: Record<string, {
+    count: number;
+    users?: number[];
+    user_names?: string[];
+  }>;
 }
 
 export interface MessageAttachment {
