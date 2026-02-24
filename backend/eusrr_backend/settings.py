@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "api.apps.ApiConfig",
     "hikcentral.apps.HikcentralConfig",
     "calendar_app.apps.CalendarAppConfig",
+    "schedule",  # django-scheduler (новая система, параллельно с calendar_app)
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
