@@ -27,8 +27,17 @@ export function ViewDayEventsModal({
   const capitalizedDate = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
 
   const dayEvents = events.filter(event => {
-    const eventDate = new Date(event.start);
-    return eventDate.toDateString() === date.toDateString();
+    const eventStart = new Date(event.start);
+    const eventEnd = new Date(event.end);
+    const selectedDay = new Date(date);
+    
+    // Сбрасываем время для корректного сравнения дат
+    eventStart.setHours(0, 0, 0, 0);
+    eventEnd.setHours(0, 0, 0, 0);
+    selectedDay.setHours(0, 0, 0, 0);
+    
+    // Проверяем, попадает ли selectedDay в диапазон [eventStart, eventEnd]
+    return selectedDay >= eventStart && selectedDay <= eventEnd;
   });
 
   // Сортируем события по времени начала
