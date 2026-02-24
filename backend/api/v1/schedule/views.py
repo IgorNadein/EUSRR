@@ -321,8 +321,39 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
         return EventSerializer
     
     def get_queryset(self):
-        """Фильтрация событий."""
+        """Фильтрация событий.
+        
+        Пользователь видит события из:
+        1. Календарей, где он участник (CalendarRelation)
+        2. Событий, где он участник (EventRelation)
+        """
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
         qs = super().get_queryset()
+        user = self.request.user
+        
+        # Админы видят все события
+        if not (user.is_staff or user.is_superuser):
+            ct = ContentType.objects.get_for_model(User)
+            
+            # ID календарей где пользователь участник
+            accessible_calendar_ids = CalendarRelation.objects.filter(
+                content_type=ct,
+                object_id=user.id
+            ).values_list('calendar_id', flat=True)
+            
+            # ID событий где пользователь участник
+            participant_event_ids = EventRelation.objects.filter(
+                content_type=ct,
+                object_id=user.id
+            ).values_list('event_id', flat=True)
+            
+            # Объединяем: события из доступных календарей ИЛИ где пользователь участник
+            qs = qs.filter(
+                Q(calendar_id__in=accessible_calendar_ids) |
+                Q(id__in=participant_event_ids)
+            )
         
         # Фильтр по календарю
         calendar_id = self.request.query_params.get('calendar')
@@ -409,6 +440,51 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
             })
         
         return Response(occurrences)
+    
+    @action(detail=False, methods=['get'], url_path='my-events')
+    def my_events(self, request):
+        """Получить события текущего пользователя (где он участник).
+        
+        Query params:
+        - start: начало диапазона (ISO 8601, необязательно)
+        - end: конец диапазона (ISO 8601, необязательно)
+        
+        Возвращает только события где пользователь является участником (EventRelation).
+        """
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        user = request.user
+        ct = ContentType.objects.get_for_model(User)
+        
+        # ID событий где пользователь участник
+        participant_event_ids = EventRelation.objects.filter(
+            content_type=ct,
+            object_id=user.id
+        ).values_list('event_id', flat=True)
+        
+        # Фильтруем события
+        qs = self.queryset.filter(id__in=participant_event_ids)
+        
+        # Фильтр по диапазону дат (если указан)
+        start_str = request.query_params.get('start')
+        end_str = request.query_params.get('end')
+        
+        if start_str and end_str:
+            start_dt = parse_datetime(start_str)
+            end_dt = parse_datetime(end_str)
+            
+            if start_dt and end_dt:
+                qs = qs.filter(
+                    start__lte=end_dt,
+                    end__gte=start_dt
+                )
+        
+        qs = qs.order_by('start')
+        
+        # Используем EventListSerializer для детальной информации
+        serializer = EventListSerializer(qs, many=True)
+        return Response(serializer.data)
 
 
 class ScheduleRuleViewSet(viewsets.ModelViewSet):
