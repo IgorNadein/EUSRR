@@ -157,36 +157,16 @@ export function BigCalendar() {
       const startStr = start.toISOString().split("T")[0];
       const endStr = end.toISOString().split("T")[0];
 
-      // Если календарь не выбран (null) - загружаем все события пользователя
-      if (!selectedCalendarId) {
-        const myEventsResult = await apiClient.getMyEvents({
-          start: startStr,
-          end: endStr,
-        });
-
-        const eventsList = Array.isArray(myEventsResult) ? myEventsResult : (myEventsResult?.results || []);
-        const allEvents = eventsList.map((evt: any) => ({
-          ...evt,
-          start: new Date(evt.start),
-          end: new Date(evt.end),
-          allDay: false,
-          title: evt.rule ? `⟲ ${evt.title}` : evt.title,
-        }));
-
-        setEvents(allEvents);
-        setLoading(false);
-        return;
-      }
-
-      // Загружаем обычные события и occurrences параллельно для выбранного календаря
+      // Загружаем обычные события и occurrences параллельно
+      // Если selectedCalendarId === null, загружаем все доступные события со всех календарей
       const [eventsResult, occurrencesResult] = await Promise.all([
         apiClient.getCalendarEvents({
-          calendar: selectedCalendarId,
+          calendar: selectedCalendarId || undefined,
           start: startStr,
           end: endStr,
         }),
         apiClient.getOccurrences({
-          calendar: selectedCalendarId,
+          calendar: selectedCalendarId || undefined,
           start: startStr,
           end: endStr,
         }),
@@ -210,18 +190,20 @@ export function BigCalendar() {
 
       // Обработка occurrences (повторяющихся событий)
       const occurrencesList = Array.isArray(occurrencesResult) ? occurrencesResult : (occurrencesResult?.results || []);
+      
       const occurrenceEvents = occurrencesList
-        .filter((occ: any) => occ && occ.is_recurring) // Только повторяющиеся (избегаем дубликатов)
+        .filter((occ: any) => occ && occ.is_recurring) // Только повторяющиеся (обычные события уже в regularEvents)
         .map((occ: any) => ({
           id: occ.id,
-          title: `⟲ ${occ.title}`, // Добавляем индикатор повторения
+          title: occ.title.startsWith('⟲') ? occ.title : `⟲ ${occ.title}`, // Добавляем индикатор повторения
           description: occ.description,
           start: new Date(occ.start),
           end: new Date(occ.end),
           allDay: false, // Явно указываем что событие с временем
-          calendar: selectedCalendarId, // Календарь уже известен из запроса
+          calendar: occ.calendar, // Используем calendar из occurrence (важно для "Все события")
           color_event: occ.color_event || '#3498db',
           event_id: occ.event_id,
+          rule: occ.rule,
           isOccurrence: true, // Помечаем как occurrence для корректного отображения
         }));
 

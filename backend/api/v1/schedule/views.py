@@ -386,7 +386,7 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
         """Получить материализованные вхождения в диапазоне.
         
         Query params:
-        - calendar: ID календаря (обязательно)
+        - calendar: ID календаря (необязательно, если не указан - все доступные календари)
         - start: начало диапазона (ISO 8601)
         - end: конец диапазона (ISO 8601)
         
@@ -396,18 +396,10 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
         start_str = request.query_params.get('start')
         end_str = request.query_params.get('end')
         
-        if not all([calendar_id, start_str, end_str]):
+        if not all([start_str, end_str]):
             return Response(
-                {'detail': 'Требуются параметры: calendar, start, end'},
+                {'detail': 'Требуются параметры: start, end'},
                 status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            calendar = Calendar.objects.get(id=calendar_id)
-        except Calendar.DoesNotExist:
-            return Response(
-                {'detail': 'Календарь не найден'},
-                status=status.HTTP_404_NOT_FOUND
             )
         
         start_dt = parse_datetime(start_str)
@@ -419,25 +411,57 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Используем schedule.periods.Period для получения вхождений
-        events = Event.objects.filter(calendar=calendar)
-        period = Period(events, start_dt, end_dt)
+        # Если указан конкретный календарь - фильтруем по нему
+        if calendar_id:
+            try:
+                calendar = Calendar.objects.get(id=calendar_id)
+                calendars = [calendar]
+            except Calendar.DoesNotExist:
+                return Response(
+                    {'detail': 'Календарь не найден'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Если календарь не указан - берем все доступные пользователю календари
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            user = request.user
+            
+            if user.is_staff or user.is_superuser:
+                calendars = Calendar.objects.all()
+            else:
+                ct = ContentType.objects.get_for_model(User)
+                calendar_ids = CalendarRelation.objects.filter(
+                    content_type=ct,
+                    object_id=user.id
+                ).values_list('calendar_id', flat=True)
+                calendars = Calendar.objects.filter(id__in=calendar_ids)
         
         # Результат
         occurrences = []
-        for occurrence in period.get_occurrences():
-            occurrences.append({
-                'id': occurrence.event.id,
-                'title': occurrence.title or occurrence.event.title,
-                'description': occurrence.event.description,
-                'start': occurrence.start.isoformat(),
-                'end': occurrence.end.isoformat(),
-                'color_event': occurrence.event.color_event,
-                'event_id': occurrence.event.id,
-                'is_recurring': occurrence.event.rule_id is not None,
-                'rule': occurrence.event.rule_id,
-                'end_recurring_period': occurrence.event.end_recurring_period.isoformat() if occurrence.event.end_recurring_period else None,
-            })
+        
+        # Обрабатываем каждый календарь
+        for calendar in calendars:
+            events = Event.objects.filter(calendar=calendar)
+            period = Period(events, start_dt, end_dt)
+            
+            for occurrence in period.get_occurrences():
+                # Создаем уникальный ID для каждого вхождения (комбинация event_id и start)
+                unique_id = f"{occurrence.event.id}_{occurrence.start.isoformat()}"
+                
+                occurrences.append({
+                    'id': unique_id,  # Уникальный ID для каждого вхождения
+                    'title': occurrence.title or occurrence.event.title,
+                    'description': occurrence.event.description,
+                    'start': occurrence.start.isoformat(),
+                    'end': occurrence.end.isoformat(),
+                    'calendar': calendar.id,  # Добавляем ID календаря
+                    'color_event': occurrence.event.color_event,
+                    'event_id': occurrence.event.id,  # ID оригинального события
+                    'is_recurring': occurrence.event.rule_id is not None,
+                    'rule': occurrence.event.rule_id,
+                    'end_recurring_period': occurrence.event.end_recurring_period.isoformat() if occurrence.event.end_recurring_period else None,
+                })
         
         return Response(occurrences)
     

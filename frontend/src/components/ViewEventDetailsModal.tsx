@@ -66,23 +66,22 @@ export function ViewEventDetailsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl max-h-[85vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4">
-          <div className="flex-1 min-w-0 pr-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="mb-4 flex items-start justify-between">
+          <div className="flex-1 min-w-0 pr-3">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-semibold text-gray-900 truncate">
+              <h3 className="text-lg font-semibold text-gray-900">
                 {event.title}
               </h3>
               {event.rule && (
-                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded flex-shrink-0">
-                  🔁 Повторяется
+                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
+                  🔁
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div
-                className="h-3 w-3 rounded-full flex-shrink-0"
+                className="h-2.5 w-2.5 rounded-full flex-shrink-0"
                 style={{ backgroundColor: event.color_event || "#3498db" }}
               />
               <span className="truncate">Календарь #{event.calendar}</span>
@@ -90,23 +89,22 @@ export function ViewEventDetailsModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-full p-1 hover:bg-gray-100 transition flex-shrink-0"
+            className="rounded-full p-1 hover:bg-gray-100 flex-shrink-0"
           >
             <X size={20} className="text-gray-600" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="space-y-4">
           {/* Time */}
-          <div className="flex items-start gap-3">
-            <Clock size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+          <div className="flex items-start gap-2.5">
+            <Clock size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-700">Время</p>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm font-medium text-gray-700 mb-1">Время</p>
+              <p className="text-xs text-gray-600">
                 <span className="font-medium">Начало:</span> {capitalizedStart}
               </p>
-              <p className="text-sm text-gray-600 mt-0.5">
+              <p className="text-xs text-gray-600 mt-0.5">
                 <span className="font-medium">Конец:</span> {capitalizedEnd}
               </p>
             </div>
@@ -114,11 +112,11 @@ export function ViewEventDetailsModal({
 
           {/* Recurring Info */}
           {event.rule && event.end_recurring_period && (
-            <div className="flex items-start gap-3">
-              <Calendar size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-2.5">
+              <Calendar size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">Повторение</p>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-sm font-medium text-gray-700 mb-1">Повторение</p>
+                <p className="text-xs text-gray-600">
                   До {formatDate(event.end_recurring_period)}
                 </p>
               </div>
@@ -127,11 +125,11 @@ export function ViewEventDetailsModal({
 
           {/* Description */}
           {event.description && (
-            <div className="flex items-start gap-3">
-              <FileText size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-2.5">
+              <FileText size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-700 mb-1">Описание</p>
-                <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                <p className="text-xs text-gray-600 whitespace-pre-wrap">
                   {event.description}
                 </p>
               </div>
@@ -140,22 +138,22 @@ export function ViewEventDetailsModal({
 
           {/* Participants */}
           {showParticipants && (
-            <div className="flex items-start gap-3">
-              <Users size={20} className="text-gray-400 mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-2.5">
+              <Users size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700 mb-2">
+                <p className="text-sm font-medium text-gray-700 mb-1.5">
                   Участники {participants.length > 0 && `(${participants.length})`}
                 </p>
                 {loadingParticipants ? (
                   <p className="text-xs text-gray-500">Загрузка...</p>
                 ) : participants.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {participants.map((participant: any) => (
                       <div
                         key={participant.id}
-                        className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2"
+                        className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2"
                       >
-                        <div className="h-7 w-7 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0">
+                        <div className="h-6 w-6 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0">
                           <span className="text-xs font-medium text-sky-700">
                             {participant.user_name?.[0] || "?"}
                           </span>
@@ -177,11 +175,8 @@ export function ViewEventDetailsModal({
               </div>
             </div>
           )}
-        </div>
 
-        {/* Footer */}
-        <div className="border-t border-gray-200 px-6 py-4">
-          <div className="flex gap-2">
+          <div className="mt-4 flex gap-2">
             <button
               onClick={onEdit}
               className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"

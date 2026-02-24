@@ -43,12 +43,11 @@ export function ViewDayEventsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl max-h-[85vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">События на {capitalizedDate}</h3>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-1">
               {sortedEvents.length === 0
                 ? "Нет событий"
                 : `${sortedEvents.length} ${sortedEvents.length === 1 ? "событие" : "событий"}`}
@@ -56,19 +55,18 @@ export function ViewDayEventsModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-full p-1 hover:bg-gray-100 transition"
+            className="rounded-full p-1 hover:bg-gray-100"
           >
             <X size={20} className="text-gray-600" />
           </button>
         </div>
 
-        {/* Events List */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="space-y-4">
           {sortedEvents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Calendar size={48} className="text-gray-300 mb-3" />
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Calendar size={40} className="text-gray-300 mb-2" />
               <p className="text-gray-500 text-sm mb-1">Нет событий в этот день</p>
-              <p className="text-gray-400 text-xs">Создайте новое событие, нажав кнопку ниже</p>
+              <p className="text-gray-400 text-xs">Создайте новое событие</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -76,31 +74,31 @@ export function ViewDayEventsModal({
                 <button
                   key={event.id}
                   onClick={() => onEventClick(event)}
-                  className="w-full text-left rounded-lg border border-gray-200 bg-white p-4 transition hover:border-sky-300 hover:bg-sky-50/50 hover:shadow-sm"
+                  className="w-full text-left rounded-lg border border-gray-200 bg-white p-3 transition hover:border-sky-300 hover:bg-sky-50"
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-2">
                     {/* Color Indicator */}
                     <div
-                      className="mt-1 h-10 w-1 rounded-full flex-shrink-0"
+                      className="mt-1 h-8 w-1 rounded-full flex-shrink-0"
                       style={{ backgroundColor: event.color_event || "#3498db" }}
                     />
 
                     <div className="flex-1 min-w-0">
                       {/* Title with recurring indicator */}
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium text-gray-900 truncate">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <h4 className="text-sm font-medium text-gray-900 truncate">
                           {event.title}
                         </h4>
                         {event.rule && (
                           <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
-                            🔁 Повторяется
+                            🔁
                           </span>
                         )}
                       </div>
 
                       {/* Time */}
-                      <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                        <Clock size={14} />
+                      <div className="flex items-center gap-1 text-xs text-gray-600">
+                        <Clock size={12} />
                         <span>
                           {formatTime(event.start)} - {formatTime(event.end)}
                         </span>
@@ -108,7 +106,7 @@ export function ViewDayEventsModal({
 
                       {/* Description preview */}
                       {event.description && (
-                        <p className="text-xs text-gray-500 mt-2 line-clamp-2">
+                        <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">
                           {event.description}
                         </p>
                       )}
@@ -118,17 +116,16 @@ export function ViewDayEventsModal({
               ))}
             </div>
           )}
-        </div>
 
-        {/* Footer */}
-        <div className="border-t border-gray-200 px-6 py-4">
-          <button
-            onClick={onCreateEvent}
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
-          >
-            <Plus size={16} />
-            Создать событие на этот день
-          </button>
+          <div className="mt-4">
+            <button
+              onClick={onCreateEvent}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600"
+            >
+              <Plus size={16} />
+              Создать событие
+            </button>
+          </div>
         </div>
       </div>
     </div>

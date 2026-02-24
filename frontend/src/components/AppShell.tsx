@@ -326,11 +326,6 @@ function CalendarCard({
 
   // Загрузка событий выбранного календаря
   useEffect(() => {
-    if (selectedCalendarId === null) {
-      setEvents([]);
-      return;
-    }
-
     let cancelled = false;
 
     const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -347,32 +342,18 @@ function CalendarCard({
         setLoading(true);
         setError(null);
 
-        // Если календарь не выбран (null) - загружаем все события пользователя
-        if (selectedCalendarId === null) {
-          const myEventsResult = await apiClient.getMyEvents({
-            start: formatDateKey(fetchStart),
-            end: formatDateKey(fetchEnd),
-          });
-
-          if (!cancelled) {
-            const eventsList = Array.isArray(myEventsResult) ? myEventsResult : (myEventsResult?.results || []);
-            setEvents(eventsList);
-            setSidebarEvents(eventsList); // Передаем события наружу
-          }
-          return;
-        }
-
-        // Загружаем обычные события и occurrences параллельно для конкретного календаря
+        // Загружаем обычные события и occurrences параллельно
+        // Если selectedCalendarId === null, загружаем все доступные события со всех календарей
         const [eventsResult, occurrencesResult] = await Promise.all([
           apiClient.getCalendarEvents({
             start: formatDateKey(fetchStart),
             end: formatDateKey(fetchEnd),
-            calendar: selectedCalendarId,
+            calendar: selectedCalendarId || undefined, // undefined означает все календари
           }),
           apiClient.getOccurrences({
             start: formatDateKey(fetchStart),
             end: formatDateKey(fetchEnd),
-            calendar: selectedCalendarId,
+            calendar: selectedCalendarId || undefined,
           }),
         ]);
 
@@ -383,7 +364,7 @@ function CalendarCard({
 
           // Occurrences (развернутые повторяющиеся события)
           const occurrencesList = Array.isArray(occurrencesResult) ? occurrencesResult : (occurrencesResult?.results || []);
-          // Фильтруем только повторяющиеся события (избегаем дубликатов)
+          // Фильтруем только повторяющиеся события (обычные события уже в regularEvents)
           const recurringOccurrences = occurrencesList.filter((occ: any) => occ.is_recurring);
 
           // Объединяем оба типа событий
@@ -430,10 +411,7 @@ function CalendarCard({
 
   // Обработчики событий
   const handleDayClick = (date: Date) => {
-    if (!selectedCalendarId) {
-      alert("Сначала выберите календарь");
-      return;
-    }
+    // Больше не блокируем при selectedCalendarId === null (разрешаем просмотр "Все события")
     setSelectedDate(date);
     const startDate = new Date(date);
     startDate.setHours(10, 0, 0, 0);
