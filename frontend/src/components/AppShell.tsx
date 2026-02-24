@@ -302,7 +302,8 @@ function CalendarCard({
   onOpenParticipantsModal,
   eventsRefreshTrigger,
   setEventsRefreshTrigger,
-  setSidebarEvents
+  setSidebarEvents,
+  onCalendarChange
 }: {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: any, date?: Date) => void;
@@ -310,6 +311,7 @@ function CalendarCard({
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: any[]) => void;
+  onCalendarChange: (calendarId: number | null) => void;
 }) {
   const { calendars, selectedCalendarId, setSelectedCalendarId, loading: calendarsLoading, reloadCalendars } = useCalendar();
 
@@ -318,6 +320,11 @@ function CalendarCard({
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [events, setEvents] = useState<SidebarCalendarEvent[]>([]);
+
+  // Синхронизация selectedCalendarId с родительским компонентом
+  useEffect(() => {
+    onCalendarChange(selectedCalendarId);
+  }, [selectedCalendarId, onCalendarChange]);
   const [loading, setLoading] = useState(false);
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -789,7 +796,8 @@ function Calendar({
   onOpenParticipantsModal,
   eventsRefreshTrigger,
   setEventsRefreshTrigger,
-  setSidebarEvents
+  setSidebarEvents,
+  onCalendarChange
 }: {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: any, date?: Date) => void;
@@ -797,6 +805,7 @@ function Calendar({
   eventsRefreshTrigger: number;
   setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
   setSidebarEvents: (events: any[]) => void;
+  onCalendarChange: (calendarId: number | null) => void;
 }) {
   return (
     <aside className="hidden w-72 flex-shrink-0 space-y-4 lg:block">
@@ -808,6 +817,7 @@ function Calendar({
           eventsRefreshTrigger={eventsRefreshTrigger}
           setEventsRefreshTrigger={setEventsRefreshTrigger}
           setSidebarEvents={setSidebarEvents}
+          onCalendarChange={onCalendarChange}
         />
       </div>
     </aside>
@@ -833,7 +843,6 @@ export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }:
 
 export function AppShell({ children }: AppShellProps) {
   const { user, loading } = useUser();
-  const { selectedCalendarId } = useCalendar();
   const router = useRouter();
   const pathname = usePathname();
   const isMessageDialogPage = pathname.startsWith('/messages/') && pathname !== '/messages';
@@ -856,6 +865,7 @@ export function AppShell({ children }: AppShellProps) {
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<any>(null);
   const [sidebarEvents, setSidebarEvents] = useState<any[]>([]); // Для ViewDayEventsModal
+  const [currentSelectedCalendarId, setCurrentSelectedCalendarId] = useState<number | null>(null);
 
   // Обработчики модалов
   const handleOpenCalendarModal = (calendar?: { id?: number; name: string }) => {
@@ -883,7 +893,7 @@ export function AppShell({ children }: AppShellProps) {
 
   // Создание события из модала просмотра дня
   const handleCreateEventFromDay = useCallback(() => {
-    if (!selectedCalendarId) {
+    if (!currentSelectedCalendarId) {
       alert("Сначала выберите календарь");
       return;
     }
@@ -900,13 +910,13 @@ export function AppShell({ children }: AppShellProps) {
       description: "",
       start: startDate.toISOString(),
       end: endDate.toISOString(),
-      calendar: selectedCalendarId,
+      calendar: currentSelectedCalendarId,
       color_event: "#3498db",
     });
     
     setShowDayEventsModal(false);
     setShowEventModal(true);
-  }, [selectedCalendarId, selectedDateForModal]);
+  }, [currentSelectedCalendarId, selectedDateForModal]);
 
   // Переход к редактированию из модала просмотра
   const handleEditFromDetails = useCallback(() => {
@@ -1020,6 +1030,7 @@ export function AppShell({ children }: AppShellProps) {
             eventsRefreshTrigger={eventsRefreshTrigger}
             setEventsRefreshTrigger={setEventsRefreshTrigger}
             setSidebarEvents={setSidebarEvents}
+            onCalendarChange={setCurrentSelectedCalendarId}
           />
         </div>
 
@@ -1078,6 +1089,7 @@ export function AppShell({ children }: AppShellProps) {
               eventsRefreshTrigger={eventsRefreshTrigger}
               setEventsRefreshTrigger={setEventsRefreshTrigger}
               setSidebarEvents={setSidebarEvents}
+              onCalendarChange={setCurrentSelectedCalendarId}
             />
           </div>
         </div>
