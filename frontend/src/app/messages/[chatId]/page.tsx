@@ -1329,7 +1329,7 @@ export default function MessageDialogPage() {
 
       {mediaPreview ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
           onClick={() => setMediaPreview(null)}
         >
           <button
@@ -1354,7 +1354,7 @@ export default function MessageDialogPage() {
       {expandedReplyActionForId && actionsMenuAnchor && selectedActionMessage ? (
         <div
           data-actions-menu="true"
-          className="fixed z-[90] flex min-w-[176px] flex-col gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-xl"
+          className="fixed z-[60] flex min-w-[176px] flex-col gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-xl"
           style={{
             left: actionsMenuAnchor.x,
             top: actionsMenuAnchor.y - 6,
@@ -1425,20 +1425,20 @@ export default function MessageDialogPage() {
       ) : null}
 
       {reactionPickerForMessageId ? (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/30 p-4" data-reaction-picker="true">
-          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-3 shadow-2xl">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-800">Выберите реакцию</p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" data-reaction-picker="true">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Выберите реакцию</h3>
               <button
                 type="button"
                 onClick={() => setReactionPickerForMessageId(null)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+                className="rounded-full p-1 hover:bg-gray-100"
                 aria-label="Закрыть"
               >
-                <X size={14} />
+                <X size={20} className="text-gray-600" />
               </button>
             </div>
-            <div className="grid max-h-[55vh] grid-cols-8 gap-1 overflow-y-auto">
+            <div className="grid max-h-[55vh] grid-cols-8 gap-2 overflow-y-auto">
               {ALL_REACTIONS.map((emoji) => (
                 <button
                   key={`picker-${emoji}`}
