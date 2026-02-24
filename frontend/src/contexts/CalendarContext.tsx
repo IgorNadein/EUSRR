@@ -39,10 +39,8 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       console.log("Загружено календарей:", cals.length, cals);
       setCalendars(cals);
       
-      // Автоматически выбираем первый календарь только при первой загрузке
-      if (!initialLoadDone.current && cals.length > 0 && selectedCalendarId === null) {
-        setSelectedCalendarId(cals[0].id);
-      }
+      // По умолчанию показываем "Все события" (selectedCalendarId === null)
+      // Не выбираем автоматически первый календарь
       
       initialLoadDone.current = true;
     } catch (err) {

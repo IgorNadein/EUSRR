@@ -343,17 +343,31 @@ function CalendarCard({
         setLoading(true);
         setError(null);
 
-        // Загружаем обычные события и occurrences параллельно
+        // Если календарь не выбран (null) - загружаем все события пользователя
+        if (selectedCalendarId === null) {
+          const myEventsResult = await apiClient.getMyEvents({
+            start: formatDateKey(fetchStart),
+            end: formatDateKey(fetchEnd),
+          });
+
+          if (!cancelled) {
+            const eventsList = Array.isArray(myEventsResult) ? myEventsResult : (myEventsResult?.results || []);
+            setEvents(eventsList);
+          }
+          return;
+        }
+
+        // Загружаем обычные события и occurrences параллельно для конкретного календаря
         const [eventsResult, occurrencesResult] = await Promise.all([
           apiClient.getCalendarEvents({
             start: formatDateKey(fetchStart),
             end: formatDateKey(fetchEnd),
-            calendar: selectedCalendarId ?? undefined,
+            calendar: selectedCalendarId,
           }),
           apiClient.getOccurrences({
             start: formatDateKey(fetchStart),
             end: formatDateKey(fetchEnd),
-            calendar: selectedCalendarId ?? undefined,
+            calendar: selectedCalendarId,
           }),
         ]);
 
@@ -555,10 +569,14 @@ function CalendarCard({
         ) : (
           <div className="flex items-center gap-2">
             <select
-              value={selectedCalendarId || ""}
-              onChange={(e) => setSelectedCalendarId(Number(e.target.value))}
+              value={selectedCalendarId === null ? "" : selectedCalendarId}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSelectedCalendarId(value === "" ? null : Number(value));
+              }}
               className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             >
+              <option value="">📅 Все события</option>
               {calendars.map((cal) => (
                 <option key={cal.id} value={cal.id}>
                   {cal.name}

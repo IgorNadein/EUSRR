@@ -134,11 +134,6 @@ export function BigCalendar() {
 
   // Загрузка событий
   const loadEvents = useCallback(async () => {
-    if (!selectedCalendarId) {
-      setEvents([]);
-      return;
-    }
-
     try {
       setLoading(true);
 
@@ -154,7 +149,28 @@ export function BigCalendar() {
       const startStr = start.toISOString().split("T")[0];
       const endStr = end.toISOString().split("T")[0];
 
-      // Загружаем обычные события и occurrences параллельно
+      // Если календарь не выбран (null) - загружаем все события пользователя
+      if (!selectedCalendarId) {
+        const myEventsResult = await apiClient.getMyEvents({
+          start: startStr,
+          end: endStr,
+        });
+
+        const eventsList = Array.isArray(myEventsResult) ? myEventsResult : (myEventsResult?.results || []);
+        const allEvents = eventsList.map((evt: any) => ({
+          ...evt,
+          start: new Date(evt.start),
+          end: new Date(evt.end),
+          allDay: false,
+          title: evt.rule ? `⟲ ${evt.title}` : evt.title,
+        }));
+
+        setEvents(allEvents);
+        setLoading(false);
+        return;
+      }
+
+      // Загружаем обычные события и occurrences параллельно для выбранного календаря
       const [eventsResult, occurrencesResult] = await Promise.all([
         apiClient.getCalendarEvents({
           calendar: selectedCalendarId,
@@ -305,10 +321,14 @@ export function BigCalendar() {
             ) : (
               <div className="flex items-center gap-2 flex-1">
                 <select
-                  value={selectedCalendarId || ""}
-                  onChange={(e) => setSelectedCalendarId(Number(e.target.value))}
+                  value={selectedCalendarId === null ? "" : selectedCalendarId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedCalendarId(value === "" ? null : Number(value));
+                  }}
                   className="flex-1 max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                 >
+                  <option value="">📅 Все события</option>
                   {calendars.map((cal) => (
                     <option key={cal.id} value={cal.id}>
                       {cal.name}
