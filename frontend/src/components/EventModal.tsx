@@ -334,11 +334,6 @@ export function EventModal({
             </div>
           </div>
 
-          {editingEvent.isRecurring && (
-            <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2 mt-1">
-              💡 Начало и конец определяют время первого события и его продолжительность. Эти параметры будут применены ко всем повторениям.
-            </p>
-          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -393,7 +388,7 @@ export function EventModal({
             </div>
           ) : (!editingEvent.id || !editingEvent.rule) && (
             <>
-            
+
               <div>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
