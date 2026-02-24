@@ -15,6 +15,28 @@ interface ViewEventDetailsModalProps {
   showParticipants?: boolean;
 }
 
+// Маппинг частот на русский
+const FREQUENCY_LABELS: Record<string, string> = {
+  YEARLY: "Каждый год",
+  MONTHLY: "Каждый месяц",
+  WEEKLY: "Каждую неделю",
+  DAILY: "Каждый день",
+  HOURLY: "Каждый час",
+  MINUTELY: "Каждую минуту",
+  SECONDLY: "Каждую секунду",
+};
+
+// Маппинг дней недели (0 = Monday в dateutil.rrule)
+const WEEKDAY_LABELS: Record<number, string> = {
+  0: "ПН",
+  1: "ВТ",
+  2: "СР",
+  3: "ЧТ",
+  4: "ПТ",
+  5: "СБ",
+  6: "ВС",
+};
+
 export function ViewEventDetailsModal({
   isOpen,
   onClose,
@@ -111,14 +133,36 @@ export function ViewEventDetailsModal({
           </div>
 
           {/* Recurring Info */}
-          {event.rule && event.end_recurring_period && (
-            <div className="flex items-start gap-2.5">
-              <Calendar size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700 mb-1">Повторение</p>
-                <p className="text-xs text-gray-600">
-                  До {formatDate(event.end_recurring_period)}
-                </p>
+          {event.rule && event.rule_data && (
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-blue-700 font-medium text-sm">
+                <Calendar size={16} />
+                <span>Повторяющееся событие</span>
+              </div>
+              <div className="text-sm text-blue-600 space-y-1">
+                <div>
+                  Частота: <span className="font-medium">{FREQUENCY_LABELS[event.rule_data.frequency] || event.rule_data.frequency}</span>
+                </div>
+                {event.rule_data.params?.byweekday && (
+                  <div>
+                    Дни недели: <span className="font-medium">
+                      {event.rule_data.params.byweekday.map((day: number) => WEEKDAY_LABELS[day]).join(", ")}
+                    </span>
+                  </div>
+                )}
+                {event.rule_data.params?.count && (
+                  <div>
+                    Повторений: <span className="font-medium">{event.rule_data.params.count}</span>
+                  </div>
+                )}
+                {event.end_recurring_period && (
+                  <div>
+                    До: <span className="font-medium">{formatDate(event.end_recurring_period)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="text-xs text-blue-600 mt-2">
+                💡 Редактирование параметров повторения пока не поддерживается
               </div>
             </div>
           )}
