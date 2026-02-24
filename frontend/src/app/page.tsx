@@ -677,12 +677,12 @@ export default function Home() {
       </div>
 
       {createPostOpen ? (
-        <div className="fixed inset-0 z-[95]">
+        <div className="fixed inset-0 z-[100]">
           <button
             type="button"
             aria-label="Закрыть создание публикации"
             onClick={() => setCreatePostOpen(false)}
-            className="absolute inset-0 bg-black/45"
+            className="absolute inset-0 bg-black/50"
           />
 
           <div className="absolute inset-x-3 top-4 bottom-4 mx-auto flex max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200 sm:inset-x-6">
@@ -799,12 +799,12 @@ export default function Home() {
       ) : null}
 
       {commentsOpen && activePost && (
-        <div className="fixed inset-0 z-[90]">
+        <div className="fixed inset-0 z-[100]">
           <button
             type="button"
             aria-label="Закрыть комментарии"
             onClick={() => setCommentsOpen(false)}
-            className="absolute inset-0 bg-black/45"
+            className="absolute inset-0 bg-black/50"
           />
 
           <div className="absolute inset-x-3 top-4 bottom-4 mx-auto flex max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200 sm:inset-x-6">

@@ -34,11 +34,14 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
     - GET /api/v1/schedule/calendars/{id}/ - детали
     - PUT/PATCH /api/v1/schedule/calendars/{id}/ - обновить
     - DELETE /api/v1/schedule/calendars/{id}/ - удалить
+    
+    Note: Использует только IsAuthenticated, без DjangoModelPermissions,
+    так как все авторизованные пользователи могут управлять календарями.
     """
     
     queryset = Calendar.objects.all()
     serializer_class = CalendarSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]  # Переопределяем глобальные настройки
     renderer_classes = [JSONRenderer]
     
     def get_queryset(self):
@@ -51,6 +54,13 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
             qs = qs.filter(name__icontains=name)
         
         return qs.order_by('name')
+    
+    def destroy(self, request, *args, **kwargs):
+        """Удаление календаря с логированием."""
+        print(f"[DELETE Calendar] User: {request.user}, Calendar ID: {kwargs.get('pk')}")
+        print(f"[DELETE Calendar] Is authenticated: {request.user.is_authenticated}")
+        print(f"[DELETE Calendar] Auth header: {request.META.get('HTTP_AUTHORIZATION', 'Not present')[:100]}")
+        return super().destroy(request, *args, **kwargs)
 
 
 class ScheduleEventViewSet(viewsets.ModelViewSet):
