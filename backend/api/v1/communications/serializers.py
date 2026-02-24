@@ -220,7 +220,7 @@ class PollSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """Создание голосования с опциями"""
-        from communications.models import Chat, Message
+        from communications.models import Chat, Message, PollOption
         from datetime import timedelta
         from django.utils import timezone
         import logging
@@ -237,7 +237,11 @@ class PollSerializer(serializers.ModelSerializer):
         logger.info(f"[PollSerializer.create] options_data: {options_data}, chat_id: {chat_id}")
         
         # Получаем автора (может быть передан через perform_create или взять из запроса)
-        author = validated_data.pop('author', None) or self.context.get('request').user
+        request = self.context.get('request')
+        request_user = getattr(request, 'user', None)
+        author = validated_data.pop('author', None) or request_user
+        if author is None:
+            raise serializers.ValidationError({'author': 'Author is required'})
         
         # Создаем сообщение в чате
         try:
@@ -267,7 +271,8 @@ class PollSerializer(serializers.ModelSerializer):
         # Создаем опции
         for index, option_text in enumerate(options_data):
             is_correct = (correct_option_index is not None and index == correct_option_index)
-            poll.options.create(
+            PollOption.objects.create(
+                poll=poll,
                 text=option_text,
                 position=index,
                 is_correct=is_correct
@@ -283,16 +288,19 @@ class PollSerializer(serializers.ModelSerializer):
         message_data = serialize_message(message)
         
         channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f'chat_{chat.id}',
-            {
-                'type': 'chat_message',
-                'chat_id': chat.id,
-                'payload': message_data
-            }
-        )
+        chat_id_value = getattr(chat, 'id', chat_id)
+        if channel_layer is not None:
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{chat_id_value}',
+                {
+                    'type': 'chat_message',
+                    'chat_id': chat_id_value,
+                    'payload': message_data
+                }
+            )
         
-        logger.info(f"[PollSerializer.create] WebSocket notification sent for message {message.id}")
+        message_id_value = getattr(message, 'id', None)
+        logger.info(f"[PollSerializer.create] WebSocket notification sent for message {message_id_value}")
         
         return poll
 
