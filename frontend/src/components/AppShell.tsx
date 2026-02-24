@@ -3,11 +3,13 @@
 import { Bell, Building2, CalendarDays, ChevronLeft, ChevronRight, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Plus, Search, Trash2, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { CalendarProvider, useCalendar } from "@/contexts/CalendarContext";
 import { CalendarModal } from "@/components/CalendarModal";
+import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
+import { EventModal } from "@/components/EventModal";
 
 type AppShellProps = {
   children: ReactNode;
@@ -49,6 +51,8 @@ type SidebarCalendarEvent = {
   end?: string | null;
   allDay?: boolean;
   color?: string | null;
+  rule?: number | null; // ID правила повторения
+  is_recurring?: boolean; // Флаг из occurrences API
 };
 
 const pad = (v: number) => String(v).padStart(2, "0");
@@ -290,23 +294,31 @@ function LeftNav() {
   );
 }
 
-function CalendarCard({ 
+function CalendarCard({
   onOpenCalendarModal,
-  onOpenEventModal
-}: { 
+  onOpenEventModal,
+  onOpenParticipantsModal,
+  eventsRefreshTrigger,
+  setEventsRefreshTrigger
+}: {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: any, date?: Date) => void;
+  onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
+  eventsRefreshTrigger: number;
+  setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
 }) {
   const { calendars, selectedCalendarId, setSelectedCalendarId, loading: calendarsLoading, reloadCalendars } = useCalendar();
-  
+
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [events, setEvents] = useState<SidebarCalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showCalendarMenu, setShowCalendarMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Загрузка событий выбранного календаря
   useEffect(() => {
@@ -331,15 +343,32 @@ function CalendarCard({
         setLoading(true);
         setError(null);
 
-        const result = await apiClient.getCalendarEvents({
-          start: formatDateKey(fetchStart),
-          end: formatDateKey(fetchEnd),
-          calendar: selectedCalendarId ?? undefined,
-        });
+        // Загружаем обычные события и occurrences параллельно
+        const [eventsResult, occurrencesResult] = await Promise.all([
+          apiClient.getCalendarEvents({
+            start: formatDateKey(fetchStart),
+            end: formatDateKey(fetchEnd),
+            calendar: selectedCalendarId ?? undefined,
+          }),
+          apiClient.getOccurrences({
+            start: formatDateKey(fetchStart),
+            end: formatDateKey(fetchEnd),
+            calendar: selectedCalendarId ?? undefined,
+          }),
+        ]);
 
         if (!cancelled) {
-          const eventsList = Array.isArray(result) ? result : (result?.results || []);
-          setEvents(eventsList);
+          // Обычные события (без правил повторения)
+          const eventsList = Array.isArray(eventsResult) ? eventsResult : (eventsResult?.results || []);
+          const regularEvents = eventsList.filter((evt: any) => !evt.rule);
+
+          // Occurrences (развернутые повторяющиеся события)
+          const occurrencesList = Array.isArray(occurrencesResult) ? occurrencesResult : (occurrencesResult?.results || []);
+          // Фильтруем только повторяющиеся события (избегаем дубликатов)
+          const recurringOccurrences = occurrencesList.filter((occ: any) => occ.is_recurring);
+
+          // Объединяем оба типа событий
+          setEvents([...regularEvents, ...recurringOccurrences]);
         }
       } catch (err) {
         if (!cancelled) {
@@ -363,7 +392,7 @@ function CalendarCard({
     return () => {
       cancelled = true;
     };
-  }, [monthDate, selectedCalendarId]);
+  }, [monthDate, selectedCalendarId, eventsRefreshTrigger]);
 
   const monthLabel = useMemo(() => {
     const label = monthDate.toLocaleDateString("ru-RU", {
@@ -389,7 +418,7 @@ function CalendarCard({
     startDate.setHours(10, 0, 0, 0);
     const endDate = new Date(date);
     endDate.setHours(11, 0, 0, 0);
-    
+
     const newEvent = {
       title: "",
       description: "",
@@ -401,12 +430,51 @@ function CalendarCard({
     onOpenEventModal(newEvent, date);
   };
 
-  const handleEventClick = async (eventId: number) => {
-    try {
-      const event = await apiClient.getEvent(eventId);
+  const handleEventClick = async (event: any) => {
+    // Если это occurrence (повторяющееся событие), загружаем базовое событие
+    if (event.is_recurring && event.event_id) {
+      try {
+        const fullEvent = await apiClient.getEvent(event.event_id);
+        // Устанавливаем время из occurrence, но остальные данные из базового события
+        onOpenEventModal({
+          ...fullEvent,
+          start: event.start,
+          end: event.end,
+        });
+      } catch (err) {
+        console.error("Ошибка загрузки базового события:", err);
+      }
+    } else {
+      // Обычное событие - данные уже полные
       onOpenEventModal(event);
-    } catch (err) {
-      console.error("Ошибка загрузки события:", err);
+    }
+  };
+
+  const handleImportCalendar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('handleImportCalendar called', event.target.files);
+
+    if (!selectedCalendarId || !event.target.files || event.target.files.length === 0) {
+      console.log('Early return:', { selectedCalendarId, hasFiles: !!event.target.files });
+      return;
+    }
+
+    const file = event.target.files[0];
+    console.log('Importing file:', file.name, file.size);
+
+    try {
+      const result = await apiClient.importCalendarFromICS(selectedCalendarId, file);
+      console.log('Import result:', result);
+      alert(`Импорт завершен!\nИмпортировано: ${result.imported}\nПропущено: ${result.skipped}`);
+      // Триггерим обновление событий
+      setEventsRefreshTrigger(prev => prev + 1);
+    } catch (error: any) {
+      console.error('Failed to import calendar:', error);
+      alert(`Ошибка импорта: ${error.message}`);
+    } finally {
+      // Сбрасываем input для возможности повторного импорта того же файла
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -498,79 +566,172 @@ function CalendarCard({
               ))}
             </select>
             {selectedCalendarId && (
-              <button
-                onClick={() => {
-                  const cal = calendars.find(c => c.id === selectedCalendarId);
-                  if (cal) {
-                    onOpenCalendarModal(cal);
-                  }
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition"
-                title="Настройки календаря"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="1"></circle>
-                  <circle cx="12" cy="5" r="1"></circle>
-                  <circle cx="12" cy="19" r="1"></circle>
-                </svg>
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowCalendarMenu(!showCalendarMenu)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition"
+                  title="Меню календаря"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="1"></circle>
+                    <circle cx="12" cy="5" r="1"></circle>
+                    <circle cx="12" cy="19" r="1"></circle>
+                  </svg>
+                </button>
+
+                {showCalendarMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-[50]"
+                      onClick={() => setShowCalendarMenu(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-1 w-48 rounded-lg bg-white shadow-lg ring-1 ring-black/5 z-[60]">
+                      <div className="py-1">
+                        <button
+                          onClick={() => {
+                            const cal = calendars.find(c => c.id === selectedCalendarId);
+                            if (cal) {
+                              onOpenParticipantsModal({ id: cal.id, name: cal.name, user_role: (cal as any).user_role });
+                            }
+                            setShowCalendarMenu(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                        >
+                          <Users size={16} />
+                          Участники
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const blob = await apiClient.exportCalendarToICS(selectedCalendarId);
+                              const url = window.URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `calendar-${selectedCalendarId}.ics`;
+                              document.body.appendChild(a);
+                              a.click();
+                              window.URL.revokeObjectURL(url);
+                              document.body.removeChild(a);
+                            } catch (error) {
+                              console.error('Failed to export calendar:', error);
+                              alert('Не удалось экспортировать календарь');
+                            }
+                            setShowCalendarMenu(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                          </svg>
+                          Экспорт .ics
+                        </button>
+                        <button
+                          onClick={() => {
+                            console.log('Import button clicked', fileInputRef.current);
+                            fileInputRef.current?.click();
+                            console.log('File input clicked');
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                          </svg>
+                          Импорт .ics
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".ics"
+                          onChange={(e) => {
+                            console.log('File input onChange triggered', e.target.files);
+                            setShowCalendarMenu(false);
+                            handleImportCalendar(e);
+                          }}
+                          className="hidden"
+                        />
+
+                        <div className="my-1 border-t border-gray-100"></div>
+                        <button
+                          onClick={() => {
+                            const cal = calendars.find(c => c.id === selectedCalendarId);
+                            if (cal) {
+                              onOpenCalendarModal(cal);
+                            }
+                            setShowCalendarMenu(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          Настройки
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}
       </div>
 
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-      <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
-        <span>Месяц</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-            className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
-            aria-label="Предыдущий месяц"
-          >
-            <ChevronLeft size={16} className="text-gray-600" />
-          </button>
-          <span className="min-w-28 text-center text-xs font-normal text-gray-500">{monthLabel}</span>
-          <button
-            type="button"
-            onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-            className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
-            aria-label="Следующий месяц"
-          >
-            <ChevronRight size={16} className="text-gray-600" />
-          </button>
-        </div>
-      </div>
-      <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs text-gray-500">
-        {weekdays.map((day) => (
-          <div key={day} className="py-1 font-medium">
-            {day}
+        <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
+          <span>Месяц</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
+              aria-label="Предыдущий месяц"
+            >
+              <ChevronLeft size={16} className="text-gray-600" />
+            </button>
+            <span className="min-w-28 text-center text-xs font-normal text-gray-500">{monthLabel}</span>
+            <button
+              type="button"
+              onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
+              aria-label="Следующий месяц"
+            >
+              <ChevronRight size={16} className="text-gray-600" />
+            </button>
           </div>
-        ))}
-      </div>
-      <div className="mt-1 grid grid-cols-7 gap-1 text-sm text-gray-800">
-        {days.map((day) => (
-          <button
-            key={day.key}
-            type="button"
-            onClick={() => day.inCurrentMonth && handleDayClick(day.date)}
-            disabled={!day.inCurrentMonth}
-            className={`relative flex h-9 items-center justify-center rounded-full transition ${
-              day.isToday
-                ? "bg-sky-100 text-sky-800 font-semibold ring-1 ring-sky-200"
-                : day.inCurrentMonth
-                  ? "hover:bg-sky-50 cursor-pointer"
-                  : "text-gray-300 cursor-default"
-            }`}
-          >
-            {day.day}
-            {day.hasEvents && day.inCurrentMonth ? (
-              <span className="absolute bottom-1 h-1.5 w-1.5 rounded-full bg-sky-500" />
-            ) : null}
-          </button>
-        ))}
-      </div>
+        </div>
+        <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs text-gray-500">
+          {weekdays.map((day) => (
+            <div key={day} className="py-1 font-medium">
+              {day}
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1 text-sm text-gray-800">
+          {days.map((day) => (
+            <button
+              key={day.key}
+              type="button"
+              onClick={() => day.inCurrentMonth && handleDayClick(day.date)}
+              disabled={!day.inCurrentMonth}
+              className={`relative flex h-9 items-center justify-center rounded-full transition ${day.isToday
+                  ? "bg-sky-100 text-sky-800 font-semibold ring-1 ring-sky-200"
+                  : day.inCurrentMonth
+                    ? "hover:bg-sky-50 cursor-pointer"
+                    : "text-gray-300 cursor-default"
+                }`}
+            >
+              {day.day}
+              {day.hasEvents && day.inCurrentMonth ? (
+                <span className="absolute bottom-1 h-1.5 w-1.5 rounded-full bg-sky-500" />
+              ) : null}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
@@ -587,22 +748,27 @@ function CalendarCard({
               const start = event.start ? new Date(event.start) : null;
               const dateLabel = start && !Number.isNaN(start.getTime())
                 ? start.toLocaleString("ru-RU", {
-                    weekday: "short",
-                    day: "2-digit",
-                    month: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
+                  weekday: "short",
+                  day: "2-digit",
+                  month: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
                 : "Без даты";
 
               return (
                 <button
                   key={`${event.id}-${event.start || ""}`}
                   type="button"
-                  onClick={() => handleEventClick(event.id)}
+                  onClick={() => handleEventClick(event)}
                   className="w-full rounded-lg bg-gray-50 px-2.5 py-2 text-left transition hover:bg-gray-100"
                 >
-                  <p className="truncate text-xs font-medium text-gray-800">{event.title}</p>
+                  <div className="flex items-center gap-1">
+                    <p className="truncate text-xs font-medium text-gray-800">{event.title}</p>
+                    {(event.is_recurring || event.rule) && (
+                      <span className="text-[10px] text-sky-600 flex-shrink-0" title="Повторяющееся событие">⟲</span>
+                    )}
+                  </div>
                   <p className="mt-0.5 text-[11px] text-gray-500">{dateLabel}</p>
                 </button>
               );
@@ -614,19 +780,28 @@ function CalendarCard({
   );
 }
 
-function Calendar({ 
+function Calendar({
   onOpenCalendarModal,
-  onOpenEventModal
-}: { 
+  onOpenEventModal,
+  onOpenParticipantsModal,
+  eventsRefreshTrigger,
+  setEventsRefreshTrigger
+}: {
   onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
   onOpenEventModal: (event: any, date?: Date) => void;
+  onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
+  eventsRefreshTrigger: number;
+  setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
 }) {
   return (
     <aside className="hidden w-72 flex-shrink-0 space-y-4 lg:block">
       <div className="sticky top-22 space-y-4 lg:pb-2 max-h-[calc(100vh-5.5rem)] overflow-y-auto">
-        <CalendarCard 
+        <CalendarCard
           onOpenCalendarModal={onOpenCalendarModal}
           onOpenEventModal={onOpenEventModal}
+          onOpenParticipantsModal={onOpenParticipantsModal}
+          eventsRefreshTrigger={eventsRefreshTrigger}
+          setEventsRefreshTrigger={setEventsRefreshTrigger}
         />
       </div>
     </aside>
@@ -662,8 +837,11 @@ export function AppShell({ children }: AppShellProps) {
   // Состояния модалов календаря
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
   const [editingCalendar, setEditingCalendar] = useState<{ id?: number; name: string } | null>(null);
   const [editingEvent, setEditingEvent] = useState<any>(null);
+  const [participantsCalendar, setParticipantsCalendar] = useState<{ id: number; name: string; user_role?: string } | null>(null);
+  const [eventsRefreshTrigger, setEventsRefreshTrigger] = useState(0);
 
   // Обработчики модалов
   const handleOpenCalendarModal = (calendar?: { id?: number; name: string }) => {
@@ -674,6 +852,16 @@ export function AppShell({ children }: AppShellProps) {
   const handleOpenEventModal = (event: any, date?: Date) => {
     setEditingEvent(event);
     setShowEventModal(true);
+  };
+
+  const handleEventSaved = useCallback(() => {
+    // Обновляем список событий в CalendarCard
+    setEventsRefreshTrigger(prev => prev + 1);
+  }, []);
+
+  const handleOpenParticipantsModal = (calendar: { id: number; name: string; user_role?: string }) => {
+    setParticipantsCalendar(calendar);
+    setShowParticipantsModal(true);
   };
 
   useEffect(() => {
@@ -738,219 +926,111 @@ export function AppShell({ children }: AppShellProps) {
     <CalendarProvider>
       <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-gradient-to-b from-sky-50 via-white to-white text-gray-900 flex flex-col`}>
         <Header onOpenLeftNav={() => setIsMobileLeftNavOpen(true)} onOpenCalendar={() => setIsMobileCalendarOpen(true)} />
-      <div className="mx-auto flex w-full flex-1 min-h-0 max-w-6xl gap-6 px-4 py-6 sm:px-8 lg:py-8">
-        <LeftNav />
-        <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
-        <Calendar 
-          onOpenCalendarModal={handleOpenCalendarModal}
-          onOpenEventModal={handleOpenEventModal}
-        />
-      </div>
-
-      <div className={`fixed inset-0 z-[100] lg:hidden ${isMobileLeftNavOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
-        <button
-          type="button"
-          className={`absolute inset-0 bg-black/40 transition-opacity ${isMobileLeftNavOpen ? "opacity-100" : "opacity-0"}`}
-          onClick={() => setIsMobileLeftNavOpen(false)}
-          aria-label="Закрыть левое меню"
-        />
-        <div
-          className={`absolute inset-y-0 left-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${
-            isMobileLeftNavOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-900">Меню</p>
-            <button
-              type="button"
-              onClick={() => setIsMobileLeftNavOpen(false)}
-              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
-              aria-label="Закрыть меню"
-            >
-              <X size={20} className="text-gray-700" />
-            </button>
-          </div>
-          <LeftNavContent onNavigate={() => setIsMobileLeftNavOpen(false)} />
-        </div>
-      </div>
-
-      <div className={`fixed inset-0 z-[100] lg:hidden ${isMobileCalendarOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
-        <button
-          type="button"
-          className={`absolute inset-0 bg-black/40 transition-opacity ${isMobileCalendarOpen ? "opacity-100" : "opacity-0"}`}
-          onClick={() => setIsMobileCalendarOpen(false)}
-          aria-label="Закрыть календарь"
-        />
-        <div
-          className={`absolute inset-y-0 right-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${
-            isMobileCalendarOpen ? "translate-x-0" : "translate-x-full"
-          }`}
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-900">Календарь</p>
-            <button
-              type="button"
-              onClick={() => setIsMobileCalendarOpen(false)}
-              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
-              aria-label="Закрыть календарь"
-            >
-              <X size={20} className="text-gray-700" />
-            </button>
-          </div>
-          <CalendarCard 
+        <div className="mx-auto flex w-full flex-1 min-h-0 max-w-6xl gap-6 px-4 py-6 sm:px-8 lg:py-8">
+          <LeftNav />
+          <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
+          <Calendar
             onOpenCalendarModal={handleOpenCalendarModal}
             onOpenEventModal={handleOpenEventModal}
+            onOpenParticipantsModal={handleOpenParticipantsModal}
+            eventsRefreshTrigger={eventsRefreshTrigger}
+            setEventsRefreshTrigger={setEventsRefreshTrigger}
           />
         </div>
-      </div>
 
-      {/* Модалы календаря - рендерятся на верхнем уровне */}
-      <CalendarModal
-        isOpen={showCalendarModal}
-        onClose={() => {
-          setShowCalendarModal(false);
-          setEditingCalendar(null);
-        }}
-        calendar={editingCalendar}
-      />
-
-      {/* Модальное окно события */}
-      {showEventModal && editingEvent && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className={`fixed inset-0 z-[100] lg:hidden ${isMobileLeftNavOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
+          <button
+            type="button"
+            className={`absolute inset-0 bg-black/40 transition-opacity ${isMobileLeftNavOpen ? "opacity-100" : "opacity-0"}`}
+            onClick={() => setIsMobileLeftNavOpen(false)}
+            aria-label="Закрыть левое меню"
+          />
+          <div
+            className={`absolute inset-y-0 left-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${isMobileLeftNavOpen ? "translate-x-0" : "-translate-x-full"
+              }`}
+          >
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {editingEvent.id ? "Редактировать событие" : "Создать событие"}
-              </h3>
+              <p className="text-sm font-semibold text-gray-900">Меню</p>
               <button
-                onClick={() => {
-                  setShowEventModal(false);
-                  setEditingEvent(null);
-                }}
-                className="rounded-full p-1 hover:bg-gray-100"
+                type="button"
+                onClick={() => setIsMobileLeftNavOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
+                aria-label="Закрыть меню"
               >
-                <X size={20} className="text-gray-600" />
+                <X size={20} className="text-gray-700" />
               </button>
             </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Название
-                </label>
-                <input
-                  type="text"
-                  value={editingEvent.title}
-                  onChange={(e) => setEditingEvent({ ...editingEvent, title: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  placeholder="Название события"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Описание
-                </label>
-                <textarea
-                  value={editingEvent.description || ""}
-                  onChange={(e) => setEditingEvent({ ...editingEvent, description: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  placeholder="Описание (необязательно)"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Начало</label>
-                  <input
-                    type="datetime-local"
-                    value={editingEvent.start ? new Date(editingEvent.start).toISOString().slice(0, 16) : ""}
-                    onChange={(e) => setEditingEvent({ ...editingEvent, start: new Date(e.target.value).toISOString() })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Конец</label>
-                  <input
-                    type="datetime-local"
-                    value={editingEvent.end ? new Date(editingEvent.end).toISOString().slice(0, 16) : ""}
-                    onChange={(e) => setEditingEvent({ ...editingEvent, end: new Date(e.target.value).toISOString() })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Цвет
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={editingEvent.color_event || "#3498db"}
-                    onChange={(e) => setEditingEvent({ ...editingEvent, color_event: e.target.value })}
-                    className="h-10 w-20 rounded-lg border border-gray-300 cursor-pointer"
-                  />
-                  <span className="text-xs text-gray-500">{editingEvent.color_event || "#3498db"}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    if (!editingEvent.title.trim()) return;
-                    try {
-                      if (editingEvent.id) {
-                        await apiClient.updateEvent(editingEvent.id, {
-                          title: editingEvent.title,
-                          description: editingEvent.description,
-                          start: editingEvent.start,
-                          end: editingEvent.end,
-                          color_event: editingEvent.color_event,
-                        });
-                      } else {
-                        await apiClient.createEvent(editingEvent);
-                      }
-                      setShowEventModal(false);
-                      setEditingEvent(null);
-                      // Обновление событий через контекст будет автоматическим
-                    } catch (err) {
-                      console.error("Ошибка сохранения события:", err);
-                      alert("Не удалось сохранить событие");
-                    }
-                  }}
-                  disabled={!editingEvent.title?.trim()}
-                  className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {editingEvent.id ? "Сохранить" : "Создать"}
-                </button>
-
-                {editingEvent.id && (
-                  <button
-                    onClick={async () => {
-                      if (!confirm(`Удалить событие "${editingEvent.title}"?`)) return;
-                      try {
-                        await apiClient.deleteEvent(editingEvent.id);
-                        setShowEventModal(false);
-                        setEditingEvent(null);
-                      } catch (err) {
-                        console.error("Ошибка удаления события:", err);
-                        alert("Не удалось удалить событие");
-                      }
-                    }}
-                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
-                    title="Удалить событие"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}              </div>
-            </div>
+            <LeftNavContent onNavigate={() => setIsMobileLeftNavOpen(false)} />
           </div>
         </div>
-      )}
+
+        <div className={`fixed inset-0 z-[100] lg:hidden ${isMobileCalendarOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
+          <button
+            type="button"
+            className={`absolute inset-0 bg-black/40 transition-opacity ${isMobileCalendarOpen ? "opacity-100" : "opacity-0"}`}
+            onClick={() => setIsMobileCalendarOpen(false)}
+            aria-label="Закрыть календарь"
+          />
+          <div
+            className={`absolute inset-y-0 right-0 w-full overflow-y-auto bg-white p-4 transition-transform duration-300 ${isMobileCalendarOpen ? "translate-x-0" : "translate-x-full"
+              }`}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-900">Календарь</p>
+              <button
+                type="button"
+                onClick={() => setIsMobileCalendarOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
+                aria-label="Закрыть календарь"
+              >
+                <X size={20} className="text-gray-700" />
+              </button>
+            </div>
+            <CalendarCard
+              onOpenCalendarModal={handleOpenCalendarModal}
+              onOpenEventModal={handleOpenEventModal}
+              onOpenParticipantsModal={handleOpenParticipantsModal}
+              eventsRefreshTrigger={eventsRefreshTrigger}
+              setEventsRefreshTrigger={setEventsRefreshTrigger}
+            />
+          </div>
+        </div>
+
+        {/* Модалы календаря - рендерятся на верхнем уровне */}
+        <CalendarModal
+          isOpen={showCalendarModal}
+          onClose={() => {
+            setShowCalendarModal(false);
+            setEditingCalendar(null);
+          }}
+          calendar={editingCalendar}
+        />
+
+        {/* Модальное окно участников календаря */}
+        {participantsCalendar && (
+          <CalendarParticipantsModal
+            isOpen={showParticipantsModal}
+            onClose={() => {
+              setShowParticipantsModal(false);
+              setParticipantsCalendar(null);
+            }}
+            calendarId={participantsCalendar.id}
+            calendarName={participantsCalendar.name}
+            userRole={participantsCalendar.user_role}
+          />
+        )}
+
+        {/* Модальное окно события */}
+        <EventModal
+          isOpen={showEventModal}
+          onClose={() => {
+            setShowEventModal(false);
+            setEditingEvent(null);
+          }}
+          event={editingEvent}
+          onSave={handleEventSaved}
+          showParticipants={true}
+        />
       </div>
     </CalendarProvider>
   );

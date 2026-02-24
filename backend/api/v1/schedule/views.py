@@ -8,15 +8,20 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
+from django.http import HttpResponse
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import Q
 
-from schedule.models import Calendar, Event, Rule, Occurrence, EventRelation
+from schedule.models import Calendar, Event, Rule, Occurrence, EventRelation, CalendarRelation
 from schedule.periods import Period
+from schedule.feeds import CalendarICalendar  # Правильный импорт
 
 from datetime import datetime
 from django.utils.dateparse import parse_datetime
 
 from .serializers import (
     CalendarSerializer,
+    CalendarRelationSerializer,
     EventSerializer,
     EventListSerializer,
     RuleSerializer,
@@ -26,27 +31,47 @@ from .serializers import (
 
 
 class ScheduleCalendarViewSet(viewsets.ModelViewSet):
-    """CRUD для django-scheduler Calendar.
+    """CRUD для django-scheduler Calendar с системой прав доступа.
     
     Endpoints:
-    - GET /api/v1/schedule/calendars/ - список
-    - POST /api/v1/schedule/calendars/ - создать
+    - GET /api/v1/schedule/calendars/ - список календарей (только доступные пользователю)
+    - POST /api/v1/schedule/calendars/ - создать (автоматически owner)
     - GET /api/v1/schedule/calendars/{id}/ - детали
     - PUT/PATCH /api/v1/schedule/calendars/{id}/ - обновить
     - DELETE /api/v1/schedule/calendars/{id}/ - удалить
     
-    Note: Использует только IsAuthenticated, без DjangoModelPermissions,
-    так как все авторизованные пользователи могут управлять календарями.
+    Дополнительные actions:
+    - POST /api/v1/schedule/calendars/{id}/add_participant/ - добавить участника
+    - DELETE /api/v1/schedule/calendars/{id}/remove_participant/ - удалить участника
+    - GET /api/v1/schedule/calendars/{id}/participants/ - список участников
+    - GET /api/v1/schedule/calendars/{id}/export_ical/ - экспорт в .ics
     """
     
     queryset = Calendar.objects.all()
     serializer_class = CalendarSerializer
-    permission_classes = [IsAuthenticated]  # Переопределяем глобальные настройки
+    permission_classes = [IsAuthenticated]
     renderer_classes = [JSONRenderer]
     
     def get_queryset(self):
-        """Фильтрация календарей."""
+        """Фильтрация календарей по доступу пользователя."""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
         qs = super().get_queryset()
+        user = self.request.user
+        
+        # Админы видят все
+        if user.is_staff or user.is_superuser:
+            return qs.order_by('name')
+        
+        # Остальные видят только календари, где они участники
+        ct = ContentType.objects.get_for_model(User)
+        calendar_ids = CalendarRelation.objects.filter(
+            content_type=ct,
+            object_id=user.id
+        ).values_list('calendar_id', flat=True)
+        
+        qs = qs.filter(id__in=calendar_ids)
         
         # Фильтр по имени
         name = self.request.query_params.get('name')
@@ -55,12 +80,221 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
         
         return qs.order_by('name')
     
-    def destroy(self, request, *args, **kwargs):
-        """Удаление календаря с логированием."""
-        print(f"[DELETE Calendar] User: {request.user}, Calendar ID: {kwargs.get('pk')}")
-        print(f"[DELETE Calendar] Is authenticated: {request.user.is_authenticated}")
-        print(f"[DELETE Calendar] Auth header: {request.META.get('HTTP_AUTHORIZATION', 'Not present')[:100]}")
-        return super().destroy(request, *args, **kwargs)
+    def perform_create(self, serializer):
+        """При создании календаря автоматически добавляем creator как owner."""
+        calendar = serializer.save()
+        # Создаем CalendarRelation с distinction='owner'
+        calendar.create_relation(self.request.user, distinction='owner', inheritable=True)
+    
+    @action(detail=True, methods=['post'], url_path='add-participant')
+    def add_participant(self, request, pk=None):
+        """Добавить участника к календарю.
+        
+        Body:
+        {
+            "user_id": 123,
+            "role": "viewer"  # owner, editor, viewer
+        }
+        """
+        calendar = self.get_object()
+        
+        # Проверка прав (только owner может добавлять участников)
+        if not self._is_owner(calendar, request.user):
+            return Response(
+                {'detail': 'Только владелец может добавлять участников'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = CalendarRelationSerializer(data={
+            'calendar': calendar.id,
+            'user_id': request.data.get('user_id'),
+            'distinction': request.data.get('role', 'viewer'),
+            'inheritable': True
+        })
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['delete'], url_path='remove-participant/(?P<user_id>[0-9]+)')
+    def remove_participant(self, request, pk=None, user_id=None):
+        """Удалить участника из календаря."""
+        calendar = self.get_object()
+        
+        # Проверка прав
+        if not self._is_owner(calendar, request.user):
+            return Response(
+                {'detail': 'Только владелец может удалять участников'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        ct = ContentType.objects.get_for_model(User)
+        
+        # Нельзя удалить owner
+        relation = CalendarRelation.objects.filter(
+            calendar=calendar,
+            content_type=ct,
+            object_id=user_id
+        ).first()
+        
+        if not relation:
+            return Response(
+                {'detail': 'Участник не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if relation.distinction == 'owner':
+            return Response(
+                {'detail': 'Нельзя удалить владельца календаря'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        relation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=True, methods=['get'])
+    def participants(self, request, pk=None):
+        """Получить список всех участников календаря."""
+        calendar = self.get_object()
+        
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        ct = ContentType.objects.get_for_model(User)
+        
+        relations = CalendarRelation.objects.filter(
+            calendar=calendar,
+            content_type=ct
+        )
+        
+        serializer = CalendarRelationSerializer(relations, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'], url_path='export-ical')
+    def export_ical(self, request, pk=None):
+        """Экспорт календаря в формат iCalendar (.ics).
+        
+        Использует встроенный CalendarICalendar из django-scheduler.
+        """
+        calendar = self.get_object()
+        
+        # Создаем feed для экспорта
+        feed = CalendarICalendar()
+        response = feed(request, pk)
+        
+        # Устанавливает имя файла
+        response['Content-Disposition'] = f'attachment; filename="{calendar.slug}.ics"'
+        
+        return response
+    
+    @action(detail=True, methods=['post'], url_path='import-ical')
+    def import_ical(self, request, pk=None):
+        """Импорт событий из файла iCalendar (.ics) в календарь.
+        
+        Ожидает файл в request.FILES['file'].
+        """
+        from icalendar import Calendar as ICalendar
+        from django.utils import timezone
+        
+        calendar = self.get_object()
+        
+        # Проверка, что пользователь - владелец
+        if not self._is_owner(calendar, request.user):
+            return Response(
+                {'error': 'Только владелец может импортировать события в календарь'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Проверка наличия файла
+        if 'file' not in request.FILES:
+            return Response(
+                {'error': 'Файл не найден. Отправьте файл с ключом "file"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        ics_file = request.FILES['file']
+        
+        try:
+            # Парсим iCalendar файл
+            ical = ICalendar.from_ical(ics_file.read())
+            
+            imported_count = 0
+            skipped_count = 0
+            errors = []
+            
+            # Проходим по всем событиям в файле
+            for component in ical.walk():
+                if component.name == "VEVENT":
+                    try:
+                        # Извлекаем данные события
+                        summary = str(component.get('summary', ''))
+                        description = str(component.get('description', ''))
+                        dtstart = component.get('dtstart')
+                        dtend = component.get('dtend')
+                        
+                        if not dtstart:
+                            skipped_count += 1
+                            continue
+                        
+                        # Преобразуем даты
+                        start_dt = dtstart.dt
+                        if not timezone.is_aware(start_dt):
+                            start_dt = timezone.make_aware(start_dt)
+                        
+                        if dtend:
+                            end_dt = dtend.dt
+                            if not timezone.is_aware(end_dt):
+                                end_dt = timezone.make_aware(end_dt)
+                        else:
+                            # Если нет времени окончания, делаем событие длиной 1 час
+                            from datetime import timedelta
+                            end_dt = start_dt + timedelta(hours=1)
+                        
+                        # Создаем событие
+                        Event.objects.create(
+                            calendar=calendar,
+                            title=summary or 'Без названия',
+                            description=description,
+                            start=start_dt,
+                            end=end_dt,
+                            creator=request.user
+                        )
+                        imported_count += 1
+                        
+                    except Exception as e:
+                        errors.append(f"Ошибка импорта события '{summary}': {str(e)}")
+                        skipped_count += 1
+            
+            return Response({
+                'success': True,
+                'imported': imported_count,
+                'skipped': skipped_count,
+                'errors': errors if errors else None
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка парсинга файла: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def _is_owner(self, calendar, user):
+        """Проверка, является ли пользователь владельцем календаря."""
+        if user.is_staff or user.is_superuser:
+            return True
+        
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        ct = ContentType.objects.get_for_model(User)
+        
+        return CalendarRelation.objects.filter(
+            calendar=calendar,
+            content_type=ct,
+            object_id=user.id,
+            distinction='owner'
+        ).exists()
 
 
 class ScheduleEventViewSet(viewsets.ModelViewSet):
@@ -155,7 +389,7 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
             )
         
         # Используем schedule.periods.Period для получения вхождений
-        events = calendar.event_set.all()
+        events = Event.objects.filter(calendar=calendar)
         period = Period(events, start_dt, end_dt)
         
         # Результат
@@ -164,11 +398,14 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
             occurrences.append({
                 'id': occurrence.event.id,
                 'title': occurrence.title or occurrence.event.title,
+                'description': occurrence.event.description,
                 'start': occurrence.start.isoformat(),
                 'end': occurrence.end.isoformat(),
                 'color_event': occurrence.event.color_event,
                 'event_id': occurrence.event.id,
                 'is_recurring': occurrence.event.rule_id is not None,
+                'rule': occurrence.event.rule_id,
+                'end_recurring_period': occurrence.event.end_recurring_period.isoformat() if occurrence.event.end_recurring_period else None,
             })
         
         return Response(occurrences)
