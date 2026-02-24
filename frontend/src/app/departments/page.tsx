@@ -3,6 +3,7 @@
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import type { Department } from "@/types/api";
 import { Building2, Search, Users } from "lucide-react";
 
@@ -79,7 +80,7 @@ export default function DepartmentsPage() {
                   : "Не назначен";
 
                 return (
-                  <article key={department.id} className="rounded-xl border border-gray-100 bg-white p-4 transition hover:bg-gray-50">
+                  <Link key={department.id} href={`/departments/${department.id}`} className="block rounded-xl border border-gray-100 bg-white p-4 transition hover:bg-gray-50">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-gray-900">{department.name}</p>
@@ -91,7 +92,7 @@ export default function DepartmentsPage() {
                         {department.employees_count ?? 0}
                       </div>
                     </div>
-                  </article>
+                  </Link>
                 );
               })
             )}

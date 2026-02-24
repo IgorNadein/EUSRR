@@ -119,13 +119,41 @@ export interface Document {
 export interface Request {
   id: number;
   title: string;
-  description: string;
-  request_type: string;
-  status: 'pending' | 'approved' | 'rejected' | 'in_progress' | 'completed';
-  created_by: User;
+  type?: 'vacation' | 'sick_leave' | 'day_off' | 'transfer' | 'dismissal' | 'other';
+  request_type?: string;
+  display_title?: string;
+  description?: string;
+  comment?: string;
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'in_progress' | 'completed';
+  employee?: User;
+  created_by?: User;
+  approver?: User;
   assigned_to?: User;
+  department?: number | null;
+  departments?: number[];
+  recipients?: User[];
+  cc_users?: User[];
+  sent_to_all_department?: boolean;
+  recipient_count?: number;
+  cc_count?: number;
+  is_recipient?: boolean;
+  comments_count?: number;
+  is_final?: boolean;
+  attachment?: string | null;
+  attachment_url?: string | null;
+  date_from?: string | null;
+  date_to?: string | null;
+  decided_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RequestComment {
+  id: number;
+  request: number;
+  author: User;
+  text: string;
+  created_at: string;
 }
 
 // Communications types
