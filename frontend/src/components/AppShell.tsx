@@ -488,9 +488,22 @@ function CalendarCard({
     const days = new Set<string>();
     events.forEach((ev) => {
       if (!ev.start) return;
-      const start = new Date(ev.start);
-      if (Number.isNaN(start.getTime())) return;
-      days.add(formatDateKey(start));
+      const eventStart = new Date(ev.start);
+      if (Number.isNaN(eventStart.getTime())) return;
+      
+      // Обрабатываем многодневные события
+      const eventEnd = ev.end ? new Date(ev.end) : eventStart;
+      
+      // Сбрасываем время для корректного сравнения
+      eventStart.setHours(0, 0, 0, 0);
+      eventEnd.setHours(0, 0, 0, 0);
+      
+      // Добавляем все дни от start до end включительно
+      const currentDay = new Date(eventStart);
+      while (currentDay <= eventEnd) {
+        days.add(formatDateKey(currentDay));
+        currentDay.setDate(currentDay.getDate() + 1);
+      }
     });
     return days;
   }, [events]);
