@@ -211,26 +211,28 @@ export interface MessageAttachment {
   thumbnail?: string | null;
 }
 
-// Calendar types
+// Calendar types (django-scheduler)
 export interface CalendarEvent {
   id: number;
   title: string;
   description?: string;
-  start_time: string;
-  end_time: string;
-  location?: string;
+  start: string; // django-scheduler использует start/end (не start_time/end_time)
+  end: string;
   calendar: number;
-  participants?: User[];
-  created_by: User;
+  calendar_name?: string;
+  color_event?: string;
+  rule?: number | null;
+  rule_description?: string | null;
+  creator?: number | null;
+  created_on?: string;
+  updated_on?: string;
 }
 
 export interface Calendar {
   id: number;
-  name: string;
-  description?: string;
-  color?: string;
-  is_public: boolean;
-  owner: User;
+  name: string; // django-scheduler использует name (не title)
+  slug: string;
+  events_count?: number;
 }
 
 // Notifications types
