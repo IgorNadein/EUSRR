@@ -8,6 +8,7 @@ import { apiClient } from "@/lib/api";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { X, Plus, Trash2, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { CalendarModal } from "@/components/CalendarModal";
+import { EventModal } from "@/components/EventModal";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "../app/calendar/calendar.css";
 
@@ -35,6 +36,9 @@ type CalendarEvent = {
   color_event?: string;
   rule?: number;
   rule_description?: string;
+  isOccurrence?: boolean; // Флаг для повторяющихся событий
+  event_id?: number; // ID базового события для occurrence
+  allDay?: boolean; // Флаг целодневного события
 };
 
 // Кастомные сообщения на русском
@@ -147,21 +151,58 @@ export function BigCalendar() {
       end.setMonth(end.getMonth() + 1);
       end.setDate(7);
 
-      const result = await apiClient.getCalendarEvents({
-        calendar: selectedCalendarId,
-        start: start.toISOString().split("T")[0],
-        end: end.toISOString().split("T")[0],
-      });
+      const startStr = start.toISOString().split("T")[0];
+      const endStr = end.toISOString().split("T")[0];
 
-      // Обработка пагинированного ответа
-      const eventsList = Array.isArray(result) ? result : (result?.results || []);
-      const parsedEvents = eventsList.map((evt: any) => ({
-        ...evt,
-        start: new Date(evt.start),
-        end: new Date(evt.end),
-      }));
+      // Загружаем обычные события и occurrences параллельно
+      const [eventsResult, occurrencesResult] = await Promise.all([
+        apiClient.getCalendarEvents({
+          calendar: selectedCalendarId,
+          start: startStr,
+          end: endStr,
+        }),
+        apiClient.getOccurrences({
+          calendar: selectedCalendarId,
+          start: startStr,
+          end: endStr,
+        }),
+      ]);
 
-      setEvents(parsedEvents);
+      // Обработка обычных событий (без правил повторения)
+      const eventsList = Array.isArray(eventsResult) ? eventsResult : (eventsResult?.results || []);
+      const regularEvents = eventsList
+        .filter((evt: any) => !evt.rule) // Только события без правил
+        .map((evt: any) => {
+          const startDate = new Date(evt.start);
+          const endDate = new Date(evt.end);
+
+          return {
+            ...evt,
+            start: startDate,
+            end: endDate,
+            allDay: false, // Явно указываем что событие с временем
+          };
+        });
+
+      // Обработка occurrences (повторяющихся событий)
+      const occurrencesList = Array.isArray(occurrencesResult) ? occurrencesResult : (occurrencesResult?.results || []);
+      const occurrenceEvents = occurrencesList
+        .filter((occ: any) => occ && occ.is_recurring) // Только повторяющиеся (избегаем дубликатов)
+        .map((occ: any) => ({
+          id: occ.id,
+          title: `⟲ ${occ.title}`, // Добавляем индикатор повторения
+          description: occ.description,
+          start: new Date(occ.start),
+          end: new Date(occ.end),
+          allDay: false, // Явно указываем что событие с временем
+          calendar: selectedCalendarId, // Календарь уже известен из запроса
+          color_event: occ.color_event || '#3498db',
+          event_id: occ.event_id,
+          isOccurrence: true, // Помечаем как occurrence для корректного отображения
+        }));
+
+      // Объединяем обычные события и occurrences
+      setEvents([...regularEvents, ...occurrenceEvents]);
     } catch (err) {
       console.error("Ошибка загрузки событий:", err);
     } finally {
@@ -181,11 +222,21 @@ export function BigCalendar() {
         return;
       }
 
+      // Если клик на весь день (00:00 - 00:00), устанавливаем разумное время
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      // Проверяем, если время 00:00 (клик на день в режиме месяца)
+      if (startDate.getHours() === 0 && startDate.getMinutes() === 0) {
+        startDate.setHours(10, 0, 0, 0); // 10:00
+        endDate.setHours(11, 0, 0, 0);   // 11:00
+      }
+
       setEditingEvent({
         title: "",
         description: "",
-        start,
-        end,
+        start: startDate,
+        end: endDate,
         calendar: selectedCalendarId,
         color_event: "#3498db",
       });
@@ -194,52 +245,27 @@ export function BigCalendar() {
     [selectedCalendarId]
   );
 
-  const handleSelectEvent = useCallback((event: CalendarEvent) => {
-    setEditingEvent(event);
-    setShowEventModal(true);
-  }, []);
-
-  const handleSaveEvent = async () => {
-    if (!editingEvent || !editingEvent.title?.trim()) return;
-
-    try {
-      const eventData = {
-        title: editingEvent.title!,
-        description: editingEvent.description,
-        start: editingEvent.start!.toISOString(),
-        end: editingEvent.end!.toISOString(),
-        calendar: editingEvent.calendar!,
-        color_event: editingEvent.color_event || "#3498db",
-      };
-
-      if (editingEvent.id) {
-        await apiClient.updateEvent(editingEvent.id, eventData);
-      } else {
-        await apiClient.createEvent(eventData);
+  const handleSelectEvent = useCallback(async (calEvent: CalendarEvent) => {
+    // Если это occurrence (повторяющееся событие), загружаем базовое событие
+    if (calEvent.isOccurrence && calEvent.event_id) {
+      try {
+        const fullEvent = await apiClient.getEvent(calEvent.event_id);
+        // Устанавливаем время из occurrence, но остальные данные из базового события
+        setEditingEvent({
+          ...fullEvent,
+          start: calEvent.start,
+          end: calEvent.end,
+        });
+        setShowEventModal(true);
+      } catch (err) {
+        console.error("Ошибка загрузки базового события:", err);
       }
-
-      await loadEvents();
-      setShowEventModal(false);
-      setEditingEvent(null);
-    } catch (err) {
-      console.error("Ошибка сохранения события:", err);
-      alert("Не удалось сохранить событие");
+    } else {
+      // Обычное событие - данные уже полные
+      setEditingEvent(calEvent);
+      setShowEventModal(true);
     }
-  };
-
-  const handleDeleteEvent = async () => {
-    if (!editingEvent?.id || !confirm(`Удалить событие "${editingEvent.title}"?`)) return;
-
-    try {
-      await apiClient.deleteEvent(editingEvent.id);
-      await loadEvents();
-      setShowEventModal(false);
-      setEditingEvent(null);
-    } catch (err) {
-      console.error("Ошибка удаления события:", err);
-      alert("Не удалось удалить событие");
-    }
-  };
+  }, []);
 
   // Стилизация событий по цвету
   const eventStyleGetter = (event: CalendarEvent) => {
@@ -262,213 +288,112 @@ export function BigCalendar() {
         {/* Панель выбора календаря */}
         <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3 flex-1">
-          <label className="text-sm font-medium text-gray-700">Календарь:</label>
-          {calendars.length === 0 ? (
-            <div className="flex items-center gap-2">
-              <p className="text-sm text-gray-500">Календарей нет.</p>
-              <button
-                onClick={() => {
-                  setEditingCalendar({ name: "" });
-                  setShowCalendarModal(true);
-                }}
-                className="text-sm text-sky-500 hover:text-sky-600 font-medium transition-colors"
-              >
-                Создать календарь
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 flex-1">
-              <select
-                value={selectedCalendarId || ""}
-                onChange={(e) => setSelectedCalendarId(Number(e.target.value))}
-                className="flex-1 max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-              >
-                {calendars.map((cal) => (
-                  <option key={cal.id} value={cal.id}>
-                    {cal.name}
-                  </option>
-                ))}
-              </select>
-              
-              <button
-                onClick={() => {
-                  setEditingCalendar({ name: "" });
-                  setShowCalendarModal(true);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 transition hover:bg-gray-50"
-                title="Создать календарь"
-              >
-                <Plus size={16} />
-              </button>
-              
-              {selectedCalendarId && (
+            <label className="text-sm font-medium text-gray-700">Календарь:</label>
+            {calendars.length === 0 ? (
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-gray-500">Календарей нет.</p>
                 <button
                   onClick={() => {
-                    const cal = calendars.find((c) => c.id === selectedCalendarId);
-                    if (cal) {
-                      setEditingCalendar({ id: cal.id, name: cal.name });
-                      setShowCalendarModal(true);
-                    }
+                    setEditingCalendar({ name: "" });
+                    setShowCalendarModal(true);
+                  }}
+                  className="text-sm text-sky-500 hover:text-sky-600 font-medium transition-colors"
+                >
+                  Создать календарь
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-1">
+                <select
+                  value={selectedCalendarId || ""}
+                  onChange={(e) => setSelectedCalendarId(Number(e.target.value))}
+                  className="flex-1 max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                >
+                  {calendars.map((cal) => (
+                    <option key={cal.id} value={cal.id}>
+                      {cal.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => {
+                    setEditingCalendar({ name: "" });
+                    setShowCalendarModal(true);
                   }}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 transition hover:bg-gray-50"
-                  title="Настройки календаря"
+                  title="Создать календарь"
                 >
-                  <Settings size={16} />
+                  <Plus size={16} />
                 </button>
-              )}
+
+                {selectedCalendarId && (
+                  <button
+                    onClick={() => {
+                      const cal = calendars.find((c) => c.id === selectedCalendarId);
+                      if (cal) {
+                        setEditingCalendar({ id: cal.id, name: cal.name });
+                        setShowCalendarModal(true);
+                      }
+                    }}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 transition hover:bg-gray-50"
+                    title="Настройки календаря"
+                  >
+                    <Settings size={16} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-sky-500"></div>
+              <span>Загрузка...</span>
             </div>
           )}
         </div>
 
-        {loading && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-sky-500"></div>
-            <span>Загрузка...</span>
-          </div>
-        )}
+        {/* Календарь */}
+        <div className="overflow-hidden px-6 pb-6" style={{ height: "750px" }}>
+          <Calendar
+            localizer={localizer}
+            events={events}
+            startAccessor="start"
+            endAccessor="end"
+            allDayAccessor={(event: CalendarEvent) => event.allDay || false}
+            messages={messages}
+            culture="ru"
+            view={currentView}
+            onView={(view: View) => setCurrentView(view)}
+            date={currentDate}
+            onNavigate={(date: Date) => setCurrentDate(date)}
+            onSelectSlot={handleSelectSlot}
+            onSelectEvent={handleSelectEvent}
+            selectable
+            eventPropGetter={eventStyleGetter}
+            popup
+            components={{
+              toolbar: CustomToolbar,
+            }}
+          />
+        </div>
       </div>
 
-      {/* Календарь */}
-      <div className="overflow-hidden px-6 pb-6" style={{ height: "750px" }}>
-        <Calendar
-          localizer={localizer}
-          events={events}
-          startAccessor="start"
-          endAccessor="end"
-          messages={messages}
-          culture="ru"
-          view={currentView}
-          onView={(view: View) => setCurrentView(view)}
-          date={currentDate}
-          onNavigate={(date: Date) => setCurrentDate(date)}
-          onSelectSlot={handleSelectSlot}
-          onSelectEvent={handleSelectEvent}
-          selectable
-          eventPropGetter={eventStyleGetter}
-          popup
-          components={{
-            toolbar: CustomToolbar,
-          }}
-        />
-      </div>
-    </div>
 
       {/* Модальное окно события */}
-      {showEventModal && editingEvent && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {editingEvent.id ? "Редактировать событие" : "Создать событие"}
-              </h3>
-              <button
-                onClick={() => {
-                  setShowEventModal(false);
-                  setEditingEvent(null);
-                }}
-                className="rounded-full p-1 hover:bg-gray-100"
-              >
-                <X size={20} className="text-gray-600" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Название</label>
-                <input
-                  type="text"
-                  value={editingEvent.title || ""}
-                  onChange={(e) => setEditingEvent({ ...editingEvent, title: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  placeholder="Название события"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Описание</label>
-                <textarea
-                  value={editingEvent.description || ""}
-                  onChange={(e) => setEditingEvent({ ...editingEvent, description: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  placeholder="Описание (необязательно)"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Начало</label>
-                  <input
-                    type="datetime-local"
-                    value={
-                      editingEvent.start
-                        ? format(editingEvent.start, "yyyy-MM-dd'T'HH:mm")
-                        : ""
-                    }
-                    onChange={(e) =>
-                      setEditingEvent({ ...editingEvent, start: new Date(e.target.value) })
-                    }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Конец</label>
-                  <input
-                    type="datetime-local"
-                    value={
-                      editingEvent.end ? format(editingEvent.end, "yyyy-MM-dd'T'HH:mm") : ""
-                    }
-                    onChange={(e) =>
-                      setEditingEvent({ ...editingEvent, end: new Date(e.target.value) })
-                    }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Цвет</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={editingEvent.color_event || "#3498db"}
-                    onChange={(e) =>
-                      setEditingEvent({ ...editingEvent, color_event: e.target.value })
-                    }
-                    className="h-10 w-20 cursor-pointer rounded-lg border border-gray-300"
-                  />
-                  <span className="text-xs text-gray-500">
-                    {editingEvent.color_event || "#3498db"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSaveEvent}
-                  disabled={!editingEvent.title?.trim()}
-                  className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {editingEvent.id ? "Сохранить" : "Создать"}
-                </button>
-
-                {editingEvent.id && (
-                  <button
-                    onClick={handleDeleteEvent}
-                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
-                    title="Удалить событие"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <EventModal
+        isOpen={showEventModal}
+        onClose={() => {
+          setShowEventModal(false);
+          setEditingEvent(null);
+        }}
+        event={editingEvent}
+        onSave={() => {
+          loadEvents(); // ✅ Обновляем список событий
+        }}
+        showParticipants={true}
+      />
       {/* Модальное окно управления календарем */}
       <CalendarModal
         isOpen={showCalendarModal}

@@ -14,7 +14,61 @@ User = get_user_model()
 class Command(BaseCommand):
     help = 'Создание тестовых пользователей и календарей для системы schedule'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--clean',
+            action='store_true',
+            help='Удалить существующих тестовых пользователей и календари перед созданием новых',
+        )
+
     def handle(self, *args, **options):
+        # Удаление существующих данных если указан флаг --clean
+        if options['clean']:
+            self.stdout.write(self.style.WARNING('\nУдаление существующих тестовых данных...\n'))
+            
+            # Список тестовых пользователей для удаления
+            test_usernames = ['anna_ivanova', 'petr_petrov', 'maria_sidorova']
+            
+            for username in test_usernames:
+                try:
+                    user = User.objects.get(username=username)
+                    # Сначала удаляем события в календарях пользователя
+                    from schedule.models import CalendarRelation
+                    from django.contrib.contenttypes.models import ContentType
+                    
+                    ct = ContentType.objects.get_for_model(User)
+                    calendar_relations = CalendarRelation.objects.filter(
+                        content_type=ct,
+                        object_id=user.id,
+                        distinction='owner'
+                    )
+                    
+                    for rel in calendar_relations:
+                        calendar = rel.calendar
+                        events_count = calendar.event_set.count()
+                        calendar.event_set.all().delete()
+                        calendar.delete()
+                        self.stdout.write(f"  Удален календарь: {calendar.name} ({events_count} событий)")
+                    
+                    user.delete()
+                    self.stdout.write(self.style.SUCCESS(f"  Удален пользователь: {username}"))
+                except User.DoesNotExist:
+                    self.stdout.write(f"  Пользователь {username} не найден (пропуск)")
+            
+            # Удаляем календари по slug (если они остались)
+            calendar_slugs = ['anna-work', 'anna-personal', 'petr-projects', 'petr-meetings', 'maria-calendar']
+            for slug in calendar_slugs:
+                try:
+                    calendar = Calendar.objects.get(slug=slug)
+                    events_count = calendar.event_set.count()
+                    calendar.event_set.all().delete()
+                    calendar.delete()
+                    self.stdout.write(f"  Удален календарь: {slug} ({events_count} событий)")
+                except Calendar.DoesNotExist:
+                    pass
+            
+            self.stdout.write(self.style.SUCCESS('\nОчистка завершена!\n'))
+        
         self.stdout.write('Создание тестовых пользователей и календарей...\n')
 
         # Создание пользователей
@@ -58,6 +112,7 @@ class Command(BaseCommand):
             )
             if created:
                 user.set_password(user_data['password'])
+                user.email_verified = True  # Автоматически подтверждаем email для тестовых пользователей
                 user.save()
                 self.stdout.write(self.style.SUCCESS(
                     f"Создан пользователь: {user.get_full_name()} ({user.username})"
@@ -68,13 +123,13 @@ class Command(BaseCommand):
                 ))
             created_users.append(user)
 
-        # Создание календарей
+        # Создание календарей с привязкой к владельцам
         calendar_data = [
-            {'name': 'Рабочий календарь Анны', 'slug': 'anna-work'},
-            {'name': 'Личные дела Анны', 'slug': 'anna-personal'},
-            {'name': 'Проекты Петра', 'slug': 'petr-projects'},
-            {'name': 'Встречи Петра', 'slug': 'petr-meetings'},
-            {'name': 'Календарь Марии', 'slug': 'maria-calendar'},
+            {'name': 'Рабочий календарь Анны', 'slug': 'anna-work', 'owner_idx': 0},  # anna_ivanova
+            {'name': 'Личные дела Анны', 'slug': 'anna-personal', 'owner_idx': 0},
+            {'name': 'Проекты Петра', 'slug': 'petr-projects', 'owner_idx': 1},  # petr_petrov
+            {'name': 'Встречи Петра', 'slug': 'petr-meetings', 'owner_idx': 1},
+            {'name': 'Календарь Марии', 'slug': 'maria-calendar', 'owner_idx': 2},  # maria_sidorova
         ]
 
         created_calendars = []
@@ -85,6 +140,10 @@ class Command(BaseCommand):
             )
             if created:
                 self.stdout.write(self.style.SUCCESS(f"Создан календарь: {calendar.name}"))
+                # Создаем CalendarRelation с owner
+                owner = created_users[cal_data['owner_idx']]
+                calendar.create_relation(owner, distinction='owner', inheritable=True)
+                self.stdout.write(f"  Владелец: {owner.get_full_name()}")
             else:
                 self.stdout.write(self.style.WARNING(f"Календарь уже существует: {calendar.name}"))
             created_calendars.append(calendar)
