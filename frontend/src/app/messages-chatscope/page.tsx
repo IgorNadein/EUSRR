@@ -20,6 +20,7 @@ import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import { AppShell } from '@/components/AppShell';
 import { apiClient } from '@/lib/api';
 import { useUser } from '@/contexts/UserContext';
+import NewChatModal from '@/components/NewChatModal';
 import type { Chat as ChatType, Message as MessageType } from '@/types/api';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
@@ -96,6 +97,7 @@ export default function ChatscapeMessenger() {
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -121,6 +123,21 @@ export default function ChatscapeMessenger() {
 
     loadChats();
   }, []);
+
+  // Обработчик создания нового чата
+  const handleChatCreated = async (chatId: number) => {
+    try {
+      // Перезагружаем список чатов
+      const response = await apiClient.getChats();
+      const chatsList = response.results || [];
+      setChats(chatsList);
+
+      // Открываем новый чат
+      setSelectedChatId(chatId);
+    } catch (error) {
+      console.error('Error reloading chats:', error);
+    }
+  };
 
   // Загрузка сообщений выбранного чата
   useEffect(() => {
@@ -282,6 +299,29 @@ export default function ChatscapeMessenger() {
         <MainContainer responsive style={{ height: 'calc(100% - 60px)' }}>
           {/* Боковая панель со списком чатов */}
           <Sidebar position="left" scrollable={false}>
+            {/* Кнопка Новый чат */}
+            <div style={{ padding: '12px', borderBottom: '1px solid #e5e7eb' }}>
+              <button
+                onClick={() => setIsNewChatModalOpen(true)}
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: '500',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+              >
+                + Новый чат
+              </button>
+            </div>
+
             <Search
               placeholder="Поиск чатов..."
               value={search}
@@ -421,6 +461,13 @@ export default function ChatscapeMessenger() {
           )}
         </MainContainer>
       </div>
+
+      {/* Модальное окно для создания нового чата */}
+      <NewChatModal
+        isOpen={isNewChatModalOpen}
+        onClose={() => setIsNewChatModalOpen(false)}
+        onChatCreated={handleChatCreated}
+      />
     </AppShell>
   );
 }

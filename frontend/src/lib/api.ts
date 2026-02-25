@@ -768,6 +768,169 @@ class ApiClient {
             body: JSON.stringify({ emoji }),
         });
     }
+
+    // ============= Communications (Chats & Messages) API =============
+
+    /**
+     * Получить список чатов пользователя
+     */
+    async getChats(params?: { search?: string; page?: number }): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params?.search) queryParams.append('search', params.search);
+        if (params?.page) queryParams.append('page', params.page.toString());
+        
+        const query = queryParams.toString();
+        return this.request(`/api/v1/communications/chats/${query ? '?' + query : ''}`);
+    }
+
+    /**
+     * Получить детали чата по ID
+     */
+    async getChat(chatId: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/`);
+    }
+
+    /**
+     * Создать новый чат
+     * type: 'private' | 'group' | 'department' | 'general'
+     */
+    async createChat(data: { 
+        type: string; 
+        participants?: number[]; 
+        name?: string; 
+        description?: string;
+        department?: number;
+        include_all_employees?: boolean;
+    }): Promise<any> {
+        return this.request('/api/v1/communications/chats/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    /**
+     * Получить сообщения чата с пагинацией
+     */
+    async getChatMessages(
+        chatId: number, 
+        params?: { 
+            limit?: number; 
+            before_id?: number; 
+            after_id?: number;
+            before?: string;
+            after?: string;
+        }
+    ): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.before_id) queryParams.append('before_id', params.before_id.toString());
+        if (params?.after_id) queryParams.append('after_id', params.after_id.toString());
+        if (params?.before) queryParams.append('before', params.before);
+        if (params?.after) queryParams.append('after', params.after);
+        
+        const query = queryParams.toString();
+        return this.request(`/api/v1/communications/chats/${chatId}/messages/${query ? '?' + query : ''}`);
+    }
+
+    /**
+     * Отправить текстовое сообщение
+     */
+    async sendMessage(
+        chatId: number, 
+        content: string, 
+        replyTo?: number
+    ): Promise<any> {
+        return this.request('/api/v1/communications/messages/', {
+            method: 'POST',
+            body: JSON.stringify({
+                chat_id: chatId,
+                content,
+                reply_to: replyTo,
+            }),
+        });
+    }
+
+    /**
+     * Отправить сообщение с файлами
+     */
+    async sendMessageWithFiles(
+        chatId: number, 
+        content: string, 
+        files: File[], 
+        replyTo?: number
+    ): Promise<any> {
+        const formData = new FormData();
+        formData.append('chat_id', chatId.toString());
+        formData.append('content', content);
+        if (replyTo) formData.append('reply_to', replyTo.toString());
+        
+        // Добавляем файлы с префиксом file_
+        files.forEach((file, index) => {
+            formData.append(`file_${index}`, file);
+        });
+
+        const token = this.getToken();
+        const response = await fetch('/api/v1/communications/messages/upload/', {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            body: formData,
+        });
+
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Редактировать сообщение
+     */
+    async updateMessage(messageId: number, content: string): Promise<any> {
+        return this.request(`/api/v1/communications/messages/${messageId}/`, {
+            method: 'PATCH',
+            body: JSON.stringify({ content }),
+        });
+    }
+
+    /**
+     * Удалить сообщение
+     */
+    async deleteMessage(messageId: number): Promise<void> {
+        await this.request(`/api/v1/communications/messages/${messageId}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    /**
+     * Пометить чат как прочитанный
+     */
+    async markChatAsRead(chatId: number, lastReadMessageId?: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/mark_read/`, {
+            method: 'POST',
+            body: JSON.stringify({ 
+                last_read_message_id: lastReadMessageId 
+            }),
+        });
+    }
+
+    /**
+     * Закрепить/открепить чат
+     */
+    async togglePinChat(chatId: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/pin/`, {
+            method: 'POST',
+        });
+    }
+
+    /**
+     * Включить/выключить уведомления для чата
+     */
+    async toggleChatNotifications(chatId: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/notifications/`, {
+            method: 'POST',
+        });
+    }
 }
 
 export const apiClient = new ApiClient();
