@@ -303,20 +303,49 @@ class ApiClient {
     }
 
     async sendMessage(chatId: number | string, text: string, replyTo?: number): Promise<any> {
-        return this.request(`/api/v1/communications/chats/${chatId}/messages/`, {
+        const formData = new FormData();
+        formData.append('content', text);
+        formData.append('chat_id', chatId.toString());
+        if (replyTo) {
+            formData.append('reply_to', replyTo.toString());
+        }
+
+        const token = this.getToken();
+        const headers: Record<string, string> = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`/api/v1/communications/messages/upload/`, {
             method: 'POST',
-            body: JSON.stringify({ text, reply_to: replyTo }),
+            headers,
+            body: formData,
         });
+
+        if (!response.ok) {
+            let errorDetails = '';
+            try {
+                const errorData = await response.json();
+                errorDetails = errorData.detail || JSON.stringify(errorData);
+            } catch {
+                errorDetails = response.statusText;
+            }
+            throw new Error(`API Error: ${response.status} ${errorDetails}`);
+        }
+
+        const result = await response.json();
+        return result.message || result;
     }
 
     async sendMessageWithFiles(chatId: number | string, text: string, files: File[], replyTo?: number): Promise<any> {
         const formData = new FormData();
-        formData.append('text', text);
+        formData.append('content', text);
+        formData.append('chat_id', chatId.toString());
         if (replyTo) {
             formData.append('reply_to', replyTo.toString());
         }
-        files.forEach((file) => {
-            formData.append('attachments', file);
+        files.forEach((file, index) => {
+            formData.append(`file_${index}`, file);
         });
 
         const token = this.getToken();
@@ -325,23 +354,31 @@ class ApiClient {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`/api/v1/communications/chats/${chatId}/messages/`, {
+        const response = await fetch(`/api/v1/communications/messages/upload/`, {
             method: 'POST',
             headers,
             body: formData,
         });
 
         if (!response.ok) {
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            let errorDetails = '';
+            try {
+                const errorData = await response.json();
+                errorDetails = errorData.detail || JSON.stringify(errorData);
+            } catch {
+                errorDetails = response.statusText;
+            }
+            throw new Error(`API Error: ${response.status} ${errorDetails}`);
         }
 
-        return response.json();
+        const result = await response.json();
+        return result.message || result;
     }
 
     async updateMessage(messageId: number, text: string): Promise<any> {
         return this.request(`/api/v1/communications/messages/${messageId}/`, {
             method: 'PATCH',
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({ content: text }),
         });
     }
 
@@ -833,83 +870,13 @@ class ApiClient {
     }
 
     /**
-     * Отправить текстовое сообщение
-     */
-    async sendMessage(
-        chatId: number, 
-        content: string, 
-        replyTo?: number
-    ): Promise<any> {
-        return this.request('/api/v1/communications/messages/', {
-            method: 'POST',
-            body: JSON.stringify({
-                chat_id: chatId,
-                content,
-                reply_to: replyTo,
-            }),
-        });
-    }
-
-    /**
-     * Отправить сообщение с файлами
-     */
-    async sendMessageWithFiles(
-        chatId: number, 
-        content: string, 
-        files: File[], 
-        replyTo?: number
-    ): Promise<any> {
-        const formData = new FormData();
-        formData.append('chat_id', chatId.toString());
-        formData.append('content', content);
-        if (replyTo) formData.append('reply_to', replyTo.toString());
-        
-        // Добавляем файлы с префиксом file_
-        files.forEach((file, index) => {
-            formData.append(`file_${index}`, file);
-        });
-
-        const token = this.getToken();
-        const response = await fetch('/api/v1/communications/messages/upload/', {
-            method: 'POST',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-            body: formData,
-        });
-
-        if (!response.ok) {
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
-        }
-
-        return response.json();
-    }
-
-    /**
-     * Редактировать сообщение
-     */
-    async updateMessage(messageId: number, content: string): Promise<any> {
-        return this.request(`/api/v1/communications/messages/${messageId}/`, {
-            method: 'PATCH',
-            body: JSON.stringify({ content }),
-        });
-    }
-
-    /**
-     * Удалить сообщение
-     */
-    async deleteMessage(messageId: number): Promise<void> {
-        await this.request(`/api/v1/communications/messages/${messageId}/`, {
-            method: 'DELETE',
-        });
-    }
-
-    /**
      * Пометить чат как прочитанный
      */
     async markChatAsRead(chatId: number, lastReadMessageId?: number): Promise<any> {
-        return this.request(`/api/v1/communications/chats/${chatId}/mark_read/`, {
+        return this.request(`/api/v1/communications/chats/${chatId}/mark-read/`, {
             method: 'POST',
             body: JSON.stringify({ 
-                last_read_message_id: lastReadMessageId 
+                message_id: lastReadMessageId 
             }),
         });
     }

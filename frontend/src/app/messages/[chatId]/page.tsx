@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText, ChevronRight, Reply, Pencil, Trash2, Smile } from "lucide-react";
@@ -8,6 +8,8 @@ import { AppShell } from "../../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import type { Chat, Message, MessageAttachment } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
 
@@ -293,19 +295,27 @@ export default function MessageDialogPage() {
   const [mediaPreview, setMediaPreview] = useState<{ type: "image" | "video"; src: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
+  const messagesViewportRef = useRef<ScrollableMessageListInner | null>(null);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [hasMoreNewer, setHasMoreNewer] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [initialAnchorId, setInitialAnchorId] = useState<number | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [initialAnchorIndex, setInitialAnchorIndex] = useState<number | null>(null);
   const [allowOneOlderProbe, setAllowOneOlderProbe] = useState(false);
   const initialScrolledRef = useRef(false);
   const anchorScrollAttemptsRef = useRef(0);
   const anchorOlderLoadAttemptsRef = useRef(0);
-  const prependAdjustRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const [anchorRetryTick, setAnchorRetryTick] = useState(0);
+  const hasMoreNewerRef = useRef(false);
+  
+  // Синхронизируем ref с state
+  useEffect(() => {
+    hasMoreNewerRef.current = hasMoreNewer;
+  }, [hasMoreNewer]);
+  
   const messagesById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
   const selectedActionMessage = expandedReplyActionForId ? messagesById.get(expandedReplyActionForId) || null : null;
   const selectedActionCanManage = Boolean(
@@ -321,6 +331,174 @@ export default function MessageDialogPage() {
     () => uniqueEmoji(recentReactions).slice(0, MAX_RECENT_REACTIONS),
     [recentReactions]
   );
+
+  // WebSocket для real-time обновлений
+  const { isConnected, sendTyping, handlers, reconnectAttempts } = useWebSocket({ 
+    chatId: chatId || null,
+    autoConnect: true 
+  });
+
+  // Проверка, находится ли пользователь внизу списка
+  const isNearBottom = useCallback(() => {
+    const component = messagesViewportRef.current;
+    if (!component || !component.containerRef?.current) return false;
+    
+    const viewport = component.containerRef.current;
+    const threshold = 150; // px от низа
+    const { scrollHeight, scrollTop, clientHeight } = viewport;
+    return scrollHeight - scrollTop - clientHeight <= threshold;
+  }, []);
+
+  // Автопрокрутка вниз
+  const scrollToBottom = useCallback((smooth = false) => {
+    const component = messagesViewportRef.current;
+    if (!component) return;
+    
+    component.scrollToBottom(smooth ? 'smooth' : 'auto');
+  }, []);
+
+  // Обновление reactions_summary для конкретного сообщения
+  const updateMessageReactionsSummary = useCallback((
+    messageId: number,
+    summary?: Record<string, { count: number; users?: number[]; user_names?: string[] }>
+  ) => {
+    if (!summary) return;
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions_summary: summary } : m)));
+  }, []);
+
+  // Настройка обработчиков WebSocket событий
+  useEffect(() => {
+    handlers.current.onMessage = (data) => {
+      if (data.type === 'new_message') {
+        // Новое сообщение
+        const newMsg = data.message;
+        const isMyMessage = newMsg.author_id === user?.id;
+        const wasNearBottom = isNearBottom();
+        
+        setMessages(prev => {
+          // Проверяем, нет ли уже такого сообщения (дедупликация)
+          if (prev.some(m => m.id === newMsg.id)) {
+            return prev;
+          }
+          
+          // ВАЖНО: Добавляем сообщение только если:
+          // 1. Это МОЕ сообщение (я только что отправил) - всегда добавляем
+          // 2. ИЛИ у нас загружены все сообщения (hasMoreNewerRef.current = false)
+          // 3. ИЛИ новое сообщение идет сразу после последнего (непрерывная последовательность)
+          
+          if (prev.length > 0 && !isMyMessage) {
+            const lastMessage = prev[prev.length - 1];
+            const hasGap = newMsg.id - lastMessage.id > 1; // Есть пропущенные сообщения
+            
+            // Если есть разрыв И есть непрочитанные - НЕ добавляем
+            if (hasGap && hasMoreNewerRef.current) {
+              console.warn(`⚠️ WebSocket: пропуск сообщения ${newMsg.id} - есть незагруженные между ${lastMessage.id} и ${newMsg.id}`);
+              // Оставляем hasMoreNewer = true
+              return prev;
+            }
+          }
+          
+          // Добавляем сообщение
+          const updated = [...prev, newMsg];
+          
+          // Сбрасываем флаг "есть еще новые сообщения"
+          setTimeout(() => {
+            setHasMoreNewer(false);
+            
+            // Автоотметка как прочитанное ТОЛЬКО если:
+            // 1. Это НЕ мое сообщение
+            // 2. И я был внизу (активно читал)
+            // Прагматичный подход: загружено = прочитано (для сообщений в области видимости)
+            if (!isMyMessage && wasNearBottom && chatId) {
+              apiClient.markChatAsRead(chatId, newMsg.id).catch(err => {
+                console.error('Ошибка автоотметки WebSocket сообщения:', err);
+              });
+            }
+            
+            // Автопрокрутка вниз если:
+            // 1. Сообщение отправил я сам
+            // 2. Или я был внизу списка (читал последние сообщения)
+            if (isMyMessage || wasNearBottom) {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  scrollToBottom(true);
+                });
+              });
+            }
+          }, 0);
+          
+          return updated;
+        });
+      } 
+      else if (data.type === 'message_edited') {
+        // Редактирование сообщения
+        const editedMsg = data.message;
+        setMessages(prev => prev.map(m => 
+          m.id === editedMsg.id ? { ...m, ...editedMsg } : m
+        ));
+      } 
+      else if (data.type === 'message_deleted') {
+        // Удаление сообщения
+        setMessages(prev => prev.filter(m => m.id !== data.message_id));
+      } 
+      else if (data.type === 'typing_start') {
+        // Индикатор "печатает..."
+        if (data.user_id !== user?.id) {
+          setIsTyping(true);
+          
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+          
+          typingTimeoutRef.current = setTimeout(() => {
+            setIsTyping(false);
+          }, 3000);
+        }
+      }
+      else if (data.type === 'typing_stop') {
+        // Остановка печати
+        if (data.user_id !== user?.id) {
+          setIsTyping(false);
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+        }
+      }
+      else if (data.type === 'reaction_added') {
+        // Реакция добавлена
+        if (data.reactions_summary) {
+          updateMessageReactionsSummary(data.message_id, data.reactions_summary);
+        }
+      }
+      else if (data.type === 'reaction_removed') {
+        // Реакция удалена
+        if (data.reactions_summary) {
+          updateMessageReactionsSummary(data.message_id, data.reactions_summary);
+        }
+      }
+    };
+
+    handlers.current.onConnect = () => {
+      // WebSocket подключен
+    };
+
+    handlers.current.onDisconnect = () => {
+      // WebSocket отключен
+    };
+
+    handlers.current.onError = (error) => {
+      console.error('❌ WebSocket error:', error);
+    };
+  }, [user?.id, chatId, isNearBottom, scrollToBottom, updateMessageReactionsSummary]);
+
+  // Очистка таймаута при размонтировании
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (typeof window === "undefined" || !window.history) return;
@@ -364,14 +542,6 @@ export default function MessageDialogPage() {
       const len = input.value.length;
       input.setSelectionRange(len, len);
     });
-  };
-
-  const updateMessageReactionsSummary = (
-    messageId: number,
-    summary?: Record<string, { count: number; users?: number[]; user_names?: string[] }>
-  ) => {
-    if (!summary) return;
-    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions_summary: summary } : m)));
   };
 
   const hasMyReaction = (message: Message, emoji: string): boolean => {
@@ -451,7 +621,19 @@ export default function MessageDialogPage() {
 
       try {
         setMessagesLoading(true);
-        const around = await apiClient.getChatMessagesAround(chatId, { limit: 50 });
+        
+        // 1. Получаем детали чата с last_read_message_id
+        const chatDetails = await apiClient.getChat(chatId);
+        const lastReadId = chatDetails.last_read_message_id;
+        
+        // 2. Загружаем сообщения вокруг last_read_message_id
+        //    Асимметричные лимиты: 24 контекста + 6 новых = 30 сообщений
+        //    Автоотметка последнего загруженного как прочитанного
+        const around = await apiClient.getChatMessagesAround(chatId, { 
+          limit: 30,  // 24 до + 6 после
+          around_id: lastReadId || undefined
+        });
+        
         const aroundMessages = around.messages || [];
 
         if (aroundMessages.length > 0) {
@@ -503,23 +685,27 @@ export default function MessageDialogPage() {
     loadMessages();
   }, [chatId, userLoading, user?.id]);
 
+  // Скролл к якорю или вниз после загрузки сообщений
+  // Anchor scroll используется при переходе по прямой ссылке на сообщение (например, из уведомления)
   useEffect(() => {
-    if (messagesLoading || !messagesViewportRef.current || messages.length === 0 || initialScrolledRef.current) return;
+    const component = messagesViewportRef.current;
+    if (messagesLoading || !component || !component.containerRef?.current || messages.length === 0 || initialScrolledRef.current) return;
 
-    const viewport = messagesViewportRef.current;
+    const viewport = component.containerRef.current;
 
+    // Если есть якорь - пытаемся к нему прокрутиться
     if (initialAnchorId) {
       const el = viewport.querySelector(`[data-message-id="${initialAnchorId}"]`) as HTMLElement | null;
       if (el) {
         el.scrollIntoView({ block: "center" });
         initialScrolledRef.current = true;
         anchorScrollAttemptsRef.current = 0;
-        // Якорь уже применили один раз — больше к нему не возвращаемся
         setInitialAnchorId(null);
         setInitialAnchorIndex(null);
         return;
       }
 
+      // Пробуем по индексу
       if (typeof initialAnchorIndex === "number" && initialAnchorIndex >= 0) {
         const children = viewport.querySelectorAll("[data-message-id]");
         const byIndex = children.item(initialAnchorIndex) as HTMLElement | null;
@@ -527,65 +713,41 @@ export default function MessageDialogPage() {
           byIndex.scrollIntoView({ block: "center" });
           initialScrolledRef.current = true;
           anchorScrollAttemptsRef.current = 0;
-          // Якорь уже применили один раз — больше к нему не возвращаемся
           setInitialAnchorId(null);
           setInitialAnchorIndex(null);
           return;
         }
       }
 
-      // На reload DOM иногда дорисовывается чуть позже — повторяем поиск якоря несколько раз
-      if (anchorScrollAttemptsRef.current < 8) {
+      // Даем DOM время на отрисовку (максимум 3 попытки вместо 8)
+      if (anchorScrollAttemptsRef.current < 3) {
         anchorScrollAttemptsRef.current += 1;
-        setTimeout(() => setAnchorRetryTick((v) => v + 1), 40);
+        setTimeout(() => setAnchorRetryTick((v) => v + 1), 50);
         return;
       }
-
-      // Если якорь не найден в текущей выборке, пробуем автоматически догрузить старые
-      if ((hasMoreOlder || allowOneOlderProbe) && anchorOlderLoadAttemptsRef.current < 3 && !loadingOlder) {
-        anchorOlderLoadAttemptsRef.current += 1;
-        loadOlderMessages();
-        setTimeout(() => setAnchorRetryTick((v) => v + 1), 60);
-        return;
-      }
-    }
-
-    viewport.scrollTop = viewport.scrollHeight;
-    initialScrolledRef.current = true;
-    anchorScrollAttemptsRef.current = 0;
-    anchorOlderLoadAttemptsRef.current = 0;
-    // Если якорь не найден и ушли в fallback вниз — очищаем якорь,
-    // чтобы последующая дозагрузка не пыталась снова скроллить к нему.
-    if (initialAnchorId || initialAnchorIndex !== null) {
+      
+      // Якорь не найден после 3 попыток - скроллим вниз
+      console.warn('Anchor not found after 3 attempts, scrolling to bottom');
       setInitialAnchorId(null);
       setInitialAnchorIndex(null);
     }
+
+    // Обычная прокрутка вниз без анимации (автоматический скролл при первой загрузке чата)
+    component.scrollToBottom('auto');
+    initialScrolledRef.current = true;
+    anchorScrollAttemptsRef.current = 0;
+    anchorOlderLoadAttemptsRef.current = 0;
   }, [
     messagesLoading,
     messages,
     initialAnchorId,
     initialAnchorIndex,
     anchorRetryTick,
-    hasMoreOlder,
-    allowOneOlderProbe,
-    loadingOlder,
   ]);
 
-  useLayoutEffect(() => {
-    const pending = prependAdjustRef.current;
-    if (!pending) return;
-
-    const vp = messagesViewportRef.current;
-    if (!vp) {
-      prependAdjustRef.current = null;
-      return;
-    }
-
-    const { prevHeight, prevTop } = pending;
-    const delta = vp.scrollHeight - prevHeight;
-    vp.scrollTop = Math.max(0, prevTop + delta);
-    prependAdjustRef.current = null;
-  }, [messages]);
+  // Удалено: prependAdjustRef useLayoutEffect
+  // ScrollableMessageList уже корректирует позицию автоматически через getSnapshotBeforeUpdate
+  // Дублирующая корректировка вызывала "подергивание" при загрузке старых сообщений
 
   const loadOlderMessages = async () => {
     if (!chatId || Number.isNaN(chatId) || loadingOlder || messagesLoading || messages.length === 0) {
@@ -597,9 +759,6 @@ export default function MessageDialogPage() {
     }
 
     const oldestMessage = messages[0];
-    const viewport = messagesViewportRef.current;
-    const prevHeight = viewport?.scrollHeight || 0;
-    const prevTop = viewport?.scrollTop || 0;
 
     try {
       setLoadingOlder(true);
@@ -610,7 +769,7 @@ export default function MessageDialogPage() {
 
       const olderMessages = response.messages || [];
       if (olderMessages.length > 0) {
-        prependAdjustRef.current = { prevHeight, prevTop };
+        // ScrollableMessageList автоматически сохранит позицию через getSnapshotBeforeUpdate
         setMessages((prev) => uniqueMessagesById([...olderMessages, ...prev]));
       }
 
@@ -636,13 +795,18 @@ export default function MessageDialogPage() {
     try {
       setLoadingNewer(true);
       const response = await apiClient.getChatMessages(chatId, {
-        limit: 40,
+        limit: 10,  // Ограничено для минимальной погрешности автоотметки (было 40)
         after_id: newestMessage.id,
       });
 
       const newerMessages = response.messages || [];
       if (newerMessages.length > 0) {
         setMessages((prev) => uniqueMessagesById([...prev, ...newerMessages]));
+        
+        // НЕ делаем автоскролл - ScrollableMessageList сам решит:
+        // - Если был внизу (sticky) → автоматически проскроллит вниз
+        // - Если был НЕ внизу → сохранит текущую позицию
+        // Это правильное поведение для дозагрузки истории
       }
 
       setHasMoreNewer(Boolean(response.has_more));
@@ -654,15 +818,20 @@ export default function MessageDialogPage() {
   };
 
   useEffect(() => {
-    const viewport = messagesViewportRef.current;
-    if (!viewport) return;
+    const component = messagesViewportRef.current;
+    if (!component || !component.containerRef?.current) return;
+    
+    const viewport = component.containerRef.current;
 
     const onScroll = () => {
-      if (viewport.scrollTop <= 120) {
+      // Загрузка старых сообщений при приближении к верху
+      if (!loadingOlder && !messagesLoading && hasMoreOlder && viewport.scrollTop <= 120) {
         loadOlderMessages();
       }
 
-      if (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 120) {
+      // Загрузка новых сообщений при приближении к низу
+      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      if (!loadingNewer && !messagesLoading && hasMoreNewer && distanceFromBottom <= 120) {
         loadNewerMessages();
       }
     };
@@ -679,6 +848,9 @@ export default function MessageDialogPage() {
     } else if (!text && attachedFiles.length === 0) {
       return;
     }
+
+    // Запоминаем позицию ДО отправки
+    const wasNearBottom = isNearBottom();
 
     try {
       setSending(true);
@@ -701,11 +873,13 @@ export default function MessageDialogPage() {
         fileInputRef.current.value = "";
       }
 
-      requestAnimationFrame(() => {
-        const viewport = messagesViewportRef.current;
-        if (!viewport) return;
-        viewport.scrollTop = viewport.scrollHeight;
-      });
+      // Автоскролл вниз ТОЛЬКО если был внизу при отправке
+      // Если читал историю вверху - не скроллим, оставляем там где был
+      if (wasNearBottom) {
+        requestAnimationFrame(() => {
+          scrollToBottom(false);
+        });
+      }
     } catch (e) {
       console.error("Ошибка отправки сообщения:", e);
     } finally {
@@ -846,8 +1020,9 @@ export default function MessageDialogPage() {
     const onGlobalWheel = (e: WheelEvent) => {
       if (e.defaultPrevented || mediaPreview) return;
 
-      const viewport = messagesViewportRef.current;
-      if (!viewport) return;
+      const component = messagesViewportRef.current;
+      if (!component || !component.containerRef?.current) return;
+      const viewport = component.containerRef.current;
 
       const target = e.target as HTMLElement | null;
       if (!target) return;
@@ -876,6 +1051,29 @@ export default function MessageDialogPage() {
         </div>
       ) : (
         <div className="min-h-0 h-full lg:sticky lg:top-22 lg:h-[calc(100dvh-7.5rem)]">
+        {/* Предупреждение о WebSocket */}
+        {!isConnected && reconnectAttempts > 2 && (
+          <div className="mb-4 rounded-2xl bg-amber-50 border border-amber-200 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900">⚠️ Real-time обновления отключены</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Backend не поддерживает WebSocket. Запустите через Daphne:
+                </p>
+                <code className="mt-2 block rounded bg-amber-100 px-2 py-1 text-xs text-amber-900">
+                  cd backend && ..\\.venv\\Scripts\\daphne -p 9000 eusrr_backend.asgi:application
+                </code>
+              </div>
+              <button
+                onClick={() => window.location.reload()}
+                className="text-xs text-amber-700 hover:text-amber-900 underline"
+              >
+                Обновить
+              </button>
+            </div>
+          </div>
+        )}
+        
         <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
           {chat ? (
             <>
@@ -889,7 +1087,13 @@ export default function MessageDialogPage() {
                     )}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{getChatTitle(chat, user?.id)}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-900">{getChatTitle(chat, user?.id)}</p>
+                      {/* Индикатор WebSocket соединения */}
+                      {isConnected && (
+                        <span className="inline-flex h-2 w-2 rounded-full bg-green-500" title="Real-time подключен"></span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500">{(chat.type || chat.chat_type) === "group" ? "Групповой чат" : "Диалог"}</p>
                   </div>
                 </div>
@@ -905,10 +1109,12 @@ export default function MessageDialogPage() {
               </header>
 
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div
+                <ScrollableMessageList
                   ref={messagesViewportRef}
-                  className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl bg-gray-50 p-4"
-                  style={{ overflowAnchor: "none" }}
+                  autoScrollToBottom={true}
+                  autoScrollToBottomOnMount={true}
+                  scrollBehavior="smooth"
+                  className="min-h-0 flex-1 rounded-xl bg-gray-50 p-4"
                 >
                   {messagesLoading ? (
                     <p className="text-center text-sm text-gray-500">Загрузка сообщений...</p>
@@ -1060,6 +1266,8 @@ export default function MessageDialogPage() {
                                                 <img
                                                   src={src}
                                                   alt={att.file_name}
+                                                  width={att.width || undefined}
+                                                  height={att.height || undefined}
                                                   className="max-h-64 w-full rounded-lg object-cover"
                                                   onError={() => {
                                                     if (hasThumbnail && !useOriginalImage[att.id]) {
@@ -1068,7 +1276,11 @@ export default function MessageDialogPage() {
                                                     }
                                                     setBrokenMedia((prev) => ({ ...prev, [att.id]: true }));
                                                   }}
-                                                  onLoad={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: false }))}
+                                                  onLoad={() => {
+                                                    setBrokenMedia((prev) => ({ ...prev, [att.id]: false }));
+                                                    // Корректируем позицию скролла после загрузки изображения
+                                                    messagesViewportRef.current?.updateScrollPosition();
+                                                  }}
                                                 />
                                                   );
                                                 })()}
@@ -1098,9 +1310,15 @@ export default function MessageDialogPage() {
                                                   playsInline
                                                   muted
                                                   src={resolveAttachmentUrl(att.file_url)}
+                                                  width={att.width || undefined}
+                                                  height={att.height || undefined}
                                                   className="max-h-64 w-full rounded-lg bg-black"
                                                   onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
-                                                  onLoadedData={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: false }))}
+                                                  onLoadedData={() => {
+                                                    setBrokenMedia((prev) => ({ ...prev, [att.id]: false }));
+                                                    // Корректируем позицию скролла после загрузки видео
+                                                    messagesViewportRef.current?.updateScrollPosition();
+                                                  }}
                                                 />
                                               </button>
                                             )
@@ -1121,7 +1339,11 @@ export default function MessageDialogPage() {
                                                 preload="metadata"
                                                 className="w-full"
                                                 onError={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: true }))}
-                                                onCanPlay={() => setBrokenMedia((prev) => ({ ...prev, [att.id]: false }))}
+                                                onCanPlay={() => {
+                                                  setBrokenMedia((prev) => ({ ...prev, [att.id]: false }));
+                                                  // Корректируем позицию скролла после загрузки аудио
+                                                  messagesViewportRef.current?.updateScrollPosition();
+                                                }}
                                               >
                                                 <source src={resolveAttachmentUrl(att.file_url)} type={att.mime_type || "audio/mpeg"} />
                                               </audio>
@@ -1179,9 +1401,21 @@ export default function MessageDialogPage() {
                       })}
                     </div>
                   )}
-                </div>
+                </ScrollableMessageList>
 
                 <div className="mt-3 shrink-0 border-t border-gray-100 bg-white pt-3">
+                  {/* Индикатор "печатает..." */}
+                  {isTyping && (
+                    <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 italic">
+                      <div className="flex gap-1">
+                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0ms' }}></span>
+                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '150ms' }}></span>
+                        <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '300ms' }}></span>
+                      </div>
+                      <span>Собеседник печатает...</span>
+                    </div>
+                  )}
+
                   {editingMessageId ? (
                     <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                       <div className="min-w-0">
@@ -1289,7 +1523,11 @@ export default function MessageDialogPage() {
                     <textarea
                       ref={messageInputRef}
                       value={messageText}
-                      onChange={(e) => setMessageText(e.target.value)}
+                      onChange={(e) => {
+                        setMessageText(e.target.value);
+                        // Отправляем индикатор "печатает..."
+                        sendTyping();
+                      }}
                       onClick={() => setShowComposerEmojiPicker(false)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
