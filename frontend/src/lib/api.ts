@@ -530,6 +530,24 @@ class ApiClient {
         });
     }
 
+    async updateRule(ruleId: number, data: {
+        name: string;
+        description?: string;
+        frequency: string;
+        params?: any;
+    }): Promise<any> {
+        // Сериализуем params в JSON-строку для django-scheduler
+        const payload = {
+            ...data,
+            params: data.params ? JSON.stringify(data.params) : '{}',
+        };
+        
+        return this.request(`/api/v1/schedule/rules/${ruleId}/`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+    }
+
     async getRules(): Promise<any> {
         return this.request('/api/v1/schedule/rules/');
     }
