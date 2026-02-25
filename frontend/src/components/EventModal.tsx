@@ -42,7 +42,7 @@ export function EventModal({
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [addingParticipants, setAddingParticipants] = useState(false);
   const [pendingParticipantIds, setPendingParticipantIds] = useState<number[]>([]);
-  
+
   // Ref для отслеживания, был ли уже выполнен авто-выбор дня (чтобы не перезаписывать выбор пользователя)
   const autoWeekdaySetRef = useRef(false);
 
@@ -59,13 +59,13 @@ export function EventModal({
     if (autoWeekdaySetRef.current) {
       return;
     }
-    
+
     if (editingEvent?.frequency === 'WEEKLY' && editingEvent?.start) {
       const startDate = new Date(editingEvent.start);
       const startDay = startDate.getDay();
       // Конвертируем: JS (0=Вс, 1=Пн...) -> наш формат (0=Пн, 6=Вс)
       const dayIndex = startDay === 0 ? 6 : startDay - 1;
-      
+
       // Если дни недели еще не выбраны - добавляем день начала
       const normalizedByweekday = normalizeByweekday(editingEvent.byweekday);
       if (normalizedByweekday.length === 0) {
@@ -84,14 +84,14 @@ export function EventModal({
   useEffect(() => {
     if (isOpen && event) {
       // Инициализируем все boolean поля дефолтными значениями
-      // Определяем repeatMode: 'until' | 'count' | 'forever'
-      let repeatMode = 'until';
+      // Определяем repeatMode: 'count' | 'forever'
+      let repeatMode = 'count';
       if (event.count) {
         repeatMode = 'count';
       } else if (!event.end_recurring_period && event.isRecurring) {
         repeatMode = 'forever';
       }
-      
+
       setEditingEvent({
         ...event,
         isRecurring: event.isRecurring ?? false,
@@ -165,9 +165,9 @@ export function EventModal({
     const firstOccurrence = new Date(startDate);
     firstOccurrence.setDate(firstOccurrence.getDate() + daysToAdd);
 
-    return firstOccurrence.toLocaleDateString('ru-RU', { 
-      day: 'numeric', 
-      month: 'long', 
+    return firstOccurrence.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
       year: 'numeric',
       weekday: 'short'
     });
@@ -189,17 +189,17 @@ export function EventModal({
     try {
       const rule = await apiClient.getRule(ruleId);
       setRuleDetails(rule);
-      
+
       // Заполняем поля редактирования параметрами из загруженного правила
       setEditingEvent((prev: any) => {
         // Определяем repeatMode на основе параметров правила
-        let repeatMode: 'until' | 'count' | 'forever' = 'until';
+        let repeatMode: 'count' | 'forever' = 'count';
         if (rule.params?.count) {
           repeatMode = 'count';
         } else if (!prev.end_recurring_period) {
           repeatMode = 'forever';
         }
-        
+
         return {
           ...prev,
           isRecurring: true,
@@ -330,13 +330,6 @@ export function EventModal({
         color_event: editingEvent.color_event || '#3498db',
         rule: ruleId,
       };
-
-      // Добавляем end_recurring_period только для повторяющихся событий с режимом 'until'
-      if (editingEvent.isRecurring && editingEvent.repeatMode === 'until' && editingEvent.end_recurring_period) {
-        const endDate = new Date(editingEvent.end_recurring_period);
-        endDate.setHours(23, 59, 59, 999);
-        eventData.end_recurring_period = endDate.toISOString();
-      }
 
       if (editingEvent.id) {
         await apiClient.updateEvent(editingEvent.id, eventData);
@@ -493,10 +486,8 @@ export function EventModal({
                       isRecurring: e.target.checked,
                       frequency: e.target.checked ? 'WEEKLY' : undefined,
                       interval: e.target.checked ? 1 : undefined,
-                      repeatMode: e.target.checked ? 'until' : undefined,
-                      end_recurring_period: e.target.checked && !editingEvent.end_recurring_period
-                        ? new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString().slice(0, 10)
-                        : editingEvent.end_recurring_period
+                      repeatMode: e.target.checked ? 'count' : undefined,
+                      count: e.target.checked ? 10 : undefined
                     })}
                     className="h-4 w-4 rounded border-gray-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
                   />
@@ -607,15 +598,6 @@ export function EventModal({
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
-                          checked={editingEvent.repeatMode === 'until'}
-                          onChange={() => setEditingEvent({ ...editingEvent, repeatMode: 'until', count: undefined })}
-                          className="h-4 w-4 text-sky-500 focus:ring-sky-500"
-                        />
-                        <span className="text-sm text-gray-700">До даты</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
                           checked={editingEvent.repeatMode === 'count'}
                           onChange={() => setEditingEvent({ ...editingEvent, repeatMode: 'count', end_recurring_period: undefined })}
                           className="h-4 w-4 text-sky-500 focus:ring-sky-500"
@@ -642,14 +624,6 @@ export function EventModal({
                         onChange={(e) => setEditingEvent({ ...editingEvent, count: parseInt(e.target.value) })}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                         placeholder="Количество повторений"
-                      />
-                    ) : editingEvent.repeatMode === 'until' ? (
-                      <input
-                        type="date"
-                        value={editingEvent.end_recurring_period || ''}
-                        onChange={(e) => setEditingEvent({ ...editingEvent, end_recurring_period: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                        min={new Date().toISOString().slice(0, 10)}
                       />
                     ) : (
                       <p className="text-xs text-gray-500 italic">
