@@ -129,13 +129,9 @@ class ChatListView(LoginRequiredMixin, ListView):
             .values("created_at")
             .order_by("-created_at")[:1]
         )
-        last_read_qs = ChatReadState.objects.filter(
+        last_read_msg_qs = ChatReadState.objects.filter(
             chat=models.OuterRef("pk"), user=user
-        ).values("last_read_at")[:1]
-
-        default_dt = timezone.make_aware(
-            datetime.datetime(1970, 1, 1), timezone.get_current_timezone()
-        ).astimezone(dt_tz.utc)
+        ).values("last_read_message_id")[:1]
 
         # Получаем ID чатов, где пользователь является участником
         # через membership
@@ -166,17 +162,17 @@ class ChatListView(LoginRequiredMixin, ListView):
             .select_related("department", "created_by", "blocked_by")
             .annotate(last_msg_at=Subquery(last_qs))
             .annotate(
-                last_read_at=Coalesce(
-                    Subquery(last_read_qs),
-                    Value(default_dt, output_field=models.DateTimeField()),
-                    output_field=models.DateTimeField(),
+                last_read_msg_id=Coalesce(
+                    Subquery(last_read_msg_qs),
+                    Value(0, output_field=models.IntegerField()),
+                    output_field=models.IntegerField(),
                 )
             )
             .annotate(
-                # считаем только чужие сообщения после last_read_at
+                # Считаем только чужие сообщения с ID больше last_read_message_id
                 unread_count=Count(
                     "messages",
-                    filter=Q(messages__created_at__gt=F("last_read_at"))
+                    filter=Q(messages__id__gt=F("last_read_msg_id"))
                     & ~Q(messages__author=user),
                     distinct=True,
                 )
@@ -330,37 +326,29 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         context["form"] = context.get("form", MessageForm())
         context["participants"] = chat.get_participants
 
-        # отдаём клиенту last_read_at и «первое непрочитанное»
+        # Получаем last_read_message_id для определения непрочитанных (Telegram-style)
         read_state = (
             ChatReadState.objects.filter(chat=chat, user=user)
-            .only("last_read_at", "last_read_message_id")
+            .only("last_read_message_id")
             .first()
-        )
-        last_read_at = (
-            read_state.last_read_at
-            if read_state and read_state.last_read_at
-            else None
         )
         last_read_message_id = (
             read_state.last_read_message_id
             if read_state and read_state.last_read_message_id
             else None
         )
-        context["last_read_at"] = last_read_at
         context["last_read_message_id"] = last_read_message_id
 
         # Передаем last_read_message_id в chat объект для data-атрибута
         chat.last_read_message_id = last_read_message_id
-        chat.last_read_timestamp = (
-            int(last_read_at.timestamp() * 1000) if last_read_at else 0
-        )
 
         first_unread = None
-        if last_read_at:
+        if last_read_message_id:
+            # Первое непрочитанное = сообщение с ID > last_read_message_id
             first_unread = (
                 chat.messages.exclude(author=user)
-                .filter(created_at__gt=last_read_at)
-                .order_by("created_at")
+                .filter(id__gt=last_read_message_id)
+                .order_by("id")
                 .only("id", "created_at")
                 .first()
             )
@@ -368,10 +356,6 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         if first_unread:
             context["unread_from_ts"] = int(
                 first_unread.created_at.timestamp() * 1000
-            )
-        elif last_read_at:
-            context["unread_from_ts"] = (
-                int(last_read_at.timestamp() * 1000) + 1
             )
         else:
             context["unread_from_ts"] = None
@@ -429,20 +413,17 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
             msg.author = user
             msg.save()
 
-            # автору сразу «прочитано» — делаем безопасно
-            ts = msg.created_at
-            updated = ChatReadState.objects.filter(
-                chat=chat, user=user, last_read_at__lt=ts
-            ).update(last_read_at=ts)
-            if not updated:
-                try:
-                    ChatReadState.objects.create(
-                        chat=chat, user=user, last_read_at=ts
-                    )
-                except IntegrityError:
-                    ChatReadState.objects.filter(
-                        chat=chat, user=user, last_read_at__lt=ts
-                    ).update(last_read_at=ts)
+            # Автоматически отмечаем свое сообщение как прочитанное (Telegram-style)
+            read_state, created = ChatReadState.objects.get_or_create(
+                chat=chat,
+                user=user,
+                defaults={'last_read_message': msg}
+            )
+            if not created:
+                # Обновляем только если новое сообщение НОВЕЕ
+                if not read_state.last_read_message_id or msg.id > read_state.last_read_message_id:
+                    read_state.last_read_message = msg
+                    read_state.save(update_fields=['last_read_message', 'updated_at'])
 
             return redirect(self.get_success_url())
         return self.render_to_response(self.get_context_data(form=form))

@@ -17,7 +17,8 @@ import logging
 from datetime import datetime, timezone as dt_tz
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q, Count, Prefetch, Exists, OuterRef
+from django.db.models import Q, Count, Prefetch, Exists, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -58,9 +59,14 @@ class ChatViewSet(viewsets.ModelViewSet):
     Actions:
     - pin: POST /api/v1/communications/chats/{id}/pin/ - закрепить/открепить
     - notifications: POST /api/v1/communications/chats/{id}/notifications/ - вкл/выкл уведомления
-    - messages: GET /api/v1/communications/chats/{id}/messages/ - список сообщений
-    - messages_around: GET /api/v1/communications/chats/{id}/messages_around/ - сообщения вокруг
-    - mark_read: POST /api/v1/communications/chats/{id}/mark_read/ - пометить как прочитанное
+    - messages: GET /api/v1/communications/chats/{id}/messages/ - список сообщений (автоотметка)
+    - messages_around: GET /api/v1/communications/chats/{id}/messages_around/ - сообщения вокруг (автоотметка)
+    - mark_read: POST /api/v1/communications/chats/{id}/mark_read/ - [DEPRECATED] используйте GET /messages/
+    
+    Автоматическая отметка прочитанных (Telegram-style):
+    При любой загрузке сообщений (messages, messages_around) последнее загруженное
+    сообщение автоматически отмечается как прочитанное через last_read_message_id.
+    Ручной вызов /mark-read/ больше не требуется.
     """
     
     permission_classes = [IsAuthenticated]
@@ -74,16 +80,17 @@ class ChatViewSet(viewsets.ModelViewSet):
         """Чаты доступные пользователю с аннотацией непрочитанных"""
         user = self.request.user
         
-        # Подзапрос для последнего прочитанного времени
+        # Подзапрос для last_read_message_id (Telegram-style)
         read_state_subq = ChatReadState.objects.filter(
             chat=OuterRef('pk'),
             user=user
-        ).values('last_read_at')[:1]
+        ).values('last_read_message_id')[:1]
         
         # Подзапрос для количества непрочитанных
+        # Считаем сообщения с ID больше последнего прочитанного
         unread_count_subq = Message.objects.filter(
             chat=OuterRef('pk'),
-            created_at__gt=read_state_subq,
+            id__gt=Coalesce(Subquery(read_state_subq), 0),
             is_deleted=False
         ).exclude(author=user).values('chat').annotate(
             count=Count('id')
@@ -157,6 +164,52 @@ class ChatViewSet(viewsets.ModelViewSet):
             'notifications_enabled': settings.notifications_enabled
         })
     
+    def _auto_mark_read(self, chat, user, messages):
+        """
+        Автоматически отмечает последнее загруженное сообщение как прочитанное.
+        Pragmatic подход: "загрузил = прочитал" с ограничением количества новых сообщений.
+        
+        Защита от откатов: обновляет только если новое сообщение НОВЕЕ текущего.
+        """
+        if not messages:
+            return
+        
+        last_message = messages[-1]
+        
+        read_state, created = ChatReadState.objects.get_or_create(
+            chat=chat,
+            user=user,
+            defaults={'last_read_message': last_message}
+        )
+        
+        if created:
+            logger.info(f"[auto_mark_read] Created: user={user.id}, chat={chat.id}, msg={last_message.id}")
+            self._send_marked_read_event(user.id, chat.id, last_message.id)
+            return
+        
+        # Защита от откатов: только если НОВЕЕ
+        if read_state.last_read_message_id and last_message.id <= read_state.last_read_message_id:
+            logger.debug(f"[auto_mark_read] Skip: {last_message.id} <= {read_state.last_read_message_id}")
+            return
+        
+        read_state.last_read_message = last_message
+        read_state.save(update_fields=['last_read_message', 'updated_at'])
+        
+        logger.info(f"[auto_mark_read] Updated: user={user.id}, chat={chat.id}, msg={last_message.id}")
+        self._send_marked_read_event(user.id, chat.id, last_message.id)
+    
+    def _send_marked_read_event(self, user_id, chat_id, message_id):
+        """WebSocket событие для синхронизации между вкладками"""
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'user_{user_id}',
+            {
+                'type': 'chat_marked_read',
+                'chat_id': chat_id,
+                'last_read_message_id': message_id
+            }
+        )
+    
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
         """Загрузка сообщений чата (пагинация по времени)"""
@@ -222,6 +275,11 @@ class ChatViewSet(viewsets.ModelViewSet):
         if not (after_id or after_ts):
             messages.reverse()
         
+        # Автоотметка при загрузке НОВЫХ сообщений (after_id/after_ts)
+        # При scroll вверх (before_id) - не отмечаем
+        if (after_id or after_ts) and messages:
+            self._auto_mark_read(chat, request.user, messages)
+        
         return Response({
             'messages': [serialize_message(m) for m in messages],
             'has_more': has_more
@@ -229,7 +287,16 @@ class ChatViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='messages-around')
     def messages_around(self, request, pk=None):
-        """Загрузка сообщений вокруг указанного"""
+        """
+        Загрузка сообщений вокруг указанного (last_read_message_id).
+        
+        Асимметричная загрузка для браузерных приложений:
+        - 24 сообщения ДО (контекст прочитанных)
+        - 6 сообщений ПОСЛЕ (новые непрочитанные)
+        
+        Автоматическая отметка последнего загруженного как прочитанного.
+        Погрешность: макс 1-2 невидимых сообщения (приемлемо для веб).
+        """
         chat = self.get_object()
         
         if not user_can_access_chat(chat, request.user):
@@ -239,8 +306,16 @@ class ChatViewSet(viewsets.ModelViewSet):
             )
         
         around_id = request.query_params.get('around_id')
-        limit = min(int(request.query_params.get('limit', 30)), 100)
-        half = limit // 2
+        
+        # Асимметричные лимиты (24 + 6 = 30 сообщений)
+        before_limit = int(request.query_params.get('before_limit', 24))
+        after_limit = int(request.query_params.get('after_limit', 6))
+        
+        # Для обратной совместимости с limit параметром
+        if 'limit' in request.query_params and 'before_limit' not in request.query_params:
+            total_limit = min(int(request.query_params.get('limit', 30)), 100)
+            before_limit = int(total_limit * 0.8)  # 80% на контекст
+            after_limit = total_limit - before_limit  # 20% на новые
         
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
@@ -259,8 +334,15 @@ class ChatViewSet(viewsets.ModelViewSet):
         
         # Если все еще нет around_id - возвращаем последние сообщения
         if not around_id:
-            messages = list(queryset.order_by('-created_at')[:limit])
+            fallback_limit = before_limit + after_limit
+            messages = list(queryset.order_by('-created_at')[:fallback_limit])
             messages.reverse()
+            
+            # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read
+            # Frontend при следующей загрузке запросит вокруг ЭТОГО сообщения
+            if messages:
+                self._auto_mark_read(chat, request.user, messages)
+            
             return Response({
                 'messages': [serialize_message(m) for m in messages],
                 'messages_count': len(messages),
@@ -304,8 +386,15 @@ class ChatViewSet(viewsets.ModelViewSet):
         
         if not anchor_msg:
             # Если не найдено - возвращаем последние сообщения
-            messages = list(queryset.order_by('-created_at')[:limit])
+            fallback_limit = before_limit + after_limit
+            messages = list(queryset.order_by('-created_at')[:fallback_limit])
             messages.reverse()
+            
+            # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read
+            # Frontend при следующей загрузке запросит вокруг ЭТОГО сообщения
+            if messages:
+                self._auto_mark_read(chat, request.user, messages)
+            
             return Response({
                 'messages': [serialize_message(m) for m in messages],
                 'messages_count': len(messages),
@@ -313,127 +402,111 @@ class ChatViewSet(viewsets.ModelViewSet):
                 'anchor_index': 0
             })
         
-        # Загружаем половину до и половину после
+        # Асимметричная загрузка: больше контекста, меньше новых
         before = list(queryset.filter(
             created_at__lt=anchor_msg.created_at
-        ).order_by('-created_at')[:half])
+        ).order_by('-created_at')[:before_limit])
         before.reverse()
         
         after = list(queryset.filter(
             created_at__gte=anchor_msg.created_at
-        ).order_by('created_at')[:half+1])
+        ).order_by('created_at')[:after_limit + 1])  # +1 для включения anchor
         
         messages = before + after
         anchor_index = len(before)
         
+        # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read (24 контекста + 6 новых)
+        # Frontend при следующей загрузке запросит вокруг последнего из ЭТИХ сообщений
+        # НЕ отмечается последнее в чате, а последнее из того что мы загрузили!
+        if messages:
+            self._auto_mark_read(chat, request.user, messages)
+        
         return Response({
             'messages': [serialize_message(m) for m in messages],
             'messages_count': len(messages),
-            'anchor_id': anchor_msg.id,  # Возвращаем реальный message_id
+            'anchor_id': anchor_msg.id,
             'anchor_index': anchor_index,
-            'has_more_before': len(before) >= half,
-            'has_more_after': len(after) > half
+            'has_more_before': len(before) >= before_limit,
+            'has_more_after': len(after) > after_limit
         })
     
     @action(detail=True, methods=['post'], url_path='mark-read')
     def mark_read(self, request, pk=None):
         """
-        Пометить чат как прочитанный
+        Ручная отметка прочитанных сообщений (опционально).
+        
+        Обычно используется автоматическая отметка при GET /messages-around/.
+        Этот endpoint полезен для точной отметки через IntersectionObserver.
         
         Параметры:
-        - upto_ts: timestamp последнего прочитанного сообщения (опционально)
-        - message_id: ID последнего прочитанного сообщения (опционально)
+        - message_id: ID последнего прочитанного сообщения (рекомендуется)
+        - upto_ts: timestamp (legacy, используйте message_id)
         """
         chat = self.get_object()
         
-        logger.info(f"[mark_read] User {request.user.id} marking chat {chat.id} as read")
-        logger.info(f"[mark_read] Request data: {request.data}")
+        logger.info(f"[mark_read] Manual mark by user {request.user.id} for chat {chat.id}")
         
-        read_state, created = ChatReadState.objects.get_or_create(
-            chat=chat,
-            user=request.user
-        )
-        
-        logger.info(f"[mark_read] ReadState {'created' if created else 'found'}: last_read_at={read_state.last_read_at}, last_read_message_id={read_state.last_read_message_id}")
-        
-        # Обновляем timestamp
-        upto_ts = request.data.get('upto_ts')
-        new_timestamp = None
-        
-        if upto_ts:
-            try:
-                # Конвертируем timestamp (может быть в миллисекундах)
-                ts_value = float(upto_ts)
-                if ts_value > 10000000000:  # Timestamp в миллисекундах
-                    ts_value = ts_value / 1000
-                new_timestamp = datetime.fromtimestamp(ts_value, tz=dt_tz.utc)
-                logger.info(f"[mark_read] Parsed timestamp: {new_timestamp}")
-            except (ValueError, OSError) as e:
-                new_timestamp = timezone.now()
-                logger.warning(f"[mark_read] Invalid timestamp, using now: {e}")
-        else:
-            new_timestamp = timezone.now()
-            logger.info(f"[mark_read] No timestamp provided, using now: {new_timestamp}")
-        
-        # Проверка: не откатываем назад
-        if read_state.last_read_at and new_timestamp <= read_state.last_read_at:
-            logger.warning(f"[mark_read] SKIPPING - new timestamp {new_timestamp} is not newer than current {read_state.last_read_at}")
-            return Response({
-                'ok': True,
-                'last_read_at': read_state.last_read_at.isoformat() if read_state.last_read_at else None,
-                'last_read_message_id': read_state.last_read_message_id,
-                'skipped': True,
-                'reason': 'timestamp_not_newer'
-            })
-        
-        # Обновляем только если новее
-        read_state.last_read_at = new_timestamp
-        logger.info(f"[mark_read] Updated last_read_at to: {read_state.last_read_at}")
-        
-        # Обновляем last_read_message если передан message_id
+        # Основная логика: поддерживаем message_id
         message_id = request.data.get('message_id')
+        
         if message_id:
             try:
-                message = chat.messages.get(pk=int(message_id))
-                read_state.last_read_message = message
-                logger.info(f"[mark_read] Set last_read_message from request: {message.id}")
+                message = chat.messages.get(pk=int(message_id), is_deleted=False)
+                
+                # Используем новую логику через _auto_mark_read
+                self._auto_mark_read(chat, request.user, [message])
+                
+                return Response({
+                    'ok': True,
+                    'last_read_message_id': message.id
+                })
             except (Message.DoesNotExist, ValueError) as e:
-                logger.warning(f"[mark_read] Could not find message {message_id}: {e}")
-        else:
-            # Если не передан явно, находим последнее сообщение до указанного времени
-            if read_state.last_read_at:
+                logger.error(f"[mark_read] Invalid message_id {message_id}: {e}")
+                return Response(
+                    {'error': f'Message {message_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Fallback: если передан upto_ts (старая логика)
+        upto_ts = request.data.get('upto_ts')
+        if upto_ts:
+            try:
+                ts_value = float(upto_ts)
+                if ts_value > 10000000000:
+                    ts_value = ts_value / 1000
+                timestamp = datetime.fromtimestamp(ts_value, tz=dt_tz.utc)
+                
+                # Находим последнее сообщение до этого времени
                 last_msg = chat.messages.filter(
-                    created_at__lte=read_state.last_read_at,
+                    created_at__lte=timestamp,
                     is_deleted=False
                 ).order_by('-created_at').first()
+                
                 if last_msg:
-                    read_state.last_read_message = last_msg
-                    logger.info(f"[mark_read] Auto-detected last_read_message: {last_msg.id}")
+                    self._auto_mark_read(chat, request.user, [last_msg])
+                    return Response({
+                        'ok': True,
+                        'last_read_message_id': last_msg.id,
+                        'deprecated': True,
+                        'message': 'Using upto_ts is deprecated. Use message_id instead.'
+                    })
                 else:
-                    logger.warning(f"[mark_read] No messages found before {read_state.last_read_at}")
+                    return Response(
+                        {'error': 'No messages found before specified timestamp'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            except (ValueError, OSError) as e:
+                logger.error(f"[mark_read] Invalid timestamp: {e}")
+                return Response(
+                    {'error': 'Invalid timestamp format'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         
-        read_state.save()
-        
-        logger.info(f"[mark_read] SAVED ReadState: chat={chat.id}, user={request.user.id}, last_read_at={read_state.last_read_at}, last_read_message_id={read_state.last_read_message_id}")
-        
-        # Отправляем WebSocket событие для синхронизации между вкладками
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f'user_{request.user.id}',
-            {
-                'type': 'chat_marked_read',
-                'chat_id': chat.id,
-                'last_read_at': read_state.last_read_at.isoformat() if read_state.last_read_at else None,
-                'last_read_message_id': read_state.last_read_message_id,
-            }
+        # Ни message_id ни upto_ts не переданы
+        return Response(
+            {'error': 'Either message_id or upto_ts required'},
+            status=status.HTTP_400_BAD_REQUEST
         )
-        logger.info(f"[mark_read] Sent WebSocket event: chat_marked_read for chat {chat.id}")
-        
-        return Response({
-            'ok': True,
-            'last_read_at': read_state.last_read_at.isoformat() if read_state.last_read_at else None,
-            'last_read_message_id': read_state.last_read_message_id
-        })
 
 
 class MessageViewSet(viewsets.ModelViewSet):
