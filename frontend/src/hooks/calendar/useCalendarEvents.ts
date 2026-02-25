@@ -1,0 +1,95 @@
+/**
+ * Хук для загрузки событий календаря
+ * Обрабатывает кэширование, загрузку и ошибки
+ */
+
+import { useEffect, useState, useRef } from "react";
+import { calendarService, type CalendarEvent, startOfWeekMonday } from "@/services/calendarService";
+
+interface UseCalendarEventsOptions {
+  monthDate: Date;
+  selectedCalendarId: number | null;
+  eventsRefreshTrigger: number;
+  onEventsLoaded?: (events: CalendarEvent[]) => void;
+}
+
+interface UseCalendarEventsResult {
+  events: CalendarEvent[];
+  loading: boolean;
+  error: string | null;
+}
+
+export function useCalendarEvents({
+  monthDate,
+  selectedCalendarId,
+  eventsRefreshTrigger,
+  onEventsLoaded,
+}: UseCalendarEventsOptions): UseCalendarEventsResult {
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loadingRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Вычисляем диапазон дат для загрузки
+    const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+    const weekStart = startOfWeekMonday(new Date());
+    const weekEndExclusive = new Date(weekStart);
+    weekEndExclusive.setDate(weekEndExclusive.getDate() + 7);
+
+    // Расширяем диапазон для включения текущей недели
+    const fetchStart = weekStart < start ? weekStart : start;
+    const fetchEnd = weekEndExclusive > end ? weekEndExclusive : end;
+
+    async function loadEvents() {
+      // Защита от множественных одновременных запросов
+      if (loadingRef.current) return;
+      loadingRef.current = true;
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const loadedEvents = await calendarService.loadEvents(
+          fetchStart,
+          fetchEnd,
+          selectedCalendarId,
+          eventsRefreshTrigger
+        );
+
+        if (!cancelled) {
+          setEvents(loadedEvents);
+          onEventsLoaded?.(loadedEvents);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : String(err || "");
+          const isNetworkLike = message === "NetworkError" || /fetch failed/i.test(message);
+          
+          if (!isNetworkLike) {
+            console.error("Ошибка загрузки событий календаря:", err);
+          }
+          
+          setError("Не удалось загрузить события");
+          setEvents([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          loadingRef.current = false;
+        }
+      }
+    }
+
+    loadEvents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [monthDate, selectedCalendarId, eventsRefreshTrigger, onEventsLoaded]);
+
+  return { events, loading, error };
+}
