@@ -30,12 +30,12 @@ export function ViewDayEventsModal({
     const eventStart = new Date(event.start);
     const eventEnd = new Date(event.end);
     const selectedDay = new Date(date);
-    
+
     // Сбрасываем время для корректного сравнения дат
     eventStart.setHours(0, 0, 0, 0);
     eventEnd.setHours(0, 0, 0, 0);
     selectedDay.setHours(0, 0, 0, 0);
-    
+
     // Проверяем, попадает ли selectedDay в диапазон [eventStart, eventEnd]
     return selectedDay >= eventStart && selectedDay <= eventEnd;
   });
@@ -100,7 +100,7 @@ export function ViewDayEventsModal({
                         </h4>
                         {event.rule && (
                           <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
-                            🔁
+                            ⟲
                           </span>
                         )}
                       </div>

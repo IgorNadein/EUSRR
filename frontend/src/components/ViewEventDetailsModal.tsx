@@ -37,6 +37,17 @@ const WEEKDAY_LABELS: Record<number, string> = {
   6: "ВС",
 };
 
+// Нормализация byweekday в массив чисел
+function normalizeByweekday(byweekday: any): number[] {
+  if (!byweekday) return [];
+  if (Array.isArray(byweekday)) return byweekday;
+  if (typeof byweekday === 'string') {
+    return byweekday.split(',').map(d => parseInt(d.trim(), 10)).filter(n => !isNaN(n));
+  }
+  if (typeof byweekday === 'number') return [byweekday];
+  return [];
+}
+
 export function ViewEventDetailsModal({
   isOpen,
   onClose,
@@ -97,7 +108,7 @@ export function ViewEventDetailsModal({
               </h3>
               {event.rule && (
                 <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
-                  🔁
+                  ⟲
                 </span>
               )}
             </div>
@@ -146,7 +157,7 @@ export function ViewEventDetailsModal({
                 {event.rule_data.params?.byweekday && (
                   <div>
                     Дни недели: <span className="font-medium">
-                      {event.rule_data.params.byweekday.map((day: number) => WEEKDAY_LABELS[day]).join(", ")}
+                      {normalizeByweekday(event.rule_data.params.byweekday).map((day: number) => WEEKDAY_LABELS[day]).join(", ")}
                     </span>
                   </div>
                 )}
@@ -161,9 +172,7 @@ export function ViewEventDetailsModal({
                   </div>
                 )}
               </div>
-              <div className="text-xs text-blue-600 mt-2">
-                💡 Редактирование параметров повторения пока не поддерживается
-              </div>
+
             </div>
           )}
 

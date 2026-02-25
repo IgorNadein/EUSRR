@@ -4,6 +4,17 @@ import { useState, useEffect, useRef } from "react";
 import { X, Trash2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
+// Нормализация byweekday в массив чисел
+function normalizeByweekday(byweekday: any): number[] {
+  if (!byweekday) return [];
+  if (Array.isArray(byweekday)) return byweekday;
+  if (typeof byweekday === 'string') {
+    return byweekday.split(',').map(d => parseInt(d.trim(), 10)).filter(n => !isNaN(n));
+  }
+  if (typeof byweekday === 'number') return [byweekday];
+  return [];
+}
+
 interface EventModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -56,7 +67,8 @@ export function EventModal({
       const dayIndex = startDay === 0 ? 6 : startDay - 1;
       
       // Если дни недели еще не выбраны - добавляем день начала
-      if (!editingEvent.byweekday || editingEvent.byweekday.length === 0) {
+      const normalizedByweekday = normalizeByweekday(editingEvent.byweekday);
+      if (normalizedByweekday.length === 0) {
         setEditingEvent((prev: any) => ({
           ...prev,
           byweekday: [dayIndex]
@@ -123,7 +135,8 @@ export function EventModal({
 
   // Вычисляет дату первого вхождения еженедельного события
   const getFirstOccurrenceDate = (): string | null => {
-    if (editingEvent?.frequency !== 'WEEKLY' || !editingEvent?.start || !editingEvent?.byweekday || editingEvent.byweekday.length === 0) {
+    const normalizedByweekday = normalizeByweekday(editingEvent?.byweekday);
+    if (editingEvent?.frequency !== 'WEEKLY' || !editingEvent?.start || normalizedByweekday.length === 0) {
       return null;
     }
 
@@ -132,12 +145,12 @@ export function EventModal({
     const startDayIndex = startDay === 0 ? 6 : startDay - 1;
 
     // Если день начала выбран - первое вхождение это сам день начала
-    if (editingEvent.byweekday.includes(startDayIndex)) {
+    if (normalizedByweekday.includes(startDayIndex)) {
       return null; // Не показываем подсказку
     }
 
     // Ищем ближайший выбранный день недели
-    const sortedDays = [...editingEvent.byweekday].sort((a, b) => a - b);
+    const sortedDays = [...normalizedByweekday].sort((a, b) => a - b);
     let daysToAdd = 0;
 
     // Ищем день после startDayIndex
@@ -192,7 +205,7 @@ export function EventModal({
           isRecurring: true,
           frequency: rule.frequency,
           interval: rule.params?.interval || 1,
-          byweekday: rule.params?.byweekday || [],
+          byweekday: normalizeByweekday(rule.params?.byweekday),
           count: rule.params?.count || undefined,
           repeatMode,
         };
@@ -265,29 +278,43 @@ export function EventModal({
       setSaving(true);
       let ruleId = editingEvent.rule || null;
 
-      // Если это повторяющееся событие и у него нет Rule - создаем правило
-      if (editingEvent.isRecurring && !ruleId) {
+      // Если убрали галочку "Повторяющееся событие" - сбрасываем rule
+      if (!editingEvent.isRecurring && editingEvent.id && editingEvent.rule) {
+        ruleId = null;
+      }
+
+      // Если это повторяющееся событие - создаем или обновляем правило
+      if (editingEvent.isRecurring) {
         const params: any = {
           interval: editingEvent.interval || 1,
         };
 
         // Добавляем byweekday для еженедельных событий
-        if (editingEvent.frequency === 'WEEKLY' && editingEvent.byweekday && editingEvent.byweekday.length > 0) {
-          params.byweekday = editingEvent.byweekday;
+        const normalizedByweekday = normalizeByweekday(editingEvent.byweekday);
+        if (editingEvent.frequency === 'WEEKLY' && normalizedByweekday.length > 0) {
+          params.byweekday = normalizedByweekday;
         }
 
-        // Добавляем count если выбран этот вариант
-        if (editingEvent.useCount && editingEvent.count) {
+        // Добавляем count если выбран режим "Количество раз"
+        if (editingEvent.repeatMode === 'count' && editingEvent.count) {
           params.count = editingEvent.count;
         }
 
-        const rule = await apiClient.createRule({
+        const ruleData = {
           name: `Rule for ${editingEvent.title}`,
           description: `Recurring rule for ${editingEvent.title}`,
           frequency: editingEvent.frequency || 'WEEKLY',
           params,
-        });
-        ruleId = rule.id;
+        };
+
+        if (ruleId) {
+          // Обновляем существующее правило
+          await apiClient.updateRule(ruleId, ruleData);
+        } else {
+          // Создаем новое правило
+          const rule = await apiClient.createRule(ruleData);
+          ruleId = rule.id;
+        }
       }
 
       const eventData: any = {
@@ -304,8 +331,8 @@ export function EventModal({
         rule: ruleId,
       };
 
-      // Добавляем end_recurring_period только для повторяющихся событий (если не используется count)
-      if (editingEvent.isRecurring && !editingEvent.useCount && editingEvent.end_recurring_period) {
+      // Добавляем end_recurring_period только для повторяющихся событий с режимом 'until'
+      if (editingEvent.isRecurring && editingEvent.repeatMode === 'until' && editingEvent.end_recurring_period) {
         const endDate = new Date(editingEvent.end_recurring_period);
         endDate.setHours(23, 59, 59, 999);
         eventData.end_recurring_period = endDate.toISOString();
@@ -532,14 +559,14 @@ export function EventModal({
                           { value: 5, label: 'СБ' },
                           { value: 6, label: 'ВС' },
                         ].map((day) => {
-                          const byweekday = editingEvent.byweekday || [];
+                          const byweekday = normalizeByweekday(editingEvent.byweekday);
                           const isSelected = byweekday.includes(day.value);
                           return (
                             <button
                               key={day.value}
                               type="button"
                               onClick={() => {
-                                const current = editingEvent.byweekday || [];
+                                const current = normalizeByweekday(editingEvent.byweekday);
                                 const updated = isSelected
                                   ? current.filter((d: number) => d !== day.value)
                                   : [...current, day.value].sort();
