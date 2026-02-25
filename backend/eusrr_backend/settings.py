@@ -19,7 +19,8 @@ def _split_env_list(value: str) -> list[str]:
     return [x.strip() for x in (value or "").split(",") if x.strip()]
 
 
-ALLOWED_HOSTS = _split_env_list(os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1"))
+ALLOWED_HOSTS = _split_env_list(
+    os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1"))
 
 INSTALLED_APPS = [
     "daphne",
@@ -43,6 +44,7 @@ INSTALLED_APPS = [
     "api.apps.ApiConfig",
     "hikcentral.apps.HikcentralConfig",
     "schedule",  # django-scheduler (проверенная библиотека для календаря)
+    "calendar_app.apps.CalendarAppConfig",  # Наше приложение календаря
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
@@ -66,7 +68,8 @@ MIDDLEWARE = [
     "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
     "eusrr_backend.middleware.AuthRequiredMiddleware",
     "eusrr_backend.middleware.EmailVerificationMiddleware",
-    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",  # IP ограничение для регистрации
+    # IP ограничение для регистрации
+    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",
     "eusrr_backend.middleware.CacheControlMiddleware",  # Cache-Control headers
 ]
 
@@ -249,7 +252,8 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "true").lower() == "true"
 # Если SSL включён (465), TLS должен быть False
 EMAIL_USE_TLS = (
-    False if EMAIL_USE_SSL else (os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
+    False if EMAIL_USE_SSL else (
+        os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
 )
 DEFAULT_FROM_EMAIL = os.getenv(
     "DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "webmaster@localhost"
@@ -260,7 +264,8 @@ DEFAULT_FROM_EMAIL = os.getenv(
 # -----------------------------------------------------------------------------
 # Порог для определения массовой рассылки (количество получателей)
 # При массовой рассылке уведомления создаются быстро, а отправка идёт в фоне
-NOTIFICATION_BULK_THRESHOLD = int(os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
+NOTIFICATION_BULK_THRESHOLD = int(
+    os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
 
 # -----------------------------------------------------------------------------
 # CHANNELS & CACHE
@@ -321,7 +326,8 @@ SIMPLE_JWT = {
 }
 
 # Автообновление JWT токенов: за сколько минут до истечения обновлять
-JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
+JWT_REFRESH_THRESHOLD_MINUTES = int(
+    os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 
 
 # -----------------------------------------------------------------------------
@@ -332,10 +338,12 @@ JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 # -----------------------------------------------------------------------------
 # Порядок важен: первый успешный бэкенд останавливает цепочку
 AUTHENTICATION_BACKENDS = [
-    "eusrr_backend.auth_backends.LDAP3Backend",  # работает только если LDAP_ENABLED=True
+    # работает только если LDAP_ENABLED=True
+    "eusrr_backend.auth_backends.LDAP3Backend",
     "eusrr_backend.auth_backends.EmailOrPhoneBackend",  # фоллбэк для режима без LDAP
     "eusrr_backend.auth_backends.SuperuserOnlyBackend",  # экстренный доступ для админа
-    "eusrr_backend.auth_backends.PositionRoleBackend",  # расчёт прав на основе должностей
+    # расчёт прав на основе должностей
+    "eusrr_backend.auth_backends.PositionRoleBackend",
     "django.contrib.auth.backends.ModelBackend",  # стандартный Django бэкенд
 ]
 
@@ -350,7 +358,8 @@ LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")
 LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
 
 # TLS/CA
-LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")  # путь к CA bundle/серту (если нужен)
+# путь к CA bundle/серту (если нужен)
+LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")
 LDAP_TLS_REQUIRED = os.getenv("LDAP_TLS_REQUIRED", "true").lower() == "true"
 
 # Где искать пользователей
@@ -387,7 +396,8 @@ LDAP_SYNC_GROUPS = os.getenv("LDAP_SYNC_GROUPS", "false").lower() == "true"
 LDAP_GROUP_ATTR = os.getenv("LDAP_GROUP_ATTR", "memberOf")
 # Пример: {"CN=HR,OU=Groups,DC=...,DC=...": "hr"}
 LDAP_GROUP_MAP = {}
-LDAP_GROUPS_EXCLUSIVE = os.getenv("LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
+LDAP_GROUPS_EXCLUSIVE = os.getenv(
+    "LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
 
 # WRITE-BACK
 LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
@@ -448,7 +458,6 @@ LDAP_REGISTRATION_CREATE = True
 LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE")
 
 
-
 BRAND_NAME = os.getenv("BRAND_NAME", "HiRo")
 BRAND_LOGO = "img/logo.png"
 
@@ -471,7 +480,8 @@ VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "robotail-info@yandex.ru")
 # CELERY CONFIGURATION
 # -----------------------------------------------------------------------------
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
+CELERY_RESULT_BACKEND = os.getenv(
+    'CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
 
 # Сериализация
 CELERY_ACCEPT_CONTENT = ['json']
