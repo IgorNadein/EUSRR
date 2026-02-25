@@ -10,6 +10,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@chatscope/chat-ui-kit-react": "^2.1.1",
+    "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.574.0",
     "next": "16.1.6",

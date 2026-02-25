@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Search, Users, Wallet, X } from "lucide-react";
+import { Bell, Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Search, Users, Wallet, X, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState, useCallback } from "react";
@@ -38,6 +38,7 @@ type LeftNavContentProps = {
 const navItems = [
   { href: "/", label: "Лента", icon: HomeIcon },
   { href: "/messages", label: "Сообщения", icon: MessageSquare },
+  { href: "/messages-chatscope", label: "Мессенджер (NEW)", icon: Sparkles },
   { href: "/calendar", label: "Календарь", icon: CalendarDays },
   { href: "/employees", label: "Сотрудники", icon: Users },
   { href: "/departments", label: "Отделы", icon: Building2 },
