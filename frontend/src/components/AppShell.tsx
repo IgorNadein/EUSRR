@@ -1,17 +1,19 @@
 "use client";
 
-import { Bell, Building2, CalendarDays, ChevronLeft, ChevronRight, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Plus, Search, Trash2, Users, Wallet, X } from "lucide-react";
+import { Bell, Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Search, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { ReactNode, useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
-import { CalendarProvider, useCalendar } from "@/contexts/CalendarContext";
 import { CalendarModal } from "@/components/CalendarModal";
 import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
 import { EventModal } from "@/components/EventModal";
 import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
 import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
+import { CalendarSidebar } from "@/components/calendar/CalendarSidebar";
+import { CalendarCard } from "@/components/calendar/CalendarCard";
+import type { CalendarEvent } from "@/services/calendarService";
 
 type AppShellProps = {
   children: ReactNode;
@@ -43,35 +45,6 @@ const navItems = [
   { href: "/documents", label: "Документы", icon: FileText },
   { href: "/finances", label: "Финансы", icon: Wallet },
 ];
-
-const weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-type SidebarCalendarEvent = {
-  id: number;
-  title: string;
-  start?: string | null;
-  end?: string | null;
-  allDay?: boolean;
-  color?: string | null;
-  color_event?: string | null; // Цвет события (альтернативное поле)
-  rule?: number | null; // ID правила повторения
-  is_recurring?: boolean; // Флаг из occurrences API
-};
-
-const pad = (v: number) => String(v).padStart(2, "0");
-
-const formatDateKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-const startOfWeekMonday = (date: Date) => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const dayIndex = (d.getDay() + 6) % 7; // Пн = 0
-  d.setDate(d.getDate() - dayIndex);
-  return d;
-};
-
-const sameDate = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   const router = useRouter();
@@ -297,551 +270,6 @@ function LeftNav() {
   );
 }
 
-function CalendarCard({
-  onOpenCalendarModal,
-  onOpenEventModal,
-  onOpenParticipantsModal,
-  eventsRefreshTrigger,
-  setEventsRefreshTrigger,
-  setSidebarEvents,
-  onCalendarChange
-}: {
-  onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
-  onOpenEventModal: (event: any, date?: Date) => void;
-  onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
-  eventsRefreshTrigger: number;
-  setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
-  setSidebarEvents: (events: any[]) => void;
-  onCalendarChange: (calendarId: number | null) => void;
-}) {
-  const { calendars, selectedCalendarId, setSelectedCalendarId, loading: calendarsLoading, reloadCalendars } = useCalendar();
-
-  const [monthDate, setMonthDate] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
-  const [events, setEvents] = useState<SidebarCalendarEvent[]>([]);
-
-  // Синхронизация selectedCalendarId с родительским компонентом
-  useEffect(() => {
-    onCalendarChange(selectedCalendarId);
-  }, [selectedCalendarId, onCalendarChange]);
-  const [loading, setLoading] = useState(false);
-  const [showCalendarMenu, setShowCalendarMenu] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Загрузка событий выбранного календаря
-  useEffect(() => {
-    let cancelled = false;
-
-    const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-    const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
-    const weekStart = startOfWeekMonday(new Date());
-    const weekEndExclusive = new Date(weekStart);
-    weekEndExclusive.setDate(weekEndExclusive.getDate() + 7);
-
-    const fetchStart = weekStart < start ? weekStart : start;
-    const fetchEnd = weekEndExclusive > end ? weekEndExclusive : end;
-
-    async function loadCalendarEvents() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Загружаем обычные события и occurrences параллельно
-        // Если selectedCalendarId === null, загружаем все доступные события со всех календарей
-        const [eventsResult, occurrencesResult] = await Promise.all([
-          apiClient.getCalendarEvents({
-            start: formatDateKey(fetchStart),
-            end: formatDateKey(fetchEnd),
-            calendar: selectedCalendarId || undefined, // undefined означает все календари
-          }),
-          apiClient.getOccurrences({
-            start: formatDateKey(fetchStart),
-            end: formatDateKey(fetchEnd),
-            calendar: selectedCalendarId || undefined,
-          }),
-        ]);
-
-        if (!cancelled) {
-          // Обычные события (без правил повторения)
-          const eventsList = Array.isArray(eventsResult) ? eventsResult : (eventsResult?.results || []);
-          const regularEvents = eventsList.filter((evt: any) => !evt.rule);
-
-          // Occurrences (развернутые повторяющиеся события)
-          const occurrencesList = Array.isArray(occurrencesResult) ? occurrencesResult : (occurrencesResult?.results || []);
-          // Фильтруем только повторяющиеся события (обычные события уже в regularEvents)
-          const recurringOccurrences = occurrencesList.filter((occ: any) => occ.is_recurring);
-
-          // Объединяем оба типа событий
-          const allEvents = [...regularEvents, ...recurringOccurrences];
-          setEvents(allEvents);
-          setSidebarEvents(allEvents); // Передаем события наружу для ViewDayEventsModal
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err instanceof Error ? err.message : String(err || "");
-          const isNetworkLike = message === "NetworkError" || /fetch failed/i.test(message);
-          if (!isNetworkLike) {
-            console.error("Ошибка загрузки событий календаря:", err);
-          }
-          setError("Не удалось загрузить события");
-          setEvents([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadCalendarEvents();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [monthDate, selectedCalendarId, eventsRefreshTrigger]);
-
-  const monthLabel = useMemo(() => {
-    const label = monthDate.toLocaleDateString("ru-RU", {
-      month: "long",
-      year: "numeric",
-    });
-    return label.charAt(0).toUpperCase() + label.slice(1);
-  }, [monthDate]);
-
-  // Обработчики календарей
-  const handleCreateCalendar = () => {
-    onOpenCalendarModal({ name: "" });
-  };
-
-  // Обработчики событий
-  const handleDayClick = (date: Date) => {
-    // Больше не блокируем при selectedCalendarId === null (разрешаем просмотр "Все события")
-    setSelectedDate(date);
-    const startDate = new Date(date);
-    startDate.setHours(10, 0, 0, 0);
-    const endDate = new Date(date);
-    endDate.setHours(11, 0, 0, 0);
-
-    const newEvent = {
-      title: "",
-      description: "",
-      start: startDate.toISOString(),
-      end: endDate.toISOString(),
-      calendar: selectedCalendarId,
-      color_event: "#3498db",
-    };
-    onOpenEventModal(newEvent, date);
-  };
-
-  const handleEventClick = async (event: any) => {
-    // Если это occurrence (повторяющееся событие), загружаем базовое событие
-    if (event.is_recurring && event.event_id) {
-      try {
-        const fullEvent = await apiClient.getEvent(event.event_id);
-        // Устанавливаем время из occurrence, но остальные данные из базового события
-        onOpenEventModal({
-          ...fullEvent,
-          start: event.start,
-          end: event.end,
-        });
-      } catch (err) {
-        console.error("Ошибка загрузки базового события:", err);
-      }
-    } else {
-      // Обычное событие - данные уже полные
-      onOpenEventModal(event);
-    }
-  };
-
-  const handleImportCalendar = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('handleImportCalendar called', event.target.files);
-
-    if (!selectedCalendarId || !event.target.files || event.target.files.length === 0) {
-      console.log('Early return:', { selectedCalendarId, hasFiles: !!event.target.files });
-      return;
-    }
-
-    const file = event.target.files[0];
-    console.log('Importing file:', file.name, file.size);
-
-    try {
-      const result = await apiClient.importCalendarFromICS(selectedCalendarId, file);
-      console.log('Import result:', result);
-      alert(`Импорт завершен!\nИмпортировано: ${result.imported}\nПропущено: ${result.skipped}`);
-      // Триггерим обновление событий
-      setEventsRefreshTrigger(prev => prev + 1);
-    } catch (error: any) {
-      console.error('Failed to import calendar:', error);
-      alert(`Ошибка импорта: ${error.message}`);
-    } finally {
-      // Сбрасываем input для возможности повторного импорта того же файла
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const eventDays = useMemo(() => {
-    const days = new Set<string>();
-    events.forEach((ev) => {
-      if (!ev.start) return;
-      const eventStart = new Date(ev.start);
-      if (Number.isNaN(eventStart.getTime())) return;
-      
-      // Обрабатываем многодневные события
-      const eventEnd = ev.end ? new Date(ev.end) : eventStart;
-      
-      // Сбрасываем время для корректного сравнения
-      eventStart.setHours(0, 0, 0, 0);
-      eventEnd.setHours(0, 0, 0, 0);
-      
-      // Добавляем все дни от start до end включительно
-      const currentDay = new Date(eventStart);
-      while (currentDay <= eventEnd) {
-        days.add(formatDateKey(currentDay));
-        currentDay.setDate(currentDay.getDate() + 1);
-      }
-    });
-    return days;
-  }, [events]);
-
-  const days = useMemo(() => {
-    const firstOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-    const weekDayIndex = (firstOfMonth.getDay() + 6) % 7;
-    const gridStart = new Date(firstOfMonth);
-    gridStart.setDate(firstOfMonth.getDate() - weekDayIndex);
-
-    const today = new Date();
-
-    return Array.from({ length: 42 }, (_, i) => {
-      const date = new Date(gridStart);
-      date.setDate(gridStart.getDate() + i);
-
-      const key = formatDateKey(date);
-      return {
-        key,
-        day: date.getDate(),
-        date,
-        inCurrentMonth: date.getMonth() === monthDate.getMonth(),
-        isToday: sameDate(date, today),
-        hasEvents: eventDays.has(key),
-      };
-    });
-  }, [monthDate, eventDays]);
-
-  const weekEvents = useMemo(() => {
-    const weekStart = startOfWeekMonday(new Date());
-    const weekEndExclusive = new Date(weekStart);
-    weekEndExclusive.setDate(weekEndExclusive.getDate() + 7);
-
-    return [...events]
-      .filter((ev) => ev.start)
-      .filter((ev) => {
-        const start = new Date(ev.start || "");
-        if (Number.isNaN(start.getTime())) return false;
-        return start >= weekStart && start < weekEndExclusive;
-      })
-      .sort((a, b) => new Date(a.start || "").getTime() - new Date(b.start || "").getTime())
-      .slice(0, 12);
-  }, [events]);
-
-  return (
-    <>
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Календарь</p>
-          <button
-            onClick={handleCreateCalendar}
-            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-gray-100 transition"
-            title="Создать календарь"
-          >
-            <Plus size={14} className="text-gray-600" />
-          </button>
-        </div>
-        {calendars.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
-            <p className="mb-2 text-xs font-medium text-gray-700">Календарей пока нет</p>
-            <button
-              onClick={handleCreateCalendar}
-              className="w-full rounded-md bg-sky-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-600"
-            >
-              Создать первый календарь
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedCalendarId === null ? "" : selectedCalendarId}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSelectedCalendarId(value === "" ? null : Number(value));
-              }}
-              className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-            >
-              <option value="">📅 Все события</option>
-              {calendars.map((cal) => (
-                <option key={cal.id} value={cal.id}>
-                  {cal.name}
-                </option>
-              ))}
-            </select>
-            {selectedCalendarId && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowCalendarMenu(!showCalendarMenu)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition"
-                  title="Меню календаря"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="12" cy="5" r="1"></circle>
-                    <circle cx="12" cy="19" r="1"></circle>
-                  </svg>
-                </button>
-
-                {showCalendarMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-[50]"
-                      onClick={() => setShowCalendarMenu(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-1 w-48 rounded-lg bg-white shadow-lg ring-1 ring-black/5 z-[60]">
-                      <div className="py-1">
-                        <button
-                          onClick={() => {
-                            const cal = calendars.find(c => c.id === selectedCalendarId);
-                            if (cal) {
-                              onOpenParticipantsModal({ id: cal.id, name: cal.name, user_role: (cal as any).user_role });
-                            }
-                            setShowCalendarMenu(false);
-                          }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
-                        >
-                          <Users size={16} />
-                          Участники
-                        </button>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const blob = await apiClient.exportCalendarToICS(selectedCalendarId);
-                              const url = window.URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `calendar-${selectedCalendarId}.ics`;
-                              document.body.appendChild(a);
-                              a.click();
-                              window.URL.revokeObjectURL(url);
-                              document.body.removeChild(a);
-                            } catch (error) {
-                              console.error('Failed to export calendar:', error);
-                              alert('Не удалось экспортировать календарь');
-                            }
-                            setShowCalendarMenu(false);
-                          }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                          </svg>
-                          Экспорт .ics
-                        </button>
-                        <button
-                          onClick={() => {
-                            console.log('Import button clicked', fileInputRef.current);
-                            fileInputRef.current?.click();
-                            console.log('File input clicked');
-                          }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                          </svg>
-                          Импорт .ics
-                        </button>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept=".ics"
-                          onChange={(e) => {
-                            console.log('File input onChange triggered', e.target.files);
-                            setShowCalendarMenu(false);
-                            handleImportCalendar(e);
-                          }}
-                          className="hidden"
-                        />
-
-                        <div className="my-1 border-t border-gray-100"></div>
-                        <button
-                          onClick={() => {
-                            const cal = calendars.find(c => c.id === selectedCalendarId);
-                            if (cal) {
-                              onOpenCalendarModal(cal);
-                            }
-                            setShowCalendarMenu(false);
-                          }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                          </svg>
-                          Настройки
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-        <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
-          <span>Месяц</span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
-              aria-label="Предыдущий месяц"
-            >
-              <ChevronLeft size={16} className="text-gray-600" />
-            </button>
-            <span className="min-w-28 text-center text-xs font-normal text-gray-500">{monthLabel}</span>
-            <button
-              type="button"
-              onClick={() => setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100"
-              aria-label="Следующий месяц"
-            >
-              <ChevronRight size={16} className="text-gray-600" />
-            </button>
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs text-gray-500">
-          {weekdays.map((day) => (
-            <div key={day} className="py-1 font-medium">
-              {day}
-            </div>
-          ))}
-        </div>
-        <div className="mt-1 grid grid-cols-7 gap-1 text-sm text-gray-800">
-          {days.map((day) => (
-            <button
-              key={day.key}
-              type="button"
-              onClick={() => day.inCurrentMonth && handleDayClick(day.date)}
-              disabled={!day.inCurrentMonth}
-              className={`relative flex h-9 items-center justify-center rounded-full transition ${day.isToday
-                  ? "bg-sky-100 text-sky-800 font-semibold ring-1 ring-sky-200"
-                  : day.inCurrentMonth
-                    ? "hover:bg-sky-50 cursor-pointer"
-                    : "text-gray-300 cursor-default"
-                }`}
-            >
-              {day.day}
-              {day.hasEvents && day.inCurrentMonth ? (
-                <span className="absolute bottom-1 h-1.5 w-1.5 rounded-full bg-sky-500" />
-              ) : null}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">На этой неделе</p>
-        {loading ? (
-          <p className="text-xs text-gray-500">Загрузка...</p>
-        ) : error ? (
-          <p className="text-xs text-red-600">{error}</p>
-        ) : weekEvents.length === 0 ? (
-          <p className="text-xs text-gray-500">Событий нет</p>
-        ) : (
-          <div className="space-y-2">
-            {weekEvents.map((event) => {
-              const start = event.start ? new Date(event.start) : null;
-              const dateLabel = start && !Number.isNaN(start.getTime())
-                ? start.toLocaleString("ru-RU", {
-                  weekday: "short",
-                  day: "2-digit",
-                  month: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-                : "Без даты";
-
-              return (
-                <button
-                  key={`${event.id}-${event.start || ""}`}
-                  type="button"
-                  onClick={() => handleEventClick(event)}
-                  className="w-full rounded-lg bg-gray-50 px-2.5 py-2 text-left transition hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    <div 
-                      className="h-2 w-2 rounded-full flex-shrink-0" 
-                      style={{ backgroundColor: event.color_event || event.color || "#3498db" }}
-                    />
-                    <p className="truncate text-xs font-medium text-gray-800">{event.title}</p>
-                    {(event.is_recurring || event.rule) && (
-                      <span className="text-[10px] text-sky-600 flex-shrink-0" title="Повторяющееся событие">⟲</span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-gray-500">{dateLabel}</p>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function Calendar({
-  onOpenCalendarModal,
-  onOpenEventModal,
-  onOpenParticipantsModal,
-  eventsRefreshTrigger,
-  setEventsRefreshTrigger,
-  setSidebarEvents,
-  onCalendarChange
-}: {
-  onOpenCalendarModal: (calendar?: { id?: number; name: string }) => void;
-  onOpenEventModal: (event: any, date?: Date) => void;
-  onOpenParticipantsModal: (calendar: { id: number; name: string; user_role?: string }) => void;
-  eventsRefreshTrigger: number;
-  setEventsRefreshTrigger: (value: number | ((prev: number) => number)) => void;
-  setSidebarEvents: (events: any[]) => void;
-  onCalendarChange: (calendarId: number | null) => void;
-}) {
-  return (
-    <aside className="hidden w-72 flex-shrink-0 space-y-4 lg:block">
-      <div className="sticky top-22 space-y-4 lg:pb-2 max-h-[calc(100vh-5.5rem)] overflow-y-auto">
-        <CalendarCard
-          onOpenCalendarModal={onOpenCalendarModal}
-          onOpenEventModal={onOpenEventModal}
-          onOpenParticipantsModal={onOpenParticipantsModal}
-          eventsRefreshTrigger={eventsRefreshTrigger}
-          setEventsRefreshTrigger={setEventsRefreshTrigger}
-          setSidebarEvents={setSidebarEvents}
-          onCalendarChange={onCalendarChange}
-        />
-      </div>
-    </aside>
-  );
-}
-
 export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }: PageHeaderProps) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
@@ -882,16 +310,29 @@ export function AppShell({ children }: AppShellProps) {
   const [selectedDateForModal, setSelectedDateForModal] = useState<Date | null>(null);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
   const [viewingEvent, setViewingEvent] = useState<any>(null);
-  const [sidebarEvents, setSidebarEvents] = useState<any[]>([]); // Для ViewDayEventsModal
+  const [sidebarEvents, setSidebarEvents] = useState<CalendarEvent[]>([]);
   const [currentSelectedCalendarId, setCurrentSelectedCalendarId] = useState<number | null>(null);
 
-  // Обработчики модалов
-  const handleOpenCalendarModal = (calendar?: { id?: number; name: string }) => {
+  // Мемоизированные callback'и для предотвращения ререндеров CalendarCard
+  const handleSetSidebarEvents = useCallback((events: CalendarEvent[]) => {
+    setSidebarEvents(events);
+  }, []);
+
+  const handleCalendarChange = useCallback((calendarId: number | null) => {
+    setCurrentSelectedCalendarId(calendarId);
+  }, []);
+
+  const handleSetEventsRefreshTrigger = useCallback((value: number | ((prev: number) => number)) => {
+    setEventsRefreshTrigger(value);
+  }, []);
+
+  // Обработчики модалов (мемоизированные для предотвращения ререндеров)
+  const handleOpenCalendarModal = useCallback((calendar?: { id?: number; name: string }) => {
     setEditingCalendar(calendar || { name: "" });
     setShowCalendarModal(true);
-  };
+  }, []);
 
-  const handleOpenEventModal = (event: any, date?: Date) => {
+  const handleOpenEventModal = useCallback((event: any, date?: Date) => {
     // Если передана дата (клик на дату), открываем модал просмотра дня
     if (date && !event.id) {
       setSelectedDateForModal(date);
@@ -907,7 +348,7 @@ export function AppShell({ children }: AppShellProps) {
       setEditingEvent(event);
       setShowEventModal(true);
     }
-  };
+  }, []);
 
   // Создание события из модала просмотра дня
   const handleCreateEventFromDay = useCallback(() => {
@@ -971,10 +412,10 @@ export function AppShell({ children }: AppShellProps) {
     setEventsRefreshTrigger(prev => prev + 1);
   }, []);
 
-  const handleOpenParticipantsModal = (calendar: { id: number; name: string; user_role?: string }) => {
+  const handleOpenParticipantsModal = useCallback((calendar: { id: number; name: string; user_role?: string }) => {
     setParticipantsCalendar(calendar);
     setShowParticipantsModal(true);
-  };
+  }, []);
 
   useEffect(() => {
     // Если загрузка завершена и пользователь не авторизован - редирект на логин
@@ -1035,20 +476,19 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <CalendarProvider>
-      <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-gradient-to-b from-sky-50 via-white to-white text-gray-900 flex flex-col`}>
+    <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-gradient-to-b from-sky-50 via-white to-white text-gray-900 flex flex-col`}>
         <Header onOpenLeftNav={() => setIsMobileLeftNavOpen(true)} onOpenCalendar={() => setIsMobileCalendarOpen(true)} />
         <div className="mx-auto flex w-full flex-1 min-h-0 max-w-6xl gap-6 px-4 py-6 sm:px-8 lg:py-8">
           <LeftNav />
           <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
-          <Calendar
+          <CalendarSidebar
             onOpenCalendarModal={handleOpenCalendarModal}
             onOpenEventModal={handleOpenEventModal}
             onOpenParticipantsModal={handleOpenParticipantsModal}
             eventsRefreshTrigger={eventsRefreshTrigger}
-            setEventsRefreshTrigger={setEventsRefreshTrigger}
-            setSidebarEvents={setSidebarEvents}
-            onCalendarChange={setCurrentSelectedCalendarId}
+            setEventsRefreshTrigger={handleSetEventsRefreshTrigger}
+            setSidebarEvents={handleSetSidebarEvents}
+            onCalendarChange={handleCalendarChange}
           />
         </div>
 
@@ -1100,15 +540,17 @@ export function AppShell({ children }: AppShellProps) {
                 <X size={20} className="text-gray-700" />
               </button>
             </div>
-            <CalendarCard
-              onOpenCalendarModal={handleOpenCalendarModal}
-              onOpenEventModal={handleOpenEventModal}
-              onOpenParticipantsModal={handleOpenParticipantsModal}
-              eventsRefreshTrigger={eventsRefreshTrigger}
-              setEventsRefreshTrigger={setEventsRefreshTrigger}
-              setSidebarEvents={setSidebarEvents}
-              onCalendarChange={setCurrentSelectedCalendarId}
-            />
+            {isMobileCalendarOpen && (
+              <CalendarCard
+                onOpenCalendarModal={handleOpenCalendarModal}
+                onOpenEventModal={handleOpenEventModal}
+                onOpenParticipantsModal={handleOpenParticipantsModal}
+                eventsRefreshTrigger={eventsRefreshTrigger}
+                setEventsRefreshTrigger={handleSetEventsRefreshTrigger}
+                setSidebarEvents={handleSetSidebarEvents}
+                onCalendarChange={handleCalendarChange}
+              />
+            )}
           </div>
         </div>
 
@@ -1187,6 +629,5 @@ export function AppShell({ children }: AppShellProps) {
           showParticipants={true}
         />
       </div>
-    </CalendarProvider>
   );
 }

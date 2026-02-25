@@ -36,7 +36,6 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       const result = await apiClient.getCalendars();
       // API возвращает пагинированный ответ: {count, results}
       const cals = Array.isArray(result) ? result : (result?.results || []);
-      console.log("Загружено календарей:", cals.length, cals);
       setCalendars(cals);
       
       // По умолчанию показываем "Все события" (selectedCalendarId === null)
@@ -49,7 +48,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [selectedCalendarId]);
+  }, []);
 
   useEffect(() => {
     loadCalendars();

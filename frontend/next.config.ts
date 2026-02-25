@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Отключаем React Strict Mode для production-like поведения в dev
+  reactStrictMode: false,
+
   // Указываем корень проекта для Turbopack, чтобы не путался с lockfile в корне монорепо
   turbopack: {
     root: __dirname,
