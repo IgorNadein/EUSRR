@@ -70,8 +70,18 @@ def create_patched_method():
     return patched_event_params
 
 
+# Флаг для предотвращения повторного применения патча
+_patch_applied = False
+
+
 def apply_patch():
     """Применяет патч к django-scheduler Event модели."""
+    global _patch_applied
+    
+    # Если патч уже применён, пропускаем
+    if _patch_applied:
+        return True
+    
     try:
         # Ленивый импорт - только при вызове apply_patch()
         from schedule.models import Event
@@ -86,6 +96,7 @@ def apply_patch():
         print(f"   Патч применён: Event._event_params = {patched_method.__name__}")
         print("=" * 80)
         
+        _patch_applied = True
         return True
     except Exception as e:
         print("=" * 80)

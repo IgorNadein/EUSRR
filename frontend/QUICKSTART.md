@@ -17,6 +17,18 @@ cd backend
 .venv/Scripts/pip install django-cors-headers
 ```
 
+### 1.5. Проверить что Daphne установлен
+
+```bash
+cd backend
+.venv/Scripts/pip show daphne
+```
+
+Если Daphne не установлен:
+```bash
+.venv/Scripts/pip install daphne
+```
+
 Добавить в `backend/eusrr_backend/settings.py`:
 
 ```python
@@ -52,7 +64,15 @@ npm install
 
 ### 3. Запустить оба сервера
 
-**Terminal 1 - Django:**
+**⚠️ ВАЖНО: Для WebSocket используйте Daphne вместо стандартного Django сервера!**
+
+**Terminal 1 - Django (с WebSocket на Daphne):**
+```bash
+cd backend
+.venv/Scripts/daphne -b 0.0.0.0 -p 9000 eusrr_backend.asgi:application
+```
+
+Или используйте `runserver` для HTTP (без WebSocket):
 ```bash
 cd backend
 .venv/Scripts/python manage.py runserver 8000
@@ -68,6 +88,16 @@ npm run dev
 
 Откройте в браузере: **http://localhost:5173**
 
+## 🔍 Проверка WebSocket подключения
+
+1. Откройте **DevTools** (F12) → **Console**
+2. Ищите сообщение `🔄 Подключение к WebSocket: ws://localhost:9000/ws/...`
+3. Если ошибка `❌ WebSocket error: {}`, проверьте:
+   - ✅ Backend запущен через Daphne (не через runserver)
+   - ✅ PORT 9000 доступен (не занят другой программой)
+   - ✅ JWT токен сохранен в localStorage
+   - ✅ В файле `.env.local` стоит `NEXT_PUBLIC_WS_URL=ws://localhost:9000`
+
 ## 🔐 Тестовая авторизация
 
 Используйте существующего пользователя из вашей БД:
@@ -76,6 +106,8 @@ npm run dev
 Email: ваш_email@example.com
 Password: ваш_пароль
 ```
+
+После входа токен автоматически сохранится в `localStorage` и будет использован для WebSocket аутентификации.
 
 ## 📁 Структура страниц
 
@@ -124,10 +156,40 @@ touch src/pages/documents/index.ts
 - Проверьте что пользователь существует в БД
 - Проверьте endpoint: `http://localhost:8000/api/auth/token/`
 
+### WebSocket error: {}
+**Это самая частая ошибка!** Решение:
+
+1. **Проверьте что backend запущен через Daphne:**
+   ```bash
+   cd backend
+   .venv/Scripts/daphne -b 0.0.0.0 -p 9000 eusrr_backend.asgi:application
+   ```
+
+2. **НЕ используйте `python manage.py runserver`** - это не поддерживает WebSocket!
+
+3. **Убедитесь что .env.local имеет правильный URL:**
+   ```dotenv
+   NEXT_PUBLIC_WS_URL=ws://localhost:9000
+   NEXT_PUBLIC_BACKEND_URL=http://localhost:9000
+   ```
+
+4. **Проверьте в DevTools → Network → WS:**
+   - Введите фильтр `ws` чтобы найти WebSocket подключение
+   - Если соединение **101 Switching Protocols** - всё работает ✅
+   - Если ошибка **Failed** - backend не запущен через Daphne ❌
+
+5. **Проверьте порт 9000:**
+   ```bash
+   # Windows - проверить какой процесс занимает порт
+   netstat -ano | findstr :9000
+   
+   # Если занято - убейте процесс или используйте другой порт
+   ```
+
 ### Страница не загружается
 - Убедитесь что оба сервера запущены
-- Проверьте `.env` файл в frontend
-- Откройте DevTools → Network
+- Проверьте `.env.local` файл в frontend
+- Откройте DevTools → Network и посмотрите статусы запросов
 
 ## 📚 Документация
 

@@ -23,18 +23,18 @@ interface UseWebSocketOptions {
   maxReconnectAttempts?: number;
 }
 
-export function useWebSocket({ 
-  chatId, 
+export function useWebSocket({
+  chatId,
   autoConnect = true,
   reconnectInterval = 3000,
-  maxReconnectAttempts = 5 
+  maxReconnectAttempts = 5
 }: UseWebSocketOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectingRef = useRef(false);
-  
+
   const handlers = useRef<WebSocketHandlers>({
     onMessage: () => {},
     onTyping: () => {},
@@ -51,15 +51,22 @@ export function useWebSocket({
     isConnectingRef.current = true;
 
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = process.env.NEXT_PUBLIC_WS_URL || 'localhost:9000';
-      
-      // Получаем JWT токен для аутентификации WebSocket
+      // Простую логику построения URL
+      let wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9000/ws/';
+
+      // // Если нет протокола - добавляем
+      // if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+      //   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      //   wsUrl = `${protocol}//${wsUrl}`;
+      // }
+
+      // Добавляем токен
       const token = localStorage.getItem('access_token');
-      const wsUrl = token 
-        ? `${protocol}//${host}/ws/?token=${token}`
-        : `${protocol}//${host}/ws/`;
-      
+      if (token) {
+        wsUrl += `${wsUrl.includes('?') ? '&' : '?'}token=${token}`;
+      }
+
+      console.log('🔄 WebSocket URL:', wsUrl);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -67,7 +74,7 @@ export function useWebSocket({
         setIsConnected(true);
         setReconnectAttempts(0);
         isConnectingRef.current = false;
-        
+
         // Открываем чат на сервере
         ws.send(JSON.stringify({
           action: 'open_chat',
@@ -136,7 +143,7 @@ export function useWebSocket({
 
     if (wsRef.current) {
       const ws = wsRef.current;
-      
+
       if (ws.readyState === WebSocket.OPEN && chatId) {
         ws.send(JSON.stringify({
           action: 'close_chat',
@@ -155,8 +162,8 @@ export function useWebSocket({
 
   const sendTyping = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ 
-        action: 'typing' 
+      wsRef.current.send(JSON.stringify({
+        action: 'typing'
       }));
     }
   }, []);
