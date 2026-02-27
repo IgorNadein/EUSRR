@@ -7,3 +7,4 @@ class EmployeesConfig(AppConfig):
 
     def ready(self):
         import employees.signals
+        import employees.signals_birthday  # Сигналы для синхронизации дней рождений с django-scheduler
