@@ -419,7 +419,7 @@ def unlink_telegram(request):
 # ============================================
 
 from django.conf import settings
-from notifications.models import WebPushSubscription
+from push_notifications.models import WebPushDevice
 import logging
 
 logger = logging.getLogger(__name__)
@@ -460,7 +460,7 @@ def subscribe_push(request):
         p256dh_key = keys.get('p256dh')
         auth_key = keys.get('auth')
         user_agent = request.data.get('user_agent', '')
-        device_name = request.data.get('device_name', '')
+        device_name = request.data.get('device_name', '') or 'Unknown'
         
         if not endpoint or not p256dh_key or not auth_key:
             return Response({
@@ -468,24 +468,21 @@ def subscribe_push(request):
                 'message': 'Отсутствуют обязательные поля: endpoint, keys.p256dh, keys.auth'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Обновляем или создаем подписку
-        subscription, created = WebPushSubscription.objects.update_or_create(
+        # Обновляем или создаем устройство (django-push-notifications)
+        device, created = WebPushDevice.objects.update_or_create(
             user=request.user,
-            endpoint=endpoint,
+            registration_id=endpoint,
             defaults={
-                'p256dh_key': p256dh_key,
-                'auth_key': auth_key,
-                'user_agent': user_agent,
-                'device_name': device_name,
-                'is_active': True,
-                'error_count': 0,
-                'last_error': '',
+                'p256dh': p256dh_key,
+                'auth': auth_key,
+                'browser': device_name,
+                'active': True,
             }
         )
         
-        # Логируем только создание новой подписки, не обновление
+        # Логируем только создание нового устройства, не обновление
         if created:
-            logger.info(f"[WebPush] New subscription for user {request.user.id}")
+            logger.info(f"[WebPush] New device for user {request.user.id}")
         
         return Response({
             'status': 'success',
@@ -518,14 +515,14 @@ def unsubscribe_push(request):
         endpoint = request.data.get('endpoint')
         
         if endpoint:
-            # Удаляем конкретную подписку
-            deleted, _ = WebPushSubscription.objects.filter(
+            # Удаляем конкретное устройство
+            deleted, _ = WebPushDevice.objects.filter(
                 user=request.user,
-                endpoint=endpoint
+                registration_id=endpoint
             ).delete()
             
             if deleted:
-                logger.info(f"[WebPush] Deleted subscription for user {request.user.id} (endpoint: {endpoint[:50]}...)")
+                logger.info(f"[WebPush] Deleted device for user {request.user.id} (endpoint: {endpoint[:50]}...)")
                 return Response({
                     'status': 'success',
                     'message': 'Подписка удалена'
@@ -536,9 +533,9 @@ def unsubscribe_push(request):
                     'message': 'Подписка не найдена'
                 }, status=status.HTTP_404_NOT_FOUND)
         else:
-            # Удаляем все подписки пользователя
-            deleted, _ = WebPushSubscription.objects.filter(user=request.user).delete()
-            logger.info(f"[WebPush] Deleted all ({deleted}) subscriptions for user {request.user.id}")
+            # Удаляем все устройства пользователя
+            deleted, _ = WebPushDevice.objects.filter(user=request.user).delete()
+            logger.info(f"[WebPush] Deleted all ({deleted}) devices for user {request.user.id}")
             return Response({
                 'status': 'success',
                 'message': f'Удалено подписок: {deleted}'
@@ -558,20 +555,20 @@ def get_push_subscriptions(request):
     """
     Получить список активных push-подписок пользователя.
     """
-    subscriptions = WebPushSubscription.objects.filter(
+    devices = WebPushDevice.objects.filter(
         user=request.user,
-        is_active=True
-    ).order_by('-updated_at')
+        active=True
+    ).order_by('-date_created')
     
     return Response({
         'subscriptions': [
             {
-                'id': sub.id,
-                'device_name': sub.device_name or 'Неизвестное устройство',
-                'user_agent': sub.user_agent[:100] if sub.user_agent else '',
-                'created_at': sub.created_at.isoformat(),
-                'updated_at': sub.updated_at.isoformat(),
+                'id': device.id,
+                'device_name': device.browser or 'Неизвестное устройство',
+                'user_agent': '',
+                'created_at': device.date_created.isoformat(),
+                'updated_at': device.date_created.isoformat(),
             }
-            for sub in subscriptions
+            for device in devices
         ]
     })
