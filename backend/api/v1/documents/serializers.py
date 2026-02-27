@@ -13,6 +13,7 @@ from documents.models import Document, DocumentAcknowledgement
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
+from .fields import FilerFileField as FilerFileSerializerField
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -117,7 +118,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     uploaded_by = EmployeeBriefSerializer(read_only=True)
     recipients = EmployeeBriefSerializer(many=True, read_only=True)
     departments = DepartmentBriefSerializer(many=True, read_only=True)
-    file_url = serializers.FileField(source="file", read_only=True)
+    file_url = FilerFileSerializerField(source="file", read_only=True)
     is_acknowledged = serializers.SerializerMethodField()
 
     class Meta:
@@ -160,7 +161,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
     """Сериализатор для записи/обновления документа.
 
     Поддерживает:
-        - загрузку файла (multipart)
+        - загрузку файла (multipart) через django-filer
         - sent_to_all
         - department_ids (отделы-получатели)
         - recipient_ids (repeat/JSON/CSV) при sent_to_all=false
@@ -177,6 +178,12 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         required=False,
         help_text="Список ID отделов-получателей.",
     )
+    
+    file = FilerFileSerializerField(
+        required=False,
+        allow_null=True,
+        help_text="Файл для загрузки через django-filer"
+    )
 
     class Meta:
         model = Document
@@ -189,9 +196,6 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "department_ids",
             "recipient_ids",
         )
-        extra_kwargs = {
-            "file": {"required": False, "allow_null": True},
-        }
 
     def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         """Согласованность полей.
@@ -364,29 +368,3 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
                 self._set_recipients(instance, recipient_ids)
 
         return instance
-
-    def validate_file(self, f: UploadedFile) -> UploadedFile:
-        """Проверяет, что размер загружаемого файла не превышает системный лимит.
-
-        Лимит берётся из settings.DATA_UPLOAD_MAX_MEMORY_SIZE. Если он задан (truthy),
-        и размер файла больше лимита, возвращается 400 (ValidationError).
-
-        Args:
-            f (UploadedFile): Загружаемый файл.
-
-        Returns:
-            UploadedFile: Исходный файл при успешной проверке.
-
-        Raises:
-            serializers.ValidationError: Размер файла превышает допустимый лимит.
-            TypeError: Если невозможно определить размер файла.
-        """
-        limit = getattr(settings, "DATA_UPLOAD_MAX_MEMORY_SIZE", None)
-        if limit:
-            size = getattr(f, "size", None)
-            if size is None:
-                raise TypeError("Невозможно определить размер файла")
-            if int(size) > int(limit):
-                human = filesizeformat(limit)
-                raise serializers.ValidationError(f"Файл слишком большой: > {human}.")
-        return f

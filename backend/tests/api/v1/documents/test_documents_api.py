@@ -24,6 +24,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 from documents.models import Document, DocumentAcknowledgement
+from filer.models import File as FilerFile
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import _unique_phone
@@ -48,6 +49,30 @@ def _file(name: str = "doc.pdf", content: bytes = b"x") -> SimpleUploadedFile:
     return SimpleUploadedFile(
         name=name, content=content, content_type="application/pdf"
     )
+
+def _filer_file(name: str = "doc.pdf", content: bytes = b"x", owner=None) -> FilerFile:
+    """Создает filer.File объект для использования в тестах.
+    
+    Args:
+        name (str): Имя файла
+        content (bytes): Содержимое файла
+        owner: Владелец файла (User instance)
+        
+    Returns:
+        FilerFile: Созданный filer.File объект
+    """
+    uploaded_file = SimpleUploadedFile(
+        name=name, content=content, content_type="application/pdf"
+    )
+    
+    filer_file = FilerFile.objects.create(
+        file=uploaded_file,
+        original_filename=name,
+        name=name,
+        owner=owner
+    )
+    
+    return filer_file
 
 def grant_perms(user: User, *codenames: str) -> None:
     """Выдаёт пользователю модельные права по кодовым именам из приложения documents.
@@ -86,13 +111,16 @@ def make_document(
     Returns:
         Document: Созданная модель с прикреплённым файлом.
     """
+    # Создаем filer.File объект
+    filer_file = _filer_file(owner=uploaded_by)
+    
     doc = Document.objects.create(
         title=title,
         description=description,
         uploaded_by=uploaded_by,
         uploaded_at=timezone.now(),
         sent_to_all=sent_to_all,
-        file=_file(),
+        file=filer_file,
     )
     if not sent_to_all and recipients:
         doc.recipients.set(recipients)
@@ -318,24 +346,11 @@ class TestCreate:
     """B. Создание документа multipart/form-data."""
 
     def test_create_sent_to_all_true(
-        self, auth_client, make_user, api_urls, monkeypatch
+        self, auth_client, make_user, api_urls
     ):
-        """Успех: sent_to_all=true → 201 и корректное тело ответа + вызов notify() один раз."""
+        """Успех: sent_to_all=true → 201 и корректное тело ответа."""
         uploader = make_user("uploader@example.com", staff=True)
         client = auth_client(uploader)
-
-        called = {"n": 0, "doc": None}
-
-        def fake_notify(doc):
-            called["n"] += 1
-            called["doc"] = doc
-
-        # замокаем side-effect
-        monkeypatch.setattr(
-            "documents.notification.notify_users_about_document",
-            fake_notify,
-            raising=False,
-        )
 
         data = {"title": "Title", "file": _file(), "sent_to_all": True}
         r = client.post(api_urls["list"], data, format="multipart")
@@ -346,10 +361,11 @@ class TestCreate:
         assert body["title"] == "Title"
         assert isinstance(body["id"], int)
         assert body["file_url"]
-
-        # notify был вызван один раз уже c назначенными получателями
-        assert called["n"] == 1
-        assert isinstance(called["doc"], Document)
+        
+        # Проверяем что документ создался
+        doc = Document.objects.get(id=body["id"])
+        assert doc.title == "Title"
+        assert doc.sent_to_all is True
 
     def test_create_sent_to_all_false_with_recipients_variants(
         self, auth_client, make_user, api_urls

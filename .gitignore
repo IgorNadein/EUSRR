@@ -152,6 +152,7 @@ dmypy.json
 
 # папки со статикой и медиа
 media/
+smedia/
 # Собранные статические файлы Django (collectstatic)
 staticfiles/
 # Исходные static файлы НЕ игнорируются (backend/static/)
