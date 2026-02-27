@@ -279,3 +279,22 @@ export interface RegisterData {
   whatsapp?: string;
   wechat?: string;
 }
+
+// Search types (django-watson)
+export type SearchModelType = 'post' | 'employee' | 'department' | 'request' | 'chat' | 'message' | 'event';
+
+export interface SearchResult {
+  model_name: SearchModelType;
+  object_id: number;
+  title: string;
+  description?: string;
+  url: string;
+  meta?: Record<string, any>;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+  counts: Record<SearchModelType, number>;
+  total: number;
+}

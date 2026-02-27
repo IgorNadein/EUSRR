@@ -1,47 +1,49 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
-import type { Chat, Department, Document, Post, Request, User } from "@/types/api";
-import { Search } from "lucide-react";
+import type { SearchResponse, SearchResult, SearchModelType } from "@/types/api";
+import { Search, User, Building, FileText, MessageSquare, MessageCircle, Calendar, Inbox } from "lucide-react";
 
-type SearchState = {
-  employees: User[];
-  departments: Department[];
-  documents: Document[];
-  requests: Request[];
-  chats: Chat[];
-  posts: Post[];
+// Иконки для разных типов результатов
+const modelIcons: Record<SearchModelType, React.ComponentType<{ size?: number; className?: string }>> = {
+  employee: User,
+  department: Building,
+  post: Inbox,
+  document: FileText,
+  request: FileText,
+  chat: MessageSquare,
+  message: MessageCircle,
+  event: Calendar,
 };
 
-const emptyState: SearchState = {
-  employees: [],
-  departments: [],
-  documents: [],
-  requests: [],
-  chats: [],
-  posts: [],
+// Названия категорий на русском
+const modelNames: Record<SearchModelType, string> = {
+  employee: "Сотрудники",
+  department: "Отделы",
+  post: "Посты",
+  document: "Документы",
+  request: "Заявления",
+  chat: "Чаты",
+  message: "Сообщения",
+  event: "События",
 };
-
-function contains(value: string | undefined, query: string): boolean {
-  return (value || "").toLowerCase().includes(query);
-}
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
   const queryRaw = searchParams.get("q") || "";
-  const query = queryRaw.trim().toLowerCase();
+  const query = queryRaw.trim();
 
-  const [results, setResults] = useState<SearchState>(emptyState);
+  const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!query) {
-      setResults(emptyState);
+      setSearchResponse(null);
       setError(null);
       setLoading(false);
       return;
@@ -54,36 +56,11 @@ export default function SearchPage() {
         setLoading(true);
         setError(null);
 
-        const [employees, departments, documents, requests, chats, posts] = await Promise.all([
-          apiClient.getEmployees({ search: queryRaw, limit: 20 }),
-          apiClient.getDepartments({ search: queryRaw, limit: 20 }),
-          apiClient.getDocuments({ search: queryRaw, limit: 20 }),
-          apiClient.getRequests({ search: queryRaw, limit: 20 }),
-          apiClient.getChats({ search: queryRaw, limit: 20 }),
-          apiClient.getPosts({ search: queryRaw, limit: 20 }),
-        ]);
+        const response: SearchResponse = await apiClient.search(queryRaw, 10);
 
         if (cancelled) return;
 
-        const filtered: SearchState = {
-          employees: (employees.results || []).filter((u) =>
-            contains(`${u.last_name} ${u.first_name} ${u.patronymic || ""}`, query) ||
-            contains(u.email, query)
-          ),
-          departments: (departments.results || []).filter((d) =>
-            contains(d.name, query) || contains(d.description, query)
-          ),
-          documents: (documents.results || []).filter((d) =>
-            contains(d.title, query) || contains(d.description, query) || contains(d.document_type, query)
-          ),
-          requests: (requests.results || []).filter((r) =>
-            contains(r.title, query) || contains(r.description, query) || contains(r.request_type, query)
-          ),
-          chats: (chats.results || []).filter((c) => contains(c.name, query) || contains(c.last_message?.content, query)),
-          posts: (posts.results || []).filter((p) => contains(p.content, query)),
-        };
-
-        setResults(filtered);
+        setSearchResponse(response);
       } catch (err) {
         if (!cancelled) {
           console.error("Ошибка поиска:", err);
@@ -103,16 +80,16 @@ export default function SearchPage() {
     };
   }, [query, queryRaw]);
 
-  const total = useMemo(
-    () =>
-      results.employees.length +
-      results.departments.length +
-      results.documents.length +
-      results.requests.length +
-      results.chats.length +
-      results.posts.length,
-    [results]
-  );
+  // Группируем результаты по типам
+  const resultsByType: Partial<Record<SearchModelType, SearchResult[]>> = {};
+  if (searchResponse) {
+    searchResponse.results.forEach((result) => {
+      if (!resultsByType[result.model_name]) {
+        resultsByType[result.model_name] = [];
+      }
+      resultsByType[result.model_name]!.push(result);
+    });
+  }
 
   return (
     <AppShell>
@@ -120,97 +97,82 @@ export default function SearchPage() {
         <div className="mb-4 flex items-center gap-2">
           <Search size={16} className="text-gray-400" />
           <p className="text-sm text-gray-600">
-            {query ? `Результаты по запросу: ${queryRaw}` : "Введите запрос в поиске сверху"}
+            {query ? `Результаты по запросу: "${queryRaw}"` : "Введите запрос в поиске сверху"}
           </p>
         </div>
 
+        {query && searchResponse && (
+          <div className="mb-4 text-sm text-gray-500">
+            Найдено результатов: <span className="font-semibold">{searchResponse.total}</span>
+          </div>
+        )}
+
         {loading ? (
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">Идёт поиск...</div>
+          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+            <p className="mt-2">Поиск...</p>
+          </div>
         ) : error ? (
           <div className="rounded-xl bg-red-50 p-6 text-center text-sm text-red-800">{error}</div>
         ) : !query ? (
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">Начните вводить запрос в строке поиска</div>
-        ) : total === 0 ? (
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">Ничего не найдено</div>
+          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+            Начните вводить запрос в строке поиска
+          </div>
+        ) : searchResponse?.total === 0 ? (
+          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+            Ничего не найдено по запросу "{queryRaw}"
+          </div>
         ) : (
-          <div className="space-y-4">
-            {results.employees.length > 0 ? (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Сотрудники</p>
-                <div className="space-y-2">
-                  {results.employees.map((u) => (
-                    <Link key={u.id} href="/employees" className="block rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50">
-                      {`${u.last_name} ${u.first_name}`.trim()} {u.email ? `• ${u.email}` : ""}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+          <div className="space-y-6">
+            {(Object.keys(resultsByType) as SearchModelType[]).map((modelType) => {
+              const results = resultsByType[modelType]!;
+              const Icon = modelIcons[modelType];
+              const categoryName = modelNames[modelType];
 
-            {results.departments.length > 0 ? (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Отделы</p>
-                <div className="space-y-2">
-                  {results.departments.map((d) => (
-                    <Link key={d.id} href="/departments" className="block rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50">
-                      {d.name}
-                    </Link>
-                  ))}
+              return (
+                <div key={modelType}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Icon size={16} className="text-gray-400" />
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      {categoryName} <span className="font-normal">({results.length})</span>
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {results.map((result) => (
+                      <Link
+                        key={`${result.model_name}-${result.object_id}`}
+                        href={result.url}
+                        className="block rounded-lg border border-gray-200 p-3 transition-all hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{result.title}</p>
+                            {result.description && (
+                              <p className="mt-1 text-xs text-gray-500 line-clamp-2">{result.description}</p>
+                            )}
+                            {result.meta && Object.keys(result.meta).length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {Object.entries(result.meta).map(([key, value]) => {
+                                  if (!value || key === 'id') return null;
+                                  return (
+                                    <span
+                                      key={key}
+                                      className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                                    >
+                                      {String(value)}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : null}
-
-            {results.requests.length > 0 ? (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Заявления</p>
-                <div className="space-y-2">
-                  {results.requests.map((r) => (
-                    <Link key={r.id} href="/requests" className="block rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50">
-                      {r.title}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {results.documents.length > 0 ? (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Документы</p>
-                <div className="space-y-2">
-                  {results.documents.map((d) => (
-                    <Link key={d.id} href="/documents" className="block rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50">
-                      {d.title}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {results.chats.length > 0 ? (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Чаты</p>
-                <div className="space-y-2">
-                  {results.chats.map((c) => (
-                    <Link key={c.id} href={`/messages/${c.id}`} className="block rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50">
-                      {c.name || `Чат #${c.id}`}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {results.posts.length > 0 ? (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Посты</p>
-                <div className="space-y-2">
-                  {results.posts.map((p) => (
-                    <Link key={p.id} href="/" className="block rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50">
-                      {p.content?.slice(0, 120) ?? "Без текста"}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+              );
+            })}
           </div>
         )}
       </section>
