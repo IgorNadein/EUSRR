@@ -27,6 +27,7 @@ from .employees.views import (
 )
 from .feed.views import CommentViewSet, PostViewSet
 from .requests_app.views import RequestViewSet
+from .search.views import search_api_view
 
 app_name = "v1"
 
@@ -83,6 +84,8 @@ urlpatterns = [
     path("notifications/", include("api.v1.notifications.urls")),
     # Procurement API
     path("procurement/", include("api.v1.procurement.urls")),
+    # Search API
+    path("search/", search_api_view, name="search"),
     # Router URLs (включая все ViewSets)
     path("", include(router.urls)),
 ]
