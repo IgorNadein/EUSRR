@@ -1,19 +1,46 @@
 # documents/models.py
+"""
+Модели для управления документами с использованием django-filer.
+
+Основные модели:
+- Document: Документ с поддержкой filer для профессионального управления файлами
+- DocumentAcknowledgement: Запись об ознакомлении сотрудника с документом
+"""
 
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from django.utils import timezone
+from filer.fields.file import FilerFileField
+import reversion
 
 User = settings.AUTH_USER_MODEL  # 'employees.Employee'
 
 
+@reversion.register()  # Включаем версионирование для документов
 class Document(models.Model):
     """
-    Документ, который нужно разослать сотрудникам.
+    Документ с использованием django-filer для управления файлами.
+    
+    Преимущества:
+    - Поддержка папок и вложенной структуры
+    - Автоматическая генерация thumbnails для изображений и PDF
+    - Полнотекстовый поиск по содержимому файлов
+    - Информация о размере, MIME-типе, метаданные
+    - История версий через django-reversion
     """
     title = models.CharField(_('Название'), max_length=255)
-    file = models.FileField(_('Файл'), upload_to='documents/%Y/%m/%d/')
+    
+    # Используем FilerFileField вместо FileField
+    file = FilerFileField(
+        verbose_name=_('Файл'),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='documents',
+        help_text=_('Файл, загруженный через django-filer')
+    )
+    
     description = models.TextField(_('Описание'), blank=True)
 
     uploaded_by = models.ForeignKey(
@@ -22,10 +49,11 @@ class Document(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='uploaded_documents'  # <-- уникальный related_name
+        related_name='uploaded_documents'
     )
     uploaded_at = models.DateTimeField(_('Дата загрузки'), auto_now_add=True)
 
+    # Логика распространения документов
     sent_to_all = models.BooleanField(
         _('Разослать всем'),
         default=True,
@@ -43,7 +71,7 @@ class Document(models.Model):
         verbose_name=_('Получатели'),
         blank=True,
         help_text=_('Если `Разослать всем` отключено, документ пойдет только этим'),
-        related_name='document_recipients'  # <-- уникальный related_name
+        related_name='document_recipients'
     )
 
     class Meta:
@@ -54,7 +82,44 @@ class Document(models.Model):
     def __str__(self):
         return self.title
 
+    @property
+    def file_size(self):
+        """Размер файла в байтах (берется из filer)"""
+        if self.file:
+            return self.file.size
+        return 0
 
+    @property
+    def file_extension(self):
+        """Расширение файла"""
+        if self.file:
+            return self.file.extension
+        return ''
+
+    def get_thumbnail(self, size='medium'):
+        """
+        Получить thumbnail для файла (работает для изображений и PDF).
+        
+        Args:
+            size: 'small' (200x200), 'medium' (400x400), 'large' (800x800)
+        
+        Returns:
+            URL thumbnail или None
+        """
+        if not self.file:
+            return None
+        
+        try:
+            from easy_thumbnails.files import get_thumbnailer
+            thumbnailer = get_thumbnailer(self.file)
+            thumbnail = thumbnailer[size]
+            return thumbnail.url
+        except Exception:
+            # Если thumbnail не удалось создать (не изображение), возвращаем иконку по типу
+            return self.file.url
+
+
+@reversion.register()
 class DocumentAcknowledgement(models.Model):
     """
     Фиксация, что сотрудник ознакомился с документом.
@@ -82,14 +147,4 @@ class DocumentAcknowledgement(models.Model):
     def __str__(self):
         return f'{self.user} — {self.document} @ {self.acknowledged_at:%d.%m.%Y %H:%M}'
 
-
-# Импортируем новые модели, чтобы Django их увидел
-from .models_v2 import DocumentV2, DocumentAcknowledgementV2
-
-__all__ = [
-    'Document',
-    'DocumentAcknowledgement',
-    'DocumentV2',
-    'DocumentAcknowledgementV2',
-]
 

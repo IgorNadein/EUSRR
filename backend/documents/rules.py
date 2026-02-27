@@ -1,7 +1,8 @@
+# documents/rules.py
 """
-django-rules: декларативные правила доступа для documents
+django-rules: декларативные правила доступа для Document
 
-Правила используются для проверки permissions на уровне объектов.
+Адаптация правил доступа для моделей с django-filer.
 https://github.com/dfunckt/django-rules
 """
 
@@ -19,57 +20,44 @@ def is_superuser(user):
 
 
 @rules.predicate
-def is_document_owner(user, document):
-    """Пользователь является создателем документа"""
+def is_document_uploader(user, document):
+    """Пользователь загрузил документ"""
     if document is None:
         return False
-    return document.created_by == user or document.owner == user
-
-
-@rules.predicate
-def is_document_author(user, document):
-    """Пользователь является автором документа"""
-    if document is None or not hasattr(document, 'author'):
-        return False
-    return document.author == user
+    return document.uploaded_by == user
 
 
 @rules.predicate
 def has_document_access(user, document):
     """
     Пользователь имеет доступ к документу через:
-    - Публичный доступ (is_public)
-    - Доступ для отдела (department_access)
-    - Прямой доступ в списке разрешённых пользователей
+    - sent_to_all=True (все активные сотрудники)
+    - departments (пользователь в одном из отделов-получателей)
+    - recipients (пользователь в списке получателей)
     """
     if document is None:
         return False
     
-    # Публичный документ
-    if hasattr(document, 'is_public') and document.is_public:
+    # Документ для всех
+    if document.sent_to_all and user.is_active:
         return True
     
-    # Доступ для отдела
-    if hasattr(document, 'department_access') and hasattr(user, 'department'):
-        if document.department_access and document.department_access == user.department:
+    # Проверка через отделы
+    if hasattr(user, 'department') and user.department:
+        if document.departments.filter(id=user.department.id).exists():
             return True
     
-    # Прямой доступ через ManyToMany (если есть поле shared_with или allowed_users)
-    if hasattr(document, 'shared_with'):
-        if user in document.shared_with.all():
-            return True
-    
-    if hasattr(document, 'allowed_users'):
-        if user in document.allowed_users.all():
-            return True
+    # Прямой доступ через recipients
+    if document.recipients.filter(id=user.id).exists():
+        return True
     
     return False
 
 
 @rules.predicate
-def can_approve_documents(user):
+def can_manage_documents(user):
     """
-    Пользователь может согласовывать документы.
+    Пользователь может управлять документами.
     Адаптируйте под вашу логику (по должности, группе и т.д.)
     """
     if not hasattr(user, 'position'):
@@ -77,25 +65,8 @@ def can_approve_documents(user):
     
     position_name = getattr(user.position, 'name', '').lower()
     return any(keyword in position_name for keyword in [
-        'руководитель', 'начальник', 'директор', 'заведующий'
+        'руководитель', 'начальник', 'директор', 'заведующий', 'кадры'
     ])
-
-
-@rules.predicate
-def is_document_approver(user, document):
-    """Пользователь назначен согласующим для этого документа"""
-    if document is None:
-        return False
-    
-    # Проверка через связь approvers, если есть
-    if hasattr(document, 'approvers'):
-        return user in document.approvers.all()
-    
-    # Проверка через связь approval_chain (если используется цепочка согласования)
-    if hasattr(document, 'approval_chain'):
-        return document.approval_chain.filter(approver=user).exists()
-    
-    return False
 
 
 @rules.predicate
@@ -104,26 +75,20 @@ def is_same_department(user, document):
     if document is None or not hasattr(user, 'department'):
         return False
     
-    if hasattr(document, 'department'):
-        return document.department == user.department
-    
-    return False
+    return document.departments.filter(id=user.department.id).exists()
 
 
 @rules.predicate
-def is_document_category_manager(user, document):
-    """
-    Пользователь является менеджером категории документа.
-    Адаптируйте под вашу структуру категорий.
-    """
-    if document is None or not hasattr(document, 'category'):
+def has_acknowledged_document(user, document):
+    """Пользователь уже ознакомился с документом"""
+    if document is None:
         return False
     
-    category = document.category
-    if hasattr(category, 'managers'):
-        return user in category.managers.all()
-    
-    return False
+    from documents.models import DocumentAcknowledgement
+    return DocumentAcknowledgement.objects.filter(
+        document=document,
+        user=user
+    ).exists()
 
 
 # -----------------------------------------------------------------------------
@@ -133,55 +98,55 @@ def is_document_category_manager(user, document):
 # Просмотр документа
 rules.add_rule(
     'documents.view_document',
-    is_superuser | is_document_owner | is_document_author | has_document_access
+    is_superuser | is_document_uploader | has_document_access
 )
 
-# Изменение документа (только владелец и автор)
+# Изменение документа (только загрузивший и менеджеры)
 rules.add_rule(
     'documents.change_document',
-    is_superuser | is_document_owner | is_document_author
+    is_superuser | is_document_uploader | can_manage_documents
 )
 
-# Удаление документа (только владелец и superuser)
+# Удаление документа (только загрузивший, менеджеры и superuser)
 rules.add_rule(
     'documents.delete_document',
-    is_superuser | is_document_owner
-)
-
-# Согласование документа (согласующие + руководители)
-rules.add_rule(
-    'documents.approve_document',
-    is_superuser | is_document_approver | can_approve_documents
-)
-
-# Публикация документа (владелец + менеджеры категории)
-rules.add_rule(
-    'documents.publish_document',
-    is_superuser | is_document_owner | is_document_category_manager
+    is_superuser | is_document_uploader | can_manage_documents
 )
 
 # Скачивание документа (все, кто имеет доступ на просмотр)
 rules.add_rule(
     'documents.download_document',
-    is_superuser | is_document_owner | is_document_author | has_document_access
+    is_superuser | is_document_uploader | has_document_access
 )
 
-# Выдача доступа другим пользователям (только владелец)
+# Отметка об ознакомлении (только те, у кого есть доступ)
+rules.add_rule(
+    'documents.acknowledge_document',
+    has_document_access
+)
+
+# Просмотр списка ознакомившихся (загрузивший + менеджеры)
+rules.add_rule(
+    'documents.view_acknowledgements_document',
+    is_superuser | is_document_uploader | can_manage_documents
+)
+
+# Выдача доступа другим пользователям (только загрузивший и менеджеры)
 rules.add_rule(
     'documents.share_document',
-    is_superuser | is_document_owner
+    is_superuser | is_document_uploader | can_manage_documents
 )
 
-# Просмотр истории изменений документа
+# Просмотр истории версий документа (filer + reversion)
 rules.add_rule(
     'documents.view_document_history',
-    is_superuser | is_document_owner | is_document_author | is_document_category_manager
+    is_superuser | is_document_uploader | can_manage_documents
 )
 
 # Просмотр всех документов отдела
 rules.add_rule(
     'documents.view_department_documents',
-    is_superuser | can_approve_documents
+    is_superuser | can_manage_documents
 )
 
 
@@ -190,10 +155,10 @@ rules.add_rule(
 # -----------------------------------------------------------------------------
 
 # Если вы хотите переопределить стандартные Django permissions:
-# rules.add_perm('documents.view_document', is_superuser | has_document_access)
-# rules.add_perm('documents.change_document', is_superuser | is_document_owner)
-# rules.add_perm('documents.delete_document', is_superuser | is_document_owner)
-# rules.add_perm('documents.add_document', rules.is_authenticated)  # Все авторизованные могут создавать
+rules.add_perm('documents.view_document', is_superuser | has_document_access)
+rules.add_perm('documents.change_document', is_superuser | is_document_uploader | can_manage_documents)
+rules.add_perm('documents.delete_document', is_superuser | is_document_uploader | can_manage_documents)
+rules.add_perm('documents.add_document', rules.is_authenticated)  # Все авторизованные могут создавать
 
 
 # -----------------------------------------------------------------------------
