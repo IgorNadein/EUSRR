@@ -485,7 +485,6 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
             ),
             'sent_to_all': document.sent_to_all,
         },
-        send_immediately=send_immediately  # Передаём параметр
     )
     
     if notification:
