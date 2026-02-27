@@ -81,6 +81,8 @@ urlpatterns = [
     ),
     # Notifications API
     path("notifications/", include("api.v1.notifications.urls")),
+    # Procurement API
+    path("procurement/", include("api.v1.procurement.urls")),
     # Router URLs (включая все ViewSets)
     path("", include(router.urls)),
 ]
