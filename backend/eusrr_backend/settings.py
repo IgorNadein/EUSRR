@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "realtime.apps.RealtimeConfig",  # WebSocket consumers для real-time
     "communications.apps.CommunicationsConfig",
     "notifications.apps.NotificationsConfig",
+    "watson",  # django-watson для полнотекстового поиска
     "search.apps.SearchConfig",
     "bots",
     "finance.apps.FinanceConfig",

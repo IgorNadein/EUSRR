@@ -230,6 +230,16 @@ class ApiClient {
         return this.request('/api/v1/employees/me/');
     }
 
+    // Глобальный поиск (django-watson)
+    async search(query: string, limit?: number): Promise<any> {
+        const queryParams = new URLSearchParams();
+        queryParams.append('q', query);
+        if (limit) queryParams.append('limit', limit.toString());
+
+        const url = `/api/v1/search/?${queryParams.toString()}`;
+        return this.request(url);
+    }
+
     // Сотрудники
     async getEmployees(params?: { search?: string; department?: string; page?: number; limit?: number }): Promise<any> {
         const queryParams = new URLSearchParams();
