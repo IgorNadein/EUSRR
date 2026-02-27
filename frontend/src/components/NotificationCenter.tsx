@@ -7,7 +7,11 @@ import { useWebPush } from '@/hooks/useWebPush';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 
-export function NotificationCenter() {
+interface NotificationCenterProps {
+    variant?: 'default' | 'mobile';
+}
+
+export function NotificationCenter({ variant = 'default' }: NotificationCenterProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -58,12 +62,16 @@ export function NotificationCenter() {
                     setIsOpen(!isOpen);
                     setShowSettings(false);
                 }}
-                className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className={
+                    variant === 'mobile'
+                        ? "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 hover:bg-slate-100"
+                        : "relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100"
+                }
                 aria-label="Уведомления"
             >
-                <Bell className="w-6 h-6" />
+                <Bell size={18} className="text-gray-600" />
                 {unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center font-bold">
                         {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                 )}
@@ -71,60 +79,60 @@ export function NotificationCenter() {
 
             {/* Dropdown */}
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[600px] flex flex-col">
+                <div className="absolute right-0 top-12 z-[60] w-80 sm:w-96 bg-white rounded-xl shadow-lg ring-1 ring-slate-100 max-h-[600px] flex flex-col animate-fade-in">
                     {/* Заголовок */}
-                    <div className="flex items-center justify-between p-4 border-b">
-                        <h3 className="font-semibold text-lg">Уведомления</h3>
+                    <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                        <h3 className="font-semibold text-base">Уведомления</h3>
                         <div className="flex items-center gap-2">
                             {unreadCount > 0 && (
                                 <button
                                     onClick={markAllAsRead}
-                                    className="text-sm text-blue-600 hover:text-blue-700"
+                                    className="text-xs text-sky-600 hover:text-sky-700 font-medium"
                                 >
                                     Прочитать все
                                 </button>
                             )}
                             <button
                                 onClick={() => setShowSettings(!showSettings)}
-                                className="p-1 hover:bg-gray-100 rounded"
+                                className="p-1 hover:bg-slate-100 rounded"
                                 aria-label="Настройки"
                             >
-                                <Settings className="w-5 h-5" />
+                                <Settings className="w-4 h-4 text-gray-500" />
                             </button>
                             <button
                                 onClick={() => setIsOpen(false)}
-                                className="p-1 hover:bg-gray-100 rounded"
+                                className="p-1 hover:bg-slate-100 rounded"
                                 aria-label="Закрыть"
                             >
-                                <X className="w-5 h-5" />
+                                <X className="w-4 h-4 text-gray-500" />
                             </button>
                         </div>
                     </div>
 
                     {/* Настройки Push */}
                     {showSettings && (
-                        <div className="p-4 bg-gray-50 border-b">
-                            <h4 className="font-medium mb-2">Push уведомления</h4>
+                        <div className="p-4 bg-slate-50 border-b border-slate-100">
+                            <h4 className="font-medium mb-2 text-sm">Push уведомления</h4>
                             {!isSupported ? (
-                                <p className="text-sm text-gray-500">
+                                <p className="text-xs text-gray-500">
                                     Push уведомления не поддерживаются вашим браузером
                                 </p>
                             ) : permission === 'denied' ? (
-                                <p className="text-sm text-red-500">
+                                <p className="text-xs text-red-500">
                                     Вы запретили уведомления. Измените настройки браузера.
                                 </p>
                             ) : (
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm">
+                                    <span className="text-xs text-gray-600">
                                         {isSubscribed ? 'Включены' : 'Отключены'}
                                     </span>
                                     <button
                                         onClick={handleTogglePush}
                                         disabled={pushLoading}
-                                        className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                                        className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                                             isSubscribed
                                                 ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                                                : 'bg-sky-600 text-white hover:bg-sky-700'
                                         } disabled:opacity-50 disabled:cursor-not-allowed`}
                                     >
                                         {pushLoading ? 'Загрузка...' : isSubscribed ? 'Отключить' : 'Включить'}
@@ -137,13 +145,13 @@ export function NotificationCenter() {
                     {/* Список уведомлений */}
                     <div className="overflow-y-auto flex-1">
                         {loading ? (
-                            <div className="p-8 text-center text-gray-500">
+                            <div className="p-8 text-center text-gray-500 text-sm">
                                 Загрузка...
                             </div>
                         ) : notifications.length === 0 ? (
                             <div className="p-8 text-center text-gray-500">
-                                <Bell className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                <p>Нет уведомлений</p>
+                                <Bell className="w-12 h-12 mx-auto mb-2 opacity-20 text-gray-400" />
+                                <p className="text-sm">Нет уведомлений</p>
                             </div>
                         ) : (
                             <ul>
@@ -151,22 +159,22 @@ export function NotificationCenter() {
                                     <li
                                         key={notification.id}
                                         onClick={() => handleNotificationClick(notification)}
-                                        className={`p-4 border-b hover:bg-gray-50 cursor-pointer transition-colors ${
-                                            !notification.is_read ? 'bg-blue-50' : ''
+                                        className={`p-3 border-b border-slate-100 hover:bg-slate-100 cursor-pointer transition-colors ${
+                                            !notification.is_read ? 'bg-sky-50/50' : ''
                                         }`}
                                     >
-                                        <div className="flex items-start gap-3">
+                                        <div className="flex items-start gap-2.5">
                                             {!notification.is_read && (
-                                                <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0" />
+                                                <div className="w-1.5 h-1.5 bg-sky-600 rounded-full mt-1.5 flex-shrink-0" />
                                             )}
                                             <div className="flex-1 min-w-0">
-                                                <h4 className="font-medium text-sm mb-1 truncate">
+                                                <h4 className="font-medium text-sm mb-0.5 truncate text-gray-800">
                                                     {notification.title}
                                                 </h4>
-                                                <p className="text-sm text-gray-600 line-clamp-2 mb-1">
+                                                <p className="text-xs text-gray-600 line-clamp-2 mb-1">
                                                     {notification.short_message || notification.message}
                                                 </p>
-                                                <p className="text-xs text-gray-400">
+                                                <p className="text-[10px] text-gray-400">
                                                     {formatDistanceToNow(new Date(notification.created_at), {
                                                         addSuffix: true,
                                                         locale: ru,
@@ -182,10 +190,10 @@ export function NotificationCenter() {
 
                     {/* Футер */}
                     {notifications.length > 0 && (
-                        <div className="p-3 border-t bg-gray-50 text-center">
+                        <div className="p-3 border-t border-slate-100 bg-slate-50 text-center">
                             <a
                                 href="/notifications"
-                                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                className="text-xs text-sky-600 hover:text-sky-700 font-medium"
                             >
                                 Показать все уведомления
                             </a>
