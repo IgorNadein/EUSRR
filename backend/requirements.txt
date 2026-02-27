@@ -102,6 +102,7 @@ qrcode==8.1
 redis==6.4.0
 requests==2.32.4
 requests-oauthlib==2.0.0
+rules==3.5
 service-identity==24.2.0
 six==1.17.0
 social-auth-app-django==5.5.1
