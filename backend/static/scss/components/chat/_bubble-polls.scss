@@ -1,0 +1,53 @@
+/**
+ * _bubble-polls.scss
+ * Стили для голосований внутри пузырей (BEM Element: .bubble__poll)
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   БАЗОВЫЕ СТИЛИ ГОЛОСОВАНИЯ
+────────────────────────────────────────────────────────────── */
+
+.bubble__poll {
+  .poll-widget {
+    max-width: 100%;
+    background: var(--bubble-poll-bg, transparent);
+    border: none;
+    padding: 0;
+  }
+  
+  .poll-question {
+    color: var(--bubble-poll-text, inherit);
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+  }
+  
+  .poll-option {
+    margin-bottom: 0.5rem;
+    
+    .progress {
+      background-color: var(--bubble-poll-progress-bg, var(--bs-border-color));
+    }
+    
+    .progress .progress-bar {
+      background-color: var(--bubble-poll-progress-fill, var(--bs-primary));
+    }
+  }
+  
+  .poll-footer {
+    font-size: 0.85rem;
+    color: var(--bubble-poll-meta, var(--bs-secondary));
+    margin-top: 0.5rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   АДАПТИВНОСТЬ
+────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .bubble__poll {
+    .poll-widget {
+      font-size: 0.9rem;
+    }
+  }
+}

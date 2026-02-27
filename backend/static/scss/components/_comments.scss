@@ -37,7 +37,7 @@
     .comment-date {
       color: var(--bs-secondary);
     }
-    
+
     .badge {
       font-size: 0.7rem;
       padding: 0.15rem 0.4rem;
@@ -54,23 +54,23 @@
     border-radius: 12px;
     max-width: 80%;
   }
-  
+
   // Комментарии автора поста справа
   &.comment-item--author {
     align-items: flex-end;
-    
+
     .comment-header {
       flex-direction: row-reverse;
-      
+
       .comment-separator {
         order: 0;
       }
-      
+
       .comment-date {
         order: -1;
       }
     }
-    
+
     .comment-body {
       background: var(--bs-primary-bg-subtle, rgba(13, 110, 253, 0.1));
       border: 1px solid var(--bs-primary-border-subtle, rgba(13, 110, 253, 0.2));
@@ -117,24 +117,24 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 1rem;
-  
+
   // Firefox скроллбар
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
-  
+
   // Стилизация скроллбара (Chrome, Safari, Edge)
   &::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.15);
     border-radius: 4px;
-    
+
     &:hover {
       background: rgba(0, 0, 0, 0.25);
     }

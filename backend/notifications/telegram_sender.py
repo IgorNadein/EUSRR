@@ -58,8 +58,17 @@ class TelegramNotificationSender:
         Returns:
             True если отправлено успешно, False иначе
         """
+        logger.info(
+            f"[TelegramNotificationSender.send_notification_async] НАЧАЛО: "
+            f"telegram_id={telegram_id}, "
+            f"notification_id={notification.id}"
+        )
+        
         bot = cls.get_bot()
         if not bot:
+            logger.error(
+                f"[TelegramNotificationSender] ❌ Bot не инициализирован (токен отсутствует)"
+            )
             return False
         
         try:
@@ -68,15 +77,27 @@ class TelegramNotificationSender:
             category_name = notification.notification_type.category.name
             emoji = cls.CATEGORY_EMOJI.get(category_code, '🔔')
             
+            logger.info(
+                f"[TelegramNotificationSender] Категория: {category_name} ({category_code}), emoji: {emoji}"
+            )
+            
             # Формируем текст сообщения
             text = f"{emoji} <b>{notification.title}</b>\n\n"
             text += f"{notification.message}\n\n"
             text += f"<i>Категория: {category_name}</i>"
             
+            logger.info(
+                f"[TelegramNotificationSender] Текст сообщения сформирован (длина: {len(text)} символов)"
+            )
+            
             # Создаем кнопку действия если есть URL
             keyboard = None
             if notification.action_url:
                 action_text = notification.action_text or 'Посмотреть'
+                
+                logger.info(
+                    f"[TelegramNotificationSender] Формирование кнопки: action_url={notification.action_url}"
+                )
                 
                 # Формируем полный URL
                 if site_url:
@@ -108,11 +129,21 @@ class TelegramNotificationSender:
                     keyboard = InlineKeyboardMarkup([
                         [InlineKeyboardButton(action_text, url=url)]
                     ])
+                    logger.info(
+                        f"[TelegramNotificationSender] ✅ Inline кнопка создана: {url}"
+                    )
                 elif 'localhost' in url.lower() or '127.0.0.1' in url:
                     # Добавляем URL в текст сообщения
                     text += f"\n\n🔗 Ссылка: {url}"
+                    logger.info(
+                        f"[TelegramNotificationSender] ⚠️ localhost URL добавлен в текст (inline кнопка невозможна)"
+                    )
             
             # Отправляем сообщение
+            logger.info(
+                f"[TelegramNotificationSender] ➡️ Отправка в Telegram API (chat_id={telegram_id})..."
+            )
+            
             await bot.send_message(
                 chat_id=telegram_id,
                 text=text,
@@ -122,25 +153,35 @@ class TelegramNotificationSender:
             )
             
             logger.info(
-                f"Telegram уведомление отправлено: {notification.id} -> {telegram_id}"
+                f"[TelegramNotificationSender] ✅ Telegram API УСПЕШНО: "
+                f"notification_id={notification.id} -> chat_id={telegram_id}"
             )
             return True
             
         except TelegramError as e:
             error_msg = str(e)
             
+            logger.error(
+                f"[TelegramNotificationSender] ❌ TelegramError: "
+                f"notification_id={notification.id}, "
+                f"chat_id={telegram_id}, "
+                f"error={error_msg}"
+            )
+            
             # Обработка специфичных ошибок
             if "chat not found" in error_msg.lower():
                 logger.warning(
-                    f"Пользователь с Chat ID {telegram_id} не отправил /start боту"
+                    f"[TelegramNotificationSender] ⚠️ Чат не найден: "
+                    f"пользователь с Chat ID {telegram_id} не отправил /start боту"
                 )
             elif "bot was blocked" in error_msg.lower() or "forbidden" in error_msg.lower():
                 logger.warning(
-                    f"Пользователь с Chat ID {telegram_id} заблокировал бота"
+                    f"[TelegramNotificationSender] ⚠️ Бот заблокирован: "
+                    f"пользователь с Chat ID {telegram_id} заблокировал бота"
                 )
             else:
                 logger.error(
-                    f"Ошибка отправки Telegram уведомления {notification.id}: {e}",
+                    f"[TelegramNotificationSender] ❌ Необработанная ошибка Telegram: {e}",
                     exc_info=True
                 )
             
@@ -171,39 +212,67 @@ class TelegramNotificationSender:
         Returns:
             True если отправлено успешно, False иначе
         """
+        logger.info(
+            f"[TelegramNotificationSender.send_notification] НАЧАЛО: "
+            f"notification_id={notification.id}, "
+            f"chat_id={chat_id}, "
+            f"site_url={site_url}"
+        )
+        
         # Преобразуем chat_id в int
         if not chat_id:
             logger.warning(
-                f"Chat ID не указан для {notification.recipient}"
+                f"[TelegramNotificationSender] ❌ Chat ID не указан для {notification.recipient}"
             )
             return False
         
         try:
             telegram_id = int(chat_id)
+            logger.info(
+                f"[TelegramNotificationSender] Chat ID преобразован в int: {telegram_id}"
+            )
         except (ValueError, TypeError):
             logger.error(
-                f"Неверный формат Chat ID: {chat_id}"
+                f"[TelegramNotificationSender] ❌ Неверный формат Chat ID: {chat_id}"
             )
             return False
         
         # Получить site_url если не передан
         if not site_url:
             site_url = getattr(settings, 'SITE_URL', 'http://localhost:9000')
+            logger.info(
+                f"[TelegramNotificationSender] Site URL из настроек: {site_url}"
+            )
         
         # Запускаем асинхронную отправку
+        logger.info(
+            f"[TelegramNotificationSender] ➡️ Запуск асинхронной отправки..."
+        )
+        
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        return loop.run_until_complete(
+        result = loop.run_until_complete(
             cls.send_notification_async(
                 telegram_id,
                 notification,
                 site_url
             )
         )
+        
+        if result:
+            logger.info(
+                f"[TelegramNotificationSender] ✅ Успешно отправлено в Telegram (chat_id={telegram_id})"
+            )
+        else:
+            logger.warning(
+                f"[TelegramNotificationSender] ⚠️ Отправка в Telegram вернула False"
+            )
+        
+        return result
     
     @classmethod
     def send_notification_by_username(

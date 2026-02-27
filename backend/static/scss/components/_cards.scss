@@ -1,0 +1,341 @@
+// =============================================================================
+// Cards Component
+// =============================================================================
+// Glassmorphism карточки с поддержкой тёмной темы
+
+// =============================================================================
+// 1. БАЗОВЫЕ СТИЛИ КАРТОЧКИ
+// =============================================================================
+
+.card {
+  // Применяем glassmorphism эффект
+  @include glassmorphism-card();
+
+  // Прозрачный фон
+  --bs-card-bg: transparent;
+  background: $glass-light-bg !important;
+
+  // Тонкая рамка
+  border: 1px solid $glass-light-border !important;
+
+  // Плавные переходы
+  @include transition-all($transition-medium);
+  overflow: hidden;
+
+  // Hover эффект - усиливаем glassmorphism
+  &:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
+    backdrop-filter: $blur-lg saturate(200%);
+    -webkit-backdrop-filter: $blur-lg saturate(200%);
+    box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+  }
+}
+
+// =============================================================================
+// 2. ТЁМНАЯ ТЕМА
+// =============================================================================
+
+[data-bs-theme="dark"] {
+  .card {
+    --bs-card-bg: transparent;
+    --bs-card-border-color: $glass-dark-border;
+    background: transparent !important;
+    border-color: $glass-dark-border !important;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.03) !important;
+      border-color: rgba(255, 255, 255, 0.15) !important;
+    }
+  }
+}
+
+// =============================================================================
+// 3. LAYOUT КОМПОНЕНТЫ КАРТОЧЕК
+// =============================================================================
+
+// Контейнер списка карточек
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+// Заголовок секции
+.section-header {
+  @include flex-align-center();
+  gap: var(--gap-component, 1rem);
+  margin-bottom: var(--space-3, 0.75rem);
+
+  .title {
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    margin: 0;
+  }
+}
+
+// =============================================================================
+// 4. СТРУКТУРА КАРТОЧКИ
+// =============================================================================
+
+// Card header
+.card-header {
+  @include flex-align-center();
+  gap: var(--gap-component, 1rem);
+  padding: var(--card-padding, 1rem);
+  padding-bottom: var(--space-1, 0.25rem);
+  background: transparent;
+  border-bottom: none;
+}
+
+// Иконка/аватар в карточке
+.card-icon {
+  width: 42px;
+  height: 42px;
+  @include circle();
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  background: var(--bs-tertiary-bg);
+  @include flex-center();
+  flex: 0 0 auto;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+// Метаинформация
+.card-meta {
+  line-height: 1.2;
+  flex: 1;
+  min-width: 0;
+}
+
+// Заголовок карточки
+.card-title {
+  font-weight: 700;
+  color: var(--bs-body-color);
+  @include text-truncate();
+  display: block;
+  margin-bottom: 0;
+}
+
+// Подзаголовок
+.card-subtitle {
+  font-size: 0.82rem;
+  color: var(--bs-secondary-color);
+  @include text-truncate();
+  display: block;
+  margin-bottom: 0;
+}
+
+// Тело карточки
+.card-body {
+  padding: var(--space-1, 0.25rem) var(--card-padding, 1rem);
+  padding-bottom: var(--space-1, 0.25rem);
+  position: relative;
+}
+
+// =============================================================================
+// 5. ДЕЙСТВИЯ КАРТОЧКИ (CARD ACTIONS)
+// =============================================================================
+
+.card-actions {
+  @include flex-align-center();
+  gap: var(--space-1, 0.25rem);
+  padding: var(--card-padding, 1rem);
+  padding-top: var(--space-2, 0.5rem);
+  border-top: 1px solid var(--bs-border-color);
+  position: relative;
+  z-index: $z-base;
+
+  // Активные кнопки в actions
+  .btn,
+  button {
+    &.active,
+    &.is-liked {
+      color: var(--bs-primary) !important;
+      font-weight: 600;
+    }
+  }
+}
+
+// =============================================================================
+// 6. ВАРИАЦИИ КАРТОЧЕК
+// =============================================================================
+
+// Компактная карточка
+.card.compact {
+  .card-header {
+    padding: var(--space-1, 0.25rem) var(--card-padding-sm, 0.5rem);
+  }
+
+  .card-body {
+    padding: var(--space-1, 0.25rem) var(--card-padding-sm, 0.5rem);
+  }
+
+  .card-icon {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+// Карточка без рамки
+.card.borderless {
+  border: none;
+  @include no-shadow();
+  border-radius: 0;
+  border-bottom: 1px solid var(--bs-border-color);
+
+  &:hover {
+    transform: none;
+    @include no-shadow();
+    background: var(--bs-tertiary-bg);
+  }
+}
+
+// Выделенная карточка
+.card.highlighted {
+  border-left: 3px solid var(--bs-primary);
+  background: color-mix(in srgb, var(--bs-primary), transparent 95%);
+}
+
+// =============================================================================
+// 7. RESPONSIVE
+// =============================================================================
+
+@include mobile() {
+  .section-header {
+    gap: var(--space-2, 0.5rem);
+    flex-wrap: wrap;
+  }
+
+  .card-header {
+    padding: var(--space-2, 0.5rem);
+    padding-bottom: var(--space-1, 0.25rem);
+  }
+
+  .card-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .card-actions {
+    padding: var(--space-2, 0.5rem);
+  }
+}
+
+// =============================================================================
+// 8. СТИЛИ КНОПОК (из custom-bootstrap.scss)
+// =============================================================================
+
+// Базовые стили для ВСЕХ кнопок - полностью прозрачные
+.btn {
+  background: transparent !important;
+  border: none !important;
+  color: var(--bs-secondary-color);
+  font-weight: 500;
+  @include transition(color, $transition-fast);
+
+  &:hover:not(:disabled) {
+    color: var(--bs-body-color);
+  }
+
+  &:active:not(:disabled) {
+    color: var(--bs-body-color);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// Primary кнопка (единственная с цветным фоном)
+.btn-primary {
+  color: $color-white !important;
+  background: rgba(13, 110, 253, 0.7) !important;
+
+  &:hover:not(:disabled) {
+    background: rgba(13, 110, 253, 0.85) !important;
+    box-shadow: 0 4px 16px rgba(13, 110, 253, 0.3);
+  }
+
+  &:active:not(:disabled) {
+    background: rgba(13, 110, 253, 0.95) !important;
+  }
+}
+
+// Secondary, outline, ghost - все прозрачные
+.btn-secondary,
+.btn-outline-primary,
+.btn-outline-secondary,
+.btn-ghost {
+  background: transparent !important;
+  color: var(--bs-secondary-color);
+
+  &:hover:not(:disabled) {
+    background: transparent !important;
+    color: var(--bs-body-color);
+  }
+
+  &:active:not(:disabled) {
+    background: transparent !important;
+  }
+}
+
+// Особый цвет для outline-primary
+.btn-outline-primary {
+  color: var(--bs-primary);
+
+  &:hover:not(:disabled) {
+    color: var(--bs-primary);
+    background: transparent !important;
+  }
+}
+
+// Кнопки в тёмной теме
+[data-bs-theme="dark"] {
+  .btn {
+    &:hover:not(:disabled),
+    &:active:not(:disabled) {
+      background: transparent !important;
+    }
+  }
+
+  .btn-primary {
+    background: rgba(13, 110, 253, 0.6) !important;
+
+    &:hover:not(:disabled) {
+      background: rgba(13, 110, 253, 0.75) !important;
+    }
+
+    &:active:not(:disabled) {
+      background: rgba(13, 110, 253, 0.85) !important;
+    }
+  }
+
+  .btn-secondary,
+  .btn-outline-primary,
+  .btn-outline-secondary,
+  .btn-ghost {
+    &:hover:not(:disabled),
+    &:active:not(:disabled) {
+      background: transparent !important;
+    }
+  }
+}
+
+// =============================================================================
+// 9. УТИЛИТАРНЫЕ КЛАССЫ
+// =============================================================================
+
+// Моноширинный шрифт для дат, цифр, кодов
+.text-mono {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Consolas', 'Liberation Mono', 'Menlo', 'Courier', monospace;
+}

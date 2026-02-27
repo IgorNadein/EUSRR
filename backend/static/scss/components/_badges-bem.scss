@@ -1,0 +1,232 @@
+// =============================================================================
+// Badges Component
+// =============================================================================
+// Notification badges with Telegram-style design
+// Uses design tokens from abstracts/_variables.scss
+
+// =============================================================================
+// 1. BASE COMPONENT
+// =============================================================================
+
+.badge {
+  @include badge-base($badge-height-base, $badge-radius);
+  @include badge-shadow();
+  color: $color-white;
+  background: var(--bs-danger);
+  transition: $badge-transition;
+  user-select: none;
+  padding: 0 6px;
+
+  // Auto-hide when empty
+  &:empty {
+    display: none;
+  }
+
+  // Hide when count is 0
+  &[data-count="0"] {
+    display: none;
+  }
+}
+
+// =============================================================================
+// 2. SIZE MODIFIERS
+// =============================================================================
+
+.badge--sm {
+  @include badge-base($badge-height-sm, $badge-radius-sm);
+  font-size: 10px;
+  padding: 0 5px;
+}
+
+.badge--lg {
+  @include badge-base($badge-height-lg, $badge-radius-lg);
+  font-size: 12px;
+  padding: 0 7px;
+}
+
+.badge--xl {
+  @include badge-base($badge-height-xl, $badge-radius-xl);
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+// =============================================================================
+// 3. COLOR MODIFIERS
+// =============================================================================
+
+.badge--primary {
+  background: var(--bs-primary);
+}
+
+.badge--secondary {
+  background: var(--bs-secondary);
+  opacity: 0.8;
+}
+
+.badge--success {
+  background: var(--bs-success);
+}
+
+.badge--warning {
+  background: var(--bs-warning);
+  color: var(--bs-dark);
+}
+
+.badge--info {
+  background: var(--bs-info);
+}
+
+.badge--mention {
+  background: $telegram-blue;
+}
+
+.badge--muted {
+  background: var(--bs-secondary);
+  opacity: 0.6;
+  color: var(--bs-secondary-color);
+}
+
+// =============================================================================
+// 4. STYLE MODIFIERS
+// =============================================================================
+
+.badge--outlined {
+  background: transparent;
+  border: 2px solid currentColor;
+  color: var(--bs-danger);
+}
+
+.badge--dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  padding: 0;
+  @include radius(50%);
+}
+
+.badge--inline {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+// Premium badge with gradient
+.badge--premium {
+  background: linear-gradient(135deg, $gradient-purple-start 0%, $gradient-purple-end 100%);
+}
+
+.badge--star {
+  background: linear-gradient(135deg, $gradient-pink-start 0%, $gradient-pink-end 100%);
+}
+
+// =============================================================================
+// 5. CONTEXT MODIFIERS
+// =============================================================================
+
+// Badge on avatar
+.badge--avatar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(25%, -25%);
+  z-index: $z-base;
+}
+
+// Badge on button
+.badge--button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+
+// Interactive badge (clickable)
+.badge--interactive {
+  cursor: pointer;
+  @include transition-all($transition-fast);
+
+  &:hover {
+    transform: scale(1.1);
+    box-shadow: $badge-shadow-hover;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// =============================================================================
+// 6. STATES
+// =============================================================================
+
+.badge.is-hidden {
+  display: none;
+}
+
+.badge.is-animating-in {
+  animation: badge-scale-in 0.2s $ease-bounce;
+}
+
+.badge.is-pulsing {
+  animation: badge-pulse 1.5s infinite;
+}
+
+.badge.is-animating-out {
+  animation: badge-scale-out 0.2s $ease-bounce forwards;
+}
+
+// =============================================================================
+// 7. DARK MODE
+// =============================================================================
+
+[data-bs-theme="dark"] {
+  .badge {
+    box-shadow: $badge-shadow-dark;
+  }
+
+  .badge--outlined {
+    border-width: 1px;
+  }
+
+  .badge--avatar {
+    height: calc($badge-height-base - 2px);
+    min-width: calc($badge-height-base - 2px);
+  }
+}
+
+// =============================================================================
+// 8. ANIMATIONS
+// =============================================================================
+
+@keyframes badge-scale-in {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes badge-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes badge-scale-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0);
+    opacity: 0;
+  }
+}

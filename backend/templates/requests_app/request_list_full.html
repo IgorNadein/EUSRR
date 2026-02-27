@@ -4,12 +4,7 @@
 
 {% block title %}Заявления{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/components/document-list.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/request-list.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/recipientPicker.css' %}">
-{% endblock %}
+{% block extra_css %}{% endblock %}
 
 {% block content %}
 
@@ -20,6 +15,29 @@
   {% else %}
     {% include "includes/components/page_header.html" with icon="bi-clipboard-check" title="Заявления" no_search=True has_filters=True filters_target="reqFilters" filters_template="requests_app/_filters.html" create_as_card=True create_modal="reqCreateModal" create_text="Создать заявление" %}
   {% endif %}
+
+  {# ===== Nav Pills для области ===== #}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <ul class="nav nav-pills nav-fill">
+        <li class="nav-item">
+          <a class="nav-link {% if not filters.view or filters.view == '' %}active{% endif %}" href="?{% if filters.type %}type={{ filters.type }}&{% endif %}{% if filters.status %}status={{ filters.status }}{% endif %}">
+            <i class="bi-folder"></i> Все доступные
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if filters.view == 'mine' %}active{% endif %}" href="?view=mine{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}">
+            <i class="bi-person-circle"></i> Мои заявления
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if filters.view == 'addressed' %}active{% endif %}" href="?view=addressed{% if filters.type %}&type={{ filters.type }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}">
+            <i class="bi-inbox"></i> Адресованные мне
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
 
   {# ===== Список ===== #}
   {# DEBUG: Фильтры - type: {{ filters.type }}, status: {{ filters.status }}, count: {{ requests|length }} #}
@@ -44,11 +62,11 @@
           <h6 class="mb-0 text-secondary">Создано</h6>
         </div>
         <div class="req-cell req-cell-actions">
-          <h6 class="mb-0 text-secondary">Действия</h6>
+          <h6 class="mb-0 text-secondary">Согласование</h6>
         </div>
       </div>
     </div>
-    
+
     {# Контейнер для данных заявлений #}
     <div id="reqListContent">
       {# Список загружается через JavaScript из requestListHandler.js #}
@@ -86,6 +104,7 @@
             <option value="" selected disabled>Выберите тип…</option>
             <option value="vacation">📅 Отпуск</option>
             <option value="sick_leave">🏥 Больничный</option>
+            <option value="day_off">🏖️ Отгул</option>
             <option value="transfer">↔️ Перевод</option>
             <option value="dismissal">👋 Увольнение</option>
             <option value="other">📋 Другое</option>
@@ -94,7 +113,7 @@
 
         <div class="mb-3">
           <label class="form-label">Тема</label>
-          <input type="text" name="title" class="form-control" 
+          <input type="text" name="title" class="form-control"
                  placeholder="Краткое описание заявления..." maxlength="255">
         </div>
 
@@ -174,6 +193,7 @@
             <option value="" disabled>Выберите тип…</option>
             <option value="vacation">📅 Отпуск</option>
             <option value="sick_leave">🏥 Больничный</option>
+            <option value="day_off">🏖️ Отгул</option>
             <option value="transfer">↔️ Перевод</option>
             <option value="dismissal">👋 Увольнение</option>
             <option value="other">📋 Другое</option>
@@ -275,7 +295,6 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
         <button class="btn btn-danger" type="submit">Отклонить</button>
       </div>
     </form>
@@ -359,6 +378,23 @@
 
 {% endblock %}
 
+<!-- Request Detail Modal -->
+<div class="modal fade" id="requestDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-file-earmark-text me-2"></i>Детали заявления
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body" id="requestDetailContent">
+        <!-- Содержимое загружается здесь -->
+      </div>
+    </div>
+  </div>
+</div>
+
 {% block extra_js %}
 <script>
   // Передаем данные для инициализации страницы
@@ -367,7 +403,9 @@
 </script>
 <script type="module">
   import { initRequestListPage } from "{% static 'js/pages/requestList.js' %}";
+  import { initRequestDetailModal } from "{% static 'js/modules/requestDetail.js' %}";
 
+  // Инициализировать список заявлений
   initRequestListPage({
     apiListUrl: "{% url 'api:v1:request-list' %}",
     apiDetailBase: "{% url 'api:v1:request-list' %}",
@@ -376,8 +414,11 @@
     autoShowComments: {% if comments_for %}true{% else %}false{% endif %},
     useAjaxList: true  // Включаем AJAX режим для списка
   });
+
+  // Инициализировать модальное окно для detail view
+  const requestDetailModal = initRequestDetailModal();
 </script>
 <script src="{% static 'js/components/requestComments.js' %}"></script>
 <!-- Emoji Picker Library -->
-<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+<script type="module" src="{% static 'vendor/emoji-picker/index.js' %}"></script>
 {% endblock %}

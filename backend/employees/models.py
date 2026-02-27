@@ -157,7 +157,13 @@ class Position(models.Model):
 
 
 class Employee(AbstractUser):
-    username = None
+    username = models.CharField(
+        "LDAP Username (кэш)",
+        max_length=150,
+        blank=True,
+        null=True,
+        help_text="Кэшированный LDAP логин сотрудника",
+    )
 
     gender = models.PositiveSmallIntegerField(
         "Пол", choices=GENDER_CHOICES, default=0, blank=True
@@ -179,7 +185,7 @@ class Employee(AbstractUser):
         "Telegram Chat ID",
         max_length=100,
         blank=True,
-        help_text="Ваш Telegram Chat ID для получения уведомлений (найдите через @userinfobot)"
+        help_text="Ваш Telegram Chat ID для получения уведомлений (найдите через @userinfobot)",
     )
     whatsapp = PhoneNumberField("WhatsApp", blank=True)
     wechat = models.CharField("WeChat", max_length=100, blank=True)
@@ -208,10 +214,12 @@ class Employee(AbstractUser):
             models.Index(fields=["last_name", "first_name"]),
             models.Index(fields=["email"]),
             models.Index(fields=["phone_number"]),
+            models.Index(fields=["username"]),
             models.Index(Lower("email"), name="employee_email_lower_idx"),
         ]
         permissions = [
             ("manage_employee_skills", "Может управлять навыками сотрудников"),
+            ("view_ldap_info", "Может просматривать LDAP информацию сотрудников"),
         ]
 
     def clean(self):
@@ -511,6 +519,70 @@ class EmployeeDepartment(DateRangeMixin, models.Model):
     def __str__(self):
         role_name = self.role.name if self.role else "сотрудник"
         return f"{self.employee} в {self.department} ({role_name})"
+
+
+class RoleAssignment(models.Model):
+    """Назначение роли сотруднику (не обязательно члену отдела).
+
+    Позволяет назначать роли любым сотрудникам компании,
+    независимо от их членства в отделе.
+
+    Attributes:
+        employee: Сотрудник, которому назначена роль.
+        role: Назначенная роль отдела.
+        assigned_by: Кто назначил роль (опционально).
+        assigned_at: Дата/время назначения.
+        is_active: Активно ли назначение.
+    """
+
+    employee = models.ForeignKey(
+        "Employee",
+        on_delete=models.CASCADE,
+        related_name="role_assignments",
+        verbose_name="Сотрудник",
+    )
+    role = models.ForeignKey(
+        DepartmentRole,
+        on_delete=models.CASCADE,
+        related_name="assignments",
+        verbose_name="Роль",
+    )
+    assigned_by = models.ForeignKey(
+        "Employee",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_roles",
+        verbose_name="Назначил",
+    )
+    assigned_at = models.DateTimeField(
+        "Дата назначения",
+        auto_now_add=True,
+    )
+    is_active = models.BooleanField(
+        "Активно",
+        default=True,
+        db_index=True,
+    )
+
+    class Meta:
+        verbose_name = "Назначение роли"
+        verbose_name_plural = "Назначения ролей"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "role"],
+                name="uniq_employee_role_assignment",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["role", "is_active"]),
+            models.Index(fields=["employee", "is_active"]),
+        ]
+        ordering = ["-assigned_at"]
+
+    def __str__(self):
+        status = "✓" if self.is_active else "✗"
+        return f"{self.employee} → {self.role} [{status}]"
 
 
 class Skill(models.Model):

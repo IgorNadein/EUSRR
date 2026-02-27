@@ -3,9 +3,37 @@
 
 <script type="module">
   import { initCalendarWidget } from '{% static "js/components/calendarWidget.js" %}';
-  
-  const widget = initCalendarWidget();
-  if (widget) {
-    window.calendarWidget = widget;
+  import { integrateCalendarManager } from '{% static "js/components/calendarWidgetIntegration.js" %}';
+
+  // Функция инициализации интеграции
+  function initializeIntegration() {
+    // Проверяем, есть ли уже виджет
+    const widget = window.calendarWidget || initCalendarWidget();
+
+    if (widget) {
+      window.calendarWidget = widget;
+
+      // Интеграция с менеджером календарей
+      const integration = integrateCalendarManager(widget);
+      if (integration) {
+        window.calendarIntegration = integration;
+        console.log('[Calendar] Integration initialized with multiple calendars support');
+      } else {
+        console.warn('[Calendar] Integration failed to initialize');
+      }
+    } else {
+      console.warn('[Calendar] Widget not found, retrying in 500ms...');
+      setTimeout(initializeIntegration, 500);
+    }
+  }
+
+  // Инициализация после загрузки DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeIntegration);
+  } else {
+    // DOM уже загружен
+    initializeIntegration();
   }
 </script>
+
+

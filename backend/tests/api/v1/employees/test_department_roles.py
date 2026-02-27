@@ -11,22 +11,15 @@ from employees.models import (
     DepartmentPermission,
     EmployeeDepartment,  # <-- если у тебя EmployeeDepartmentLink, замени импорт и упоминания ниже
 )
+from tests.conftest import _unique_phone
 
 User = get_user_model()
-
 
 # =========================
 # Helpers
 # =========================
 
-def _unique_phone() -> str:
-    """
-    Делает уникальный 11-значный номер: 79xxxxxxxxx
-    Используем текущее количество пользователей как инкремент.
-    """
-    base = 79000000000  # 79 + 9 нулей
-    return str(base + User.objects.count())
-
+@pytest.fixture
 def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
     """
     Создаёт пользователя с обязательным phone_number и отключённой отправкой активационного письма.
@@ -70,7 +63,6 @@ def grant_assign_in_dept(user: User, dept: Department) -> DepartmentRole:
     )
     return role
 
-
 # =========================
 # Fixtures
 # =========================
@@ -78,7 +70,6 @@ def grant_assign_in_dept(user: User, dept: Department) -> DepartmentRole:
 @pytest.fixture()
 def api_client() -> APIClient:
     return APIClient()
-
 
 # =========================
 # Tests
@@ -114,7 +105,6 @@ def test_list_filtered_by_department(api_client: APIClient):
     ids = {it["id"] for it in items}
     assert ids == {r1.id, r2.id}
 
-
 @pytest.mark.django_db
 def test_create_requires_assign_department_role(api_client: APIClient):
     d = Department.objects.create(name="Dept")
@@ -137,7 +127,6 @@ def test_create_requires_assign_department_role(api_client: APIClient):
     assert data["department"] == d.id
     # back-compat поле присутствует
     assert "permissions" in data and isinstance(data["permissions"], list)
-
 
 @pytest.mark.django_db
 def test_update_and_destroy_scope_enforced(api_client: APIClient):
@@ -168,7 +157,6 @@ def test_update_and_destroy_scope_enforced(api_client: APIClient):
     # destroy с правами — 204/200
     resp = api_client.delete(url_detail_other)
     assert resp.status_code in (status.HTTP_204_NO_CONTENT, status.HTTP_200_OK)
-
 
 @pytest.mark.django_db
 def test_perm_choices_and_perms_and_set_perms(api_client: APIClient):
@@ -219,7 +207,6 @@ def test_perm_choices_and_perms_and_set_perms(api_client: APIClient):
     role.refresh_from_db()
     assert role.scoped_permissions.count() == 0
 
-
 @pytest.mark.django_db
 def test_set_perms_validates_payload(api_client: APIClient):
     d = Department.objects.create(name="Dept")
@@ -238,7 +225,6 @@ def test_set_perms_validates_payload(api_client: APIClient):
     resp = api_client.post(url_set, {"permission_ids": [999999]}, format="json")
     assert resp.status_code == 400
 
-
 @pytest.mark.django_db
 def test_back_compat_permissions_field_contains_ids(api_client: APIClient):
     d = Department.objects.create(name="Dept")
@@ -256,7 +242,6 @@ def test_back_compat_permissions_field_contains_ids(api_client: APIClient):
     assert resp.status_code == 200
     data = resp.json()
     assert set(data["permissions"]) == {dp_manage.id, dp_assign.id}
-
 
 @pytest.mark.django_db
 def test_create_with_scoped_permission_codes_and_update_name(api_client: APIClient):
@@ -287,7 +272,6 @@ def test_create_with_scoped_permission_codes_and_update_name(api_client: APIClie
     resp = api_client.patch(url_detail, {"name": "Lead+1"}, format="json")
     assert resp.status_code == 200
     assert resp.json()["name"] == "Lead+1"
-
 
 @pytest.mark.django_db
 def test_cross_department_access_denied_for_set_perms(api_client: APIClient):

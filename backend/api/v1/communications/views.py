@@ -1,1068 +1,1201 @@
-# backend/api/v1/communications/views.py
-"""API views для чатов и сообщений"""
+"""
+Communications API ViewSets
+
+DRF ViewSets для управления чатами, сообщениями и голосованиями.
+Полностью заменяет устаревшие function-based views.
+
+Endpoints:
+- /api/v1/communications/chats/ - ChatViewSet
+- /api/v1/communications/messages/ - MessageViewSet
+- /api/v1/communications/polls/ - PollViewSet
+
+История:
+- Миграция с FBV на ViewSets завершена: 14 января 2026
+- Удаление legacy кода: 15 января 2026
+"""
+import logging
+from datetime import datetime
+from datetime import timezone as dt_tz
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.contrib.auth.decorators import login_required
-from django.db import models, transaction
-from django.db.models import Q, Max, Prefetch
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
-from django.views.decorators.csrf import csrf_protect
-from django.views.decorators.http import require_GET, require_POST
-
-from communications.models import (
-    Chat,
-    ChatMembership,
-    ChatUserSettings,
-    Message,
-    MessageAttachment,
-    MessageReaction,
-)
-from communications.consumers import serialize_message
+from communications.models import (Chat, ChatMembership, ChatReadState,
+                                   ChatUserSettings, Message,
+                                   MessageAttachment, MessageReaction, Poll,
+                                   PollOption, PollVote)
+from communications.serialization import serialize_message
 from communications.views import _coerce_ts, user_can_access_chat
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
+from django.db.models.functions import Coalesce
+from django.utils import timezone
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .serializers import (BulkDeleteSerializer, ChatDetailSerializer,
+                          ChatListSerializer, ForwardMessageSerializer,
+                          MessageAttachmentSerializer, MessageCreateSerializer,
+                          MessageDetailSerializer, MessageEditSerializer,
+                          MessageListSerializer, PollSerializer,
+                          ReactionSerializer)
+
+logger = logging.getLogger(__name__)
+Employee = get_user_model()
 
 
-@login_required
-@require_GET
-def get_user_chats(request):
-    """Получить список чатов пользователя"""
-    user = request.user
-    
-    # Получаем все чаты, к которым пользователь имеет доступ
-    chats = Chat.objects.filter(
-        Q(type='global') |  # Глобальные чаты доступны всем
-        Q(participants=user) |  # Личные чаты где пользователь участник
-        Q(memberships__user=user,
-          memberships__is_active=True) |  # Групповые
-        Q(department__employeedepartment__employee=user,
-          department__employeedepartment__is_active=True) |  # Отдельские
-        Q(department__head=user)  # Руководитель отдела
-    ).distinct().annotate(
-        last_message_time=Max('messages__created_at')
-    ).prefetch_related(
-        Prefetch('messages',
-                 queryset=Message.objects.order_by('-created_at')[:1],
-                 to_attr='latest_messages')
-    ).order_by('-last_message_time')
-    
-    # Сериализуем чаты
-    chat_list = []
-    for chat in chats:
-        # Получаем аватар чата
-        avatar = None
-        if chat.type == 'private':
-            # Для личных чатов - аватар собеседника
-            other_user = chat.participants.exclude(id=user.id).first()
-            if (other_user and hasattr(other_user, 'avatar')
-                    and other_user.avatar):
-                try:
-                    avatar = request.build_absolute_uri(other_user.avatar.url)
-                except Exception:
-                    pass
-        elif chat.type == 'department' and chat.department:
-            # Для отдельских - аватар руководителя
-            head = chat.department.head
-            if head and hasattr(head, 'avatar'):
-                try:
-                    avatar = request.build_absolute_uri(head.avatar.url)
-                except Exception:
-                    pass
+class ChatViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet для управления чатами
 
-        # Последнее сообщение
-        last_message = None
-        if hasattr(chat, 'latest_messages') and chat.latest_messages:
-            msg = chat.latest_messages[0]
-            last_message = {
-                'content': msg.content[:50],
-                'created_at': msg.created_at.isoformat(),
-                'author_name': (
-                    msg.author.get_full_name()
-                    or msg.author.username
-                )
-            }
-        
-        chat_list.append({
-            'id': chat.id,
-            'name': chat.name,
-            'type': chat.type,
-            'avatar': avatar,
-            'last_message': last_message,
-            'created_at': chat.created_at.isoformat(),
-        })
-    
-    return JsonResponse({'results': chat_list})
+    list: GET /api/v1/communications/chats/ - список чатов пользователя
+    retrieve: GET /api/v1/communications/chats/{id}/ - детали чата
+    create: POST /api/v1/communications/chats/ - создать чат
 
+    Actions:
+    - pin: POST /api/v1/communications/chats/{id}/pin/ - закрепить/открепить
+    - notifications: POST /api/v1/communications/chats/{id}/notifications/ - вкл/выкл уведомления
+    - messages: GET /api/v1/communications/chats/{id}/messages/ - список сообщений (автоотметка)
+    - messages_around: GET /api/v1/communications/chats/{id}/messages_around/ - сообщения вокруг (автоотметка)
+    - mark_read: POST /api/v1/communications/chats/{id}/mark_read/ - [DEPRECATED] используйте GET /messages/
 
-@csrf_protect
-@login_required
-@require_POST
-def upload_message_with_attachments(request):
-    """Отправка сообщения с вложениями"""
-    chat_id = request.POST.get('chat_id')
-    content = request.POST.get('content', '').strip()
-    reply_to_id = request.POST.get('reply_to')
-    
-    # Логируем для отладки
-    print(f"[DEBUG] upload_message: chat_id={chat_id}, "
-          f"reply_to_id={reply_to_id}, "
-          f"content_length={len(content)}")
-    
-    if not chat_id:
-        return JsonResponse(
-            {'ok': False, 'error': 'chat_id required'},
-            status=400
-        )
-    
-    chat = get_object_or_404(Chat, pk=chat_id)
-    
-    # Проверка доступа к чату
-    # Для групповых, канальных и объявлений проверяем ChatMembership
-    if chat.type in ['group', 'channel', 'announcement']:
-        membership = ChatMembership.objects.filter(
-            chat=chat,
-            user=request.user,
-            is_active=True,
-            can_send_messages=True
-        ).first()
-        
-        if not membership:
-            return JsonResponse(
-                {'ok': False, 'error': 'Cannot send messages to this chat'},
-                status=403
-            )
-    # Для личных чатов проверяем, что пользователь - участник
-    elif chat.type == 'private':
-        if not chat.participants.filter(id=request.user.id).exists():
-            return JsonResponse(
-                {'ok': False, 'error': 'You are not a participant'},
-                status=403
-            )
-    # Для чатов отдела проверяем принадлежность к отделу
-    elif chat.type == 'department':
-        if chat.department:
-            from employees.models import EmployeeDepartment
-            is_member = EmployeeDepartment.objects.filter(
-                department=chat.department,
-                employee=request.user,
+    Автоматическая отметка прочитанных (Telegram-style):
+    При любой загрузке сообщений (messages, messages_around) последнее загруженное
+    сообщение автоматически отмечается как прочитанное через last_read_message_id.
+    Ручной вызов /mark-read/ больше не требуется.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ChatListSerializer
+        return ChatDetailSerializer
+
+    def get_queryset(self):
+        """Чаты доступные пользователю с аннотацией непрочитанных"""
+        user = self.request.user
+
+        # Подзапрос для last_read_message_id (Telegram-style)
+        read_state_subq = ChatReadState.objects.filter(
+            chat=OuterRef('pk'),
+            user=user
+        ).values('last_read_message_id')[:1]
+
+        # Подзапрос для количества непрочитанных
+        # Считаем сообщения с ID больше последнего прочитанного
+        unread_count_subq = Message.objects.filter(
+            chat=OuterRef('pk'),
+            id__gt=Coalesce(Subquery(read_state_subq), 0),
+            is_deleted=False
+        ).exclude(author=user).values('chat').annotate(
+            count=Count('id')
+        ).values('count')
+
+        queryset = Chat.objects.filter(
+            Q(participants=user) |
+            Q(department__in=user.departments_links.filter(
                 is_active=True
-            ).exists()
-            if not is_member and chat.department.head_id != request.user.id:
-                return JsonResponse(
-                    {'ok': False, 'error': 'Not a department member'},
-                    status=403
-                )
-    # Глобальный чат доступен всем активным пользователям
-    elif chat.type == 'global':
-        if not request.user.is_active:
-            return JsonResponse(
-                {'ok': False, 'error': 'User is not active'},
-                status=403
-            )
-    
-    # Если нет ни текста, ни файлов
-    if not content and not request.FILES:
-        return JsonResponse(
-            {'ok': False, 'error': 'Content or files required'},
-            status=400
+            ).values('department')) |
+            Q(include_all_employees=True)
+        ).select_related(
+            'department', 'created_by'
+        ).prefetch_related(
+            'participants',
+            Prefetch('user_settings',
+                     queryset=ChatUserSettings.objects.filter(user=user))
+        ).annotate(
+            unread_count=unread_count_subq
+        ).distinct().order_by('-created_at')
+
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        """Создание чата"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Устанавливаем создателя
+        chat = serializer.save(created_by=request.user)
+
+        # Для приватного чата добавляем создателя в участники
+        if chat.type == 'private':
+            chat.participants.add(request.user)
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            ChatDetailSerializer(chat, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
         )
-    
-    with transaction.atomic():
-        # Получаем reply_to сообщение если указано
-        reply_to = None
-        if reply_to_id:
-            try:
-                reply_to = Message.objects.get(pk=reply_to_id, chat=chat)
-                print(f"[DEBUG] Found reply_to message: id={reply_to.id}, "
-                      f"author={reply_to.author.username}")
-            except Message.DoesNotExist:
-                print(f"[DEBUG] reply_to message {reply_to_id} not found")
-                pass  # Игнорируем если сообщение не найдено
-        
-        # Создаем сообщение
-        message = Message.objects.create(
+
+    @action(detail=True, methods=['post'])
+    def pin(self, request, pk=None):
+        """Закрепить/открепить чат"""
+        chat = self.get_object()
+        settings, created = ChatUserSettings.objects.get_or_create(
             chat=chat,
-            author=request.user,
-            content=content or '',
-            has_attachments=bool(request.FILES),
-            reply_to=reply_to
+            user=request.user
         )
-        
-        print(f"[DEBUG] Created message: id={message.id}, "
-              f"reply_to_id={message.reply_to_id}")
-        
-        # Обрабатываем все загруженные файлы
-        attachments = []
-        for file_key in request.FILES:
-            uploaded_file = request.FILES[file_key]
-            
-            # Определение типа файла
-            mime_type = uploaded_file.content_type or ''
-            if mime_type.startswith('image/'):
-                file_type = 'image'
-            elif mime_type.startswith('video/'):
-                file_type = 'video'
-            elif mime_type.startswith('audio/'):
-                file_type = 'audio'
-            else:
-                file_type = 'file'
-            
-            attachment = MessageAttachment.objects.create(
-                message=message,
-                file=uploaded_file,
-                file_type=file_type,
-                file_name=uploaded_file.name,
-                file_size=uploaded_file.size,
-                mime_type=mime_type
-            )
-            
-            attachments.append({
-                'id': attachment.id,
-                'file_name': attachment.file_name,
-                'file_type': attachment.file_type,
-                'file_url': attachment.file.url,
-                'file_size': attachment.file_size,
-                'mime_type': attachment.mime_type
-            })
-    
-    # Отправляем сообщение через WebSocket всем участникам чата
-    channel_layer = get_channel_layer()
-    group_name = f"chat_{chat.id}"
-    
-    # Перезагружаем сообщение с предзагрузкой связей для правильной сериализации
-    message = Message.objects.select_related(
-        'author',
-        'reply_to__author'
-    ).prefetch_related('attachments').get(pk=message.id)
-    
-    # Сериализуем сообщение для WebSocket
-    message_data = serialize_message(message)
-    
-    async_to_sync(channel_layer.group_send)(
-        group_name,
-        {
-            "type": "chat.message",
-            "chat_id": chat.id,
-            "payload": message_data
-        }
-    )
-    
-    avatar_url = None
-    if hasattr(request.user, 'avatar') and request.user.avatar:
-        avatar_url = request.user.avatar.url
-    
-    return JsonResponse({
-        'ok': True,
-        'message_id': message.id,
-        'chat_id': chat.id,
-        'author': {
-            'id': request.user.id,
-            'full_name': request.user.get_full_name(),
-            'avatar': avatar_url
-        },
-        'content': message.content,
-        'created_at': message.created_at.isoformat(),
-        'attachments': attachments
-    })
+        settings.is_pinned = not settings.is_pinned
+        settings.save()
 
-
-@login_required
-@require_GET
-def load_chat_messages(request, pk: int):
-    """Постраничная загрузка истории чата (старые сообщения)."""
-    chat = get_object_or_404(Chat, pk=pk)
-    user = request.user
-
-    if not user_can_access_chat(chat, user):
-        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
-
-    try:
-        limit = int(request.GET.get("limit", 30))
-    except (TypeError, ValueError):
-        limit = 30
-    limit = max(1, min(limit, 100))
-
-    before_id = request.GET.get("before_id")
-    before_ts = request.GET.get("before_ts")
-
-    qs = (
-        Message.objects.filter(chat=chat)
-        .select_related("author", "reply_to__author")
-        .prefetch_related("attachments")
-        .order_by("-created_at")
-    )
-
-    if before_id:
-        boundary = (
-            Message.objects.filter(chat=chat, pk=before_id)
-            .only("created_at")
-            .first()
-        )
-        if boundary:
-            qs = qs.filter(created_at__lt=boundary.created_at)
-    elif before_ts:
-        boundary_ts = _coerce_ts(before_ts)
-        qs = qs.filter(created_at__lt=boundary_ts)
-
-    batch = list(qs[: limit + 1])
-    has_more = len(batch) > limit
-    next_cursor = None
-
-    if has_more:
-        next_cursor = batch[-1]
-        batch = batch[:-1]
-    elif batch:
-        next_cursor = batch[-1]
-
-    serialized = [serialize_message(m) for m in reversed(batch)]
-
-    return JsonResponse(
-        {
-            "ok": True,
-            "messages": serialized,
-            "has_more": has_more,
-            "next_before_id": next_cursor.id if next_cursor else None,
-            "next_before_ts": (
-                int(next_cursor.created_at.timestamp() * 1000)
-                if next_cursor
-                else None
-            ),
-        }
-    )
-
-
-# ============ MESSAGE REACTIONS ============
-
-@login_required
-@require_GET
-def get_available_reactions(request):
-    """Получить список доступных реакций"""
-    from communications.models import AvailableReaction
-    
-    reactions = AvailableReaction.objects.filter(is_active=True)
-    
-    return JsonResponse({
-        'ok': True,
-        'reactions': [
-            {
-                'emoji': reaction.emoji,
-                'name': reaction.name,
-                'order': reaction.order
-            }
-            for reaction in reactions
-        ]
-    })
-
-
-@login_required
-@require_POST
-def add_reaction(request, message_id):
-    """Добавить или изменить реакцию на сообщение"""
-    import json
-    
-    message = get_object_or_404(Message, pk=message_id)
-    
-    # Проверка доступа к чату
-    if not user_can_access_chat(message.chat, request.user):
-        return JsonResponse(
-            {'ok': False, 'error': 'Access denied'}, status=403
-        )
-    
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {'ok': False, 'error': 'Invalid JSON'}, status=400
-        )
-    
-    emoji = data.get('emoji', '').strip()
-    
-    if not emoji:
-        return JsonResponse(
-            {'ok': False, 'error': 'emoji required'}, status=400
-        )
-    
-    # Один пользователь может иметь только одну реакцию на сообщение
-    # Если уже есть - обновляем emoji, иначе создаём новую
-    reaction, created = MessageReaction.objects.update_or_create(
-        message=message,
-        user=request.user,
-        defaults={'emoji': emoji}
-    )
-    
-    # Получаем все реакции для этого сообщения
-    reactions_data = get_reactions_summary(message)
-    
-    # Отправляем WebSocket уведомление
-    channel_layer = get_channel_layer()
-    if channel_layer:
-        group_name = f"chat_{message.chat_id}"
-        async_to_sync(channel_layer.group_send)(
-            group_name,
-            {
-                "type": "chat.reaction_added",
-                "chat_id": message.chat_id,
-                "message_id": message.id,
-                "user_id": request.user.id,
-                "emoji": emoji,
-                "reactions_summary": reactions_data,
-            },
-        )
-    
-    return JsonResponse({
-        'ok': True,
-        'created': created,
-        'reaction': {
-            'id': reaction.id,
-            'emoji': reaction.emoji,
-            'user_id': reaction.user_id,
-            'created_at': reaction.created_at.isoformat()
-        },
-        'reactions_summary': reactions_data
-    })
-
-
-@login_required
-@require_POST
-def remove_reaction(request, message_id):
-    """Удалить свою реакцию с сообщения"""
-    
-    message = get_object_or_404(Message, pk=message_id)
-    
-    # Проверка доступа к чату
-    if not user_can_access_chat(message.chat, request.user):
-        return JsonResponse(
-            {'ok': False, 'error': 'Access denied'}, status=403
-        )
-    
-    # Сохраняем emoji перед удалением
-    reaction_to_delete = MessageReaction.objects.filter(
-        message=message,
-        user=request.user
-    ).first()
-    
-    deleted_emoji = reaction_to_delete.emoji if reaction_to_delete else None
-    
-    # Удаляем реакцию текущего пользователя
-    deleted_count, _ = MessageReaction.objects.filter(
-        message=message,
-        user=request.user
-    ).delete()
-    
-    if deleted_count == 0:
-        return JsonResponse(
-            {'ok': False, 'error': 'Reaction not found'}, status=404
-        )
-    
-    # Получаем обновлённый список реакций
-    reactions_data = get_reactions_summary(message)
-    
-    # Отправляем WebSocket уведомление
-    channel_layer = get_channel_layer()
-    if channel_layer:
-        group_name = f"chat_{message.chat_id}"
-        async_to_sync(channel_layer.group_send)(
-            group_name,
-            {
-                "type": "chat.reaction_removed",
-                "chat_id": message.chat_id,
-                "message_id": message.id,
-                "user_id": request.user.id,
-                "emoji": deleted_emoji,
-                "reactions_summary": reactions_data,
-            },
-        )
-    
-    return JsonResponse({
-        'ok': True,
-        'reactions_summary': reactions_data
-    })
-
-
-@login_required
-@require_GET
-def get_message_reactions(request, message_id):
-    """Получить все реакции для сообщения"""
-    message = get_object_or_404(Message, pk=message_id)
-    
-    # Проверка доступа к чату
-    if not user_can_access_chat(message.chat, request.user):
-        return JsonResponse(
-            {'ok': False, 'error': 'Access denied'}, status=403
-        )
-    
-    reactions_data = get_reactions_summary(message)
-    
-    return JsonResponse({
-        'ok': True,
-        'message_id': message_id,
-        'reactions': reactions_data
-    })
-
-
-def get_reactions_summary(message):
-    """
-    Вспомогательная функция для получения сводки по реакциям
-    Возвращает словарь вида:
-    {
-        '👍': {'count': 3, 'users': [1, 2, 3], 'user_names': [...]},
-        '❤️': {'count': 1, 'users': [4], 'user_names': [...]}
-    }
-    """
-    
-    reactions = MessageReaction.objects.filter(
-        message=message
-    ).select_related('user')
-    
-    # Группируем по эмодзи
-    summary = {}
-    for reaction in reactions:
-        emoji = reaction.emoji
-        if emoji not in summary:
-            summary[emoji] = {
-                'count': 0,
-                'users': [],
-                'user_names': []
-            }
-        summary[emoji]['count'] += 1
-        summary[emoji]['users'].append(reaction.user_id)
-        summary[emoji]['user_names'].append(
-            reaction.user.get_full_name() or reaction.user.username
-        )
-    
-    return summary
-
-
-# ============ CHAT USER SETTINGS ============
-
-@login_required
-@require_POST
-def pin_chat(request, chat_id):
-    """Закрепление/открепление чата"""
-    chat = get_object_or_404(Chat, pk=chat_id)
-    is_pinned = request.POST.get('pinned', 'true').lower() == 'true'
-    
-    settings, created = ChatUserSettings.objects.get_or_create(
-        chat=chat,
-        user=request.user
-    )
-    
-    settings.is_pinned = is_pinned
-    if is_pinned:
-        settings.pinned_at = timezone.now()
-        # Определяем порядок
-        max_order = ChatUserSettings.objects.filter(
-            user=request.user,
-            is_pinned=True
-        ).aggregate(max_order=models.Max('pin_order'))['max_order'] or 0
-        settings.pin_order = max_order + 1
-    else:
-        settings.pinned_at = None
-        settings.pin_order = 0
-    
-    settings.save()
-    
-    return JsonResponse({'ok': True, 'pinned': is_pinned})
-
-
-# ============ MESSAGE FORWARDING ============
-
-@login_required
-@require_POST
-@csrf_protect
-def forward_messages(request):
-    """Пересылка сообщений в другой чат"""
-    import json
-    import traceback
-    
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {e}")
-        return JsonResponse(
-            {'ok': False, 'error': 'Invalid JSON'},
-            status=400
-        )
-    
-    try:
-        message_ids = data.get('message_ids', [])
-        target_chat_id = data.get('target_chat_id')
-        
-        print(f"Forward request: message_ids={message_ids}, target_chat_id={target_chat_id}")
-        
-        if not message_ids or not target_chat_id:
-            return JsonResponse(
-                {'ok': False, 'error': 'message_ids and target_chat_id required'},
-                status=400
-            )
-        
-        # Получаем целевой чат
-        target_chat = get_object_or_404(Chat, pk=target_chat_id)
-        
-        # Проверяем доступ к целевому чату
-        if not user_can_access_chat(target_chat, request.user):
-            return JsonResponse(
-                {'ok': False, 'error': 'Access denied to target chat'},
-                status=403
-            )
-        
-        # Проверяем право отправки в целевой чат
-        if target_chat.type in ['group', 'channel', 'announcement']:
-            membership = ChatMembership.objects.filter(
-                chat=target_chat,
-                user=request.user,
-                is_active=True,
-                can_send_messages=True
-            ).first()
-            if not membership:
-                return JsonResponse(
-                    {'ok': False, 'error': 'Cannot send messages to target chat'},
-                    status=403
-                )
-        
-        # Получаем исходные сообщения
-        messages = Message.objects.filter(
-            id__in=message_ids
-        ).select_related('author', 'chat').order_by('created_at')
-        
-        if not messages:
-            return JsonResponse(
-                {'ok': False, 'error': 'No messages found'},
-                status=404
-            )
-        
-        # Проверяем доступ к исходным чатам
-        for msg in messages:
-            if not user_can_access_chat(msg.chat, request.user):
-                return JsonResponse(
-                    {'ok': False, 'error': f'Access denied to message {msg.id}'},
-                    status=403
-                )
-        
-        # Пересылаем сообщения
-        forwarded_messages = []
-        channel_layer = get_channel_layer()
-        
-        with transaction.atomic():
-            for original_msg in messages:
-                # Создаем новое сообщение с пометкой "переслано"
-                forwarded_content = original_msg.content
-                
-                # Получаем название исходного чата
-                source_chat_name = original_msg.chat.name or "Чат"
-                if original_msg.chat.type == "private":
-                    # Для личных чатов показываем "от кого"
-                    other_user = original_msg.chat.get_other_user(
-                        request.user
-                    )
-                    if other_user:
-                        source_chat_name = (
-                            other_user.get_full_name() or
-                            other_user.username
-                        )
-                
-                # Если пересылаем уже пересланное сообщение -
-                # сохраняем оригинальную цепочку
-                if original_msg.is_forwarded:
-                    # Берём метаданные из оригинального сообщения
-                    # (первого в цепочке)
-                    forwarded_from_author = (
-                        original_msg.forwarded_from_author
-                    )
-                    forwarded_from_created_at = (
-                        original_msg.forwarded_from_created_at
-                    )
-                    forwarded_from_chat_name = (
-                        original_msg.forwarded_from_chat_name
-                    )
-                else:
-                    # Это первая пересылка - берём метаданные
-                    # из текущего сообщения
-                    forwarded_from_author = original_msg.author
-                    forwarded_from_created_at = original_msg.created_at
-                    forwarded_from_chat_name = source_chat_name
-                
-                # Создаем переслаанное сообщение с метаданными
-                forwarded_msg = Message.objects.create(
-                    chat=target_chat,
-                    author=request.user,
-                    content=forwarded_content,
-                    is_forwarded=True,
-                    forwarded_from_message_id=original_msg.id,
-                    forwarded_from_author=forwarded_from_author,
-                    forwarded_from_created_at=forwarded_from_created_at,
-                    forwarded_from_chat_name=forwarded_from_chat_name,
-                )
-                
-                # Копируем вложения если есть
-                attachments = MessageAttachment.objects.filter(
-                    message=original_msg
-                )
-                for attachment in attachments:
-                    MessageAttachment.objects.create(
-                        message=forwarded_msg,
-                        file=attachment.file,
-                        file_name=attachment.file_name,
-                        file_size=attachment.file_size,
-                        file_type=attachment.file_type
-                    )
-                
-                forwarded_messages.append(forwarded_msg)
-                
-                # Отправляем WebSocket уведомление в целевой чат
-                serialized = serialize_message(forwarded_msg)
-                async_to_sync(channel_layer.group_send)(
-                    f'chat_{target_chat.id}',
-                    {
-                        'type': 'chat_message',
-                        'payload': serialized
-                    }
-                )
-        
-        return JsonResponse({
+        return Response({
             'ok': True,
-            'forwarded_count': len(forwarded_messages),
-            'message_ids': [msg.id for msg in forwarded_messages]
+            'is_pinned': settings.is_pinned
         })
-    
-    except Exception as e:
-        print(f"Error forwarding messages: {e}")
-        print(traceback.format_exc())
-        return JsonResponse(
-            {'ok': False, 'error': str(e)},
-            status=500
+
+    @action(detail=True, methods=['post'])
+    def notifications(self, request, pk=None):
+        """Включить/выключить уведомления"""
+        chat = self.get_object()
+        settings, created = ChatUserSettings.objects.get_or_create(
+            chat=chat,
+            user=request.user
+        )
+        settings.notifications_enabled = not settings.notifications_enabled
+        settings.save()
+
+        return Response({
+            'ok': True,
+            'notifications_enabled': settings.notifications_enabled
+        })
+
+    def _auto_mark_read(self, chat, user, messages):
+        """
+        Автоматически отмечает последнее загруженное сообщение как прочитанное.
+        Pragmatic подход: "загрузил = прочитал" с ограничением количества новых сообщений.
+
+        Защита от откатов: обновляет только если новое сообщение НОВЕЕ текущего.
+        """
+        if not messages:
+            return
+
+        last_message = messages[-1]
+
+        read_state, created = ChatReadState.objects.get_or_create(
+            chat=chat,
+            user=user,
+            defaults={'last_read_message': last_message}
         )
 
+        if created:
+            logger.info(
+                f"[auto_mark_read] Created: user={user.id}, chat={chat.id}, msg={last_message.id}")
+            self._send_marked_read_event(user.id, chat.id, last_message.id)
+            return
 
-@login_required
-@require_POST
-@csrf_protect
-def bulk_delete_messages(request):
-    """Массовое удаление сообщений"""
-    import json
-    
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {'ok': False, 'error': 'Invalid JSON'},
-            status=400
-        )
-    
-    message_ids = data.get('message_ids', [])
-    
-    if not message_ids:
-        return JsonResponse(
-            {'ok': False, 'error': 'message_ids required'},
-            status=400
-        )
-    
-    # Получаем сообщения
-    messages = Message.objects.filter(
-        id__in=message_ids,
-        author=request.user  # Можно удалять только свои сообщения
-    )
-    
-    if not messages:
-        return JsonResponse(
-            {'ok': False, 'error': 'No messages found or access denied'},
-            status=404
-        )
-    
-    # Удаляем сообщения и отправляем WebSocket уведомления
-    channel_layer = get_channel_layer()
-    deleted_count = 0
-    
-    with transaction.atomic():
-        for msg in messages:
-            chat_id = msg.chat_id
-            message_id = msg.id
-            
-            # Удаляем сообщение
-            msg.delete()
-            deleted_count += 1
-            
-            # Отправляем WebSocket уведомление
-            async_to_sync(channel_layer.group_send)(
-                f'chat_{chat_id}',
-                {
-                    'type': 'chat_message_deleted',
-                    'message_id': message_id
-                }
-            )
-    
-    return JsonResponse({
-        'ok': True,
-        'deleted_count': deleted_count
-    })
+        # Защита от откатов: только если НОВЕЕ
+        if read_state.last_read_message_id and last_message.id <= read_state.last_read_message_id:
+            logger.debug(
+                f"[auto_mark_read] Skip: {last_message.id} <= {read_state.last_read_message_id}")
+            return
 
+        read_state.last_read_message = last_message
+        read_state.save(update_fields=['last_read_message', 'updated_at'])
 
-@csrf_protect
-@login_required
-@require_POST
-def edit_message(request, message_id):
-    """Редактирование сообщения"""
-    import json
-    
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {'ok': False, 'error': 'Invalid JSON'},
-            status=400
-        )
-    
-    new_content = data.get('content', '').strip()
-    
-    if not new_content:
-        return JsonResponse(
-            {'ok': False, 'error': 'content required'},
-            status=400
-        )
-    
-    # Получаем сообщение
-    try:
-        message = Message.objects.get(pk=message_id, author=request.user)
-    except Message.DoesNotExist:
-        return JsonResponse(
-            {'ok': False, 'error': 'Message not found or access denied'},
-            status=404
-        )
-    
-    # Проверяем тип чата (запрет редактирования в объявлениях)
-    if message.chat.type == "announcement":
-        return JsonResponse(
-            {'ok': False, 'error': 'Editing is not allowed in announcements'},
-            status=403
-        )
-    
-    # Сохраняем старый контент в историю редактирования
-    if not message.is_edited:
-        message.edit_history = []
-    
-    message.edit_history.append({
-        'timestamp': timezone.now().isoformat(),
-        'old_content': message.content
-    })
-    
-    # Обновляем сообщение
-    message.content = new_content
-    message.is_edited = True
-    message.edited_at = timezone.now()
-    message.save()
-    
-    # Перезагружаем сообщение со всеми связанными объектами
-    # для корректной сериализации
-    message = Message.objects.select_related(
-        'author',
-        'reply_to',
-        'reply_to__author',
-        'forwarded_from_author',
-        'poll'  # OneToOne связь
-    ).prefetch_related(
-        'attachments',
-        'reactions',
-        'reactions__user',
-        'poll__options'  # Опции голосования
-    ).get(pk=message.id)
-    
-    # Отправляем WebSocket уведомление о редактировании
-    channel_layer = get_channel_layer()
-    payload = serialize_message(message)
-    
-    async_to_sync(channel_layer.group_send)(
-        f'chat_{message.chat_id}',
-        {
-            'type': 'chat.message_edited',
-            'chat_id': message.chat_id,
-            'payload': payload
-        }
-    )
-    
-    # Находим все сообщения, которые ссылаются на это (reply_to)
-    # и отправляем обновления для них тоже
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    reply_messages = Message.objects.filter(
-        reply_to=message,
-        chat=message.chat
-    ).select_related(
-        'author',
-        'reply_to',
-        'reply_to__author',
-        'forwarded_from_author',
-        'poll'
-    ).prefetch_related(
-        'attachments',
-        'reactions',
-        'reactions__user',
-        'poll__options'
-    )
-    
-    reply_count = reply_messages.count()
-    logger.info(
-        "[EDIT_MSG] Message %s edited, found %s reply messages",
-        message.id, reply_count
-    )
-    
-    for reply_msg in reply_messages:
-        reply_payload = serialize_message(reply_msg)
         logger.info(
-            "[EDIT_MSG] Updating reply message %s (reply_to.content='%s')",
-            reply_msg.id, reply_msg.reply_to.content[:50]
+            f"[auto_mark_read] Updated: user={user.id}, chat={chat.id}, msg={last_message.id}")
+        self._send_marked_read_event(user.id, chat.id, last_message.id)
+
+    def _send_marked_read_event(self, user_id, chat_id, message_id):
+        """WebSocket событие для синхронизации между вкладками"""
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'user_{user_id}',
+            {
+                'type': 'chat_marked_read',
+                'chat_id': chat_id,
+                'last_read_message_id': message_id
+            }
         )
+
+    @action(detail=True, methods=['get'])
+    def messages(self, request, pk=None):
+        """Загрузка сообщений чата (пагинация по времени)"""
+        chat = self.get_object()
+
+        # Проверка доступа
+        if not user_can_access_chat(chat, request.user):
+            return Response(
+                {'error': 'Access denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Параметры пагинации
+        before_ts = request.query_params.get('before')
+        before_id = request.query_params.get('before_id')
+        after_ts = request.query_params.get('after')
+        after_id = request.query_params.get('after_id')
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+
+        queryset = chat.messages.filter(is_deleted=False).select_related(
+            'author', 'reply_to', 'reply_to__author', 'poll'
+        ).prefetch_related(
+            'attachments', 'reactions', 'reactions__user', 'poll__options'
+        )
+
+        # Определяем порядок сортировки в зависимости от типа запроса
+        if after_id or after_ts:
+            # Для загрузки новых сообщений - сортируем по возрастанию (от старых к новым)
+            queryset = queryset.order_by('created_at')
+        else:
+            # Для загрузки старых или начальной загрузки - по убыванию (от новых к старым)
+            queryset = queryset.order_by('-created_at')
+
+        # Фильтрация по ID (приоритет) или timestamp
+        if before_id:
+            try:
+                queryset = queryset.filter(id__lt=int(before_id))
+            except ValueError:
+                pass
+        elif before_ts:
+            before_dt = _coerce_ts(before_ts)
+            if before_dt:
+                queryset = queryset.filter(created_at__lt=before_dt)
+
+        if after_id:
+            try:
+                queryset = queryset.filter(id__gt=int(after_id))
+            except ValueError:
+                pass
+        elif after_ts:
+            after_dt = _coerce_ts(after_ts)
+            if after_dt:
+                queryset = queryset.filter(created_at__gt=after_dt)
+
+        # Берем limit+1 чтобы определить has_more
+        messages = list(queryset[:limit + 1])
+        has_more = len(messages) > limit
+
+        if has_more:
+            messages = messages[:limit]  # Убираем лишнее
+
+        # Если загружали с after - уже в прямом порядке, иначе переворачиваем
+        if not (after_id or after_ts):
+            messages.reverse()
+
+        # Автоотметка при загрузке НОВЫХ сообщений (after_id/after_ts)
+        # При scroll вверх (before_id) - не отмечаем
+        if (after_id or after_ts) and messages:
+            self._auto_mark_read(chat, request.user, messages)
+
+        return Response({
+            'messages': [serialize_message(m) for m in messages],
+            'has_more': has_more
+        })
+
+    @action(detail=True, methods=['get'], url_path='messages-around')
+    def messages_around(self, request, pk=None):
+        """
+        Загрузка сообщений вокруг указанного (last_read_message_id).
+
+        Асимметричная загрузка для браузерных приложений:
+        - 24 сообщения ДО (контекст прочитанных)
+        - 10 сообщений ПОСЛЕ (новые непрочитанные)
+
+        Автоматическая отметка последнего загруженного как прочитанного.
+        Погрешность: макс 1-2 невидимых сообщения (приемлемо для веб).
+        """
+        chat = self.get_object()
+
+        if not user_can_access_chat(chat, request.user):
+            return Response(
+                {'error': 'Access denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        around_id = request.query_params.get('around_id')
+
+        # Асимметричные лимиты (24 + 10 = 34 сообщения )
+        before_limit = int(request.query_params.get('before_limit', 24))
+        after_limit = int(request.query_params.get('after_limit', 10))
+
+        # Для обратной совместимости с limit параметром
+        if 'limit' in request.query_params and 'before_limit' not in request.query_params:
+            total_limit = min(int(request.query_params.get('limit', 30)), 100)
+            before_limit = int(total_limit * 0.8)  # 80% на контекст
+            after_limit = total_limit - before_limit  # 20% на новые
+
+        queryset = chat.messages.filter(is_deleted=False).select_related(
+            'author', 'reply_to', 'reply_to__author', 'poll'
+        ).prefetch_related(
+            'attachments', 'reactions', 'reactions__user', 'poll__options'
+        )
+
+        # Если нет around_id, пытаемся получить last_read_message_id
+        if not around_id:
+            read_state = ChatReadState.objects.filter(
+                chat=chat, user=request.user
+            ).first()
+
+            if read_state and read_state.last_read_message_id:
+                around_id = read_state.last_read_message_id
+
+        # Если все еще нет around_id - возвращаем последние сообщения
+        if not around_id:
+            fallback_limit = before_limit + after_limit
+            messages = list(queryset.order_by('-created_at')[:fallback_limit])
+            messages.reverse()
+
+            # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read
+            # Frontend при следующей загрузке запросит вокруг ЭТОГО сообщения
+            if messages:
+                self._auto_mark_read(chat, request.user, messages)
+
+            return Response({
+                'messages': [serialize_message(m) for m in messages],
+                'messages_count': len(messages),
+                'anchor_id': None,
+                'anchor_index': 0
+            })
+
+        # Определяем, это ID сообщения или timestamp
+        anchor_msg = None
+
+        try:
+            around_value = int(around_id)
+
+            # Если это большое число (> 1 миллиард) - вероятно timestamp в миллисекундах
+            if around_value > 1_000_000_000:
+                # Конвертируем timestamp из миллисекунд в seconds
+                timestamp_seconds = around_value / 1000
+                anchor_dt = datetime.fromtimestamp(
+                    timestamp_seconds, tz=dt_tz.utc)
+
+                # Ищем ближайшее сообщение к этому timestamp (ДО или на момент)
+                anchor_msg = queryset.filter(
+                    created_at__lte=anchor_dt
+                ).order_by('-created_at').first()
+
+                # Если не нашли до этого времени, берем первое после
+                if not anchor_msg:
+                    anchor_msg = queryset.filter(
+                        created_at__gte=anchor_dt
+                    ).order_by('created_at').first()
+
+                logger.info(
+                    f"[messages_around] Searching by timestamp: {anchor_dt}, found: {anchor_msg}")
+            else:
+                # Это обычный message_id
+                try:
+                    anchor_msg = queryset.get(pk=around_value)
+                    logger.info(
+                        f"[messages_around] Found message by ID: {around_value}")
+                except Message.DoesNotExist:
+                    logger.warning(
+                        f"[messages_around] Message with ID {around_value} not found")
+        except (ValueError, TypeError):
+            logger.warning(
+                f"[messages_around] Invalid around_id format: {around_id}")
+
+        if not anchor_msg:
+            # Если не найдено - возвращаем последние сообщения
+            fallback_limit = before_limit + after_limit
+            messages = list(queryset.order_by('-created_at')[:fallback_limit])
+            messages.reverse()
+
+            # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read
+            # Frontend при следующей загрузке запросит вокруг ЭТОГО сообщения
+            if messages:
+                self._auto_mark_read(chat, request.user, messages)
+
+            return Response({
+                'messages': [serialize_message(m) for m in messages],
+                'messages_count': len(messages),
+                'anchor_id': None,
+                'anchor_index': 0
+            })
+
+        # Асимметричная загрузка: больше контекста, меньше новых
+        before = list(queryset.filter(
+            created_at__lt=anchor_msg.created_at
+        ).order_by('-created_at')[:before_limit])
+        before.reverse()
+
+        after = list(queryset.filter(
+            created_at__gte=anchor_msg.created_at
+        ).order_by('created_at')[:after_limit + 1])  # +1 для включения anchor
+
+        messages = before + after
+        anchor_index = len(before)
+
+        # Автоотметка: последнее ЗАГРУЖЕННОЕ становится last_read (24 контекста + 6 новых)
+        # Frontend при следующей загрузке запросит вокруг последнего из ЭТИХ сообщений
+        # НЕ отмечается последнее в чате, а последнее из того что мы загрузили!
+        if messages:
+            self._auto_mark_read(chat, request.user, messages)
+
+        return Response({
+            'messages': [serialize_message(m) for m in messages],
+            'messages_count': len(messages),
+            'anchor_id': anchor_msg.id,
+            'anchor_index': anchor_index,
+            'has_more_before': len(before) >= before_limit,
+            'has_more_after': len(after) > after_limit
+        })
+
+    @action(detail=True, methods=['post'], url_path='mark-read')
+    def mark_read(self, request, pk=None):
+        """
+        Ручная отметка прочитанных сообщений (опционально).
+
+        Обычно используется автоматическая отметка при GET /messages-around/.
+        Этот endpoint полезен для точной отметки через IntersectionObserver.
+
+        Параметры:
+        - message_id: ID последнего прочитанного сообщения (рекомендуется)
+        - upto_ts: timestamp (legacy, используйте message_id)
+        """
+        chat = self.get_object()
+
+        logger.info(
+            f"[mark_read] Manual mark by user {request.user.id} for chat {chat.id}")
+
+        # Основная логика: поддерживаем message_id
+        message_id = request.data.get('message_id')
+
+        if message_id:
+            try:
+                message = chat.messages.get(
+                    pk=int(message_id), is_deleted=False)
+
+                # Используем новую логику через _auto_mark_read
+                self._auto_mark_read(chat, request.user, [message])
+
+                return Response({
+                    'ok': True,
+                    'last_read_message_id': message.id
+                })
+            except (Message.DoesNotExist, ValueError) as e:
+                logger.error(
+                    f"[mark_read] Invalid message_id {message_id}: {e}")
+                return Response(
+                    {'error': f'Message {message_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Fallback: если передан upto_ts (старая логика)
+        upto_ts = request.data.get('upto_ts')
+        if upto_ts:
+            try:
+                ts_value = float(upto_ts)
+                if ts_value > 10000000000:
+                    ts_value = ts_value / 1000
+                timestamp = datetime.fromtimestamp(ts_value, tz=dt_tz.utc)
+
+                # Находим последнее сообщение до этого времени
+                last_msg = chat.messages.filter(
+                    created_at__lte=timestamp,
+                    is_deleted=False
+                ).order_by('-created_at').first()
+
+                if last_msg:
+                    self._auto_mark_read(chat, request.user, [last_msg])
+                    return Response({
+                        'ok': True,
+                        'last_read_message_id': last_msg.id,
+                        'deprecated': True,
+                        'message': 'Using upto_ts is deprecated. Use message_id instead.'
+                    })
+                else:
+                    return Response(
+                        {'error': 'No messages found before specified timestamp'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            except (ValueError, OSError) as e:
+                logger.error(f"[mark_read] Invalid timestamp: {e}")
+                return Response(
+                    {'error': 'Invalid timestamp format'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Ни message_id ни upto_ts не переданы
+        return Response(
+            {'error': 'Either message_id or upto_ts required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet для управления сообщениями
+
+    create: POST /api/v1/communications/messages/ - создать сообщение (с файлами)
+    update: PUT/PATCH /api/v1/communications/messages/{id}/ - редактировать
+    destroy: DELETE /api/v1/communications/messages/{id}/ - удалить
+
+    Actions:
+    - react: POST /api/v1/communications/messages/{id}/react/ - добавить реакцию
+    - unreact: POST /api/v1/communications/messages/{id}/unreact/ - убрать реакцию
+    - forward: POST /api/v1/communications/messages/forward/ - переслать сообщения
+    - bulk_delete: POST /api/v1/communications/messages/bulk_delete/ - массовое удаление
+    - upload: POST /api/v1/communications/messages/upload/ - загрузить с вложениями
+    """
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'upload']:
+            return MessageCreateSerializer
+        elif self.action == 'update' or self.action == 'partial_update':
+            return MessageEditSerializer
+        elif self.action == 'list':
+            return MessageListSerializer
+        return MessageDetailSerializer
+
+    def get_queryset(self):
+        """Сообщения доступные пользователю"""
+        user = self.request.user
+
+        # Чаты пользователя
+        user_chats = Chat.objects.filter(
+            Q(participants=user) |
+            Q(department__in=user.departments_links.filter(
+                is_active=True
+            ).values('department')) |
+            Q(include_all_employees=True)
+        )
+
+        return Message.objects.filter(
+            chat__in=user_chats
+        ).select_related(
+            'author', 'chat', 'reply_to', 'reply_to__author', 'poll'
+        ).prefetch_related(
+            'attachments', 'reactions', 'reactions__user', 'poll__options'
+        ).order_by('-created_at')
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        """
+        Загрузка сообщения с вложениями
+        POST /api/v1/communications/messages/upload/
+        """
+        chat_id = request.data.get('chat_id')
+        content = request.data.get('content', '').strip()
+        reply_to_id = request.data.get(
+            'reply_to') or request.data.get('reply_to_id')
+
+        # Валидация чата
+        try:
+            chat = Chat.objects.get(pk=chat_id)
+        except Chat.DoesNotExist:
+            return Response(
+                {'error': 'Chat not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not user_can_access_chat(chat, request.user):
+            return Response(
+                {'error': 'Access denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Получаем файлы
+        files = []
+        for key in request.FILES:
+            if key.startswith('file_'):
+                files.append(request.FILES[key])
+
+        # Валидация: либо текст, либо файлы
+        if not content and not files:
+            return Response(
+                {'error': 'Message must have either content or attachments'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Создаем сообщение
+        with transaction.atomic():
+            message = Message.objects.create(
+                chat=chat,
+                author=request.user,
+                content=content,
+                reply_to_id=reply_to_id if reply_to_id else None,
+                has_attachments=len(files) > 0
+            )
+
+            # Сохраняем файлы
+            for file in files:
+                MessageAttachment.objects.create(
+                    message=message,
+                    file=file,
+                    file_name=file.name,
+                    file_size=file.size,
+                    mime_type=file.content_type or 'application/octet-stream',
+                    file_type=self._detect_file_type(file.content_type)
+                )
+
+        # Перезагружаем с prefetch
+        message = Message.objects.select_related(
+            'author', 'reply_to', 'reply_to__author', 'poll'
+        ).prefetch_related(
+            'attachments', 'reactions', 'reactions__user'
+        ).get(pk=message.id)
+
+        # Отправляем через WebSocket
+        channel_layer = get_channel_layer()
+        payload = serialize_message(message)
+
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{chat.id}',
+            {
+                'type': 'chat.message',
+                'chat_id': chat.id,
+                'payload': payload
+            }
+        )
+
+        return Response({
+            'ok': True,
+            'message': payload
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='upload-temp')
+    def upload_temp(self, request):
+        """
+        Временная загрузка файлов для редактирования сообщения
+        POST /api/v1/communications/messages/upload-temp/
+        Создает MessageAttachment без привязки к сообщению (message=null)
+        """
+        # Получаем файлы
+        files = []
+        for key in request.FILES:
+            if key.startswith('file_'):
+                files.append(request.FILES[key])
+
+        if not files:
+            return Response(
+                {'error': 'No files provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Создаем attachments БЕЗ привязки к сообщению
+        attachment_ids = []
+        with transaction.atomic():
+            for file in files:
+                attachment = MessageAttachment.objects.create(
+                    message=None,  # Без сообщения!
+                    file=file,
+                    file_name=file.name,
+                    file_size=file.size,
+                    mime_type=file.content_type or 'application/octet-stream',
+                    file_type=self._detect_file_type(file.content_type)
+                )
+                attachment_ids.append(attachment.id)
+
+        return Response({
+            'ok': True,
+            'attachment_ids': attachment_ids
+        }, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        """Редактирование сообщения"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+
+        # Проверка прав
+        if instance.author != request.user:
+            return Response(
+                {'error': 'You can only edit your own messages'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Проверка типа чата
+        if instance.chat.type == 'announcement':
+            return Response(
+                {'error': 'Editing is not allowed in announcements'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        new_content = serializer.validated_data.get('content', '').strip()
+        existing_attachment_ids = serializer.validated_data.get(
+            'existing_attachment_ids')
+
+        # Валидация вложений
+        current_attachments_count = instance.attachments.count()
+        will_have_attachments = (
+            (existing_attachment_ids is not None and len(existing_attachment_ids) > 0) or
+            (existing_attachment_ids is None and current_attachments_count > 0)
+        )
+
+        if not new_content and not will_have_attachments:
+            return Response(
+                {'error': 'Message must have either content or attachments'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Сохраняем историю редактирования в отдельную таблицу
+        from communications.models import MessageEditHistory
+
+        MessageEditHistory.objects.create(
+            message=instance,
+            previous_content=instance.content,
+            edited_by=request.user
+        )
+
+        instance.content = new_content
+        instance.is_edited = True
+        instance.edited_at = timezone.now()
+
+        # Управление вложениями
+        if existing_attachment_ids is not None:
+            from communications.models import MessageAttachment
+
+            current_ids = set(str(att.id)
+                              for att in instance.attachments.all())
+            keep_ids = set(str(id) for id in existing_attachment_ids)
+            ids_to_remove = current_ids - keep_ids
+            ids_to_add = keep_ids - current_ids
+
+            # Удаляем attachments которых нет в списке
+            if ids_to_remove:
+                attachments_to_delete = instance.attachments.filter(
+                    id__in=ids_to_remove)
+                for att in attachments_to_delete:
+                    if att.file and att.file.storage.exists(att.file.name):
+                        att.file.delete(save=False)
+                attachments_to_delete.delete()
+                logger.info(f"[update] Removed attachments: {ids_to_remove}")
+
+            # Переносим новые attachments из других сообщений к этому
+            if ids_to_add:
+                attachments_to_move = MessageAttachment.objects.filter(
+                    id__in=ids_to_add)
+                updated_count = attachments_to_move.update(message=instance)
+                logger.info(
+                    f"[update] Moved {updated_count} attachments to message {instance.id}: {list(ids_to_add)}")
+
+        instance.save()
+
+        # ВАЖНО: Очищаем кэш attachments перед подсчетом
+        instance.refresh_from_db()
+
+        # Обновляем has_attachments (заново считаем из БД)
+        from communications.models import MessageAttachment
+        instance.has_attachments = MessageAttachment.objects.filter(
+            message=instance).count() > 0
+        instance.save(update_fields=['has_attachments'])
+
+        # Перезагружаем с нуля чтобы получить обновленные attachments
+        # Используем новый запрос, чтобы избежать кэширования
+        instance = Message.objects.select_related(
+            'author', 'reply_to', 'reply_to__author', 'poll'
+        ).prefetch_related(
+            'attachments', 'reactions', 'reactions__user', 'poll__options'
+        ).get(pk=instance.id)
+
+        # WebSocket уведомление
+        channel_layer = get_channel_layer()
+        payload = serialize_message(instance)
+
+        group_name = f'chat_{instance.chat_id}'
+
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type': 'chat.message_edited',
+                'chat_id': instance.chat_id,
+                'payload': payload
+            }
+        )
+
+        return Response(payload)
+
+    def destroy(self, request, *args, **kwargs):
+        """Мягкое удаление сообщения"""
+        instance = self.get_object()
+
+        if instance.author != request.user:
+            return Response(
+                {'error': 'You can only delete your own messages'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        instance.is_deleted = True
+        instance.deleted_at = timezone.now()
+        instance.deleted_by = request.user
+        instance.save()
+
+        # WebSocket уведомление
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{instance.chat_id}',
+            {
+                'type': 'chat.message_deleted',
+                'chat_id': instance.chat_id,
+                'message_id': instance.id
+            }
+        )
+
+        return Response({'ok': True}, status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'])
+    def react(self, request, pk=None):
+        """Добавить реакцию"""
+        message = self.get_object()
+        logger.info(
+            f"[react] User {request.user.id} adding reaction to message {message.id}")
+
+        serializer = ReactionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        emoji = serializer.validated_data['emoji']
+        logger.info(f"[react] Emoji: {emoji}")
+
+        # Создаем или получаем реакцию (по message + user, т.к. unique_together)
+        reaction, created = MessageReaction.objects.get_or_create(
+            message=message,
+            user=request.user,
+            defaults={'emoji': emoji}
+        )
+
+        # Если реакция уже существует, обновляем emoji
+        if not created:
+            old_emoji = reaction.emoji
+            if old_emoji == emoji:
+                return Response(
+                    {'error': 'Reaction already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            reaction.emoji = emoji
+            reaction.save(update_fields=['emoji'])
+            logger.info(f"[react] Updated emoji from {old_emoji} to {emoji}")
+        else:
+            logger.info(f"[react] Created new reaction, id={reaction.id}")
+
+        # Пересчитываем reactions_summary
+        reactions_summary = {}
+        for r in message.reactions.select_related('user'):
+            if r.emoji not in reactions_summary:
+                reactions_summary[r.emoji] = {
+                    'count': 0,
+                    'users': [],
+                    'user_names': []
+                }
+            reactions_summary[r.emoji]['count'] += 1
+            reactions_summary[r.emoji]['users'].append(r.user_id)
+            reactions_summary[r.emoji]['user_names'].append(
+                r.user.get_full_name())
+
+        logger.info(f"[react] reactions_summary: {reactions_summary}")
+
+        # WebSocket уведомление
+        channel_layer = get_channel_layer()
+        logger.info(f"[react] Sending to chat_{message.chat_id} group")
+
         async_to_sync(channel_layer.group_send)(
             f'chat_{message.chat_id}',
             {
-                'type': 'chat.message_edited',
+                'type': 'chat.reaction_added',
                 'chat_id': message.chat_id,
-                'payload': reply_payload
+                'message_id': message.id,
+                'user_id': request.user.id,
+                'emoji': emoji,
+                'reactions_summary': reactions_summary
             }
         )
-    
-    return JsonResponse({
-        'ok': True,
-        'message': payload
-    })
 
+        logger.info(f"[react] WebSocket message sent successfully")
 
-@csrf_protect
-@login_required
-@require_POST
-def delete_message(request, message_id):
-    """Удаление одного сообщения"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    logger.info(
-        "[API_DELETE] API called: message_id=%s, user=%s",
-        message_id, request.user.username
-    )
-    
-    # Получаем сообщение
-    try:
-        message = Message.objects.get(pk=message_id, author=request.user)
-    except Message.DoesNotExist:
-        logger.warning(
-            "[API_DELETE] Message not found: message_id=%s", message_id
-        )
-        return JsonResponse(
-            {'ok': False, 'error': 'Message not found or access denied'},
-            status=404
-        )
-    
-    chat_id = message.chat_id
-    logger.info("[API_DELETE] Message found: chat_id=%s", chat_id)
-    
-    # Удаляем сообщение
-    message.delete()
-    logger.info("[API_DELETE] Message deleted from DB")
-    
-    # Отправляем WebSocket уведомление об удалении
-    logger.info(
-        "[API_DELETE] Sending WebSocket to group: chat_%s", chat_id
-    )
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        f'chat_{chat_id}',
-        {
-            'type': 'chat.message_deleted',  # ✅ С ТОЧКОЙ!
-            'chat_id': chat_id,  # ✅ Добавили chat_id!
-            'message_id': message_id
-        }
-    )
-    logger.info("[API_DELETE] WebSocket event sent")
-    
-    return JsonResponse({
-        'ok': True,
-        'message_id': message_id
-    })
+        return Response({'ok': True, 'reactions_summary': reactions_summary})
 
+    @action(detail=True, methods=['post'])
+    def unreact(self, request, pk=None):
+        """Убрать реакцию"""
+        message = self.get_object()
+        logger.info(
+            f"[unreact] User {request.user.id} removing reaction from message {message.id}")
 
-@csrf_protect
-@login_required
-@require_POST
-def create_chat(request):
-    """Создание нового чата (группового, канала, объявлений и т.д.)"""
-    user = request.user
-    
-    # Получаем параметры
-    chat_type = request.POST.get('type', 'group')
-    name = request.POST.get('name', '').strip()
-    description = request.POST.get('description', '').strip()
-    department_id = request.POST.get('department_id')
-    include_all = request.POST.get('include_all_employees') == 'true'
-    is_main = request.POST.get('is_main') == 'true'
-    participant_ids = request.POST.getlist('participant_ids')
-    avatar_file = request.FILES.get('avatar')
-    
-    # Валидация
-    if not name:
-        return JsonResponse({'error': 'Название чата обязательно'}, status=400)
-    
-    # Проверка на существующий чат объявлений
-    if chat_type == 'announcement':
-        existing = Chat.objects.filter(
-            type='announcement',
-            created_by=user
-        ).first()
-        
-        if existing:
-            return JsonResponse({
-                'error': 'У вас уже есть чат объявлений',
-                'existing_chat_id': existing.id
-            }, status=400)
-    
-    try:
-        with transaction.atomic():
-            # Создаём чат
-            chat = Chat.objects.create(
-                type=chat_type,
-                name=name,
-                description=description,
-                created_by=user,
-                include_all_employees=include_all,
-                is_main=is_main
+        serializer = ReactionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        emoji = serializer.validated_data['emoji']
+        logger.info(f"[unreact] Emoji: {emoji}")
+
+        deleted_count = MessageReaction.objects.filter(
+            message=message,
+            user=request.user,
+            emoji=emoji
+        ).delete()[0]
+
+        logger.info(f"[unreact] Deleted count: {deleted_count}")
+
+        if deleted_count == 0:
+            return Response(
+                {'error': 'Reaction not found'},
+                status=status.HTTP_404_NOT_FOUND
             )
-            
-            # Аватар
-            if avatar_file:
-                chat.avatar = avatar_file
-                chat.save()
-            
-            # Привязка к отделу
-            if chat_type == 'department' and department_id:
-                from employees.models import Department
-                try:
-                    dept = Department.objects.get(id=department_id)
-                    chat.department = dept
-                    chat.save()
-                except Department.DoesNotExist:
-                    pass
-            
-            # Добавляем участников для группового чата
-            if chat_type == 'group' and participant_ids:
-                from employees.models import Employee
-                participants = Employee.objects.filter(id__in=participant_ids)
-                chat.participants.add(*participants)
-                # Добавляем создателя
-                chat.participants.add(user)
-            
-            # Для канала/объявлений добавляем создателя как участника
-            if chat_type in ('channel', 'announcement'):
-                chat.participants.add(user)
-        
-        return JsonResponse({
+
+        # Пересчитываем reactions_summary
+        reactions_summary = {}
+        for r in message.reactions.select_related('user'):
+            if r.emoji not in reactions_summary:
+                reactions_summary[r.emoji] = {
+                    'count': 0,
+                    'users': [],
+                    'user_names': []
+                }
+            reactions_summary[r.emoji]['count'] += 1
+            reactions_summary[r.emoji]['users'].append(r.user_id)
+            reactions_summary[r.emoji]['user_names'].append(
+                r.user.get_full_name())
+
+        logger.info(f"[unreact] reactions_summary: {reactions_summary}")
+
+        # WebSocket уведомление
+        channel_layer = get_channel_layer()
+        logger.info(f"[unreact] Sending to chat_{message.chat_id} group")
+
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{message.chat_id}',
+            {
+                'type': 'chat.reaction_removed',
+                'chat_id': message.chat_id,
+                'message_id': message.id,
+                'user_id': request.user.id,
+                'emoji': emoji,
+                'reactions_summary': reactions_summary
+            }
+        )
+
+        logger.info(f"[unreact] WebSocket message sent successfully")
+
+        return Response({'ok': True, 'reactions_summary': reactions_summary})
+
+    @action(detail=False, methods=['post'])
+    def forward(self, request):
+        """Переслать сообщения в другой чат"""
+        serializer = ForwardMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        message_ids = serializer.validated_data['message_ids']
+        target_chat_id = serializer.validated_data['target_chat_id']
+
+        # Получаем целевой чат
+        try:
+            target_chat = Chat.objects.get(pk=target_chat_id)
+        except Chat.DoesNotExist:
+            return Response(
+                {'error': 'Target chat not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not user_can_access_chat(target_chat, request.user):
+            return Response(
+                {'error': 'Access denied to target chat'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Пересылаем сообщения
+        forwarded_ids = []
+        with transaction.atomic():
+            messages = Message.objects.filter(
+                id__in=message_ids
+            ).select_related('author')
+
+            for original_msg in messages:
+                # Создаём пересланное сообщение
+                forwarded = Message.objects.create(
+                    chat=target_chat,
+                    author=request.user,
+                    content=original_msg.content,
+                    is_forwarded=True
+                )
+
+                # Создаём метаданные пересылки
+                from communications.models import MessageForwardMetadata
+                MessageForwardMetadata.objects.create(
+                    message=forwarded,
+                    original_message=original_msg,
+                    original_author=original_msg.author,
+                    original_chat=original_msg.chat,
+                    original_chat_name=original_msg.chat.name or 'Unknown',
+                    original_created_at=original_msg.created_at,
+                    forwarded_by=request.user,
+                    forward_count=1
+                )
+
+                forwarded_ids.append(forwarded.id)
+
+        return Response({
             'ok': True,
-            'chat_id': chat.id,
-            'message': 'Чат успешно создан'
+            'forwarded_count': len(forwarded_ids),
+            'forwarded_ids': forwarded_ids
         })
-        
-    except Exception as e:
-        return JsonResponse({
-            'error': f'Ошибка при создании чата: {str(e)}'
-        }, status=500)
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Массовое удаление сообщений"""
+        serializer = BulkDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        message_ids = serializer.validated_data['message_ids']
+
+        # Удаляем только свои сообщения
+        deleted_count = Message.objects.filter(
+            id__in=message_ids,
+            author=request.user
+        ).update(
+            is_deleted=True,
+            deleted_at=timezone.now(),
+            deleted_by=request.user
+        )
+
+        return Response({
+            'ok': True,
+            'deleted_count': deleted_count
+        })
+
+    def _detect_file_type(self, mime_type):
+        """Определение типа файла по MIME"""
+        if not mime_type:
+            return 'file'
+
+        if mime_type.startswith('image/'):
+            return 'image'
+        elif mime_type.startswith('video/'):
+            return 'video'
+        elif mime_type.startswith('audio/'):
+            return 'audio'
+        elif 'pdf' in mime_type:
+            return 'pdf'
+        elif any(x in mime_type for x in ['document', 'word', 'text', 'sheet', 'excel']):
+            return 'document'
+        else:
+            return 'file'
 
 
+class PollViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet для управления голосованиями
+
+    create: POST /api/v1/communications/polls/ - создать голосование
+    retrieve: GET /api/v1/communications/polls/{id}/ - детали голосования
+
+    Actions:
+    - vote: POST /api/v1/communications/polls/{id}/vote/ - проголосовать
+    - close: POST /api/v1/communications/polls/{id}/close/ - закрыть голосование
+    - results: GET /api/v1/communications/polls/{id}/results/ - результаты
+    """
+
+    queryset = Poll.objects.all()
+    serializer_class = PollSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        """Автоматически устанавливаем автора голосования"""
+        serializer.save(author=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def vote(self, request, pk=None):
+        """Проголосовать"""
+        poll = self.get_object()
+
+        if poll.is_closed:
+            return Response(
+                {'error': 'Poll is closed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        option_ids = request.data.get('option_ids', [])
+        if not option_ids:
+            return Response(
+                {'error': 'No options selected'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Проверка что опции существуют и принадлежат этому poll
+        try:
+            options = poll.options.filter(pk__in=option_ids)
+            if options.count() != len(option_ids):
+                return Response(
+                    {'error': 'Invalid option IDs'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid option IDs format'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Проверка множественного выбора
+        if not poll.is_multiple_choice and len(option_ids) > 1:
+            return Response(
+                {'error': 'Only one option allowed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            # Удаляем ВСЕ старые голоса пользователя (и для single и для multiple choice)
+            PollVote.objects.filter(
+                poll=poll,
+                voter=request.user
+            ).delete()
+
+            # Добавляем новые голоса
+            for option in options:
+                PollVote.objects.create(
+                    poll=poll,
+                    option=option,
+                    voter=request.user
+                )
+
+            # Пересчитываем голоса
+            for option in poll.options.all():
+                option.vote_count = option.votes.count()
+                option.save()
+
+            poll.total_voters = PollVote.objects.filter(
+                poll=poll).values('voter').distinct().count()
+            poll.save()
+
+        # WebSocket уведомление
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{poll.message.chat_id}',
+            {
+                'type': 'poll.update',
+                'chat_id': poll.message.chat_id,
+                'payload': {
+                    'poll_id': poll.id,
+                    'message_id': poll.message_id,
+                    'total_voters': poll.total_voters
+                }
+            }
+        )
+
+        # Возвращаем полные результаты
+        results_serializer = PollSerializer(poll, context={'request': request})
+        return Response({'ok': True, 'results': results_serializer.data})
+
+    @action(detail=True, methods=['post'])
+    def close(self, request, pk=None):
+        """Закрыть голосование"""
+        poll = self.get_object()
+
+        # Проверка прав (только автор сообщения)
+        if poll.message.author != request.user:
+            return Response(
+                {'error': 'Only poll author can close it'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Используем метод модели для установки is_closed и closed_at
+        poll.close()
+
+        return Response(PollSerializer(poll, context={'request': request}).data)
+
+    @action(detail=True, methods=['get', 'post'])
+    def results(self, request, pk=None):
+        """Получить результаты голосования"""
+        poll = self.get_object()
+        serializer = PollSerializer(poll, context={'request': request})
+        return Response(serializer.data)

@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, Optional, Tuple, Type
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db.models import Model
 from employees.constants import DeptPerm
-from employees.models import Department, EmployeeDepartment
+from employees.models import Department, EmployeeDepartment, RoleAssignment
 from rest_framework.permissions import (
     SAFE_METHODS,
     BasePermission,
@@ -36,8 +36,8 @@ def user_has_dept_perm(user, dept: Department, perm_code: str) -> bool:
         - Неаутентифицированным → False.
         - staff/superuser → True.
         - Руководитель отдела → True.
-        - Иначе: существует активная связь EmployeeDepartment, и у роли есть
-          DepartmentPermission с нужным code.
+        - Иначе: проверяет RoleAssignment — есть ли активное назначение роли
+          с нужным правом в данном отделе.
 
     Args:
         user (User): Текущий пользователь.
@@ -64,12 +64,21 @@ def user_has_dept_perm(user, dept: Department, perm_code: str) -> bool:
     if getattr(dept, "head_id", None) == user.id:
         return True
 
-    # основная проверка: активная связь + у роли есть нужный DepartmentPermission.code
+    # Проверка через RoleAssignment (новая модель — не требует членства в отделе)
+    if RoleAssignment.objects.filter(
+        employee_id=user.id,
+        role__department_id=dept.id,
+        role__scoped_permissions__code=perm_code,
+        is_active=True,
+    ).exists():
+        return True
+
+    # Fallback: старая проверка через EmployeeDepartment.role (обратная совместимость)
     return EmployeeDepartment.objects.filter(
         employee_id=user.id,
         department_id=dept.id,
         is_active=True,
-        role__scoped_permissions__code=perm_code,  # <-- ВАЖНО: `code`, не `codename`
+        role__scoped_permissions__code=perm_code,
     ).exists()
 
 
@@ -80,8 +89,9 @@ def has_dept_perm(user: AbstractBaseUser, department_id: int, code: str) -> bool
     Логика:
       1) staff/superuser → всегда True
       2) пользователь является текущим руководителем отдела → True для любых «управленческих» кодов
-      3) пользователь состоит в отделе и его роль содержит `code` в scoped_permissions → True
-      4) иначе False
+      3) пользователь имеет активное назначение роли (RoleAssignment) с правом `code` → True
+      4) fallback: старая проверка через EmployeeDepartment.role
+      5) иначе False
     """
     if not getattr(user, "is_authenticated", False):
         return False
@@ -92,7 +102,16 @@ def has_dept_perm(user: AbstractBaseUser, department_id: int, code: str) -> bool
     if Department.objects.filter(id=department_id, head_id=user.id).exists():
         return True
 
-    # 3) Проверка роли в отделе
+    # 3) Проверка через RoleAssignment (новая модель — не требует членства в отделе)
+    if RoleAssignment.objects.filter(
+        employee_id=user.id,
+        role__department_id=department_id,
+        role__scoped_permissions__code=code,
+        is_active=True,
+    ).exists():
+        return True
+
+    # 4) Fallback: старая проверка через EmployeeDepartment.role
     link = (
         EmployeeDepartment.objects.select_related("role")
         .filter(employee_id=user.id, department_id=department_id, is_active=True)
@@ -101,7 +120,6 @@ def has_dept_perm(user: AbstractBaseUser, department_id: int, code: str) -> bool
     if not link or not link.role_id:
         return False
 
-    # роль хранит «скоуп-права» только для этого отдела
     return link.role.scoped_permissions.filter(code=code).exists()
 
 

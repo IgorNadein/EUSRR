@@ -256,7 +256,10 @@ def export_users_update_profile(
                 avatar_bytes = avatar_field.read()
             if avatar_bytes:
                 try:
-                    avatar_bytes = normalize_avatar_to_jpeg(avatar_bytes)
+                    # Увеличен размер до 384px для максимального качества в LDAP
+                    avatar_bytes = normalize_avatar_to_jpeg(
+                        avatar_bytes, size_px=384, max_kb=100
+                    )
                 except Exception as exc:
                     logger.warning(
                         "[WARN] avatar: не удалось нормализовать для %s: %s",
@@ -299,7 +302,8 @@ def export_users_sync_groups(*, cfg: SyncConfig) -> Tuple[int, int]:
             dept_for_roles = target_dept or current_dept
             if dept_for_roles:
                 dept_base = getattr(settings, "LDAP_DEPARTMENTS_BASE", "")
-                extra_bases.append(f"OU=Roles,OU={dept_for_roles},{dept_base}")
+                # NOTE: Группы ролей теперь лежат прямо в OU отдела (не в OU=Roles)
+                extra_bases.append(f"OU={dept_for_roles},{dept_base}")
 
             added, removed = sync_user_groups_by_cns(
                 conn,

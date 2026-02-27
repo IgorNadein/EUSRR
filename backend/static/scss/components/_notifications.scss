@@ -1,0 +1,471 @@
+// =============================================================================
+// Notifications System Styles (SCSS)
+// =============================================================================
+// Стили для системы уведомлений: колокольчик, dropdown, toast, страница списка
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+// Колокольчик
+$bell-dot-size: 16px;
+$bell-dot-font-size: 9px;
+$bell-dot-offset-top: -4px;
+$bell-dot-offset-right: -6px;
+
+// Dropdown
+$notification-dropdown-width: 360px;
+$notification-dropdown-max-height: 500px;
+$notification-dropdown-border-radius: 12px;
+$notification-dropdown-body-max-height: 300px;
+
+// Элементы уведомлений
+$notification-item-padding: 12px 16px;
+$notification-icon-size: 36px;
+$notification-unread-badge-size: 8px;
+
+// Цвета
+$notification-danger: #dc3545;
+$notification-primary: #0d6efd;
+$notification-unread-bg-light: #f0f7ff;
+$notification-unread-bg-dark: #1a3a52;
+
+// Переходы
+$notification-transition: background-color 0.2s;
+
+// =============================================================================
+// КОЛОКОЛЬЧИК В NAVBAR
+// =============================================================================
+
+.bell-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.bell-dot {
+  position: absolute;
+  top: $bell-dot-offset-top;
+  right: $bell-dot-offset-right;
+  min-width: $bell-dot-size;
+  height: $bell-dot-size;
+  padding: 0 4px;
+  background-color: $notification-danger;
+  color: white;
+  border-radius: calc($bell-dot-size / 2);
+  font-size: $bell-dot-font-size;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+// =============================================================================
+// DROPDOWN МЕНЮ УВЕДОМЛЕНИЙ
+// =============================================================================
+
+.notification-dropdown-menu {
+  position: fixed;
+  width: $notification-dropdown-width;
+  max-height: $notification-dropdown-max-height;
+  background: white;
+  border-radius: $notification-dropdown-border-radius;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  [data-bs-theme="dark"] & {
+    background: #2b3035;
+    color: #dee2e6;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+
+// Заголовок
+.notification-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
+
+  [data-bs-theme="dark"] & {
+    background: #1f2327;
+    border-bottom-color: #3d4349;
+  }
+}
+
+// Тело с прокруткой
+.notification-dropdown-body {
+  flex: 1;
+  overflow-y: auto;
+  max-height: $notification-dropdown-body-max-height;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 70%) transparent;
+
+  &:hover {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 55%) transparent;
+  }
+
+  // Webkit scrollbar
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 0;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 75%);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 55%);
+  }
+
+  // Темная тема scrollbar
+  [data-bs-theme="dark"] & {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 78%) transparent;
+
+    &:hover {
+      scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 60%) transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background-color: color-mix(in srgb, var(--bs-body-color), transparent 78%);
+    }
+
+    &:hover::-webkit-scrollbar-thumb {
+      background-color: color-mix(in srgb, var(--bs-body-color), transparent 60%);
+    }
+  }
+
+  // Скрытие scrollbar на тач-устройствах
+  @media (hover: none), (pointer: coarse) {
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+}
+
+// Разделитель
+.notification-dropdown-divider {
+  height: 1px;
+  background: #e9ecef;
+  margin: 0;
+
+  [data-bs-theme="dark"] & {
+    background: #3d4349;
+  }
+}
+
+// Секция
+.notification-dropdown-section {
+  padding: 8px 0;
+}
+
+// =============================================================================
+// ЭЛЕМЕНТЫ СПИСКА УВЕДОМЛЕНИЙ
+// =============================================================================
+
+.notification-item {
+  display: flex;
+  gap: 12px;
+  padding: $notification-item-padding;
+  cursor: pointer;
+  transition: $notification-transition;
+  position: relative;
+  border-bottom: 1px solid #e9ecef;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background-color: #f8f9fa;
+  }
+
+  &.unread {
+    background-color: $notification-unread-bg-light;
+
+    &:hover {
+      background-color: #e6f2ff;
+    }
+  }
+
+  // Темная тема
+  [data-bs-theme="dark"] & {
+    border-bottom-color: #3d4349;
+
+    &:hover {
+      background-color: #343a40;
+    }
+
+    &.unread {
+      background-color: $notification-unread-bg-dark;
+
+      &:hover {
+        background-color: #1e4260;
+      }
+    }
+  }
+}
+
+// Иконка уведомления
+.notification-icon {
+  flex-shrink: 0;
+  width: $notification-icon-size;
+  height: $notification-icon-size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+// Контент уведомления
+.notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #212529;
+
+  [data-bs-theme="dark"] & {
+    color: #dee2e6;
+  }
+}
+
+.notification-message {
+  font-size: 13px;
+  color: #6c757d;
+  margin-bottom: 4px;
+
+  [data-bs-theme="dark"] & {
+    color: #adb5bd;
+  }
+}
+
+.notification-time {
+  font-size: 11px;
+  color: #adb5bd;
+
+  [data-bs-theme="dark"] & {
+    color: #6c757d;
+  }
+}
+
+// Значок непрочитанного
+.notification-unread-badge {
+  flex-shrink: 0;
+  width: $notification-unread-badge-size;
+  height: $notification-unread-badge-size;
+  background-color: $notification-primary;
+  border-radius: 50%;
+  margin-left: 8px;
+  align-self: center;
+}
+
+// =============================================================================
+// ПУСТОЕ СОСТОЯНИЕ
+// =============================================================================
+
+.notification-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: #adb5bd;
+  text-align: center;
+
+  i {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+
+  div {
+    font-size: 14px;
+  }
+
+  [data-bs-theme="dark"] & {
+    color: #6c757d;
+  }
+}
+
+.extra-small {
+  font-size: 0.7rem;
+}
+
+// =============================================================================
+// TOAST УВЕДОМЛЕНИЯ (FALLBACK)
+// =============================================================================
+
+.toast-container {
+  z-index: 9999;
+}
+
+.toast {
+  min-width: 300px;
+}
+
+// =============================================================================
+// СТРАНИЦА СПИСКА УВЕДОМЛЕНИЙ
+// =============================================================================
+
+// Карточки уведомлений - прочитанные
+.notification-read {
+  opacity: 0.7;
+
+  .card {
+    background-color: #f8f9fa;
+  }
+
+  [data-bs-theme="dark"] & {
+    opacity: 0.65;
+
+    .card {
+      background-color: #1f2327 !important;
+      border-color: #3d4349 !important;
+    }
+  }
+}
+
+// Карточки уведомлений - непрочитанные
+.notification-unread {
+  border-left: 4px solid var(--bs-primary);
+
+  .card {
+    background-color: #ffffff;
+  }
+
+  [data-bs-theme="dark"] .card {
+    background-color: #2b3035;
+    border-color: #3d4349;
+  }
+}
+
+// Иконки категорий (для страницы списка)
+.notification-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+// =============================================================================
+// ТЕМНАЯ ТЕМА ДЛЯ СТРАНИЦЫ СПИСКА
+// =============================================================================
+
+[data-bs-theme="dark"] {
+  .card {
+    background-color: #2b3035;
+    border-color: #3d4349;
+    color: #dee2e6;
+  }
+
+  .card-body {
+    color: #dee2e6;
+  }
+
+  .text-muted {
+    color: #adb5bd !important;
+  }
+
+  // Кнопки
+  .btn-outline-primary {
+    color: #6ea8fe;
+    border-color: #6ea8fe;
+
+    &:hover {
+      background-color: #0d6efd;
+      border-color: #0d6efd;
+      color: #fff;
+    }
+  }
+
+  .btn-outline-secondary {
+    color: #adb5bd;
+    border-color: #6c757d;
+
+    &:hover {
+      background-color: #6c757d;
+      border-color: #6c757d;
+      color: #fff;
+    }
+  }
+
+  .btn-outline-danger {
+    color: #ea868f;
+    border-color: #ea868f;
+
+    &:hover {
+      background-color: #dc3545;
+      border-color: #dc3545;
+      color: #fff;
+    }
+  }
+
+  // Формы
+  .form-select,
+  .form-control {
+    background-color: #1f2327;
+    border-color: #3d4349;
+    color: #dee2e6;
+
+    &:focus {
+      background-color: #2b3035;
+      border-color: #6ea8fe;
+      color: #dee2e6;
+    }
+  }
+
+  // Пагинация
+  .pagination {
+    .page-link {
+      background-color: #2b3035;
+      border-color: #3d4349;
+      color: #6ea8fe;
+
+      &:hover {
+        background-color: #343a40;
+        border-color: #3d4349;
+        color: #9ec5fe;
+      }
+    }
+
+    .page-item.active .page-link {
+      background-color: #0d6efd;
+      border-color: #0d6efd;
+      color: #fff;
+    }
+
+    .page-item.disabled .page-link {
+      background-color: #1f2327;
+      border-color: #3d4349;
+      color: #6c757d;
+    }
+  }
+}

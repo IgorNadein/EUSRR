@@ -14,7 +14,7 @@
     <dt>Тип:</dt><dd>{{ request_obj.get_type_display }}</dd>
     <dt>Период:</dt><dd>
       {% if request_obj.date_from or request_obj.date_to %}
-        {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+        {{ request_obj.date_from }}{% if request_obj.date_to %} — {{ request_obj.date_to }}{% endif %}
       {% else %}—{% endif %}
     </dd>
     <dt>Комментарий:</dt><dd>{{ request_obj.comment|default:"—" }}</dd>

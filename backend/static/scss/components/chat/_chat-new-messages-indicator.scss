@@ -1,0 +1,149 @@
+/**
+ * _chat-new-messages-indicator.scss
+ * Индикатор новых сообщений в чате
+ * Кнопка для прокрутки к новым сообщениям
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   NEW MESSAGES INDICATOR
+────────────────────────────────────────────────────────────── */
+.new-messages-indicator {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  padding: 10px 16px;
+  min-width: 180px;
+  background: var(--bs-primary, #0d6efd);
+  color: white;
+  border: none;
+  border-radius: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+
+  &.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+    animation: pulse 0.6s ease-in-out;
+  }
+
+  &:hover {
+    background: var(--bs-primary-dark, #0a58ca);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  .badge {
+    display: inline-block;
+    min-width: 20px;
+    padding: 2px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.3);
+    color: white;
+    margin: 0 4px;
+  }
+
+  /* Варианты расположения */
+  &.left {
+    right: auto;
+    left: 20px;
+  }
+
+  &.center {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) translateY(10px);
+
+    &.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    &:hover {
+      transform: translateX(-50%) translateY(-2px);
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT SCROLL CONTAINER
+────────────────────────────────────────────────────────────── */
+#chatScroll {
+  position: relative;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ANIMATIONS
+────────────────────────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   RESPONSIVE
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .new-messages-indicator {
+    bottom: 15px;
+    right: 15px;
+    min-width: 160px;
+    padding: 8px 14px;
+    font-size: 13px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .badge {
+      font-size: 11px;
+      min-width: 18px;
+      padding: 2px 5px;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DARK THEME
+────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .new-messages-indicator {
+    background: #1a73e8;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+    &:hover {
+      background: #1557b0;
+    }
+  }
+}

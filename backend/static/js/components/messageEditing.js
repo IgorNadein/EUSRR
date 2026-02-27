@@ -6,7 +6,7 @@
  * или в другой вкладке.
  */
 
-import { MessageRenderer } from './messageRenderer.js';
+import { MessageRendererV2 } from '../renderers/messageRendererV2.js';
 
 /**
  * Инициализация обработки редактирования сообщений
@@ -80,44 +80,28 @@ function updateMessageInDOM(message) {
 
 	messageElements.forEach(oldMessageEl => {
 		try {
-			// Получаем данные для рендера
-			const chatScroll = document.getElementById('chatScroll');
-			const currentUserId = parseInt(chatScroll?.dataset.meId || oldMessageEl.dataset.currentUserId);
+			// Используем существующий renderer из ChatControllerV2
+			const renderer = window.chatController?.messageRenderer;
 			
-			if (!currentUserId) {
-				console.warn('[MessageEditing] Cannot determine current user ID');
+			if (!renderer) {
+				console.error('[MessageEditing] MessageRenderer not available from ChatController');
 				return;
 			}
 
-			// Создаём renderer
-			const renderer = new MessageRenderer({
-				containerId: 'chatScroll',
-				currentUserId: currentUserId,
-				currentUserAvatar: window.currentUserAvatar || '',
-				profileUrl: '/employees/profile/',
-				detailUrlTemplate: '/employees/detail/0/'
-			});
-
-			// Определяем является ли сообщение своим
-			const isOwn = message.author_id === currentUserId;
-
-			// Генерируем новый HTML
-			const newMessageHtml = renderer.buildMessageHtml(message, isOwn);
+			// Рендерим сообщение через существующий renderer (возвращает DOM элемент)
+			const newMessageEl = renderer.renderSingleMessage(message);
 			
-			console.log('[MessageEditing] Generated HTML length:', newMessageHtml.length);
-			console.log('[MessageEditing] HTML contains "attachment":', newMessageHtml.includes('attachment'));
-			console.log('[MessageEditing] HTML contains "reply-reference":', newMessageHtml.includes('reply-reference'));
-			console.log('[MessageEditing] HTML sample:', newMessageHtml.substring(0, 500));
-
-			// Создаём временный контейнер для парсинга HTML
-			const tempDiv = document.createElement('div');
-			tempDiv.innerHTML = newMessageHtml.trim();
-			const newMessageEl = tempDiv.firstElementChild;
-
 			if (!newMessageEl) {
-				console.error('[MessageEditing] Failed to parse new message HTML');
+				console.error('[MessageEditing] Failed to render new message element');
 				return;
 			}
+			
+			console.log('[MessageEditing] Generated element:', {
+				tagName: newMessageEl.tagName,
+				className: newMessageEl.className,
+				hasContent: !!newMessageEl.querySelector('.message-content'),
+				hasAttachments: !!newMessageEl.querySelector('.message-attachments')
+			});
 
 			// Сохраняем позицию скролла
 			const scrollContainer = document.getElementById('chatScroll');
@@ -136,6 +120,7 @@ function updateMessageInDOM(message) {
 			}
 
 			// Переинициализируем компоненты для нового элемента
+			const currentUserId = renderer.currentUserId;
 			reinitMessageComponents(newMessageEl, message.id, currentUserId);
 
 		} catch (error) {

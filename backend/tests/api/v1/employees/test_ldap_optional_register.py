@@ -13,21 +13,16 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from employees.models import Employee
+from tests.conftest import _unique_phone
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 _phone_seq = itertools.count(4000)
 
-
-def _unique_phone():
-    return f"+7999000{next(_phone_seq):04d}"
-
-
 @pytest.fixture
 def api_client():
     return APIClient()
-
 
 @pytest.fixture
 def test_user_data():
@@ -42,9 +37,7 @@ def test_user_data():
         "birth_date": "1990-01-01",
     }
 
-
 # ---------- Тесты С LDAP (LDAP_ENABLED=True) ----------
-
 
 @pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
 @patch("api.v1.employees.views.DirectoryService")
@@ -86,7 +79,6 @@ def test_register_with_ldap_creates_user_in_ldap_and_db(
     assert call_args.email == test_user_data["email"]
     assert call_args.password == test_user_data["password"]
 
-
 @pytest.mark.skip(reason="Requires real LDAP connection - skipped for safety")
 @patch("api.v1.employees.views.DirectoryService")
 def test_register_with_ldap_duplicate_email_returns_400(
@@ -109,9 +101,7 @@ def test_register_with_ldap_duplicate_email_returns_400(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "email" in str(response.data).lower() or "exists" in str(response.data).lower()
 
-
 # ---------- Тесты БЕЗ LDAP (LDAP_ENABLED=False) ----------
-
 
 def test_register_without_ldap_creates_user_only_in_db(
     api_client, test_user_data, settings
@@ -136,7 +126,6 @@ def test_register_without_ldap_creates_user_only_in_db(
     assert user.has_usable_password()  # Пароль в БД
     assert user.check_password(test_user_data["password"])
 
-
 def test_register_without_ldap_duplicate_email_returns_400(
     api_client, test_user_data, settings
 ):
@@ -157,9 +146,7 @@ def test_register_without_ldap_duplicate_email_returns_400(
     
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-
 # ---------- Параметризованные тесты (оба режима) ----------
-
 
 @pytest.mark.skip(reason="Requires LDAP mocking improvements")
 @pytest.mark.parametrize(

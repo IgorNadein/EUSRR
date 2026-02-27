@@ -3,11 +3,7 @@
 
 {% block title %}Лента{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/components/join-scroller.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
-<link rel="stylesheet" href="{% static 'css/components/feed-specific.css' %}">
-{% endblock %}
+{% block extra_css %}{% endblock %}
 
 {% block content %}
   <div class="container">
@@ -96,5 +92,5 @@
 </script>
 
 <!-- Emoji Picker Library -->
-<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+<script type="module" src="{% static 'vendor/emoji-picker/index.js' %}"></script>
 {% endblock %}

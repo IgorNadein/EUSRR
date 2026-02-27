@@ -318,6 +318,34 @@ def build_logins_for_user(
         return ensure_unique_login(fb, is_taken_sam, is_taken_upn, upn_suffix)
 
 
+def get_base_dn_for_employee(employee) -> str:
+    """Определяет целевую OU для сотрудника в зависимости от статуса активности.
+    
+    Args:
+        employee: Экземпляр модели Employee.
+        
+    Returns:
+        str: DN базовой OU (LDAP_DISMISSED_BASE если is_active=False, иначе LDAP_USERS_BASE).
+        
+    Raises:
+        RuntimeError: Если настройка не сконфигурирована в settings.
+    """
+    from django.conf import settings
+    
+    if not employee.is_active:
+        dismissed_base = getattr(settings, "LDAP_DISMISSED_BASE", None)
+        if not dismissed_base:
+            raise RuntimeError("LDAP_DISMISSED_BASE is not configured")
+        return dismissed_base
+    
+    users_base = getattr(settings, "LDAP_USERS_BASE", None) or getattr(
+        settings, "LDAP_USER_BASE", None
+    )
+    if not users_base:
+        raise RuntimeError("LDAP_USERS_BASE is not configured")
+    return users_base
+
+
 __all__ = [
     "_first",
     "_uac_is_active",
@@ -331,4 +359,5 @@ __all__ = [
     "fallback_login_from_email",
     "ensure_unique_login",
     "build_logins_for_user",
+    "get_base_dn_for_employee",
 ]

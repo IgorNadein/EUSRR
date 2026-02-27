@@ -1,0 +1,248 @@
+// =============================================================================
+// Document List Styles (SCSS)
+// =============================================================================
+// Стили списка документов, recipient picker, и подтверждений
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+$doc-icon-size: 28px;
+$doc-row-padding: var(--space-2);
+$doc-border-unacked-width: 3px;
+$recipient-avatar-size: 26px;
+$card-icon-size: 32px;
+
+// Цвета
+$doc-hover-primary: 4%;
+$doc-unacked-bg: 8%;
+$doc-unacked-hover: 15%;
+
+// =============================================================================
+// СПИСОК ДОКУМЕНТОВ
+// =============================================================================
+
+#docList.card-list {
+  display: block;
+  gap: 0 !important;
+}
+
+#docList .doc-row {
+  padding: $doc-row-padding !important;
+  margin: 0 !important;
+  border-bottom: 1px solid var(--bs-border-color);
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--bs-primary) $doc-hover-primary, transparent);
+  }
+
+  &.doc-unacked {
+    background-color: color-mix(in srgb, var(--bs-warning) $doc-unacked-bg, transparent);
+    border-left: $doc-border-unacked-width solid var(--bs-warning);
+    padding-left: calc($doc-row-padding - $doc-border-unacked-width) !important;
+
+    &:hover {
+      background-color: color-mix(in srgb, var(--bs-warning) $doc-unacked-hover, transparent);
+    }
+  }
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+// =============================================================================
+// ЗАГОЛОВОК ДОКУМЕНТА
+// =============================================================================
+
+#docList .card-header {
+  display: grid;
+  grid-template-columns: $doc-icon-size 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0 !important;
+}
+
+#docList .feed-ico {
+  width: $doc-icon-size;
+  height: $doc-icon-size;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bs-body-bg) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+  color: var(--bs-primary);
+}
+
+// =============================================================================
+// ДЕЙСТВИЯ С ДОКУМЕНТАМИ
+// =============================================================================
+
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+// =============================================================================
+// SCOPE SWITCH
+// =============================================================================
+
+.scope-switch .btn {
+  min-height: 36px;
+  border-radius: 999px;
+}
+
+// =============================================================================
+// АДАПТИВНОСТЬ: МОБИЛЬНЫЕ
+// =============================================================================
+
+@media (max-width: 576px) {
+  #docList .card-header {
+    grid-template-columns: $doc-icon-size 1fr;
+    gap: 0.5rem;
+  }
+
+  .doc-actions {
+    grid-column: 2;
+    margin-top: 0.5rem;
+    justify-content: flex-start;
+
+    .btn,
+    .btn-icon {
+      font-size: 0.85rem;
+      padding: 0.35rem 0.65rem;
+    }
+  }
+}
+
+// =============================================================================
+// RECIPIENT PICKER
+// =============================================================================
+
+.recipient-picker {
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  padding: var(--space-2);
+  background: var(--bs-body-bg);
+}
+
+.recipient-picker .rp-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.recipient-picker .rp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+  padding: var(--space-1);
+  font-size: 0.85rem;
+
+  button {
+    border: 0;
+    background: transparent;
+    padding: 0 var(--space-1);
+    line-height: 1;
+  }
+}
+
+.recipient-picker .rp-search {
+  position: relative;
+
+  input {
+    width: 100%;
+  }
+}
+
+.recipient-picker .rp-results {
+  margin-top: 0.5rem;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+}
+
+.recipient-picker .rp-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-bottom: 1px solid var(--bs-border-color);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  small {
+    color: var(--bs-secondary-color);
+  }
+}
+
+.recipient-picker .rp-empty {
+  padding: var(--space-1);
+  text-align: center;
+  color: var(--bs-secondary-color);
+}
+
+.recipient-picker .rp-avatar {
+  width: $recipient-avatar-size;
+  height: $recipient-avatar-size;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bs-primary) 12%, transparent);
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.7rem;
+}
+
+.recipient-block[hidden] {
+  display: none !important;
+}
+
+// =============================================================================
+// ACKNOWLEDGMENTS (ПОДТВЕРЖДЕНИЯ)
+// =============================================================================
+
+.acks-list {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.acks-empty {
+  color: var(--bs-secondary-color);
+}
+
+.acks-more {
+  margin-top: 0.5rem;
+}
+
+// =============================================================================
+// ИКОНКИ
+// =============================================================================
+
+.card-icon {
+  width: $card-icon-size;
+  height: $card-icon-size;
+  flex: 0 0 $card-icon-size;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rp-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

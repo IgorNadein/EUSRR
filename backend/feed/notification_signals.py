@@ -21,7 +21,7 @@ Employee = get_user_model()
 @receiver(post_save, sender=Post)
 def create_post_notification(sender, instance, created, **kwargs):
     """
-    Создает уведомления при создании новой публикации.
+    Создает уведомления при создании новой публикации асинхронно.
     
     Уведомления отправляются в зависимости от типа:
     - TYPE_COMPANY - всем сотрудникам
@@ -31,8 +31,27 @@ def create_post_notification(sender, instance, created, **kwargs):
     if not created:
         return
     
-    post = instance
-    notify_new_post(post)
+    from django.db import transaction
+    from notifications.tasks import process_post_notifications_task
+    
+    def send_task():
+        """Отложенная отправка задачи после commit транзакции"""
+        try:
+            process_post_notifications_task.delay(
+                post_id=instance.id,
+                action='created'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Failed to queue post notifications task: {e}, "
+                f"falling back to sync"
+            )
+            # Fallback на старую логику
+            notify_new_post(instance)
+    
+    transaction.on_commit(send_task)
 
 
 @receiver(post_save, sender=Comment)
@@ -49,7 +68,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
     
     # Уведомляем автора публикации (если комментарий не от него)
     if post.author.id != comment_author.id:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=post.author,
             notification_type_code='feed_post_comment',
             title='Новый комментарий к вашей публикации',
@@ -58,7 +77,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 f' прокомментировал: {truncate_text(comment.text, 80)}'
             ),
             content_object=post,
-            action_url=f'/feed/post/{post.id}/',
+            action_url=f'/post/{post.id}/',
             metadata={
                 'post_id': post.id,
                 'post_title': post.title,
@@ -90,13 +109,13 @@ def notify_new_post(post):
         )
     
     for recipient in recipients:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=recipient,
             notification_type_code='feed_new_post',
             title=f'Новая публикация {context}',
             message=f'{post.title}',
             content_object=post,
-            action_url=f'/feed/post/{post.id}/',
+            action_url=f'/post/{post.id}/',
             metadata={
                 'post_id': post.id,
                 'post_type': post.type,
@@ -163,7 +182,7 @@ def notify_post_reaction(post, user):
     """
     # Уведомляем автора (если лайк не от него)
     if post.author.id != user.id:
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=post.author,
             notification_type_code='feed_post_reaction',
             title='Ваша публикация понравилась',
@@ -172,7 +191,7 @@ def notify_post_reaction(post, user):
                 f'понравилась публикация "{post.title}"'
             ),
             content_object=post,
-            action_url=f'/feed/post/{post.id}/',
+            action_url=f'/post/{post.id}/',
             metadata={
                 'post_id': post.id,
                 'post_title': post.title,

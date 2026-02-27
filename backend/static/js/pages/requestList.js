@@ -3,10 +3,10 @@
  * @description Инициализация страницы списка заявлений
  */
 
-import { initRequestModalHandler } from '../components/requestModalHandler.js';
-import { initRequestCommentsHandler } from '../components/requestCommentsHandler.js';
-import { initRequestCrudHandler } from '../components/requestCrudHandler.js';
-import { initRequestListHandler } from '../components/requestListHandler.js';
+import { initRequestModalHandler } from "../components/requestModalHandler.js";
+import { initRequestCommentsHandler } from "../components/requestCommentsHandler.js";
+import { initRequestCrudHandler } from "../components/requestCrudHandler.js";
+import { initRequestListHandler } from "../components/requestListHandler.js";
 
 /**
  * Инициализирует страницу списка заявлений
@@ -25,22 +25,22 @@ export function initRequestListPage(config) {
     commentsUrlTemplate,
     addCommentUrlTemplate,
     autoShowComments = false,
-    useAjaxList = false
+    useAjaxList = false,
   } = config;
 
   // Получаем токен доступа
   const accessMeta = document.querySelector('meta[name="api-access"]');
-  const ACCESS = accessMeta ? accessMeta.content : '';
-  
+  const ACCESS = accessMeta ? accessMeta.content : "";
+
   // Функция для получения CSRF токена из cookie
   function getCsrfToken() {
-    const name = 'csrftoken';
+    const name = "csrftoken";
     let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-      const cookies = document.cookie.split(';');
+    if (document.cookie && document.cookie !== "") {
+      const cookies = document.cookie.split(";");
       for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i].trim();
-        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        if (cookie.substring(0, name.length + 1) === name + "=") {
           cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
           break;
         }
@@ -48,13 +48,50 @@ export function initRequestListPage(config) {
     }
     return cookieValue;
   }
-  
+
   const headers = {
-    'X-CSRFToken': getCsrfToken()
+    "X-CSRFToken": getCsrfToken(),
   };
-  
+
   if (ACCESS) {
-    headers['Authorization'] = 'Bearer ' + ACCESS;
+    headers["Authorization"] = "Bearer " + ACCESS;
+  }
+
+  // Если включен AJAX режим - инициализируем обработчик списка
+  if (useAjaxList) {
+    const userId = parseInt(document.body.dataset.userId || "0", 10);
+    const canProcess = document.body.dataset.canProcess === "true";
+
+    console.log("Request list AJAX mode:", {
+      apiListUrl,
+      userId,
+      canProcess,
+    });
+
+    // Инициализация списка заявлений (AJAX загрузка с бесконечной прокруткой)
+    const requestListHandler = initRequestListHandler({
+      apiListUrl,
+      detailUrlTemplate: "/requests/{id}/",
+      userId,
+      canProcess,
+      headers,
+    });
+
+    // Обработка переключения фильтров через URL параметры
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentView = urlParams.get("view") || "";
+    const currentType = urlParams.get("type") || "";
+    const currentStatus = urlParams.get("status") || "";
+
+    if (currentView && requestListHandler.setView) {
+      requestListHandler.setView(currentView);
+    }
+    if (currentType && requestListHandler.setType) {
+      requestListHandler.setType(currentType);
+    }
+    if (currentStatus && requestListHandler.setStatus) {
+      requestListHandler.setStatus(currentStatus);
+    }
   }
 
   // Если включен AJAX режим - инициализируем обработчик списка
@@ -96,20 +133,28 @@ export function initRequestListPage(config) {
 
   // Инициализация обработчиков модальных окон
   initRequestModalHandler({
-    autoShowComments
+    autoShowComments,
   });
 
   // Инициализация обработчика комментариев
   initRequestCommentsHandler({
     commentsUrlTemplate,
     addCommentUrlTemplate,
-    autoloadCounts: true
+    autoloadCounts: true,
   });
 
   // Инициализация CRUD операций для заявлений
   initRequestCrudHandler({
     apiListUrl,
     apiDetailBase,
-    headers
+    headers,
+  });
+
+  // Слушаем события обновления заявлений (approve/reject)
+  document.addEventListener("request:updated", function (event) {
+    console.log("Request updated:", event.detail);
+    // Перезагружаем страницу для обновления списка
+    // TODO: в будущем можно заменить на AJAX обновление конкретной карточки
+    setTimeout(() => window.location.reload(), 500);
   });
 }

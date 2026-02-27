@@ -67,14 +67,16 @@ export function initTeamWheel(options) {
 
   // Источник данных
   const src = document.getElementById(dataSourceId);
-  const members = Array.from(src ? src.children : []).map(n => ({
-    id: Number(n.getAttribute('data-id') || '0'),
-    name: n.getAttribute('data-name') || '',
-    role: n.getAttribute('data-role') || '',
-    email: n.getAttribute('data-email') || '',
-    avatar: n.getAttribute('data-avatar') || '',
-    active: n.getAttribute('data-active') === '1'
-  }));
+  const members = Array.from(src ? src.children : [])
+    .map(n => ({
+      id: Number(n.getAttribute('data-id') || '0'),
+      name: n.getAttribute('data-name') || '',
+      role: n.getAttribute('data-role') || '',
+      email: n.getAttribute('data-email') || '',
+      avatar: n.getAttribute('data-avatar') || '',
+      active: n.getAttribute('data-active') === '1'
+    }))
+    .filter(m => m.active); // Показываем только активных сотрудников
 
   // Если никого нет — показываем руководителя
   if (!members.length) {

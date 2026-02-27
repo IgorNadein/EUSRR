@@ -30,9 +30,7 @@ User = get_user_model()
 
 pytestmark = pytest.mark.django_db
 
-
 # ------------------------ helpers ------------------------
-
 
 def _ensure_permission(
     app_label: str, model: type, codename: str, name: Optional[str] = None
@@ -59,7 +57,6 @@ def _ensure_permission(
     )
     return perm
 
-
 def _mk_dept(name: str = "Dept", *, head: Optional[User] = None) -> Department:
     """Создаёт отдел.
 
@@ -72,7 +69,6 @@ def _mk_dept(name: str = "Dept", *, head: Optional[User] = None) -> Department:
     """
     return Department.objects.create(name=name, head=head)
 
-
 def _ensure_dept_permission(code: str, name: str | None = None) -> DepartmentPermission:
     """Возвращает/создаёт DepartmentPermission с заданным кодом."""
     perm, _ = DepartmentPermission.objects.get_or_create(
@@ -80,7 +76,6 @@ def _ensure_dept_permission(code: str, name: str | None = None) -> DepartmentPer
         defaults={"name": name or code.replace("_", " ").title()},
     )
     return perm
-
 
 def _give_dept_role_with_perms(user, dept, *, perm_codenames, role_name="Role"):
     """Создаёт роль отдела, вешает scoped_permissions и назначает пользователю."""
@@ -94,7 +89,6 @@ def _give_dept_role_with_perms(user, dept, *, perm_codenames, role_name="Role"):
         employee=user, department=dept, role=role, is_active=True
     )
     return role
-
 
 def _post_data(
     *, type_: str, title: str = "T", body: str = "B", dept: Optional[Department] = None
@@ -115,7 +109,6 @@ def _post_data(
         data["department"] = dept.id if dept else None
     return data
 
-
 def _create_post(
     author: User, *, type_: str, dept: Optional[Department] = None, title: str = "T"
 ) -> Post:
@@ -134,9 +127,7 @@ def _create_post(
         author=author, type=type_, department=dept, title=title, body="B"
     )
 
-
 # ------------------------ URL helpers ------------------------
-
 
 @pytest.fixture
 def urls():
@@ -156,23 +147,8 @@ def urls():
         "comment_detail": lambda pk: reverse("api:v1:comments-detail", args=[pk]),
     }
 
-
 # ------------------------ fixtures (project-aware) ------------------------
-
-
-@pytest.fixture
-def make_user(user_factory):
-    """Фабрика пользователей на основе проектной фикстуры.
-
-    Returns:
-        Callable[..., User]: Создатель пользователя.
-    """
-
-    def _mk(email: str, **extra) -> User:
-        return user_factory(email=email, **extra)
-
-    return _mk
-
+# make_user импортируется из tests.conftest
 
 @pytest.fixture
 def auth():
@@ -183,7 +159,6 @@ def auth():
     return _as
 
 # ------------------------ A. Аноним ------------------------
-
 
 class TestAnonymousAccess:
     """A. Аноним: все эндпоинты → 401."""
@@ -219,9 +194,7 @@ class TestAnonymousAccess:
             == 401
         )
 
-
 # ------------------------ B. Обычный пользователь ------------------------
-
 
 class TestRegularUser:
     """B. Обычный аутентифицированный пользователь: чтение/коммент/лайки 2xx, посты отдела 403."""
@@ -266,9 +239,7 @@ class TestRegularUser:
         assert client.post(urls["post_pin"](post.id)).status_code == 403
         assert client.post(urls["post_unpin"](post.id)).status_code == 403
 
-
 # ------------------------ C. Роль в отделе ------------------------
-
 
 class TestDepartmentRole:
     """C. Роль в отделе с perm 'manage_department_feed' даёт запись в своём отделе, но не в чужом."""
@@ -314,9 +285,7 @@ class TestDepartmentRole:
         )
         assert r2.status_code == 403
 
-
 # ------------------------ D. Руководитель отдела ------------------------
-
 
 class TestDepartmentHead:
     """D. Head: полные права на посты своего отдела."""
@@ -343,9 +312,7 @@ class TestDepartmentHead:
         )
         assert client.delete(urls["post_detail"](pid)).status_code in (200, 204)
 
-
 # ------------------------ E. staff/superuser и pin ------------------------
-
 
 class TestStaffAndPinning:
     """E. Staff/superuser: полный доступ; pin/unpin доступны только staff."""
@@ -385,9 +352,7 @@ class TestStaffAndPinning:
         )
         assert client.delete(urls["post_detail"](pid2)).status_code in (200, 204)
 
-
 # ------------------------ F. Глобальные модельные права на company ------------------------
-
 
 class TestCompanyModelPermsGranular:
     """Гранулярные проверки модельных прав для company-постов."""
@@ -508,9 +473,7 @@ class TestCompanyModelPermsGranular:
             == 403
         )
 
-
 # ------------------------ G. Комментарии ------------------------
-
 
 class TestComments:
     """G. Комментарии: создание любым аутентифицированным; изменение — автор/staff."""
@@ -555,9 +518,7 @@ class TestComments:
         get_after_del = client_r.get(urls["comment_detail"](cid))
         assert get_after_del.status_code == 404
 
-
 # ------------------------ H. Лайки (идемпотентность и is_liked) ------------------------
-
 
 class TestLikes:
     """H. Лайки: идемпотентность и синхронизация is_liked."""
@@ -598,9 +559,7 @@ class TestLikes:
         d2 = client.get(urls["post_detail"](post.id)).json()
         assert d2.get("is_liked") in (False, None)
 
-
 # ------------------------ I. Негативные кейсы валидации ------------------------
-
 
 class TestValidation:
     """I. Негативные кейсы: отсутствие department, запрет чужого отдела и т.п."""
@@ -629,7 +588,6 @@ class TestValidation:
             format="json",
         )
         assert r.status_code == 403
-
 
 def test_company_create_forbidden_for_regular_user(make_user, auth, urls):
     u = make_user("regular@example.com")

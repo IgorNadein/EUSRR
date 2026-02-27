@@ -11,6 +11,12 @@ Employee = get_user_model()
 
 
 class ChatReadState(models.Model):
+    """
+    Состояние прочтения чата пользователем.
+    
+    Использует Telegram-style подход: последнее прочитанное сообщение
+    отмечается автоматически при загрузке сообщений через GET запросы.
+    """
     chat = models.ForeignKey(
         "Chat", on_delete=models.CASCADE, related_name="read_states"
     )
@@ -19,31 +25,17 @@ class ChatReadState(models.Model):
         on_delete=models.CASCADE,
         related_name="chat_read_states",
     )
-    last_read_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # НОВЫЕ ПОЛЯ для расширенной функциональности
-    
-    # Последнее прочитанное сообщение (явная связь)
+    # Последнее прочитанное сообщение (единственный источник истины)
     last_read_message = models.ForeignKey(
         'Message',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name='+',
-        verbose_name="Последнее прочитанное сообщение"
-    )
-    
-    # Упоминания
-    unread_mentions_count = models.IntegerField(
-        default=0,
-        verbose_name="Непрочитанных упоминаний"
-    )
-    
-    # Треды
-    unread_thread_replies_count = models.IntegerField(
-        default=0,
-        verbose_name="Непрочитанных ответов в тредах"
+        verbose_name="Последнее прочитанное сообщение",
+        help_text="Обновляется автоматически при загрузке сообщений (Telegram-style)"
     )
     
     # Статус набора текста
@@ -58,7 +50,6 @@ class ChatReadState(models.Model):
     )
 
     class Meta:
-        # заменяем устаревший unique_together на UniqueConstraint
         constraints = [
             models.UniqueConstraint(
                 fields=["chat", "user"],
@@ -67,12 +58,13 @@ class ChatReadState(models.Model):
         ]
         indexes = [
             models.Index(fields=["chat", "user"]),
-            models.Index(fields=["chat", "last_read_at"]),
             models.Index(fields=["chat", "user", "is_typing"]),
+            models.Index(fields=["last_read_message"]),  # Для быстрого поиска по message
         ]
 
     def __str__(self):
-        return f"read:{self.user_id}@{self.chat_id} → {self.last_read_at or '-'}"
+        msg_id = self.last_read_message_id if self.last_read_message_id else '-'
+        return f"read:{self.user_id}@{self.chat_id} → msg#{msg_id}"
 
 
 class Chat(models.Model):
@@ -217,36 +209,46 @@ class Chat(models.Model):
 
     def mark_read(self, user):
         """
-        Помечает чат прочитанным «до последнего сообщения».
-        Сделано без update_or_create — устойчиво для SQLite.
+        [DEPRECATED] Помечает чат прочитанным до последнего сообщения.
+        
+        ВНИМАНИЕ: Этот метод устарел. Используйте автоматическую отметку
+        через ChatViewSet._auto_mark_read() при загрузке сообщений.
         """
-        last = self.messages.order_by("-created_at").only("created_at").first()
-        ts = last.created_at if last else timezone.now()
-        # обновим, только если новое время больше
-        updated = ChatReadState.objects.filter(
-            chat=self, user=user, last_read_at__lt=ts
-        ).update(last_read_at=ts)
-        if not updated:
-            try:
-                ChatReadState.objects.create(chat=self, user=user, last_read_at=ts)
-            except IntegrityError:
-                # гонка: запись уже есть — попробуем ещё раз обновить
-                ChatReadState.objects.filter(
-                    chat=self, user=user, last_read_at__lt=ts
-                ).update(last_read_at=ts)
+        last_message = self.messages.order_by("-created_at").first()
+        if not last_message:
+            return
+        
+        # Обновляем, только если новое сообщение НОВЕЕ текущего
+        read_state, created = ChatReadState.objects.get_or_create(
+            chat=self,
+            user=user,
+            defaults={'last_read_message': last_message}
+        )
+        
+        if not created:
+            if read_state.last_read_message_id:
+                if last_message.id <= read_state.last_read_message_id:
+                    return  # Не откатываем назад
+            
+            read_state.last_read_message = last_message
+            read_state.save(update_fields=['last_read_message', 'updated_at'])
 
     def unread_count_for(self, user):
         """
-        Количество непрочитанных (кроме своих).
+        Количество непрочитанных сообщений (кроме своих).
+        Считает сообщения после last_read_message.
         """
         rs = (
             ChatReadState.objects.filter(chat=self, user=user)
-            .only("last_read_at")
+            .only("last_read_message_id")
             .first()
         )
         qs = self.messages.exclude(author=user)
-        if rs and rs.last_read_at:
-            qs = qs.filter(created_at__gt=rs.last_read_at)
+        
+        if rs and rs.last_read_message_id:
+            # Считаем сообщения с ID больше последнего прочитанного
+            qs = qs.filter(id__gt=rs.last_read_message_id)
+        
         return qs.count()
 
     @property
@@ -387,11 +389,6 @@ class Message(models.Model):
     # Редактирование
     is_edited = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
-    edit_history = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="История редактирования [{timestamp, old_content}, ...]"
-    )
     
     # Удаление
     is_deleted = models.BooleanField(default=False)
@@ -430,30 +427,6 @@ class Message(models.Model):
     
     # Флаги для специальных типов сообщений
     is_forwarded = models.BooleanField(default=False)
-    forwarded_from_message_id = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="ID исходного сообщения при пересылке"
-    )
-    forwarded_from_author = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='forwarded_messages_source',
-        help_text="Автор исходного сообщения при пересылке"
-    )
-    forwarded_from_created_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Дата создания исходного сообщения при пересылке"
-    )
-    forwarded_from_chat_name = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-        help_text="Название исходного чата при пересылке"
-    )
     is_cross_chat = models.BooleanField(
         default=False,
         help_text="Сообщение отправлено не участником чата"
@@ -468,7 +441,6 @@ class Message(models.Model):
         related_name='thread_messages',
         help_text="Корневое сообщение треда"
     )
-    thread_reply_count = models.IntegerField(default=0)
 
     class Meta:
         ordering = ["created_at"]
@@ -529,7 +501,10 @@ class MessageAttachment(models.Model):
         Message,
         on_delete=models.CASCADE,
         related_name='attachments',
-        verbose_name="Сообщение"
+        verbose_name="Сообщение",
+        null=True,
+        blank=True,
+        help_text="Может быть null для временных вложений при редактировании"
     )
     file = models.FileField(
         upload_to='chat_attachments/%Y/%m/%d/',
@@ -564,6 +539,20 @@ class MessageAttachment(models.Model):
         help_text="Для изображений и видео"
     )
     
+    # Размеры для изображений и видео
+    width = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Ширина",
+        help_text="Ширина изображения или видео в пикселях"
+    )
+    height = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Высота",
+        help_text="Высота изображения или видео в пикселях"
+    )
+    
     class Meta:
         verbose_name = "Вложение"
         verbose_name_plural = "Вложения"
@@ -575,15 +564,86 @@ class MessageAttachment(models.Model):
     
     def __str__(self):
         return f"{self.file_name} ({self.get_file_type_display()})"
+    
+    def save(self, *args, **kwargs):
+        """
+        Автоматически извлекает размеры изображения при сохранении.
+        Telegram-подход: размеры всегда известны до рендеринга.
+        """
+        # Если это изображение и размеры еще не установлены
+        if self.file_type == 'image' and self.file and (not self.width or not self.height):
+            try:
+                from PIL import Image
+                from io import BytesIO
+                
+                # Открываем файл
+                file_obj = self.file.file if hasattr(self.file, 'file') else self.file
+                
+                # Сохраняем позицию курсора
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+                
+                # Открываем изображение
+                image = Image.open(file_obj)
+                self.width, self.height = image.size
+                
+                # Возвращаем курсор в начало
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+                    
+            except Exception as e:
+                # Если не удалось извлечь размеры - не критично
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Could not extract image dimensions: {e}")
+        
+        super().save(*args, **kwargs)
 
 
-class ForwardedMessage(models.Model):
-    """Информация о пересылке сообщения"""
+class MessageEditHistory(models.Model):
+    """История редактирования сообщения"""
+    
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='edit_history_records',
+        verbose_name="Сообщение"
+    )
+    edited_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Время редактирования",
+        db_index=True
+    )
+    previous_content = models.TextField(
+        verbose_name="Предыдущий текст"
+    )
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='+',
+        verbose_name="Кто отредактировал"
+    )
+    
+    class Meta:
+        verbose_name = "Запись истории редактирования"
+        verbose_name_plural = "История редактирования сообщений"
+        ordering = ['edited_at']
+        indexes = [
+            models.Index(fields=['message', 'edited_at']),
+        ]
+    
+    def __str__(self):
+        return f"Редактирование сообщения {self.message_id} в {self.edited_at}"
+
+
+class MessageForwardMetadata(models.Model):
+    """Метаданные пересланного сообщения"""
     
     message = models.OneToOneField(
         Message,
         on_delete=models.CASCADE,
-        related_name='forward_info',
+        related_name='forward_metadata',
         verbose_name="Пересланное сообщение"
     )
     original_message = models.ForeignKey(
@@ -592,16 +652,8 @@ class ForwardedMessage(models.Model):
         null=True,
         blank=True,
         related_name='forwarded_copies',
-        verbose_name="Самое первое сообщение в цепочке"
-    )
-    immediate_source = models.ForeignKey(
-        Message,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Непосредственный источник пересылки",
-        help_text="Откуда переслали (может отличаться от original)"
+        verbose_name="Оригинальное сообщение",
+        help_text="Самое первое сообщение в цепочке пересылок"
     )
     original_chat = models.ForeignKey(
         Chat,
@@ -609,7 +661,7 @@ class ForwardedMessage(models.Model):
         null=True,
         blank=True,
         related_name='+',
-        verbose_name="Исходный чат"
+        verbose_name="Оригинальный чат"
     )
     original_author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -617,7 +669,7 @@ class ForwardedMessage(models.Model):
         null=True,
         blank=True,
         related_name='+',
-        verbose_name="Автор оригинального сообщения"
+        verbose_name="Автор оригинала"
     )
     forwarded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -632,232 +684,29 @@ class ForwardedMessage(models.Model):
     forward_count = models.IntegerField(
         default=1,
         verbose_name="Количество пересылок",
-        help_text="Сколько раз это сообщение пересылалось"
+        help_text="Сколько раз пересылалось"
     )
-    preserved_content = models.TextField(
+    original_created_at = models.DateTimeField(
+        null=True,
         blank=True,
-        verbose_name="Сохранённый текст",
-        help_text="На случай удаления оригинала"
+        verbose_name="Дата создания оригинала"
     )
-    preserved_author_name = models.CharField(
+    original_chat_name = models.CharField(
         max_length=255,
         blank=True,
-        verbose_name="Имя автора оригинала"
+        verbose_name="Название оригинального чата"
     )
     
     class Meta:
-        verbose_name = "Информация о пересылке"
-        verbose_name_plural = "Информация о пересылках"
+        verbose_name = "Метаданные пересылки"
+        verbose_name_plural = "Метаданные пересылок"
         indexes = [
             models.Index(fields=['original_message']),
             models.Index(fields=['forwarded_by', 'forwarded_at']),
         ]
     
     def __str__(self):
-        return f"Пересылка: {self.message_id} от {self.forwarded_by}"
-
-
-class MessageReply(models.Model):
-    """Расширенная информация об ответе на сообщение"""
-    
-    REPLY_TYPE_CHOICES = [
-        ('inline', 'В потоке'),
-        ('quote', 'С цитатой'),
-        ('thread', 'В треде'),
-    ]
-    
-    message = models.OneToOneField(
-        Message,
-        on_delete=models.CASCADE,
-        related_name='reply_info',
-        verbose_name="Сообщение-ответ"
-    )
-    replied_to = models.ForeignKey(
-        Message,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='extended_replies',
-        verbose_name="На какое сообщение ответ"
-    )
-    is_cross_chat_reply = models.BooleanField(
-        default=False,
-        verbose_name="Ответ из другого чата"
-    )
-    original_chat = models.ForeignKey(
-        Chat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Исходный чат",
-        help_text="Если ответ был из другого чата"
-    )
-    preserved_text = models.TextField(
-        blank=True,
-        verbose_name="Сохранённый текст оригинала"
-    )
-    preserved_author_name = models.CharField(
-        max_length=255,
-        blank=True,
-        verbose_name="Имя автора оригинала"
-    )
-    reply_type = models.CharField(
-        max_length=10,
-        choices=REPLY_TYPE_CHOICES,
-        default='inline',
-        verbose_name="Тип ответа"
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Время создания ответа"
-    )
-    
-    class Meta:
-        verbose_name = "Информация об ответе"
-        verbose_name_plural = "Информация об ответах"
-        indexes = [
-            models.Index(fields=['replied_to']),
-            models.Index(fields=['is_cross_chat_reply']),
-        ]
-    
-    def __str__(self):
-        return f"Ответ: {self.message_id} → {self.replied_to_id}"
-
-
-class ChatAccessPermission(models.Model):
-    """Права доступа к чату для внешних пользователей"""
-    
-    ACCESS_LEVEL_CHOICES = [
-        ('read', 'Только чтение'),
-        ('write', 'Чтение и отправка'),
-        ('moderate', 'Модерация'),
-    ]
-    
-    chat = models.ForeignKey(
-        Chat,
-        on_delete=models.CASCADE,
-        related_name='access_permissions',
-        verbose_name="Чат"
-    )
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='chat_access_permissions',
-        verbose_name="Пользователь"
-    )
-    access_level = models.CharField(
-        max_length=10,
-        choices=ACCESS_LEVEL_CHOICES,
-        default='write',
-        verbose_name="Уровень доступа"
-    )
-    granted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Кто предоставил доступ"
-    )
-    granted_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Когда предоставлен доступ"
-    )
-    expires_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Срок действия",
-        help_text="Если не указано - бессрочно"
-    )
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name="Активен"
-    )
-    
-    class Meta:
-        verbose_name = "Право доступа к чату"
-        verbose_name_plural = "Права доступа к чатам"
-        unique_together = [('chat', 'user')]
-        indexes = [
-            models.Index(fields=['chat', 'is_active']),
-            models.Index(fields=['user', 'is_active']),
-        ]
-    
-    def __str__(self):
-        return f"{self.user} → {self.chat} ({self.get_access_level_display()})"
-
-
-class CrossChatMessage(models.Model):
-    """Сообщения, отправленные в чаты, где пользователь не является участником"""
-    
-    STATUS_CHOICES = [
-        ('pending', 'На модерации'),
-        ('approved', 'Одобрено'),
-        ('rejected', 'Отклонено'),
-    ]
-    
-    message = models.OneToOneField(
-        Message,
-        on_delete=models.CASCADE,
-        related_name='cross_chat_info',
-        verbose_name="Сообщение"
-    )
-    sender = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='sent_cross_chat_messages',
-        verbose_name="Отправитель"
-    )
-    target_chat = models.ForeignKey(
-        Chat,
-        on_delete=models.CASCADE,
-        related_name='cross_chat_messages',
-        verbose_name="Целевой чат"
-    )
-    status = models.CharField(
-        max_length=10,
-        choices=STATUS_CHOICES,
-        default='pending',
-        verbose_name="Статус"
-    )
-    requires_moderation = models.BooleanField(
-        default=True,
-        verbose_name="Требует модерации"
-    )
-    moderated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='+',
-        verbose_name="Модератор"
-    )
-    moderated_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Время модерации"
-    )
-    moderation_note = models.TextField(
-        blank=True,
-        verbose_name="Заметка модератора"
-    )
-    sent_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Время отправки"
-    )
-    
-    class Meta:
-        verbose_name = "Кросс-чат сообщение"
-        verbose_name_plural = "Кросс-чат сообщения"
-        indexes = [
-            models.Index(fields=['target_chat', 'status']),
-            models.Index(fields=['sender', 'sent_at']),
-            models.Index(fields=['status', 'requires_moderation']),
-        ]
-    
-    def __str__(self):
-        return f"CrossChat: {self.sender} → {self.target_chat} ({self.status})"
+        return f"Пересылка {self.message_id}: {self.forward_count}x"
 
 
 class ChatMembership(models.Model):

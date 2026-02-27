@@ -28,14 +28,14 @@ function formatCount(count) {
  * Инициализирует обработчик бейджа непрочитанных чатов.
  * @param {Object} options - Опции инициализации
  * @param {string} [options.badgeId='sidebarChatBadge'] - ID элемента бейджа
- * @param {string} [options.hiddenClass='d-none'] - Класс для скрытия бейджа
+ * @param {string} [options.hiddenClass='d-none'] - Класс для скрытия бейджа (не используется в Telegram-стиле)
  * @param {string} [options.eventName='chats:unread-total'] - Имя события для real-time обновлений
  * @returns {Object} API с методами update, destroy
  */
 export function initChatBadge(options = {}) {
   const {
     badgeId = 'sidebarChatBadge',
-    hiddenClass = 'd-none',
+    hiddenClass = 'd-none', // deprecated, используем style.display
     eventName = 'chats:unread-total'
   } = options;
 
@@ -47,15 +47,28 @@ export function initChatBadge(options = {}) {
   }
 
   /**
-   * Обновляет отображение бейджа.
+   * Обновляет отображение бейджа (Telegram-стиль).
    * @param {number} count - Новое количество непрочитанных сообщений
    */
   function updateBadge(count) {
     const value = Number(count) || 0;
+    const oldValue = Number(badge.dataset.count) || 0;
     
     badge.dataset.count = String(value);
     badge.textContent = formatCount(value);
-    badge.classList.toggle(hiddenClass, value <= 0);
+    
+    // Telegram-стиль: используем style.display вместо классов
+    if (value <= 0) {
+      badge.style.display = 'none';
+      badge.classList.remove('pulse');
+    } else {
+      badge.style.display = '';
+      // Анимация pulse при увеличении
+      if (value > oldValue) {
+        badge.classList.add('pulse');
+        setTimeout(() => badge.classList.remove('pulse'), 600);
+      }
+    }
   }
 
   /**

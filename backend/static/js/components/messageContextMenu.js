@@ -10,7 +10,7 @@ export class MessageContextMenu {
         console.log('[MessageContextMenu] Constructor called', config);
         
         this.onReactionSelect = config.onReactionSelect || (() => {});
-        this.emojis = config.emojis || ['👍', '❤️', '😂', '😮', '😢', '🙏', '👏', '🔥'];
+        this.emojis = config.emojis || ['👍', '❤️', '😂', '😮', '�']; // 5 смайликов + кнопка = 6 элементов
         this.currentUserId = config.currentUserId;
         this.containerId = config.containerId || 'chatScroll';
         
@@ -27,11 +27,13 @@ export class MessageContextMenu {
     init() {
         // Закрытие меню при клике вне его
         document.addEventListener('click', (e) => {
-            if (this.activeMenu && !e.target.closest('.message-context-menu')) {
+            if (this.activeMenu && 
+                !e.target.closest('.message-context-menu') && 
+                !e.target.closest('.quick-reactions-panel')) {
                 this.removeHighlight(); // Убираем подсветку
                 this.closeMenu();
             }
-        });
+        }, true); // Используем capture phase для приоритета
 
         // Закрытие при Escape
         document.addEventListener('keydown', (e) => {
@@ -84,43 +86,12 @@ export class MessageContextMenu {
             return;
         }
         
-        console.log('[MessageContextMenu] Setting up MutationObserver');
+        // РЕФАКТОРИНГ: MutationObserver УДАЛЕН
+        // Он дублировал обработку сообщений с событием chat:message-added
+        // Теперь используется ТОЛЬКО событийная модель - chat-detail-enhanced.js
+        // слушает chat:message-added и вызывает attachToMessage
         
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        // Если добавлено само сообщение
-                        if (node.classList?.contains('msg') && node.dataset.messageId) {
-                            if (!node.dataset.contextMenuAttached) {
-                                console.log('[MessageContextMenu] New message detected:', node.dataset.messageId);
-                                this.attachToMessage(node);
-                                node.dataset.contextMenuAttached = 'true';
-                            }
-                        }
-                        
-                        // Если добавлен контейнер с сообщениями
-                        const newMessages = node.querySelectorAll?.('.msg[data-message-id]');
-                        if (newMessages) {
-                            newMessages.forEach((msg) => {
-                                if (!msg.dataset.contextMenuAttached) {
-                                    console.log('[MessageContextMenu] New message in batch:', msg.dataset.messageId);
-                                    this.attachToMessage(msg);
-                                    msg.dataset.contextMenuAttached = 'true';
-                                }
-                            });
-                        }
-                    }
-                });
-            });
-        });
-        
-        observer.observe(container, {
-            childList: true,
-            subtree: true
-        });
-        
-        this.observer = observer;
+        console.log('[MessageContextMenu] Observer setup skipped - using event-based model only');
     }
 
     /**
@@ -141,6 +112,12 @@ export class MessageContextMenu {
 
         // Десктоп: правый клик
         messageElement.addEventListener('contextmenu', (e) => {
+            // Игнорируем клик на кнопках реакций и контейнере реакций
+            if (e.target.closest('.reaction-button') || e.target.closest('.message-reactions')) {
+                console.log('[MessageContextMenu] Ignoring contextmenu on reaction button/container');
+                return; // Не вызываем preventDefault, позволяем событию идти дальше
+            }
+            
             console.log('[MessageContextMenu] *** CONTEXTMENU EVENT FIRED ***');
             console.log('[MessageContextMenu] Event details:', {
                 clientX: e.clientX,
@@ -149,6 +126,7 @@ export class MessageContextMenu {
                 messageId
             });
             e.preventDefault();
+            e.stopPropagation(); // Предотвращаем всплытие к обработчику на document
             this.showMenu(messageElement, messageId, isOwn, e.clientX, e.clientY);
         });
         
@@ -158,6 +136,12 @@ export class MessageContextMenu {
         let touchStartX, touchStartY;
         
         messageElement.addEventListener('touchstart', (e) => {
+            // Игнорируем долгое нажатие на кнопках реакций и контейнере реакций
+            if (e.target.closest('.reaction-button') || e.target.closest('.message-reactions')) {
+                console.log('[MessageContextMenu] Ignoring touchstart on reaction button/container');
+                return;
+            }
+            
             console.log('[MessageContextMenu] Touchstart event on message:', messageId);
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
@@ -220,6 +204,13 @@ export class MessageContextMenu {
         const menu = this.createMenu(messageElement, messageId, isOwn);
         console.log('[MessageContextMenu] Menu created, appending to body');
         document.body.appendChild(menu);
+        
+        // Добавляем панель реакций отдельно
+        if (menu.reactionsPanel) {
+            document.body.appendChild(menu.reactionsPanel);
+            console.log('[MessageContextMenu] Reactions panel appended to body');
+        }
+        
         this.activeMenu = menu;
         console.log('[MessageContextMenu] Menu appended to DOM');
 
@@ -228,7 +219,7 @@ export class MessageContextMenu {
         messageElement.classList.add('message-highlighted');
         this.highlightedMessage = messageElement; // Сохраняем ссылку
 
-        // Позиционировать меню
+        // Позиционировать меню и реакции
         console.log('[MessageContextMenu] Positioning menu');
         this.positionMenu(menu, x, y);
 
@@ -236,6 +227,9 @@ export class MessageContextMenu {
         requestAnimationFrame(() => {
             console.log('[MessageContextMenu] Adding show class for animation');
             menu.classList.add('show');
+            if (menu.reactionsPanel) {
+                menu.reactionsPanel.classList.add('show');
+            }
         });
     }
 
@@ -250,13 +244,17 @@ export class MessageContextMenu {
         menu.dataset.messageId = messageId;
         console.log('[MessageContextMenu] Menu element created with class:', menu.className);
 
-        // Секция быстрых реакций
+        // Секция быстрых реакций (Telegram-style)
         console.log('[MessageContextMenu] Creating reactions HTML with', this.emojis.length, 'emojis');
         const reactionsHtml = this.emojis.map(emoji => `
             <button class="quick-reaction-btn" data-emoji="${emoji}" data-action="react">
                 ${emoji}
             </button>
-        `).join('');
+        `).join('') + `
+            <button class="quick-reaction-btn quick-reaction-btn-more" data-action="show-more-reactions" title="Развернуть">
+                <i class="bi bi-chevron-up"></i>
+            </button>
+        `;
 
         // Секция действий
         const actionsHtml = `
@@ -293,15 +291,50 @@ export class MessageContextMenu {
         `;
 
         console.log('[MessageContextMenu] Setting innerHTML...');
-        menu.innerHTML = `
-            <div class="quick-reactions">
-                ${reactionsHtml}
-            </div>
-            ${actionsHtml}
-        `;
+        menu.innerHTML = actionsHtml;
         console.log('[MessageContextMenu] innerHTML set successfully');
+        
+        // Создаём отдельный floating элемент для быстрых реакций (как в Telegram)
+        const reactionsPanel = document.createElement('div');
+        reactionsPanel.className = 'quick-reactions-panel';
+        reactionsPanel.innerHTML = `
+            <div class="quick-reactions-wrapper">
+                <div class="quick-reactions-list">
+                    ${reactionsHtml}
+                </div>
+            </div>
+        `;
+        menu.reactionsPanel = reactionsPanel; // Сохраняем ссылку
+        console.log('[MessageContextMenu] Reactions panel created');
 
-        // Обработчики
+        // Обработчик кликов на панели реакций
+        reactionsPanel.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) {
+                console.log('[MessageContextMenu] Click outside action button on reactions panel');
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const action = btn.dataset.action;
+            const emoji = btn.dataset.emoji;
+            console.log('[MessageContextMenu] Reaction button clicked:', action, emoji);
+
+            // Если это кнопка "показать больше реакций" - раскрываем полный список
+            if (action === 'show-more-reactions') {
+                console.log('[MessageContextMenu] Show more reactions clicked - expanding');
+                this.expandReactionsList(reactionsPanel, messageElement, messageId);
+                return;
+            }
+
+            this.handleAction(action, messageElement, messageId, emoji);
+            this.removeHighlight();
+            this.closeMenu();
+        });
+
+        // Обработчики на основном меню
         console.log('[MessageContextMenu] Attaching click handler to menu');
         menu.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-action]');
@@ -335,16 +368,21 @@ export class MessageContextMenu {
         const menuRect = menu.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
+        const isMobile = viewportWidth <= 768;
         
         console.log('[MessageContextMenu] Menu dimensions:', {
             width: menuRect.width,
             height: menuRect.height,
             viewportWidth,
-            viewportHeight
+            viewportHeight,
+            isMobile
         });
 
-        let left = x;
-        let top = y;
+        let left, top;
+
+        // Единое позиционирование для всех устройств - рядом с курсором/касанием
+        left = x;
+        top = y;
 
         // Не выходим за правый край
         if (left + menuRect.width > viewportWidth) {
@@ -373,6 +411,79 @@ export class MessageContextMenu {
         console.log('[MessageContextMenu] Final position:', { left, top });
         menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
+        
+        // Позиционируем панель реакций над меню (одинаково для всех устройств)
+        if (menu.reactionsPanel) {
+            const reactionsRect = menu.reactionsPanel.getBoundingClientRect();
+            const reactionsLeft = left;
+            const reactionsTop = top - reactionsRect.height - 12; // 12px gap
+            
+            menu.reactionsPanel.style.left = `${reactionsLeft}px`;
+            menu.reactionsPanel.style.top = `${reactionsTop}px`;
+        }
+    }
+
+    /**
+     * Раскрыть список реакций (показать все доступные эмодзи)
+     */
+    expandReactionsList(reactionsPanel, messageElement, messageId) {
+        const moreBtn = reactionsPanel.querySelector('.quick-reaction-btn-more');
+        const reactionsList = reactionsPanel.querySelector('.quick-reactions-list');
+        
+        // Сохраняем текущую позицию и высоту
+        const currentTop = parseFloat(reactionsPanel.style.top);
+        const currentHeight = reactionsPanel.offsetHeight;
+        
+        // Проверяем текущее состояние
+        const isExpanded = moreBtn.classList.contains('expanded');
+        
+        if (isExpanded) {
+            // Сворачиваем - возвращаем только быстрые реакции
+            moreBtn.classList.remove('expanded');
+            const quickEmojis = this.emojis.map(emoji => `
+                <button class="quick-reaction-btn" data-emoji="${emoji}" data-action="react">
+                    ${emoji}
+                </button>
+            `).join('') + `
+                <button class="quick-reaction-btn quick-reaction-btn-more" data-action="show-more-reactions" title="Развернуть">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            `;
+            reactionsList.innerHTML = quickEmojis;
+            
+            // Пересчитываем позицию после сворачивания (двигаем вниз)
+            requestAnimationFrame(() => {
+                const newHeight = reactionsPanel.offsetHeight;
+                const heightDiff = currentHeight - newHeight;
+                reactionsPanel.style.top = `${currentTop + heightDiff}px`;
+            });
+        } else {
+            // Раскрываем - показываем все эмодзи
+            moreBtn.classList.add('expanded');
+            const allEmojis = [
+                '👍', '👎', '❤️', '🔥', '😂', '😮', '😢', '😡',
+                '👏', '🙏', '💯', '🎉', '❓', '💪', '🤝', '👀',
+                '🤔', '😊', '😎', '🤗', '😴', '🥳', '😇', '🤩'
+            ];
+            
+            const expandedEmojis = allEmojis.map(emoji => `
+                <button class="quick-reaction-btn" data-emoji="${emoji}" data-action="react">
+                    ${emoji}
+                </button>
+            `).join('') + `
+                <button class="quick-reaction-btn quick-reaction-btn-more expanded" data-action="show-more-reactions" title="Свернуть">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            `;
+            reactionsList.innerHTML = expandedEmojis;
+            
+            // Пересчитываем позицию после раскрытия (двигаем вверх)
+            requestAnimationFrame(() => {
+                const newHeight = reactionsPanel.offsetHeight;
+                const heightDiff = newHeight - currentHeight;
+                reactionsPanel.style.top = `${currentTop - heightDiff}px`;
+            });
+        }
     }
 
     /**
@@ -462,47 +573,211 @@ export class MessageContextMenu {
     /**
      * Редактировать сообщение
      */
-    handleEdit(messageElement) {
+    async handleEdit(messageElement) {
         console.log('[MessageContextMenu] handleEdit called');
         
-        const bubble = messageElement.querySelector('.bubble');
-        if (!bubble) {
-            console.warn('[MessageContextMenu] Bubble not found in message element');
-            return;
-        }
-
-        // Получаем текст сообщения (без вложений и других элементов)
-        let messageText = '';
-        bubble.childNodes.forEach(node => {
-            if (node.nodeType === Node.TEXT_NODE) {
-                messageText += node.textContent;
-            } else if (node.nodeName === 'BR') {
-                messageText += '\n';
-            }
-        });
-
         const messageId = messageElement.dataset.messageId;
+        console.log('[MessageContextMenu] Message ID:', messageId);
         
-        console.log('[MessageContextMenu] Edit data:', {
-            messageId,
-            messageTextLength: messageText.length
-        });
-
-        // Используем chatFormManager если доступен
-        if (window.chatFormManager) {
-            console.log('[MessageContextMenu] Using chatFormManager.setModeToEdit');
-            window.chatFormManager.setModeToEdit(messageId, messageText.trim());
-        } else {
-            console.warn('[MessageContextMenu] chatFormManager not available, using fallback');
-            // Фоллбэк на старую логику
-            const textarea = document.querySelector('#id_content');
-            if (textarea) {
-                textarea.value = messageText.trim();
-                textarea.focus();
-                this.showToast('Редактирование сообщения');
-            } else {
-                console.error('[MessageContextMenu] Textarea #id_content not found');
+        // Получаем полные данные сообщения
+        let messageData = null;
+        
+        // Приоритет 1: MessageStore (если сообщение уже загружено)
+        if (window.messageStore && typeof window.messageStore.getMessage === 'function') {
+            try {
+                messageData = window.messageStore.getMessage(messageId);
+                if (messageData) {
+                    console.log('[MessageContextMenu] ✓ Message from Store:', {
+                        id: messageData.id,
+                        content: messageData.content?.substring(0, 50),
+                        attachmentsCount: messageData.attachments?.length || 0
+                    });
+                }
+            } catch (e) {
+                console.error('[MessageContextMenu] Store error:', e);
             }
+        }
+        
+        // Приоритет 2: ChatController V2
+        if (!messageData && window.chatController && typeof window.chatController.getMessage === 'function') {
+            try {
+                messageData = window.chatController.getMessage(messageId);
+                if (messageData) {
+                    console.log('[MessageContextMenu] ✓ Message from ChatController');
+                }
+            } catch (e) {
+                console.error('[MessageContextMenu] ChatController error:', e);
+            }
+        }
+        
+        // Fallback: Извлекаем из DOM (теряется Markdown и нет файлов)
+        if (!messageData) {
+            console.warn('[MessageContextMenu] Message not found in Store, using DOM fallback');
+            const bubble = messageElement.querySelector('.bubble');
+            const messageContent = messageElement.querySelector('.message-content');
+            
+            console.log('[MessageContextMenu] DOM elements found:', {
+                hasBubble: !!bubble,
+                hasMessageContent: !!messageContent,
+                bubbleHTML: bubble?.innerHTML.substring(0, 200),
+                messageContentHTML: messageContent?.innerHTML.substring(0, 200)
+            });
+            
+            if (!bubble && !messageContent) {
+                console.error('[MessageContextMenu] Neither .bubble nor .message-content found!');
+                return;
+            }
+            
+            // Извлекаем текст - приоритет .message-content, fallback на .bubble
+            const sourceElement = messageContent || bubble;
+            let messageText = '';
+            
+            // Более аккуратное извлечение текста
+            const extractText = (element) => {
+                let text = '';
+                element.childNodes.forEach(node => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        text += node.textContent;
+                    } else if (node.nodeName === 'BR') {
+                        text += '\n';
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        // Рекурсивно извлекаем текст из вложенных элементов
+                        // НО игнорируем системные элементы
+                        if (!node.classList.contains('edited-indicator') &&
+                            !node.classList.contains('message-time') &&
+                            !node.classList.contains('message-attachments') &&
+                            !node.classList.contains('message-reactions')) {
+                            text += extractText(node);
+                        }
+                    }
+                });
+                return text;
+            };
+            
+            messageText = extractText(sourceElement).trim();
+            console.log('[MessageContextMenu] Extracted text:', {
+                length: messageText.length,
+                preview: messageText.substring(0, 100)
+            });
+            
+            // Извлекаем вложения из DOM
+            const attachments = [];
+            const attachmentsContainer = messageElement.querySelector('.message-attachments');
+            console.log('[MessageContextMenu] DOM: Searching for attachments...', {
+                hasContainer: !!attachmentsContainer,
+                messageElement: messageElement
+            });
+            
+            if (attachmentsContainer) {
+                // Ищем все типы вложений: .attachment-link (файлы) и .attachment-item (медиа)
+                const attachmentElements = attachmentsContainer.querySelectorAll('.attachment-link, .attachment-item');
+                console.log('[MessageContextMenu] DOM: Found attachments:', attachmentElements.length);
+                
+                attachmentElements.forEach((element, index) => {
+                    let fileUrl, fileName, fileSize = '';
+                    
+                    if (element.classList.contains('attachment-link')) {
+                        // Обычные файлы (документы, аудио)
+                        fileUrl = element.getAttribute('href');
+                        fileName = element.querySelector('.attachment-name')?.textContent || `Файл ${index + 1}`;
+                        fileSize = element.querySelector('.attachment-size')?.textContent || '';
+                    } else if (element.classList.contains('attachment-item')) {
+                        // Медиа файлы (изображения, видео)
+                        const linkElement = element.tagName === 'A' ? element : element.closest('a');
+                        const imgElement = element.querySelector('img');
+                        const videoElement = element.querySelector('video');
+                        
+                        if (linkElement) {
+                            fileUrl = linkElement.getAttribute('href');
+                        } else if (imgElement) {
+                            fileUrl = imgElement.getAttribute('src');
+                        } else if (videoElement) {
+                            fileUrl = videoElement.getAttribute('src');
+                        }
+                        
+                        if (imgElement) {
+                            fileName = imgElement.getAttribute('alt') || `Изображение ${index + 1}`;
+                        } else if (videoElement) {
+                            fileName = `Видео ${index + 1}`;
+                        } else {
+                            fileName = `Медиа ${index + 1}`;
+                        }
+                    }
+                    
+                    if (!fileUrl) {
+                        console.warn('[MessageContextMenu] Skipping attachment without URL:', element);
+                        return;
+                    }
+                    
+                    // Извлекаем ID из data-атрибута (приоритет) или из URL (fallback)
+                    let attachmentId = element.getAttribute('data-attachment-id');
+                    
+                    if (!attachmentId) {
+                        // Fallback: пробуем извлечь из URL (может не сработать)
+                        console.warn('[MessageContextMenu] No data-attachment-id, trying URL extraction');
+                        attachmentId = `url-${fileUrl.split('/').pop().split('.')[0]}-${index}`;
+                    }
+                    
+                    console.log('[MessageContextMenu] ID extraction:', { fileUrl, dataAttrId: element.getAttribute('data-attachment-id'), attachmentId });
+                    
+                    const attachment = {
+                        id: attachmentId,
+                        filename: fileName,
+                        file_name: fileName,
+                        file_url: fileUrl,
+                        url: fileUrl,
+                        size_str: fileSize
+                    };
+                    
+                    attachments.push(attachment);
+                    
+                    console.log('[MessageContextMenu] ✓ Extracted attachment from DOM:', {
+                        index,
+                        type: element.classList.contains('attachment-link') ? 'file' : 'media',
+                        fileName,
+                        fileUrl,
+                        attachmentId,
+                        fullObject: attachment
+                    });
+                });
+            }
+            
+            messageData = {
+                id: messageId,
+                content: messageText,
+                attachments: attachments
+            };
+            
+            console.log('[MessageContextMenu] Extracted from DOM:', {
+                textLength: messageText.length,
+                attachmentsCount: attachments.length
+            });
+        }
+        
+        console.log('[MessageContextMenu] Final message data:', {
+            id: messageData.id,
+            contentLength: messageData.content?.length || 0,
+            hasAttachments: !!messageData.attachments?.length,
+            attachmentsCount: messageData.attachments?.length || 0,
+            attachments: messageData.attachments // Полный список для отладки
+        });
+        
+        // Используем chatFormManager если доступен
+        if (window.chatFormManager && typeof window.chatFormManager.setModeToEdit === 'function') {
+            console.log('[MessageContextMenu] Calling chatFormManager.setModeToEdit with:', {
+                id: messageData.id,
+                contentLength: messageData.content?.length || 0,
+                attachmentsCount: messageData.attachments?.length || 0,
+                attachments: messageData.attachments
+            });
+            window.chatFormManager.setModeToEdit(
+                messageData.id,
+                messageData.content || '',
+                messageData.attachments || []
+            );
+        } else {
+            console.error('[MessageContextMenu] chatFormManager not available or setModeToEdit not a function');
+            console.log('[MessageContextMenu] window.chatFormManager:', window.chatFormManager);
         }
     }
 
@@ -519,13 +794,13 @@ export class MessageContextMenu {
 
         try {
             const csrfToken = this.getCsrfToken();
-            const url = `/api/v1/communications/messages/${messageId}/delete/`;
+            const url = `/api/v1/communications/messages/${messageId}/`;
             
             console.log('[MessageContextMenu] Sending DELETE request to:', url);
             console.log('[MessageContextMenu] CSRF token:', csrfToken ? 'present' : 'missing');
             
             const response = await fetch(url, {
-                method: 'POST',
+                method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
@@ -537,6 +812,19 @@ export class MessageContextMenu {
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
+            }
+
+            // Статус 204 = No Content, не парсим JSON
+            if (response.status === 204) {
+                console.log('[MessageContextMenu] Delete successful (204)');
+                console.log('[MessageContextMenu] NOTE: DOM will be updated via WebSocket');
+                
+                // НЕ удаляем из DOM здесь - это сделает WebSocket handler
+                // Так все пользователи увидят удаление в реальном времени
+                
+                this.showToast('Сообщение удалено');
+                console.log('[MessageContextMenu] Toast shown');
+                return;
             }
 
             const data = await response.json();
@@ -586,19 +874,17 @@ export class MessageContextMenu {
             return;
         }
 
-        // Получаем только текстовое содержимое
-        let text = '';
-        bubble.childNodes.forEach(node => {
-            if (node.nodeType === Node.TEXT_NODE) {
-                text += node.textContent;
-            } else if (node.nodeName === 'BR') {
-                text += '\n';
-            } else if (node.classList && !node.classList.contains('message-attachments') && !node.classList.contains('poll-widget')) {
-                text += node.textContent;
-            }
-        });
+        // Получаем только содержимое сообщения (без автора, времени, реакций)
+        const messageContent = bubble.querySelector('.message-content');
+        if (!messageContent) {
+            console.warn('[ContextMenu] Message content not found');
+            return;
+        }
 
-        text = text.trim();
+        // Копируем только чистый текст сообщения
+        const text = messageContent.textContent
+            .replace(/\(ред\.\)/, '') // Убираем метку редактирования
+            .trim();
 
         try {
             await navigator.clipboard.writeText(text);
@@ -697,8 +983,9 @@ export class MessageContextMenu {
 
         console.log('[MessageContextMenu] Closing menu');
         
-        // Сохраняем ссылку на закрываемое меню
+        // Сохраняем ссылку на закрываемое меню и панель реакций
         const menuToClose = this.activeMenu;
+        const reactionsToClose = menuToClose.reactionsPanel;
         
         // Сразу обнуляем activeMenu (важно для быстрых кликов!)
         this.activeMenu = null;
@@ -706,10 +993,16 @@ export class MessageContextMenu {
         // Анимация закрытия
         console.log('[MessageContextMenu] Removing show class for fade out');
         menuToClose.classList.remove('show');
+        if (reactionsToClose) {
+            reactionsToClose.classList.remove('show');
+        }
         
         setTimeout(() => {
             console.log('[MessageContextMenu] Removing menu from DOM');
             menuToClose.remove();
+            if (reactionsToClose) {
+                reactionsToClose.remove();
+            }
         }, 200);
     }
 }

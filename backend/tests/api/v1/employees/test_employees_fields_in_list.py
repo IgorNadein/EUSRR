@@ -8,25 +8,20 @@ from employees.models import (Department, DepartmentRole, EmployeeDepartment,
                               Position)
 from rest_framework import status
 from rest_framework.test import APIClient
+from tests.conftest import _unique_phone
 
 pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 # --- локальные хелперы (не импортируем из других тестов) ---
 
-
 @pytest.fixture
 def api():
     return APIClient()
 
-
 _phone_seq = itertools.count(3000)
 
-
-def _unique_phone() -> str:
-    return f"+7999000{next(_phone_seq):03d}"
-
-
+@pytest.fixture
 def make_user(
     email: str,
     *,
@@ -36,6 +31,7 @@ def make_user(
     active: bool = True,
     **extra,
 ) -> User:
+    """Fixture для создания пользователей."""
     u = User.objects.create(
         email=email,
         phone_number=extra.pop("phone_number", _unique_phone()),
@@ -51,12 +47,10 @@ def make_user(
     u.save()
     return u
 
-
 def extract_results(data):
     if isinstance(data, dict) and "results" in data:
         return data["results"]
     return data
-
 
 def _get_item(items, emp_id):
     for it in items:
@@ -64,9 +58,7 @@ def _get_item(items, emp_id):
             return it
     return None
 
-
 # --- тесты полей списка ---
-
 
 def test_list_includes_basic_fields(api):
     """
@@ -104,7 +96,6 @@ def test_list_includes_basic_fields(api):
         raise AssertionError(
             "Ожидали 'position' (объект) или 'position_id' в списке сотрудников"
         )
-
 
 def test_list_departments_include_role(api):
     """

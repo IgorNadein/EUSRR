@@ -3,29 +3,16 @@ from django.contrib.auth.models import Permission
 from django.urls import reverse
 from employees.models import Employee, Skill
 from rest_framework import status
+from tests.conftest import _unique_email, _unique_phone
+from tests.test_config import DEFAULT_PASSWORD
 
 # --- helpers ---
 
-_seq = 1
-
-
-def _uniq_email(prefix="u"):
-    global _seq
-    _seq += 1
-    return f"{prefix}{_seq}@example.com"
-
-
-def _uniq_phone():
-    global _seq
-    _seq += 1
-    return f"+7999{_seq:07d}"
-
-
 def _mk_user(staff=False, superuser=False) -> Employee:
     u = Employee.objects.create_user(
-        email=_uniq_email(),
-        password="pass",
-        phone_number=_uniq_phone(),
+        email=_unique_email(),
+        password=DEFAULT_PASSWORD,
+        phone_number=_unique_phone(),
         send_activation_email=False,
         first_name="T",
         last_name="U",

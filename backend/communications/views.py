@@ -56,18 +56,18 @@ def _coerce_ts(val: str | None) -> datetime.datetime:
 def user_can_access_chat(chat: Chat, user) -> bool:
     if not chat or not user:
         return False
-    
+
     print(f"[CHAT DEBUG] user_can_access_chat: chat={chat.id}, type={chat.type}, user={user.id}")
-    
+
     if chat.type == "global":
         return True
-    
+
     if chat.type == "private":
         # Личные чаты только через participants
         result = chat.participants.filter(pk=user.pk).exists()
         print(f"[CHAT DEBUG] Private chat, participants check: {result}")
         return result
-    
+
     if chat.type == "group":
         # Групповые чаты через participants ИЛИ ChatMembership
         in_participants = chat.participants.filter(pk=user.pk).exists()
@@ -75,12 +75,12 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         result = in_participants or in_membership
         print(f"[CHAT DEBUG] Group chat, participants={in_participants}, membership={in_membership}, result={result}")
         return result
-    
+
     if chat.type == "department" and chat.department_id:
         result = chat.get_participants.filter(pk=user.pk).exists()
         print(f"[CHAT DEBUG] Department chat, result={result}")
         return result
-    
+
     if chat.type in ("channel", "announcement"):
         # Для каналов и объявлений может быть include_all или membership
         if chat.include_all_employees:
@@ -92,7 +92,7 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         )
         print(f"[CHAT DEBUG] Channel/announcement chat, result={result}")
         return result
-    
+
     return False
 
 
@@ -129,13 +129,9 @@ class ChatListView(LoginRequiredMixin, ListView):
             .values("created_at")
             .order_by("-created_at")[:1]
         )
-        last_read_qs = ChatReadState.objects.filter(
+        last_read_msg_qs = ChatReadState.objects.filter(
             chat=models.OuterRef("pk"), user=user
-        ).values("last_read_at")[:1]
-
-        default_dt = timezone.make_aware(
-            datetime.datetime(1970, 1, 1), timezone.get_current_timezone()
-        ).astimezone(dt_tz.utc)
+        ).values("last_read_message_id")[:1]
 
         # Получаем ID чатов, где пользователь является участником
         # через membership
@@ -166,17 +162,17 @@ class ChatListView(LoginRequiredMixin, ListView):
             .select_related("department", "created_by", "blocked_by")
             .annotate(last_msg_at=Subquery(last_qs))
             .annotate(
-                last_read_at=Coalesce(
-                    Subquery(last_read_qs),
-                    Value(default_dt, output_field=models.DateTimeField()),
-                    output_field=models.DateTimeField(),
+                last_read_msg_id=Coalesce(
+                    Subquery(last_read_msg_qs),
+                    Value(0, output_field=models.IntegerField()),
+                    output_field=models.IntegerField(),
                 )
             )
             .annotate(
-                # считаем только чужие сообщения после last_read_at
+                # Считаем только чужие сообщения с ID больше last_read_message_id
                 unread_count=Count(
                     "messages",
-                    filter=Q(messages__created_at__gt=F("last_read_at"))
+                    filter=Q(messages__id__gt=F("last_read_msg_id"))
                     & ~Q(messages__author=user),
                     distinct=True,
                 )
@@ -220,46 +216,46 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         """Возвращает только чаты, к которым пользователь имеет доступ"""
         user = self.request.user
         departments = user.departments
-        
+
         print(f"=" * 80)
         print(f"[CHAT DEBUG] ChatDetailView.get_queryset called")
         print(f"[CHAT DEBUG] User: {user.id} ({user.username or 'NO USERNAME'})")
         print(f"[CHAT DEBUG] Requested chat PK: {self.kwargs.get('pk')}")
-        
+
         logger.info(
             f"ChatDetailView.get_queryset: user={user.id} ({user.username}), "
             f"pk={self.kwargs.get('pk')}"
         )
-        
+
         # Получаем ID чатов через membership
         from communications.models import ChatMembership
         membership_chat_ids = list(
             ChatMembership.objects.filter(user=user).values_list('chat_id', flat=True)
         )
-        
+
         dept_ids = list(departments.values_list('id', flat=True))
         print(f"[CHAT DEBUG] User departments IDs: {dept_ids}")
         print(f"[CHAT DEBUG] User membership_chat_ids: {membership_chat_ids}")
-        
+
         logger.info(
             f"User departments: {list(departments.values_list('id', flat=True))}, "
             f"membership_chat_ids: {membership_chat_ids}"
         )
-        
+
         qs = Chat.objects.filter(
             Q(type="global")
             | Q(type="department", department__in=departments)
             | Q(type="private", participants=user)
             | Q(id__in=membership_chat_ids)
         ).distinct()
-        
+
         available_ids = list(qs.values_list('id', flat=True))
         print(f"[CHAT DEBUG] Available chats for user: {available_ids}")
         print(f"[CHAT DEBUG] Access to requested chat: {self.kwargs.get('pk') in available_ids}")
         print(f"=" * 80)
-        
+
         logger.info(f"Available chats for user: {list(qs.values_list('id', flat=True))}")
-        
+
         return qs
 
     def get_object(self, queryset=None):
@@ -287,11 +283,11 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         user = self.request.user
 
         print(f"[CHAT DEBUG] get_context_data called for chat {chat.id}")
-        
+
         # защита доступа
         has_access = self._user_has_access(chat, user)
         print(f"[CHAT DEBUG] _user_has_access returned: {has_access}")
-        
+
         if not has_access:
             from django.http import Http404
             print(f"[CHAT DEBUG] Raising Http404 because user has no access")
@@ -330,25 +326,29 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         context["form"] = context.get("form", MessageForm())
         context["participants"] = chat.get_participants
 
-        # отдаём клиенту last_read_at и «первое непрочитанное»
+        # Получаем last_read_message_id для определения непрочитанных (Telegram-style)
         read_state = (
             ChatReadState.objects.filter(chat=chat, user=user)
-            .only("last_read_at")
+            .only("last_read_message_id")
             .first()
         )
-        last_read_at = (
-            read_state.last_read_at
-            if read_state and read_state.last_read_at
+        last_read_message_id = (
+            read_state.last_read_message_id
+            if read_state and read_state.last_read_message_id
             else None
         )
-        context["last_read_at"] = last_read_at
+        context["last_read_message_id"] = last_read_message_id
+
+        # Передаем last_read_message_id в chat объект для data-атрибута
+        chat.last_read_message_id = last_read_message_id
 
         first_unread = None
-        if last_read_at:
+        if last_read_message_id:
+            # Первое непрочитанное = сообщение с ID > last_read_message_id
             first_unread = (
                 chat.messages.exclude(author=user)
-                .filter(created_at__gt=last_read_at)
-                .order_by("created_at")
+                .filter(id__gt=last_read_message_id)
+                .order_by("id")
                 .only("id", "created_at")
                 .first()
             )
@@ -356,10 +356,6 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
         if first_unread:
             context["unread_from_ts"] = int(
                 first_unread.created_at.timestamp() * 1000
-            )
-        elif last_read_at:
-            context["unread_from_ts"] = (
-                int(last_read_at.timestamp() * 1000) + 1
             )
         else:
             context["unread_from_ts"] = None
@@ -417,20 +413,17 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
             msg.author = user
             msg.save()
 
-            # автору сразу «прочитано» — делаем безопасно
-            ts = msg.created_at
-            updated = ChatReadState.objects.filter(
-                chat=chat, user=user, last_read_at__lt=ts
-            ).update(last_read_at=ts)
-            if not updated:
-                try:
-                    ChatReadState.objects.create(
-                        chat=chat, user=user, last_read_at=ts
-                    )
-                except IntegrityError:
-                    ChatReadState.objects.filter(
-                        chat=chat, user=user, last_read_at__lt=ts
-                    ).update(last_read_at=ts)
+            # Автоматически отмечаем свое сообщение как прочитанное (Telegram-style)
+            read_state, created = ChatReadState.objects.get_or_create(
+                chat=chat,
+                user=user,
+                defaults={'last_read_message': msg}
+            )
+            if not created:
+                # Обновляем только если новое сообщение НОВЕЕ
+                if not read_state.last_read_message_id or msg.id > read_state.last_read_message_id:
+                    read_state.last_read_message = msg
+                    read_state.save(update_fields=['last_read_message', 'updated_at'])
 
             return redirect(self.get_success_url())
         return self.render_to_response(self.get_context_data(form=form))
@@ -489,21 +482,11 @@ def chat_mark_read(request, pk: int):
     if not has_access(chat, user):
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
-    # целевая точка времени: приоритет у upto_id, затем upto_ts,
-    # затем последний месседж
-    ts = None
-    upto_id = request.POST.get("upto_id")
-    if upto_id:
-        m = (
-            Message.objects.filter(chat=chat, pk=upto_id)
-            .only("created_at")
-            .first()
-        )
-        ts = m.created_at if m else None
-    if ts is None:
-        ts = _coerce_ts(request.POST.get("upto_ts"))
+    # Целевая точка времени: приоритет у upto_ts, затем последний месседж
+    ts = _coerce_ts(request.POST.get("upto_ts"))
 
     if ts is None:
+        # Фоллбек на последнее сообщение
         ts = (
             chat.messages.order_by("-created_at")
             .values_list("created_at", flat=True)
@@ -511,8 +494,7 @@ def chat_mark_read(request, pk: int):
             or timezone.now()
         )
 
-    # обновляем только если новее; без update_or_create — устойчиво
-    # к SQLite/гонкам
+    # Обновляем только если новее; без update_or_create — устойчиво к SQLite/гонкам
     updated = ChatReadState.objects.filter(
         chat=chat, user=user, last_read_at__lt=ts
     ).update(last_read_at=ts)

@@ -1,0 +1,68 @@
+/**
+ * Message Highlight Animation
+ * Анимация подсветки сообщения при переходе по reply preview
+ */
+
+/* Анимация подсветки сообщения */
+@keyframes message-highlight-flash {
+    0% {
+        background-color: transparent;
+    }
+    15% {
+        background-color: rgba(13, 110, 253, 0.15);
+    }
+    30% {
+        background-color: rgba(13, 110, 253, 0.25);
+    }
+    60% {
+        background-color: rgba(13, 110, 253, 0.15);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+/* Dark theme вариант */
+[data-bs-theme="dark"] @keyframes message-highlight-flash {
+    0% {
+        background-color: transparent;
+    }
+    15% {
+        background-color: rgba(10, 132, 255, 0.15);
+    }
+    30% {
+        background-color: rgba(10, 132, 255, 0.25);
+    }
+    60% {
+        background-color: rgba(10, 132, 255, 0.15);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+/* Класс для подсветки */
+.bubble.highlight-flash,
+.message-bubble.highlight-flash {
+    animation: message-highlight-flash 1.5s ease-out;
+}
+
+/* Hover эффект для reply preview */
+.message-reply-preview:hover {
+    background-color: rgba(13, 110, 253, 0.1) !important;
+}
+
+[data-bs-theme="dark"] .message-reply-preview:hover {
+    background-color: rgba(10, 132, 255, 0.15) !important;
+}
+
+/* Focus состояние для accessibility */
+.message-reply-preview:focus {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+}
+
+/* Transition для плавности */
+.message-reply-preview {
+    transition: background-color 0.2s ease;
+}

@@ -12,11 +12,9 @@ from employees.models import (
     Employee,
 )
 
-
 # =========================
 # Helpers
 # =========================
-
 
 def _unique_phone_from_email(email: str) -> str:
     """
@@ -27,8 +25,9 @@ def _unique_phone_from_email(email: str) -> str:
     # "+79" + 9 цифр = 11-значный номер РФ
     return f"+79{n:09d}"
 
-
+@pytest.fixture
 def make_user(email: str, *, staff: bool = False, superuser: bool = False) -> Employee:
+    """Fixture для создания пользователей."""
     """
     Фабрика пользователя для тестов. Учитывает ограничение уникальности phone_number.
     """
@@ -43,7 +42,6 @@ def make_user(email: str, *, staff: bool = False, superuser: bool = False) -> Em
         is_active=True,
     )
 
-
 def ensure_dept_perm(code: str, name: str | None = None) -> DepartmentPermission:
     """
     Создаёт (или возвращает) департаментское право с данным кодом.
@@ -51,7 +49,6 @@ def ensure_dept_perm(code: str, name: str | None = None) -> DepartmentPermission
     return DepartmentPermission.objects.get_or_create(
         code=code, defaults={"name": name or code}
     )[0]
-
 
 def make_role(
     dept: Department, name: str, codes: list[str] | None = None
@@ -65,7 +62,6 @@ def make_role(
         role.scoped_permissions.add(*perms)
     return role
 
-
 def grant_manage_in_dept(user: Employee, dept: Department) -> DepartmentRole:
     """
     Выдаёт пользователю роль в отделе с правом manage_department.
@@ -77,7 +73,6 @@ def grant_manage_in_dept(user: Employee, dept: Department) -> DepartmentRole:
         defaults={"is_active": True, "role": role},
     )
     return role
-
 
 def grant_assign_in_dept(user: Employee, dept: Department) -> DepartmentRole:
     """
@@ -91,27 +86,22 @@ def grant_assign_in_dept(user: Employee, dept: Department) -> DepartmentRole:
     )
     return role
 
-
 # Утилиты URL с обязательным хвостовым слэшем (APPEND_SLASH=True)
 def url_add_member(dept_id: int) -> str:
     """POST /api/v1/departments/{id}/add_member/"""
     return f"/api/v1/departments/{dept_id}/add_member/"
 
-
 def url_remove_member(dept_id: int) -> str:
     """POST /api/v1/departments/{id}/remove_member/"""
     return f"/api/v1/departments/{dept_id}/remove_member/"
-
 
 def url_set_member_role(dept_id: int) -> str:
     """POST /api/v1/departments/{id}/set_member_role/"""
     return f"/api/v1/departments/{dept_id}/set_member_role/"
 
-
 # =========================
 # Tests: add_member / remove_member
 # =========================
-
 
 @pytest.mark.django_db
 def test_add_member_requires_manage_and_does_not_assign_role(api_client: APIClient):
@@ -147,7 +137,6 @@ def test_add_member_requires_manage_and_does_not_assign_role(api_client: APIClie
     link = EmployeeDepartment.objects.get(employee_id=target.id, department_id=d.id)
     assert link.is_active is True
     assert link.role_id is None  # add_member не должен трогать роль
-
 
 @pytest.mark.django_db
 def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
@@ -241,11 +230,9 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
         == 403
     )
 
-
 # =========================
 # Tests: set_member_role (строгое разделение)
 # =========================
-
 
 @pytest.mark.django_db
 def test_set_member_role_requires_assign_not_manage(api_client: APIClient):
@@ -283,7 +270,6 @@ def test_set_member_role_requires_assign_not_manage(api_client: APIClient):
 
     link = EmployeeDepartment.objects.get(employee=worker, department=d)
     assert link.role_id == role.id
-
 
 @pytest.mark.django_db
 def test_set_member_role_does_not_create_membership_and_does_not_toggle_active(
@@ -329,11 +315,9 @@ def test_set_member_role_does_not_create_membership_and_does_not_toggle_active(
     assert link.is_active is True, "set_member_role не должен менять is_active"
     assert link.role_id == role.id
 
-
 # =========================
 # Доп. тест: авторизация и отсутствие пересечений
 # =========================
-
 
 @pytest.mark.django_db
 def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
@@ -426,7 +410,6 @@ def test_all_three_actions_require_auth_and_permissions(api_client: APIClient):
         ).status_code
         == 403
     )
-
 
 @pytest.mark.django_db
 def test_add_member_ignores_role_parameter(api_client: APIClient):

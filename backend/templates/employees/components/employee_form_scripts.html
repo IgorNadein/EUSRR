@@ -1,10 +1,15 @@
 {% load static %}
+{# Cropper.js для обрезки аватара (локальная версия) #}
+<link rel="stylesheet" href="{% static 'vendor/cropperjs/cropper.min.css' %}">
+<script src="{% static 'vendor/cropperjs/cropper.min.js' %}"></script>
+
 {# Подключаем модули для управления формой сотрудника #}
 <script type="module">
   import { initEmployeeForm } from '{% static "js/components/employeeFormHandler.js" %}';
   import { initPositionManager } from '{% static "js/components/positionManager.js" %}';
   import { initPositionGroupPicker, initPositionEditGroupPicker } from '{% static "js/components/groupPickers.js" %}';
   import { initEmployeeGroupsManager } from '{% static "js/components/employeeGroupsManager.js" %}';
+  import { initAvatarCropper } from '{% static "js/components/avatarCropperHandler.js" %}';
   
   // Инициализация после полной загрузки DOM
   if (document.readyState === 'loading') {
@@ -28,59 +33,27 @@
     if (editGroupPicker) window.editGroupPicker = editGroupPicker;
     if (groupsMgr) window.employeeGroupsManager = groupsMgr;
     
-    // Инициализация загрузчика аватара
-    initAvatarUploader();
+    // Инициализация Avatar Cropper для FaceID
+    initAvatarCropper({
+      fileInputSelector: '#avatarInput',
+      previewImageId: 'avatarPreview',
+      modalId: 'avatarCropperModal'
+    });
+    
+    // Инициализация удаления аватара
+    initAvatarRemover();
   }
   
-  // Обработка загрузки и предпросмотра аватара
-  function initAvatarUploader() {
+  // Обработка удаления аватара
+  function initAvatarRemover() {
     const avatarInput = document.getElementById('avatarInput');
     const avatarPreview = document.getElementById('avatarPreview');
     const removeBtn = document.getElementById('removeAvatarBtn');
     
-    if (!avatarInput || !avatarPreview) return;
-    
-    // Предпросмотр при выборе файла
-    avatarInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      // Проверка размера (5 МБ)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Файл слишком большой. Максимум 5 МБ.');
-        avatarInput.value = '';
-        return;
-      }
-      
-      // Проверка типа
-      if (!file.type.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
-        alert('Неподдерживаемый формат. Используйте JPG, PNG или GIF.');
-        avatarInput.value = '';
-        return;
-      }
-      
-      // Показываем предпросмотр
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (avatarPreview.tagName === 'IMG') {
-          avatarPreview.src = event.target.result;
-        } else {
-          // Заменяем placeholder на img
-          const img = document.createElement('img');
-          img.id = 'avatarPreview';
-          img.src = event.target.result;
-          img.alt = 'Фото';
-          img.className = 'rounded';
-          img.style.cssText = 'width: 120px; height: 120px; object-fit: cover; border: 2px solid #dee2e6;';
-          avatarPreview.replaceWith(img);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    if (!removeBtn) return;
     
     // Удаление фото
-    if (removeBtn) {
-      removeBtn.addEventListener('click', async () => {
+    removeBtn.addEventListener('click', async () => {
         if (!confirm('Удалить фотографию?')) return;
         
         try {
@@ -121,7 +94,6 @@
           console.error('Avatar remove error:', err);
           alert('Ошибка при удалении фото');
         }
-      });
-    }
+    });
   }
 </script>

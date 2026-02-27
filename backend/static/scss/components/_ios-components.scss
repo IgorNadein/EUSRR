@@ -1,0 +1,546 @@
+// =============================================================================
+// iOS-style Components (SCSS)
+// =============================================================================
+// iOS-style компоненты: карточки, списки, аккордеоны, badges
+//
+// Зависимости:
+// - variables.css (--feed-radius, --feed-shadow, --navbar-h)
+// - common.css (.chip определён там)
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+// Карточки
+$ios-card-border-radius: var(--feed-radius);
+$ios-card-transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+$ios-card-hover-transform: translateY(-1px);
+
+// Аватар
+$avatar-size: 132px;
+$avatar-border-radius: 28px;
+$avatar-font-size: 3rem;
+
+// Списки
+$ios-list-border-radius: 14px;
+$ios-cell-gap: 0.75rem;
+$ios-cell-padding: 0.85rem 1rem;
+
+// Badges
+$badge-border-radius: 999px;
+$badge-font-size: 0.8rem;
+$badge-icon-size: 0.95rem;
+
+// Аккордеон
+$ios-acc-border-radius: 14px;
+
+// Collapse
+$collapse-transition: height 0.35s ease;
+$collapse-caret-transition: transform 0.25s ease;
+
+// Контейнер
+$container-xxl-max-width: 1820px;
+
+// =============================================================================
+// МИКСИНЫ
+// =============================================================================
+
+// Миксин для цветовых badge-ов
+@mixin badge-variant($color) {
+  background: color-mix(in srgb, var(--bs-#{$color}) 15%, var(--bs-body-bg));
+  color: color-mix(in srgb, var(--bs-#{$color}) 60%, black 0%);
+  border: 1px solid color-mix(in srgb, var(--bs-#{$color}) 35%, transparent);
+
+  &:hover {
+    background: color-mix(in srgb, var(--bs-#{$color}) 20%, var(--bs-body-bg));
+  }
+}
+
+// =============================================================================
+// BASE CARD
+// =============================================================================
+
+.ios-card {
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+  border-radius: $ios-card-border-radius;
+  background: var(--bs-body-bg);
+  box-shadow: var(--feed-shadow);
+  transition: $ios-card-transition;
+  overflow: hidden;
+
+  &:hover {
+    box-shadow: var(--feed-shadow-hover);
+    transform: $ios-card-hover-transform;
+  }
+}
+
+// =============================================================================
+// HEADER
+// =============================================================================
+
+.ios-header {
+  position: sticky;
+  top: var(--navbar-h, 0px);
+  z-index: 5;
+  padding: var(--space-2) 0;
+  backdrop-filter: saturate(180%) blur(12px);
+  background: color-mix(in srgb, var(--bs-body-bg) 85%, transparent);
+  border-bottom: none !important;
+}
+
+.ios-title {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.row.g-ios {
+  align-items: flex-start;
+}
+
+// =============================================================================
+// AVATAR
+// =============================================================================
+
+.ios-ava,
+.ios-ava--ph {
+  display: grid;
+  place-items: center;
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-secondary-color);
+  font-size: $avatar-font-size;
+  line-height: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: $avatar-border-radius;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+}
+
+.ava-wrap {
+  position: relative;
+  width: $avatar-size;
+  height: $avatar-size;
+  margin: 0 auto var(--space-2);
+  display: block;
+}
+
+// =============================================================================
+// NAME & ROLE
+// =============================================================================
+
+.ios-name {
+  font-weight: 800;
+  font-size: 1.25rem;
+}
+
+.ios-role {
+  font-size: 0.9rem;
+  color: var(--bs-secondary-color);
+}
+
+// =============================================================================
+// CHIPS
+// =============================================================================
+
+// Base .chip определён в common.css
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+// =============================================================================
+// COLLAPSE TRIGGERS
+// =============================================================================
+
+.ios-collapse-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  border-radius: $ios-list-border-radius;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
+  color: var(--bs-body-color);
+}
+
+.ios-collapse-caret {
+  transition: $collapse-caret-transition;
+}
+
+.ios-collapse-trigger[aria-expanded="true"] .ios-collapse-caret {
+  transform: rotate(180deg);
+}
+
+.ios-collapse-trigger + .collapse {
+  margin-top: 0 !important;
+
+  > .ios-list,
+  > .chips {
+    margin-top: 0.5rem;
+  }
+}
+
+.collapsing {
+  overflow: hidden;
+  transition: $collapse-transition;
+}
+
+// =============================================================================
+// LISTS
+// =============================================================================
+
+.ios-list {
+  border-radius: $ios-list-border-radius;
+  overflow: hidden;
+  background: var(--bs-body-bg);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+}
+
+.ios-cell {
+  display: flex;
+  align-items: center;
+  gap: $ios-cell-gap;
+  padding: $ios-cell-padding;
+  border-bottom: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+  flex-wrap: wrap;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  i {
+    width: 1.25rem;
+    text-align: center;
+    opacity: 0.9;
+  }
+
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  // Departments
+  &.dept-item {
+    justify-content: space-between;
+
+    > .d-flex {
+      flex: 0 1 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.35rem 0.5rem;
+      max-width: 100%;
+    }
+
+    &.is-editing .dept-role {
+      display: none !important;
+    }
+  }
+
+  &.dept-head {
+    border-left: 0;
+    background: transparent;
+  }
+}
+
+.ios-section-title {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.rounded-ios {
+  border-radius: $ios-list-border-radius !important;
+}
+
+// =============================================================================
+// DEPARTMENTS LIST
+// =============================================================================
+
+.dept-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.dept-name {
+  font-weight: 700;
+}
+
+.dept-role {
+  color: var(--bs-secondary-color);
+}
+
+// =============================================================================
+// BADGES (HEAD & GEAR)
+// =============================================================================
+
+.badge-head,
+.badge-gear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: $badge-border-radius;
+  font-weight: 700;
+  font-size: $badge-font-size;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+
+  .bi {
+    font-size: $badge-icon-size;
+    line-height: 1;
+  }
+}
+
+.badge-head {
+  @include badge-variant(warning);
+}
+
+.badge-gear {
+  @include badge-variant(primary);
+  cursor: pointer;
+}
+
+// Скрытие текста на мобильных
+@media (max-width: 420px) {
+  .badge-head .lbl,
+  .badge-gear .lbl {
+    display: none;
+  }
+}
+
+@media (max-width: 576px) {
+  .badge-head .lbl,
+  .badge-gear .lbl {
+    display: none;
+  }
+}
+
+// =============================================================================
+// ACCORDION (IOS-ACC)
+// =============================================================================
+
+.ios-acc {
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  border-radius: $ios-acc-border-radius;
+  background: var(--bs-body-bg);
+  overflow: hidden;
+
+  & + & {
+    margin-top: var(--space-2);
+  }
+
+  .ios-collapse-trigger {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    width: 100%;
+    padding: var(--space-2);
+
+    &:focus {
+      box-shadow: none;
+    }
+
+    & + .collapse {
+      margin-top: 0 !important;
+    }
+  }
+
+  .collapse {
+    margin: 0 !important;
+  }
+
+  .ios-list {
+    border: 0;
+    border-radius: 0;
+  }
+
+  .chips {
+    margin: 0;
+  }
+
+  .ios-acc-body {
+    padding: var(--space-2);
+    border-top: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  }
+
+  .ios-collapse-trigger + .collapse {
+    margin-top: 0 !important;
+  }
+
+  .ios-acc-body {
+    border-top: 0;
+  }
+}
+
+// =============================================================================
+// ACTIVITY BLOCK
+// =============================================================================
+
+#activity {
+  .p-4 {
+    padding: 0 !important;
+  }
+
+  .ios-section-title {
+    padding: var(--space-2) var(--space-2) var(--space-1) !important;
+    margin: 0 !important;
+  }
+
+  .activity-feed {
+    margin: 0 !important;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+
+    .card {
+      width: 100% !important;
+      max-width: none !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      margin: 0 !important;
+    }
+
+    .card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .row > * {
+      flex: 0 0 100% !important;
+      max-width: 100% !important;
+    }
+  }
+
+  .card-actions {
+    border-top: 0 !important;
+  }
+
+  .collapse .bg-body-tertiary.border {
+    border: 0 !important;
+  }
+}
+
+// =============================================================================
+// SKILLS UI
+// =============================================================================
+
+#skillsBlock[data-editable="1"] {
+  .chip.chip-add {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    border-style: dashed;
+
+    &.pulse {
+      transform: scale(0.97);
+      transition: transform 0.15s ease;
+    }
+
+    .bi {
+      font-size: 0.95rem;
+    }
+  }
+
+  .chip.chip-skill:hover {
+    .lbl {
+      opacity: 0;
+    }
+
+    .chip-del-btn,
+    &:focus-within .chip-del-btn {
+      visibility: visible;
+      opacity: 1;
+    }
+  }
+}
+
+.chip.chip-skill {
+  position: relative;
+  padding: 0.35rem 0.65rem;
+
+  .lbl {
+    transition: opacity 0.15s ease;
+  }
+
+  .chip-del-btn {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    color: var(--bs-danger);
+    font-size: 1rem;
+    line-height: 1;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+
+    .bi {
+      pointer-events: none;
+    }
+  }
+}
+
+.skills-empty {
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+  margin-right: 0.25rem;
+}
+
+// =============================================================================
+// DEPT INLINE EDITOR
+// =============================================================================
+
+.dept-edit-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: $badge-border-radius;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+  background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
+
+  &:hover {
+    background: color-mix(in srgb, var(--bs-body-bg) 88%, transparent);
+  }
+}
+
+.dept-editor-wrap {
+  flex: 0 0 100%;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.dept-editor form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dept-role-select {
+  min-width: 180px;
+}
+
+// =============================================================================
+// CONTAINER
+// =============================================================================
+
+.container-xxl {
+  max-width: $container-xxl-max-width;
+  padding-inline: var(--bs-gutter-x, var(--space-2));
+}

@@ -1,0 +1,4423 @@
+{
+  "timestamp": "2026-01-12T13:20:08.820Z",
+  "total": 490,
+  "used": 134,
+  "unused": 356,
+  "usedSelectors": [
+    {
+      "selector": ".fc *",
+      "original": ".fc *",
+      "used": true,
+      "count": 846,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc td",
+      "original": ".fc td",
+      "used": true,
+      "count": 86,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-theme-standard td",
+      "original": ".fc-theme-standard td",
+      "used": true,
+      "count": 86,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-day-events::after",
+      "original": ".fc-daygrid-day-events::after",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-day-events::before",
+      "original": ".fc-daygrid-day-events::before",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-day-frame::after",
+      "original": ".fc-daygrid-day-frame::after",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-day-frame::before",
+      "original": ".fc-daygrid-day-frame::before",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-frame",
+      "original": ".fc .fc-daygrid-day-frame",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-top",
+      "original": ".fc .fc-daygrid-day-top",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-number",
+      "original": ".fc .fc-daygrid-day-number",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-events",
+      "original": ".fc .fc-daygrid-day-events",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-body-unbalanced .fc-daygrid-day-events",
+      "original": ".fc .fc-daygrid-body-unbalanced .fc-daygrid-day-events",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-body-natural .fc-daygrid-day-events",
+      "original": ".fc .fc-daygrid-body-natural .fc-daygrid-day-events",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-bottom",
+      "original": ".fc .fc-daygrid-day-bottom",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-bottom::after",
+      "original": ".fc .fc-daygrid-day-bottom::after",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-bottom::before",
+      "original": ".fc .fc-daygrid-day-bottom::before",
+      "used": true,
+      "count": 84,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event .fc-event-main",
+      "original": ".fc-event .fc-event-main",
+      "used": true,
+      "count": 68,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event .fc-event-main",
+      "original": ".fc-h-event .fc-event-main",
+      "used": true,
+      "count": 64,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": "a.fc-event",
+      "original": "a.fc-event",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": "a.fc-event:hover",
+      "original": "a.fc-event:hover",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event:focus",
+      "original": ".fc-event:focus",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event:focus::before",
+      "original": ".fc-event:focus::before",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event:focus::after",
+      "original": ".fc-event:focus::after",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-event-harness::after",
+      "original": ".fc-daygrid-event-harness::after",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-event-harness::before",
+      "original": ".fc-daygrid-event-harness::before",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-event-harness",
+      "original": ".fc .fc-daygrid-event-harness",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-event",
+      "original": ".fc .fc-daygrid-event",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-daygrid-event.fc-event-start",
+      "original": ".fc-direction-ltr .fc-daygrid-event.fc-event-start",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-daygrid-event.fc-event-end",
+      "original": ".fc-direction-ltr .fc-daygrid-event.fc-event-end",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-event",
+      "original": ".fc-daygrid-event",
+      "used": true,
+      "count": 36,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event",
+      "original": ".fc-h-event",
+      "used": true,
+      "count": 32,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-daygrid-block-event:not(.fc-event-start)",
+      "original": ".fc-direction-ltr .fc-daygrid-block-event:not(.fc-event-start)",
+      "used": true,
+      "count": 32,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-daygrid-block-event:not(.fc-event-end)",
+      "original": ".fc-direction-ltr .fc-daygrid-block-event:not(.fc-event-end)",
+      "used": true,
+      "count": 32,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-day-other .fc-daygrid-day-top",
+      "original": ".fc .fc-day-other .fc-daygrid-day-top",
+      "used": true,
+      "count": 22,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc th",
+      "original": ".fc th",
+      "used": true,
+      "count": 16,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-theme-standard th",
+      "original": ".fc-theme-standard th",
+      "used": true,
+      "count": 16,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-col-header-cell-cushion",
+      "original": ".fc .fc-col-header-cell-cushion",
+      "used": true,
+      "count": 14,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": "[data-message-id]",
+      "original": "[data-message-id]",
+      "used": true,
+      "count": 11,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".fc table",
+      "original": ".fc table",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button",
+      "original": ".fc .fc-button",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button:focus",
+      "original": ".fc .fc-button:focus",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button:not(:disabled)",
+      "original": ".fc .fc-button:not(:disabled)",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button:hover",
+      "original": ".fc .fc-button:hover",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary",
+      "original": ".fc .fc-button-primary",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary:hover",
+      "original": ".fc .fc-button-primary:hover",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary:focus",
+      "original": ".fc .fc-button-primary:focus",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary:not(:disabled):active",
+      "original": ".fc .fc-button-primary:not(:disabled):active",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary:not(:disabled):active:focus",
+      "original": ".fc .fc-button-primary:not(:disabled):active:focus",
+      "used": true,
+      "count": 6,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon",
+      "original": ".fc-icon",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button .fc-icon",
+      "original": ".fc .fc-button .fc-icon",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-group > .fc-button",
+      "original": ".fc .fc-button-group > .fc-button",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-group > .fc-button:active",
+      "original": ".fc .fc-button-group > .fc-button:active",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-group > .fc-button:focus",
+      "original": ".fc .fc-button-group > .fc-button:focus",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-group > .fc-button:hover",
+      "original": ".fc .fc-button-group > .fc-button:hover",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-button-group > .fc-button:not(:first-child)",
+      "original": ".fc-direction-ltr .fc-button-group > .fc-button:not(:first-child)",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-button-group > .fc-button:not(:last-child)",
+      "original": ".fc-direction-ltr .fc-button-group > .fc-button:not(:last-child)",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scroller",
+      "original": ".fc .fc-scroller",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scroller-harness",
+      "original": ".fc .fc-scroller-harness",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid table",
+      "original": ".fc .fc-scrollgrid table",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section",
+      "original": ".fc .fc-scrollgrid-section",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section table",
+      "original": ".fc .fc-scrollgrid-section table",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section > *",
+      "original": ".fc .fc-scrollgrid-section > *",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-dot-event",
+      "original": ".fc-daygrid-dot-event",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-dot-event:hover",
+      "original": ".fc-daygrid-dot-event:hover",
+      "used": true,
+      "count": 4,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".selection-actions .btn",
+      "original": ".selection-actions .btn",
+      "used": true,
+      "count": 3,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".selection-actions .btn:hover",
+      "original": ".selection-actions .btn:hover",
+      "used": true,
+      "count": 3,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".calendar-context-menu .dropdown-item",
+      "original": ".calendar-context-menu .dropdown-item",
+      "used": true,
+      "count": 3,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".calendar-context-menu .dropdown-item:active",
+      "original": ".calendar-context-menu .dropdown-item:active",
+      "used": true,
+      "count": 3,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc",
+      "original": ".fc",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc ::after",
+      "original": ".fc ::after",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc ::before",
+      "original": ".fc ::before",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr",
+      "original": ".fc-direction-ltr",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon-chevron-left::before",
+      "original": ".fc-icon-chevron-left::before",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon-chevron-right::before",
+      "original": ".fc-icon-chevron-right::before",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button:disabled",
+      "original": ".fc .fc-button:disabled",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary:disabled",
+      "original": ".fc .fc-button-primary:disabled",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-group",
+      "original": ".fc .fc-button-group",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-toolbar",
+      "original": ".fc .fc-toolbar",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-toolbar.fc-header-toolbar",
+      "original": ".fc .fc-toolbar.fc-header-toolbar",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-toolbar-title",
+      "original": ".fc .fc-toolbar-title",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-theme-standard .fc-scrollgrid",
+      "original": ".fc-theme-standard .fc-scrollgrid",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid",
+      "original": ".fc .fc-scrollgrid",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section > td",
+      "original": ".fc .fc-scrollgrid-section > td",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-header > *",
+      "original": ".fc .fc-scrollgrid-section-header > *",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-body table",
+      "original": ".fc .fc-scrollgrid-section-body table",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-sticky > *",
+      "original": ".fc .fc-scrollgrid-section-sticky > *",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-header.fc-scrollgrid-section-sticky > *",
+      "original": ".fc .fc-scrollgrid-section-header.fc-scrollgrid-section-sticky > *",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-view-harness",
+      "original": ".fc .fc-view-harness",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-body",
+      "original": ".fc .fc-daygrid-body",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day.fc-day-today",
+      "original": ".fc .fc-daygrid-day.fc-day-today",
+      "used": true,
+      "count": 2,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": "& .message-icon-btn",
+      "original": "& .message-icon-btn",
+      "used": true,
+      "count": 2,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .message-icon-btn:hover",
+      "original": "& .message-icon-btn:hover",
+      "used": true,
+      "count": 2,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .scroll-to-bottom",
+      "original": "& .scroll-to-bottom",
+      "used": true,
+      "count": 2,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .scroll-to-bottom:hover",
+      "original": "& .scroll-to-bottom:hover",
+      "used": true,
+      "count": 2,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".poll-option",
+      "original": ".poll-option",
+      "used": true,
+      "count": 2,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": "#pollOptions .input-group-text",
+      "original": "#pollOptions .input-group-text",
+      "used": true,
+      "count": 2,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ":root",
+      "original": ":root",
+      "used": true,
+      "count": 1,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": "body:has(.chat-page)",
+      "original": "body:has(.chat-page)",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "body:has(.chat-page) main",
+      "original": "body:has(.chat-page) main",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "body:has(.chat-page) .bottom-navbar",
+      "original": "body:has(.chat-page) .bottom-navbar",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-page",
+      "original": ".chat-page",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-header",
+      "original": ".chat-header",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-container",
+      "original": ".chat-container",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-header-content",
+      "original": ".chat-header-content",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-header-title",
+      "original": ".chat-header-title",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-header-title h1",
+      "original": ".chat-header-title h1",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-header-title i",
+      "original": ".chat-header-title i",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-header-actions",
+      "original": ".chat-header-actions",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-avatar-wrapper",
+      "original": ".chat-avatar-wrapper",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-avatar",
+      "original": ".chat-avatar",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-type-badge",
+      "original": ".chat-type-badge",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-messages-scroll",
+      "original": ".chat-messages-scroll",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-messages-scroll:hover",
+      "original": ".chat-messages-scroll:hover",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-typing-indicator",
+      "original": ".chat-typing-indicator",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-typing-indicator.d-none",
+      "original": ".chat-typing-indicator.d-none",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-composer-wrapper",
+      "original": ".chat-composer-wrapper",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .message-field",
+      "original": "& .message-field",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .message-input",
+      "original": "& .message-input",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .message-input::placeholder",
+      "original": "& .message-input::placeholder",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .btn-send",
+      "original": "& .btn-send",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .btn-send:hover:not(:disabled)",
+      "original": "& .btn-send:hover:not(:disabled)",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .btn-attachment",
+      "original": "& .btn-attachment",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .btn-attachment:hover",
+      "original": "& .btn-attachment:hover",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .attachment-preview",
+      "original": "& .attachment-preview",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .day-divider",
+      "original": "& .day-divider",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .day-divider::before",
+      "original": "& .day-divider::before",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .day-divider::after",
+      "original": "& .day-divider::after",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".selection-actions-bar",
+      "original": ".selection-actions-bar",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".selection-count",
+      "original": ".selection-count",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".selection-actions",
+      "original": ".selection-actions",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .selection-actions-bar",
+      "original": "[data-bs-theme=\"dark\"] .selection-actions-bar",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "#pollModal .modal-dialog",
+      "original": "#pollModal .modal-dialog",
+      "used": true,
+      "count": 1,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".calendar-context-menu",
+      "original": ".calendar-context-menu",
+      "used": true,
+      "count": 1,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".calendar-context-menu .dropdown-menu",
+      "original": ".calendar-context-menu .dropdown-menu",
+      "used": true,
+      "count": 1,
+      "files": [
+        "inline"
+      ]
+    }
+  ],
+  "unusedSelectors": [
+    {
+      "selector": ".btn-poll-option",
+      "original": ".btn-poll-option",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".btn-poll-option:hover",
+      "original": ".btn-poll-option:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".bubble-me .poll-footer",
+      "original": ".bubble-me .poll-footer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".bubble-me .poll-option-result .progress",
+      "original": ".bubble-me .poll-option-result .progress",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".bubble-me .poll-option-result .progress-bar",
+      "original": ".bubble-me .poll-option-result .progress-bar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".bubble-me .poll-question",
+      "original": ".bubble-me .poll-question",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".bubble-me .poll-voters-list",
+      "original": ".bubble-me .poll-voters-list",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".bubble-me .poll-widget",
+      "original": ".bubble-me .poll-widget",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".bubble-other .poll-widget",
+      "original": ".bubble-other .poll-widget",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".calendar-context-menu .dropdown-item[data-requires-permission].d-none",
+      "original": ".calendar-context-menu .dropdown-item[data-requires-permission].d-none",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".chat-forward-modal .modal-dialog",
+      "original": ".chat-forward-modal .modal-dialog",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-forward-search",
+      "original": ".chat-forward-search",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-forward-search input",
+      "original": ".chat-forward-search input",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-forward-search input:focus",
+      "original": ".chat-forward-search input:focus",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-header-actions .btn-sm span",
+      "original": ".chat-header-actions .btn-sm span",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-avatar",
+      "original": ".chat-list-avatar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-avatar img",
+      "original": ".chat-list-avatar img",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-empty",
+      "original": ".chat-list-empty",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-info",
+      "original": ".chat-list-info",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-item",
+      "original": ".chat-list-item",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-item:hover",
+      "original": ".chat-list-item:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-item:last-child",
+      "original": ".chat-list-item:last-child",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-loading",
+      "original": ".chat-list-loading",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-name",
+      "original": ".chat-list-name",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-list-subtitle",
+      "original": ".chat-list-subtitle",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".chat-messages-scroll::-webkit-scrollbar",
+      "original": ".chat-messages-scroll::-webkit-scrollbar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-messages-scroll::-webkit-scrollbar-thumb",
+      "original": ".chat-messages-scroll::-webkit-scrollbar-thumb",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-messages-scroll::-webkit-scrollbar-track",
+      "original": ".chat-messages-scroll::-webkit-scrollbar-track",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".chat-messages-scroll:hover::-webkit-scrollbar-thumb",
+      "original": ".chat-messages-scroll:hover::-webkit-scrollbar-thumb",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": ".context-menu-toast",
+      "original": ".context-menu-toast",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".context-menu-toast.show",
+      "original": ".context-menu-toast.show",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".emoji-picker",
+      "original": ".emoji-picker",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".emoji-picker-button",
+      "original": ".emoji-picker-button",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".emoji-picker-button:active",
+      "original": ".emoji-picker-button:active",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".emoji-picker-button:hover",
+      "original": ".emoji-picker-button:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".emoji-picker-grid",
+      "original": ".emoji-picker-grid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".fc .fc-bg-event",
+      "original": ".fc .fc-bg-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-bg-event .fc-event-title",
+      "original": ".fc .fc-bg-event .fc-event-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-group > .fc-button.fc-button-active",
+      "original": ".fc .fc-button-group > .fc-button.fc-button-active",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary:not(:disabled).fc-button-active",
+      "original": ".fc .fc-button-primary:not(:disabled).fc-button-active",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-button-primary:not(:disabled).fc-button-active:focus",
+      "original": ".fc .fc-button-primary:not(:disabled).fc-button-active:focus",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-cell-shaded",
+      "original": ".fc .fc-cell-shaded",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-day-disabled",
+      "original": ".fc .fc-day-disabled",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-bg-harness",
+      "original": ".fc .fc-daygrid-bg-harness",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-body-balanced .fc-daygrid-day-events",
+      "original": ".fc .fc-daygrid-body-balanced .fc-daygrid-day-events",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-bg .fc-bg-event",
+      "original": ".fc .fc-daygrid-day-bg .fc-bg-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-bg .fc-highlight",
+      "original": ".fc .fc-daygrid-day-bg .fc-highlight",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-day-bg .fc-non-business",
+      "original": ".fc .fc-daygrid-day-bg .fc-non-business",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-event-harness-abs",
+      "original": ".fc .fc-daygrid-event-harness-abs",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-event.fc-event-mirror",
+      "original": ".fc .fc-daygrid-event.fc-event-mirror",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-month-start",
+      "original": ".fc .fc-daygrid-month-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-more-link",
+      "original": ".fc .fc-daygrid-more-link",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-more-link:hover",
+      "original": ".fc .fc-daygrid-more-link:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-daygrid-week-number",
+      "original": ".fc .fc-daygrid-week-number",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-highlight",
+      "original": ".fc .fc-highlight",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-day-cushion",
+      "original": ".fc .fc-list-day-cushion",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-day-cushion::after",
+      "original": ".fc .fc-list-day-cushion::after",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-empty",
+      "original": ".fc .fc-list-empty",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-empty-cushion",
+      "original": ".fc .fc-list-empty-cushion",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-event-dot",
+      "original": ".fc .fc-list-event-dot",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-event-graphic",
+      "original": ".fc .fc-list-event-graphic",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-event-time",
+      "original": ".fc .fc-list-event-time",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-event-title a",
+      "original": ".fc .fc-list-event-title a",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-event:hover td",
+      "original": ".fc .fc-list-event:hover td",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-event.fc-event-forced-url",
+      "original": ".fc .fc-list-event.fc-event-forced-url",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-event.fc-event-forced-url:hover a",
+      "original": ".fc .fc-list-event.fc-event-forced-url:hover a",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-sticky .fc-list-day > *",
+      "original": ".fc .fc-list-sticky .fc-list-day > *",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-table",
+      "original": ".fc .fc-list-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-table tbody > tr:first-child th",
+      "original": ".fc .fc-list-table tbody > tr:first-child th",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-table td",
+      "original": ".fc .fc-list-table td",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-table th",
+      "original": ".fc .fc-list-table th",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-table thead",
+      "original": ".fc .fc-list-table thead",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-list-table tr > *",
+      "original": ".fc .fc-list-table tr > *",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-more-popover .fc-popover-body",
+      "original": ".fc .fc-more-popover .fc-popover-body",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth",
+      "original": ".fc .fc-multimonth",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-compact",
+      "original": ".fc .fc-multimonth-compact",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-compact .fc-multimonth-daygrid-table",
+      "original": ".fc .fc-multimonth-compact .fc-multimonth-daygrid-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-compact .fc-multimonth-header-table",
+      "original": ".fc .fc-multimonth-compact .fc-multimonth-header-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-daygrid",
+      "original": ".fc .fc-multimonth-daygrid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-daygrid-table",
+      "original": ".fc .fc-multimonth-daygrid-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-header-table",
+      "original": ".fc .fc-multimonth-header-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-multicol",
+      "original": ".fc .fc-multimonth-multicol",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-multicol .fc-daygrid-more-link",
+      "original": ".fc .fc-multimonth-multicol .fc-daygrid-more-link",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-multicol .fc-multimonth-month",
+      "original": ".fc .fc-multimonth-multicol .fc-multimonth-month",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-singlecol .fc-multimonth",
+      "original": ".fc .fc-multimonth-singlecol .fc-multimonth",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-singlecol .fc-multimonth-daygrid",
+      "original": ".fc .fc-multimonth-singlecol .fc-multimonth-daygrid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-singlecol .fc-multimonth-daygrid-table",
+      "original": ".fc .fc-multimonth-singlecol .fc-multimonth-daygrid-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-singlecol .fc-multimonth-header",
+      "original": ".fc .fc-multimonth-singlecol .fc-multimonth-header",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-singlecol .fc-multimonth-header-table",
+      "original": ".fc .fc-multimonth-singlecol .fc-multimonth-header-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-singlecol .fc-multimonth-month:last-child .fc-multimonth-daygrid-table",
+      "original": ".fc .fc-multimonth-singlecol .fc-multimonth-month:last-child .fc-multimonth-daygrid-table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-multimonth-title",
+      "original": ".fc .fc-multimonth-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-non-business",
+      "original": ".fc .fc-non-business",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-popover",
+      "original": ".fc .fc-popover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-popover-close",
+      "original": ".fc .fc-popover-close",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-popover-header",
+      "original": ".fc .fc-popover-header",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-popover-title",
+      "original": ".fc .fc-popover-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scroller-harness-liquid",
+      "original": ".fc .fc-scroller-harness-liquid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scroller-liquid",
+      "original": ".fc .fc-scroller-liquid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scroller-liquid-absolute",
+      "original": ".fc .fc-scroller-liquid-absolute",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-liquid",
+      "original": ".fc .fc-scrollgrid-liquid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-footer > *",
+      "original": ".fc .fc-scrollgrid-section-footer > *",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-footer table",
+      "original": ".fc .fc-scrollgrid-section-footer table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-footer.fc-scrollgrid-section-sticky > *",
+      "original": ".fc .fc-scrollgrid-section-footer.fc-scrollgrid-section-sticky > *",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-section-liquid > td",
+      "original": ".fc .fc-scrollgrid-section-liquid > td",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-scrollgrid-sticky-shim",
+      "original": ".fc .fc-scrollgrid-sticky-shim",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid .fc-daygrid-body",
+      "original": ".fc .fc-timegrid .fc-daygrid-body",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-axis-chunk",
+      "original": ".fc .fc-timegrid-axis-chunk",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-axis-chunk > table",
+      "original": ".fc .fc-timegrid-axis-chunk > table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-axis-cushion",
+      "original": ".fc .fc-timegrid-axis-cushion",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-axis-frame",
+      "original": ".fc .fc-timegrid-axis-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-axis-frame-liquid",
+      "original": ".fc .fc-timegrid-axis-frame-liquid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-bg-harness",
+      "original": ".fc .fc-timegrid-bg-harness",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-body",
+      "original": ".fc .fc-timegrid-body",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-col-bg",
+      "original": ".fc .fc-timegrid-col-bg",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-col-bg .fc-bg-event",
+      "original": ".fc .fc-timegrid-col-bg .fc-bg-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-col-bg .fc-highlight",
+      "original": ".fc .fc-timegrid-col-bg .fc-highlight",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-col-bg .fc-non-business",
+      "original": ".fc .fc-timegrid-col-bg .fc-non-business",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-col-events",
+      "original": ".fc .fc-timegrid-col-events",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-col-frame",
+      "original": ".fc .fc-timegrid-col-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-col.fc-day-today",
+      "original": ".fc .fc-timegrid-col.fc-day-today",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-divider",
+      "original": ".fc .fc-timegrid-divider",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-now-indicator-arrow",
+      "original": ".fc .fc-timegrid-now-indicator-arrow",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-now-indicator-container",
+      "original": ".fc .fc-timegrid-now-indicator-container",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-now-indicator-line",
+      "original": ".fc .fc-timegrid-now-indicator-line",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-slot",
+      "original": ".fc .fc-timegrid-slot",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-slot-label",
+      "original": ".fc .fc-timegrid-slot-label",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-slot-label-cushion",
+      "original": ".fc .fc-timegrid-slot-label-cushion",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-slot-minor",
+      "original": ".fc .fc-timegrid-slot-minor",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-slot:empty::before",
+      "original": ".fc .fc-timegrid-slot:empty::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-timegrid-slots",
+      "original": ".fc .fc-timegrid-slots",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-toolbar.fc-footer-toolbar",
+      "original": ".fc .fc-toolbar.fc-footer-toolbar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc .fc-view-harness-active > .fc-view",
+      "original": ".fc .fc-view-harness-active > .fc-view",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc a[data-navlink]",
+      "original": ".fc a[data-navlink]",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc a[data-navlink]:hover",
+      "original": ".fc a[data-navlink]:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-block-event .fc-event-time",
+      "original": ".fc-daygrid-block-event .fc-event-time",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-block-event .fc-event-title",
+      "original": ".fc-daygrid-block-event .fc-event-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-dot-event .fc-event-title",
+      "original": ".fc-daygrid-dot-event .fc-event-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-dot-event.fc-event-mirror",
+      "original": ".fc-daygrid-dot-event.fc-event-mirror",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-dot-event.fc-event-selected::before",
+      "original": ".fc-daygrid-dot-event.fc-event-selected::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-daygrid-event-dot",
+      "original": ".fc-daygrid-event-dot",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-daygrid-event .fc-event-time",
+      "original": ".fc-direction-ltr .fc-daygrid-event .fc-event-time",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-daygrid-more-link",
+      "original": ".fc-direction-ltr .fc-daygrid-more-link",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-daygrid-week-number",
+      "original": ".fc-direction-ltr .fc-daygrid-week-number",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-h-event:not(.fc-event-selected) .fc-event-resizer-end",
+      "original": ".fc-direction-ltr .fc-h-event:not(.fc-event-selected) .fc-event-resizer-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-h-event:not(.fc-event-selected) .fc-event-resizer-start",
+      "original": ".fc-direction-ltr .fc-h-event:not(.fc-event-selected) .fc-event-resizer-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-h-event.fc-event-selected .fc-event-resizer-end",
+      "original": ".fc-direction-ltr .fc-h-event.fc-event-selected .fc-event-resizer-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-h-event.fc-event-selected .fc-event-resizer-start",
+      "original": ".fc-direction-ltr .fc-h-event.fc-event-selected .fc-event-resizer-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-list-day-side-text",
+      "original": ".fc-direction-ltr .fc-list-day-side-text",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-list-day-text",
+      "original": ".fc-direction-ltr .fc-list-day-text",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-list-table .fc-list-event-graphic",
+      "original": ".fc-direction-ltr .fc-list-table .fc-list-event-graphic",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-timegrid-col-events",
+      "original": ".fc-direction-ltr .fc-timegrid-col-events",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-timegrid-more-link",
+      "original": ".fc-direction-ltr .fc-timegrid-more-link",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-timegrid-now-indicator-arrow",
+      "original": ".fc-direction-ltr .fc-timegrid-now-indicator-arrow",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-timegrid-slot-label-frame",
+      "original": ".fc-direction-ltr .fc-timegrid-slot-label-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-ltr .fc-toolbar > * > :not(:first-child)",
+      "original": ".fc-direction-ltr .fc-toolbar > * > :not(:first-child)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ],
+      "reason": "invalid_selector"
+    },
+    {
+      "selector": ".fc-direction-rtl",
+      "original": ".fc-direction-rtl",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-button-group > .fc-button:not(:first-child)",
+      "original": ".fc-direction-rtl .fc-button-group > .fc-button:not(:first-child)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-button-group > .fc-button:not(:last-child)",
+      "original": ".fc-direction-rtl .fc-button-group > .fc-button:not(:last-child)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-daygrid-block-event:not(.fc-event-end)",
+      "original": ".fc-direction-rtl .fc-daygrid-block-event:not(.fc-event-end)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-daygrid-block-event:not(.fc-event-start)",
+      "original": ".fc-direction-rtl .fc-daygrid-block-event:not(.fc-event-start)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-daygrid-event .fc-event-time",
+      "original": ".fc-direction-rtl .fc-daygrid-event .fc-event-time",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-daygrid-event.fc-event-end",
+      "original": ".fc-direction-rtl .fc-daygrid-event.fc-event-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-daygrid-event.fc-event-start",
+      "original": ".fc-direction-rtl .fc-daygrid-event.fc-event-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-daygrid-more-link",
+      "original": ".fc-direction-rtl .fc-daygrid-more-link",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-daygrid-week-number",
+      "original": ".fc-direction-rtl .fc-daygrid-week-number",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-h-event:not(.fc-event-selected) .fc-event-resizer-end",
+      "original": ".fc-direction-rtl .fc-h-event:not(.fc-event-selected) .fc-event-resizer-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-h-event:not(.fc-event-selected) .fc-event-resizer-start",
+      "original": ".fc-direction-rtl .fc-h-event:not(.fc-event-selected) .fc-event-resizer-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-h-event.fc-event-selected .fc-event-resizer-end",
+      "original": ".fc-direction-rtl .fc-h-event.fc-event-selected .fc-event-resizer-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-h-event.fc-event-selected .fc-event-resizer-start",
+      "original": ".fc-direction-rtl .fc-h-event.fc-event-selected .fc-event-resizer-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-list-day-side-text",
+      "original": ".fc-direction-rtl .fc-list-day-side-text",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-list-day-text",
+      "original": ".fc-direction-rtl .fc-list-day-text",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-list-table .fc-list-event-graphic",
+      "original": ".fc-direction-rtl .fc-list-table .fc-list-event-graphic",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-scroller-harness > .fc-scroller",
+      "original": ".fc-direction-rtl .fc-scroller-harness > .fc-scroller",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-timegrid-col-events",
+      "original": ".fc-direction-rtl .fc-timegrid-col-events",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-timegrid-more-link",
+      "original": ".fc-direction-rtl .fc-timegrid-more-link",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-timegrid-now-indicator-arrow",
+      "original": ".fc-direction-rtl .fc-timegrid-now-indicator-arrow",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-timegrid-slot-label-frame",
+      "original": ".fc-direction-rtl .fc-timegrid-slot-label-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-toolbar > * > :not(:first-child)",
+      "original": ".fc-direction-rtl .fc-toolbar > * > :not(:first-child)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ],
+      "reason": "invalid_selector"
+    },
+    {
+      "selector": ".fc-direction-rtl .fc-toolbar-ltr",
+      "original": ".fc-direction-rtl .fc-toolbar-ltr",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event .fc-event-resizer",
+      "original": ".fc-event .fc-event-resizer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event-dragging:not(.fc-event-selected)",
+      "original": ".fc-event-dragging:not(.fc-event-selected)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event-dragging.fc-event-selected",
+      "original": ".fc-event-dragging.fc-event-selected",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event-selected",
+      "original": ".fc-event-selected",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event-selected .fc-event-resizer",
+      "original": ".fc-event-selected .fc-event-resizer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event-selected .fc-event-resizer::before",
+      "original": ".fc-event-selected .fc-event-resizer::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event-selected::after",
+      "original": ".fc-event-selected::after",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event-selected::before",
+      "original": ".fc-event-selected::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event:hover .fc-event-resizer",
+      "original": ".fc-event:hover .fc-event-resizer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event.fc-event-draggable",
+      "original": ".fc-event.fc-event-draggable",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-event[href]",
+      "original": ".fc-event[href]",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event .fc-event-main-frame",
+      "original": ".fc-h-event .fc-event-main-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event .fc-event-time",
+      "original": ".fc-h-event .fc-event-time",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event .fc-event-title",
+      "original": ".fc-h-event .fc-event-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event .fc-event-title-container",
+      "original": ".fc-h-event .fc-event-title-container",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event:not(.fc-event-selected) .fc-event-resizer",
+      "original": ".fc-h-event:not(.fc-event-selected) .fc-event-resizer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event.fc-event-selected .fc-event-resizer",
+      "original": ".fc-h-event.fc-event-selected .fc-event-resizer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-h-event.fc-event-selected::before",
+      "original": ".fc-h-event.fc-event-selected::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon-chevrons-left::before",
+      "original": ".fc-icon-chevrons-left::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon-chevrons-right::before",
+      "original": ".fc-icon-chevrons-right::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon-minus-square::before",
+      "original": ".fc-icon-minus-square::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon-plus-square::before",
+      "original": ".fc-icon-plus-square::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-icon-x::before",
+      "original": ".fc-icon-x::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-liquid-hack .fc-daygrid-day-frame",
+      "original": ".fc-liquid-hack .fc-daygrid-day-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-liquid-hack .fc-timegrid-axis-frame-liquid",
+      "original": ".fc-liquid-hack .fc-timegrid-axis-frame-liquid",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-liquid-hack td",
+      "original": ".fc-liquid-hack td",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-liquid-hack th",
+      "original": ".fc-liquid-hack th",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-print .fc-multimonth",
+      "original": ".fc-media-print .fc-multimonth",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-screen .fc-multimonth-singlecol .fc-multimonth-header",
+      "original": ".fc-media-screen .fc-multimonth-singlecol .fc-multimonth-header",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-screen .fc-timegrid-col-bg",
+      "original": ".fc-media-screen .fc-timegrid-col-bg",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-screen .fc-timegrid-col-events",
+      "original": ".fc-media-screen .fc-timegrid-col-events",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-screen .fc-timegrid-cols",
+      "original": ".fc-media-screen .fc-timegrid-cols",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-screen .fc-timegrid-cols > table",
+      "original": ".fc-media-screen .fc-timegrid-cols > table",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-screen .fc-timegrid-now-indicator-container",
+      "original": ".fc-media-screen .fc-timegrid-now-indicator-container",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-media-screen.fc-liquid-hack .fc-timegrid-col-frame",
+      "original": ".fc-media-screen.fc-liquid-hack .fc-timegrid-col-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-not-allowed",
+      "original": ".fc-not-allowed",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-not-allowed .fc-event",
+      "original": ".fc-not-allowed .fc-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-sticky",
+      "original": ".fc-sticky",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-theme-standard .fc-list",
+      "original": ".fc-theme-standard .fc-list",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-theme-standard .fc-list-day-cushion",
+      "original": ".fc-theme-standard .fc-list-day-cushion",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-theme-standard .fc-popover",
+      "original": ".fc-theme-standard .fc-popover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-theme-standard .fc-popover-header",
+      "original": ".fc-theme-standard .fc-popover-header",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event",
+      "original": ".fc-timegrid-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event .fc-event-main",
+      "original": ".fc-timegrid-event .fc-event-main",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event .fc-event-time",
+      "original": ".fc-timegrid-event .fc-event-time",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event-harness",
+      "original": ".fc-timegrid-event-harness",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event-harness > .fc-timegrid-event",
+      "original": ".fc-timegrid-event-harness > .fc-timegrid-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event-harness-inset .fc-timegrid-event",
+      "original": ".fc-timegrid-event-harness-inset .fc-timegrid-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event-short .fc-event-main-frame",
+      "original": ".fc-timegrid-event-short .fc-event-main-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event-short .fc-event-time::after",
+      "original": ".fc-timegrid-event-short .fc-event-time::after",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event-short .fc-event-title",
+      "original": ".fc-timegrid-event-short .fc-event-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-event.fc-event-mirror",
+      "original": ".fc-timegrid-event.fc-event-mirror",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-more-link",
+      "original": ".fc-timegrid-more-link",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-timegrid-more-link-inner",
+      "original": ".fc-timegrid-more-link-inner",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event",
+      "original": ".fc-v-event",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event .fc-event-main",
+      "original": ".fc-v-event .fc-event-main",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event .fc-event-main-frame",
+      "original": ".fc-v-event .fc-event-main-frame",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event .fc-event-resizer-end",
+      "original": ".fc-v-event .fc-event-resizer-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event .fc-event-resizer-start",
+      "original": ".fc-v-event .fc-event-resizer-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event .fc-event-time",
+      "original": ".fc-v-event .fc-event-time",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event .fc-event-title",
+      "original": ".fc-v-event .fc-event-title",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event .fc-event-title-container",
+      "original": ".fc-v-event .fc-event-title-container",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event:not(.fc-event-end)",
+      "original": ".fc-v-event:not(.fc-event-end)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event:not(.fc-event-selected) .fc-event-resizer",
+      "original": ".fc-v-event:not(.fc-event-selected) .fc-event-resizer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event:not(.fc-event-selected) .fc-event-resizer-end",
+      "original": ".fc-v-event:not(.fc-event-selected) .fc-event-resizer-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event:not(.fc-event-selected) .fc-event-resizer-start",
+      "original": ".fc-v-event:not(.fc-event-selected) .fc-event-resizer-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event:not(.fc-event-start)",
+      "original": ".fc-v-event:not(.fc-event-start)",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event.fc-event-selected .fc-event-resizer",
+      "original": ".fc-v-event.fc-event-selected .fc-event-resizer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event.fc-event-selected .fc-event-resizer-end",
+      "original": ".fc-v-event.fc-event-selected .fc-event-resizer-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event.fc-event-selected .fc-event-resizer-start",
+      "original": ".fc-v-event.fc-event-selected .fc-event-resizer-start",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".fc-v-event.fc-event-selected::before",
+      "original": ".fc-v-event.fc-event-selected::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "inline"
+      ]
+    },
+    {
+      "selector": ".forwarded-indicator",
+      "original": ".forwarded-indicator",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".forwarded-indicator i",
+      "original": ".forwarded-indicator i",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".menu-action",
+      "original": ".menu-action",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-action i",
+      "original": ".menu-action i",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-action span",
+      "original": ".menu-action span",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-action-danger",
+      "original": ".menu-action-danger",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-action-danger i",
+      "original": ".menu-action-danger i",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-action-danger:hover",
+      "original": ".menu-action-danger:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-action:active",
+      "original": ".menu-action:active",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-action:hover",
+      "original": ".menu-action:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".menu-actions",
+      "original": ".menu-actions",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".message-bubble .poll-widget",
+      "original": ".message-bubble .poll-widget",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".message-context-menu",
+      "original": ".message-context-menu",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".message-context-menu-enabled .reaction-button.add-reaction",
+      "original": ".message-context-menu-enabled .reaction-button.add-reaction",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css",
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".message-context-menu::before",
+      "original": ".message-context-menu::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".message-context-menu.show",
+      "original": ".message-context-menu.show",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".message-context-menu.show::before",
+      "original": ".message-context-menu.show::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".message-highlighted",
+      "original": ".message-highlighted",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".message-reactions",
+      "original": ".message-reactions",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".message-reactions:has(.reaction-button:not(.add-reaction)) .add-reaction",
+      "original": ".message-reactions:has(.reaction-button:not(.add-reaction)) .add-reaction",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".message-reactions:hover .reaction-button.add-reaction",
+      "original": ".message-reactions:hover .reaction-button.add-reaction",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".message-vibrating",
+      "original": ".message-vibrating",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".msg-select-checkbox",
+      "original": ".msg-select-checkbox",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".msg-select-checkbox:hover",
+      "original": ".msg-select-checkbox:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".msg-select-checkbox.selected",
+      "original": ".msg-select-checkbox.selected",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".msg-select-checkbox.selected::after",
+      "original": ".msg-select-checkbox.selected::after",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".msg.justify-content-end .msg-select-checkbox",
+      "original": ".msg.justify-content-end .msg-select-checkbox",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".msg.selected",
+      "original": ".msg.selected",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".poll-footer",
+      "original": ".poll-footer",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-option-result .progress",
+      "original": ".poll-option-result .progress",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-option-result .progress-bar",
+      "original": ".poll-option-result .progress-bar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-option.voted",
+      "original": ".poll-option.voted",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-option.voted .progress-bar",
+      "original": ".poll-option.voted .progress-bar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-question",
+      "original": ".poll-question",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-voters",
+      "original": ".poll-voters",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-voters-list",
+      "original": ".poll-voters-list",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-voters-toggle",
+      "original": ".poll-voters-toggle",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-voters-toggle i",
+      "original": ".poll-voters-toggle i",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-voters-toggle:hover",
+      "original": ".poll-voters-toggle:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".poll-widget",
+      "original": ".poll-widget",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".quick-reaction-btn",
+      "original": ".quick-reaction-btn",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".quick-reaction-btn:active",
+      "original": ".quick-reaction-btn:active",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".quick-reaction-btn:hover",
+      "original": ".quick-reaction-btn:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".quick-reactions",
+      "original": ".quick-reactions",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-context-menu.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button",
+      "original": ".reaction-button",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button .count",
+      "original": ".reaction-button .count",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button .emoji",
+      "original": ".reaction-button .emoji",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button:hover",
+      "original": ".reaction-button:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button.active",
+      "original": ".reaction-button.active",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button.active .count",
+      "original": ".reaction-button.active .count",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button.active:hover",
+      "original": ".reaction-button.active:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button.add-reaction",
+      "original": ".reaction-button.add-reaction",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button.add-reaction:hover",
+      "original": ".reaction-button.add-reaction:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".reaction-button.new",
+      "original": ".reaction-button.new",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": ".selection-actions-bar.active",
+      "original": ".selection-actions-bar.active",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".selection-mode .msg",
+      "original": ".selection-mode .msg",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".selection-mode .msg-select-checkbox",
+      "original": ".selection-mode .msg-select-checkbox",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".selection-mode .msg:hover",
+      "original": ".selection-mode .msg:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".selection-mode .msg.justify-content-end",
+      "original": ".selection-mode .msg.justify-content-end",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": ".voter-item",
+      "original": ".voter-item",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": ".voter-item i",
+      "original": ".voter-item i",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-forward-modal .modal-content",
+      "original": "[data-bs-theme=\"dark\"] .chat-forward-modal .modal-content",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-forward-modal .modal-header",
+      "original": "[data-bs-theme=\"dark\"] .chat-forward-modal .modal-header",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-forward-search",
+      "original": "[data-bs-theme=\"dark\"] .chat-forward-search",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-forward-search input",
+      "original": "[data-bs-theme=\"dark\"] .chat-forward-search input",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-forward-search input::placeholder",
+      "original": "[data-bs-theme=\"dark\"] .chat-forward-search input::placeholder",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-avatar",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-avatar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-avatar img",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-avatar img",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-empty",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-empty",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-item",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-item",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-item:hover",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-item:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-loading",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-loading",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-name",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-name",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .chat-list-subtitle",
+      "original": "[data-bs-theme=\"dark\"] .chat-list-subtitle",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .forwarded-indicator",
+      "original": "[data-bs-theme=\"dark\"] .forwarded-indicator",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .msg-select-checkbox",
+      "original": "[data-bs-theme=\"dark\"] .msg-select-checkbox",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .msg-select-checkbox:hover",
+      "original": "[data-bs-theme=\"dark\"] .msg-select-checkbox:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .msg.selected",
+      "original": "[data-bs-theme=\"dark\"] .msg.selected",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .poll-voters-list",
+      "original": "[data-bs-theme=\"dark\"] .poll-voters-list",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    },
+    {
+      "selector": "[data-bs-theme=\"dark\"] .selection-mode .msg:hover",
+      "original": "[data-bs-theme=\"dark\"] .selection-mode .msg:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-selection.css"
+      ]
+    },
+    {
+      "selector": "[data-message-id]:not(.message-context-menu-enabled):hover .reaction-button.add-reaction",
+      "original": "[data-message-id]:not(.message-context-menu-enabled):hover .reaction-button.add-reaction",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/message-reactions.css"
+      ]
+    },
+    {
+      "selector": "& .attachment-item",
+      "original": "& .attachment-item",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .attachment-item:hover",
+      "original": "& .attachment-item:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .btn-send:disabled",
+      "original": "& .btn-send:disabled",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .bubble",
+      "original": "& .bubble",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .bubble-me",
+      "original": "& .bubble-me",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .bubble-other",
+      "original": "& .bubble-other",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .chat-media",
+      "original": "& .chat-media",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .composer-actions",
+      "original": "& .composer-actions",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .composer-input-group",
+      "original": "& .composer-input-group",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .composer-input-group:focus-within",
+      "original": "& .composer-input-group:focus-within",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .history-loader",
+      "original": "& .history-loader",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .history-loader .spinner-border",
+      "original": "& .history-loader .spinner-border",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .message-attachments",
+      "original": "& .message-attachments",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .message-input::-webkit-scrollbar",
+      "original": "& .message-input::-webkit-scrollbar",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .message-input::-webkit-scrollbar-thumb",
+      "original": "& .message-input::-webkit-scrollbar-thumb",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .mini-ava",
+      "original": "& .mini-ava",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .mini-ava img",
+      "original": "& .mini-ava img",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .scroll-to-bottom.show",
+      "original": "& .scroll-to-bottom.show",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .unread-divider",
+      "original": "& .unread-divider",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .unread-divider::after",
+      "original": "& .unread-divider::after",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& .unread-divider::before",
+      "original": "& .unread-divider::before",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& [data-bs-theme=\"dark\"] .chat-messages-scroll",
+      "original": "& [data-bs-theme=\"dark\"] .chat-messages-scroll",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& [data-bs-theme=\"dark\"] .chat-messages-scroll:hover",
+      "original": "& [data-bs-theme=\"dark\"] .chat-messages-scroll:hover",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "& [data-bs-theme=\"dark\"] .chat-type-badge",
+      "original": "& [data-bs-theme=\"dark\"] .chat-type-badge",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-detail.css"
+      ]
+    },
+    {
+      "selector": "#pollModal .remove-option",
+      "original": "#pollModal .remove-option",
+      "used": false,
+      "count": 0,
+      "files": [
+        "http://127.0.0.1:9000/static/css/components/chat-polls.css"
+      ]
+    }
+  ]
+}

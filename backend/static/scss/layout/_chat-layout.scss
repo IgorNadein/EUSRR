@@ -1,0 +1,61 @@
+// =============================================================================
+// Chat Layout
+// =============================================================================
+// Глобальная структура страниц чата (не специфичные компоненты)
+
+// =============================================================================
+// 1. MAIN CONTAINER
+// =============================================================================
+
+main.main {
+  padding-bottom: 0 !important;
+}
+
+// Специальное правило для страниц чата в grid layout
+// Ограничиваем высоту main, чтобы не ломать grid и rightbar
+@media (min-width: 992px) {
+  .app-layout.with-rightbar main.main:has(.chat-page),
+  .app-layout.with-sidebar main.main:has(.chat-page) {
+    max-height: calc(100vh - var(--navbar-h, 60px) - 2 * var(--layout-padding-y, 12px));
+    overflow: hidden;
+  }
+}
+
+// =============================================================================
+// 2. CHAT PAGE STRUCTURE
+// =============================================================================
+
+// Root контейнер страницы чата
+@supports (height: 100svh) {
+  .chat-root {
+    height: calc(100svh - var(--navbar-h));
+  }
+}
+
+.chat-root > .row {
+  height: 100%;
+  min-height: 0;
+}
+
+// Column layout
+.chat-col {
+  display: flex;
+  flex-direction: column;
+  height: 93%;
+  min-height: 0;
+}
+
+// =============================================================================
+// 3. CHAT BOX CONTAINER
+// =============================================================================
+
+.card.chat-box {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr auto; /* messages + composer */
+  overflow: hidden;
+  margin-bottom: 0;
+  background: var(--bs-body-bg);
+}

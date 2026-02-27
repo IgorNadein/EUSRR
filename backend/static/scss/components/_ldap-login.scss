@@ -1,0 +1,122 @@
+// =============================================================================
+// LDAP Login Field Component
+// =============================================================================
+// Поле с LDAP логином с кэшированием и возможностью обновления
+
+.ldap-login-field {
+  margin: var(--space-2) 0;
+  text-align: center;
+
+  .ldap-login-container {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    background: var(--color-surface-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    transition: all 0.3s ease;
+
+    .ldap-login-text {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      color: var(--color-primary);
+      font-weight: 500;
+
+      .ldap-icon {
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+      }
+    }
+
+    .ldap-refresh-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      background: transparent;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: all 0.3s ease;
+
+      &:hover {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: white;
+        transform: rotate(90deg);
+      }
+
+      &:active {
+        transform: rotate(180deg);
+      }
+
+      .refresh-icon {
+        font-size: 1rem;
+      }
+    }
+
+    &.cached {
+      border-color: var(--color-success);
+      background: rgba(var(--bs-success-rgb), 0.05);
+    }
+  }
+
+  // Состояние загрузки
+  &.loading {
+    .ldap-login-container {
+      pointer-events: none;
+      opacity: 0.7;
+
+      .ldap-refresh-btn {
+        .refresh-icon {
+          animation: spin 1s linear infinite;
+        }
+      }
+    }
+  }
+
+  // Состояние ошибки
+  &.error {
+    .ldap-login-container {
+      border-color: var(--color-danger);
+      background: rgba(var(--bs-danger-rgb), 0.1);
+    }
+  }
+}
+
+// Анимация вращения для загрузки
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Темная тема
+@media (prefers-color-scheme: dark) {
+  .ldap-login-field {
+    .ldap-login-container {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.1);
+
+      .ldap-refresh-btn {
+        border-color: rgba(255, 255, 255, 0.2);
+
+        &:hover {
+          background: var(--color-primary);
+          border-color: var(--color-primary);
+        }
+      }
+    }
+  }
+}

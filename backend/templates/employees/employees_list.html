@@ -4,12 +4,7 @@
 
 {% block title %}Сотрудники{% endblock %}
 
-{% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/components/common.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/ios-search.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/list-view.css' %}">
-{% endblock %}
+{% block extra_css %}{% endblock %}
 
 
 {% block content %}
@@ -85,6 +80,17 @@
       matchFn: createDataAttrMatcher(['name', 'depts']),
       debounceMs: 300
     });
+    
+    // Обработка изменения фильтра активности
+    const activeFilter = document.getElementById('activeFilter');
+    if (activeFilter) {
+      activeFilter.addEventListener('change', (e) => {
+        const form = e.target.closest('form');
+        if (form) {
+          form.submit();
+        }
+      });
+    }
     
     // Инициализация модала создания сотрудника
     initCreateEmployeeModal({

@@ -15,15 +15,15 @@ from unittest.mock import patch
 
 Employee = get_user_model()
 
-
 @pytest.fixture(autouse=True)
 def disable_ldap():
     """Отключает LDAP для всех тестов."""
     with patch("api.v1.employees.views._is_ldap_enabled", return_value=False):
         yield
 
-
+@pytest.fixture
 def make_user(email, verified=True, **kwargs):
+    """Fixture для создания пользователей."""
     """Создаёт пользователя для тестов."""
     phone = kwargs.get(
         "phone_number", f"+7900{email[:7].replace('@', '').replace('.', '')}"
@@ -41,7 +41,6 @@ def make_user(email, verified=True, **kwargs):
     user.is_active = True
     user.save(update_fields=["email_verified", "is_active"])
     return user
-
 
 @pytest.mark.django_db
 class TestEmailChangeResetsVerification:
@@ -158,7 +157,6 @@ class TestEmailChangeResetsVerification:
         ), "Верификация не должна сбрасываться для того же email"
         assert user.email_activation_code == old_code
 
-
 @pytest.mark.django_db
 class TestUnverifiedUserRestrictions:
     """Тесты ограничений для неверифицированных пользователей."""
@@ -270,7 +268,6 @@ class TestUnverifiedUserRestrictions:
         assert user.email_activation_code != "111111", "Код должен обновиться"
         assert len(mail.outbox) == 1
 
-
 @pytest.mark.django_db
 class TestResendEmailLogic:
     """Тесты логики повторной отправки кода."""
@@ -352,7 +349,6 @@ class TestResendEmailLogic:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data.get("error") == "invalid_code"
 
-
 @pytest.mark.django_db
 class TestStaffCanBypassRestrictions:
     """Тесты что staff может работать через админку даже без верификации."""
@@ -394,7 +390,6 @@ class TestStaffCanBypassRestrictions:
         assert superuser.email_verified is True
         assert superuser.is_active is True
         assert superuser.is_staff is True
-
 
 @pytest.mark.django_db
 class TestEmailVerificationWorkflow:

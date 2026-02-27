@@ -1,0 +1,215 @@
+/**
+ * _chat-enhanced.scss
+ * Enhanced chat features: replies, forwards, reactions, attachments
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   REPLY PREVIEW
+────────────────────────────────────────────────────────────── */
+.reply-preview {
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-left: 3px solid var(--bs-primary);
+  border-radius: $radius-xs;
+
+  i {
+    color: var(--bs-primary);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FORWARD INFO
+────────────────────────────────────────────────────────────── */
+.forward-info {
+  font-size: 0.85rem;
+  color: var(--bs-secondary);
+  font-style: italic;
+
+  i {
+    color: var(--bs-info);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MESSAGE WRAPPER (стили контейнера сообщения)
+   Стили .bubble теперь в _bubble-*.scss модулях
+   Интерактивные состояния в _bubble-states.scss
+────────────────────────────────────────────────────────────── */
+.msg {
+  position: relative;
+
+  &:hover .msg__actions {
+    opacity: 1;
+  }
+
+  &:hover .msg__quick-reactions {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  &.new .bubble {
+    animation: bubbleSlideIn 0.3s ease-out;
+  }
+
+  &.system-message {
+    justify-content: center !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   REACTIONS
+────────────────────────────────────────────────────────────── */
+.reactions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.reaction-btn {
+  border: 1px solid #dee2e6;
+  background: white;
+  border-radius: $radius-md;
+  padding: 2px 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  @include transition-all($transition-fast);
+
+  &:hover {
+    background: #f8f9fa;
+    transform: scale(1.1);
+  }
+
+  &.active {
+    background: #e3f2fd;
+    border-color: var(--bs-primary);
+  }
+
+  .count {
+    font-size: 0.75rem;
+    color: #666;
+    margin-left: 2px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   QUICK REACTIONS & MESSAGE ACTIONS
+   Перенесены в _bubble-states.scss как .msg__quick-reactions и .msg__actions
+────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────
+   ATTACHMENTS
+────────────────────────────────────────────────────────────── */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attachment-image {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  @include transition(transform, $transition-fast);
+
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+.attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: $radius-sm;
+  text-decoration: none;
+  color: inherit;
+  font-size: 0.9rem;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT LIST ITEMS
+────────────────────────────────────────────────────────────── */
+.chat-list-item {
+  position: relative;
+
+  &.pinned {
+    background: #fffbeb;
+    border-left: 4px solid var(--bs-warning);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BADGES & INDICATORS
+────────────────────────────────────────────────────────────── */
+.mention-badge {
+  background: #ef4444;
+  color: white;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.thread-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--bs-primary);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   INDICATORS
+──.message-actions {
+    position: static;
+    opacity: 1;
+    margin-top: 8px;
+  }
+
+  .quick-reactions {
+    position: static;
+    transform: none;
+    opacity: 1;
+    pointer-events: all;
+    margin-top: 8px;
+    justify-content: center;
+  }
+padding: 4px 12px;
+  font-style: italic;
+}
+
+#editing-indicator,
+#reply-indicator {
+  margin-bottom: 8px;
+  border-radius: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ANIMATIONS
+   Анимация bubbleSlideIn определена в _bubble-base.scss
+────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE RESPONSIVE
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  // Mobile стили для .msg__actions и .msg__quick-reactions в _bubble-states.scss
+  
+  .attachment-image {
+    max-width: 150px;
+    max-height: 150px;
+  }
+}

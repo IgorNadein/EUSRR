@@ -4,82 +4,95 @@
 
 {% block title %}Чат{% endblock %}
 
-{% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/message-reactions.css' %}">
-  <link rel="stylesheet" href="{% static 'css/message-context-menu.css' %}">
-  <link rel="stylesheet" href="{% static 'css/message-selection.css' %}">
-  <link rel="stylesheet" href="{% static 'css/components/chat-polls.css' %}">
-{% endblock %}
+
 
 {% block content %}
-<div class="container chat-root" 
-     id="chatDetailApp"
-     data-chat-id="{{ chat.id }}"
-     data-user-id="{{ user.id }}"
-     data-user-name="{{ user.get_full_name|default:user.username }}"
-     data-user-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
-     data-upload-url="{% url 'api:v1:upload_message' %}"
-     data-messages-url="{% url 'api:v1:chat_messages' chat.pk %}"
-     data-mark-read-url="{% url 'communications:chat_mark_read' chat.pk %}"
-     data-edit-url-template="/api/v1/communications/messages/{id}/edit/"
-     data-last-read-timestamp="{{ chat.last_read_timestamp|default:'0' }}">
-  <div class="row gx-0"> 
-    <div class="col-12 chat-col">
+<!-- Чат без лишних контейнеров -->
+<div class="chat-page">
 
-      <!-- Заголовок -->
-      <div class="section-header">
-        {% if chat.type == 'global' %}
-          <i class="bi-globe fs-2 text-primary"></i>
-          <h2 class="title mb-0">Глобальный чат</h2>
-        {% elif chat.type == 'department' %}
-          <i class="bi-diagram-3 fs-2 text-primary"></i>
-          <h2 class="title mb-0">Чат отдела: {{ chat.department.name }}</h2>
-        {% elif chat.type == 'announcement' %}
-          <i class="bi-megaphone fs-2 text-warning"></i>
-          <h2 class="title mb-0">{{ chat.name|default:"Объявление" }}</h2>
-          {% if chat.is_blocked %}
-            <span class="badge bg-danger ms-2">
-              <i class="bi-lock-fill"></i> Заблокировано
-            </span>
-          {% endif %}
-          {% if not is_announcement_creator %}
-            <span class="badge bg-info ms-2">
-              <i class="bi-eye"></i> Только просмотр
-            </span>
-          {% endif %}
-        {% else %}
-          <i class="bi-person fs-2 text-primary"></i>
-          <h2 class="title mb-0">
-            {% for u in chat.participants.all %}
-              {% if u != user %}
-                {% if not forloop.first %}, {% endif %}
-                <a href="{% url 'employees:employee_detail' u.pk %}" class="text-decoration-none">
-                  {{ u.get_full_name|default:u.username }}
-                </a>
+  <!-- Шапка чата -->
+  <div class="chat-header">
+    <div class="chat-header-content">
+      <div class="chat-header-title">
+        {% if chat.avatar %}
+          <!-- Аватар чата с маленькой иконкой типа -->
+          <div class="chat-avatar-wrapper">
+            <img src="{{ chat.avatar.url }}" alt="{{ chat.name }}" class="chat-avatar">
+            <span class="chat-type-badge badge badge--avatar animate-in">
+              {% if chat.type == 'global' %}
+                <i class="bi-globe"></i>
+              {% elif chat.type == 'department' %}
+                <i class="bi-diagram-3"></i>
+              {% elif chat.type == 'announcement' %}
+                <i class="bi-megaphone"></i>
+              {% elif chat.type == 'group' %}
+                <i class="bi-people"></i>
+              {% elif chat.type == 'channel' %}
+                <i class="bi-broadcast"></i>
+              {% else %}
+                <i class="bi-person"></i>
               {% endif %}
-            {% endfor %}
-          </h2>
-        {% endif %}
-        <div class="ms-auto d-flex gap-2">
-          {% if chat.type == 'announcement' and user.is_staff %}
-            {% if chat.is_blocked %}
-              <button type="button" class="btn btn-success btn-sm" onclick="unblockAnnouncement({{ chat.id }})">
-                <i class="bi-unlock"></i> Разблокировать
-              </button>
-            {% else %}
-              <button type="button" class="btn btn-danger btn-sm" onclick="blockAnnouncement({{ chat.id }})">
-                <i class="bi-lock"></i> Заблокировать
-              </button>
-            {% endif %}
+            </span>
+          </div>
+          <h1>{{ chat.name|default:"Чат" }}</h1>
+        {% else %}
+          <!-- Иконка категории, если нет аватара -->
+          {% if chat.type == 'global' %}
+            <i class="bi-globe text-primary"></i>
+            <h1>{{ chat.name|default:"Глобальный чат" }}</h1>
+          {% elif chat.type == 'department' %}
+            <i class="bi-diagram-3 text-primary"></i>
+            <h1>{{ chat.department.name|default:chat.name }}</h1>
+          {% elif chat.type == 'announcement' %}
+            <i class="bi-megaphone text-warning"></i>
+            <h1>{{ chat.name|default:"Объявление" }}</h1>
+          {% else %}
+            <i class="bi-person text-primary"></i>
+            <h1>
+              {% if chat.name %}
+                {{ chat.name }}
+              {% else %}
+                {% for u in chat.participants.all %}
+                  {% if u != user %}{{ u.get_full_name|default:u.username }}{% endif %}
+                {% endfor %}
+              {% endif %}
+            </h1>
           {% endif %}
-          <a href="{% url 'communications:chat_list' %}" class="btn btn-ghost">
-            <i class="bi-arrow-left"></i> К чатам
-          </a>
-        </div>
+        {% endif %}
       </div>
 
-      <!-- Корпус чата -->
-      <article class="card chat-box">
+      <div class="chat-header-actions">
+        {% if chat.type == 'announcement' and user.is_staff %}
+          {% if chat.is_blocked %}
+            <button type="button" class="btn btn-success btn-sm" onclick="unblockAnnouncement({{ chat.id }})">
+              <i class="bi-unlock"></i>
+            </button>
+          {% else %}
+            <button type="button" class="btn btn-danger btn-sm" onclick="blockAnnouncement({{ chat.id }})">
+              <i class="bi-lock"></i>
+            </button>
+          {% endif %}
+        {% endif %}
+        <a href="{% url 'communications:chat_list' %}" class="btn btn-ghost">
+          <i class="bi-arrow-left"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Контейнер чата -->
+  <div class="chat-container"
+       id="chatDetailApp"
+       data-chat-id="{{ chat.id }}"
+       data-user-id="{{ user.id }}"
+       data-user-name="{{ user.get_full_name|default:user.username }}"
+       data-user-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
+       data-upload-url="/api/v1/communications/messages/upload/"
+       data-messages-url="/api/v1/communications/chats/{{ chat.pk }}/messages/"
+       data-mark-read-url="/api/v1/communications/chats/{{ chat.pk }}/mark-read/"
+       data-edit-url-template="/api/v1/communications/messages/{id}/"
+       data-last-read-timestamp="{{ chat.last_read_timestamp|default:'0' }}"
+       data-last-read-message-id="{% if chat.last_read_message_id %}{{ chat.last_read_message_id }}{% else %}0{% endif %}">
 
         <!-- Предупреждение о блокировке -->
         {% if chat.is_blocked %}
@@ -110,32 +123,27 @@
           </div>
         {% endif %}
 
-        <!-- Кнопка «вниз» -->
-        <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
-          <i class="bi-arrow-down"></i>
-        </button>
-
         <!-- Лента сообщений -->
         <div id="chatScroll"
-             class="chat-scroll"
+             class="chat-messages-scroll"
              data-me-id="{{ user.id }}"
              data-me-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
              data-profile-url="{% url 'employees:profile' %}"
              data-detail-url-template="{% url 'employees:employee_detail' 0 %}"
              data-chat-id="{{ chat.id }}"
-             data-fetch-url="{% url 'api:v1:chat_messages' chat.pk %}"
+             data-fetch-url="/api/v1/communications/chats/{{ chat.pk }}/messages/"
              data-page-size="{{ messages_page_size }}"
              data-oldest-id="{{ messages_oldest_id }}"
              data-oldest-ts="{{ messages_oldest_ts }}"
              data-has-more="{% if messages_has_more %}1{% else %}0{% endif %}"
              data-last-read-ts="{% if last_read_at %}{{ last_read_at|date:'U' }}000{% endif %}">
-          
-          <!-- Индикатор загрузки истории (для прокрутки вверх) -->
+
+          <!-- Индикатор загрузки истории -->
           <div class="history-loader d-none" data-history-loader>
             <div class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></div>
             <span class="small">Загружаем ранние сообщения…</span>
           </div>
-          
+
           <!-- Индикатор первоначальной загрузки -->
           <div class="initial-loader text-center py-5" id="initialLoader">
             <div class="spinner-border text-primary mb-3" role="status">
@@ -143,30 +151,34 @@
             </div>
             <p class="text-secondary">Загружаем сообщения...</p>
           </div>
-          
-          <!-- Сообщения будут добавлены через JavaScript -->
-          
         </div>
 
         <!-- Индикатор печати -->
-        <div id="typing" class="small text-secondary ps-3 pt-2 d-none">
-          <span class="typing-indicator">
+        <div id="typing" class="chat-typing-indicator d-none">
+          <span class="typing-dots">
             <span></span><span></span><span></span>
           </span>
-          Собеседник печатает…
+          <span class="typing-text">Собеседник печатает…</span>
         </div>
 
-        <!-- Композер -->
-        <div class="chat-composer">
-          {% if can_send_messages %}
+        <!-- Кнопка «вниз» -->
+        <button id="scrollBtn" class="scroll-to-bottom" type="button" aria-label="Прокрутить вниз">
+          <i class="bi-arrow-down"></i>
+          <span class="unread-badge badge-hidden">0</span>
+        </button>
+      </div> <!-- .chat-container -->
+
+  <!-- Композер (вынесен из chat-container на уровень chat-page) -->
+  <div class="chat-composer-wrapper">
+    {% if can_send_messages %}
           <form id="chatForm"
                 class="composer-wrap"
                 method="post"
-                action="{% url 'api:v1:upload_message' %}"
+                action="/api/v1/communications/messages/upload/"
                 enctype="multipart/form-data"
                 data-chat-composer="1"
                 data-chat-id="{{ chat.id }}"
-                data-upload-url="{% url 'api:v1:upload_message' %}"
+                data-upload-url="/api/v1/communications/messages/upload/"
                 data-me-id="{{ user.id }}"
                 data-me-name="{{ user.get_full_name|default:user.username }}"
                 data-me-avatar="{% if user.avatar %}{{ user.avatar.url }}{% endif %}"
@@ -178,9 +190,9 @@
             <div class="message-field">
               <!-- Кнопка вложений с выпадающим меню -->
               <div class="dropdown message-attach">
-                <button type="button" class="btn btn-ghost btn-attachment message-icon-btn" 
-                        id="attachmentDropdown" 
-                        data-bs-toggle="dropdown" 
+                <button type="button" class="btn btn-ghost btn-attachment message-icon-btn"
+                        id="attachmentDropdown"
+                        data-bs-toggle="dropdown"
                         aria-expanded="false"
                         title="Прикрепить файл">
                   <i class="bi-paperclip"></i>
@@ -236,10 +248,10 @@
               </div>
 
               <!-- Поле ввода текста -->
-              <textarea name="content" 
-                        id="id_content" 
-                        class="form-control composer-textarea message-input" 
-                        rows="1" 
+              <textarea name="content"
+                        id="id_content"
+                        class="form-control composer-textarea message-input"
+                        rows="1"
                         placeholder="Напишите сообщение…"></textarea>
 
               <!-- Кнопка отправки -->
@@ -253,7 +265,7 @@
             <input type="file" id="imageInput" class="d-none" accept="image/*,video/*" multiple>
             <input type="file" id="cameraInput" class="d-none" accept="image/*" capture="environment">
             <input type="file" id="audioInput" class="d-none" accept="audio/*">
-            
+
             <!-- Превью прикрепленных файлов -->
             <div id="attachmentPreview" class="attachment-preview d-none"></div>
           </form>
@@ -269,81 +281,8 @@
             </p>
           </div>
           {% endif %}
-        </div>
-      </article>
+  </div> <!-- .chat-composer-wrapper -->
 
-    </div>
-  </div>
-</div>
-
-{% endblock %}
-
-{% block extra_js %}
-  {{ block.super }}
-  
-  {# ========== THIRD-PARTY ========== #}
-  <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
-  
-  {# ========== CHAT DETAIL - NEW ENHANCED VERSION ========== #}
-  <script type="module" src="{% static 'js/chat-detail-enhanced.js' %}"></script>
-  
-  {# ========== CHAT DETAIL PAGE - CORE FUNCTIONALITY ========== #}
-  <script type="module" src="{% static 'js/pages/chatDetail.js' %}"></script>
-  
-  <script>
-    // Блокировка объявления
-    async function blockAnnouncement(chatId) {
-      if (!confirm('Вы уверены, что хотите заблокировать это объявление? Оно исчезнет из списка чатов всех пользователей.')) {
-        return;
-      }
-      
-      try {
-        const response = await fetch(`/communications/api/announcement/${chatId}/block/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-          }
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          location.reload();
-        } else {
-          alert(data.error || 'Ошибка блокировки');
-        }
-      } catch (error) {
-        console.error('Error blocking announcement:', error);
-        alert('Ошибка при блокировке объявления');
-      }
-    }
-    
-    // Разблокировка объявления
-    async function unblockAnnouncement(chatId) {
-      try {
-        const response = await fetch(`/communications/api/announcement/${chatId}/unblock/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-          }
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          location.reload();
-        } else {
-          alert(data.error || 'Ошибка разблокировки');
-        }
-      } catch (error) {
-        console.error('Error unblocking announcement:', error);
-        alert('Ошибка при разблокировке объявления');
-      }
-    }
-  </script>
-  
   <!-- Модальное окно создания голосования -->
   <div class="modal fade" id="pollModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -357,21 +296,21 @@
         <div class="modal-body">
           <div class="mb-3">
             <label for="pollQuestion" class="form-label">Вопрос</label>
-            <input type="text" class="form-control" id="pollQuestion" 
+            <input type="text" class="form-control" id="pollQuestion"
                    placeholder="Введите вопрос" maxlength="500">
           </div>
-          
+
           <div class="mb-3">
             <label class="form-label">Варианты ответа</label>
             <div id="pollOptions">
               <div class="input-group mb-2">
                 <span class="input-group-text">1</span>
-                <input type="text" class="form-control poll-option" 
+                <input type="text" class="form-control poll-option"
                        placeholder="Вариант ответа" maxlength="200">
               </div>
               <div class="input-group mb-2">
                 <span class="input-group-text">2</span>
-                <input type="text" class="form-control poll-option" 
+                <input type="text" class="form-control poll-option"
                        placeholder="Вариант ответа" maxlength="200">
               </div>
             </div>
@@ -379,7 +318,7 @@
               <i class="bi-plus-circle me-1"></i>Добавить вариант
             </button>
           </div>
-          
+
           <div class="mb-3">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="pollAnonymous">
@@ -400,19 +339,19 @@
               </label>
             </div>
           </div>
-          
+
           <div class="mb-3" id="quizCorrectAnswer" style="display: none;">
             <label class="form-label">Правильный ответ</label>
             <select class="form-select" id="pollCorrectOption">
               <option value="">Выберите правильный вариант</option>
             </select>
           </div>
-          
+
           <div class="mb-3">
             <label for="pollCloses" class="form-label">
               Автоматическое закрытие (минуты, необязательно)
             </label>
-            <input type="number" class="form-control" id="pollCloses" 
+            <input type="number" class="form-control" id="pollCloses"
                    min="1" placeholder="Оставьте пустым для бессрочного">
           </div>
         </div>
@@ -428,5 +367,75 @@
     </div>
   </div>
 
+</div> <!-- .chat-page -->
 
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+
+  {# ========== THIRD-PARTY ========== #}
+  <script type="module" src="{% static 'vendor/emoji-picker/index.js' %}"></script>
+
+  {# ========== CHAT DETAIL PAGE - CORE FUNCTIONALITY ========== #}
+  {# chatDetail.js - V2 архитектура с прямым импортом ChatControllerV2 #}
+  <script type="module" src="{% static 'js/pages/chatDetail.js' %}"></script>
+
+  {# ========== CHAT DETAIL - UI ENHANCEMENTS ========== #}
+  {# Реакции, контекстное меню, выделение, голосования #}
+  <script type="module" src="{% static 'js/chat-detail-enhanced.js' %}"></script>
+
+  <script>
+    // Блокировка объявления
+    async function blockAnnouncement(chatId) {
+      if (!confirm('Вы уверены, что хотите заблокировать это объявление? Оно исчезнет из списка чатов всех пользователей.')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/communications/api/announcement/${chatId}/block/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          location.reload();
+        } else {
+          alert(data.error || 'Ошибка блокировки');
+        }
+      } catch (error) {
+        console.error('Error blocking announcement:', error);
+        alert('Ошибка при блокировке объявления');
+      }
+    }
+
+    // Разблокировка объявления
+    async function unblockAnnouncement(chatId) {
+      try {
+        const response = await fetch(`/communications/api/announcement/${chatId}/unblock/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          location.reload();
+        } else {
+          alert(data.error || 'Ошибка разблокировки');
+        }
+      } catch (error) {
+        console.error('Error unblocking announcement:', error);
+        alert('Ошибка при разблокировке объявления');
+      }
+    }
+  </script>
 {% endblock %}

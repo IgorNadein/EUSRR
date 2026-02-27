@@ -62,10 +62,20 @@ class EmailNotificationSender:
         Returns:
             True если отправлено успешно, False иначе
         """
+        logger.info(
+            f"[EmailNotificationSender.send_notification_email] НАЧАЛО: "
+            f"notification_id={notification.id}, "
+            f"recipient={recipient_email}"
+        )
+        
         try:
             # Получаем категорию
             category_code = notification.notification_type.category.code
             category_name = notification.notification_type.category.name
+            
+            logger.info(
+                f"[EmailNotificationSender] Категория: {category_name} ({category_code})"
+            )
             
             # Формируем тему письма
             if custom_subject:
@@ -73,6 +83,10 @@ class EmailNotificationSender:
             else:
                 icon = cls.CATEGORY_ICONS.get(category_code, '🔔')
                 subject = f"{icon} {notification.title}"
+            
+            logger.info(
+                f"[EmailNotificationSender] Тема письма: '{subject}'"
+            )
             
             # Формируем контекст для шаблона
             context = {
@@ -86,6 +100,12 @@ class EmailNotificationSender:
                 'site_url': cls._get_site_url(),
             }
             
+            logger.info(
+                f"[EmailNotificationSender] ➡️ Вызов send_templated_mail: "
+                f"template='notifications/email/notification', "
+                f"to={recipient_email}"
+            )
+            
             # Отправляем email
             send_templated_mail(
                 subject=subject,
@@ -95,13 +115,17 @@ class EmailNotificationSender:
             )
             
             logger.info(
-                f"Email уведомление отправлено: {notification.id} -> {recipient_email}"
+                f"[EmailNotificationSender] ✅ Email УСПЕШНО отправлен: "
+                f"notification_id={notification.id} -> {recipient_email}"
             )
             return True
             
         except Exception as e:
             logger.error(
-                f"Ошибка отправки email уведомления {notification.id}: {e}",
+                f"[EmailNotificationSender] ❌ ОШИБКА отправки email: "
+                f"notification_id={notification.id}, "
+                f"recipient={recipient_email}, "
+                f"error={type(e).__name__}: {e}",
                 exc_info=True
             )
             return False
