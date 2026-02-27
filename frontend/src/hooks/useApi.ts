@@ -180,10 +180,13 @@ export function useNotifications() {
       try {
         const data = await apiClient.getNotifications();
         const notifs = data.results || data;
-        setNotifications(notifs);
-        setUnreadCount(notifs.filter((n: any) => !n.is_read).length);
+        // Убеждаемся что notifs это массив
+        const notificationsArray = Array.isArray(notifs) ? notifs : [];
+        setNotifications(notificationsArray);
+        setUnreadCount(notificationsArray.filter((n: any) => !n.is_read).length);
       } catch (err) {
         setError(err as Error);
+        setNotifications([]); // В случае ошибки устанавливаем пустой массив
       } finally {
         setLoading(false);
       }
