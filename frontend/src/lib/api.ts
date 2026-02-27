@@ -533,6 +533,33 @@ class ApiClient {
         });
     }
 
+    // Web Push подписки
+    async getVapidPublicKey(): Promise<{ vapid_public_key: string }> {
+        return this.request('/api/v1/notifications/push/vapid-key/');
+    }
+
+    async subscribePush(data: {
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+        device_name?: string;
+    }): Promise<{ status: string; message: string; created: boolean }> {
+        return this.request('/api/v1/notifications/push/subscribe/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async unsubscribePush(endpoint?: string): Promise<{ status: string; message: string }> {
+        return this.request('/api/v1/notifications/push/unsubscribe/', {
+            method: 'DELETE',
+            body: JSON.stringify({ endpoint }),
+        });
+    }
+
+    async getPushSubscriptions(): Promise<{ subscriptions: any[] }> {
+        return this.request('/api/v1/notifications/push/subscriptions/');
+    }
+
     // Календарь (django-scheduler API)
     async getCalendarEvents(params?: { start?: string; end?: string; calendar?: number }): Promise<any> {
         const queryParams = new URLSearchParams();
