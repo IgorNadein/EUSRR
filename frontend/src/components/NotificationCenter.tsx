@@ -5,15 +5,18 @@ import { Bell, Settings, X } from 'lucide-react';
 import { useNotifications } from '@/hooks/useApi';
 import { useWebPush } from '@/hooks/useWebPush';
 import { formatDistanceToNow } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { ru } from 'date-fns/locale/ru';
 
 export function NotificationCenter() {
     const [isOpen, setIsOpen] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     
-    const { notifications, unreadCount, markAsRead, markAllAsRead, loading } = useNotifications();
+    const { notifications: notificationsData, unreadCount, markAsRead, markAllAsRead, loading } = useNotifications();
     const { isSupported, isSubscribed, subscribe, unsubscribe, permission, isLoading: pushLoading } = useWebPush();
+    
+    // Обеспечиваем что notifications всегда массив
+    const notifications = Array.isArray(notificationsData) ? notificationsData : [];
 
     // Закрытие при клике вне компонента
     useEffect(() => {
