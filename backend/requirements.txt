@@ -130,3 +130,11 @@ flower>=2.0.1
 
 # Push Notifications
 django-push-notifications==3.1.0
+
+# File Management with django-filer
+django-filer==3.4.4
+easy-thumbnails==2.10.1
+django-mptt==0.18.0  # Dependency for filer
+
+# Version Control for Models
+django-reversion==6.1.0

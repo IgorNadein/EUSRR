@@ -81,3 +81,15 @@ class DocumentAcknowledgement(models.Model):
 
     def __str__(self):
         return f'{self.user} — {self.document} @ {self.acknowledged_at:%d.%m.%Y %H:%M}'
+
+
+# Импортируем новые модели, чтобы Django их увидел
+from .models_v2 import DocumentV2, DocumentAcknowledgementV2
+
+__all__ = [
+    'Document',
+    'DocumentAcknowledgement',
+    'DocumentV2',
+    'DocumentAcknowledgementV2',
+]
+

@@ -37,6 +37,11 @@ INSTALLED_APPS = [
     "simple_history",
     "rest_framework",
     "rules",  # django-rules для декларативных permissions
+    # django-filer и зависимости
+    "easy_thumbnails",
+    "filer",
+    "mptt",  # зависимость filer
+    "reversion",  # django-reversion для версионирования
     # Celery приложения
     "django_celery_beat",  # Периодические задачи
     "django_celery_results",  # Хранение результатов
@@ -532,3 +537,35 @@ CELERY_BEAT_SCHEDULE = {
 CELERY_TASK_ACKS_LATE = True  # Подтверждаем выполнение после завершения
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Берем по 1 задаче за раз
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000  # Перезапуск worker после 1000 задач
+
+# -----------------------------------------------------------------------------
+# DJANGO-FILER CONFIGURATION
+# -----------------------------------------------------------------------------
+FILER_ENABLE_PERMISSIONS = True  # Включаем ACL для файлов
+FILER_IS_PUBLIC_DEFAULT = False  # По умолчанию файлы приватные
+FILER_CANONICAL_URL = 'canonical/'  # URL для канонических ссылок
+
+# easy-thumbnails настройки для filer
+THUMBNAIL_PROCESSORS = (
+    'easy_thumbnails.processors.colorspace',
+    'easy_thumbnails.processors.autocrop',
+    'filer.thumbnail_processors.scale_and_crop_with_subject_location',
+    'easy_thumbnails.processors.filters',
+)
+
+THUMBNAIL_HIGH_RESOLUTION = True  # Поддержка retina-дисплеев
+THUMBNAIL_PRESERVE_EXTENSIONS = ('png', 'gif')  # Сохранять расширения
+
+# Размеры thumbnails по умолчанию
+THUMBNAIL_ALIASES = {
+    '': {
+        'admin_thumbnail': {'size': (100, 100), 'crop': True},
+        'small': {'size': (200, 200), 'crop': False},
+        'medium': {'size': (400, 400), 'crop': False},
+        'large': {'size': (800, 800), 'crop': False},
+    },
+}
+
+# django-reversion настройки
+REVERSION_SAVE_EMPTY_REVISIONS = False  # Не сохранять пустые версии
+

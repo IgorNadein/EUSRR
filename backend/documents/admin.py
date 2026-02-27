@@ -128,3 +128,12 @@ class DocumentAcknowledgementAdmin(admin.ModelAdmin):
                      'user__last_name', 'document__title')
     readonly_fields = ('user', 'document', 'acknowledged_at')
     ordering = ('-acknowledged_at',)
+
+
+# -----------------------------------------------------------------------------
+# НОВЫЕ МОДЕЛИ V2 (с django-filer)
+# -----------------------------------------------------------------------------
+
+# Импортируем admin для новых моделей
+from .admin_v2 import DocumentV2Admin, DocumentAcknowledgementV2Admin
+
