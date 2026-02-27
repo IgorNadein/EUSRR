@@ -8,3 +8,4 @@ class RequestsAppConfig(AppConfig):
     def ready(self):
         # Подключаем signals для уведомлений
         import requests_app.notification_signals  # noqa
+        import requests_app.rules  # django-rules: регистрация предикатов и правил доступа

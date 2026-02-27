@@ -8,3 +8,4 @@ class DocumentsConfig(AppConfig):
     def ready(self):
         # импортируем сигналы, чтобы они подхватились
         import documents.notification_signals  # noqa
+        import documents.rules  # django-rules: регистрация предикатов и правил доступа

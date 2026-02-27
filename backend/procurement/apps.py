@@ -9,3 +9,4 @@ class ProcurementConfig(AppConfig):
     def ready(self):
         """Подключение сигналов при загрузке приложения."""
         import procurement.signals  # noqa: F401
+        import procurement.rules  # django-rules: регистрация предикатов и правил доступа
