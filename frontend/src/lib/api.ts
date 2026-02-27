@@ -17,10 +17,17 @@ interface LoginResponse {
 class ApiClient {
     private tokenKey = 'access_token';
     private refreshTokenKey = 'refresh_token';
+    private isRefreshing = false;
+    private refreshSubscribers: Array<(token: string) => void> = [];
 
     private getToken(): string | null {
         if (typeof window === 'undefined') return null;
         return localStorage.getItem(this.tokenKey);
+    }
+
+    private getRefreshToken(): string | null {
+        if (typeof window === 'undefined') return null;
+        return localStorage.getItem(this.refreshTokenKey);
     }
 
     private setToken(token: string): void {
@@ -42,6 +49,49 @@ class ApiClient {
         }
     }
 
+    private onRefreshed(token: string): void {
+        this.refreshSubscribers.forEach((callback) => callback(token));
+        this.refreshSubscribers = [];
+    }
+
+    private addRefreshSubscriber(callback: (token: string) => void): void {
+        this.refreshSubscribers.push(callback);
+    }
+
+    /**
+     * Обновление access token с помощью refresh token
+     */
+    private async refreshAccessToken(): Promise<string> {
+        const refreshToken = this.getRefreshToken();
+        if (!refreshToken) {
+            throw new Error('No refresh token available');
+        }
+
+        const response = await fetch('/api/auth/token/refresh/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ refresh: refreshToken }),
+        });
+
+        if (!response.ok) {
+            // Refresh token истёк или невалиден - нужно перелогиниться
+            this.clearToken();
+            throw new Error('Refresh token expired');
+        }
+
+        const data: LoginResponse = await response.json();
+        this.setToken(data.access);
+        
+        // Если бэкенд вернул новый refresh token, сохраняем его
+        if (data.refresh) {
+            this.setRefreshToken(data.refresh);
+        }
+
+        return data.access;
+    }
+
     private async request<T>(
         endpoint: string,
         options: RequestInit = {}
@@ -61,6 +111,74 @@ class ApiClient {
             ...options,
             headers,
         });
+
+        // Если получили 401 и есть refresh token - пробуем обновить токен
+        if (response.status === 401 && this.getRefreshToken()) {
+            if (!this.isRefreshing) {
+                this.isRefreshing = true;
+                
+                try {
+                    const newToken = await this.refreshAccessToken();
+                    this.isRefreshing = false;
+                    this.onRefreshed(newToken);
+                    
+                    // Повторяем оригинальный запрос с новым токеном
+                    headers['Authorization'] = `Bearer ${newToken}`;
+                    const retryResponse = await fetch(endpoint, {
+                        ...options,
+                        headers,
+                    });
+                    
+                    if (!retryResponse.ok) {
+                        let errorDetails = '';
+                        try {
+                            const errorData = await retryResponse.json();
+                            errorDetails = errorData.detail || JSON.stringify(errorData);
+                        } catch {
+                            errorDetails = retryResponse.statusText;
+                        }
+                        throw new Error(`API Error: ${retryResponse.status} ${errorDetails}`);
+                    }
+                    
+                    // Обрабатываем успешный ответ
+                    if (options.method === 'DELETE' && retryResponse.status === 204) {
+                        return undefined as T;
+                    }
+                    
+                    const contentLength = retryResponse.headers.get('content-length');
+                    if (contentLength === '0' || retryResponse.status === 204) {
+                        return undefined as T;
+                    }
+                    
+                    return retryResponse.json();
+                } catch (refreshError) {
+                    this.isRefreshing = false;
+                    this.refreshSubscribers = [];
+                    throw refreshError;
+                }
+            } else {
+                // Если уже идёт обновление токена, ждём его завершения
+                return new Promise((resolve, reject) => {
+                    this.addRefreshSubscriber((newToken: string) => {
+                        headers['Authorization'] = `Bearer ${newToken}`;
+                        fetch(endpoint, { ...options, headers })
+                            .then((res) => {
+                                if (!res.ok) {
+                                    reject(new Error(`API Error: ${res.status}`));
+                                    return;
+                                }
+                                if (options.method === 'DELETE' && res.status === 204) {
+                                    resolve(undefined as T);
+                                    return;
+                                }
+                                return res.json();
+                            })
+                            .then((data) => resolve(data))
+                            .catch(reject);
+                    });
+                });
+            }
+        }
 
         if (!response.ok) {
             // Попытка получить детали ошибки

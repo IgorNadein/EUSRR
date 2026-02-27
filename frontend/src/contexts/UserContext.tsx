@@ -33,6 +33,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             }
 
             // Загружаем данные пользователя
+            // ApiClient автоматически обновит токен если он истёк
             const userData = await apiClient.getCurrentUser();
             setUser(userData);
         } catch (err: any) {
@@ -40,9 +41,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
             setError(err.message);
             setUser(null);
 
-            // Если ошибка 401 - токен невалиден, очищаем
-            if (err.message?.includes('401')) {
-                apiClient.clearToken();
+            // Токены уже очищены в ApiClient если refresh token тоже истёк
+            // Проверяем, остались ли токены - если нет, значит сессия истекла
+            const hasToken = typeof window !== 'undefined' && localStorage.getItem('access_token');
+            if (!hasToken) {
+                // Токены очищены - сессия истекла, redirect на login
+                if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+                    window.location.href = '/login';
+                }
             }
         } finally {
             setLoading(false);
