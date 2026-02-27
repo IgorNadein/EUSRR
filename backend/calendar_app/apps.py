@@ -18,8 +18,7 @@ class CalendarAppConfig(AppConfig):
             LookupError: Если приложение 'employees' или модель 'Employee' не найдены.
         """
         import calendar_app.notification_signals  # noqa: F401
-        from calendar_app import \
-            signals  # noqa: F401 (гарантирует импорт модулей с хендлерами)
+        from calendar_app import signals  # noqa: F401 - старая система
 
         try:
             Employee = django_apps.get_model("employees", "Employee")
@@ -27,7 +26,8 @@ class CalendarAppConfig(AppConfig):
             # Если в проекте иное имя модели — замените здесь.
             return
 
-        # Явно подключаем наши функции только к Employee
+        # ===== СТАРАЯ СИСТЕМА (calendar_app) =====
+        # Оставлена для совместимости во время миграции
         post_save.connect(
             signals.handle_employee_saved,
             sender=Employee,
@@ -38,5 +38,7 @@ class CalendarAppConfig(AppConfig):
             sender=Employee,
             dispatch_uid="calendar_app.employee_deleted_remove_birthday",
         )
-        dispatch_uid = "calendar_app.employee_deleted_remove_birthday",
+        
+        # NOTE: Синхронизация дней рождения через django-scheduler
+        # перенесена в employees/signals_birthday.py
         

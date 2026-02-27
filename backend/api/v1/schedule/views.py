@@ -28,6 +28,7 @@ from .serializers import (
     OccurrenceSerializer,
     EventRelationSerializer,
 )
+from .permissions import IsOwnerOfCalendar, CanEditCalendar
 
 
 class ScheduleCalendarViewSet(viewsets.ModelViewSet):
@@ -49,8 +50,9 @@ class ScheduleCalendarViewSet(viewsets.ModelViewSet):
     
     queryset = Calendar.objects.all()
     serializer_class = CalendarSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOwnerOfCalendar]
     renderer_classes = [JSONRenderer]
+    pagination_class = None  # Отключаем пагинацию - календарей немного, нужны все
     
     def get_queryset(self):
         """Фильтрация календарей по доступу пользователя."""
@@ -311,7 +313,7 @@ class ScheduleEventViewSet(viewsets.ModelViewSet):
     """
     
     queryset = Event.objects.select_related('calendar', 'rule', 'creator')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanEditCalendar]
     renderer_classes = [JSONRenderer]
     
     def get_serializer_class(self):
