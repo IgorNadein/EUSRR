@@ -210,3 +210,113 @@ class DocumentViewSet(ModelViewSet):
                 },
             }
         )
+
+    # -------------------------------------------------------------------------
+    # FSM WORKFLOW ACTIONS
+    # -------------------------------------------------------------------------
+
+    @action(detail=True, methods=['post'], url_path='submit-for-review')
+    def submit_for_review(self, request, pk=None):
+        """Отправить документ на рассмотрение (draft → in_review)."""
+        document = self.get_object()
+        try:
+            document.submit_for_review()
+            document.save()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Одобрить документ (in_review → approved)."""
+        document = self.get_object()
+        try:
+            document.approve()
+            document.save()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Отклонить документ (in_review → rejected)."""
+        document = self.get_object()
+        try:
+            document.reject()
+            document.save()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def publish(self, request, pk=None):
+        """Опубликовать документ (approved → published)."""
+        document = self.get_object()
+        try:
+            document.publish()
+            document.save()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'], url_path='return-to-draft')
+    def return_to_draft(self, request, pk=None):
+        """Вернуть документ в черновики."""
+        document = self.get_object()
+        try:
+            document.return_to_draft()
+            document.save()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        """Архивировать документ (published → archived)."""
+        document = self.get_object()
+        try:
+            document.archive()
+            document.save()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def unarchive(self, request, pk=None):
+        """Разархивировать документ (archived → published)."""
+        document = self.get_object()
+        try:
+            document.unarchive()
+            document.save()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+

@@ -12,6 +12,7 @@ from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from django.utils import timezone
 from filer.fields.file import FilerFileField
+from django_fsm import FSMField, transition
 import reversion
 
 User = settings.AUTH_USER_MODEL  # 'employees.Employee'
@@ -20,7 +21,7 @@ User = settings.AUTH_USER_MODEL  # 'employees.Employee'
 @reversion.register()  # Включаем версионирование для документов
 class Document(models.Model):
     """
-    Документ с использованием django-filer для управления файлами.
+    Документ с использованием django-filer для управления файлами и django-fsm для workflow.
     
     Преимущества:
     - Поддержка папок и вложенной структуры
@@ -28,7 +29,34 @@ class Document(models.Model):
     - Полнотекстовый поиск по содержимому файлов
     - Информация о размере, MIME-типе, метаданные
     - История версий через django-reversion
+    - Workflow управление через django-fsm
+    
+    Состояния документа (FSM):
+    - draft: Черновик (по умолчанию)
+    - in_review: На рассмотрении
+    - approved: Одобрен
+    - published: Опубликован (отправлен получателям)
+    - archived: Архивирован
+    - rejected: Отклонен
     """
+    
+    # FSM: Состояние документа
+    class Status(models.TextChoices):
+        DRAFT = 'draft', _('Черновик')
+        IN_REVIEW = 'in_review', _('На рассмотрении')
+        APPROVED = 'approved', _('Одобрен')
+        PUBLISHED = 'published', _('Опубликован')
+        ARCHIVED = 'archived', _('Архивирован')
+        REJECTED = 'rejected', _('Отклонен')
+    
+    status = FSMField(
+        default=Status.DRAFT,
+        choices=Status.choices,
+        verbose_name=_('Статус'),
+        protected=True,  # Изменяется только через transitions
+        help_text=_('Текущее состояние документа в workflow')
+    )
+    
     title = models.CharField(_('Название'), max_length=255)
     
     # Используем FilerFileField вместо FileField
@@ -73,6 +101,74 @@ class Document(models.Model):
         help_text=_('Если `Разослать всем` отключено, документ пойдет только этим'),
         related_name='document_recipients'
     )
+
+    # -------------------------------------------------------------------------
+    # FSM TRANSITIONS (переходы между состояниями)
+    # -------------------------------------------------------------------------
+
+    @transition(field=status, source=Status.DRAFT, target=Status.IN_REVIEW)
+    def submit_for_review(self):
+        """
+        Отправить документ на рассмотрение.
+        Из: draft → в: in_review
+        """
+        pass
+
+    @transition(field=status, source=Status.IN_REVIEW, target=Status.APPROVED)
+    def approve(self):
+        """
+        Одобрить документ.
+        Из: in_review → в: approved
+        """
+        pass
+
+    @transition(field=status, source=Status.IN_REVIEW, target=Status.REJECTED)
+    def reject(self):
+        """
+        Отклонить документ.
+        Из: in_review → в: rejected
+        """
+        pass
+
+    @transition(field=status, source=Status.APPROVED, target=Status.PUBLISHED)
+    def publish(self):
+        """
+        Опубликовать документ (отправка уведомлений получателям).
+        Из: approved → в: published
+        
+        При публикации срабатывают сигналы из notification_signals.py
+        """
+        pass
+
+    @transition(
+        field=status,
+        source=[Status.DRAFT, Status.IN_REVIEW],
+        target=Status.DRAFT
+    )
+    def return_to_draft(self):
+        """
+        Вернуть документ в черновики.
+        Из: draft, in_review → в: draft
+        """
+        pass
+
+    @transition(field=status, source=Status.PUBLISHED, target=Status.ARCHIVED)
+    def archive(self):
+        """
+        Архивировать опубликованный документ.
+        Из: published → в: archived
+        """
+        pass
+
+    @transition(field=status, source=Status.ARCHIVED, target=Status.PUBLISHED)
+    def unarchive(self):
+        """
+        Разархивировать документ.
+        Из: archived → в: published
+        """
+        pass
+
+    # -------------------------------------------------------------------------
 
     class Meta:
         verbose_name = _('Документ')

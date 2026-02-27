@@ -120,6 +120,8 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     departments = DepartmentBriefSerializer(many=True, read_only=True)
     file_url = FilerFileSerializerField(source="file", read_only=True)
     is_acknowledged = serializers.SerializerMethodField()
+    status = serializers.CharField(source='get_status_display', read_only=True)
+    status_code = serializers.CharField(source='status', read_only=True)
 
     class Meta:
         model = Document
@@ -127,6 +129,8 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "status",  # Человекочитаемый статус
+            "status_code",  # Код статуса для программной обработки
             "uploaded_by",
             "uploaded_at",
             "sent_to_all",
