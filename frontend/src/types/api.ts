@@ -281,7 +281,7 @@ export interface RegisterData {
 }
 
 // Search types (django-watson)
-export type SearchModelType = 'post' | 'employee' | 'department' | 'request' | 'chat' | 'message' | 'event';
+export type SearchModelType = 'post' | 'employee' | 'department' | 'request' | 'chat' | 'message' | 'event' | 'schedule_event' | 'procurement_request' | 'equipment' | 'document' | 'notification';
 
 export interface SearchResult {
   model_name: SearchModelType;
