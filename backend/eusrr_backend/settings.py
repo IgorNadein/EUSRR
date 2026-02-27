@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "bots",
     "finance.apps.FinanceConfig",
     "procurement.apps.ProcurementConfig",
+    "push_notifications",  # django-push-notifications для Web Push
 ]
 
 MIDDLEWARE = [
@@ -477,6 +478,14 @@ VAPID_PRIVATE_KEY = os.getenv(
     "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCNnpupg3xbtFUiOSUZ6L7s6puxuEjzR73kTL7v8bMvKhRANCAATE4rWcva-MoGCQYBnWmbgpG-68Ee4hyyb9A5DaWiTixEqLTjRE1rWQEMZyVVP2KPb_omKPu3VhHhdFRIzHBjJE"
 )
 VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "robotail-info@yandex.ru")
+
+# django-push-notifications settings
+PUSH_NOTIFICATIONS_SETTINGS = {
+    "WP_PRIVATE_KEY": VAPID_PRIVATE_KEY,
+    "WP_CLAIMS": {"sub": f"mailto:{VAPID_ADMIN_EMAIL}"},
+    "UPDATE_ON_DUPLICATE_REG_ID": True,
+    "UNIQUE_REG_ID": True,
+}
 
 # -----------------------------------------------------------------------------
 # CELERY CONFIGURATION

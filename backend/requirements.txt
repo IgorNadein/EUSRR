@@ -125,3 +125,6 @@ zope.interface==8.1.1
 django-celery-beat>=2.7.0
 django-celery-results>=2.5.1
 flower>=2.0.1
+
+# Push Notifications
+django-push-notifications==3.1.0
