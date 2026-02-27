@@ -1,32 +1,48 @@
 {# Десктопная версия календаря - правая колонка #}
 <div class="rightbar d-none d-lg-block">
   <div class="card rightbar-card" data-dept-id="{{ dept_ids|default:'' }}">
-    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="card-header">
+      <button
+        class="btn btn-sm btn-outline-primary w-100"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#calendarListCollapse"
+        aria-expanded="false"
+        aria-controls="calendarListCollapse"
+        title="Список календарей"
+      >
+        <i class="bi bi-list-check"></i>
+        <span class="ms-1">Календари</span>
+      </button>
+    </div>
 
-      <div class="d-flex align-items-center gap-2 flex-shrink-1 min-w-0">
-        <h6 class="card-title fw-semibold mb-0">Календарь</h6>
-
-        {# Выпадающий выбор: Компания / Отделы / Личный #}
-        <div class="dropdown">
-          <button class="btn btn-sm btn-outline-secondary dropdown-toggle text-truncate" type="button"
-                  id="calendarChooserBtn" data-bs-toggle="dropdown" aria-expanded="false"
-                  style="max-width: 150px;">
-            Компания
+    {# Список календарей (сворачиваемый) - унифицированный список legacy + новые #}
+    <div class="collapse" id="calendarListCollapse">
+      <div class="card-body border-bottom py-2">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <small class="text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            Выберите календари для отображения
+          </small>
+          <button
+            class="btn btn-sm btn-outline-success"
+            type="button"
+            data-action="create-calendar"
+            title="Создать календарь"
+          >
+            <i class="bi bi-calendar-plus"></i>
+            <span class="ms-1">Создать</span>
           </button>
-          <ul class="dropdown-menu" aria-labelledby="calendarChooserBtn" id="calendarChooserMenu">
-            <li><button class="dropdown-item" type="button" data-cal="personal">Личный</button></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><button class="dropdown-item" type="button" data-cal="company">Компания</button></li>
-            <li><hr class="dropdown-divider"></li>
-            {# пункты отделов добавим из JS по data-dept-id #}
-          </ul>
         </div>
-      </div>
+        <div id="calendarListContainer" class="calendar-list-container" style="max-height: 250px; overflow-y: auto;">
 
-      <div class="d-flex align-items-center gap-2 flex-shrink-0">
-        <span class="card-sub text-muted d-none d-xl-inline">События</span>
-        <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#eventCreateModal"
-                aria-label="Создать событие"><i class="bi-plus-lg"></i></button>
+          {# Здесь будет JS-генерируемый список календарей (legacy + новые) #}
+          <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+              <span class="visually-hidden">Загрузка...</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

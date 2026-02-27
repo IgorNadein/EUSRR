@@ -6,21 +6,22 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from employees.models import Department, DepartmentRole, EmployeeDepartment, Employee
+from tests.conftest import _unique_phone
+from tests.test_config import DEFAULT_PASSWORD
 
 User = get_user_model()
-
 
 # =========================
 # Helpers
 # =========================
 
-
 def _unique_phone() -> str:
     base = 79000000000  # 79 + 9 нулей
     return str(base + User.objects.count())
 
-
+@pytest.fixture
 def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
+    """Fixture для создания пользователей."""
 
     u = User.objects.create_user(
         email=email,
@@ -35,11 +36,9 @@ def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
         u.save(update_fields=["is_active"])
     return u
 
-
 def _unique_email() -> str:
     base = "asd@mail.com"
     return str(Employee.objects.count()) + base
-
 
 def _make_user(staff=False, superuser=False) -> Employee:
     """
@@ -48,7 +47,7 @@ def _make_user(staff=False, superuser=False) -> Employee:
     """
     u = Employee.objects.create_user(
         email=_unique_email(),
-        password="pass",
+        password=DEFAULT_PASSWORD,
         phone_number=_unique_phone(),
         send_activation_email=False,
         first_name="T",
@@ -61,7 +60,6 @@ def _make_user(staff=False, superuser=False) -> Employee:
     u.save(update_fields=["is_staff", "is_superuser", "email_verified", "is_active"])
     return u
 
-
 def make_role(
     dept: Department, name: str, codes: list[str] | None = None
 ) -> DepartmentRole:
@@ -69,7 +67,6 @@ def make_role(
     # в этих тестах права роли не нужны (руководитель имеет доступ сам по себе),
     # но фабрика оставлена для удобства
     return role
-
 
 def add_member(
     user: User,
@@ -83,21 +80,17 @@ def add_member(
         defaults={"is_active": is_active, "role": role},
     )
 
-
 # =========================
 # Fixtures
 # =========================
-
 
 @pytest.fixture()
 def api_client() -> APIClient:
     return APIClient()
 
-
 # =========================
 # Tests
 # =========================
-
 
 @pytest.mark.django_db
 def test_head_can_update_department_without_explicit_role_perms(api_client: APIClient):
@@ -112,7 +105,6 @@ def test_head_can_update_department_without_explicit_role_perms(api_client: APIC
     resp = api_client.patch(url, {"description": "new"}, format="json")
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["description"] == "new"
-
 
 @pytest.mark.django_db
 def test_head_can_set_member_role_and_non_head_cannot(api_client: APIClient):
@@ -140,7 +132,6 @@ def test_head_can_set_member_role_and_non_head_cannot(api_client: APIClient):
     api_client.force_authenticate(user=stranger)
     resp = api_client.post(url, payload, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
-
 
 @pytest.mark.django_db
 def test_head_can_change_head_and_loses_rights_afterwards(api_client: APIClient):

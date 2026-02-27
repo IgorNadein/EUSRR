@@ -1,0 +1,867 @@
+/**
+ * chat-detail.scss
+ * Стили детального чата: scroll, bubbles, composer
+ * Layout вынесен в layout/_chat-layout.scss
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT PAGE CONTAINER
+────────────────────────────────────────────────────────────── */
+.chat-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  // Учитываем высоту navbar сверху
+  height: calc(100vh - var(--navbar-h, 60px));
+  overflow: hidden;
+}
+
+.chat-header {
+  flex-shrink: 0;
+  z-index: $z-dropdown - 1;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid var(--bs-border-color);
+  padding: var(--space-3) var(--space-4);
+
+  &-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  &-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1;
+    min-width: 0;
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;
+      color: var(--bs-body-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    i {
+      font-size: 1.5rem;
+      color: var(--bs-primary);
+      flex-shrink: 0;
+    }
+  }
+
+  &-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+}
+
+// Mobile стили для header
+@media (max-width: 767.98px) {
+  .chat-header {
+    padding: var(--space-2) var(--space-3);
+
+    &-title {
+      gap: var(--space-2);
+
+      h1 {
+        font-size: 1.125rem;
+      }
+
+      i {
+        font-size: 1.25rem;
+      }
+    }
+
+    &-actions {
+      gap: var(--space-1);
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT CONTAINER (основной контейнер чата)
+────────────────────────────────────────────────────────────── */
+.chat-container {
+  // Естественный размер контента, не растягиваем
+  flex: 1 1 auto;
+
+  // Вертикальный flex для: alerts → messages → typing
+  display: flex;
+  flex-direction: column;
+
+  // Критично для работы overflow в дочерних элементах
+  min-height: 0;
+
+  // Разрешаем overflow для scroll-to-bottom кнопки
+  overflow: visible;
+
+  // Для позиционирования scroll-to-bottom кнопки
+  position: relative;
+
+  // Опциональный background для тестирования layout
+  // background: var(--bs-body-bg);
+
+  // Alerts внутри контейнера не должны сжиматься
+  > .alert {
+    flex-shrink: 0;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT MESSAGES SCROLL (основной контейнер сообщений)
+────────────────────────────────────────────────────────────── */
+.chat-messages-scroll {
+  flex: 1 0 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-3);
+  min-height: 0;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 70%) transparent;
+
+  &:hover {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 55%) transparent;
+  }
+
+  // Кастомный скроллбар для WebKit
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 75%);
+    border-radius: 4px;
+  }
+
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 55%);
+  }
+}
+
+// Алиас для совместимости
+.chat-scroll {
+  @extend .chat-messages-scroll;
+}
+
+.chat-scroll {
+  @include custom-scrollbar(color-mix(in srgb, var(--bs-body-color), transparent 75%));
+
+  &:hover {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 55%) transparent;
+  }
+}
+
+[data-bs-theme="dark"] .chat-scroll {
+  scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 78%) transparent;
+
+  &:hover {
+    scrollbar-color: color-mix(in srgb, var(--bs-body-color), transparent 60%) transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 78%);
+  }
+
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--bs-body-color), transparent 60%);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .chat-scroll {
+    scrollbar-width: none;
+  }
+
+  .chat-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT COMPOSER WRAPPER & COMPOSER (Modern Messenger Style)
+────────────────────────────────────────────────────────────── */
+// TODO: Проблема с пустым пространством под композером на широких экранах
+// При изменении ширины окна высота navbar меняется, но calc(100vh - var(--navbar-h))
+// не всегда корректно работает. Нужно найти более надежное решение для прижатия
+// композера к низу страницы независимо от размера viewport.
+.chat-composer-wrapper {
+  flex-shrink: 0;
+  margin-top: auto; // Прижимаем к низу chat-page
+  position: relative;
+  z-index: $z-base;
+  background: var(--bs-body-bg);
+  border-top: 1px solid var(--bs-border-color);
+  padding: var(--space-2);
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+}
+
+// Mobile стили для composer - фиксируем внизу экрана (замена bottom navbar)
+@media (max-width: 767.98px) {
+  .chat-composer-wrapper {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: var(--space-2) var(--space-2);
+    padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    z-index: 1020; // Над контентом, но под модалами
+  }
+
+  // Уменьшенный padding для мобильных + компенсация высоты фиксированного composer
+  .chat-messages-scroll {
+    padding: var(--space-2);
+    padding-bottom: calc(70px + env(safe-area-inset-bottom)); // Высота composer
+  }
+}
+
+.composer-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.message-field {
+  background: color-mix(in srgb, var(--bs-body-bg) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+}
+
+.message-input {
+  max-height: 180px;
+}
+
+// Стили кнопок наследуются из custom-bootstrap.scss (glassmorphism)
+.btn-send {
+  box-shadow: 0 4px 16px rgba(var(--bs-primary-rgb), 0.35);
+}
+
+.message-emoji .dropdown-menu {
+  background: var(--bs-body-bg);
+}
+
+/* Превью вложений */
+.attachment-preview {
+  padding: var(--space-1) 0;
+  max-height: 200px;
+  overflow-y: auto;
+  max-width: 100%;
+  width: 100%;
+}
+
+.attachment-item {
+  background: var(--bs-secondary-bg);
+  @include transition(background-color, $transition-fast);
+  max-width: 100%; // Ограничиваем ширину контейнера
+}
+
+/* Обрезка текста в форме загрузки файлов */
+.attachment-item .flex-grow-1 {
+  min-width: 0; // Важно для flex-элементов с text-truncate внутри
+  overflow: hidden; // Предотвращаем выход контента за границы
+}
+
+.attachment-item .text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Вложения в сообщениях */
+.bubble .attachment-item {
+  background: transparent;
+  padding: 0;
+  margin-bottom: 8px;
+  
+  // Медиа-элементы (изображения и видео) - минимальные отступы
+  &.attachment-item--media {
+    margin-bottom: 0;
+    
+    a {
+      display: block;
+      padding: 0;
+      line-height: 0;
+    }
+  }
+}
+
+// Стили только для ссылок на файлы (документы)
+.bubble .attachment-item:not(.attachment-item--media) a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: $radius-sm;
+  text-decoration: none;
+  border: none;
+  @include transition-all($transition-fast);
+  max-width: 100%;
+  word-break: break-word;
+}
+
+// Attachment links in regular messages (other person)
+.bubble-other .attachment-item a {
+  background: rgba(0, 0, 0, 0.05);
+  color: inherit;
+}
+
+.bubble-other .attachment-item a:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+// Attachment links in own messages
+.bubble-me .attachment-item a {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.bubble-me .attachment-item a:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+// Icons in attachments
+.bubble .attachment-item a i {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.bubble-me .attachment-item a i {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+// Text truncation for file names
+.bubble .attachment-item a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0; // Important for flex items
+}
+
+.message-attachments video,
+.message-attachments img,
+.message-attachments audio {
+  max-width: 100%;
+  width: auto;
+  border-radius: $radius-sm;
+}
+
+// TODO: Исследовать почему у медиа остаются большие отступы
+// Возможные причины: кэш браузера, конфликты с Bootstrap, line-height на родителях
+// Попробовать: добавить !important, проверить в DevTools computed styles
+// Убираем верхний отступ если вложение - только медиа без текста
+.message-attachments:has(.attachment-item--media):not(:has(.attachment-item:not(.attachment-item--media))) {
+  margin-top: 0.25rem; // Уменьшенный отступ для медиа (вместо mt-2 = 0.5rem)
+}
+
+.chat-media {
+  display: block;
+  width: auto;
+  max-width: min(640px, 85vw);
+  max-height: 520px;
+  border-radius: $radius-md;
+  background: rgba(0, 0, 0, 0.08);
+  content-visibility: auto;
+  vertical-align: top;
+}
+
+// Telegram approach: изображения с aspect-ratio занимают полную ширину контейнера
+// Это позволяет браузеру резервировать место до загрузки → нет скачка скролла
+.chat-media--image[style*="aspect-ratio"] {
+  width: 100% !important;
+  height: auto !important;
+}
+
+// Убираем этот конфликтующий селектор - заменяем на более специфичный
+.message-attachments .attachment-item:not(.attachment-item--media) > a,
+.message-attachments .attachment-item:not(.attachment-item--media) > video,
+.message-attachments .attachment-item:not(.attachment-item--media) > img {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.chat-media--video {
+  background: #000;
+  object-fit: contain;
+}
+
+.chat-media--image {
+  object-fit: cover;
+}
+
+.message-pending .chat-media {
+  min-width: 90px;
+  min-height: 64px;
+}
+
+.message-pending .bubble {
+  position: relative;
+  opacity: 0.8;
+}
+
+/* Состояния сообщений */
+.message-failed {
+  opacity: 0.6;
+
+  .bubble {
+    border: 1px solid var(--bs-danger);
+    background: color-mix(in srgb, var(--bs-danger) 10%, transparent);
+  }
+}
+
+// Контент сообщения
+.message-content {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Режим выделения сообщений */
+.selection-mode {
+  .msg {
+    cursor: pointer;
+    transition: background-color $transition-fast;
+
+    &:hover {
+      background: var(--bs-tertiary-bg);
+    }
+
+    &.selected {
+      background: color-mix(in srgb, var(--bs-primary) 10%, transparent);
+    }
+  }
+
+  .msg-select-checkbox {
+    position: absolute;
+    left: var(--space-1);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--bs-border-color);
+    @include radius(50%);
+    background: var(--bs-body-bg);
+    cursor: pointer;
+    transition: all $transition-fast;
+    @include flex-center();
+    z-index: 2;
+
+    &::after {
+      content: '\f26b'; // Bootstrap icon checkmark
+      font-family: 'bootstrap-icons';
+      color: #fff;
+      font-size: 12px;
+      opacity: 0;
+      transform: scale(0);
+      transition: all $transition-fast;
+    }
+
+    &.selected {
+      background: var(--bs-primary);
+      border-color: var(--bs-primary);
+
+      &::after {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+  }
+}
+
+.message-attachments .text-secondary {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.bubble-me .message-attachments .text-secondary {
+  color: rgba(255, 255, 255, 0.9) !important;
+  opacity: 1;
+}
+
+.bubble-me .message-attachments .fw-semibold {
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.bubble-me .message-attachments i {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.history-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  color: var(--bs-secondary-color);
+}
+
+.history-loader .spinner-border {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Выпадающее меню вложений */
+.dropdown-menu {
+  min-width: 200px;
+  border-radius: $radius-md;
+  @include shadow($shadow-md);
+  padding: 8px;
+}
+
+.dropdown-item {
+  border-radius: $radius-sm;
+  padding: 10px 12px;
+  @include transition(background-color, $transition-fast);
+}
+
+.dropdown-item:hover {
+  background: var(--bs-secondary-bg);
+}
+
+.dropdown-item i {
+  width: 24px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TYPING INDICATOR
+────────────────────────────────────────────────────────────── */
+.chat-typing-indicator {
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+  font-style: italic;
+  background: var(--bs-body-bg);
+  border-top: 1px solid var(--bs-border-color);
+  flex-shrink: 0;
+
+  &.d-none {
+    display: none !important;
+  }
+}
+
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--bs-secondary-color);
+    opacity: 0.6;
+    animation: typingBounce 1.4s infinite both;
+
+    &:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+  }
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-8px);
+  }
+}
+
+.typing-text {
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   HISTORY LOADER
+────────────────────────────────────────────────────────────── */
+.history-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+
+  .spinner-border {
+    width: 1rem;
+    height: 1rem;
+    border-width: 2px;
+  }
+
+  &.d-none {
+    display: none !important;
+  }
+}
+
+.initial-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5) 0;
+  color: var(--bs-secondary-color);
+
+  .spinner-border {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  p {
+    margin-top: var(--space-3);
+    font-size: 1rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SCROLL TO BOTTOM BUTTON
+────────────────────────────────────────────────────────────── */
+.scroll-to-bottom {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: $z-dropdown;
+  display: none;
+  width: 44px;
+  height: 44px;
+  @include circle();
+  padding: 0 !important;
+  border: none !important;
+  background: var(--bs-primary) !important;
+  color: #fff !important;
+  @include shadow($shadow-lg, rgba(var(--bs-primary-rgb), 0.25));
+  @include transition((transform, box-shadow), $transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+
+  i {
+    font-size: 1.25rem;
+  }
+
+  &:hover {
+    transform: scale(1.08);
+    box-shadow: 0 6px 20px rgba(var(--bs-primary-rgb), 0.35) !important;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  // Badge непрочитанных
+  .unread-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    @include flex-center();
+    @include radius($badge-radius);
+    background: var(--bs-danger);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    @include shadow($shadow-md);
+    transition: opacity $transition-fast, transform $transition-fast;
+    z-index: 1;
+
+    // Скрытое состояние
+    &.badge-hidden {
+      opacity: 0;
+      transform: scale(0.5);
+      pointer-events: none;
+    }
+  }
+
+  // Когда есть непрочитанные
+  &.has-unread {
+    .unread-badge {
+      opacity: 1;
+      transform: scale(1);
+      animation: badgePulse 2s ease-in-out infinite;
+    }
+  }
+}
+
+.scroll-to-bottom.show {
+  display: inline-flex;
+  opacity: 1;
+  pointer-events: auto;
+  animation: fadeInUp 0.3s ease;
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(var(--bs-danger-rgb), 0.3);
+  }
+  50% {
+    box-shadow: 0 2px 12px rgba(var(--bs-danger-rgb), 0.5);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Mobile стили для scroll button
+@media (max-width: 767.98px) {
+  .scroll-to-bottom {
+    right: var(--space-2);
+    bottom: var(--space-2);
+    width: 40px;
+    height: 40px;
+
+    i {
+      font-size: 1.125rem;
+    }
+
+    .unread-badge {
+      top: -4px;
+      right: -4px;
+      min-width: 18px;
+      height: 18px;
+      font-size: 10px;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MESSAGES LAYOUT
+────────────────────────────────────────────────────────────── */
+// Выравнивание аватара по низу сообщения
+.d-flex.msg {
+  align-items: flex-end;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BUBBLES & AVATARS
+────────────────────────────────────────────────────────────── */
+.bubble {
+  border-radius: $radius-lg;
+  padding: var(--space-1) var(--space-2);
+  word-break: break-word;
+  white-space: pre-line; /* Сохраняет \n, но схлопывает пробелы из HTML */
+  max-width: 70%; /* Ограничиваем ширину bubble */
+  @include shadow($shadow-xs);
+  user-select: text; /* Разрешаем выделение текста */
+  cursor: text; /* Курсор текстового выделения */
+
+  // Специально для голосований - схлопываем whitespace
+  .poll-widget,
+  .poll-question,
+  .poll-options,
+  .poll-option,
+  .poll-footer {
+    white-space: normal;
+  }
+}
+
+.bubble-me {
+  background: color-mix(in srgb, var(--bs-primary) 92%, #fff 0%);
+  color: #fff;
+}
+
+.bubble-other {
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+}
+
+.mini-ava {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0; /* Не сжимать аватар */
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Кадрируем без деформации */
+    display: block;
+  }
+  
+  i {
+    font-size: 20px;
+    color: var(--bs-secondary-color);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DIVIDERS (день / непрочитанные)
+────────────────────────────────────────────────────────────── */
+.day-divider,
+.unread-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: 0.85rem;
+  line-height: 1;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
+}
+
+.day-divider::before,
+.day-divider::after,
+.unread-divider::before,
+.unread-divider::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: color-mix(in srgb, var(--bs-border-color), transparent 30%);
+}
+
+.day-divider > span,
+.unread-divider > span {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1);
+  background: transparent;
+}
+
+.day-divider {
+  color: var(--bs-secondary-color);
+}
+
+.unread-divider {
+  color: var(--bs-danger);
+}

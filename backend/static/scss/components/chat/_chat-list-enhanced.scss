@@ -1,0 +1,314 @@
+/**
+ * _chat-list-enhanced.scss
+ * Enhanced chat list with context menus, animations, avatars
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   CONTEXT MENU
+────────────────────────────────────────────────────────────── */
+.context-menu {
+  position: absolute;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: $radius-sm;
+  @include shadow($shadow-md);
+  padding: 4px 0;
+  min-width: 200px;
+  z-index: 9999;
+
+  button {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 8px 16px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &:hover {
+      background: #f8f9fa;
+    }
+  }
+
+  hr {
+    margin: 4px 0;
+    border-color: #dee2e6;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT ROW
+────────────────────────────────────────────────────────────── */
+.chat-row {
+  border-top: 1px solid var(--bs-border-color);
+  overflow: hidden;
+  min-height: 60px;
+
+  &.updated {
+    background: #e3f2fd;
+    @include transition(background, $transition-medium);
+  }
+
+  &.pinned {
+    background: #fffbeb;
+    border-left: 4px solid var(--bs-warning);
+  }
+
+  .flex-grow-1 {
+    min-width: 0;
+    overflow: hidden;
+
+    a,
+    .card-title {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+  }
+
+  [data-last-preview],
+  .card-subtitle {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  &:hover .chat-actions-menu .btn {
+    opacity: 1;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT SECTION
+────────────────────────────────────────────────────────────── */
+.chat-section {
+  overflow: visible !important;
+  position: relative;
+  z-index: 1;
+
+  &:has(.dropdown-menu.show) {
+    z-index: 1000;
+  }
+
+  .card-header {
+    text-align: center;
+    border-bottom: 1px solid var(--bs-border-color);
+
+    .card-icon {
+      display: none;
+    }
+
+    .card-meta {
+      width: 100%;
+      text-align: center;
+    }
+  }
+
+  .list-chats {
+    overflow: visible !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT AVATARS - КРУГЛЫЕ!
+────────────────────────────────────────────────────────────── */
+.chat-avatar,
+.card-icon img,
+.chat-list-wrapper .card-icon,
+.chat-row .card-icon,
+.chat-section .card-icon {
+  border-radius: 50% !important;
+}
+
+.chat-avatar,
+.card-icon img {
+  width: 44px !important;
+  height: 44px !important;
+  object-fit: cover;
+  border: 2px solid var(--bs-border-color);
+}
+
+.chat-list-wrapper .card-icon,
+.chat-row .card-icon {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50% !important;
+  overflow: hidden;
+}
+
+.chat-avatar-group {
+  display: flex;
+  align-items: center;
+
+  img {
+    margin-left: -8px;
+    border: 2px solid white;
+    border-radius: 50% !important;
+
+    &:first-child {
+      margin-left: 0;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT ACTIONS MENU
+────────────────────────────────────────────────────────────── */
+.chat-actions-menu {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  .btn {
+    opacity: 0;
+    @include transition(opacity, $transition-fast);
+
+    &:focus,
+    &[aria-expanded="true"] {
+      opacity: 1;
+    }
+  }
+
+  .dropdown-menu {
+    font-size: 0.9rem;
+    min-width: 200px;
+    z-index: 9999;
+    position: fixed !important;
+  }
+
+  .dropdown-item {
+    padding: 0.5rem 1rem;
+
+    i {
+      width: 20px;
+      text-align: center;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHAT TYPE SIDEBAR
+────────────────────────────────────────────────────────────── */
+:root {
+  --chat-sidebar-offset: 120px;
+}
+
+.chat-type-sidebar {
+  flex-shrink: 0;
+  align-self: flex-start;
+  position: sticky;
+  top: calc(var(--navbar-h, 60px) + var(--chat-sidebar-offset, 120px));
+
+  .card {
+    max-height: calc(100vh - var(--navbar-h, 60px) - var(--chat-sidebar-offset, 120px) - 24px);
+    overflow-y: auto;
+  }
+}
+
+.chat-type-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  position: relative;
+  cursor: pointer;
+  @include transition((background-color, opacity), $transition-fast);
+
+  &[style*="display: none"] {
+    display: none !important;
+  }
+
+  &:hover {
+    background-color: var(--bs-light) !important;
+  }
+
+  &.active {
+    background-color: var(--bs-primary) !important;
+
+
+    .badge {
+      background-color: rgba(255, 255, 255, 0.3) !important;
+    }
+  }
+
+  .badge {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: 50%;
+    font-size: 0.65rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE VERSION
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .chat-list-wrapper {
+    flex-direction: column !important;
+  }
+
+  .chat-type-sidebar {
+    width: 100% !important;
+    order: -1;
+    position: static;
+
+    .card {
+      max-height: none;
+      overflow: hidden;
+      padding: 0.25rem 0.5rem;
+      width: 100%;
+    }
+
+    .list-group {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 0.5rem;
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 0 0.25rem 0.25rem;
+      scrollbar-width: thin;
+      scroll-snap-type: x proximity;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+
+  .chat-type-btn {
+    flex: 0 0 auto;
+    min-width: 60px;
+    max-width: 80px;
+    padding: 0.5rem 0.25rem !important;
+    border-radius: 0.75rem !important;
+    border: 1px solid var(--bs-border-color) !important;
+    scroll-snap-align: start;
+
+    i {
+      font-size: 1.25rem !important;
+    }
+
+    .badge {
+      font-size: 0.6rem;
+      min-width: 1.1rem;
+      height: 1.1rem;
+    }
+  }
+}

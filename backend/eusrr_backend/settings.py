@@ -19,7 +19,8 @@ def _split_env_list(value: str) -> list[str]:
     return [x.strip() for x in (value or "").split(",") if x.strip()]
 
 
-ALLOWED_HOSTS = _split_env_list(os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1"))
+ALLOWED_HOSTS = _split_env_list(
+    os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1"))
 
 INSTALLED_APPS = [
     "daphne",
@@ -35,11 +36,15 @@ INSTALLED_APPS = [
     "widget_tweaks",
     "simple_history",
     "rest_framework",
-    "django_filters",
+    # Celery приложения
+    "django_celery_beat",  # Периодические задачи
+    "django_celery_results",  # Хранение результатов
+    # Основные приложения
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
     "hikcentral.apps.HikcentralConfig",
-    "calendar_app.apps.CalendarAppConfig",
+    "schedule",  # django-scheduler (проверенная библиотека для календаря)
+    "calendar_app.apps.CalendarAppConfig",  # Наше приложение календаря
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
@@ -64,7 +69,8 @@ MIDDLEWARE = [
     "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
     "eusrr_backend.middleware.AuthRequiredMiddleware",
     "eusrr_backend.middleware.EmailVerificationMiddleware",
-    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",  # IP ограничение для регистрации
+    # IP ограничение для регистрации
+    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",
     "eusrr_backend.middleware.CacheControlMiddleware",  # Cache-Control headers
 ]
 
@@ -210,6 +216,11 @@ LOGGING = {
         "documents": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "bots": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "api.v1.communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "notifications": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "requests_app": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "employees": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "common": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "aiogram": {"handlers": ["console"], "level": "INFO", "propagate": False},
         # полезно видеть ошибки и отладку ldap3
@@ -242,7 +253,8 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "true").lower() == "true"
 # Если SSL включён (465), TLS должен быть False
 EMAIL_USE_TLS = (
-    False if EMAIL_USE_SSL else (os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
+    False if EMAIL_USE_SSL else (
+        os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
 )
 DEFAULT_FROM_EMAIL = os.getenv(
     "DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "webmaster@localhost"
@@ -253,7 +265,8 @@ DEFAULT_FROM_EMAIL = os.getenv(
 # -----------------------------------------------------------------------------
 # Порог для определения массовой рассылки (количество получателей)
 # При массовой рассылке уведомления создаются быстро, а отправка идёт в фоне
-NOTIFICATION_BULK_THRESHOLD = int(os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
+NOTIFICATION_BULK_THRESHOLD = int(
+    os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
 
 # -----------------------------------------------------------------------------
 # CHANNELS & CACHE
@@ -292,8 +305,8 @@ CHANNEL_LAYERS = {
 # -----------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework_simplejwt.authentication.JWTAuthentication"
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -301,20 +314,21 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {"anon": "60/min"},
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "api.pagination.StandardPagination",
     "PAGE_SIZE": 20,
 }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_ACCESS_MIN", "30"))),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "7"))),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "90"))),
     "ALGORITHM": "HS256",
     "AUTH_HEADER_TYPES": ("Bearer",),
     "LEEWAY": 30,
 }
 
 # Автообновление JWT токенов: за сколько минут до истечения обновлять
-JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
+JWT_REFRESH_THRESHOLD_MINUTES = int(
+    os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 
 
 # -----------------------------------------------------------------------------
@@ -325,10 +339,12 @@ JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 # -----------------------------------------------------------------------------
 # Порядок важен: первый успешный бэкенд останавливает цепочку
 AUTHENTICATION_BACKENDS = [
-    "eusrr_backend.auth_backends.LDAP3Backend",  # работает только если LDAP_ENABLED=True
+    # работает только если LDAP_ENABLED=True
+    "eusrr_backend.auth_backends.LDAP3Backend",
     "eusrr_backend.auth_backends.EmailOrPhoneBackend",  # фоллбэк для режима без LDAP
     "eusrr_backend.auth_backends.SuperuserOnlyBackend",  # экстренный доступ для админа
-    "eusrr_backend.auth_backends.PositionRoleBackend",  # расчёт прав на основе должностей
+    # расчёт прав на основе должностей
+    "eusrr_backend.auth_backends.PositionRoleBackend",
     "django.contrib.auth.backends.ModelBackend",  # стандартный Django бэкенд
 ]
 
@@ -343,7 +359,8 @@ LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")
 LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
 
 # TLS/CA
-LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")  # путь к CA bundle/серту (если нужен)
+# путь к CA bundle/серту (если нужен)
+LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")
 LDAP_TLS_REQUIRED = os.getenv("LDAP_TLS_REQUIRED", "true").lower() == "true"
 
 # Где искать пользователей
@@ -369,6 +386,8 @@ LDAP_ATTR_MAIL = os.getenv("LDAP_ATTR_MAIL", "mail")
 LDAP_ATTR_GIVENNAME = os.getenv("LDAP_ATTR_GIVENNAME", "givenName")
 LDAP_ATTR_SN = os.getenv("LDAP_ATTR_SN", "sn")
 LDAP_ATTR_PHONE = os.getenv("LDAP_ATTR_PHONE", "telephoneNumber")
+# Атрибут LDAP для хранения Django pk сотрудника (employeeNumber по RFC 2798, employeeID для AD)
+LDAP_EMPLOYEE_ID_ATTR = os.getenv("LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
 LDAP_PHONE_ATTRS = tuple(
     _split_env_list(os.getenv("LDAP_PHONE_ATTRS", "mobile,telephoneNumber"))
 )
@@ -378,7 +397,8 @@ LDAP_SYNC_GROUPS = os.getenv("LDAP_SYNC_GROUPS", "false").lower() == "true"
 LDAP_GROUP_ATTR = os.getenv("LDAP_GROUP_ATTR", "memberOf")
 # Пример: {"CN=HR,OU=Groups,DC=...,DC=...": "hr"}
 LDAP_GROUP_MAP = {}
-LDAP_GROUPS_EXCLUSIVE = os.getenv("LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
+LDAP_GROUPS_EXCLUSIVE = os.getenv(
+    "LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
 
 # WRITE-BACK
 LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
@@ -426,6 +446,9 @@ LDAP_USER_BASE = os.getenv("LDAP_USER_BASE")
 LDAP_DEPARTMENTS_BASE = os.getenv(
     "LDAP_DEPARTMENTS_BASE", "OU=Departments,OU=company,DC=robotail,DC=local"
 )
+LDAP_DISMISSED_BASE = os.getenv(
+    "LDAP_DISMISSED_BASE", "OU=Dismissed,OU=company,DC=robotail,DC=local"
+)
 LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE")
 
 LDAP_AUTO_CREATE = os.getenv("LDAP_AUTO_CREATE", "False")
@@ -436,9 +459,64 @@ LDAP_REGISTRATION_CREATE = True
 LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE")
 
 
-
 BRAND_NAME = os.getenv("BRAND_NAME", "HiRo")
 BRAND_LOGO = "img/logo.png"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "eusrr_bot")
+
+# Web Push Notifications (VAPID)
+# Ключи для авторизации push-уведомлений
+VAPID_PUBLIC_KEY = os.getenv(
+    "VAPID_PUBLIC_KEY",
+    "BMTitZy9r4ygYJBgGdaZuCkb7rwR7iHLJv0DkNpaJOLESotONETWtZAQxnJVU_Yo9v-iYo-7dWEeF0VEjMcGMkQ"
+)
+VAPID_PRIVATE_KEY = os.getenv(
+    "VAPID_PRIVATE_KEY",
+    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCNnpupg3xbtFUiOSUZ6L7s6puxuEjzR73kTL7v8bMvKhRANCAATE4rWcva-MoGCQYBnWmbgpG-68Ee4hyyb9A5DaWiTixEqLTjRE1rWQEMZyVVP2KPb_omKPu3VhHhdFRIzHBjJE"
+)
+VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "robotail-info@yandex.ru")
+
+# -----------------------------------------------------------------------------
+# CELERY CONFIGURATION
+# -----------------------------------------------------------------------------
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv(
+    'CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
+
+# Сериализация
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Таймзона
+CELERY_TIMEZONE = 'Europe/Moscow'
+CELERY_ENABLE_UTC = True
+
+# Мониторинг и отладка
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 минут максимум на задачу
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Мягкий лимит - 25 минут
+
+# Приоритеты очередей
+CELERY_TASK_ROUTES = {
+    'notifications.tasks.*': {'queue': 'notifications'},
+    'documents.tasks.*': {'queue': 'default'},
+    'employees.tasks.*': {'queue': 'default'},
+}
+
+# Настройки для периодических задач (Celery Beat)
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Расписание периодических задач
+CELERY_BEAT_SCHEDULE = {
+    'cleanup-orphaned-attachments': {
+        'task': 'communications.tasks.cleanup_orphaned_attachments',
+        'schedule': 3600.0,  # Каждый час
+    },
+}
+
+# Опции по умолчанию для всех задач
+CELERY_TASK_ACKS_LATE = True  # Подтверждаем выполнение после завершения
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Берем по 1 задаче за раз
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000  # Перезапуск worker после 1000 задач

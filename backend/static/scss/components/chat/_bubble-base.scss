@@ -1,0 +1,208 @@
+/**
+ * _bubble-base.scss
+ * Базовые стили блока bubble (BEM Block)
+ * Содержит только структурные и типографские свойства, без цветов
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   БАЗОВЫЙ БЛОК
+────────────────────────────────────────────────────────────── */
+.bubble {
+  // Структура
+  display: block;
+  border-radius: $radius-lg;
+  padding: var(--space-1) var(--space-2);
+  max-width: 70%;
+  position: relative;
+  
+  // Типографика
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-line;
+  
+  // Взаимодействие
+  user-select: text;
+  cursor: text;
+  
+  // Визуальные эффекты
+  @include shadow($shadow-xs);
+  @include transition(box-shadow, $transition-fast);
+  
+  // Дефолтные цвета (для .bubble--other)
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+  
+  // CSS-переменные для темизации (переопределяются модификаторами)
+  --bubble-time-color: var(--bs-secondary);
+  --bubble-reply-bg: rgba(0, 0, 0, 0.05);
+  --bubble-reply-hover-bg: rgba(0, 0, 0, 0.08);
+  --bubble-reply-border: var(--bs-primary);
+  --bubble-reply-icon: var(--bs-primary);
+  --bubble-attachment-bg: rgba(0, 0, 0, 0.05);
+  --bubble-attachment-hover-bg: rgba(0, 0, 0, 0.08);
+  --bubble-attachment-text: inherit;
+  --bubble-attachment-icon: var(--bs-body-color);
+  --bubble-attachment-meta: var(--bs-secondary);
+  --bubble-poll-bg: var(--bs-secondary-bg);
+  --bubble-poll-text: var(--bs-body-color);
+  --bubble-poll-progress-bg: var(--bs-border-color);
+  --bubble-poll-progress-fill: var(--bs-primary);
+  --bubble-poll-meta: var(--bs-secondary);
+  
+  // Специальная обработка white-space для вложенных компонентов
+  // которым нужен normal режим
+  .poll-widget,
+  .poll-question,
+  .poll-options,
+  .poll-option,
+  .poll-footer {
+    white-space: normal;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ЭЛЕМЕНТЫ БЛОКА (BEM Elements)
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Автор сообщения (показывается только в чужих сообщениях)
+ */
+.bubble__author {
+  margin-bottom: 0.25rem;
+  
+  a {
+    text-decoration: none;
+    font-weight: 600;
+    color: var(--bs-primary);
+    @include transition(color, $transition-fast);
+    
+    &:hover {
+      color: var(--bs-primary-dark, color-mix(in srgb, var(--bs-primary) 80%, #000));
+    }
+  }
+}
+
+/**
+ * Основной контент сообщения
+ */
+.bubble__content {
+  // Типографика уже установлена в .bubble
+  line-height: 1.5;
+}
+
+/**
+ * Индикатор редактирования
+ */
+.bubble__edited {
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin-left: 0.25rem;
+  font-style: italic;
+}
+
+/**
+ * Индикатор закрепления
+ */
+.bubble__pinned {
+  color: var(--bs-warning);
+  font-size: 1rem;
+  opacity: 0.9;
+}
+
+/**
+ * Время отправки
+ */
+.bubble__time {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  opacity: 0.7;
+  color: var(--bubble-time-color, inherit);
+}
+
+/**
+ * Контейнер вложений
+ */
+.bubble__attachments {
+  margin-top: 0.5rem;
+}
+
+/**
+ * Контейнер голосования
+ */
+.bubble__poll {
+  margin-top: 0.5rem;
+}
+
+/**
+ * Превью ответа на сообщение
+ */
+.bubble__reply-preview {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bubble-reply-bg, rgba(0, 0, 0, 0.05));
+  border-left: 3px solid var(--bubble-reply-border, var(--bs-primary));
+  border-radius: $radius-xs;
+  cursor: pointer;
+  @include transition(background, $transition-fast);
+  
+  &:hover {
+    background: var(--bubble-reply-hover-bg, rgba(0, 0, 0, 0.08));
+  }
+  
+  i {
+    color: var(--bubble-reply-icon, var(--bs-primary));
+  }
+}
+
+/**
+ * Информация о переслании
+ */
+.bubble__forward {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  font-style: italic;
+  opacity: 0.8;
+  
+  i {
+    color: var(--bs-info);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   СОСТОЯНИЯ (BEM States через data-атрибуты или классы)
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Анимация появления нового сообщения
+ */
+.bubble--animating {
+  animation: bubbleSlideIn 0.3s ease-out;
+}
+
+@keyframes bubbleSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/**
+ * Подсветка при навигации к сообщению
+ */
+.bubble--highlighted {
+  animation: bubbleHighlight 1s ease-out;
+}
+
+@keyframes bubbleHighlight {
+  0%, 100% {
+    box-shadow: $shadow-xs;
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(var(--bs-primary-rgb), 0.25);
+  }
+}

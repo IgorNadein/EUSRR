@@ -1,0 +1,198 @@
+/**
+ * _sidebar.scss
+ * Стили левого сайдбара: навигация, активные элементы, переключатель темы
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   SIDEBAR LAYOUT
+────────────────────────────────────────────────────────────── */
+/* Offcanvas остаётся как есть (липкий ≥ lg) */
+#sidebar {
+  --bs-offcanvas-border-color: transparent;
+  --bs-offcanvas-border-width: 0;
+  --bs-offcanvas-border-radius: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: var(--bs-body-bg);
+}
+
+/* На десктопе sidebar становится sticky с фиксированной высотой
+   Высота = 100vh - navbar - 2*отступ (сверху и снизу)
+   top = navbar + отступ сверху
+   Не перемещается с основным скролом страницы, имеет свой внутренний скролл */
+@media (min-width: 992px) {
+  #sidebar.offcanvas-lg {
+    position: sticky;
+    top: calc(var(--navbar-h, 60px) + var(--layout-padding-y, 12px));
+    height: calc(100dvh - var(--navbar-h, 60px) - 2 * var(--layout-padding-y, 12px));
+    align-self: start;
+    overflow: auto;
+    border-right: .5px solid var(--bs-border-color);
+    transform: none !important;
+    visibility: visible !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   NAVIGATION SECTIONS
+────────────────────────────────────────────────────────────── */
+.side-section {
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+.side-hd {
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  padding: var(--space-1);
+  margin: 0 0 var(--space-1) var(--space-1);
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   NAV LINKS
+────────────────────────────────────────────────────────────── */
+.side-nav {
+  .nav-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .48rem .55rem;
+    border-radius: $radius-md;
+    color: var(--bs-body-color);
+    text-decoration: none;
+    border: 0;
+    background: transparent !important;
+    line-height: 1.15;
+    @include transition((background, color, transform, box-shadow), $transition-fast);
+    outline: none;
+
+    /* мягкий ховер */
+    &:hover {
+      color: var(--bs-primary);
+      background: color-mix(in srgb, var(--bs-primary) 10%, transparent);
+    }
+
+    /* видимая клавиатурная фокусировка */
+    &:focus-visible {
+      @include focus-ring();
+    }
+
+    /* активная «пилюля» + тонкий индикатор слева */
+    &.active {
+      color: var(--bs-primary);
+      font-weight: 800;
+      background: color-mix(in srgb, var(--bs-primary) 16%, transparent);
+
+      &::before {
+        content: "";
+        position: absolute;
+        left: -6px;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 2px;
+        background: var(--bs-primary);
+      }
+    }
+
+    /* «отключённый» пункт выглядит реально disabled */
+    &.disabled {
+      opacity: .5;
+      pointer-events: none;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ICONS & BADGES
+────────────────────────────────────────────────────────────── */
+.side-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+
+  > i {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+}
+
+.icon-wrap {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.nav-unread {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--space-1);
+  border-radius: 9999px;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 700;
+  background: var(--bs-danger);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .6);
+
+  [data-bs-theme="dark"] & {
+    border-color: rgba(0, 0, 0, .25);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   THEME SWITCHER BUTTON
+────────────────────────────────────────────────────────────── */
+.btn-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 36px;
+  padding: .35rem .75rem;
+  border-radius: 999px;
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
+  transition: transform .08s ease, background-color .25s ease, border-color .25s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, var(--bs-tertiary-bg) 90%, var(--bs-primary) 10%);
+    border-color: color-mix(in srgb, var(--bs-border-color), var(--bs-primary) 30%);
+  }
+
+  &:focus-visible {
+    outline: 0;
+    box-shadow: 0 0 0 2px rgba(var(--bs-primary-rgb), .25);
+  }
+
+  .bi {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .mode-label {
+    font-weight: 700;
+    font-size: .85rem;
+    opacity: .9;
+
+    @media (max-width: 576px) {
+      display: none;
+    }
+  }
+}

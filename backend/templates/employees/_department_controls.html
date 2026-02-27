@@ -2,9 +2,6 @@
 {# Контекст: dept, head_choices, roles, dept_perm_choices, can_manage, can_assign_roles, can_change_head #}
 
 {% load static %}
-{% block extra_css %}
-  <link rel="stylesheet" href="{% static 'css/components/department-controls.css' %}">
-{% endblock %}
 
 {% if can_manage %}
 <div class="ios-acc mb-3">

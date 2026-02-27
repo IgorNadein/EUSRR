@@ -62,15 +62,15 @@
             </div>
 
             <div class="card-subtitle mt-1">
-              {# Дата создания — ISO в datetime для машин, формат для людей #}
-              <time datetime="{{ request_obj.created_at|date:'c' }}">
-                {{ request_obj.created_at|date:"d.m.Y H:i" }}
+              {# Дата создания #}
+              <time datetime="">
+                {{ request_obj.created_at }}
               </time>
               {# Период, если указан #}
               {% if request_obj.date_from or request_obj.date_to %}
                 · Период:
-                {{ request_obj.date_from|date:'d.m.Y' }}
-                {% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+                {{ request_obj.date_from }}
+                {% if request_obj.date_to %} — {{ request_obj.date_to }}{% endif %}
               {% endif %}
             </div>
           </div>
@@ -118,7 +118,7 @@
         </header>
 
         <div class="card-body pt-0">
-          <form method="post" enctype="multipart/form-data">
+          <form method="post" enctype="multipart/form-data" id="decisionForm">
             {% csrf_token %}
 
             {# Неформатные ошибки формы (например, запрет смены финального статуса) #}
@@ -171,7 +171,7 @@
                       {{ c.author.get_full_name|default:c.author.username }}
                     </span>
                     <span class="text-secondary">·</span>
-                    <time class="text-muted">{{ c.created_at|date:"d.m.Y H:i" }}</time>
+                    <time class="text-muted">{{ c.created_at }}</time>
                   </div>
 
                   <form method="post"
@@ -191,7 +191,7 @@
             {% endfor %}
           </div>
 
-          
+
           <form class="mt-2 request-comment-form"
                 method="post"
                 action="{% url 'requests_app:request_comment_add' request_obj.pk %}?next={{ request.get_full_path|urlencode }}#comments">
@@ -229,5 +229,68 @@
 {{ block.super }}
 <script src="{% static 'js/components/requestComments.js' %}"></script>
 <!-- Emoji Picker Library -->
-<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+<script type="module" src="{% static 'vendor/emoji-picker/index.js' %}"></script>
+
+<script>
+  // Обработка формы решения без перезагрузки страницы
+  document.addEventListener('DOMContentLoaded', function() {
+    const decisionForm = document.getElementById('decisionForm');
+    if (!decisionForm) return;
+
+    decisionForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const formData = new FormData(this);
+      const submitBtn = this.querySelector('button[type="submit"]');
+      const originalText = submitBtn.innerHTML;
+
+      try {
+        // Показываем что загружаем
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сохранение...';
+
+        const response = await fetch(this.action || '', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+
+        // Получаем обновленное содержимое
+        const html = await response.text();
+
+        // Заменяем контент страницы
+        const parser = new DOMParser();
+        const newDoc = parser.parseFromString(html, 'text/html');
+        const newContent = newDoc.querySelector('[role="main"]') || newDoc.body;
+        const currentContent = document.querySelector('[role="main"]') || document.body;
+
+        currentContent.innerHTML = newContent.innerHTML;
+
+        // Показываем успех
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi-check-circle"></i> ✓ Сохранено';
+        submitBtn.classList.add('btn-success');
+        submitBtn.classList.remove('btn-primary');
+
+        // Возвращаем кнопку в исходное состояние через 2 секунды
+        setTimeout(() => {
+          submitBtn.innerHTML = originalText;
+          submitBtn.classList.remove('btn-success');
+          submitBtn.classList.add('btn-primary');
+        }, 2000);
+
+        // Прокручиваем вверх к результату
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      } catch (error) {
+        alert('Ошибка при сохранении: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+      }
+    });
+  });
+</script>
 {% endblock %}

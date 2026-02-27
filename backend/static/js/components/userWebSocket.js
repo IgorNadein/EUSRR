@@ -10,7 +10,6 @@
  */
 
 import { getChatAvatar } from './chatAvatarMap.js';
-import { formatDay, createDayDivider, createMessageElement } from './chatMessageTemplates.js';
 
 /**
  * Инициализирует WebSocket соединение для пользователя
@@ -85,9 +84,10 @@ export function initUserWebSocket(options = {}) {
     state.reconnectAttempts = 0;
 
     // Если есть активный чат на странице, открываем его
+    // load_history: false, так как ChatController уже загрузил сообщения через API
     const currentChatId = detectCurrentChatId();
     if (currentChatId) {
-      openChat(currentChatId, true);
+      openChat(currentChatId, false);
     }
   };
 
@@ -162,10 +162,12 @@ export function initUserWebSocket(options = {}) {
         break;
 
       case 'reaction_added':
+        console.log('[UserWS] ✅ reaction_added received:', data);
         handleReactionAdded(data);
         break;
 
       case 'reaction_removed':
+        console.log('[UserWS] ✅ reaction_removed received:', data);
         handleReactionRemoved(data);
         break;
 
@@ -180,6 +182,11 @@ export function initUserWebSocket(options = {}) {
       case 'poll_vote':
       case 'poll_update':
         handlePollUpdate(data);
+        break;
+      
+      case 'marked_read':
+        console.log('[UserWS] ✅ marked_read received:', data);
+        handleMarkedRead(data);
         break;
 
       case 'error':
@@ -248,37 +255,43 @@ export function initUserWebSocket(options = {}) {
     if (!state.scrollEl) return;
 
     const { messages } = data;
-    if (!messages || !messages.length) return;
-
-    // Используем MessageRenderer для добавления сообщений (с проверкой дубликатов)
-    if (!options.messageRenderer) {
-      console.error('[UserWebSocket] MessageRenderer not configured for initial_messages!');
-      return;
-    }
-
-    console.log('[UserWS] Rendering %d initial messages via MessageRenderer', messages.length);
-    messages.forEach(msg => {
-      options.messageRenderer.renderMessage(msg);
-    });
-
-    // Скроллим вниз
-    scrollToBottom(true);
     
-    // Убираем индикатор загрузки
+    // Убираем индикатор загрузки независимо от наличия сообщений
     const loader = document.getElementById('initialLoader');
     if (loader) {
       loader.remove();
     }
     
-    // Отправляем событие для других модулей
-    window.dispatchEvent(new CustomEvent('chat:initial-messages-loaded', {
-      detail: { count: messages.length }
+    console.log('[UserWS] Dispatching ws:initial-messages with %d messages', messages?.length || 0);
+    
+    // НОВАЯ АРХИТЕКТУРА: Dispatch события вместо прямого вызова renderer
+    // ChatController подпишется на это событие и обработает через MessageLoader
+    window.dispatchEvent(new CustomEvent('ws:initial-messages', {
+      detail: {
+        messages: messages || [],
+        chatId: state.activeChatId
+      }
     }));
     
+    // УСТАРЕВШЕЕ: Старая логика с messageRenderer остается для backward compatibility
+    // Удалится после полной миграции на ChatController
+    if (options.messageRenderer && messages?.length) {
+      console.log('[UserWS] [DEPRECATED] Using old messageRenderer for backward compatibility');
+      options.messageRenderer.renderMessages(messages);
+      
+      // Автоскролл только для старой архитектуры (НЕ V2)
+      // V2 управляет скроллом через ChatControllerV2
+      if (!window.chatControllerV2) {
+        requestAnimationFrame(() => {
+          state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
+        });
+      }
+    }
+    
     // Инициализируем голосования после загрузки сообщений
-    if (window.chatPoll) {
+    if (window.chatPoll && messages?.length) {
       console.log('[UserWS] Initializing polls after initial messages load');
-      window.chatPoll.initializeExistingPolls();
+      setTimeout(() => window.chatPoll.initializeExistingPolls(), 100);
     }
   }
 
@@ -288,38 +301,41 @@ export function initUserWebSocket(options = {}) {
     const { message } = data;
     if (!message) return;
 
-    // Рендерим сообщение через MessageRenderer
-    if (!options.messageRenderer) {
-      console.error('[UserWebSocket] MessageRenderer not configured!');
-      return;
-    }
-
-    options.messageRenderer.renderMessage(message);
+    console.log('[UserWS] Dispatching ws:new-message for message id=%s', message.id);
     
-    // Автоскролл если внизу
-    const isAtBottom = markReadApi?.atBottom?.() ?? true;
-    if (isAtBottom || message.author_id === userId) {
-      scrollToBottom();
-    }
-
-    // Отмечаем как прочитанное
-    const msgEl = state.scrollEl.querySelector(`[data-message-id="${message.id}"]`);
-    if (msgEl && markReadApi?.observeLastForeign) {
-      markReadApi.observeLastForeign(msgEl);
-    }
-
-    // Инициализируем реакции для нового сообщения
-    window.dispatchEvent(new CustomEvent('chat:message-added', {
-      detail: { messageElement: msgEl, messageId: message.id }
+    // НОВАЯ АРХИТЕКТУРА: Dispatch события для ChatController
+    window.dispatchEvent(new CustomEvent('ws:new-message', {
+      detail: {
+        message,
+        chatId: state.activeChatId,
+        isOwnMessage: message.author_id === userId
+      }
     }));
+    
+    // УСТАРЕВШЕЕ: Старая логика остается для backward compatibility
+    if (options.messageRenderer) {
+      console.log('[UserWS] [DEPRECATED] Using old messageRenderer for backward compatibility');
+      options.messageRenderer.renderMessage(message);
+      
+      const isAtBottom = markReadApi?.atBottom?.() ?? false;
+      const isOwnMessage = message.author_id === userId;
+      
+      // КРИТИЧНО: Не скроллим если работает ChatControllerV2
+      // V2 сам управляет автоскроллом через свою логику (isNearBottom, индикатор новых сообщений)
+      if (!window.chatControllerV2 && (isOwnMessage || isAtBottom)) {
+        requestAnimationFrame(() => scrollToBottom());
+      }
+      
+      const msgEl = state.scrollEl.querySelector(`[data-message-id="${message.id}"]`);
+      if (msgEl && markReadApi?.observeLastForeign) {
+        markReadApi.observeLastForeign(msgEl);
+      }
+    }
     
     // Если в сообщении есть голосование, инициализируем его
     if (message.poll && window.chatPoll) {
       console.log('[UserWS] New message with poll detected, poll_id=%s', message.poll.id);
-      // Небольшая задержка чтобы DOM успел обновиться
-      setTimeout(() => {
-        window.chatPoll.refreshPoll(message.poll.id);
-      }, 100);
+      setTimeout(() => window.chatPoll.refreshPoll(message.poll.id), 100);
     }
   }
 
@@ -327,11 +343,17 @@ export function initUserWebSocket(options = {}) {
     const { message } = data;
     if (!message) return;
 
-    // УСТАРЕЛО: Старая логика частичного обновления
-    // Теперь используем полную перерисовку через событие
-    console.log('[UserWebSocket] message_updated received, dispatching chat:message-edited');
+    console.log('[UserWS] Dispatching ws:message-edited for message id=%s', message.id);
     
-    // Диспатчим событие для полной перерисовки
+    // НОВАЯ АРХИТЕКТУРА: ChatController обработает через MessageLoader
+    window.dispatchEvent(new CustomEvent('ws:message-edited', {
+      detail: {
+        message,
+        chatId: data.chat_id || state.activeChatId
+      }
+    }));
+    
+    // Backward compatibility: старое событие
     window.dispatchEvent(new CustomEvent('chat:message-edited', {
       detail: {
         payload: message,
@@ -341,39 +363,32 @@ export function initUserWebSocket(options = {}) {
   }
 
   function handleMessageDeleted(data) {
-    console.log('[UserWebSocket] handleMessageDeleted called:', data);
+    console.log('[UserWS] handleMessageDeleted called:', data);
     
     const { message_id } = data;
     if (!message_id) {
-      console.warn('[UserWebSocket] No message_id in delete event');
+      console.warn('[UserWS] No message_id in delete event');
       return;
     }
 
-    console.log('[UserWebSocket] Looking for message element with id:', message_id);
-    console.log('[UserWebSocket] Scroll element:', state.scrollEl?.id);
+    console.log('[UserWS] Dispatching ws:message-removed for message id=%s', message_id);
     
+    // НОВАЯ АРХИТЕКТУРА: ChatController обработает через MessageLoader
+    window.dispatchEvent(new CustomEvent('ws:message-removed', {
+      detail: {
+        messageId: message_id,
+        chatId: data.chat_id || state.activeChatId
+      }
+    }));
+    
+    // УСТАРЕВШЕЕ: Старая логика для backward compatibility
     const msgEl = state.scrollEl?.querySelector(`[data-message-id="${message_id}"]`);
-    
     if (msgEl) {
-      console.log('[UserWebSocket] Message element found:', msgEl);
-      console.log('[UserWebSocket] Message element classes:', msgEl.className);
-      console.log('[UserWebSocket] Removing message from DOM...');
-      
-      // Плавная анимация удаления
+      console.log('[UserWS] [DEPRECATED] Using old direct DOM removal');
       msgEl.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
       msgEl.style.opacity = '0';
       msgEl.style.transform = 'scale(0.8)';
-      
-      setTimeout(() => {
-        msgEl.remove();
-        console.log('[UserWebSocket] Message removed successfully');
-      }, 300);
-    } else {
-      console.warn('[UserWebSocket] Message element NOT found for id:', message_id);
-      console.log('[UserWebSocket] Available messages:', 
-        Array.from(state.scrollEl?.querySelectorAll('[data-message-id]') || [])
-          .map(el => el.dataset.messageId)
-      );
+      setTimeout(() => msgEl.remove(), 300);
     }
   }
 
@@ -415,13 +430,28 @@ export function initUserWebSocket(options = {}) {
   function handleReactionAdded(data) {
     const { message_id, emoji, user_id, user_name, reactions_summary } = data;
     
+    console.log('[UserWS] Dispatching ws:reaction-added for message id=%s', message_id);
+    
+    // НОВАЯ АРХИТЕКТУРА: Событие для ChatController
+    window.dispatchEvent(new CustomEvent('ws:reaction-added', {
+      detail: {
+        messageId: message_id,
+        emoji,
+        userId: user_id,
+        userName: user_name,
+        reactionsSummary: reactions_summary,
+        chatId: state.activeChatId
+      }
+    }));
+    
+    // Backward compatibility: старое событие
     window.dispatchEvent(new CustomEvent('chat:reaction-added', {
       detail: { 
         messageId: message_id, 
         emoji, 
         userId: user_id, 
         userName: user_name,
-        reactions_summary: reactions_summary  // ← ДОБАВЛЕНО
+        reactions_summary: reactions_summary
       }
     }));
   }
@@ -429,12 +459,40 @@ export function initUserWebSocket(options = {}) {
   function handleReactionRemoved(data) {
     const { message_id, emoji, user_id, reactions_summary } = data;
     
+    console.log('[UserWS] Dispatching ws:reaction-removed for message id=%s', message_id);
+    
+    // НОВАЯ АРХИТЕКТУРА: Событие для ChatController
+    window.dispatchEvent(new CustomEvent('ws:reaction-removed', {
+      detail: {
+        messageId: message_id,
+        emoji,
+        userId: user_id,
+        reactionsSummary: reactions_summary,
+        chatId: state.activeChatId
+      }
+    }));
+    
+    // Backward compatibility: старое событие
     window.dispatchEvent(new CustomEvent('chat:reaction-removed', {
       detail: { 
         messageId: message_id, 
         emoji, 
         userId: user_id,
         reactions_summary: reactions_summary
+      }
+    }));
+  }
+  
+  function handleMarkedRead(data) {
+    const { chat_id, last_read_at, last_read_message_id } = data;
+    
+    console.log('[UserWS] Dispatching ws:marked-read for chat=%s', chat_id);
+    
+    window.dispatchEvent(new CustomEvent('ws:marked-read', {
+      detail: {
+        chat_id,
+        last_read_at,
+        last_read_message_id
       }
     }));
   }
@@ -502,8 +560,17 @@ export function initUserWebSocket(options = {}) {
   function scrollToBottom(instant = false) {
     if (!state.scrollEl) return;
     
-    if (markReadApi?.autoscroll) {
-      markReadApi.autoscroll(instant);
+    // Прямая установка scrollTop для предсказуемости
+    // Избегаем вызова markReadApi.autoscroll чтобы не было конфликтов
+    if (instant) {
+      const prev = state.scrollEl.style.scrollBehavior;
+      state.scrollEl.style.scrollBehavior = 'auto';
+      state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
+      if (prev) {
+        state.scrollEl.style.scrollBehavior = prev;
+      } else {
+        state.scrollEl.style.removeProperty('scroll-behavior');
+      }
     } else {
       state.scrollEl.scrollTop = state.scrollEl.scrollHeight;
     }
@@ -622,5 +689,11 @@ export function initUserWebSocket(options = {}) {
     isConnected: () => ws.readyState === WebSocket.OPEN
   };
 
+  // Сохраняем глобально для backward compatibility
+  window.userWebSocket = api;
+
   return api;
 }
+
+// Экспортируем также прямой API для использования в модулях
+export const getUserWebSocket = () => window.userWebSocket;

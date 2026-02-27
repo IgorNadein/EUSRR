@@ -430,3 +430,117 @@ class NotificationTemplate(models.Model):
     def __str__(self):
         return f'{self.notification_type.name} - {self.get_channel_display()}'
 
+
+class WebPushSubscription(models.Model):
+    """
+    Подписка пользователя на Web Push уведомления.
+    Хранит данные, полученные от браузера при подписке через Push API.
+    """
+    
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='web_push_subscriptions',
+        verbose_name='Пользователь'
+    )
+    
+    # Endpoint - URL для отправки push-сообщений (от браузера)
+    endpoint = models.URLField(
+        max_length=512,
+        verbose_name='Push Endpoint',
+        help_text='URL для отправки push уведомлений'
+    )
+    
+    # Ключ авторизации от браузера
+    auth_key = models.CharField(
+        max_length=512,
+        verbose_name='Auth Key',
+        help_text='Ключ авторизации (subscription.keys.auth)'
+    )
+    
+    # P-256 Diffie-Hellman ключ
+    p256dh_key = models.CharField(
+        max_length=512,
+        verbose_name='P256DH Key',
+        help_text='Ключ шифрования (subscription.keys.p256dh)'
+    )
+    
+    # Информация о браузере/устройстве
+    device_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        verbose_name='Название устройства',
+        help_text='iOS Device, Windows (Chrome), macOS (Safari), и т.д.'
+    )
+    
+    user_agent = models.TextField(
+        blank=True,
+        verbose_name='User Agent',
+        help_text='Браузер и ОС'
+    )
+    
+    # Активность
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name='Активна'
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Создана'
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='Обновлена'
+    )
+    last_used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Последнее использование'
+    )
+    
+    # Статистика ошибок
+    error_count = models.IntegerField(
+        default=0,
+        verbose_name='Счётчик ошибок'
+    )
+    last_error = models.TextField(
+        blank=True,
+        verbose_name='Последняя ошибка'
+    )
+    
+    class Meta:
+        verbose_name = 'Web Push подписка'
+        verbose_name_plural = 'Web Push подписки'
+        db_table = 'notifications_web_push_subscription'
+        # Уникальность по endpoint (один браузер = одна подписка)
+        unique_together = ['user', 'endpoint']
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f'WebPush: {self.user.email} ({self.endpoint[:50]}...)'
+    
+    def mark_used(self):
+        """Обновить время последнего использования"""
+        self.last_used_at = timezone.now()
+        self.save(update_fields=['last_used_at'])
+    
+    def increment_error(self, error_message: str = ''):
+        """Инкремент счётчика ошибок"""
+        self.error_count += 1
+        self.last_error = error_message[:1000] if error_message else ''
+        self.save(update_fields=['error_count', 'last_error'])
+        
+        # Деактивировать при 5+ ошибках
+        if self.error_count >= 5:
+            self.is_active = False
+            self.save(update_fields=['is_active'])
+    
+    def reset_errors(self):
+        """Сбросить счётчик ошибок при успешной доставке"""
+        if self.error_count > 0:
+            self.error_count = 0
+            self.last_error = ''
+            self.save(update_fields=['error_count', 'last_error'])

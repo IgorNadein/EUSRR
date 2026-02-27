@@ -23,13 +23,16 @@ Employee = get_user_model()
 @receiver(post_save, sender=Document)
 def create_document_notification(sender, instance, created, **kwargs):
     """
-    Создает уведомления при создании нового документа.
+    Создает уведомления при создании нового документа асинхронно.
     
     Уведомления отправляются:
     - Всем активным сотрудникам (если sent_to_all=True)
     - Сотрудникам выбранных отделов (через m2m_changed signal)
     - Выбранным получателям (через m2m_changed signal)
     """
+    from django.db import transaction
+    from notifications.tasks import process_document_notifications_task
+    
     logger.info(
         f"[notification_signals] post_save Document id={instance.pk} "
         f"created={created} sent_to_all={instance.sent_to_all}"
@@ -40,12 +43,25 @@ def create_document_notification(sender, instance, created, **kwargs):
     
     document = instance
     
-    # Если документ отправляется всем - создаем уведомления сразу
+    # Если документ отправляется всем - создаем уведомления сразу асинхронно
     if document.sent_to_all:
         logger.info(
-            f"[notification_signals] Calling notify_all_employees for doc={document.pk}"
+            f"[notification_signals] Queuing task for doc={document.pk} (sent_to_all=True)"
         )
-        notify_all_employees(document)
+        
+        def send_task():
+            """Отложенная отправка задачи после commit транзакции"""
+            try:
+                process_document_notifications_task.delay(document_id=document.pk)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to queue document notifications task: {e}, "
+                    f"falling back to sync"
+                )
+                # Fallback на старую логику
+                notify_all_employees(document)
+        
+        transaction.on_commit(send_task)
     else:
         logger.info(
             f"[notification_signals] Skipping notifications (sent_to_all=False), "
@@ -120,7 +136,7 @@ def notify_specific_recipients(sender, instance, action, pk_set, **kwargs):
                     )
                     
                     if settings.send_web:
-                        NotificationService.send_web_notification(notification)
+                        NotificationService.send_web_socket(notification)
                         notification.sent_web = True
                         notification.save(update_fields=['sent_web'])
                 except Exception as e:
@@ -256,7 +272,7 @@ def notify_department_employees(sender, instance, action, pk_set, **kwargs):
                     )
                     
                     if settings_obj.send_web:
-                        NotificationService.send_web_notification(notification)
+                        NotificationService.send_web_socket(notification)
                         notification.sent_web = True
                         notification.save(update_fields=['sent_web'])
                 except Exception as e:
@@ -333,7 +349,7 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
         total_recipients > 0 and
         document.uploaded_by):
         
-        NotificationService.create_notification(
+        NotificationService.create_notification_async(
             recipient=document.uploaded_by,
             notification_type_code='document_signed_all',
             title='Все ознакомились с документом',
@@ -342,7 +358,7 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
                 f'"{document.title}"'
             ),
             content_object=document,
-            action_url=f'/documents/{document.id}/',
+            action_url='/documents/',
             metadata={
                 'document_id': document.id,
                 'total_recipients': total_recipients,
@@ -397,7 +413,7 @@ def notify_all_employees(document):
                     
                     # Только веб
                     if settings.send_web:
-                        NotificationService.send_web_notification(notification)
+                        NotificationService.send_web_socket(notification)
                         notification.sent_web = True
                         notification.save(update_fields=['sent_web'])
                 except Exception as e:
@@ -452,7 +468,7 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
         else 'Администратор'
     )
     
-    notification = NotificationService.create_notification(
+    notification = NotificationService.create_notification_async(
         recipient=recipient,
         notification_type_code='document_ready',
         title='Новый документ на ознакомление',
@@ -461,7 +477,7 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
             f'Требуется ознакомление.'
         ),
         content_object=document,
-        action_url=f'/documents/{document.id}/',
+        action_url='/documents/',
         metadata={
             'document_id': document.id,
             'uploaded_by_id': (

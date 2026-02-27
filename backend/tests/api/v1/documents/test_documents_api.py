@@ -13,7 +13,6 @@ from __future__ import annotations
 Все функции и классы снабжены докстрингами (Google-style).
 """
 
-import itertools
 import tempfile
 from typing import Iterable
 
@@ -27,24 +26,14 @@ from django.utils import timezone
 from documents.models import Document, DocumentAcknowledgement
 from rest_framework import status
 from rest_framework.test import APIClient
+from tests.conftest import _unique_phone
 
 pytestmark = pytest.mark.django_db
 
 User = get_user_model()
 
 # -------------- helpers / factories --------------
-
-_phone_seq = itertools.count(1000)
-
-
-def _unique_phone() -> str:
-    """Генерирует уникальный валидный E.164 номер в рамках сессии тестов.
-
-    Returns:
-        str: Телефонный номер в формате +7999000xxx.
-    """
-    return f"+7999000{next(_phone_seq):03d}"
-
+# _unique_phone импортируется из tests.conftest
 
 def _file(name: str = "doc.pdf", content: bytes = b"x") -> SimpleUploadedFile:
     """Создаёт минимальный загружаемый файл.
@@ -59,7 +48,6 @@ def _file(name: str = "doc.pdf", content: bytes = b"x") -> SimpleUploadedFile:
     return SimpleUploadedFile(
         name=name, content=content, content_type="application/pdf"
     )
-
 
 def grant_perms(user: User, *codenames: str) -> None:
     """Выдаёт пользователю модельные права по кодовым именам из приложения documents.
@@ -77,7 +65,6 @@ def grant_perms(user: User, *codenames: str) -> None:
         )
         user.user_permissions.add(perm)
     user.save(update_fields=[])
-
 
 def make_document(
     *,
@@ -111,23 +98,7 @@ def make_document(
         doc.recipients.set(recipients)
     return doc
 
-
-@pytest.fixture
-def make_user(user_factory):
-    """Фабрика пользователей для тестов API уровня документов.
-
-    Args:
-        user_factory (Callable): Фабрика из tests/conftest.py.
-
-    Returns:
-        Callable[..., User]: Функция создания Employee.
-    """
-
-    def _make(email: str, **extra) -> User:
-        return user_factory(email=email, **extra)
-
-    return _make
-
+# make_user импортируется из tests.conftest
 
 @pytest.fixture
 def auth_client(auth_client_factory):
@@ -140,7 +111,6 @@ def auth_client(auth_client_factory):
         Callable[[User|None], APIClient]: Клиент с force_authenticate.
     """
     return auth_client_factory
-
 
 @pytest.fixture
 def api_urls():
@@ -162,15 +132,12 @@ def api_urls():
         "ack": _ack,
     }
 
-
 @pytest.fixture(autouse=True)
 def enable_media_files(settings):
     settings.MEDIA_ROOT = tempfile.mkdtemp()
     settings.DEBUG = True
 
-
 # -------------------- A. Роли и доступ --------------------
-
 
 class TestAuthAndPermissions:
     """A. Роли и доступ — статусы для разных ролей и прав."""
@@ -344,9 +311,7 @@ class TestAuthAndPermissions:
         # delete
         assert client.delete(api_urls["detail"](doc_id)).status_code in (200, 204)
 
-
 # -------------------- B. Создание (POST) --------------------
-
 
 @pytest.mark.django_db
 class TestCreate:
@@ -478,9 +443,7 @@ class TestCreate:
         assert active.id in ids
         assert inactive.id not in ids
 
-
 # -------------------- C. Чтение (GET) --------------------
-
 
 class TestRead:
     """C. Чтение: list/detail, структура, пагинация, file_url."""
@@ -551,9 +514,7 @@ class TestRead:
             body["file_url"] == expected_url
         ), f"Ожидался URL: {expected_url}, получен: {body['file_url']}"
 
-
 # -------------------- D. Обновление (PUT/PATCH) --------------------
-
 
 class TestUpdate:
     """D. Обновление документа (PUT/PATCH)."""
@@ -648,9 +609,7 @@ class TestUpdate:
         d.refresh_from_db()
         assert list(d.recipients.values_list("id", flat=True)) == [c.id]
 
-
 # -------------------- E. Удаление (DELETE) --------------------
-
 
 class TestDelete:
     """E. Удаление документа."""
@@ -679,9 +638,7 @@ class TestDelete:
         # каскад: записей нет
         assert not DocumentAcknowledgement.objects.filter(document=d).exists()
 
-
 # -------------------- F. Экшен acknowledge --------------------
-
 
 class TestAcknowledge:
     """F. Экшен POST /{id}/acknowledge/ — идемпотентность и политика доступа."""
@@ -743,9 +700,7 @@ class TestAcknowledge:
         )
         assert r.status_code == 403
 
-
 # -------------------- G. Сериализация и данные --------------------
-
 
 class TestSerialization:
     """G. Сериализация: uploaded_by/recipients поля и скачивание файла."""
@@ -788,9 +743,7 @@ class TestSerialization:
     #     resp = client.get(file_url)
     #     assert resp.status_code == 200
 
-
 # -------------------- H. Ошибки/краевые случаи --------------------
-
 
 class TestErrorsAndEdgeCases:
     """H. Неудачные Content-Type, perms и размер файла."""
@@ -855,9 +808,7 @@ class TestErrorsAndEdgeCases:
             # фиксируем текущий результат при отсутствии лимита
             assert r.status_code in (200, 201)
 
-
 # -------------------- I. Производительность/фильтры --------------------
-
 
 class TestPerformance:
     """I. N+1 и пагинация."""
@@ -898,9 +849,7 @@ class TestPerformance:
         r3 = client.get(api_urls["list"], {"page": 3})
         assert r3.status_code == 200
 
-
 # -------------------- J. Совместимость и безопасность --------------------
-
 
 class TestSecurityAndPolicy:
     """J. Базовая совместимость по авторизации и политика acknowledge."""

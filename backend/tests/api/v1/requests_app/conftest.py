@@ -17,7 +17,6 @@ from .contract import MODEL_VIEW_PERMISSION
 _phone_counter: Final = itertools.count(100_000_000)  # 9 цифр для номера после +79
 _email_counter: Final = itertools.count(1)  # для уникальных email по умолчанию
 
-
 def _detect_phone_field(User: type[models.Model]) -> Optional[str]:
     """Возвращает имя телефонного поля модели пользователя, если оно есть.
 
@@ -39,7 +38,6 @@ def _detect_phone_field(User: type[models.Model]) -> Optional[str]:
             continue
     return None
 
-
 def _next_ru_phone() -> str:
     """Генерирует уникальный российский номер в формате E.164 (+79XXXXXXXXX).
 
@@ -49,7 +47,6 @@ def _next_ru_phone() -> str:
     # примечание: переполнение счётчика в тестовой среде нереалистично
     return f"+79{next(_phone_counter):09d}"
 
-
 @pytest.fixture
 def api_client() -> APIClient:
     """Чистый DRF-клиент без авторизации.
@@ -58,7 +55,6 @@ def api_client() -> APIClient:
         APIClient: Клиент без заголовков авторизации.
     """
     return APIClient()
-
 
 @pytest.fixture
 def make_user() -> Callable[..., models.Model]:
@@ -128,18 +124,15 @@ def make_user() -> Callable[..., models.Model]:
 
     return _make_user
 
-
 @pytest.fixture
 def regular_user(make_user: Callable[..., models.Model]) -> models.Model:
     """Обычный пользователь без спецправ."""
     return make_user(email="regular@example.com")
 
-
 @pytest.fixture
 def admin_user(make_user: Callable[..., models.Model]) -> models.Model:
     """Администратор (суперпользователь)."""
     return make_user(email="admin@example.com", is_staff=True, is_superuser=True)
-
 
 @pytest.fixture
 def auth_client() -> Callable[[models.Model], APIClient]:
@@ -157,7 +150,6 @@ def auth_client() -> Callable[[models.Model], APIClient]:
 
     return _build
 
-
 @pytest.fixture
 def grant_model_perm(db):
     def _grant(user, perm_str: str):
@@ -173,7 +165,6 @@ def grant_model_perm(db):
         return get_user_model().objects.get(pk=user.pk)
 
     return _grant
-
 
 @pytest.fixture
 def make_request(db):

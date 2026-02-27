@@ -1,0 +1,182 @@
+// =============================================================================
+// Logout Modal (iOS-style) (SCSS)
+// =============================================================================
+// iOS-style модальное окно выхода с анимациями
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+$ios-avatar-size: 64px;
+$ios-icon-size: 56px;
+$ios-btn-min-height: 48px;
+$ios-border-radius: 16px;
+$ios-border-radius-desktop: 18px;
+$ios-grip-width: 36px;
+$ios-grip-height: 4px;
+
+// =============================================================================
+// OVERLAY
+// =============================================================================
+
+.ios-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  background: color-mix(in srgb, var(--bs-body-bg), #000 35%);
+  backdrop-filter: blur(10px) saturate(110%);
+  display: grid;
+  place-items: end center; // bottom sheet по умолчанию
+
+  @media (min-width: 992px) {
+    place-items: center; // центрируем на десктопе
+  }
+}
+
+// =============================================================================
+// SHEET / CARD
+// =============================================================================
+
+.ios-sheet {
+  width: 100%;
+  max-width: 560px;
+  background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+  border-radius: $ios-border-radius $ios-border-radius 0 0;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+  animation: slideUp 0.28s ease both;
+
+  @media (min-width: 992px) {
+    border-radius: $ios-border-radius-desktop;
+    animation: popIn 0.18s ease both;
+  }
+}
+
+// Грип-бар как в iOS
+.ios-grip {
+  width: $ios-grip-width;
+  height: $ios-grip-height;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bs-body-color), transparent 70%);
+  margin: var(--space-1) auto;
+}
+
+// =============================================================================
+// CONTENT
+// =============================================================================
+
+.ios-body {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+
+  @media (min-width: 992px) {
+    padding: var(--space-3);
+  }
+}
+
+.ios-title {
+  margin: 0.25rem 0;
+  text-align: center;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.ios-sub {
+  text-align: center;
+  color: var(--bs-secondary-color);
+  margin: 0 0 1rem;
+}
+
+// =============================================================================
+// AVATAR & ICON
+// =============================================================================
+
+.ios-ava {
+  width: $ios-avatar-size;
+  height: $ios-avatar-size;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+  background: var(--bs-tertiary-bg);
+  display: grid;
+  place-items: center;
+  margin: 0.25rem auto 0.75rem;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.ios-ico {
+  width: $ios-icon-size;
+  height: $ios-icon-size;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bs-danger), #000 12%);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  margin: 0.25rem auto 0.75rem;
+}
+
+// =============================================================================
+// BUTTONS
+// =============================================================================
+
+.ios-actions {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.ios-btn {
+  min-height: $ios-btn-min-height;
+  border-radius: 12px;
+  font-weight: 700;
+
+  &-danger {
+    background: var(--bs-danger);
+    border-color: var(--bs-danger);
+    color: #fff;
+
+    &:hover {
+      filter: brightness(1.02);
+    }
+  }
+
+  &-ghost {
+    background: color-mix(in srgb, var(--bs-body-bg), #fff 6%);
+    border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 20%);
+    color: var(--bs-body-color);
+
+    &:hover {
+      background: color-mix(in srgb, var(--bs-body-bg), #fff 9%);
+    }
+  }
+}
+
+// =============================================================================
+// ANIMATIONS
+// =============================================================================
+
+@keyframes slideUp {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

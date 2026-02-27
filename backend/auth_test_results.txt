@@ -1,0 +1,267 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.4.1, pluggy-1.6.0 -- C:\Users\nadeini\Dev\EUSRR\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+django: version: 5.2.4, settings: eusrr_backend.settings (from ini)
+rootdir: C:\Users\nadeini\Dev\EUSRR\backend
+configfile: pytest.ini
+plugins: anyio-4.12.0, django-4.11.1
+collecting ... collected 19 items
+
+tests/api/auth/test_auth_and_registration.py::test_register_success_sends_email_and_user_inactive FAILED [  5%]
+tests/api/auth/test_auth_and_registration.py::test_register_missing_required_field[first_name] PASSED [ 10%]
+tests/api/auth/test_auth_and_registration.py::test_register_missing_required_field[last_name] PASSED [ 15%]
+tests/api/auth/test_auth_and_registration.py::test_register_missing_required_field[phone_number] PASSED [ 21%]
+tests/api/auth/test_auth_and_registration.py::test_register_missing_required_field[email] PASSED [ 26%]
+tests/api/auth/test_auth_and_registration.py::test_register_missing_required_field[password] PASSED [ 31%]
+tests/api/auth/test_auth_and_registration.py::test_register_missing_required_field[birth_date] PASSED [ 36%]
+tests/api/auth/test_auth_and_registration.py::test_register_requires_at_least_one_contact PASSED [ 42%]
+tests/api/auth/test_auth_and_registration.py::test_register_birth_date_must_be_valid_date PASSED [ 47%]
+tests/api/auth/test_auth_and_registration.py::test_register_duplicate_email_phone FAILED [ 52%]
+tests/api/auth/test_auth_and_registration.py::test_register_accepts_optional_fields FAILED [ 57%]
+tests/api/auth/test_auth_and_registration.py::test_verify_email_success_activates_user FAILED [ 63%]
+tests/api/auth/test_auth_and_registration.py::test_verify_email_wrong_code FAILED [ 68%]
+tests/api/auth/test_auth_and_registration.py::test_resend_email_sends_new_code_and_old_becomes_invalid FAILED [ 73%]
+tests/api/auth/test_auth_and_registration.py::test_verify_expired_more_than_5_minutes_deletes_account FAILED [ 78%]
+tests/api/auth/test_auth_and_registration.py::test_login_by_email_denied_before_verify FAILED [ 84%]
+tests/api/auth/test_auth_and_registration.py::test_login_by_email_allowed_after_verify FAILED [ 89%]
+tests/api/auth/test_auth_and_registration.py::test_login_by_phone_allowed_after_verify FAILED [ 94%]
+tests/api/auth/test_auth_and_registration.py::test_login_wrong_password FAILED [100%]
+
+================================== FAILURES ===================================
+_____________ test_register_success_sends_email_and_user_inactive _____________
+
+api = <rest_framework.test.APIClient object at 0x0000013601BABB30>
+
+    def test_register_success_sends_email_and_user_inactive(api):
+        resp = register(api)
+>       assert resp.status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:102: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+Creating test database for alias 'default'...
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,115 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+_____________________ test_register_duplicate_email_phone _____________________
+
+api = <rest_framework.test.APIClient object at 0x0000013601C54B30>
+
+    def test_register_duplicate_email_phone(api):
+        # 1) Регистрируем первого пользователя (пока не подтверждён)
+        payload = register_payload()
+>       assert register(api, **payload).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x0000013601C54B30>, **{'birth_date': '1990-01-01', 'email': 'ivan@example.com', 'first_name': 'Иван', 'last_name': 'Иванов', ...})
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:149: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,550 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+____________________ test_register_accepts_optional_fields ____________________
+
+api = <rest_framework.test.APIClient object at 0x0000013601C56780>
+
+    def test_register_accepts_optional_fields(api):
+        resp = register(
+            api,
+            patronymic="Петрович",
+            gender=1,
+            whatsapp="+79995550011",  # можно указать другой контакт
+            telegram="",  # телеграм можно не указывать, т.к. whatsapp есть
+        )
+>       assert resp.status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:183: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,563 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '', 'patronymic': 'Петрович', 'gender': 1, 'whatsapp': '+79995550011'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')]}
+__________________ test_verify_email_success_activates_user ___________________
+
+api = <rest_framework.test.APIClient object at 0x0000013601C54530>
+
+    def test_verify_email_success_activates_user(api):
+>       assert register(api).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x0000013601C54530>)
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:190: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,574 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+________________________ test_verify_email_wrong_code _________________________
+
+api = <rest_framework.test.APIClient object at 0x0000013601DB01A0>
+
+    def test_verify_email_wrong_code(api):
+>       assert register(api).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x0000013601DB01A0>)
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:202: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,586 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+__________ test_resend_email_sends_new_code_and_old_becomes_invalid ___________
+
+api = <rest_framework.test.APIClient object at 0x0000013601CCEA50>
+
+    def test_resend_email_sends_new_code_and_old_becomes_invalid(api):
+>       assert register(api).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x0000013601CCEA50>)
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:212: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,598 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+___________ test_verify_expired_more_than_5_minutes_deletes_account ___________
+
+api = <rest_framework.test.APIClient object at 0x0000013601CCC290>
+settings = <pytest_django.fixtures.SettingsWrapper object at 0x0000013601CCF2F0>
+
+    def test_verify_expired_more_than_5_minutes_deletes_account(api, settings):
+        # Регистрируем
+>       assert register(api).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x0000013601CCC290>)
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:239: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,610 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+__________________ test_login_by_email_denied_before_verify ___________________
+
+api = <rest_framework.test.APIClient object at 0x00000136007A18E0>
+
+    def test_login_by_email_denied_before_verify(api):
+>       assert register(api).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x00000136007A18E0>)
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:258: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,622 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+__________________ test_login_by_email_allowed_after_verify ___________________
+
+api = <rest_framework.test.APIClient object at 0x00000136007A25D0>
+
+    def test_login_by_email_allowed_after_verify(api):
+>       assert register(api).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x00000136007A25D0>)
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:265: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,634 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+__________________ test_login_by_phone_allowed_after_verify ___________________
+
+api = <rest_framework.test.APIClient object at 0x0000013601B55490>
+
+    def test_login_by_phone_allowed_after_verify(api):
+        # Регистрируем с телефоном и подтверждаем
+        payload = register_payload()
+>       assert register(api, **payload).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x0000013601B55490>, **{'birth_date': '1990-01-01', 'email': 'ivan@example.com', 'first_name': 'Иван', 'last_name': 'Иванов', ...})
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:278: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,647 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+__________________________ test_login_wrong_password __________________________
+
+api = <rest_framework.test.APIClient object at 0x0000013601B56E40>
+
+    def test_login_wrong_password(api):
+>       assert register(api).status_code == status.HTTP_201_CREATED
+E       assert 400 == 201
+E        +  where 400 = <Response status_code=400, "application/json">.status_code
+E        +    where <Response status_code=400, "application/json"> = register(<rest_framework.test.APIClient object at 0x0000013601B56E40>)
+E        +  and   201 = status.HTTP_201_CREATED
+
+tests\api\auth\test_auth_and_registration.py:290: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[WARNING] 2026-01-05 07:59:47,659 django.request:253 Bad Request: /api/v1/auth/register/
+------------------------------ Captured log call ------------------------------
+WARNING  api.v1.employees.views:views.py:368 [REGISTER] Received data: {'first_name': 'Иван', 'last_name': 'Иванов', 'phone_number': '+79990000001', 'email': 'ivan@example.com', 'password': 'Str0ngPass!', 'birth_date': '1990-01-01', 'telegram': '@ivan'}
+WARNING  api.v1.employees.views:views.py:369 [REGISTER] Content-Type: application/json
+WARNING  api.v1.employees.views:views.py:387 [REGISTER] Validation errors: {'avatar': [ErrorDetail(string='Ни одного файла не было отправлено.', code='required')], 'gender': [ErrorDetail(string='Поле "Пол" обязательно для заполнения.', code='required')]}
+-------------------------- Captured stderr teardown ---------------------------
+Destroying test database for alias 'default'...
+============================== warnings summary ===============================
+tests/api/auth/test_auth_and_registration.py::test_register_success_sends_email_and_user_inactive
+  C:\Users\nadeini\Dev\EUSRR\.venv\Lib\site-packages\pyasn1\codec\ber\encoder.py:952: DeprecationWarning: tagMap is deprecated. Please use TAG_MAP instead.
+    warnings.warn(f"{attr} is deprecated. Please use {newAttr} instead.", DeprecationWarning)
+
+tests/api/auth/test_auth_and_registration.py::test_register_success_sends_email_and_user_inactive
+  C:\Users\nadeini\Dev\EUSRR\.venv\Lib\site-packages\pyasn1\codec\ber\encoder.py:952: DeprecationWarning: typeMap is deprecated. Please use TYPE_MAP instead.
+    warnings.warn(f"{attr} is deprecated. Please use {newAttr} instead.", DeprecationWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/api/auth/test_auth_and_registration.py::test_register_success_sends_email_and_user_inactive
+FAILED tests/api/auth/test_auth_and_registration.py::test_register_duplicate_email_phone
+FAILED tests/api/auth/test_auth_and_registration.py::test_register_accepts_optional_fields
+FAILED tests/api/auth/test_auth_and_registration.py::test_verify_email_success_activates_user
+FAILED tests/api/auth/test_auth_and_registration.py::test_verify_email_wrong_code
+FAILED tests/api/auth/test_auth_and_registration.py::test_resend_email_sends_new_code_and_old_becomes_invalid
+FAILED tests/api/auth/test_auth_and_registration.py::test_verify_expired_more_than_5_minutes_deletes_account
+FAILED tests/api/auth/test_auth_and_registration.py::test_login_by_email_denied_before_verify
+FAILED tests/api/auth/test_auth_and_registration.py::test_login_by_email_allowed_after_verify
+FAILED tests/api/auth/test_auth_and_registration.py::test_login_by_phone_allowed_after_verify
+FAILED tests/api/auth/test_auth_and_registration.py::test_login_wrong_password
+================== 11 failed, 8 passed, 2 warnings in 7.69s ===================

@@ -1,0 +1,378 @@
+// =============================================================================
+// Mixins - Reusable Style Patterns
+// =============================================================================
+// Переиспользуемые паттерны для DRY (Don't Repeat Yourself) подхода
+
+// =============================================================================
+// 1. GLASSMORPHISM EFFECTS
+// =============================================================================
+
+/// Применяет эффект glassmorphism (размытое стекло)
+/// @param {string} $blur - Уровень размытия (по умолчанию $blur-md)
+/// @param {color} $bg - Цвет фона с прозрачностью
+/// @param {color} $border - Цвет границы (опционально)
+@mixin glassmorphism($blur: $blur-md, $bg: $glass-light-bg, $border: null) {
+  backdrop-filter: $blur saturate(180%);
+  -webkit-backdrop-filter: $blur saturate(180%);
+  background: $bg;
+
+  @if $border {
+    border: 1px solid $border;
+  }
+}
+
+/// Glassmorphism для светлой темы
+@mixin glassmorphism-light() {
+  @include glassmorphism($blur-md, $glass-light-bg, $glass-light-border);
+}
+
+/// Glassmorphism для тёмной темы
+@mixin glassmorphism-dark() {
+  @include glassmorphism($blur-md, $glass-dark-bg, $glass-dark-border);
+}
+
+/// Glassmorphism для карточек
+@mixin glassmorphism-card() {
+  @include glassmorphism($blur-md, $card-glass-bg, $card-glass-border);
+  box-shadow: $card-glass-shadow;
+}
+
+// =============================================================================
+// 2. SHADOWS
+// =============================================================================
+
+/// Применяет тень с возможностью hover эффекта
+/// @param {string} $shadow - Базовая тень
+/// @param {string} $shadow-hover - Тень при наведении (опционально)
+@mixin shadow($shadow: $shadow-md, $shadow-hover: null) {
+  box-shadow: $shadow;
+
+  @if $shadow-hover {
+    transition: box-shadow $transition-base;
+
+    &:hover {
+      box-shadow: $shadow-hover;
+    }
+  }
+}
+
+/// Удаляет все тени
+@mixin no-shadow() {
+  box-shadow: none !important;
+}
+
+// =============================================================================
+// 3. BORDER RADIUS
+// =============================================================================
+
+/// Применяет border-radius с единым значением
+/// @param {string} $radius - Размер радиуса
+@mixin radius($radius: $radius-lg) {
+  border-radius: $radius;
+}
+
+/// Скругляет только верхние углы
+@mixin radius-top($radius: $radius-lg) {
+  border-top-left-radius: $radius;
+  border-top-right-radius: $radius;
+}
+
+/// Скругляет только нижние углы
+@mixin radius-bottom($radius: $radius-lg) {
+  border-bottom-left-radius: $radius;
+  border-bottom-right-radius: $radius;
+}
+
+/// Создаёт идеальный круг
+@mixin circle() {
+  border-radius: 50%;
+}
+
+/// Создаёт pill-образную форму (капсула)
+@mixin pill() {
+  border-radius: $radius-pill;
+}
+
+// =============================================================================
+// 4. FLEXBOX UTILITIES
+// =============================================================================
+
+/// Центрирует содержимое по обеим осям
+@mixin flex-center() {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/// Flexbox с вертикальным центрированием
+@mixin flex-align-center() {
+  display: flex;
+  align-items: center;
+}
+
+/// Flexbox с горизонтальным центрированием
+@mixin flex-justify-center() {
+  display: flex;
+  justify-content: center;
+}
+
+/// Flexbox со space-between
+@mixin flex-between() {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+// =============================================================================
+// 5. POSITION UTILITIES
+// =============================================================================
+
+/// Абсолютное позиционирование по центру
+@mixin absolute-center() {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/// Абсолютное позиционирование с полным покрытием
+@mixin absolute-cover() {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/// Sticky positioning с поддержкой navbar offset
+/// @param {string} $top - Отступ сверху
+@mixin sticky($top: 0) {
+  position: sticky;
+  top: $top;
+  z-index: $z-sticky;
+}
+
+// =============================================================================
+// 6. TRANSITIONS
+// =============================================================================
+
+/// Применяет transition к указанным свойствам
+/// @param {list} $properties - Список свойств для анимации
+/// @param {string} $duration - Длительность (по умолчанию $transition-base)
+@mixin transition($properties, $duration: $transition-base) {
+  transition-property: $properties;
+  transition-duration: $duration;
+  transition-timing-function: ease;
+}
+
+/// Плавная анимация для всех свойств
+@mixin transition-all($duration: $transition-base) {
+  transition: all $duration;
+}
+
+// =============================================================================
+// 7. SCROLLBAR STYLING
+// =============================================================================
+
+/// Кастомный scrollbar
+/// @param {color} $track-bg - Цвет трека
+/// @param {color} $thumb-bg - Цвет ползунка
+/// @param {string} $width - Ширина scrollbar
+@mixin custom-scrollbar($track-bg: rgba(0, 0, 0, 0.05), $thumb-bg: rgba(0, 0, 0, 0.3), $width: 6px) {
+  scrollbar-width: thin;
+  scrollbar-color: $thumb-bg $track-bg;
+
+  &::-webkit-scrollbar {
+    width: $width;
+    height: $width;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: $track-bg;
+    border-radius: $radius-sm;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $thumb-bg;
+    border-radius: $radius-sm;
+
+    &:hover {
+      background: rgba($thumb-bg, 0.8);
+    }
+  }
+}
+
+// =============================================================================
+// 8. TEXT UTILITIES
+// =============================================================================
+
+/// Обрезает текст с многоточием
+@mixin text-truncate() {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/// Ограничивает текст указанным количеством строк
+/// @param {number} $lines - Количество строк
+@mixin text-clamp($lines: 2) {
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+// =============================================================================
+// 9. HOVER EFFECTS
+// =============================================================================
+
+/// Стандартный hover эффект с opacity
+/// @param {number} $opacity - Прозрачность при наведении
+@mixin hover-opacity($opacity: 0.8) {
+  transition: opacity $transition-fast;
+  cursor: pointer;
+
+  &:hover {
+    opacity: $opacity;
+  }
+}
+
+/// Hover с подсветкой фона
+/// @param {color} $bg - Цвет фона при наведении
+@mixin hover-bg($bg: $gray-50) {
+  transition: background-color $transition-fast;
+  cursor: pointer;
+
+  &:hover {
+    background-color: $bg;
+  }
+}
+
+/// Hover с transform scale
+/// @param {number} $scale - Масштаб при наведении
+@mixin hover-scale($scale: 1.05) {
+  transition: transform $transition-base $ease-smooth;
+  cursor: pointer;
+
+  &:hover {
+    transform: scale($scale);
+  }
+}
+
+// =============================================================================
+// 10. BADGE UTILITIES
+// =============================================================================
+
+/// Создаёт базовый Telegram-style badge
+/// @param {string} $height - Высота badge
+/// @param {string} $radius - Border radius
+@mixin badge-base($height: $badge-height-base, $radius: $badge-radius) {
+  @include flex-center();
+  height: $height;
+  min-width: $height;
+  border-radius: $radius;
+  font-size: $badge-font-size;
+  font-weight: $badge-font-weight;
+  line-height: 1;
+}
+
+/// Badge с тенью
+@mixin badge-shadow() {
+  box-shadow: $badge-shadow;
+
+  &:hover {
+    box-shadow: $badge-shadow-hover;
+  }
+}
+
+// =============================================================================
+// 11. RESPONSIVE UTILITIES
+// =============================================================================
+
+/// Media query для mobile устройств
+@mixin mobile() {
+  @media (max-width: 767.98px) {
+    @content;
+  }
+}
+
+/// Media query для tablet устройств
+@mixin tablet() {
+  @media (min-width: 768px) and (max-width: 991.98px) {
+    @content;
+  }
+}
+
+/// Media query для desktop устройств
+@mixin desktop() {
+  @media (min-width: 992px) {
+    @content;
+  }
+}
+
+/// Media query для больших экранов
+@mixin large-desktop() {
+  @media (min-width: 1200px) {
+    @content;
+  }
+}
+
+// =============================================================================
+// 12. DARK MODE UTILITIES
+// =============================================================================
+
+/// Применяет стили для тёмной темы
+@mixin dark-mode() {
+  [data-bs-theme="dark"] & {
+    @content;
+  }
+}
+
+/// Применяет стили для светлой темы
+@mixin light-mode() {
+  [data-bs-theme="light"] & {
+    @content;
+  }
+}
+
+// =============================================================================
+// 13. ANIMATION UTILITIES
+// =============================================================================
+
+/// Fade-in анимация
+@mixin fade-in($duration: $transition-base) {
+  animation: fadeIn $duration ease-in;
+}
+
+/// Slide-down анимация
+@mixin slide-down($duration: $transition-base) {
+  animation: slideDown $duration $ease-smooth;
+}
+
+/// Pulse анимация
+@mixin pulse($duration: 2s) {
+  animation: pulse $duration infinite;
+}
+
+// =============================================================================
+// 14. FOCUS STATES
+// =============================================================================
+
+/// Bootstrap-style focus ring
+/// @param {color} $color - Цвет focus ring
+@mixin focus-ring($color: var(--bs-primary-rgb)) {
+  &:focus,
+  &:focus-visible {
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba($color, 0.25);
+  }
+}
+
+/// Убирает focus outline
+@mixin no-focus() {
+  &:focus,
+  &:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+}

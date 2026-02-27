@@ -1,0 +1,223 @@
+// =============================================================================
+// Design Tokens - Centralized Variables
+// =============================================================================
+// Централизованная система переменных для всего проекта
+// Все компоненты должны использовать эти токены вместо hardcoded значений
+
+// =============================================================================
+// 1. ЦВЕТОВАЯ СИСТЕМА
+// =============================================================================
+
+// Telegram colors
+$telegram-blue: #0088cc;
+$telegram-mention-bg: #0088cc;
+
+// Gradient colors
+$gradient-purple-start: #667eea;
+$gradient-purple-end: #764ba2;
+$gradient-pink-start: #f093fb;
+$gradient-pink-end: #f5576c;
+
+// Base colors
+$color-white: #fff;
+$color-black: #000;
+
+// Gray scale
+$gray-50: #f8f9fa;
+$gray-100: #f0f0f0;
+$gray-200: #e3e3e3;
+$gray-300: #dee2e6;
+$gray-400: #ced4da;
+$gray-500: #adb5bd;
+$gray-600: #6c757d;
+$gray-700: #495057;
+$gray-800: #343a40;
+$gray-900: #212529;
+
+// Semantic colors
+$color-danger: #ef4444;
+$color-success-light: #e3f2fd;
+$color-warning-light: #fffbeb;
+
+// =============================================================================
+// 2. SPACING SYSTEM (уже определена в custom-bootstrap.scss)
+// =============================================================================
+// Используем Bootstrap переменные $spacers
+// 0: 0, 1: 4px, 2: 8px, 3: 12px, 4: 16px, 5: 24px
+
+// =============================================================================
+// 3. BORDER RADIUS TOKENS
+// =============================================================================
+
+$radius-xs: 4px;   // extra small
+$radius-sm: 6px;   // small
+$radius-md: 10px;  // medium (most common)
+$radius-lg: 12px;  // large
+$radius-xl: 14px;  // extra large
+$radius-2xl: 16px; // 2x large
+$radius-3xl: 18px; // 3x large
+$radius-4xl: 20px; // 4x large
+$radius-pill: 999px; // perfect pill shape
+
+// Badge specific (perfect circles)
+$badge-radius: 10px;
+$badge-radius-sm: 9px;
+$badge-radius-lg: 12px;
+$badge-radius-xl: 14px;
+
+// =============================================================================
+// 4. SHADOW TOKENS
+// =============================================================================
+
+$shadow-none: none;
+$shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
+$shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+$shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.15);
+$shadow-xl: 0 4px 12px rgba(0, 0, 0, 0.15);
+$shadow-2xl: 0 4px 16px rgba(0, 0, 0, 0.2);
+$shadow-3xl: 0 6px 20px rgba(0, 0, 0, 0.3);
+
+// Badge specific shadows
+$badge-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+$badge-shadow-hover: 0 3px 6px rgba(0, 0, 0, 0.2);
+$badge-shadow-dark: 0 2px 4px rgba(0, 0, 0, 0.3);
+
+// Context menu shadows
+$context-menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+// =============================================================================
+// 5. BLUR TOKENS (для backdrop-filter)
+// =============================================================================
+
+$blur-none: blur(0);
+$blur-sm: blur(8px);
+$blur-md: blur(10px);
+$blur-lg: blur(12px);
+$blur-xl: blur(16px);
+
+// =============================================================================
+// 6. OPACITY TOKENS
+// =============================================================================
+
+$opacity-glass-light: 0.1;
+$opacity-glass-medium: 0.15;
+$opacity-glass-high: 0.2;
+
+$opacity-overlay-light: 0.05;
+$opacity-overlay-medium: 0.1;
+$opacity-overlay-dark: 0.3;
+
+$opacity-border-light: 0.08;
+$opacity-border-medium: 0.1;
+$opacity-border-dark: 0.25;
+
+// =============================================================================
+// 7. TRANSITION TOKENS
+// =============================================================================
+
+$transition-fast: 0.15s ease;
+$transition-base: 0.2s ease;
+$transition-medium: 0.3s ease;
+$transition-slow: 0.4s ease;
+
+// Специальные easing функции
+$ease-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+$ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+// Badge specific
+$badge-transition: transform 0.2s $ease-bounce;
+
+// =============================================================================
+// 8. Z-INDEX TOKENS
+// =============================================================================
+
+$z-base: 1;
+$z-dropdown: 1000;
+$z-sticky: 1020;
+$z-fixed: 1030;
+$z-modal-backdrop: 1040;
+$z-modal: 1050;
+$z-popover: 1060;
+$z-tooltip: 1070;
+$z-notification: 1080;
+
+// =============================================================================
+// 9. SIZE TOKENS (avatars, badges, icons)
+// =============================================================================
+
+// Badge heights
+$badge-height-sm: 18px;
+$badge-height-base: 20px;
+$badge-height-lg: 24px;
+$badge-height-xl: 28px;
+
+// Badge padding
+$badge-padding-x: 7px;
+$badge-padding-y: 2px;
+
+// Avatar sizes
+$avatar-xs: 24px;
+$avatar-sm: 32px;
+$avatar-md: 40px;
+$avatar-lg: 44px;
+$avatar-xl: 48px;
+$avatar-2xl: 56px;
+
+// Icon button sizes
+$btn-icon-sm: 32px;
+$btn-icon-base: 36px;
+$btn-icon-lg: 44px;
+
+// =============================================================================
+// 10. GLASSMORPHISM PRESETS
+// =============================================================================
+
+// Light theme glassmorphism
+$glass-light-bg: rgba(255, 255, 255, 0.1);
+$glass-light-border: rgba(0, 0, 0, 0.08);
+
+// Dark theme glassmorphism
+$glass-dark-bg: rgba(52, 58, 64, 0.95);
+$glass-dark-border: rgba(255, 255, 255, 0.1);
+
+// Card glassmorphism
+$card-glass-bg: rgba(255, 255, 255, 0.05);
+$card-glass-border: rgba(255, 255, 255, 0.1);
+$card-glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+
+// =============================================================================
+// 11. TYPOGRAPHY TOKENS (дополнительные)
+// =============================================================================
+
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+$font-size-xs: 11px;
+$font-size-sm: 12px;
+$font-size-base: 14px;
+$font-size-md: 16px;
+$font-size-lg: 18px;
+
+// Badge specific
+$badge-font-size: 11px;
+$badge-font-weight: 600;
+
+// =============================================================================
+// 12. LAYOUT TOKENS
+// =============================================================================
+
+// Navbar
+$navbar-height: 56px;
+$navbar-mobile-height: 90px;
+$bottom-navbar-height: 60px;
+
+// Sidebar
+$sidebar-width: 240px;
+$sidebar-collapsed-width: 60px;
+
+// Chat specific
+$chat-composer-height: auto;
+$chat-message-max-width: 70%;

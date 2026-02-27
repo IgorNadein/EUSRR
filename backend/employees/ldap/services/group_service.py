@@ -164,7 +164,7 @@ class GroupService:
         if not members and op in (MODIFY_ADD, MODIFY_DELETE):
             return
         ignore = (
-            {"typeOrValueExists"}
+            {"typeOrValueExists", "entryAlreadyExists"}
             if op == MODIFY_ADD
             else (
                 {"noSuchAttribute", "noSuchObject"}

@@ -7,15 +7,9 @@ from django.contrib.auth.models import Group, Permission
 from django.urls import reverse
 from employees.models import Employee, Position
 from rest_framework import status
+from tests.conftest import _unique_phone
 
 # ---------- helpers ----------
-
-_phone_seq = count(1)
-
-
-def _unique_phone() -> str:
-    return f"+7999{next(_phone_seq):07d}"
-
 
 def _grant_perm(user, code: str):
     app_label, codename = code.split(".")

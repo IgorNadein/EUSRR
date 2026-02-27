@@ -11,10 +11,12 @@ from requests_app.models import Request as Req
 from requests_app.enums import RequestStatus, RequestType
 from django.contrib.auth import get_user_model
 
+from tests.test_config import API_REQUESTS_URL
+
 
 pytestmark = pytest.mark.django_db
 
-API_BASE = "/api/v1/requests/"
+API_BASE = API_REQUESTS_URL
 
 
 def _results(payload: Any) -> List[Dict[str, Any]]:

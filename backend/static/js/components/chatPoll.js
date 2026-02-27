@@ -6,7 +6,7 @@
 export class ChatPoll {
 	constructor(options = {}) {
 		this.chatId = options.chatId;
-		this.createUrl = options.createUrl || '/api/v1/communications/polls/create/';
+		this.createUrl = options.createUrl || '/api/v1/communications/polls/';
 		this.voteUrl = options.voteUrl || '/api/v1/communications/polls/{poll_id}/vote/';
 		this.closeUrl = options.closeUrl || '/api/v1/communications/polls/{poll_id}/close/';
 		this.resultsUrl = options.resultsUrl || '/api/v1/communications/polls/{poll_id}/results/';
@@ -523,7 +523,7 @@ export class ChatPoll {
 				body: JSON.stringify({
 					chat_id: this.chatId,
 					question,
-					options,
+					options_data: options,  // Исправлено: options_data вместо options
 					is_anonymous: isAnonymous,
 					is_multiple_choice: isMultiple,
 					is_quiz: isQuiz,

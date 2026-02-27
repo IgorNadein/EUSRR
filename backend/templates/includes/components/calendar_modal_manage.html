@@ -1,0 +1,218 @@
+{# Модальное окно управления календарём #}
+<div class="modal fade" id="calendarManageModal" tabindex="-1" aria-labelledby="calendarManageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="calendarManageModalLabel">
+          <i class="bi-calendar3 me-2"></i>
+          <span id="calendarManageModalTitle">Создать календарь</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+
+      <div class="modal-body">
+        <form id="calendarManageForm">
+          <input type="hidden" id="calendarId" name="calendar_id" value="">
+
+          {# Название #}
+          <div class="mb-3">
+            <label for="calendarTitle" class="form-label">
+              Название <span class="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              class="form-control"
+              id="calendarTitle"
+              name="title"
+              required
+              placeholder="Например: Мой календарь"
+              maxlength="200"
+            >
+          </div>
+
+          {# Описание #}
+          <div class="mb-3">
+            <label for="calendarDescription" class="form-label">Описание</label>
+            <textarea
+              class="form-control"
+              id="calendarDescription"
+              name="description"
+              rows="3"
+              placeholder="Краткое описание календаря..."
+            ></textarea>
+          </div>
+
+          {# Цвет и иконка #}
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="calendarColor" class="form-label">Цвет</label>
+              <div class="input-group">
+                <input
+                  type="color"
+                  class="form-control form-control-color"
+                  id="calendarColor"
+                  name="color"
+                  value="#0d6efd"
+                  title="Выберите цвет календаря"
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="calendarColorText"
+                  value="#0d6efd"
+                  pattern="^#[0-9A-Fa-f]{6}$"
+                  maxlength="7"
+                >
+              </div>
+              <div class="form-text">Для выделения событий</div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label for="calendarIcon" class="form-label">Иконка (опц.)</label>
+              <input
+                type="text"
+                class="form-control"
+                id="calendarIcon"
+                name="icon"
+                placeholder="calendar-event"
+                maxlength="50"
+              >
+              <div class="form-text">Bootstrap Icons</div>
+            </div>
+          </div>
+
+          {# Владелец календаря #}
+          <div class="mb-3">
+            <label class="form-label">Владелец <span class="text-danger">*</span></label>
+
+            <div class="form-check">
+              <input
+                class="form-check-input"
+                type="radio"
+                name="owner_type"
+                id="ownerTypePersonal"
+                value="personal"
+                checked
+              >
+              <label class="form-check-label" for="ownerTypePersonal">
+                <i class="bi-person-fill me-1"></i>
+                Я (личный календарь)
+              </label>
+            </div>
+
+            <div class="form-check mt-2">
+              <input
+                class="form-check-input"
+                type="radio"
+                name="owner_type"
+                id="ownerTypeDepartment"
+                value="department"
+              >
+              <label class="form-check-label" for="ownerTypeDepartment">
+                <i class="bi-building me-1"></i>
+                Отдел
+              </label>
+            </div>
+
+            <div class="form-check mt-2">
+              <input
+                class="form-check-input"
+                type="radio"
+                name="owner_type"
+                id="ownerTypeGlobal"
+                value="global"
+              >
+              <label class="form-check-label" for="ownerTypeGlobal">
+                <i class="bi-globe me-1"></i>
+                Глобальный (без владельца)
+              </label>
+              <div class="form-text ms-4 text-muted">Только для администраторов</div>
+            </div>
+          </div>
+
+          {# Выбор отдела (показывается только для owner_type="department") #}
+          <div class="mb-3 d-none" id="calendarDepartmentSelect">
+            <label for="calendarDepartment" class="form-label">
+              Отдел <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="calendarDepartment" name="owner_department">
+              <option value="">Выберите отдел...</option>
+              {# Будет заполнено из JS #}
+            </select>
+          </div>
+
+          {# Видимость #}
+          <div class="mb-3">
+            <label for="calendarVisibility" class="form-label">Видимость</label>
+            <select class="form-select" id="calendarVisibility" name="visibility">
+              <option value="custom">Настраиваемая (через подписки)</option>
+              <option value="public">Публичная (все видят)</option>
+              <option value="department">Отдел (только члены отдела)</option>
+              <option value="private">Приватная (только владелец)</option>
+            </select>
+            <div class="form-text">Кто может просматривать календарь</div>
+          </div>
+
+          {# Дополнительные настройки #}
+          <div class="mb-3">
+            <label class="form-label">Настройки доступа</label>
+
+            <div class="form-check form-switch">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="calendarDefaultCanEdit"
+                name="default_can_edit"
+              >
+              <label class="form-check-label" for="calendarDefaultCanEdit">
+                Подписчики могут редактировать по умолчанию
+              </label>
+              <div class="form-text">Новые подписчики смогут создавать/редактировать события</div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Автоматическая подписка</label>
+
+            <div class="form-check form-switch">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="calendarAutoSubscribeNewUsers"
+                name="auto_subscribe_new_users"
+              >
+              <label class="form-check-label" for="calendarAutoSubscribeNewUsers">
+                Автоматически подписывать новых пользователей
+              </label>
+            </div>
+
+            <div class="form-check form-switch mt-2 d-none" id="calendarAutoSubscribeDeptWrapper">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="calendarAutoSubscribeDept"
+                name="auto_subscribe_department_members"
+              >
+              <label class="form-check-label" for="calendarAutoSubscribeDept">
+                Автоматически подписывать членов отдела
+              </label>
+            </div>
+          </div>
+
+          {# Сообщение об ошибке #}
+          <div id="calendarManageError" class="alert alert-danger d-none" role="alert"></div>
+        </form>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-danger d-none" id="calendarDeleteBtn">
+          <i class="bi-trash me-1"></i> Удалить
+        </button>
+        <button type="button" class="btn btn-primary" id="calendarSaveBtn">
+          <i class="bi-check-lg me-1"></i> Сохранить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

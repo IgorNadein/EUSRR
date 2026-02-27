@@ -7,8 +7,10 @@ import pytest
 from django.db import transaction
 from django.utils.crypto import get_random_string
 
-# Константа API — как и в существующих тестах
-API_BASE = "/api/v1/requests/"
+from tests.test_config import API_REQUESTS_URL
+
+# Константа API
+API_BASE = API_REQUESTS_URL
 
 
 from employees.models import (

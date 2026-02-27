@@ -7,25 +7,15 @@ from rest_framework import status
 from employees.models import Employee
 from feed.models import Post, Comment
 from feed.constants import TYPE_EMPLOYEE, TYPE_COMPANY
+from tests.conftest import _unique_email, _unique_phone
 
 
 # ---------- helpers ----------
 
-_seq = 1
-def _uniq_email(prefix="u"):
-    global _seq
-    _seq += 1
-    return f"{prefix}{_seq}@example.com"
-
-def _uniq_phone():
-    global _seq
-    _seq += 1
-    return f"+7999{_seq:07d}"
-
 def _user(staff=False, superuser=False) -> Employee:
     u = Employee.objects.create_user(
-        email=_uniq_email(), password="pass",
-        phone_number=_uniq_phone(),
+        email=_unique_email(), password="pass",
+        phone_number=_unique_phone(),
         send_activation_email=False, first_name="T", last_name="U",
     )
     if staff:

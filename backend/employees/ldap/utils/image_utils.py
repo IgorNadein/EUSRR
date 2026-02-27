@@ -13,18 +13,26 @@ except ImportError:
 
 
 def normalize_avatar_to_jpeg(
-    data: bytes, *, size_px: int = 120, max_kb: int = 100
+    data: bytes, *, size_px: int = 384, max_kb: int = 100
 ) -> bytes:
     """Нормализует аватар в JPEG нужного размера и лимита.
 
+    ВАЖНО: Автоматически применяет EXIF-ориентацию перед обработкой.
+    Это предотвращает "переворачивание" фотографий, сделанных на телефоны
+    в портретной или перевёрнутой ориентации.
+
+    КАЧЕСТВО: Использует высокое разрешение (384px), progressive JPEG
+    и 4:4:4 subsampling для максимального качества лиц в пределах 100KB.
+
     Args:
         data (bytes): Входной образ (PNG/JPEG/...).
-        size_px (int): Квадратный размер целевого изображения (по умолчанию 120).
+        size_px (int): Максимальный размер изображения (по умолчанию 384).
+            Пропорции сохраняются, итоговое изображение может быть меньше.
         max_kb (int): Максимальный размер файла в килобайтах
             (ограничение AD ~100 KB).
 
     Returns:
-        bytes: JPEG-данные, соответствующие ограничениям.
+        bytes: JPEG-данные, соответствующие ограничениям с правильной ориентацией.
 
     Raises:
         RuntimeError: Если Pillow недоступен или не удалось обработать
@@ -40,16 +48,62 @@ def normalize_avatar_to_jpeg(
 
     try:
         img = Image.open(io.BytesIO(data))
-        img = img.convert("RGB")
-        img = img.resize((size_px, size_px))
 
-        # бинарный поиск по качеству для соблюдения max_kb
-        lo, hi = 50, 95
+        # ИСПРАВЛЕНИЕ: Применяем EXIF-ориентацию перед обработкой
+        # Это предотвращает "поворот" фотографий с телефонов
+        try:
+            # Получаем EXIF данные
+            exif = img.getexif()
+            # Тег 274 = Orientation
+            orientation = exif.get(0x0112) if exif else None
+
+            if orientation:
+                # Применяем поворот согласно EXIF
+                if orientation == 3:
+                    img = img.rotate(180, expand=True)
+                elif orientation == 6:
+                    img = img.rotate(270, expand=True)
+                elif orientation == 8:
+                    img = img.rotate(90, expand=True)
+        except (AttributeError, KeyError, IndexError):
+            # Если EXIF недоступен или повреждён - продолжаем без ротации
+            pass
+
+        # Конвертируем в RGB (для JPEG)
+        if img.mode in ("RGBA", "LA", "P"):
+            # Создаем белый фон для прозрачных изображений
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            mask = img.split()[-1] if img.mode == "RGBA" else None
+            background.paste(img, mask=mask)
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # УЛУЧШЕНИЕ: Используем thumbnail для сохранения пропорций
+        # вместо resize, который растягивает изображение
+        img.thumbnail((size_px, size_px), Image.Resampling.LANCZOS)
+
+        # Бинарный поиск по качеству для соблюдения max_kb
+        # КАЧЕСТВО: Повышен минимум до 75, используется progressive и 4:4:4
+        lo, hi = 75, 98
         best = None
         while lo <= hi:
             mid = (lo + hi) // 2
             buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=mid, optimize=True)
+            # МАКСИМАЛЬНОЕ КАЧЕСТВО:
+            # - progressive: лучше сжатие, плавная загрузка
+            # - subsampling=0: 4:4:4 (без потери цветности, лучше для лиц)
+            # - optimize: оптимизация таблиц Хаффмана
+            img.save(
+                buf,
+                format="JPEG",
+                quality=mid,
+                optimize=True,
+                progressive=True,
+                subsampling=0,  # 4:4:4 - без потери цветности
+            )
             kb = len(buf.getvalue()) // 1024
             if kb <= max_kb:
                 best = buf.getvalue()
@@ -58,9 +112,16 @@ def normalize_avatar_to_jpeg(
                 hi = mid - 1
 
         if best is None:
-            # минимально возможное
+            # минимально возможное (с теми же настройками качества)
             buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=50, optimize=True)
+            img.save(
+                buf,
+                format="JPEG",
+                quality=75,
+                optimize=True,
+                progressive=True,
+                subsampling=0,
+            )
             best = buf.getvalue()
 
         return best

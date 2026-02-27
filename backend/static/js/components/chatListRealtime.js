@@ -103,7 +103,7 @@ export function initChatListRealtime(options = {}) {
           const badge = row.querySelector('[data-unread]');
           const cntEl = row.querySelector('[data-unread-count]');
           if (cntEl) cntEl.textContent = '0';
-          if (badge) badge.classList.add('d-none');
+          if (badge) badge.style.display = 'none';
         }
       } else {
         // Чужое сообщение - увеличиваем счётчик
@@ -115,7 +115,11 @@ export function initChatListRealtime(options = {}) {
           const cntEl = row.querySelector('[data-unread-count]');
           const cur = Number((cntEl && cntEl.textContent) || 0) + 1;
           if (cntEl) cntEl.textContent = String(cur);
-          if (badge && cur > 0) badge.classList.remove('d-none');
+          if (badge && cur > 0) {
+            badge.style.display = '';
+            badge.classList.add('pulse');
+            setTimeout(() => badge.classList.remove('pulse'), 600);
+          }
         }
       }
 

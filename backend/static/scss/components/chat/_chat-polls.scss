@@ -1,0 +1,187 @@
+/**
+ * _chat-polls.scss
+ * Стили для голосований в чате
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   POLL MODAL
+────────────────────────────────────────────────────────────── */
+#pollModal .modal-dialog {
+  display: flex;
+  align-items: center;
+  min-height: calc(100% - 1rem);
+
+  @media (min-width: 576px) {
+    min-height: calc(100% - 3.5rem);
+    max-width: 500px;
+    margin: 1.75rem auto;
+  }
+}
+
+#pollModal .remove-option {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+#pollOptions .input-group-text {
+  min-width: 40px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   POLL WIDGET
+────────────────────────────────────────────────────────────── */
+.poll-widget {
+  padding: 1rem;
+  background: var(--bs-secondary-bg);
+  border-radius: $radius-sm;
+  margin: 0.5rem 0;
+}
+
+.poll-question {
+  font-size: 1.1rem;
+  color: var(--bs-body-color);
+  font-weight: 400;
+}
+
+.poll-option {
+  position: relative;
+
+  &.voted {
+    background: rgba(var(--bs-success-rgb), 0.1);
+    padding: 0.5rem;
+    border-radius: $radius-xs;
+
+    .progress-bar {
+      background-color: var(--bs-success);
+    }
+  }
+}
+
+.btn-poll-option {
+  @include transition-all($transition-fast);
+
+  &:hover {
+    background: var(--bs-primary);
+    color: white;
+    border-color: var(--bs-primary);
+    transform: translateX(4px);
+  }
+}
+
+.poll-option-result {
+  .progress {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .progress-bar {
+    background-color: var(--bs-primary);
+    @include transition(width, $transition-slow);
+  }
+}
+
+.poll-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding-top: 0.75rem;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   POLL IN MESSAGE BUBBLES
+────────────────────────────────────────────────────────────── */
+.message-bubble .poll-widget {
+  max-width: 500px;
+}
+
+/* Голосования в сообщениях других пользователей */
+.bubble-other .poll-widget {
+  background: var(--bs-secondary-bg);
+}
+
+/* Голосования в своих сообщениях */
+.bubble-me {
+  .poll-widget {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .poll-question {
+    color: #fff;
+  }
+
+  .poll-option-result {
+    .progress {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .progress-bar {
+      background-color: rgba(255, 255, 255, 0.6);
+    }
+  }
+
+  .poll-footer {
+    border-top-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .poll-voters-list {
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   POLL VOTERS
+────────────────────────────────────────────────────────────── */
+.poll-voters {
+  margin-top: 0.5rem;
+}
+
+.poll-voters-toggle {
+  cursor: pointer;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--bs-primary) !important;
+    text-decoration: underline !important;
+  }
+
+  i {
+    transition: transform 0.2s;
+    font-size: 0.75rem;
+  }
+}
+
+.poll-voters-list {
+  animation: slideDown 0.2s ease-out;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  margin-top: 0.5rem;
+
+  [data-bs-theme="dark"] & {
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.voter-item {
+  padding: 0.25rem 0;
+  display: flex;
+  align-items: center;
+
+  i {
+    opacity: 0.6;
+    font-size: 0.875rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ANIMATIONS
+────────────────────────────────────────────────────────────── */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

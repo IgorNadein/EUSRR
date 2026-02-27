@@ -1,4 +1,13 @@
 # tests/conftest.py
+"""
+Общие pytest fixtures для всех тестов проекта.
+
+Этот файл содержит переиспользуемые фикстуры для:
+- Создания пользователей, департаментов, ролей
+- API клиентов (аутентифицированных и нет)
+- Тестовых данных (картинки, файлы)
+- Вспомогательных функций (извлечение результатов пагинации и т.д.)
+"""
 import itertools
 import mimetypes
 import os
@@ -11,9 +20,35 @@ from django.core.files.base import ContentFile
 from employees.models import Department, DepartmentRole, EmployeeDepartment
 from rest_framework.test import APIClient
 
+from tests.test_config import (
+    DEFAULT_PASSWORD,
+    DEFAULT_TEST_PHONE_PREFIX,
+    TEST_EMAIL_DOMAIN,
+    TEST_IMAGE_1X1_PNG_B64,
+    TEST_IMAGE_DATA_URI,
+)
+
 pytestmark = pytest.mark.django_db
 
 User = get_user_model()
+
+# -------------------------
+#      Counters & generators
+# -------------------------
+
+_phone_seq = itertools.count(1000)
+_email_seq = itertools.count(1)
+
+
+def _unique_phone() -> str:
+    """Генерирует уникальный валидный E.164 номер телефона для тестов."""
+    return f"{DEFAULT_TEST_PHONE_PREFIX}{next(_phone_seq):04d}"
+
+
+def _unique_email(prefix: str = "user") -> str:
+    """Генерирует уникальный email для тестов."""
+    return f"{prefix}{next(_email_seq)}@{TEST_EMAIL_DOMAIN}"
+
 
 # -------------------------
 #      Speed & isolation
@@ -60,32 +95,32 @@ def auth_client_factory():
 #         Factories
 # -------------------------
 
-_phone_seq = itertools.count(1000)
-
-
-def _unique_phone() -> str:
-    # валидный E.164 и уникальный в рамках сессии
-    return f"+7999000{next(_phone_seq):03d}"
-
 
 @pytest.fixture
 def user_factory():
     """
-    user = user_factory(email="x@example.com", staff=False, superuser=False,
-                        verified=True, active=True, **extra)
+    Фабрика для создания пользователей.
+    
+    Пример использования:
+        user = user_factory(email="x@example.com", staff=False, superuser=False,
+                            verified=True, active=True, **extra)
+    
     Создаёт пользователя напрямую (без менеджера create_user, чтобы не слать письма).
     """
 
     def _make(
-        email: str,
+        email: str = None,
         *,
         staff: bool = False,
         superuser: bool = False,
         verified: bool = True,
         active: bool = True,
-        password: str = "pass",
+        password: str = DEFAULT_PASSWORD,
         **extra,
     ):
+        if email is None:
+            email = _unique_email()
+            
         u = User.objects.create(
             email=email,
             phone_number=extra.pop("phone_number", _unique_phone()),
@@ -196,14 +231,7 @@ def data_uri_image(tmp_path):
     """
     Возвращает data URI маленькой PNG-картинки (1x1), удобно для аватаров.
     """
-    # минимальный валидный PNG 1x1 (чёрный пиксель)
-    import base64
-
-    png_b64 = (
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMA"
-        "AQAABQABDQottAAAAABJRU5ErkJggg=="
-    )
-    return f"data:image/png;base64,{png_b64}"
+    return TEST_IMAGE_DATA_URI
 
 
 @pytest.fixture
@@ -217,3 +245,54 @@ def content_file_from_b64():
         return ContentFile(base64.b64decode(b64), name=name)
 
     return _make
+
+
+# -------------------------
+#   Дополнительные утилиты
+# -------------------------
+
+
+@pytest.fixture
+def make_user():
+    """
+    Альтернативная функция создания пользователя (прямой вызов, не через фабрику).
+    Используется в старых тестах для совместимости.
+    """
+    def _make(
+        email: str,
+        *,
+        staff: bool = False,
+        superuser: bool = False,
+        verified: bool = True,
+        active: bool = True,
+        password: str = DEFAULT_PASSWORD,
+        **extra,
+    ):
+        u = User.objects.create(
+            email=email,
+            phone_number=extra.pop("phone_number", _unique_phone()),
+            first_name=extra.pop("first_name", "FN"),
+            last_name=extra.pop("last_name", "LN"),
+            is_staff=staff,
+            is_superuser=superuser,
+            is_active=active,
+            email_verified=verified,
+            **extra,
+        )
+        u.set_password(password)
+        u.save()
+        return u
+
+    return _make
+
+
+@pytest.fixture
+def unique_phone():
+    """Возвращает функцию для генерации уникальных номеров телефона."""
+    return _unique_phone
+
+
+@pytest.fixture
+def unique_email():
+    """Возвращает функцию для генерации уникальных email."""
+    return _unique_email

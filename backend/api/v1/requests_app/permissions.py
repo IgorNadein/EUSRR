@@ -4,17 +4,81 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from api.v1.permissions import AdminOrDeptAllowed
-from rest_framework.permissions import BasePermission
-from rest_framework.request import Request
 from employees.constants import DeptPerm
 from employees.models import Department
+from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
+
+
+class IsRecipientOfRequest(BasePermission):
+    """Проверяет, что пользователь является получателем заявки.
+
+    Доступ разрешается только если пользователь указан в recipients
+    данной заявки. Это базовая проверка которая должна комбинироваться
+    с проверкой прав (AdminOrActionOrModelPerms или DeptCanProcess).
+
+    Для staff/superuser проверка пропускается (они могут обрабатывать любые заявки).
+    """
+
+    message = "Вы не являетесь получателем этой заявки."
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        return bool(getattr(request.user, "is_authenticated", False))
+
+    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+        user = request.user
+
+        # Staff/superuser могут обрабатывать любые заявки
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return True
+
+        # Проверяем, является ли пользователь получателем заявки
+        # (только recipients, не cc_users - люди в копии не принимают решения)
+        return obj.recipients.filter(id=user.id).exists()
+
+
+class CanViewRequest(BasePermission):
+    """Проверяет, может ли пользователь просматривать заявку.
+
+    Доступ разрешается если пользователь:
+    - staff/superuser
+    - автор заявки (employee)
+    - получатель заявки (recipients)
+    - в копии заявки (cc_users)
+    """
+
+    message = "У вас нет доступа к этой заявке."
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        return bool(getattr(request.user, "is_authenticated", False))
+
+    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+        user = request.user
+
+        # Staff/superuser могут просматривать любые заявки
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return True
+
+        # Автор заявки
+        if getattr(obj, "employee_id", None) == user.id:
+            return True
+
+        # Получатель заявки (recipients)
+        if obj.recipients.filter(id=user.id).exists():
+            return True
+
+        # В копии заявки (cc_users)
+        if obj.cc_users.filter(id=user.id).exists():
+            return True
+
+        return False
 
 
 class CommentsPermission(BasePermission):
-    """Комментарии: модельные права, staff, head.
+    """Комментарии: владелец, получатель, модельные права, staff, head.
 
-    GET/HEAD: view_requestcomment OR staff OR head (прямой/по сотруднику).
-    POST: add_requestcomment OR staff OR head (прямой/по сотруднику).
+    GET/HEAD: владелец, получатель, cc, view_requestcomment OR staff OR head.
+    POST: владелец, получатель, cc, add_requestcomment OR staff OR head.
     """
 
     message = "Недостаточно прав для доступа к комментариям."
@@ -42,14 +106,62 @@ class CommentsPermission(BasePermission):
             employeedepartment__is_active=True,
         ).exists()
 
+    def _is_participant(self, user, obj) -> bool:
+        """Проверяет, является ли пользователь участником заявки."""
+        # Владелец заявки
+        if getattr(obj, "employee_id", None) == user.id:
+            return True
+        # Получатель заявки
+        if hasattr(obj, "recipients") and obj.recipients.filter(id=user.id).exists():
+            return True
+        # В копии
+        if hasattr(obj, "cc_users") and obj.cc_users.filter(id=user.id).exists():
+            return True
+        # Согласующий
+        if getattr(obj, "approver_id", None) == user.id:
+            return True
+        return False
+
     def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         user = request.user
+        
+        # Логируем начало проверки
+        logger.info(
+            f"[CommentsPermission] Проверка доступа: "
+            f"user={user.id}, request_id={getattr(obj, 'id', '?')}, "
+            f"method={request.method}"
+        )
+        
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: staff/superuser")
             return True
+            
+        # Участник заявки (владелец, получатель, cc, approver)
+        if self._is_participant(user, obj):
+            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: участник заявки")
+            return True
+            
         if self._is_head_for_request(user, obj):
+            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: head отдела")
             return True
+            
         code = self._required_perm(request)
-        return bool(code and user.has_perm(code))
+        has_perm = bool(code and user.has_perm(code))
+        logger.info(
+            f"[CommentsPermission] Проверка модельных прав: "
+            f"perm={code}, has_perm={has_perm}"
+        )
+        
+        if not has_perm:
+            logger.warning(
+                f"[CommentsPermission] ❌ Доступ запрещен: "
+                f"user={user.id}, request_id={getattr(obj, 'id', '?')}"
+            )
+        
+        return has_perm
 
 
 class NotFinalOrStaff(BasePermission):

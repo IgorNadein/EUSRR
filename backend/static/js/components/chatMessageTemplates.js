@@ -6,7 +6,7 @@
  */
 
 import { esc } from '../utils/stringUtils.js';
-import { MessageRenderer } from './messageRenderer.js';
+import { MessageRendererV2 } from '../renderers/messageRendererV2.js';
 
 /**
  * Дополняет число нулём слева
@@ -132,7 +132,7 @@ export function createMessageElement(msg, options = {}) {
   } = options;
 
   // Используем MessageRenderer для единообразия
-  const renderer = new MessageRenderer({
+  const renderer = new MessageRendererV2({
     meId,
     profileUrl,
     detailUrlTemplate,

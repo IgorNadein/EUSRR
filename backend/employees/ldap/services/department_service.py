@@ -13,7 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from ldap3 import BASE, MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, Connection
 
-from ...models import Department, Employee, EmployeeDepartment, LdapSyncState
+from ...models import Department, DepartmentRole, Employee, EmployeeDepartment, LdapSyncState, RoleAssignment
 from ..domain.dtos import DirectoryDepartmentDTO
 from ..errors import (
     DirectoryDbError,
@@ -436,15 +436,17 @@ class DepartmentService:
                 pass
 
             if emp_dn:
-                users_base = getattr(
-                    settings, "LDAP_USERS_BASE", None
-                ) or getattr(settings, "LDAP_USER_BASE", None)
-                if not users_base:
-                    raise RuntimeError("LDAP_USERS_BASE is not configured")
+                from ..utils.ldap_utils import get_base_dn_for_employee
+                
                 try:
-                    ensure_container_exists(conn, users_base)
+                    target_base = get_base_dn_for_employee(employee)
+                except RuntimeError as e:
+                    raise DirectoryLdapError(str(e)) from e
+                
+                try:
+                    ensure_container_exists(conn, target_base)
                     new_dn = self._user_service._move_user_to_base(
-                        conn, emp_dn, users_base
+                        conn, emp_dn, target_base
                     )
                     self._touch_state(
                         model="employee",
@@ -453,8 +455,9 @@ class DepartmentService:
                         sync_dir="ldap",
                     )
                 except Exception as e:
+                    target_name = "Dismissed OU" if not employee.is_active else "Users OU"
                     raise DirectoryLdapError(
-                        f"LDAP move to Users OU failed: {e}"
+                        f"LDAP move to {target_name} failed: {e}"
                     ) from e
 
             try:
@@ -525,10 +528,172 @@ class DepartmentService:
 
             return dept
 
+    # ==================== Role CRUD (LDAP → DB) ==================== #
+
+    def create_role(
+        self,
+        department: Department,
+        name: str,
+        description: str = "",
+        scoped_permissions: Optional[list] = None,
+    ) -> DepartmentRole:
+        """Создаёт роль: сначала группу в LDAP, затем запись в БД.
+        
+        Аналогично create_department — сначала LDAP, потом БД.
+        При ошибке БД откатываем созданную группу в LDAP.
+        
+        Args:
+            department: Отдел для роли.
+            name: Название роли.
+            description: Описание роли.
+            scoped_permissions: Список DepartmentPermission для назначения.
+            
+        Returns:
+            DepartmentRole: Созданная роль.
+            
+        Raises:
+            DirectoryLdapError: Ошибка создания группы в LDAP.
+            DirectoryDbError: Ошибка создания записи в БД.
+        """
+        # 1. Создаём группу в LDAP
+        dept_dn = self._get_department_dn(department)
+        role_name = self._sanitize_name(name)
+        cn = f"ROLE_{role_name}"
+        group_dn = f"CN={esc_rdn(cn)},{dept_dn}"
+        
+        with _ldap() as conn:
+            try:
+                attrs = {
+                    "sAMAccountName": cn[:20],
+                    "description": description or f"Role: {name} in {department.name}",
+                    "groupType": group_type("global", security_enabled=True),
+                }
+                ok = conn.add(group_dn, ["top", "group"], attrs)
+                if not ok:
+                    if "entryAlreadyExists" not in str(conn.result):
+                        raise DirectoryLdapError(
+                            f"LDAP create role group failed: {conn.result}"
+                        )
+            except DirectoryLdapError:
+                raise
+            except Exception as e:
+                raise DirectoryLdapError(f"LDAP create role group failed: {e}") from e
+            
+            # 2. Создаём запись в БД
+            try:
+                with transaction.atomic():
+                    role = DepartmentRole.objects.create(
+                        department=department,
+                        name=name,
+                        ldap_group_dn=group_dn,
+                    )
+                    if scoped_permissions:
+                        role.scoped_permissions.set(scoped_permissions)
+            except Exception as e:
+                # Откатываем группу в LDAP
+                try:
+                    self._group_service.delete(conn, group_dn)
+                except Exception:
+                    pass
+                raise DirectoryDbError(str(e)) from e
+            
+            return role
+
+    def update_role(
+        self,
+        role: DepartmentRole,
+        changes: Dict[str, Any],
+    ) -> DepartmentRole:
+        """Обновляет роль: сначала в LDAP, затем в БД.
+        
+        Args:
+            role: Роль для обновления.
+            changes: Словарь изменений (name, scoped_permissions, scoped_permission_codes).
+            
+        Returns:
+            DepartmentRole: Обновлённая роль.
+            
+        Raises:
+            DirectoryLdapError: Ошибка обновления в LDAP.
+            DirectoryDbError: Ошибка сохранения в БД.
+        """
+        new_name = changes.get("name")
+        
+        with _ldap() as conn:
+            # Если меняется имя — переименовываем группу в LDAP
+            if new_name and new_name != role.name:
+                if role.ldap_group_dn:
+                    try:
+                        new_role_name = self._sanitize_name(new_name)
+                        new_cn = f"ROLE_{new_role_name}"
+                        new_dn = self._group_service.rename(
+                            conn, role.ldap_group_dn, new_cn=new_cn
+                        )
+                        role.ldap_group_dn = new_dn
+                    except Exception as e:
+                        raise DirectoryLdapError(
+                            f"LDAP rename role group failed: {e}"
+                        ) from e
+                else:
+                    # Группы нет — создаём
+                    role.name = new_name
+                    self._ensure_role_group(role)
+            
+            # Обновляем БД
+            try:
+                with transaction.atomic():
+                    if new_name:
+                        role.name = new_name
+                    role.save()
+                    
+                    # Обновляем права
+                    perms = changes.get("scoped_permissions")
+                    codes = changes.get("scoped_permission_codes")
+                    
+                    if perms is not None:
+                        role.scoped_permissions.set(perms)
+                    elif codes is not None:
+                        from employees.models import DepartmentPermission
+                        qs = DepartmentPermission.objects.filter(code__in=codes)
+                        role.scoped_permissions.set(list(qs))
+            except Exception as e:
+                raise DirectoryDbError(str(e)) from e
+            
+            return role
+
+    def delete_role(self, role: DepartmentRole) -> None:
+        """Удаляет роль: сначала группу из LDAP, затем запись из БД.
+        
+        Args:
+            role: Роль для удаления.
+            
+        Raises:
+            DirectoryLdapError: Ошибка удаления группы из LDAP.
+            DirectoryDbError: Ошибка удаления записи из БД.
+        """
+        # 1. Удаляем группу из LDAP
+        if role.ldap_group_dn:
+            with _ldap() as conn:
+                try:
+                    self._group_service.delete(conn, role.ldap_group_dn)
+                except Exception as e:
+                    raise DirectoryLdapError(
+                        f"LDAP delete role group failed: {e}"
+                    ) from e
+        
+        # 2. Удаляем запись из БД
+        try:
+            role.delete()
+        except Exception as e:
+            raise DirectoryDbError(str(e)) from e
+
     def set_member_role(
         self, dept: Department, employee: Employee, role
     ) -> None:
-        """Меняет роль участника отдела с синхронизацией LDAP-групп Roles.
+        """DEPRECATED: Используйте assign_role / revoke_role.
+        
+        Меняет роль участника отдела с синхронизацией LDAP-групп.
+        Сохранена для обратной совместимости.
 
         Args:
             dept: Отдел.
@@ -539,11 +704,13 @@ class DepartmentService:
             DirectoryDbError: Ошибка при обновлении БД.
             DirectoryLdapError: Ошибка при синхронизации групп.
         """
+        # Обновляем EmployeeDepartment.role для обратной совместимости
         try:
             with transaction.atomic():
                 link = EmployeeDepartment.objects.get(
                     employee_id=employee.id, department_id=dept.id
                 )
+                old_role = link.role
                 link.role = role
                 link.save(update_fields=["role"])
         except EmployeeDepartment.DoesNotExist as e:
@@ -553,25 +720,241 @@ class DepartmentService:
         except Exception as e:
             raise DirectoryDbError(str(e)) from e
 
+        # Обновляем RoleAssignment
+        if role:
+            self.assign_role(employee, role, assigned_by=None)
+        elif old_role:
+            self.revoke_role(employee, old_role)
+
+    def assign_role(
+        self,
+        employee: Employee,
+        role: DepartmentRole,
+        assigned_by: Optional[Employee] = None,
+    ) -> RoleAssignment:
+        """Назначает роль сотруднику (не требует членства в отделе).
+        
+        Логика: сначала LDAP, потом БД. При ошибке LDAP — операция отменяется.
+        
+        Args:
+            employee: Сотрудник.
+            role: Роль для назначения.
+            assigned_by: Кто назначил (опционально).
+            
+        Returns:
+            RoleAssignment: Созданное/обновлённое назначение.
+            
+        Raises:
+            DirectoryLdapError: Ошибка LDAP.
+            DirectoryDbError: Ошибка БД.
+        """
+        # 1. Сначала синхронизируем LDAP-группу роли
         try:
-            if role:
-                user_dn = self._user_service._get_employee_dn(employee)
-                dept_dn = self._get_department_dn(dept)
-                roles_base = f"OU=Roles,{dept_dn}"
-                with _ldap() as conn:
-                    sync_user_groups_by_cns(
-                        conn,
-                        user_dn,
-                        {role.name},
-                        extra_bases=[roles_base],
-                        do_write=True,
-                    )
-        except DirectoryServiceError:
-            pass
+            self._sync_role_membership(employee, role, add=True)
         except Exception as e:
-            raise DirectoryLdapError(
-                f"LDAP role sync failed: {e}"
-            ) from e
+            raise DirectoryLdapError(f"LDAP role sync failed: {e}") from e
+        
+        # 2. Только при успехе LDAP — создаём/обновляем назначение в БД
+        try:
+            with transaction.atomic():
+                assignment, created = RoleAssignment.objects.update_or_create(
+                    employee=employee,
+                    role=role,
+                    defaults={
+                        "is_active": True,
+                        "assigned_by": assigned_by,
+                    }
+                )
+        except Exception as e:
+            # Откатываем LDAP — удаляем из группы
+            try:
+                self._sync_role_membership(employee, role, add=False)
+            except Exception:
+                pass  # Best effort rollback
+            raise DirectoryDbError(str(e)) from e
+        
+        return assignment
+
+    def revoke_role(
+        self,
+        employee: Employee,
+        role: DepartmentRole,
+    ) -> None:
+        """Отзывает роль у сотрудника.
+        
+        Логика: сначала LDAP, потом БД. При ошибке LDAP — операция отменяется.
+        
+        Args:
+            employee: Сотрудник.
+            role: Роль для отзыва.
+            
+        Raises:
+            DirectoryLdapError: Ошибка LDAP.
+        """
+        # 1. Сначала удаляем из LDAP-группы
+        try:
+            self._sync_role_membership(employee, role, add=False)
+        except Exception as e:
+            raise DirectoryLdapError(f"LDAP role revoke failed: {e}") from e
+        
+        # 2. Только при успехе LDAP — деактивируем назначение
+        RoleAssignment.objects.filter(
+            employee=employee,
+            role=role
+        ).update(is_active=False)
+
+    def _sync_role_membership(
+        self,
+        employee: Employee,
+        role: DepartmentRole,
+        add: bool = True,
+    ) -> None:
+        """Синхронизирует членство сотрудника в группе роли LDAP.
+        
+        Args:
+            employee: Сотрудник.
+            role: Роль.
+            add: True — добавить в группу, False — удалить.
+        """
+        # Создаём группу роли если нет
+        if not role.ldap_group_dn:
+            self._ensure_role_group(role)
+        
+        if not role.ldap_group_dn:
+            return  # Не удалось создать группу
+        
+        user_dn = self._user_service._get_employee_dn(employee)
+        
+        with _ldap() as conn:
+            if add:
+                self._group_service.add_members(conn, role.ldap_group_dn, [user_dn])
+            else:
+                self._group_service.remove_members(conn, role.ldap_group_dn, [user_dn])
+
+    def _ensure_role_group(self, role: DepartmentRole) -> str:
+        """Гарантирует наличие группы роли ROLE_<Name> в OU отдела.
+        
+        Args:
+            role: Роль отдела.
+            
+        Returns:
+            str: DN группы роли.
+        """
+        dept = role.department
+        dept_dn = self._get_department_dn(dept)
+        
+        # Формат: ROLE_<RoleName> (аналогично DEP_, POS_)
+        role_name = self._sanitize_name(role.name)
+        expected_cn = f"ROLE_{role_name}"
+        expected_rdn = f"CN={esc_rdn(expected_cn)}"
+        
+        saved_dn = (role.ldap_group_dn or "").strip()
+        
+        with _ldap() as conn:
+            # Проверяем существующую группу
+            if saved_dn:
+                ok = conn.search(
+                    saved_dn,
+                    "(objectClass=group)",
+                    search_scope=BASE,
+                    attributes=["distinguishedName"],
+                )
+                if ok and conn.entries:
+                    # Группа существует — проверяем нужно ли переименовать
+                    cur_rdn = saved_dn.split(",", 1)[0]
+                    if cur_rdn != expected_rdn:
+                        # Переименовываем
+                        if not conn.modify_dn(saved_dn, expected_rdn):
+                            raise RuntimeError(
+                                f"LDAP rename role group failed: {conn.result}"
+                            )
+                        base = ",".join(saved_dn.split(",")[1:])
+                        new_dn = f"{expected_rdn},{base}"
+                    else:
+                        new_dn = saved_dn
+                    
+                    if new_dn != role.ldap_group_dn:
+                        DepartmentRole.objects.filter(pk=role.pk).update(
+                            ldap_group_dn=new_dn
+                        )
+                        role.ldap_group_dn = new_dn
+                    return new_dn
+            
+            # Создаём новую группу
+            new_dn = f"{expected_rdn},{dept_dn}"
+            attrs = {
+                "sAMAccountName": expected_cn[:20],  # SAM ограничен 20 символами
+                "description": f"Role: {role.name} in {dept.name}",
+                "groupType": group_type("global", security_enabled=True),
+            }
+            ok = conn.add(new_dn, ["top", "group"], attrs)
+            if not ok:
+                if "entryAlreadyExists" in str(conn.result):
+                    pass  # Уже существует
+                else:
+                    raise RuntimeError(f"LDAP add role group failed: {conn.result}")
+            
+            DepartmentRole.objects.filter(pk=role.pk).update(ldap_group_dn=new_dn)
+            role.ldap_group_dn = new_dn
+            return new_dn
+
+    def rename_role_group(self, role: DepartmentRole, new_name: str) -> str:
+        """Переименовывает группу роли в LDAP.
+        
+        Args:
+            role: Роль.
+            new_name: Новое название роли.
+            
+        Returns:
+            str: Новый DN группы.
+        """
+        if not role.ldap_group_dn:
+            # Группы нет — создаём с новым именем
+            role.name = new_name
+            return self._ensure_role_group(role)
+        
+        new_role_name = self._sanitize_name(new_name)
+        new_cn = f"ROLE_{new_role_name}"
+        
+        with _ldap() as conn:
+            new_dn = self._group_service.rename(conn, role.ldap_group_dn, new_cn=new_cn)
+        
+        DepartmentRole.objects.filter(pk=role.pk).update(ldap_group_dn=new_dn)
+        role.ldap_group_dn = new_dn
+        return new_dn
+
+    def delete_role_group(self, role: DepartmentRole) -> None:
+        """Удаляет группу роли из LDAP.
+        
+        Args:
+            role: Роль для удаления группы.
+        """
+        if not role.ldap_group_dn:
+            return
+        
+        with _ldap() as conn:
+            try:
+                self._group_service.delete(conn, role.ldap_group_dn)
+            except Exception:
+                pass  # Best effort
+        
+        DepartmentRole.objects.filter(pk=role.pk).update(ldap_group_dn="")
+        role.ldap_group_dn = ""
+
+    def _sanitize_name(self, name: str) -> str:
+        """Очищает имя для использования в CN LDAP-группы.
+        
+        Args:
+            name: Исходное имя.
+            
+        Returns:
+            str: Очищенное имя.
+        """
+        import re
+        # Убираем спецсимволы LDAP, заменяем пробелы на _
+        clean = re.sub(r'[,=+<>#;\\"\']', '', name)
+        clean = re.sub(r'\s+', '_', clean)
+        return clean[:50]  # Ограничение длины
 
     # ==================== DN/Lookup Methods ==================== #
 
@@ -625,7 +1008,10 @@ class DepartmentService:
     # ==================== Private OU Methods ==================== #
 
     def _ensure_department_ou(self, conn: Connection, name: str) -> str:
-        """Гарантирует наличие OU отдела + OU=Roles.
+        """Гарантирует наличие OU отдела.
+        
+        Группы ролей (ROLE_*) создаются непосредственно в OU отдела,
+        а не в отдельном OU=Roles (убрано для корректной работы GPO).
         
         Args:
             conn: LDAP соединение.
@@ -649,7 +1035,7 @@ class DepartmentService:
         ok = conn.add(dn, ["top", "organizationalUnit"])
         if not ok:
             raise RuntimeError(f"LDAP add OU failed: {conn.result}")
-        conn.add(f"OU=Roles,{dn}", ["top", "organizationalUnit"])
+        # NOTE: OU=Roles больше не создаётся — группы ролей лежат прямо в OU отдела
         return dn
 
     def _rename_department_ou(

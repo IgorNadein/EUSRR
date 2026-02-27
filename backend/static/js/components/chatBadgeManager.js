@@ -36,10 +36,18 @@ export function initChatBadgeManager(options = {}) {
     }
 
     if (badge) {
+      // Telegram-стиль: используем style.display и анимацию
+      const oldCount = parseInt(cntEl?.textContent || '0', 10);
       if (count > 0) {
-        badge.classList.remove('d-none');
+        badge.style.display = '';
+        // Анимация при увеличении
+        if (count > oldCount) {
+          badge.classList.add('pulse');
+          setTimeout(() => badge.classList.remove('pulse'), 600);
+        }
       } else {
-        badge.classList.add('d-none');
+        badge.style.display = 'none';
+        badge.classList.remove('pulse');
       }
     }
   }

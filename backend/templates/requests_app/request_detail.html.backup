@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Заявление #{{ request.id }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/card-list.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/message-field.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid py-3">
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-10 col-xl-8">
+
+      {% if error %}
+        <div class="card mb-3">
+          <div class="card-body text-center py-5">
+            <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+            <h5 class="mt-3">{{ error }}</h5>
+            <p class="text-muted">Код ошибки: {{ error_code }}</p>
+            <a href="{% url 'requests:request_list' %}" class="btn btn-primary mt-3">
+              <i class="bi-arrow-left me-2"></i>Вернуться к списку
+            </a>
+          </div>
+        </div>
+      {% else %}
+
+      {# ===== Основная информация о заявлении ===== #}
+      <article class="card mb-3">
+        <header class="card-header">
+          <div class="card-icon" style="width:48px;height:48px;">
+            {% if request_obj.employee.avatar %}
+              <img src="{{ request_obj.employee.avatar }}" alt="Аватар">
+            {% else %}
+              <i class="bi-person"></i>
+            {% endif %}
+          </div>
+
+          <div class="card-meta flex-grow-1">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              {% if request_obj.employee and request_obj.employee.id %}
+                <a href="{% url 'employees:employee_detail' request_obj.employee.id %}" class="card-title text-decoration-none">
+                  {{ request_obj.employee.full_name|default:request_obj.employee.display_name }}
+                </a>
+              {% else %}
+                <span class="card-title">
+                  {{ request_obj.employee.full_name|default:request_obj.employee.display_name }}
+                </span>
+              {% endif %}
+
+              {# статус — бейдж #}
+              {% if request_obj.status == 'pending' %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">На рассмотрении</span>
+              {% elif request_obj.status == 'approved' %}
+                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Одобрено</span>
+              {% elif request_obj.status == 'rejected' %}
+                <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Отклонено</span>
+              {% elif request_obj.status == 'cancelled' %}
+                <span class="badge bg-dark-subtle text-dark-emphasis border border-dark-subtle">Отменено</span>
+              {% elif request_obj.status == 'draft' %}
+                <span class="badge bg-light text-body border">Черновик</span>
+              {% else %}
+                <span class="badge bg-light text-body border">Неизвестно</span>
+              {% endif %}
+
+              {# тип заявления #}
+              <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                {{ request_obj.get_type_display }}
+              </span>
+            </div>
+
+            <div class="card-subtitle mt-1">
+              <time datetime="{{ request_obj.created_at|date:'c' }}">{{ request_obj.created_at|date:"d.m.Y H:i" }}</time>
+              {% if request_obj.date_from or request_obj.date_to %}
+                · Период: {{ request_obj.date_from|date:'d.m.Y' }}{% if request_obj.date_to %} — {{ request_obj.date_to|date:'d.m.Y' }}{% endif %}
+              {% endif %}
+            </div>
+          </div>
+
+          {# Кнопки действий #}
+          {% if can_process and request_obj.status == 'pending' %}
+          <div class="d-flex gap-2 align-items-start">
+            <button type="button" class="btn btn-success btn-sm"
+                    data-bs-toggle="modal"
+                    data-bs-target="#reqApproveModal"
+                    data-id="{{ request_obj.id }}">
+              <i class="bi-check-circle me-1"></i>Одобрить
+            </button>
+            <button type="button" class="btn btn-danger btn-sm"
+                    data-bs-toggle="modal"
+                    data-bs-target="#reqRejectModal"
+                    data-id="{{ request_obj.id }}">
+              <i class="bi-x-circle me-1"></i>Отклонить
+            </button>
+          </div>
+          {% endif %}
+
+        </header>
+
+        <div class="card-body">
+          {# Тема заявления #}
+          {% if request_obj.title %}
+            <div class="mb-3">
+              <span class="text-secondary small d-block mb-1">Тема:</span>
+              <div class="fw-semibold">{{ request_obj.title }}</div>
+            </div>
+          {% endif %}
+
+          {# Комментарий сотрудника #}
+          <div class="mb-3">
+            <span class="text-secondary small d-block mb-1">Комментарий:</span>
+            <div>{{ request_obj.comment|default:"—"|linebreaksbr }}</div>
+          </div>
+
+          {# Получатели #}
+          {% if request_obj.recipients.exists %}
+            <div class="mb-3">
+              <span class="text-secondary small d-block mb-1">
+                <i class="bi-person-check me-1"></i>Получатели:
+              </span>
+              <div class="d-flex flex-wrap gap-2">
+                {% for recipient in request_obj.recipients.all %}
+                  {% if recipient.id %}
+                    <a href="{% url 'employees:employee_detail' recipient.id %}"
+                       class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle text-decoration-none">
+                      {{ recipient.full_name|default:recipient.display_name }}
+                    </a>
+                  {% else %}
+                    <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                      {{ recipient.full_name|default:recipient.display_name }}
+                    </span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+
+          {# Копия #}
+          {% if request_obj.cc_users.exists %}
+            <div class="mb-3">
+              <span class="text-secondary small d-block mb-1">
+                <i class="bi-people me-1"></i>В копии:
+              </span>
+              <div class="d-flex flex-wrap gap-2">
+                {% for cc_user in request_obj.cc_users.all %}
+                  {% if cc_user.id %}
+                    <a href="{% url 'employees:employee_detail' cc_user.id %}"
+                       class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle text-decoration-none">
+                      {{ cc_user.full_name|default:cc_user.display_name }}
+                    </a>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
+                      {{ cc_user.full_name|default:cc_user.display_name }}
+                    </span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+
+          {# Согласующий #}
+          {% if request_obj.approver %}
+            <div class="mb-3">
+              <span class="text-secondary small d-block mb-1">
+                <i class="bi-person-check-fill me-1"></i>Согласовал:
+              </span>
+              {% if request_obj.approver.id %}
+                <a href="{% url 'employees:employee_detail' request_obj.approver.id %}"
+                   class="badge bg-success-subtle text-success-emphasis border border-success-subtle text-decoration-none">
+                  {{ request_obj.approver.full_name|default:request_obj.approver.display_name }}
+                </a>
+              {% else %}
+                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">
+                  {{ request_obj.approver.full_name|default:request_obj.approver.display_name }}
+                </span>
+              {% endif %}
+              {% if request_obj.decided_at %}
+                <span class="text-secondary small ms-2">
+                  {{ request_obj.decided_at|date:"d.m.Y H:i" }}
+                </span>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {# Вложение #}
+          {% if request_obj.attachment_url %}
+            <div class="mb-2">
+              <a class="btn btn-ghost d-inline-flex align-items-center gap-2"
+                 href="{{ request_obj.attachment_url }}" target="_blank" rel="noopener">
+                <i class="bi-paperclip"></i>
+                <span>Вложение</span>
+              </a>
+            </div>
+          {% endif %}
+        </div>
+      </article>
+
+      {# ===== Комментарии ===== #}
+      <article class="card" id="comments">
+        <header class="card-header">
+          <div class="card-icon" style="width:44px;height:44px;">
+            <i class="bi-chat-dots"></i>
+          </div>
+          <div class="card-meta">
+            <div class="card-title">Комментарии</div>
+            <div class="card-subtitle">Всего: <span class="comments-count">{{ comments|length }}</span></div>
+          </div>
+        </header>
+
+        <div class="card-body">
+          {% if comments %}
+            <div class="d-flex flex-column gap-2 mb-3">
+              {% for c in comments %}
+                <div class="card-list-item">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <div>
+                      <strong>{{ c.author.full_name|default:c.author.display_name }}</strong>
+                      <span class="text-secondary mx-1">·</span>
+                      <time class="text-muted small">{{ c.created_at|date:"d.m.Y H:i" }}</time>
+                    </div>
+
+                    {# удалить — только автору комментария #}
+                    {% if c.author.id == request.user.id %}
+                      <form method="post" action="{% url 'requests:request_comment_delete' request_obj.id c.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-ghost text-danger" type="submit" title="Удалить">
+                          <i class="bi-trash"></i>
+                        </button>
+                      </form>
+                    {% endif %}
+                  </div>
+                  <div class="small">{{ c.text|linebreaksbr }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-secondary small text-center py-3">Комментариев пока нет.</div>
+          {% endif %}
+
+          {# Форма добавления комментария #}
+          <form class="mt-3 request-comment-form" method="post" action="{% url 'requests:request_comment_add' request_obj.id %}">
+            {% csrf_token %}
+            <div class="message-field message-field--compact">
+              <!-- Кнопка выбора эмодзи -->
+              <div class="dropdown message-emoji">
+                <button type="button" class="btn btn-ghost btn-emoji message-icon-btn"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        title="Вставить смайлик">
+                  <i class="bi-emoji-smile"></i>
+                </button>
+                <div class="dropdown-menu dropdown-menu-start message-emoji-menu">
+                  <emoji-picker data-emoji-picker class="chat-emoji-picker"></emoji-picker>
+                </div>
+              </div>
+
+              <textarea
+                name="text"
+                class="message-input"
+                placeholder="Добавить комментарий..."
+                rows="2"
+                required
+              ></textarea>
+
+              <button type="submit" class="btn btn-primary message-send-btn">
+                <i class="bi-send-fill"></i>
+              </button>
+            </div>
+          </form>
+        </div>
+      </article>
+
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+  import RequestCrudHandler from "{% static 'js/components/requestCrudHandler.js' %}";
+  import { initEmojiPicker } from "{% static 'js/components/emojiPicker.js' %}";
+  import { initTextareaAutoExpand } from "{% static 'js/components/textareaAutoExpand.js' %}";
+
+  // Инициализация обработчика CRUD
+  const crudHandler = new RequestCrudHandler();
+
+  // Обработка формы одобрения
+  const approveForm = document.getElementById('reqApproveForm');
+  const approveModal = document.getElementById('reqApproveModal');
+
+  if (approveModal && approveForm) {
+    approveModal.addEventListener('show.bs.modal', function (event) {
+      const button = event.relatedTarget;
+      const requestId = button.getAttribute('data-id');
+      document.getElementById('approveId').value = requestId;
+    });
+
+    approveForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const requestId = document.getElementById('approveId').value;
+      await crudHandler.handleApprove(requestId);
+      // Перезагрузка после закрытия модала
+      setTimeout(() => window.location.reload(), 500);
+    });
+  }
+
+  // Обработка формы отклонения
+  const rejectForm = document.getElementById('reqRejectForm');
+  const rejectModal = document.getElementById('reqRejectModal');
+
+  if (rejectModal && rejectForm) {
+    rejectModal.addEventListener('show.bs.modal', function (event) {
+      const button = event.relatedTarget;
+      const requestId = button.getAttribute('data-id');
+      document.getElementById('rejectId').value = requestId;
+    });
+
+    rejectForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const requestId = document.getElementById('rejectId').value;
+      await crudHandler.handleReject(requestId);
+      // Перезагрузка после закрытия модала
+      setTimeout(() => window.location.reload(), 500);
+    });
+  }
+
+  // Инициализация emoji picker для формы комментария
+  const commentForm = document.querySelector('.request-comment-form');
+  if (commentForm) {
+    const textarea = commentForm.querySelector('textarea[name="text"]');
+    const emojiButton = commentForm.querySelector('[data-bs-toggle="dropdown"]');
+    const emojiPicker = commentForm.querySelector('emoji-picker');
+
+    if (textarea && emojiButton && emojiPicker) {
+      initEmojiPicker(emojiButton, emojiPicker, textarea);
+      initTextareaAutoExpand(textarea);
+    }
+
+    // Обработка отправки формы
+    commentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const text = textarea.value.trim();
+      if (!text) {
+        return;
+      }
+
+      const submitBtn = commentForm.querySelector('button[type="submit"]');
+      const originalBtnContent = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+      try {
+        const formData = new FormData(commentForm);
+
+        const response = await fetch(commentForm.action, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        // Перезагрузить страницу для отображения нового комментария
+        window.location.reload();
+
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Ошибка при добавлении комментария: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnContent;
+      }
+    });
+  }
+
+  // Обработка форм удаления комментариев
+  document.querySelectorAll('form[action*="request_comment_delete"]').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (!confirm('Вы уверены, что хотите удалить этот комментарий?')) {
+        return;
+      }
+
+      try {
+        const formData = new FormData(form);
+
+        const response = await fetch(form.action, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        // Перезагрузить страницу
+        window.location.reload();
+
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Ошибка при удалении комментария: ' + error.message);
+      }
+    });
+  });
+
+</script>
+{% endblock %}
+
+{# Модальные окна для действий #}
+<!-- Approve -->
+<div class="modal fade" id="reqApproveModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="reqApproveForm">
+      {% csrf_token %}
+      <input type="hidden" name="id" id="approveId">
+      <div class="modal-header">
+        <h5 class="modal-title text-success">Одобрить заявление?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-success" type="submit">Одобрить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reject -->
+<div class="modal fade" id="reqRejectModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="reqRejectForm">
+      {% csrf_token %}
+      <input type="hidden" name="id" id="rejectId">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger">Отклонить заявление?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" type="submit">Отклонить</button>
+      </div>
+    </form>
+  </div>
+</div>

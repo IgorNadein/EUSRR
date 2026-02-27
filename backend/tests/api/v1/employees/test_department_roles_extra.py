@@ -11,21 +11,17 @@ from employees.models import (
     DepartmentPermission,
     EmployeeDepartment,  # если у вас EmployeeDepartmentLink, замените импорт и упоминания ниже
 )
+from tests.conftest import _unique_phone
 
 User = get_user_model()
-
 
 # =========================
 # Helpers
 # =========================
 
-
-def _unique_phone() -> str:
-    base = 79000000000  # 79 + 9 нулей
-    return str(base + User.objects.count())
-
-
+@pytest.fixture
 def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
+    """Fixture для создания пользователей."""
     extra = {
         "phone_number": _unique_phone(),
         "is_staff": staff,
@@ -39,12 +35,10 @@ def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
         pass
     return User.objects.create_user(email=email, password="pwd12345", **extra)
 
-
 def ensure_perm(code: str, name: str | None = None) -> DepartmentPermission:
     return DepartmentPermission.objects.get_or_create(
         code=code, defaults={"name": name or code}
     )[0]
-
 
 def make_role(
     dept: Department, name: str, codes: list[str] | None = None
@@ -55,7 +49,6 @@ def make_role(
         role.scoped_permissions.add(*perms)
     return role
 
-
 def grant_assign_in_dept(user: User, dept: Department) -> DepartmentRole:
     role = make_role(dept, "assigner", ["assign_department_role"])
     EmployeeDepartment.objects.update_or_create(
@@ -65,28 +58,23 @@ def grant_assign_in_dept(user: User, dept: Department) -> DepartmentRole:
     )
     return role
 
-
 # =========================
 # Fixtures
 # =========================
-
 
 @pytest.fixture()
 def api_client() -> APIClient:
     return APIClient()
 
-
 # =========================
 # Tests
 # =========================
-
 
 @pytest.mark.django_db
 def test_unauth_cannot_list_or_get():
     client = APIClient()
     url_list = reverse("api:v1:department-roles-list")
     assert client.get(url_list).status_code in (401, 403)
-
 
 @pytest.mark.django_db
 def test_read_only_allowed_without_assign(api_client: APIClient):
@@ -105,7 +93,6 @@ def test_read_only_allowed_without_assign(api_client: APIClient):
     # retrieve
     url_detail = reverse("api:v1:department-roles-detail", args=[r.id])
     assert api_client.get(url_detail).status_code == 200
-
 
 @pytest.mark.django_db
 def test_staff_override_for_write(api_client: APIClient):
@@ -138,7 +125,6 @@ def test_staff_override_for_write(api_client: APIClient):
         == 200
     )
 
-
 @pytest.mark.django_db
 def test_ordering_stable_by_name_then_id(api_client: APIClient):
     d1 = Department.objects.create(name="Dept1")
@@ -162,7 +148,6 @@ def test_ordering_stable_by_name_then_id(api_client: APIClient):
     assert picked[0] in (r1.id, r2.id) and picked[1] in (r1.id, r2.id)
     assert picked[0] < picked[1]  # тай-брейк по id для одинаковых name
     assert picked[2] == r3.id
-
 
 @pytest.mark.django_db
 def test_set_perms_ids_take_precedence_over_codes(api_client: APIClient):
@@ -189,7 +174,6 @@ def test_set_perms_ids_take_precedence_over_codes(api_client: APIClient):
     role.refresh_from_db()
     codes = set(role.scoped_permissions.values_list("code", flat=True))
     assert codes == {"manage_department"}  # ids приоритетнее
-
 
 @pytest.mark.django_db
 def test_serializer_codes_override_scoped_permissions_on_create(api_client: APIClient):
@@ -222,7 +206,6 @@ def test_serializer_codes_override_scoped_permissions_on_create(api_client: APIC
     codes = set(role.scoped_permissions.values_list("code", flat=True))
     assert codes == {"assign_department_role"}
 
-
 @pytest.mark.django_db
 def test_perm_choices_fields_and_nonempty(api_client: APIClient):
     ensure_perm("manage_department", "Управлять")
@@ -236,7 +219,6 @@ def test_perm_choices_fields_and_nonempty(api_client: APIClient):
     assert resp.status_code == 200
     results = resp.json().get("results", [])
     assert results and {"id", "code", "name"}.issubset(results[0].keys())
-
 
 @pytest.mark.django_db
 def test_destroy_requires_assign_in_same_department(api_client: APIClient):
@@ -258,7 +240,6 @@ def test_destroy_requires_assign_in_same_department(api_client: APIClient):
     # выдаём права в d2 — можно удалять
     grant_assign_in_dept(u, d2)
     assert api_client.delete(url).status_code in (204, 200)
-
 
 @pytest.mark.django_db
 def test_set_perms_dedup_and_replace_semantics(api_client: APIClient):

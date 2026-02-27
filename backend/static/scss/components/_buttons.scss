@@ -1,0 +1,193 @@
+// =============================================================================
+// Custom Button Styles (SCSS)
+// =============================================================================
+// Расширение стандартных кнопок Bootstrap с дополнительными вариантами:
+// - .btn-circle - круглая кнопка
+// - .btn-icon - кнопка с иконкой и текстом
+// - .btn-ghost - кнопка-призрак
+// - .btn-pill - максимально скругленная кнопка
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+// Размеры круглых кнопок (используем значения, кратные 4px)
+$btn-circle-size-sm: 32px;
+$btn-circle-size-md: 36px;
+$btn-circle-size-lg: 44px;
+
+// Размеры шрифтов
+$btn-circle-font-sm: 0.875rem;
+$btn-circle-font-md: 1rem;
+$btn-circle-font-lg: 1.25rem;
+
+// Отступы
+$btn-icon-gap: var(--space-2); // 8px
+$btn-circle-mobile-size: 36px;
+$btn-circle-mobile-padding: var(--space-2); // 8px
+
+// Переходы
+$btn-transition: all 0.2s ease;
+$btn-toggle-transition: transform 0.3s ease;
+
+// =============================================================================
+// КРУГЛЫЕ КНОПКИ
+// =============================================================================
+
+// Миксин для размеров круглых кнопок (DRY)
+@mixin btn-circle-size($size, $font-size) {
+  width: $size !important;
+  height: $size !important;
+  min-width: $size !important;
+  max-width: $size !important;
+  min-height: $size !important;
+  max-height: $size !important;
+  font-size: $font-size;
+}
+
+// Базовый класс для круглых кнопок
+.btn-circle {
+  border-radius: 50% !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  line-height: 1;
+
+  // Иконка внутри круглой кнопки
+  i {
+    line-height: 1;
+    display: inline-block;
+  }
+}
+
+// Размеры круглых кнопок
+.btn-circle.btn-sm,
+.btn-circle-sm {
+  @include btn-circle-size($btn-circle-size-sm, $btn-circle-font-sm);
+}
+
+.btn-circle:not(.btn-sm):not(.btn-lg),
+.btn-circle-md {
+  @include btn-circle-size($btn-circle-size-md, $btn-circle-font-md);
+}
+
+.btn-circle.btn-lg,
+.btn-circle-lg {
+  @include btn-circle-size($btn-circle-size-lg, $btn-circle-font-lg);
+}
+
+// =============================================================================
+// КНОПКИ С ИКОНКАМИ
+// =============================================================================
+
+// Кнопка с иконкой и текстом
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: $btn-icon-gap;
+
+  i {
+    line-height: 1;
+  }
+}
+
+// Адаптив: только иконка на мобильных
+@media (max-width: 767.98px) {
+  .btn-icon {
+    .btn-text {
+      display: none;
+    }
+
+    // Если это не круглая кнопка, делаем её круглой на мобильных
+    &:not(.btn-circle) {
+      border-radius: 50% !important;
+      padding: $btn-circle-mobile-padding !important;
+      width: $btn-circle-mobile-size;
+      height: $btn-circle-mobile-size;
+      justify-content: center;
+    }
+  }
+}
+
+// =============================================================================
+// ДОПОЛНИТЕЛЬНЫЕ ВАРИАНТЫ
+// =============================================================================
+
+// Кнопка-призрак (без фона, только border при hover)
+.btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--bs-body-color);
+  transition: $btn-transition;
+
+  &:hover {
+    background: color-mix(in srgb, var(--bs-body-color), transparent 90%);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+  }
+
+  &:active {
+    background: color-mix(in srgb, var(--bs-body-color), transparent 85%);
+  }
+}
+
+// Pill-кнопки (максимально скругленные)
+.btn-pill {
+  border-radius: 999px !important;
+}
+
+// =============================================================================
+// СОСТОЯНИЯ
+// =============================================================================
+
+// Активное состояние для toggle-кнопок
+.btn-circle[aria-expanded="true"],
+.btn-circle.active {
+  background-color: var(--bs-primary) !important;
+  border-color: var(--bs-primary) !important;
+  color: white !important;
+}
+
+// Анимация вращения для toggle-кнопок
+.btn-circle[aria-expanded="true"] {
+  transform: rotate(180deg);
+  transition: $btn-toggle-transition;
+}
+
+.btn-circle[aria-expanded="false"] {
+  transform: rotate(0deg);
+  transition: $btn-toggle-transition;
+}
+
+// =============================================================================
+// ГРУППЫ КРУГЛЫХ КНОПОК
+// =============================================================================
+
+// Группа круглых кнопок с небольшим отступом
+.btn-circle-group {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+
+  .btn-circle {
+    margin: 0;
+  }
+}
+
+// =============================================================================
+// ТЕМНАЯ ТЕМА
+// =============================================================================
+
+@media (prefers-color-scheme: dark) {
+  .btn-ghost {
+    color: var(--bs-body-color);
+
+    &:hover {
+      background: color-mix(in srgb, var(--bs-body-color), transparent 92%);
+    }
+  }
+}

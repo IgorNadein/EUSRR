@@ -119,6 +119,14 @@ class UserService:
                         last_django_modify_ts=timezone.now(),
                     )
 
+                    # Записываем Django PK в LDAP employeeNumber для связки
+                    employee_id_attr = getattr(
+                        settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
+                    )
+                    modify_user_attrs(
+                        conn, dn, {employee_id_attr: str(emp.pk)}, do_write=True
+                    )
+
                     # Временно импортируем для совместимости
                     # TODO: Убрать после полного рефакторинга
                     if dto.department_dn and hasattr(emp, "set_active_department"):
@@ -141,7 +149,10 @@ class UserService:
                 if dto.group_cns:
                     sync_user_groups_by_cns(conn, dn, set(dto.group_cns), do_write=True)
                 if dto.avatar_bytes:
-                    avatar = normalize_avatar_to_jpeg(dto.avatar_bytes, max_kb=100)
+                    # Увеличен размер до 384px для максимального качества в LDAP
+                    avatar = normalize_avatar_to_jpeg(
+                        dto.avatar_bytes, size_px=384, max_kb=100
+                    )
                     if avatar:
                         modify_user_attrs(
                             conn, dn, {"thumbnailPhoto": avatar}, do_write=True
@@ -636,7 +647,10 @@ class UserService:
         # 5) Аватар
         avatar_saved = False
         if avatar_bytes:
-            avatar = normalize_avatar_to_jpeg(avatar_bytes, max_kb=100)
+            # Увеличен размер до 384px для максимального качества в LDAP
+            avatar = normalize_avatar_to_jpeg(
+                avatar_bytes, size_px=384, max_kb=100
+            )
             if avatar:
                 modify_user_attrs(conn, dn, {"thumbnailPhoto": avatar}, do_write=True)
                 avatar_saved = True  # Флаг для сохранения в БД

@@ -1,0 +1,397 @@
+// =============================================================================
+// Base App Layout & Styles (SCSS)
+// =============================================================================
+// Базовые стили приложения: layout, navbar, sidebar, формы, feed-элементы
+//
+// Зависимости:
+// - Bootstrap custom build
+// - CSS переменные из abstracts/_css-variables.scss
+
+// =============================================================================
+// ПЕРЕМЕННЫЕ
+// =============================================================================
+
+// Цвета
+$primary-light: #007AFF;
+$primary-dark: #0A84FF;
+$link-hover-light: #0062CC;
+$link-hover-dark: #59AFFF;
+
+// Фоны темной темы
+$dark-bg: #1C1C1E;
+$dark-color: #F2F2F7;
+$dark-border: #3A3A3C;
+$dark-tertiary-bg: #2C2C2E;
+
+// Типографика
+$font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+$font-size-base: 17px;
+
+// Размеры компонентов
+$btn-border-radius: 10px;
+$btn-min-height: 44px;
+$form-control-border-radius: 10px;
+$form-control-height: 44px;
+$dropdown-border-radius: 13px;
+
+// Переходы
+$btn-transition: background-color 0.3s, transform 0.1s;
+$form-transition: box-shadow 0.2s ease, border-color 0.2s ease;
+$ghost-btn-transition: background 0.2s ease;
+
+// Тени
+$dropdown-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+
+// Navbar
+$navbar-border-width: 0.5px;
+
+// =============================================================================
+// ЦВЕТОВАЯ СХЕМА
+// =============================================================================
+
+:root {
+  --bs-primary: #{$primary-light};
+  --bs-link-color: var(--bs-primary);
+  --bs-link-hover-color: #{$link-hover-light};
+}
+
+[data-bs-theme="dark"] {
+  --bs-body-bg: #{$dark-bg};
+  --bs-body-color: #{$dark-color};
+  --bs-border-color: #{$dark-border};
+  --bs-tertiary-bg: #{$dark-tertiary-bg};
+  --bs-primary: #{$primary-dark};
+  --bs-link-color: var(--bs-primary);
+  --bs-link-hover-color: #{$link-hover-dark};
+}
+
+// =============================================================================
+// BODY & БАЗОВЫЕ СТИЛИ
+// =============================================================================
+
+body {
+  font-family: $font-family-base;
+  font-size: $font-size-base;
+  padding-top: var(--navbar-h);
+  overflow-x: hidden;
+  background-color: var(--bs-body-bg);
+
+  // Safe area для iOS
+  @supports(padding-top: env(safe-area-inset-top)) {
+    padding-top: calc(var(--navbar-h) + env(safe-area-inset-top));
+  }
+}
+
+// =============================================================================
+// ФОРМЫ И КНОПКИ (БАЗОВЫЕ ПЕРЕОПРЕДЕЛЕНИЯ)
+// =============================================================================
+
+.btn {
+  border-radius: $btn-border-radius;
+  min-height: $btn-min-height;
+  transition: $btn-transition;
+
+  &:hover {
+    transform: scale(1.02);
+  }
+}
+
+.form-control {
+  border-radius: $form-control-border-radius;
+  height: $form-control-height;
+  font-size: $font-size-base;
+
+  &:focus {
+    box-shadow: 0 0 0 2px rgba(var(--bs-primary-rgb), 0.25);
+    border-color: var(--bs-primary);
+  }
+}
+
+.dropdown-menu {
+  border-radius: $dropdown-border-radius;
+  box-shadow: $dropdown-shadow;
+}
+
+// =============================================================================
+// NAVBAR
+// =============================================================================
+
+.app-navbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 1030;
+  border-bottom: $navbar-border-width solid var(--bs-border-color);
+}
+
+// =============================================================================
+// LAYOUT GRID SYSTEM
+// =============================================================================
+
+.app-layout {
+  display: block;
+}
+
+// Адаптивный контейнер
+.content-container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+// Мобильные устройства
+@media (max-width: 991.98px) {
+  .content-container {
+    padding-left: var(--bs-gutter-x, 0.75rem);
+    padding-right: var(--bs-gutter-x, 0.75rem);
+  }
+}
+
+// Десктоп с grid layout
+@media (min-width: 992px) {
+  // При наличии сайдбаров убираем padding и max-width
+  .app-layout.with-sidebar,
+  .app-layout.with-rightbar {
+    .content-container {
+      max-width: none;
+      padding-left: 0;
+      padding-right: 0;
+    }
+  }
+
+  // Grid: sidebar + content + rightbar
+  .app-layout.with-sidebar.with-rightbar {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr var(--rightbar-w);
+    gap: var(--layout-gap);
+    align-items: start;
+  }
+
+  // Grid: sidebar + content
+  .app-layout.with-sidebar:not(.with-rightbar) {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    gap: var(--layout-gap);
+    align-items: start;
+  }
+
+  // Без сайдбаров - стандартный container
+  .app-layout:not(.with-sidebar):not(.with-rightbar) {
+    .content-container {
+      padding-left: var(--bs-gutter-x, 0.75rem);
+      padding-right: var(--bs-gutter-x, 0.75rem);
+      max-width: 960px;
+    }
+  }
+
+  // Компенсация для .row внутри grid-layout
+  .app-layout.with-sidebar,
+  .app-layout.with-rightbar {
+    .content-container > .row {
+      margin-left: 0;
+      margin-right: 0;
+
+      > [class*="col-"] {
+        padding-left: calc(var(--bs-gutter-x) * 0.5);
+        padding-right: calc(var(--bs-gutter-x) * 0.5);
+      }
+    }
+
+    // Карточки внутри колонок
+    .container > .row > [class*="col-"] {
+      > .card,
+      > section.card {
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+      }
+    }
+  }
+}
+
+// Breakpoints для max-width
+@media (min-width: 1200px) {
+  .app-layout:not(.with-sidebar):not(.with-rightbar) .content-container {
+    max-width: 1140px;
+  }
+}
+
+@media (min-width: 1400px) {
+  .app-layout:not(.with-sidebar):not(.with-rightbar) .content-container {
+    max-width: 1320px;
+  }
+}
+
+// =============================================================================
+// SIDEBAR
+// =============================================================================
+
+#sidebar {
+  --bs-offcanvas-width: var(--sidebar-w);
+  border-radius: 0 13px 13px 0;
+
+  @media (min-width: 992px) {
+    &.offcanvas-lg {
+      position: sticky;
+      top: var(--navbar-h);
+      height: calc(100dvh - var(--navbar-h));
+      align-self: start;
+      overflow: auto;
+      border-right: $navbar-border-width solid var(--bs-border-color);
+      background: var(--bs-body-bg);
+      transform: none !important;
+      visibility: visible !important;
+    }
+  }
+}
+
+// =============================================================================
+// NOTIFICATION BELL
+// =============================================================================
+
+.bell-wrapper {
+  position: relative;
+  line-height: 1;
+  display: inline-block;
+}
+
+.bell-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--bs-danger);
+  color: #fff;
+  font-size: 7px;
+  line-height: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65);
+}
+
+// =============================================================================
+// BUTTONS & GHOST BUTTONS
+// =============================================================================
+
+.btn-ghost {
+  background: color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
+  color: var(--bs-body-color);
+  padding: var(--space-1);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  transition: $ghost-btn-transition;
+
+  &:hover {
+    background: color-mix(in srgb, var(--bs-body-bg) 88%, transparent);
+  }
+
+  .bi {
+    font-size: 1rem;
+    margin-right: 0.35rem;
+    vertical-align: -2px;
+  }
+
+  // Текст кнопок с toggle (Скрыть/Показать)
+  .txt-close {
+    display: none;
+  }
+
+  &[aria-expanded="true"] {
+    .txt-open {
+      display: none;
+    }
+
+    .txt-close {
+      display: inline;
+    }
+  }
+}
+
+// =============================================================================
+// FEED ELEMENTS
+// =============================================================================
+
+// Блоки типа "Новые сотрудники"
+.feed-new {
+  border-radius: var(--feed-radius);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 10%);
+  background: var(--bs-body-bg);
+  box-shadow: var(--feed-shadow);
+  padding: var(--card-padding);
+}
+
+// Z-index для stretched-link
+.card-body .stretched-link::after,
+.feed-img .stretched-link::after {
+  z-index: 1;
+}
+
+.collapse {
+  position: relative;
+  z-index: 2;
+}
+
+// =============================================================================
+// ALPHA HEADERS (буквенные разделители)
+// =============================================================================
+
+.alpha-header {
+  position: sticky;
+  top: calc(var(--navbar-h) + var(--space-1));
+  z-index: 1;
+  background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color), transparent 30%);
+  color: var(--bs-secondary-color);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin: var(--space-1) 0 var(--space-1) var(--space-1);
+}
+
+.alpha-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bs-primary);
+  opacity: 0.6;
+}
+
+// =============================================================================
+// ACTION BUTTONS
+// =============================================================================
+
+.action-btn {
+  min-height: unset;
+  padding: var(--space-1);
+
+  .bi {
+    font-size: 1rem;
+  }
+}
+
+// =============================================================================
+// TEXT UTILITIES
+// =============================================================================
+
+// Переносим длинные слова/ссылки
+.feed-text,
+.feed-full {
+  overflow-wrap: anywhere;
+  width: 100%;
+  margin-right: 0;
+  padding-right: 0;
+}
+
+// Z-index для кнопки "Подробнее"
+.readmore-toggle {
+  position: relative;
+  z-index: 2;
+}

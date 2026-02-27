@@ -1,0 +1,300 @@
+/**
+ * _bubble-states.scss
+ * Интерактивные состояния и взаимодействия с bubble
+ * Hover, focus, selection, interactions
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   ПОДСВЕТКА ЦЕЛЕВОГО СООБЩЕНИЯ
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Подсветка сообщения при переходе по ссылке (reply preview)
+ * Используется класс .highlight-flash (добавляется к .msg)
+ */
+@keyframes message-highlight {
+  0% {
+    background-color: transparent;
+  }
+  15% {
+    background-color: rgba(var(--bs-primary-rgb), 0.15);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.msg.highlight-flash {
+  animation: message-highlight 1.5s ease-out;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   HOVER СОСТОЯНИЯ
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Контейнер сообщения с hover-эффектами
+ */
+.msg {
+  position: relative;
+  
+  // При наведении показываем действия
+  &:hover {
+    .msg__actions {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .msg__quick-reactions {
+      opacity: 1;
+      pointer-events: all;
+    }
+  }
+}
+
+/**
+ * Панель действий над сообщением (появляется при hover)
+ */
+.msg__actions {
+  position: absolute;
+  top: -12px;
+  right: 10px;
+  z-index: 10;
+  
+  display: flex;
+  gap: 2px;
+  padding: 2px 4px;
+  
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: $radius-pill;
+  @include shadow($shadow-sm);
+  
+  opacity: 0;
+  pointer-events: none;
+  @include transition(opacity, $transition-fast);
+  
+  .btn {
+    padding: 2px 6px;
+    font-size: 0.85rem;
+    border: none;
+    background: transparent;
+    color: var(--bs-secondary);
+    @include transition-all($transition-fast);
+    
+    &:hover {
+      color: var(--bs-primary);
+      background: var(--bs-secondary-bg);
+    }
+    
+    &:focus {
+      box-shadow: 0 0 0 2px rgba(var(--bs-primary-rgb), 0.25);
+    }
+  }
+}
+
+/**
+ * Быстрые реакции (появляются при hover)
+ */
+.msg__quick-reactions {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: $radius-pill;
+  @include shadow($shadow-md);
+  
+  opacity: 0;
+  pointer-events: none;
+  @include transition(opacity, $transition-fast);
+  
+  button {
+    border: none;
+    background: transparent;
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: $radius-sm;
+    line-height: 1;
+    @include transition(background, $transition-fast);
+    
+    &:hover {
+      background: var(--bs-secondary-bg);
+      transform: scale(1.1);
+    }
+    
+    &:active {
+      transform: scale(0.95);
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   СОСТОЯНИЕ ВЫДЕЛЕНИЯ
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Сообщение в режиме выделения (для множественных действий)
+ */
+.msg--selected {
+  .bubble {
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0.3);
+  }
+}
+
+/**
+ * Режим множественного выделения активен
+ */
+.msg--selectable {
+  cursor: pointer;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    left: -30px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--bs-border-color);
+    border-radius: 4px;
+    background: var(--bs-body-bg);
+    @include transition-all($transition-fast);
+  }
+  
+  &:hover::before {
+    border-color: var(--bs-primary);
+  }
+  
+  &.msg--selected::before {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    content: '✓';
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   КОНТЕКСТНОЕ МЕНЮ
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Сообщение с открытым контекстным меню
+ */
+.msg--context-menu-open {
+  .bubble {
+    background: var(--bs-secondary-bg);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DRAG & DROP
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Сообщение в процессе перетаскивания
+ */
+.msg--dragging {
+  opacity: 0.5;
+  cursor: move;
+}
+
+/**
+ * Целевое место для drop
+ */
+.msg--drop-target {
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -2px;
+    height: 2px;
+    background: var(--bs-primary);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ФОКУС И ДОСТУПНОСТЬ
+────────────────────────────────────────────────────────────── */
+
+/**
+ * Фокус на сообщении (для навигации с клавиатуры)
+ */
+.msg:focus-within {
+  .bubble {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+  }
+}
+
+/**
+ * Skip link для accessibility
+ */
+.msg__skip-link {
+  position: absolute;
+  left: -9999px;
+  
+  &:focus {
+    position: static;
+    left: auto;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   МОБИЛЬНАЯ АДАПТИВНОСТЬ
+────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  // На мобильных всегда показываем кнопки действий
+  .msg__actions {
+    position: static;
+    opacity: 1;
+    pointer-events: all;
+    margin-top: 0.5rem;
+    justify-content: flex-end;
+  }
+  
+  // Быстрые реакции тоже всегда видны
+  .msg__quick-reactions {
+    position: static;
+    transform: none;
+    opacity: 1;
+    pointer-events: all;
+    margin-top: 0.5rem;
+    justify-content: center;
+  }
+  
+  // Режим выделения упрощаем
+  .msg--selectable::before {
+    left: -25px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   REDUCED MOTION
+────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .bubble,
+  .msg__actions,
+  .msg__quick-reactions,
+  .bubble__attachment img,
+  .bubble__reaction {
+    transition: none !important;
+    animation: none !important;
+  }
+}
