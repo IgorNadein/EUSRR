@@ -8,6 +8,7 @@ import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { CalendarModal } from "@/components/CalendarModal";
 import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import { EventModal } from "@/components/EventModal";
 import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
 import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
@@ -129,9 +130,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
           </div>
 
           <div className="ml-auto hidden items-center gap-1 sm:gap-2 lg:flex">
-            <button className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100">
-              <Bell size={18} className="text-gray-600" />
-            </button>
+            <NotificationCenter />
             <div className="ml-1 relative h-10 w-10" id="user-menu-root">
               <div
                 className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white hover:bg-sky-500 cursor-pointer"
@@ -171,13 +170,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
 
         <div className="pb-3 lg:hidden">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 hover:bg-slate-100"
-              aria-label="Уведомления"
-            >
-              <Bell size={18} className="text-gray-600" />
-            </button>
+            <NotificationCenter />
 
             <div className="relative flex-1">
               <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
