@@ -19,6 +19,7 @@ class CalendarAppConfig(AppConfig):
         """
         import calendar_app.notification_signals  # noqa: F401
         from calendar_app import signals  # noqa: F401 - старая система
+        import calendar_app.rules  # django-rules: регистрация предикатов и правил доступа
 
         try:
             Employee = django_apps.get_model("employees", "Employee")

@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "widget_tweaks",
     "simple_history",
     "rest_framework",
+    "rules",  # django-rules для декларативных permissions
     # Celery приложения
     "django_celery_beat",  # Периодические задачи
     "django_celery_results",  # Хранение результатов
@@ -347,6 +348,7 @@ AUTHENTICATION_BACKENDS = [
     "eusrr_backend.auth_backends.SuperuserOnlyBackend",  # экстренный доступ для админа
     # расчёт прав на основе должностей
     "eusrr_backend.auth_backends.PositionRoleBackend",
+    "rules.permissions.ObjectPermissionBackend",  # django-rules для object-level permissions
     "django.contrib.auth.backends.ModelBackend",  # стандартный Django бэкенд
 ]
 

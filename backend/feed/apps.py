@@ -8,3 +8,4 @@ class FeedConfig(AppConfig):
     def ready(self):
         # Подключаем signals для уведомлений
         import feed.notification_signals  # noqa
+        import feed.rules  # django-rules: регистрация предикатов и правил доступа
