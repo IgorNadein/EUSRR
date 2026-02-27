@@ -31,6 +31,11 @@ def _get_model_name(obj: Any) -> str:
         "chat": "chat",
         "message": "message",
         "calendarevent": "event",
+        "event": "schedule_event",  # django-scheduler Event
+        "procurementrequest": "procurement_request",
+        "equipment": "equipment",
+        "document": "document",
+        "notification": "notification",
     }
     
     return mapping.get(model_name, model_name)
@@ -46,7 +51,7 @@ def _format_employee(obj: Any) -> Dict[str, Any]:
         "url": f"/employees/{obj.pk}/",
         "meta": {
             "email": obj.email,
-            "phone": obj.phone_number or "",
+            "phone": str(obj.phone_number) if obj.phone_number else "",
         }
     }
 
@@ -126,7 +131,7 @@ def _format_message(obj: Any) -> Dict[str, Any]:
 
 
 def _format_event(obj: Any) -> Dict[str, Any]:
-    """Форматирует календарное событие для API."""
+    """Форматирует календарное событие (CalendarEvent) для API."""
     return {
         "model_name": "event",
         "object_id": obj.pk,
@@ -135,6 +140,83 @@ def _format_event(obj: Any) -> Dict[str, Any]:
         "url": f"/calendar?event={obj.pk}",
         "meta": {
             "start_date": obj.start_date.isoformat() if hasattr(obj, "start_date") else None,
+        }
+    }
+
+
+def _format_schedule_event(obj: Any) -> Dict[str, Any]:
+    """Форматирует событие расписания (django-scheduler Event) для API."""
+    return {
+        "model_name": "schedule_event",
+        "object_id": obj.pk,
+        "title": obj.title,
+        "description": obj.description or "",
+        "url": "/calendar/",
+        "meta": {
+            "start": obj.start.isoformat() if hasattr(obj, "start") else None,
+            "end": obj.end.isoformat() if hasattr(obj, "end") and obj.end else None,
+        }
+    }
+
+
+def _format_procurement_request(obj: Any) -> Dict[str, Any]:
+    """Форматирует заявку на закупку для API."""
+    return {
+        "model_name": "procurement_request",
+        "object_id": obj.pk,
+        "title": obj.title,
+        "description": obj.description[:200] + "..." if len(obj.description) > 200 else obj.description,
+        "url": f"/procurement/requests/{obj.pk}/",
+        "meta": {
+            "status": obj.status if hasattr(obj, "status") else None,
+            "requestor": str(obj.requestor) if hasattr(obj, "requestor") else None,
+            "department": str(obj.department) if hasattr(obj, "department") else None,
+        }
+    }
+
+
+def _format_equipment(obj: Any) -> Dict[str, Any]:
+    """Форматирует оборудование для API."""
+    return {
+        "model_name": "equipment",
+        "object_id": obj.pk,
+        "title": obj.name,
+        "description": f"Инв. №: {obj.inventory_number}" + (f", Сер. №: {obj.serial_number}" if obj.serial_number else ""),
+        "url": f"/procurement/equipment/{obj.pk}/",
+        "meta": {
+            "inventory_number": obj.inventory_number,
+            "status": obj.status if hasattr(obj, "status") else None,
+            "location": obj.location if hasattr(obj, "location") else None,
+        }
+    }
+
+
+def _format_document(obj: Any) -> Dict[str, Any]:
+    """Форматирует документ для API."""
+    return {
+        "model_name": "document",
+        "object_id": obj.pk,
+        "title": obj.title,
+        "description": obj.description[:200] + "..." if obj.description and len(obj.description) > 200 else (obj.description or ""),
+        "url": f"/documents/{obj.pk}/",
+        "meta": {
+            "uploaded_by": str(obj.uploaded_by) if hasattr(obj, "uploaded_by") and obj.uploaded_by else None,
+            "uploaded_at": obj.uploaded_at.isoformat() if hasattr(obj, "uploaded_at") else None,
+        }
+    }
+
+
+def _format_notification(obj: Any) -> Dict[str, Any]:
+    """Форматирует уведомление для API."""
+    return {
+        "model_name": "notification",
+        "object_id": obj.pk,
+        "title": obj.title,
+        "description": obj.short_message or (obj.message[:150] + "..." if len(obj.message) > 150 else obj.message),
+        "url": obj.action_url if hasattr(obj, "action_url") and obj.action_url else "/notifications/",
+        "meta": {
+            "is_read": obj.is_read if hasattr(obj, "is_read") else False,
+            "created_at": obj.created_at.isoformat() if hasattr(obj, "created_at") else None,
         }
     }
 
@@ -149,6 +231,11 @@ def _format_result(obj: Any, model_name: str) -> Dict[str, Any]:
         "chat": _format_chat,
         "message": _format_message,
         "event": _format_event,
+        "schedule_event": _format_schedule_event,
+        "procurement_request": _format_procurement_request,
+        "equipment": _format_equipment,
+        "document": _format_document,
+        "notification": _format_notification,
     }
     
     formatter = formatters.get(model_name)
@@ -188,7 +275,7 @@ def search_api_view(request: DRFRequest) -> Response:
             "query": "поисковый запрос",
             "results": [
                 {
-                    "model_name": "post|employee|department|request|chat|message|event",
+                    "model_name": "post|employee|department|request|chat|message|event|procurement_request|equipment|document|notification",
                     "object_id": 123,
                     "title": "Заголовок",
                     "description": "Описание",
@@ -231,11 +318,16 @@ def search_api_view(request: DRFRequest) -> Response:
         obj = search_result.object
         model_name = _get_model_name(obj)
         
-        # Фильтрация заявлений по правам доступа
+        # Фильтрация по правам доступа
         if model_name == "request":
             is_hr = _is_hr(request.user)
             if not is_hr and hasattr(obj, 'employee') and obj.employee != request.user:  # type: ignore[attr-defined]
                 continue  # Пропускаем чужие заявления
+        
+        # Фильтрация уведомлений - показываем только свои
+        if model_name == "notification":
+            if hasattr(obj, 'recipient') and obj.recipient != request.user:  # type: ignore[attr-defined]
+                continue  # Пропускаем чужие уведомления
         
         # Подсчитываем
         model_counts[model_name] = model_counts.get(model_name, 0) + 1

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import type { SearchResponse, SearchResult, SearchModelType } from "@/types/api";
-import { Search, User, Building, FileText, MessageSquare, MessageCircle, Calendar, Inbox } from "lucide-react";
+import { Search, User, Building, FileText, MessageSquare, MessageCircle, Calendar, Inbox, ShoppingCart, Package, Bell } from "lucide-react";
 
 // Иконки для разных типов результатов
 const modelIcons: Record<SearchModelType, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -18,6 +18,10 @@ const modelIcons: Record<SearchModelType, React.ComponentType<{ size?: number; c
   chat: MessageSquare,
   message: MessageCircle,
   event: Calendar,
+  schedule_event: Calendar,
+  procurement_request: ShoppingCart,
+  equipment: Package,
+  notification: Bell,
 };
 
 // Названия категорий на русском
@@ -29,7 +33,11 @@ const modelNames: Record<SearchModelType, string> = {
   request: "Заявления",
   chat: "Чаты",
   message: "Сообщения",
-  event: "События",
+  event: "События календаря",
+  schedule_event: "Расписание",
+  procurement_request: "Заявки на закупку",
+  equipment: "Оборудование",
+  notification: "Уведомления",
 };
 
 export default function SearchPage() {

@@ -81,11 +81,76 @@ if Message:
         store=("content", "created_at"),
     )
 
-# 7. Календарные события (Calendar)
+# 7. Календарные события (Calendar App)
 CalendarEvent = get_model_safe("calendar_app", "CalendarEvent")
 if CalendarEvent:
+    from watson.search import SearchAdapter
+    
+    class CalendarEventAdapter(SearchAdapter):
+        """Кастомный адаптер для CalendarEvent с правильным URL."""
+        
+        def get_url(self, obj):
+            """Возвращает URL календаря (общий календарь компании)."""
+            return "/calendar/"
+    
     register(
         CalendarEvent,
+        adapter_cls=CalendarEventAdapter,
         fields=("title", "description"),
         store=("title", "start_date"),
+    )
+
+# 8. События расписания (Django-Scheduler)
+Event = get_model_safe("schedule", "Event")
+if Event:
+    from watson.search import SearchAdapter
+    
+    class ScheduleEventAdapter(SearchAdapter):
+        """Кастомный адаптер для Event из django-scheduler."""
+        
+        def get_url(self, obj):
+            """Возвращает URL календаря."""
+            return "/calendar/"
+    
+    register(
+        Event,
+        adapter_cls=ScheduleEventAdapter,
+        fields=("title", "description"),
+        store=("title", "start"),
+    )
+
+# 9. Заявки на закупку (Procurement)
+ProcurementRequest = get_model_safe("procurement", "ProcurementRequest")
+if ProcurementRequest:
+    register(
+        ProcurementRequest,
+        fields=("title", "description"),
+        store=("title", "status", "created_at"),
+    )
+
+# 10. Оборудование (Procurement)
+Equipment = get_model_safe("procurement", "Equipment")
+if Equipment:
+    register(
+        Equipment,
+        fields=("name", "inventory_number", "serial_number", "location"),
+        store=("name", "inventory_number", "status"),
+    )
+
+# 11. Документы (Documents)
+Document = get_model_safe("documents", "Document")
+if Document:
+    register(
+        Document,
+        fields=("title", "description"),
+        store=("title", "uploaded_at"),
+    )
+
+# 12. Уведомления (Notifications)
+Notification = get_model_safe("notifications", "Notification")
+if Notification:
+    register(
+        Notification,
+        fields=("title", "message", "short_message"),
+        store=("title", "is_read", "created_at"),
     )
