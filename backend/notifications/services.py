@@ -491,7 +491,7 @@ class NotificationService:
     @staticmethod
     def send_web_push_notification(notification: Notification) -> int:
         """
-        Отправить push-уведомление через Web Push API.
+        Отправить push-уведомление через Web Push API используя django-push-notifications.
         Работает даже когда браузер закрыт.
         
         Args:
@@ -500,8 +500,7 @@ class NotificationService:
         Returns:
             Количество успешно отправленных push-уведомлений
         """
-        from django.conf import settings as django_settings
-        from .models import WebPushSubscription
+        from push_notifications.models import WebPushDevice
         
         logger.debug(
             f"[NotificationService.send_web_push_notification] НАЧАЛО: "
@@ -509,32 +508,21 @@ class NotificationService:
             f"recipient={notification.recipient.id}"
         )
         
-        # Проверяем наличие VAPID ключей
-        vapid_private_key = getattr(django_settings, 'VAPID_PRIVATE_KEY', None)
-        vapid_public_key = getattr(django_settings, 'VAPID_PUBLIC_KEY', None)
-        vapid_email = getattr(django_settings, 'VAPID_ADMIN_EMAIL', 'admin@example.com')
-        
-        if not vapid_private_key or not vapid_public_key:
-            logger.warning(
-                f"[NotificationService.send_web_push_notification] ⚠️ VAPID ключи не настроены"
-            )
-            return 0
-        
-        # Получаем все активные подписки пользователя
-        subscriptions = WebPushSubscription.objects.filter(
+        # Получаем все активные устройства пользователя
+        devices = WebPushDevice.objects.filter(
             user=notification.recipient,
-            is_active=True
+            active=True
         )
         
-        subscription_count = subscriptions.count()
-        if subscription_count == 0:
+        device_count = devices.count()
+        if device_count == 0:
             logger.debug(
-                f"[NotificationService.send_web_push_notification] ℹ️ Нет активных push-подписок"
+                f"[NotificationService.send_web_push_notification] ℹ️ Нет активных push-устройств"
             )
             return 0
         
         logger.debug(
-            f"[NotificationService.send_web_push_notification] Найдено подписок: {subscription_count}"
+            f"[NotificationService.send_web_push_notification] Найдено устройств: {device_count}"
         )
         
         # Формируем payload для push-уведомления
@@ -552,76 +540,23 @@ class NotificationService:
             'requireInteraction': notification.notification_type.priority in ['high', 'urgent'],
         }
         
+        # Отправляем через библиотеку (она автоматически обрабатывает батчинг и ошибки)
         try:
-            from pywebpush import webpush, WebPushException
-        except ImportError:
+            devices.send_message(json.dumps(payload), ttl=86400)
+            success_count = device_count
+            
+            logger.debug(
+                f"[NotificationService.send_web_push_notification] ✅ Завершено: "
+                f"{success_count} устройств уведомлены"
+            )
+            
+            return success_count
+            
+        except Exception as e:
             logger.error(
-                f"[NotificationService.send_web_push_notification] ❌ pywebpush не установлен"
+                f"[NotificationService.send_web_push_notification] ❌ Ошибка отправки: {e}"
             )
             return 0
-        
-        success_count = 0
-        failed_subscriptions = []
-        
-        for subscription in subscriptions:
-            try:
-                subscription_info = {
-                    'endpoint': subscription.endpoint,
-                    'keys': {
-                        'p256dh': subscription.p256dh_key,
-                        'auth': subscription.auth_key
-                    }
-                }
-                
-                # Извлекаем origin из endpoint для поля 'aud' в VAPID claims
-                from urllib.parse import urlparse
-                parsed_url = urlparse(subscription.endpoint)
-                audience = f"{parsed_url.scheme}://{parsed_url.netloc}"
-                
-                vapid_claims = {
-                    'sub': f'mailto:{vapid_email}',
-                    'aud': audience
-                }
-                
-                webpush(
-                    subscription_info=subscription_info,
-                    data=json.dumps(payload),
-                    vapid_private_key=vapid_private_key,
-                    vapid_claims=vapid_claims,
-                    ttl=86400  # 24 часа
-                )
-                
-                success_count += 1
-                subscription.reset_errors()
-                
-            except WebPushException as e:
-                logger.warning(f"[WebPush] Error: {e}")
-                
-                # Обрабатываем ошибки
-                subscription.error_count += 1
-                subscription.last_error = str(e)[:500]
-                
-                # Если подписка устарела (410 Gone) или недействительна - деактивируем
-                if e.response and e.response.status_code in [404, 410]:
-                    subscription.is_active = False
-                    logger.info(f"[WebPush] Subscription {subscription.id} deactivated (expired)")
-                
-                # Если слишком много ошибок - деактивируем
-                if subscription.error_count >= 5:
-                    subscription.is_active = False
-                    logger.info(f"[WebPush] Subscription {subscription.id} deactivated (too many errors)")
-                
-                subscription.save(update_fields=['error_count', 'last_error', 'is_active', 'updated_at'])
-                
-            except Exception as e:
-                logger.error(f"[WebPush] Unexpected error: {e}")
-        
-        logger.debug(
-            f"[NotificationService.send_web_push_notification] ✅ Завершено: "
-            f"{success_count}/{subscription_count} успешно"
-        )
-        
-        return success_count
 
     @staticmethod
     def get_user_settings(
