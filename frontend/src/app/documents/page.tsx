@@ -252,16 +252,25 @@ export default function DocumentsPage() {
                     {selectedFolder ? selectedFolder.name : "Все папки"}
                   </span>
                   {selectedFolderId && (
-                    <button
+                    <span
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedFolderId(null);
                       }}
-                      className="rounded p-0.5 hover:bg-sky-200"
+                      className="rounded p-0.5 hover:bg-sky-200 cursor-pointer"
                       title="Сбросить фильтр"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelectedFolderId(null);
+                        }
+                      }}
                     >
                       <X size={14} />
-                    </button>
+                    </span>
                   )}
                 </button>
                 {showFolderDropdown && (
