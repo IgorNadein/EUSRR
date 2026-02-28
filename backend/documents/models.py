@@ -150,6 +150,15 @@ class Document(models.Model):
         help_text=_('Если `Разослать всем` отключено, документ пойдет только этим'),
         related_name='document_recipients'
     )
+    
+    # Связанные документы
+    related_documents = models.ManyToManyField(
+        'self',
+        verbose_name=_('Связанные документы'),
+        blank=True,
+        symmetrical=True,
+        help_text=_('Документы, связанные с этим')
+    )
 
     # -------------------------------------------------------------------------
     # FSM TRANSITIONS (переходы между состояниями)
@@ -581,3 +590,62 @@ class DocumentAuditLog(models.Model):
         
     def __str__(self):
         return f'{self.user} {self.get_action_display()} {self.document} @ {self.timestamp:%d.%m.%Y %H:%M}'
+
+
+class DocumentComment(models.Model):
+    """
+    Комментарии к документам.
+    Поддерживает вложенные ответы (threading).
+    """
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='comments',
+        verbose_name=_('Документ')
+    )
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='document_comments',
+        verbose_name=_('Автор')
+    )
+    text = models.TextField(_('Текст комментария'))
+    
+    # Вложенные ответы
+    parent = models.ForeignKey(
+        'self',
+        verbose_name=_('Родительский комментарий'),
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='replies'
+    )
+    
+    created_at = models.DateTimeField(_('Создан'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Обновлен'), auto_now=True)
+    
+    # Редактирование
+    is_edited = models.BooleanField(_('Отредактирован'), default=False)
+    
+    class Meta:
+        verbose_name = _('Комментарий к документу')
+        verbose_name_plural = _('Комментарии к документам')
+        ordering = ['created_at']  # Старые сверху
+        indexes = [
+            models.Index(fields=['document', 'created_at']),
+            models.Index(fields=['author', '-created_at']),
+        ]
+    
+    def __str__(self):
+        preview = self.text[:50] + '...' if len(self.text) > 50 else self.text
+        return f'{self.author}: {preview}'
+    
+    @property
+    def depth(self):
+        """Возвращает уровень вложенности комментария."""
+        depth = 0
+        current = self.parent
+        while current:
+            depth += 1
+            current = current.parent
+        return depth

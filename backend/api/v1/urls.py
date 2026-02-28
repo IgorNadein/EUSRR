@@ -18,6 +18,7 @@ from .documents.views import (
     DocumentTagViewSet,
     DocumentTypeViewSet,
     CabinetViewSet,
+    DocumentCommentViewSet,
 )
 from .employees.views import (
     DepartmentRoleViewSet,
@@ -51,6 +52,7 @@ router.register(r"folders", FolderViewSet, basename="folders")
 router.register(r"document-tags", DocumentTagViewSet, basename="document-tags")
 router.register(r"document-types", DocumentTypeViewSet, basename="document-types")
 router.register(r"cabinets", CabinetViewSet, basename="cabinets")
+router.register(r"document-comments", DocumentCommentViewSet, basename="document-comments")
 
 router.register(r"requests", RequestViewSet, basename="request")
 
