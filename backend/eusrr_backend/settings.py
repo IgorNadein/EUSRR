@@ -25,6 +25,7 @@ ALLOWED_HOSTS = _split_env_list(
 INSTALLED_APPS = [
     "daphne",
     "channels",
+    "corsheaders",  # django-cors-headers для CORS
     "django.contrib.admin",
     "django_bootstrap5",
     "django.contrib.auth",
@@ -67,6 +68,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # CORS middleware должен быть перед CommonMiddleware
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -568,4 +570,11 @@ THUMBNAIL_ALIASES = {
 
 # django-reversion настройки
 REVERSION_SAVE_EMPTY_REVISIONS = False  # Не сохранять пустые версии
+
+# CORS Configuration for Next.js frontend
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CORS_ALLOW_CREDENTIALS = True
 

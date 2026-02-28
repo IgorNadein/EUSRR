@@ -32,13 +32,22 @@ class FilerFileField(serializers.Field):
             value: filer.File instance или None
             
         Returns:
-            str: URL файла или None
+            str: Полный URL файла или None
         """
         if value is None:
             return None
         
         if isinstance(value, FilerFile):
-            return value.url if value.url else None
+            if not value.url:
+                return None
+            
+            # Получаем request из контекста для построения абсолютного URL
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(value.url)
+            
+            # Fallback: возвращаем относительный URL
+            return value.url
         
         return None
     
@@ -86,16 +95,18 @@ class FilerFileField(serializers.Field):
         
         try:
             # Создаем filer.File объект
+            # is_public=True делает файл доступным без авторизации
             filer_file = FilerFile.objects.create(
                 file=data,
                 original_filename=data.name,
                 name=data.name,
-                owner=owner
+                owner=owner,
+                is_public=True  # Делаем файл публичным для доступа с frontend
             )
             
             logger.info(
                 f"[FilerFileField] Created filer.File id={filer_file.id} "
-                f"name={data.name} owner={owner.id if owner else None}"
+                f"name={data.name} owner={owner.id if owner else None} is_public=True"
             )
             
             return filer_file

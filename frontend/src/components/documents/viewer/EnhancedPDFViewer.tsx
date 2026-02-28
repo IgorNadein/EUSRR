@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/esm/Page/AnnotationLayer.css";
-import "react-pdf/dist/esm/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 import {
   ZoomIn,
   ZoomOut,
@@ -17,8 +17,10 @@ import {
   Sidebar,
 } from "lucide-react";
 
-// Настройка worker для react-pdf
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// Настройка worker для react-pdf - используем worker из node_modules
+if (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {
+  pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
+}
 
 type FitMode = "width" | "page" | "custom";
 

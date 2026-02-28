@@ -3,6 +3,7 @@
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import type { Document, DocumentStatus } from "@/types/api";
 import {
   Search,
@@ -16,17 +17,33 @@ import {
   LayoutGrid,
   CheckSquare,
   SlidersHorizontal,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
-import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
 import { DocumentStatusBadge } from "@/components/documents/DocumentStatusBadge";
 import { DocumentWorkflowButtons } from "@/components/documents/DocumentWorkflowButtons";
-import { DocumentPreview } from "@/components/documents/DocumentPreview";
 import { DocumentAcknowledgement } from "@/components/documents/DocumentAcknowledgement";
+import { DocumentAcknowledgementsReport } from "@/components/documents/DocumentAcknowledgementsReport";
 import { FolderTree, type FolderNode } from "@/components/documents/folders";
-import { EnhancedPDFViewer } from "@/components/documents/viewer";
 import { AdvancedSearch } from "@/components/documents/search";
 import { BulkActionsToolbar, useDocumentSelection } from "@/components/documents/batch";
 import { DocumentsDashboard } from "@/components/documents/dashboard";
+
+// Динамический импорт компонентов с PDF обработкой (избегаем SSR ошибок с DOMMatrix)
+const DocumentUploadForm = dynamic(
+  () => import("@/components/documents/DocumentUploadForm").then(mod => ({ default: mod.DocumentUploadForm })),
+  { ssr: false }
+);
+
+const EnhancedPDFViewer = dynamic(
+  () => import("@/components/documents/viewer").then(mod => ({ default: mod.EnhancedPDFViewer })),
+  { ssr: false }
+);
+
+const DocumentPreview = dynamic(
+  () => import("@/components/documents/DocumentPreview").then(mod => ({ default: mod.DocumentPreview })),
+  { ssr: false }
+);
 
 function formatDate(value?: string): string {
   if (!value) return "";
@@ -55,12 +72,17 @@ export default function DocumentsPage() {
   // Modals
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [showAcknowledgementsReport, setShowAcknowledgementsReport] = useState<{
+    documentId: number;
+    documentTitle: string;
+  } | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
   const [pdfViewerFile, setPdfViewerFile] = useState<{ url: string; name: string } | null>(null);
   
-  // Sidebar
-  const [showSidebar, setShowSidebar] = useState(true);
+  // Folder dropdown
+  const [showFolderDropdown, setShowFolderDropdown] = useState(false);
   
   // Bulk selection
   const selection = useDocumentSelection(documents);
@@ -76,7 +98,9 @@ export default function DocumentsPage() {
       if (selectedFolderId !== null) {
         params.folder_id = selectedFolderId;
       }
+      console.log("📁 Загрузка документов с параметрами:", params);
       const response = await apiClient.getDocuments(params);
+      console.log("📄 Получено документов:", response.results?.length || 0);
       setDocuments(response.results || []);
     } catch (err) {
       console.error("Ошибка загрузки документов:", err);
@@ -88,10 +112,8 @@ export default function DocumentsPage() {
 
   const loadFolders = async () => {
     try {
-      // TODO: Implement folders API endpoint
-      // const response = await apiClient.getFolders();
-      // setFolders(response.results || []);
-      setFolders([]);
+      const response = await apiClient.getFolders({ root: true });
+      setFolders(response.results || response || []);
     } catch (err) {
       console.error("Ошибка загрузки папок:", err);
     }
@@ -153,35 +175,20 @@ export default function DocumentsPage() {
 
   return (
     <AppShell>
-      <div className="flex h-full gap-4">
-        {/* Sidebar */}
-        {showSidebar && (
-          <aside className="w-64 shrink-0 space-y-4">
-            {/* Folders Section */}
-            <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                  <FolderOpen size={16} />
-                  Папки
-                </h2>
-              </div>
-              <FolderTree
-                folders={folders}
-                selectedFolderId={selectedFolderId}
-                onSelectFolder={setSelectedFolderId}
-              />
-            </section>
-
-            {/* Quick Actions */}
-            <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-              <h2 className="mb-3 text-sm font-semibold text-gray-900">Быстрое</h2>
-              <div className="space-y-1">
+      <div className="space-y-4">
+        {/* Top Bar */}
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            {/* Left: Tabs + Folder Dropdown */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* View Mode Tabs */}
+              <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
                 <button
                   onClick={() => setViewMode("documents")}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
                     viewMode === "documents"
-                      ? "bg-sky-100 text-sky-900"
-                      : "text-gray-700 hover:bg-gray-100"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
                   <FileText size={16} />
@@ -189,22 +196,73 @@ export default function DocumentsPage() {
                 </button>
                 <button
                   onClick={() => setViewMode("dashboard")}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
                     viewMode === "dashboard"
-                      ? "bg-sky-100 text-sky-900"
-                      : "text-gray-700 hover:bg-gray-100"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
                   <LayoutDashboard size={16} />
                   Дашборд
                 </button>
               </div>
-            </section>
-          </aside>
-        )}
+
+              {/* Folder Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowFolderDropdown(!showFolderDropdown)}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <FolderOpen size={16} />
+                  {selectedFolderId ? "Папка выбрана" : "Все папки"}
+                </button>
+                {showFolderDropdown && (
+                  <div className="absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg">
+                    <div className="max-h-96 overflow-y-auto p-2">
+                      <FolderTree
+                        folders={folders}
+                        selectedFolderId={selectedFolderId}
+                        onSelectFolder={(id) => {
+                          console.log("🗂️ Выбрана папка:", id);
+                          setSelectedFolderId(id);
+                          setShowFolderDropdown(false);
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Actions */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                <SlidersHorizontal size={16} />
+                {showAdvancedSearch ? "Простой поиск" : "Расширенный"}
+              </button>
+              <button
+                onClick={() => setShowCreateFolder(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                <FolderOpen size={16} />
+                Создать папку
+              </button>
+              <button
+                onClick={() => setShowUploadForm(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+              >
+                <Plus size={16} />
+                Загрузить
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Main Content */}
-        <div className="min-w-0 flex-1 space-y-4">
+        <div className="space-y-4">
           {loading ? (
             <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-100">
               <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-sky-400 border-t-transparent" />
@@ -218,7 +276,7 @@ export default function DocumentsPage() {
             <>
               {/* Dashboard View */}
               {viewMode === "dashboard" && (
-                <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+                <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
                   <DocumentsDashboard
                     stats={dashboardStats}
                     recentDocuments={filteredDocuments.slice(0, 5).map((doc) => ({
@@ -240,47 +298,15 @@ export default function DocumentsPage() {
                         uploaded_at: doc.created_at,
                       }))}
                   />
-                </section>
+                </div>
               )}
 
               {/* Documents View */}
               {viewMode === "documents" && (
-                <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                  {/* Header */}
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setShowSidebar(!showSidebar)}
-                        className="rounded-lg p-2 text-gray-600 hover:bg-gray-100"
-                        title={showSidebar ? "Скрыть боковую панель" : "Показать боковую панель"}
-                      >
-                        <LayoutGrid size={20} />
-                      </button>
-                      <h1 className="text-xl font-semibold text-gray-900">
-                        {selectedFolderId ? "Документы в папке" : "Все документы"}
-                      </h1>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                      >
-                        <SlidersHorizontal size={16} />
-                        {showAdvancedSearch ? "Простой поиск" : "Расширенный"}
-                      </button>
-                      <button
-                        onClick={() => setShowUploadForm(true)}
-                        className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
-                      >
-                        <Plus size={16} />
-                        Загрузить
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Advanced Search */}
-                  {showAdvancedSearch ? (
-                    <div className="mb-4">
+                <>
+                  {/* Search & Filters */}
+                  <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+                    {showAdvancedSearch ? (
                       <AdvancedSearch
                         onSearch={(filters) => {
                           setSearch(filters.query);
@@ -308,10 +334,9 @@ export default function DocumentsPage() {
                           { id: "rejected", name: "Отклонено" },
                         ]}
                       />
-                    </div>
                   ) : (
                     /* Simple Filters */
-                    <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+                    <div className="flex flex-col gap-3 sm:flex-row">
                       <div className="relative flex-1">
                         <Search
                           size={16}
@@ -342,37 +367,25 @@ export default function DocumentsPage() {
                       </select>
                     </div>
                   )}
+                </div>
 
-                  {/* Bulk Actions Toolbar */}
-                  {selection.selectedIds.length > 0 && (
-                    <div className="mb-4">
-                      <BulkActionsToolbar
-                        selectedIds={selection.selectedIds}
-                        documents={filteredDocuments.map((d) => ({
-                          id: d.id,
-                          title: d.title,
-                          status: d.status,
-                        }))}
-                        onClearSelection={selection.clearSelection}
-                      />
-                    </div>
-                  )}
-                  {/* Bulk Actions Toolbar */}
-                  {selection.selectedIds.length > 0 && (
-                    <div className="mb-4">
-                      <BulkActionsToolbar
-                        selectedIds={selection.selectedIds}
-                        documents={filteredDocuments.map((d) => ({
-                          id: d.id,
-                          title: d.title,
-                          status: d.status,
-                        }))}
-                        onClearSelection={selection.clearSelection}
-                      />
-                    </div>
-                  )}
+                {/* Bulk Actions Toolbar */}
+                {selection.selectedIds.length > 0 && (
+                  <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+                    <BulkActionsToolbar
+                      selectedIds={selection.selectedIds}
+                      documents={filteredDocuments.map((d) => ({
+                        id: d.id,
+                        title: d.title,
+                        status: d.status,
+                      }))}
+                      onClearSelection={selection.clearSelection}
+                    />
+                  </div>
+                )}
 
-                  {/* Documents List */}
+                {/* Documents List */}
+                <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
                   <div className="space-y-3">
                     {filteredDocuments.length === 0 ? (
                       <div className="rounded-xl bg-gray-50 p-8 text-center">
@@ -430,6 +443,20 @@ export default function DocumentsPage() {
                                       status={doc.status}
                                       statusCode={doc.status_code}
                                     />
+                                    {/* Acknowledgement Badge */}
+                                    {doc.acknowledgement_required && (
+                                      doc.is_acknowledged ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20">
+                                          <CheckCircle size={12} />
+                                          Ознакомлен
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
+                                          <AlertCircle size={12} />
+                                          Требуется ознакомление
+                                        </span>
+                                      )
+                                    )}
                                   </div>
 
                                   <p className="mb-3 text-sm text-gray-700">
@@ -452,7 +479,7 @@ export default function DocumentsPage() {
                                   </div>
                                 </div>
 
-                                <div className="flex shrink-0 gap-2">
+                                <div className="flex shrink-0 flex-wrap gap-2">
                                   {doc.file_url && (
                                     <>
                                       {doc.file_name?.toLowerCase().endsWith(".pdf") ? (
@@ -484,6 +511,31 @@ export default function DocumentsPage() {
                                       )}
                                     </>
                                   )}
+                                  {/* Acknowledge Button - for documents requiring acknowledgement */}
+                                  {doc.acknowledgement_required && !doc.is_acknowledged && (
+                                    <button
+                                      onClick={() => setSelectedDocument(doc)}
+                                      className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-300 hover:bg-amber-200"
+                                    >
+                                      <CheckCircle size={12} />
+                                      Ознакомиться
+                                    </button>
+                                  )}
+                                  {/* Acknowledgements Report Button - for authors/admins */}
+                                  {doc.acknowledgement_required && (
+                                    <button
+                                      onClick={() =>
+                                        setShowAcknowledgementsReport({
+                                          documentId: doc.id,
+                                          documentTitle: doc.title,
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
+                                      title="Посмотреть кто ознакомился"
+                                    >
+                                      Ведомость
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => setSelectedDocument(doc)}
                                     className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-1 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100"
@@ -498,15 +550,16 @@ export default function DocumentsPage() {
                       </>
                     )}
                   </div>
-                </section>
+                </div>
+              </>
               )}
             </>
           )}
         </div>
       </div>
 
-          {/* Upload Modal */}
-          {showUploadForm && (
+      {/* Upload Modal */}
+      {showUploadForm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
               <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
                 <div className="mb-4 flex items-center justify-between">
@@ -519,6 +572,7 @@ export default function DocumentsPage() {
                   </button>
                 </div>
                 <DocumentUploadForm
+                  currentFolderId={selectedFolderId}
                   onSuccess={() => {
                     setShowUploadForm(false);
                     loadDocuments();
@@ -593,9 +647,23 @@ export default function DocumentsPage() {
                   {/* Acknowledgement */}
                   {selectedDocument.acknowledgement_required && (
                     <div>
-                      <h3 className="mb-2 text-sm font-medium text-gray-700">
-                        Подтверждение прочтения
-                      </h3>
+                      <div className="mb-2 flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-700">
+                          Подтверждение прочтения
+                        </h3>
+                        <button
+                          onClick={() => {
+                            setShowAcknowledgementsReport({
+                              documentId: selectedDocument.id,
+                              documentTitle: selectedDocument.title,
+                            });
+                            setSelectedDocument(null);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
+                        >
+                          Посмотреть ведомость
+                        </button>
+                      </div>
                       <DocumentAcknowledgement
                         document={selectedDocument}
                         onAcknowledge={() => {
@@ -626,6 +694,98 @@ export default function DocumentsPage() {
           fileUrl={pdfViewerFile.url}
           fileName={pdfViewerFile.name}
           onClose={() => setPdfViewerFile(null)}
+        />
+      )}
+
+      {/* Create Folder Modal */}
+      {showCreateFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Создать папку</h2>
+              <button
+                onClick={() => setShowCreateFolder(false)}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const name = formData.get('name') as string;
+
+                if (!name.trim()) {
+                  alert('Введите название папки');
+                  return;
+                }
+
+                try {
+                  await apiClient.createFolder({
+                    name: name.trim(),
+                    parent: selectedFolderId,
+                  });
+                  setShowCreateFolder(false);
+                  loadFolders();
+                } catch (err) {
+                  console.error('Ошибка создания папки:', err);
+                  alert('Не удалось создать папку');
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label htmlFor="folderName" className="mb-1 block text-sm font-medium text-gray-700">
+                  Название папки
+                </label>
+                <input
+                  id="folderName"
+                  name="name"
+                  type="text"
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  placeholder="Введите название..."
+                  autoFocus
+                />
+              </div>
+
+              {selectedFolderId && (
+                <div className="rounded-lg bg-sky-50 p-3">
+                  <p className="text-xs text-sky-700">
+                    <FolderOpen className="mr-1 inline" size={14} />
+                    Будет создана в выбранной папке
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateFolder(false)}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+                >
+                  Создать
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Acknowledgements Report Modal */}
+      {showAcknowledgementsReport && (
+        <DocumentAcknowledgementsReport
+          documentId={showAcknowledgementsReport.documentId}
+          documentTitle={showAcknowledgementsReport.documentTitle}
+          onClose={() => setShowAcknowledgementsReport(null)}
         />
       )}
     </AppShell>

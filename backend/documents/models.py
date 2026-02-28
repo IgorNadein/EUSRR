@@ -128,6 +128,14 @@ class Document(models.Model):
         default=True,
         help_text=_('Если включено — уведомление получат все активные сотрудники')
     )
+    
+    # Требование ознакомления
+    acknowledgement_required = models.BooleanField(
+        _('Требуется ознакомление'),
+        default=False,
+        help_text=_('Если включено — сотрудники должны подтвердить ознакомление')
+    )
+    
     departments = models.ManyToManyField(
         'employees.Department',
         verbose_name=_('Отделы-получатели'),

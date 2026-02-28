@@ -214,6 +214,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "modified_by",
             "modified_at",
             "sent_to_all",
+            "acknowledgement_required",  # Требуется ли ознакомление
             "departments",
             "recipients",
             "file_url",

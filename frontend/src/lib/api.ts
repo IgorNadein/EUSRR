@@ -97,9 +97,14 @@ class ApiClient {
         options: RequestInit = {}
     ): Promise<T> {
         const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
             ...(options.headers as Record<string, string>),
         };
+
+        // Устанавливаем Content-Type только если это не FormData
+        // Для FormData браузер сам установит правильный Content-Type с boundary
+        if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
 
         // Автоматически добавляем токен если он есть
         const token = this.getToken();
@@ -283,13 +288,14 @@ class ApiClient {
     }
 
     // Документы
-    async getDocuments(params?: { search?: string; type?: string; status?: string; page?: number; limit?: number }): Promise<any> {
+    async getDocuments(params?: { search?: string; type?: string; status?: string; page?: number; limit?: number; folder_id?: number }): Promise<any> {
         const queryParams = new URLSearchParams();
         if (params?.search) queryParams.append('search', params.search);
         if (params?.type) queryParams.append('type', params.type);
         if (params?.status) queryParams.append('status', params.status);
         if (params?.page) queryParams.append('page', params.page.toString());
         if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.folder_id !== undefined) queryParams.append('folder_id', params.folder_id.toString());
 
         const url = `/api/v1/documents/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
         return this.request(url);
@@ -304,17 +310,39 @@ class ApiClient {
         description?: string; 
         file: File | Blob;
         extracted_text?: string;
+        sent_to_all?: boolean;
+        recipient_ids?: number[];
+        department_ids?: number[];
+        folder_id?: number | null;
     }): Promise<any> {
         const formData = new FormData();
         formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
         if (data.extracted_text) formData.append('extracted_text', data.extracted_text);
+        if (data.folder_id) formData.append('folder', String(data.folder_id));
+        
+        // Добавляем sent_to_all (по умолчанию true)
+        formData.append('sent_to_all', String(data.sent_to_all ?? true));
+        
+        // Добавляем получателей, если указаны
+        if (data.recipient_ids && data.recipient_ids.length > 0) {
+            data.recipient_ids.forEach(id => {
+                formData.append('recipient_ids', String(id));
+            });
+        }
+        
+        // Добавляем отделы, если указаны
+        if (data.department_ids && data.department_ids.length > 0) {
+            data.department_ids.forEach(id => {
+                formData.append('department_ids', String(id));
+            });
+        }
+        
         formData.append('file', data.file);
 
         return this.request('/api/v1/documents/', {
             method: 'POST',
             body: formData,
-            headers: {}, // Clear headers to let browser set Content-Type with boundary
         });
     }
 
@@ -331,7 +359,6 @@ class ApiClient {
         return this.request(`/api/v1/documents/${id}/`, {
             method: 'PATCH',
             body: formData,
-            headers: {}, // Clear headers to let browser set Content-Type with boundary
         });
     }
 
@@ -390,6 +417,57 @@ class ApiClient {
             method: 'POST',
             body: JSON.stringify({ notes }),
         });
+    }
+
+    // Получить ведомость ознакомлений с документом (для начальника/автора)
+    async getDocumentAcknowledgements(id: number, search?: string): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (search) queryParams.append('search', search);
+        
+        const url = `/api/v1/documents/${id}/acknowledgements/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    // Папки документов
+    async getFolders(params?: { parent_id?: number; root?: boolean }): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params?.parent_id !== undefined) queryParams.append('parent_id', params.parent_id.toString());
+        if (params?.root) queryParams.append('root', 'true');
+
+        const url = `/api/v1/folders/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async getFolder(id: number): Promise<any> {
+        return this.request(`/api/v1/folders/${id}/`);
+    }
+
+    async createFolder(data: { name: string; parent?: number | null }): Promise<any> {
+        return this.request('/api/v1/folders/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateFolder(id: number, data: { name?: string; parent?: number | null }): Promise<any> {
+        return this.request(`/api/v1/folders/${id}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteFolder(id: number): Promise<void> {
+        return this.request(`/api/v1/folders/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async getFolderChildren(id: number): Promise<any> {
+        return this.request(`/api/v1/folders/${id}/children/`);
+    }
+
+    async getFolderDocuments(id: number): Promise<any> {
+        return this.request(`/api/v1/folders/${id}/documents/`);
     }
 
     // Заявки
@@ -494,31 +572,7 @@ class ApiClient {
         });
     }
 
-    // Чаты
-    async getChats(params?: { search?: string; page?: number; limit?: number }): Promise<any> {
-        const queryParams = new URLSearchParams();
-        if (params?.search) queryParams.append('search', params.search);
-        if (params?.page) queryParams.append('page', params.page.toString());
-        if (params?.limit) queryParams.append('limit', params.limit.toString());
-
-        const url = `/api/v1/communications/chats/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-        return this.request(url);
-    }
-
-    async getChat(chatId: number | string): Promise<any> {
-        return this.request(`/api/v1/communications/chats/${chatId}/`);
-    }
-
-    async getChatMessages(chatId: number | string, params?: { limit?: number; before?: number; after?: number }): Promise<any> {
-        const queryParams = new URLSearchParams();
-        if (params?.limit) queryParams.append('limit', params.limit.toString());
-        if (params?.before) queryParams.append('before', params.before.toString());
-        if (params?.after) queryParams.append('after', params.after.toString());
-
-        const url = `/api/v1/communications/chats/${chatId}/messages/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-        return this.request(url);
-    }
-
+    // Чаты (основные методы чатов ниже в файле)
     async getChatMessagesAround(chatId: number | string, params?: { limit?: number; around_id?: number }): Promise<any> {
         const queryParams = new URLSearchParams();
         if (params?.limit) queryParams.append('limit', params.limit.toString());

@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, QuerySet, Q
 from documents.models import Document, DocumentAcknowledgement
+from filer.models import Folder
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -16,7 +17,7 @@ from rest_framework.viewsets import ModelViewSet
 from ..employees.serializers import EmployeeBriefSerializer
 from ..permissions import AdminOrActionOrModelPerms
 from .permissions import DocumentReadOrModelPerms
-from .serializers import DocumentReadSerializer, DocumentWriteSerializer
+from .serializers import DocumentReadSerializer, DocumentWriteSerializer, FolderSerializer
 
 User = get_user_model()
 
@@ -50,6 +51,8 @@ class DocumentViewSet(ModelViewSet):
 
         Поддерживает параметр ?scope=mine для фильтрации документов,
         доступных текущему пользователю.
+        
+        Поддерживает параметр ?folder_id для фильтрации по папке.
 
         Returns:
             QuerySet[Document]: оптимизированный для списка без N+1.
@@ -62,6 +65,14 @@ class DocumentViewSet(ModelViewSet):
         scope = ""
         if request:
             scope = request.query_params.get("scope", "").lower()
+            
+            # Фильтрация по папке
+            folder_id = request.query_params.get("folder_id")
+            if folder_id is not None:
+                try:
+                    qs = qs.filter(folder_id=int(folder_id))
+                except (ValueError, TypeError):
+                    pass  # Игнорируем некорректное значение
 
         # Если scope=mine - показываем только доступные пользователю
         if scope == "mine" and user and user.is_authenticated:
@@ -319,4 +330,94 @@ class DocumentViewSet(ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class FolderViewSet(ModelViewSet):
+    """CRUD для папок документов (filer.Folder).
+    
+    Поддерживает иерархическую структуру папок с parent/children связями.
+    """
+    
+    queryset = Folder.objects.all()
+    serializer_class = FolderSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Возвращает папки, опционально фильтрованные по parent_id.
+        
+        Параметры:
+            ?parent_id=<id> - показать только дочерние папки указанного parent
+            ?root=true - показать только корневые папки (parent=null)
+        """
+        qs = super().get_queryset()
+        request = getattr(self, "request", None)
+        
+        if not request:
+            return qs
+            
+        parent_id = request.query_params.get('parent_id')
+        root = request.query_params.get('root', '').lower() == 'true'
+        
+        if root:
+            qs = qs.filter(parent__isnull=True)
+        elif parent_id:
+            qs = qs.filter(parent_id=parent_id)
+            
+        return qs.order_by('name')
+    
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Создать папку.
+        
+        Body:
+            {
+                "name": "Название папки",
+                "parent": <id> | null  // опционально
+            }
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Создаем папку
+        name = serializer.validated_data['name']
+        parent_id = request.data.get('parent')
+        
+        parent = None
+        if parent_id:
+            try:
+                parent = Folder.objects.get(pk=parent_id)
+            except Folder.DoesNotExist:
+                return Response(
+                    {'error': 'Родительская папка не найдена'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        folder = Folder.objects.create(
+            name=name,
+            parent=parent,
+            owner=request.user
+        )
+        
+        result = FolderSerializer(folder).data
+        return Response(result, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['get'])
+    def children(self, request, pk=None):
+        """Получить дочерние папки данной папки."""
+        folder = self.get_object()
+        children = folder.children.all().order_by('name')
+        serializer = self.get_serializer(children, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def documents(self, request, pk=None):
+        """Получить документы в данной папке."""
+        folder = self.get_object()
+        documents = Document.objects.filter(folder=folder)
+        serializer = DocumentReadSerializer(
+            documents,
+            many=True,
+            context={'request': request}
+        )
+        return Response(serializer.data)
 

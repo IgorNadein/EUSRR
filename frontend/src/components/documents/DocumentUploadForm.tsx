@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, X, FileText, AlertCircle, Loader2 } from "lucide-react";
+import { Upload, X, FileText, AlertCircle, Loader2, FolderOpen } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
 import { processDocument, needsProcessing, type ProcessingProgress } from "@/lib/document-utils";
@@ -10,6 +10,7 @@ import { processDocument, needsProcessing, type ProcessingProgress } from "@/lib
 interface DocumentUploadFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
+  currentFolderId?: number | null;
 }
 
 // Сообщения для различных этапов обработки
@@ -21,7 +22,7 @@ const STAGE_MESSAGES: Record<string, string> = {
   complete: "Обработка завершена",
 };
 
-export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormProps) {
+export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: DocumentUploadFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -120,6 +121,7 @@ export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormPr
         description,
         file: fileToUpload,
         extracted_text: extractedText || undefined, // Отправляем извлеченный текст, если есть
+        folder_id: currentFolderId || undefined, // Сохраняем в текущей папке если она выбрана
       });
 
       toast.success("Документ успешно загружен");
@@ -149,6 +151,16 @@ export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormPr
         <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {/* Current folder info */}
+      {currentFolderId && (
+        <div className="rounded-lg bg-sky-50 p-3 text-sm text-sky-700">
+          <div className="flex items-center gap-2">
+            <FolderOpen size={16} />
+            <span>Документ будет сохранён в выбранной папке</span>
+          </div>
         </div>
       )}
 
