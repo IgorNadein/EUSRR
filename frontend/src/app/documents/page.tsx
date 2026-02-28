@@ -658,21 +658,23 @@ export default function DocumentsPage() {
         isOpen={!!selectedDocument}
         onClose={() => setSelectedDocument(null)}
         title={selectedDocument?.title}
-        size="lg"
+        size="xl"
         showFullscreenToggle
       >
         {selectedDocument && (
-          <div className="space-y-6">
-            {/* Status Badge */}
-            <div>
-              <DocumentStatusBadge
-                status={selectedDocument.status}
-                statusCode={selectedDocument.status_code}
-              />
-            </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Left Column - Information */}
+            <div className="space-y-6 lg:col-span-2">
+              {/* Status Badge */}
+              <div>
+                <DocumentStatusBadge
+                  status={selectedDocument.status}
+                  statusCode={selectedDocument.status_code}
+                />
+              </div>
 
-            {/* Metadata Grid */}
-            <div className="grid grid-cols-2 gap-4">
+              {/* Metadata Grid */}
+              <div className="grid grid-cols-2 gap-4">
               {/* Author */}
               <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
                 <div className="rounded-full bg-sky-100 p-2">
@@ -816,27 +818,6 @@ export default function DocumentsPage() {
               </div>
             )}
 
-            {/* Divider */}
-            <div className="border-t border-gray-200" />
-
-            {/* File Action */}
-            {selectedDocument.file_url && (
-              <div>
-                <button
-                  onClick={() =>
-                    setPreviewFile({
-                      url: selectedDocument.file_url!,
-                      name: selectedDocument.file_name || selectedDocument.title,
-                    })
-                  }
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
-                >
-                  <Eye size={16} />
-                  Открыть файл
-                </button>
-              </div>
-            )}
-
             {/* Workflow Actions */}
             <div>
               <h3 className="mb-2 text-sm font-medium text-gray-700">Действия</h3>
@@ -880,6 +861,96 @@ export default function DocumentsPage() {
                 />
               </div>
             )}
+            </div>
+
+            {/* Right Column - Document Thumbnail */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-0">
+                {selectedDocument.file_url && (
+                  <div className="overflow-hidden rounded-lg border-2 border-gray-200 bg-gray-50">
+                    <div className="border-b border-gray-200 bg-white px-3 py-2">
+                      <p className="text-xs font-medium text-gray-500">Превью документа</p>
+                    </div>
+                    
+                    {/* Thumbnail Content */}
+                    <div className="relative aspect-[3/4] bg-white">
+                      {(() => {
+                        const fileExt = selectedDocument.file_name?.toLowerCase().split('.').pop() || '';
+                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(fileExt);
+                        const isPDF = fileExt === 'pdf';
+
+                        if (isImage) {
+                          return (
+                            <img
+                              src={selectedDocument.file_url}
+                              alt={selectedDocument.file_name || 'Preview'}
+                              className="h-full w-full object-contain p-4"
+                              onError={(e) => {
+                                // Fallback to icon on error
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          );
+                        }
+
+                        if (isPDF) {
+                          return (
+                            <div className="flex h-full items-center justify-center p-4">
+                              <iframe
+                                src={`${selectedDocument.file_url}#page=1&view=FitH`}
+                                className="h-full w-full border-0"
+                                title="PDF Preview"
+                              />
+                            </div>
+                          );
+                        }
+
+                        // Fallback for other file types
+                        return (
+                          <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+                            <div className="rounded-full bg-gray-100 p-4">
+                              <FileText size={48} className="text-gray-400" />
+                            </div>
+                            <p className="mt-4 text-xs font-medium text-gray-600">
+                              {selectedDocument.file_name}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-400 uppercase">
+                              {fileExt} файл
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Quick Action Button */}
+                    <div className="border-t border-gray-200 bg-white p-3">
+                      <button
+                        onClick={() =>
+                          setPreviewFile({
+                            url: selectedDocument.file_url!,
+                            name: selectedDocument.file_name || selectedDocument.title,
+                          })
+                        }
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-sky-700"
+                      >
+                        <Eye size={14} />
+                        Открыть в полном размере
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* No file placeholder */}
+                {!selectedDocument.file_url && (
+                  <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12">
+                    <div className="text-center">
+                      <FileText size={48} className="mx-auto text-gray-300" />
+                      <p className="mt-2 text-sm text-gray-500">Файл не прикреплен</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </Modal>
