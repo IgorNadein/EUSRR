@@ -5,7 +5,15 @@ from typing import Any
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, QuerySet, Q
-from documents.models import Document, DocumentAcknowledgement
+from django.http import FileResponse, Http404
+from documents.models import (
+    Document,
+    DocumentAcknowledgement,
+    DocumentTag,
+    DocumentType,
+    Cabinet,
+)
+from easy_thumbnails.files import get_thumbnailer
 from filer.models import Folder
 import reversion
 from reversion.models import Version
@@ -25,6 +33,9 @@ from .serializers import (
     FolderSerializer,
     VersionSerializer,
     ActivityItemSerializer,
+    DocumentTagSerializer,
+    DocumentTypeSerializer,
+    CabinetSerializer,
 )
 
 User = get_user_model()
@@ -518,6 +529,51 @@ class DocumentViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=True, methods=['get'])
+    def thumbnail(self, request, pk=None):
+        """Получить thumbnail документа.
+        
+        Query параметры:
+            size: admin_thumbnail | small | medium | large (default: medium)
+        
+        Returns:
+            Изображение thumbnail или 404 если документ не является изображением/PDF
+        """
+        document = self.get_object()
+        
+        if not document.file:
+            return Response(
+                {'error': 'У документа нет файла'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        size = request.query_params.get('size', 'medium')
+        allowed_sizes = ['admin_thumbnail', 'small', 'medium', 'large']
+        
+        if size not in allowed_sizes:
+            return Response(
+                {'error': f'Размер должен быть одним из: {", ".join(allowed_sizes)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Получаем thumbnailer для файла
+            thumbnailer = get_thumbnailer(document.file.file)
+            
+            # Генерируем thumbnail используя alias из settings
+            thumbnail = thumbnailer[size]
+            
+            # Возвращаем файл
+            return FileResponse(
+                open(thumbnail.path, 'rb'),
+                content_type='image/jpeg'
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Не удалось создать thumbnail: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class FolderViewSet(ModelViewSet):
     """CRUD для папок документов (filer.Folder).
@@ -612,4 +668,207 @@ class FolderViewSet(ModelViewSet):
             context={'request': request}
         )
         return Response(serializer.data)
+
+
+class DocumentTagViewSet(ModelViewSet):
+    """CRUD для тегов документов.
+    
+    Теги используются для категоризации документов.
+    """
+    queryset = DocumentTag.objects.all()
+    serializer_class = DocumentTagSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Возвращает теги, опционально с аннотацией количества документов."""
+        qs = super().get_queryset()
+        
+        # Аннотируем количество документов для каждого тега
+        qs = qs.annotate(document_count=Count('documents'))
+        
+        # Поиск по названию
+        search = self.request.query_params.get('search', '')
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return qs.order_by('name')
+    
+    @action(detail=True, methods=['get'])
+    def documents(self, request, pk=None):
+        """Получить все документы с этим тегом."""
+        tag = self.get_object()
+        documents = tag.documents.all()
+        serializer = DocumentReadSerializer(
+            documents,
+            many=True,
+            context={'request': request}
+        )
+        return Response(serializer.data)
+
+
+class DocumentTypeViewSet(ModelViewSet):
+    """CRUD для типов документов.
+    
+    Типы определяют структуру метаданных и workflow для документов.
+    """
+    queryset = DocumentType.objects.filter(is_active=True)
+    serializer_class = DocumentTypeSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Возвращает типы документов.
+        
+        Параметры:
+            ?include_inactive=true - показать неактивные типы
+        """
+        qs = super().get_queryset()
+        
+        # Опционально показываем неактивные
+        include_inactive = self.request.query_params.get('include_inactive', '').lower() == 'true'
+        if include_inactive:
+            qs = DocumentType.objects.all()
+        
+        # Поиск
+        search = self.request.query_params.get('search', '')
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(code__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return qs.order_by('order', 'name')
+    
+    @action(detail=True, methods=['get'])
+    def documents(self, request, pk=None):
+        """Получить все документы этого типа."""
+        doc_type = self.get_object()
+        documents = Document.objects.filter(document_type=doc_type)
+        serializer = DocumentReadSerializer(
+            documents,
+            many=True,
+            context={'request': request}
+        )
+        return Response(serializer.data)
+
+
+class CabinetViewSet(ModelViewSet):
+    """CRUD для кабинетов (виртуальных коллекций документов).
+    
+    Кабинеты позволяют организовать документы в виртуальные коллекции
+    независимо от физической структуры папок.
+    """
+    queryset = Cabinet.objects.all()
+    serializer_class = CabinetSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Возвращает кабинеты с поддержкой иерархии.
+        
+        Параметры:
+            ?parent_id=<id> - показать только дочерние кабинеты
+            ?root=true - показать только корневые кабинеты
+        """
+        qs = super().get_queryset()
+        
+        # Аннотируем количество документов
+        qs = qs.annotate(document_count=Count('documents'))
+        
+        parent_id = self.request.query_params.get('parent_id')
+        root = self.request.query_params.get('root', '').lower() == 'true'
+        
+        if root:
+            qs = qs.filter(parent__isnull=True)
+        elif parent_id:
+            qs = qs.filter(parent_id=parent_id)
+        
+        # Поиск
+        search = self.request.query_params.get('search', '')
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return qs.order_by('order', 'name')
+    
+    @transaction.atomic
+    def perform_create(self, serializer):
+        """Автоматически устанавливаем created_by при создании."""
+        serializer.save(created_by=self.request.user)
+    
+    @action(detail=True, methods=['get'])
+    def children(self, request, pk=None):
+        """Получить дочерние кабинеты."""
+        cabinet = self.get_object()
+        children = cabinet.children.all().order_by('order', 'name')
+        serializer = self.get_serializer(children, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def documents(self, request, pk=None):
+        """Получить документы в этом кабинете."""
+        cabinet = self.get_object()
+        documents = cabinet.documents.all()
+        serializer = DocumentReadSerializer(
+            documents,
+            many=True,
+            context={'request': request}
+        )
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def add_document(self, request, pk=None):
+        """Добавить документ в кабинет.
+        
+        Body:
+            {"document_id": 123}
+        """
+        cabinet = self.get_object()
+        document_id = request.data.get('document_id')
+        
+        if not document_id:
+            return Response(
+                {'error': 'document_id обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            document = Document.objects.get(pk=document_id)
+            cabinet.documents.add(document)
+            return Response({'status': 'added'})
+        except Document.DoesNotExist:
+            return Response(
+                {'error': 'Документ не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=True, methods=['post'])
+    def remove_document(self, request, pk=None):
+        """Удалить документ из кабинета.
+        
+        Body:
+            {"document_id": 123}
+        """
+        cabinet = self.get_object()
+        document_id = request.data.get('document_id')
+        
+        if not document_id:
+            return Response(
+                {'error': 'document_id обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            document = Document.objects.get(pk=document_id)
+            cabinet.documents.remove(document)
+            return Response({'status': 'removed'})
+        except Document.DoesNotExist:
+            return Response(
+                {'error': 'Документ не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
