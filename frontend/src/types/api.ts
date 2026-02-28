@@ -131,6 +131,13 @@ export interface Document {
   created_by: User;
   created_at: string;
   updated_at: string;
+  uploaded_by?: User;
+  uploaded_at?: string;
+  modified_by?: User;
+  modified_at?: string;
+  sent_to_all?: boolean;
+  recipients?: User[];
+  departments?: { id: number; name: string }[];
   acknowledgements?: DocumentAcknowledgement[];
   acknowledgement_required?: boolean;
   is_acknowledged?: boolean;

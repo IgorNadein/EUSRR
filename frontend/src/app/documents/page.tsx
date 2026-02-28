@@ -19,6 +19,12 @@ import {
   SlidersHorizontal,
   CheckCircle,
   AlertCircle,
+  Calendar,
+  User,
+  File,
+  HardDrive,
+  Users,
+  Building2,
 } from "lucide-react";
 import { DocumentStatusBadge } from "@/components/documents/DocumentStatusBadge";
 import { DocumentWorkflowButtons } from "@/components/documents/DocumentWorkflowButtons";
@@ -656,7 +662,8 @@ export default function DocumentsPage() {
         showFullscreenToggle
       >
         {selectedDocument && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            {/* Status Badge */}
             <div>
               <DocumentStatusBadge
                 status={selectedDocument.status}
@@ -664,13 +671,155 @@ export default function DocumentsPage() {
               />
             </div>
 
+            {/* Metadata Grid */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Author */}
+              <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                <div className="rounded-full bg-sky-100 p-2">
+                  <User size={16} className="text-sky-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-500">Автор</p>
+                  <p className="truncate text-sm font-medium text-gray-900">
+                    {selectedDocument.uploaded_by
+                      ? `${selectedDocument.uploaded_by.last_name} ${selectedDocument.uploaded_by.first_name}`
+                      : selectedDocument.created_by
+                      ? `${selectedDocument.created_by.last_name} ${selectedDocument.created_by.first_name}`
+                      : "Не указан"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Created Date */}
+              <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                <div className="rounded-full bg-green-100 p-2">
+                  <Calendar size={16} className="text-green-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-500">Дата создания</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {formatDate(selectedDocument.uploaded_at || selectedDocument.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              {/* File Info */}
+              {selectedDocument.file_name && (
+                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                  <div className="rounded-full bg-purple-100 p-2">
+                    <File size={16} className="text-purple-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-gray-500">Файл</p>
+                    <p className="truncate text-sm font-medium text-gray-900">
+                      {selectedDocument.file_name}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* File Size */}
+              {selectedDocument.file_size && (
+                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                  <div className="rounded-full bg-orange-100 p-2">
+                    <HardDrive size={16} className="text-orange-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-gray-500">Размер</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {(selectedDocument.file_size / 1024 / 1024).toFixed(2)} МБ
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Folder Path */}
+            {selectedDocument.folder_path && (
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                <div className="flex items-center gap-2 text-sky-700">
+                  <FolderOpen size={16} />
+                  <span className="text-xs font-medium">Расположение</span>
+                </div>
+                <p className="mt-1 text-sm text-sky-900">{selectedDocument.folder_path}</p>
+              </div>
+            )}
+
+            {/* Description */}
             <div>
-              <h3 className="mb-1 text-sm font-medium text-gray-700">Описание</h3>
-              <p className="text-sm text-gray-600">
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                <FileText size={16} />
+                Описание
+              </h3>
+              <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
                 {selectedDocument.description || "Описание отсутствует"}
               </p>
             </div>
 
+            {/* Recipients & Departments */}
+            {(selectedDocument.sent_to_all ||
+              (selectedDocument.recipients && selectedDocument.recipients.length > 0) ||
+              (selectedDocument.departments && selectedDocument.departments.length > 0)) && (
+              <div>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Users size={16} />
+                  Получатели
+                </h3>
+                <div className="space-y-2">
+                  {selectedDocument.sent_to_all && (
+                    <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                      <CheckCircle size={14} />
+                      <span className="font-medium">Отправлено всем сотрудникам</span>
+                    </div>
+                  )}
+                  
+                  {selectedDocument.departments && selectedDocument.departments.length > 0 && (
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
+                        <Building2 size={14} />
+                        Отделы
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedDocument.departments.map((dept) => (
+                          <span
+                            key={dept.id}
+                            className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700"
+                          >
+                            {dept.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedDocument.recipients && selectedDocument.recipients.length > 0 && (
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
+                        <User size={14} />
+                        Конкретные получатели ({selectedDocument.recipients.length})
+                      </div>
+                      <div className="max-h-32 space-y-1 overflow-y-auto">
+                        {selectedDocument.recipients.slice(0, 10).map((recipient) => (
+                          <div key={recipient.id} className="text-xs text-gray-700">
+                            {recipient.last_name} {recipient.first_name}
+                          </div>
+                        ))}
+                        {selectedDocument.recipients.length > 10 && (
+                          <div className="text-xs text-gray-500">
+                            ... и ещё {selectedDocument.recipients.length - 10}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Divider */}
+            <div className="border-t border-gray-200" />
+
+            {/* File Action */}
             {selectedDocument.file_url && (
               <div>
                 <button
@@ -680,7 +829,7 @@ export default function DocumentsPage() {
                       name: selectedDocument.file_name || selectedDocument.title,
                     })
                   }
-                  className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
                 >
                   <Eye size={16} />
                   Открыть файл
