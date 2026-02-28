@@ -67,11 +67,10 @@ export default function DocumentsPage() {
     return sorted.filter((doc) => {
       const title = doc.title.toLowerCase();
       const description = (doc.description || "").toLowerCase();
-      const type = (doc.document_type || "").toLowerCase();
       const author = doc.created_by
         ? `${doc.created_by.last_name} ${doc.created_by.first_name}`.toLowerCase()
         : "";
-      return title.includes(q) || description.includes(q) || type.includes(q) || author.includes(q);
+      return title.includes(q) || description.includes(q) || author.includes(q);
     });
   }, [documents, search]);
 
@@ -155,7 +154,6 @@ export default function DocumentsPage() {
                               statusCode={doc.status_code}
                             />
                           </div>
-                          <p className="text-xs text-gray-500">Тип: {doc.document_type || "—"}</p>
                         </div>
 
                         <div className="flex shrink-0 gap-2">
@@ -187,20 +185,7 @@ export default function DocumentsPage() {
                       </p>
 
                       {doc.tags && doc.tags.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {doc.tags.map((tag) => (
-                            <span
-                              key={`${doc.id}-${tag}`}
-                              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Workflow Buttons */}
-                      <div className="mt-3">
+                       div className="mt-3">
                         <DocumentWorkflowButtons
                           documentId={doc.id}
                           currentStatus={doc.status_code}
@@ -288,11 +273,6 @@ export default function DocumentsPage() {
                             url: selectedDocument.file_url!,
                             name: selectedDocument.file_name || selectedDocument.title,
                           })
-                        }
-                        className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
-                      >
-                        <Eye size={16} />
-                        Открыть файл
                       </button>
                     </div>
                   )}

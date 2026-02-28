@@ -121,13 +121,11 @@ export interface Document {
   file_url?: string;
   file_name?: string;
   file_size?: number;
-  document_type: string;
   status: string; // human-readable: "Черновик", "На рассмотрении", etc.
   status_code: DocumentStatus; // machine-readable: "draft", "in_review", etc.
   created_by: User;
   created_at: string;
   updated_at: string;
-  tags?: string[];
   acknowledgements?: DocumentAcknowledgement[];
   acknowledgement_required?: boolean;
   is_acknowledged?: boolean;

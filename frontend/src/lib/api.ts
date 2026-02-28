@@ -302,18 +302,12 @@ class ApiClient {
     async createDocument(data: { 
         title: string; 
         description?: string; 
-        document_type: string; 
         file: File;
-        tags?: string[];
     }): Promise<any> {
         const formData = new FormData();
         formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
-        formData.append('document_type', data.document_type);
         formData.append('file', data.file);
-        if (data.tags && data.tags.length > 0) {
-            formData.append('tags', JSON.stringify(data.tags));
-        }
 
         return this.request('/api/v1/documents/', {
             method: 'POST',
@@ -325,16 +319,12 @@ class ApiClient {
     async updateDocument(id: number, data: { 
         title?: string; 
         description?: string; 
-        document_type?: string; 
         file?: File;
-        tags?: string[];
     }): Promise<any> {
         const formData = new FormData();
         if (data.title) formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
-        if (data.document_type) formData.append('document_type', data.document_type);
         if (data.file) formData.append('file', data.file);
-        if (data.tags) formData.append('tags', JSON.stringify(data.tags));
 
         return this.request(`/api/v1/documents/${id}/`, {
             method: 'PATCH',

@@ -14,9 +14,7 @@ interface DocumentUploadFormProps {
 export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [documentType, setDocumentType] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [tags, setTags] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +46,7 @@ export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormPr
     e.preventDefault();
     setError(null);
 
-    if (!title || !documentType || !file) {
+    if (!title || !file) {
       setError("Заполните все обязательные поля");
       return;
     }
@@ -56,17 +54,10 @@ export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormPr
     setIsSubmitting(true);
 
     try {
-      const tagsList = tags
-        .split(',')
-        .map(t => t.trim())
-        .filter(t => t.length > 0);
-
       await apiClient.createDocument({
         title,
         description,
-        document_type: documentType,
         file,
-        tags: tagsList.length > 0 ? tagsList : undefined,
       });
 
       toast.success("Документ успешно загружен");
@@ -74,9 +65,7 @@ export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormPr
       // Сброс формы
       setTitle("");
       setDescription("");
-      setDocumentType("");
       setFile(null);
-      setTags("");
       
       if (onSuccess) {
         onSuccess();
@@ -159,29 +148,6 @@ export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormPr
         />
       </div>
 
-      {/* Document Type */}
-      <div>
-        <label htmlFor="type" className="mb-1.5 block text-sm font-medium text-gray-700">
-          Тип документа <span className="text-red-500">*</span>
-        </label>
-        <select
-          id="type"
-          value={documentType}
-          onChange={(e) => setDocumentType(e.target.value)}
-          required
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
-        >
-          <option value="">Выберите тип</option>
-          <option value="policy">Политика</option>
-          <option value="procedure">Процедура</option>
-          <option value="instruction">Инструкция</option>
-          <option value="form">Форма</option>
-          <option value="report">Отчет</option>
-          <option value="contract">Договор</option>
-          <option value="other">Другое</option>
-        </select>
-      </div>
-
       {/* Description */}
       <div>
         <label htmlFor="description" className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -197,27 +163,11 @@ export function DocumentUploadForm({ onSuccess, onCancel }: DocumentUploadFormPr
         />
       </div>
 
-      {/* Tags */}
-      <div>
-        <label htmlFor="tags" className="mb-1.5 block text-sm font-medium text-gray-700">
-          Теги
-        </label>
-        <input
-          id="tags"
-          type="text"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="Введите теги через запятую"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
-        />
-        <p className="mt-1 text-xs text-gray-500">Например: hr, политика, обязательно</p>
-      </div>
-
       {/* Buttons */}
       <div className="flex gap-3">
         <button
           type="submit"
-          disabled={isSubmitting || !title || !documentType || !file}
+          disabled={isSubmitting || !title || !file}
           className="flex-1 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting ? "Загрузка..." : "Загрузить документ"}
