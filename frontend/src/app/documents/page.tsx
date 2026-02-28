@@ -499,26 +499,28 @@ export default function DocumentsPage() {
                           return (
                             <article
                               key={doc.id}
-                              className={`rounded-xl border p-4 transition ${
+                              className={`rounded-xl border transition ${
                                 isSelected
-                                  ? "border-sky-300 bg-sky-50"
-                                  : "border-gray-100 bg-white hover:bg-gray-50"
+                                  ? "border-sky-300 bg-sky-50/50"
+                                  : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
                               }`}
                             >
-                              <div className="flex items-start gap-3">
+                              {/* Header */}
+                              <div className="flex items-start gap-3 border-b border-gray-100 bg-gray-50/50 px-4 py-3">
                                 {/* Checkbox */}
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
                                   onChange={() => selection.toggleDocument(doc.id)}
-                                  className="mt-1 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
                                 />
 
+                                {/* Title & Status */}
                                 <div className="min-w-0 flex-1">
-                                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                                    <p className="text-sm font-semibold text-gray-900">
-                                      {doc.title}
-                                    </p>
+                                  <h3 className="mb-1.5 text-sm font-semibold text-gray-900">
+                                    {doc.title}
+                                  </h3>
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <DocumentStatusBadge
                                       status={doc.status}
                                       statusCode={doc.status_code}
@@ -526,46 +528,22 @@ export default function DocumentsPage() {
                                     {/* Acknowledgement Badge */}
                                     {doc.acknowledgement_required && (
                                       doc.is_acknowledged ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20">
-                                          <CheckCircle size={12} />
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-600/20">
+                                          <CheckCircle size={10} />
                                           Ознакомлен
                                         </span>
                                       ) : (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
-                                          <AlertCircle size={12} />
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
+                                          <AlertCircle size={10} />
                                           Требуется ознакомление
                                         </span>
                                       )
                                     )}
                                   </div>
-
-                                  <p className="mb-3 text-sm text-gray-700">
-                                    {doc.description || "Описание не заполнено"}
-                                  </p>
-
-                                  {/* Workflow Buttons */}
-                                  <div className="mb-3">
-                                    <DocumentWorkflowButtons
-                                      documentId={doc.id}
-                                      currentStatus={doc.status_code}
-                                      onStatusChange={loadDocuments}
-                                    />
-                                  </div>
-
-                                  <div className="grid grid-cols-1 gap-2 text-xs text-gray-500 sm:grid-cols-2">
-                                    {doc.folder_path && (
-                                      <p className="flex items-center gap-1 text-sky-600">
-                                        <FolderOpen size={12} />
-                                        {doc.folder_path}
-                                      </p>
-                                    )}
-                                    <p>Автор: {authorName}</p>
-                                    <p>Создано: {formatDate(doc.created_at)}</p>
-                                    <p>Обновлено: {formatDate(doc.updated_at)}</p>
-                                  </div>
                                 </div>
 
-                                <div className="flex shrink-0 flex-wrap gap-2">
+                                {/* Quick Actions - Right Side */}
+                                <div className="flex shrink-0 gap-1.5">
                                   {doc.file_url && (
                                     <>
                                       {doc.file_name?.toLowerCase().endsWith(".pdf") ? (
@@ -576,9 +554,10 @@ export default function DocumentsPage() {
                                               name: doc.file_name || doc.title,
                                             })
                                           }
-                                          className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-xs text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100"
+                                          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-200"
+                                          title="Открыть PDF"
                                         >
-                                          <Eye size={12} />
+                                          <Eye size={14} />
                                           PDF
                                         </button>
                                       ) : (
@@ -589,25 +568,82 @@ export default function DocumentsPage() {
                                               name: doc.file_name || doc.title,
                                             })
                                           }
-                                          className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-xs text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100"
+                                          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-200"
+                                          title="Просмотреть файл"
                                         >
-                                          <Eye size={12} />
+                                          <Eye size={14} />
                                           Просмотр
                                         </button>
                                       )}
                                     </>
                                   )}
-                                  {/* Acknowledge Button - for documents requiring acknowledgement */}
+                                  <button
+                                    onClick={() => setSelectedDocument(doc)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200"
+                                    title="Подробная информация"
+                                  >
+                                    <FileText size={14} />
+                                    Детали
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Body */}
+                              <div className="px-4 py-3">
+                                {/* Description */}
+                                {doc.description && (
+                                  <p className="mb-3 text-sm leading-relaxed text-gray-700">
+                                    {doc.description}
+                                  </p>
+                                )}
+
+                                {/* Metadata Grid */}
+                                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                  {/* Folder */}
+                                  {doc.folder_path && (
+                                    <div className="flex items-center gap-2 rounded-lg bg-sky-50 px-3 py-2">
+                                      <FolderOpen size={14} className="shrink-0 text-sky-600" />
+                                      <span className="truncate text-xs text-sky-700">{doc.folder_path}</span>
+                                    </div>
+                                  )}
+                                  {/* Author */}
+                                  <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                                    <User size={14} className="shrink-0 text-gray-500" />
+                                    <span className="truncate text-xs text-gray-700">{authorName}</span>
+                                  </div>
+                                  {/* Created */}
+                                  <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                                    <Calendar size={14} className="shrink-0 text-gray-500" />
+                                    <span className="text-xs text-gray-700">{formatDate(doc.created_at)}</span>
+                                  </div>
+                                </div>
+
+                                {/* Workflow Actions */}
+                                {doc.status_code !== 'published' && doc.status_code !== 'archived' && (
+                                  <div className="mb-3">
+                                    <DocumentWorkflowButtons
+                                      documentId={doc.id}
+                                      currentStatus={doc.status_code}
+                                      onStatusChange={loadDocuments}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Footer - только если есть дополнительные действия */}
+                              {(doc.acknowledgement_required || doc.status_code === 'published' || doc.status_code === 'archived') && (
+                                <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 bg-gray-50/50 px-4 py-2.5">
+                                  {/* Acknowledge Button */}
                                   {doc.acknowledgement_required && !doc.is_acknowledged && (
                                     <button
                                       onClick={() => setSelectedDocument(doc)}
-                                      className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-300 hover:bg-amber-200"
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-200"
                                     >
-                                      <CheckCircle size={12} />
+                                      <CheckCircle size={14} />
                                       Ознакомиться
                                     </button>
                                   )}
-                                  {/* Acknowledgements Report Button - for authors/admins */}
+                                  {/* Acknowledgements Report */}
                                   {doc.acknowledgement_required && (
                                     <button
                                       onClick={() =>
@@ -616,20 +652,25 @@ export default function DocumentsPage() {
                                           documentTitle: doc.title,
                                         })
                                       }
-                                      className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-100 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 transition hover:bg-blue-200"
                                       title="Посмотреть кто ознакомился"
                                     >
+                                      <Users size={14} />
                                       Ведомость
                                     </button>
                                   )}
-                                  <button
-                                    onClick={() => setSelectedDocument(doc)}
-                                    className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-1 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100"
-                                  >
-                                    Детали
-                                  </button>
+                                  {/* Workflow for published/archived */}
+                                  {(doc.status_code === 'published' || doc.status_code === 'archived') && (
+                                    <div className="ml-auto">
+                                      <DocumentWorkflowButtons
+                                        documentId={doc.id}
+                                        currentStatus={doc.status_code}
+                                        onStatusChange={loadDocuments}
+                                      />
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
+                              )}
                             </article>
                           );
                         })}
