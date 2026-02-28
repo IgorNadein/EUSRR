@@ -314,6 +314,7 @@ class ApiClient {
         recipient_ids?: number[];
         department_ids?: number[];
         folder_id?: number | null;
+        acknowledgement_required?: boolean;
     }): Promise<any> {
         const formData = new FormData();
         formData.append('title', data.title);
@@ -323,6 +324,11 @@ class ApiClient {
         
         // Добавляем sent_to_all (по умолчанию true)
         formData.append('sent_to_all', String(data.sent_to_all ?? true));
+        
+        // Добавляем acknowledgement_required
+        if (data.acknowledgement_required !== undefined) {
+            formData.append('acknowledgement_required', String(data.acknowledgement_required));
+        }
         
         // Добавляем получателей, если указаны
         if (data.recipient_ids && data.recipient_ids.length > 0) {

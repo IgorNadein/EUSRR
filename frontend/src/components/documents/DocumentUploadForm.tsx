@@ -1,11 +1,34 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, X, FileText, AlertCircle, Loader2, FolderOpen } from "lucide-react";
+import { 
+  Upload, 
+  X, 
+  FileText, 
+  AlertCircle, 
+  Loader2, 
+  FolderOpen,
+  Users,
+  Building2,
+  CheckCircle,
+  Tag as TagIcon,
+} from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
 import { processDocument, needsProcessing, type ProcessingProgress } from "@/lib/document-utils";
+
+interface Department {
+  id: number;
+  name: string;
+}
+
+interface User {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email?: string;
+}
 
 interface DocumentUploadFormProps {
   onSuccess?: () => void;
@@ -32,6 +55,45 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
   const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // New fields for extended functionality
+  const [sentToAll, setSentToAll] = useState(true);
+  const [acknowledgementRequired, setAcknowledgementRequired] = useState(false);
+  const [selectedDepartments, setSelectedDepartments] = useState<number[]>([]);
+  const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
+  
+  // Data for selects
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [employees, setEmployees] = useState<User[]>([]);
+  const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+
+  // Load departments and employees
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoadingDepartments(true);
+        const deptResponse = await apiClient.getDepartments({ limit: 1000 });
+        setDepartments(deptResponse.results || deptResponse);
+      } catch (err) {
+        console.error("Ошибка загрузки отделов:", err);
+      } finally {
+        setLoadingDepartments(false);
+      }
+
+      try {
+        setLoadingEmployees(true);
+        const empResponse = await apiClient.getEmployees({ limit: 1000 });
+        setEmployees(empResponse.results || empResponse);
+      } catch (err) {
+        console.error("Ошибка загрузки сотрудников:", err);
+      } finally {
+        setLoadingEmployees(false);
+      }
+    };
+    
+    loadData();
+  }, []);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -110,6 +172,12 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       return;
     }
 
+    // Validate recipients if sent_to_all is false
+    if (!sentToAll && selectedDepartments.length === 0 && selectedRecipients.length === 0) {
+      setError("Укажите получателей или отделы, либо выберите 'Отправить всем'");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -120,8 +188,12 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         title,
         description,
         file: fileToUpload,
-        extracted_text: extractedText || undefined, // Отправляем извлеченный текст, если есть
-        folder_id: currentFolderId || undefined, // Сохраняем в текущей папке если она выбрана
+        extracted_text: extractedText || undefined,
+        folder_id: currentFolderId || undefined,
+        sent_to_all: sentToAll,
+        department_ids: sentToAll ? undefined : selectedDepartments,
+        recipient_ids: sentToAll ? undefined : selectedRecipients,
+        acknowledgement_required: acknowledgementRequired,
       });
 
       toast.success("Документ успешно загружен");
@@ -132,6 +204,10 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       setFile(null);
       setProcessedFile(null);
       setExtractedText("");
+      setSentToAll(true);
+      setAcknowledgementRequired(false);
+      setSelectedDepartments([]);
+      setSelectedRecipients([]);
       
       if (onSuccess) {
         onSuccess();
@@ -296,6 +372,143 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
           </p>
         </div>
       )}
+
+      {/* Divider */}
+      <div className="border-t border-gray-200 pt-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-700">Настройки доступа и уведомлений</h3>
+      </div>
+
+      {/* Sent to All Toggle */}
+      <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <input
+          type="checkbox"
+          id="sentToAll"
+          checked={sentToAll}
+          onChange={(e) => {
+            setSentToAll(e.target.checked);
+            if (e.target.checked) {
+              setSelectedDepartments([]);
+              setSelectedRecipients([]);
+            }
+          }}
+          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+        />
+        <div className="flex-1">
+          <label htmlFor="sentToAll" className="block text-sm font-medium text-gray-900 cursor-pointer">
+            Отправить всем сотрудникам
+          </label>
+          <p className="mt-0.5 text-xs text-gray-600">
+            Документ будет доступен всем активным сотрудникам
+          </p>
+        </div>
+      </div>
+
+      {/* Recipients section - only show when sentToAll is false */}
+      {!sentToAll && (
+        <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <Users size={16} />
+            <span>Выберите получателей</span>
+          </div>
+
+          {/* Departments */}
+          <div>
+            <label htmlFor="departments" className="mb-1.5 block text-sm font-medium text-gray-700">
+              <Building2 size={14} className="mr-1 inline" />
+              Отделы
+            </label>
+            <select
+              id="departments"
+              multiple
+              value={selectedDepartments.map(String)}
+              onChange={(e) => {
+                const values = Array.from(e.target.selectedOptions, (option) => Number(option.value));
+                setSelectedDepartments(values);
+              }}
+              disabled={loadingDepartments}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+              size={5}
+            >
+              {loadingDepartments ? (
+                <option disabled>Загрузка...</option>
+              ) : departments.length === 0 ? (
+                <option disabled>Нет доступных отделов</option>
+              ) : (
+                departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Удерживайте Ctrl/Cmd для выбора нескольких
+            </p>
+          </div>
+
+          {/* Recipients */}
+          <div>
+            <label htmlFor="recipients" className="mb-1.5 block text-sm font-medium text-gray-700">
+              <Users size={14} className="mr-1 inline" />
+              Конкретные сотрудники
+            </label>
+            <select
+              id="recipients"
+              multiple
+              value={selectedRecipients.map(String)}
+              onChange={(e) => {
+                const values = Array.from(e.target.selectedOptions, (option) => Number(option.value));
+                setSelectedRecipients(values);
+              }}
+              disabled={loadingEmployees}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+              size={8}
+            >
+              {loadingEmployees ? (
+                <option disabled>Загрузка...</option>
+              ) : employees.length === 0 ? (
+                <option disabled>Нет доступных сотрудников</option>
+              ) : (
+                employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.last_name} {emp.first_name} {emp.email && `(${emp.email})`}
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Удерживайте Ctrl/Cmd для выбора нескольких
+            </p>
+          </div>
+
+          {selectedDepartments.length === 0 && selectedRecipients.length === 0 && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>Выберите хотя бы один отдел или сотрудника</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Acknowledgement Required */}
+      <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <input
+          type="checkbox"
+          id="acknowledgementRequired"
+          checked={acknowledgementRequired}
+          onChange={(e) => setAcknowledgementRequired(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+        />
+        <div className="flex-1">
+          <label htmlFor="acknowledgementRequired" className="block text-sm font-medium text-gray-900 cursor-pointer">
+            <CheckCircle size={14} className="mr-1 inline" />
+            Требуется подтверждение ознакомления
+          </label>
+          <p className="mt-0.5 text-xs text-gray-600">
+            Получатели должны будут подтвердить, что ознакомились с документом
+          </p>
+        </div>
+      </div>
 
       {/* Buttons */}
       <div className="flex gap-3">

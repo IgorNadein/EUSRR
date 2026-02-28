@@ -282,6 +282,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "file",
             "extracted_text",
             "sent_to_all",
+            "acknowledgement_required",
             "department_ids",
             "recipient_ids",
         )
