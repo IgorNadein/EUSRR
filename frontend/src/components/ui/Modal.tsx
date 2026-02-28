@@ -137,7 +137,7 @@ export function Modal({
     >
       <div
         ref={contentRef}
-        className={`flex flex-col rounded-2xl bg-white shadow-xl max-h-[90vh] overflow-y-auto transition-all duration-200 ${modalSizeClass} ${
+        className={`flex flex-col rounded-2xl bg-white shadow-xl overflow-y-auto transition-all duration-200 ${modalSizeClass} ${
           isAnimating ? "scale-100 opacity-100" : "scale-95 opacity-0"
         } ${className}`}
       >
