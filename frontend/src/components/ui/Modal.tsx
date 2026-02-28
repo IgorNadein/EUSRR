@@ -128,7 +128,7 @@ export function Modal({
     <div
       ref={modalRef}
       onClick={handleBackdropClick}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 transition-opacity duration-200 ${
         isAnimating ? "opacity-100" : "opacity-0"
       }`}
       role="dialog"
@@ -137,23 +137,23 @@ export function Modal({
     >
       <div
         ref={contentRef}
-        className={`flex flex-col rounded-2xl bg-white shadow-2xl transition-all duration-200 ${modalSizeClass} ${
+        className={`flex flex-col rounded-2xl bg-white shadow-xl max-h-[90vh] overflow-y-auto transition-all duration-200 ${modalSizeClass} ${
           isAnimating ? "scale-100 opacity-100" : "scale-95 opacity-0"
         } ${className}`}
       >
         {/* Header */}
         {(title || showCloseButton || showFullscreenToggle) && (
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
+          <div className="flex shrink-0 items-center justify-between mb-4 px-6 pt-6">
             {title && (
-              <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
+              <h3 id="modal-title" className="text-lg font-semibold text-gray-900">
                 {title}
-              </h2>
+              </h3>
             )}
             <div className="ml-auto flex items-center gap-2">
               {showFullscreenToggle && (
                 <button
                   onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                  className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
                   title={isFullscreen ? "Выйти из полноэкранного режима" : "Полноэкранный режим"}
                 >
                   {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
@@ -162,7 +162,7 @@ export function Modal({
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                  className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
                   title="Закрыть"
                 >
                   <X size={20} />
@@ -173,12 +173,15 @@ export function Modal({
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
+        <div className="px-6">{children}</div>
 
         {/* Footer */}
         {footer && (
-          <div className="shrink-0 border-t border-gray-200 px-6 py-4">{footer}</div>
+          <div className="shrink-0 border-t border-gray-200 px-6 py-4 mt-4">{footer}</div>
         )}
+
+        {/* Bottom padding */}
+        <div className="pb-6" />
       </div>
     </div>
   );
