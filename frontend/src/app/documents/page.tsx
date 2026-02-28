@@ -260,11 +260,6 @@ export default function DocumentsPage() {
                     </p>
                   </div>
 
-                  <div>
-                    <h3 className="mb-1 text-sm font-medium text-gray-700">Тип</h3>
-                    <p className="text-sm text-gray-600">{selectedDocument.document_type}</p>
-                  </div>
-
                   {selectedDocument.file_url && (
                     <div>
                       <button
@@ -273,6 +268,11 @@ export default function DocumentsPage() {
                             url: selectedDocument.file_url!,
                             name: selectedDocument.file_name || selectedDocument.title,
                           })
+                        }
+                        className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+                      >
+                        <Eye size={16} />
+                        Открыть файл
                       </button>
                     </div>
                   )}
