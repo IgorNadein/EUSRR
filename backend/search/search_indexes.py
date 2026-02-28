@@ -140,10 +140,30 @@ if Equipment:
 # 11. Документы (Documents)
 Document = get_model_safe("documents", "Document")
 if Document:
+    from watson.search import SearchAdapter
+    
+    class DocumentAdapter(SearchAdapter):
+        """Кастомный адаптер для Document с URL и расширенным поиском."""
+        
+        def get_title(self, obj):
+            """Возвращает заголовок для результатов поиска."""
+            return obj.title
+        
+        def get_description(self, obj):
+            """Возвращает описание для результатов поиска."""
+            # Возвращаем первые 200 символов extracted_text или description
+            text = obj.extracted_text if obj.extracted_text else obj.description
+            return text[:200] + '...' if len(text) > 200 else text
+        
+        def get_url(self, obj):
+            """Возвращает URL документа."""
+            return f"/documents/{obj.id}/"
+    
     register(
         Document,
-        fields=("title", "description"),
-        store=("title", "uploaded_at"),
+        adapter_cls=DocumentAdapter,
+        fields=("title", "description", "extracted_text"),  # Добавлен extracted_text!
+        store=("title", "uploaded_at", "status"),
     )
 
 # 12. Уведомления (Notifications)

@@ -109,6 +109,72 @@ class DepartmentBriefSerializer(serializers.Serializer):
     name = serializers.CharField(read_only=True)
 
 
+class FolderSerializer(serializers.Serializer):
+    """Сериализатор для папки filer.Folder."""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField()
+    parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
+    path = serializers.SerializerMethodField()
+    
+    def get_path(self, obj) -> str:
+        """Возвращает полный путь папки."""
+        path_parts = []
+        current = obj
+        while current:
+            path_parts.insert(0, current.name)
+            current = current.parent
+        return ' / '.join(path_parts)
+
+
+class FolderBriefSerializer(serializers.Serializer):
+    """Краткий сериализатор папки для вложенного отображения."""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
+class DocumentTypeSerializer(serializers.Serializer):
+    """Сериализатор для типов документов."""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField()
+    code = serializers.SlugField()
+    description = serializers.CharField(required=False, allow_blank=True)
+    icon = serializers.CharField(required=False)
+    color = serializers.CharField(required=False)
+    is_active = serializers.BooleanField(default=True)
+
+
+class DocumentTagSerializer(serializers.Serializer):
+    """Сериализатор для тегов документов."""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField()
+    slug = serializers.SlugField(required=False)
+    color = serializers.CharField(required=False)
+    description = serializers.CharField(required=False, allow_blank=True)
+    document_count = serializers.SerializerMethodField()
+    
+    def get_document_count(self, obj) -> int:
+        """Возвращает количество документов с этим тегом."""
+        return obj.documents.count() if hasattr(obj, 'documents') else 0
+
+
+class CabinetSerializer(serializers.Serializer):
+    """Сериализатор для кабинетов (виртуальных коллекций)."""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField()
+    slug = serializers.SlugField(required=False)
+    description = serializers.CharField(required=False, allow_blank=True)
+    parent_id = serializers.IntegerField(source='parent.id', required=False, allow_null=True)
+    icon = serializers.CharField(required=False)
+    color = serializers.CharField(required=False)
+    document_count = serializers.SerializerMethodField()
+    created_by = EmployeeBriefSerializer(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    
+    def get_document_count(self, obj) -> int:
+        """Возвращает количество документов в кабинете."""
+        return obj.documents.count() if hasattr(obj, 'documents') else 0
+
+
 class DocumentReadSerializer(serializers.ModelSerializer):
     """Сериализатор для чтения документа.
 
@@ -116,9 +182,16 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     """
 
     uploaded_by = EmployeeBriefSerializer(read_only=True)
+    modified_by = EmployeeBriefSerializer(read_only=True)
     recipients = EmployeeBriefSerializer(many=True, read_only=True)
     departments = DepartmentBriefSerializer(many=True, read_only=True)
+    folder = FolderBriefSerializer(read_only=True)
+    folder_path = serializers.CharField(read_only=True)
+    document_type = DocumentTypeSerializer(read_only=True)
+    tags = DocumentTagSerializer(many=True, read_only=True)
     file_url = FilerFileSerializerField(source="file", read_only=True)
+    file_name = serializers.CharField(source='file.name', read_only=True, allow_null=True)
+    file_size = serializers.IntegerField(source='file.size', read_only=True, allow_null=True)
     is_acknowledged = serializers.SerializerMethodField()
     status = serializers.CharField(source='get_status_display', read_only=True)
     status_code = serializers.CharField(source='status', read_only=True)
@@ -129,14 +202,23 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "extracted_text",  # Для полнотекстового поиска
+            "folder",  # Папка документа
+            "folder_path",  # Полный путь папки
+            "document_type",  # Тип документа
+            "tags",  # Теги
             "status",  # Человекочитаемый статус
             "status_code",  # Код статуса для программной обработки
             "uploaded_by",
             "uploaded_at",
+            "modified_by",
+            "modified_at",
             "sent_to_all",
             "departments",
             "recipients",
             "file_url",
+            "file_name",
+            "file_size",
             "is_acknowledged",
         )
 
