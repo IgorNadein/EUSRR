@@ -184,8 +184,8 @@ export default function DocumentsPage() {
                         {doc.description || "Описание не заполнено"}
                       </p>
 
-                      {doc.tags && doc.tags.length > 0 && (
-                       div className="mt-3">
+                      {/* Workflow Buttons */}
+                      <div className="mt-3">
                         <DocumentWorkflowButtons
                           documentId={doc.id}
                           currentStatus={doc.status_code}
