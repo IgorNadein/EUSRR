@@ -278,6 +278,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "file",
+            "extracted_text",
             "sent_to_all",
             "department_ids",
             "recipient_ids",

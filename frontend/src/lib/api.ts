@@ -302,11 +302,13 @@ class ApiClient {
     async createDocument(data: { 
         title: string; 
         description?: string; 
-        file: File;
+        file: File | Blob;
+        extracted_text?: string;
     }): Promise<any> {
         const formData = new FormData();
         formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
+        if (data.extracted_text) formData.append('extracted_text', data.extracted_text);
         formData.append('file', data.file);
 
         return this.request('/api/v1/documents/', {
