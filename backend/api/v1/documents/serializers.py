@@ -176,6 +176,42 @@ class CabinetSerializer(serializers.Serializer):
         return obj.documents.count() if hasattr(obj, 'documents') else 0
 
 
+class VersionSerializer(serializers.Serializer):
+    """Сериализатор для версий документа (django-reversion)."""
+    id = serializers.IntegerField(read_only=True)
+    revision_id = serializers.IntegerField(source='revision.id', read_only=True)
+    date_created = serializers.DateTimeField(source='revision.date_created', read_only=True)
+    user = serializers.SerializerMethodField()
+    comment = serializers.CharField(source='revision.comment', read_only=True, allow_blank=True)
+    
+    # Данные версии
+    data = serializers.SerializerMethodField()
+    
+    def get_user(self, obj) -> dict | None:
+        """Возвращает информацию о пользователе, создавшем версию."""
+        if not obj.revision.user:
+            return None
+        user = obj.revision.user
+        return {
+            'id': user.id,
+            'full_name': f'{user.last_name} {user.first_name}'.strip(),
+            'avatar_url': getattr(user, 'avatar_url', None),
+        }
+    
+    def get_data(self, obj) -> dict:
+        """Возвращает данные версии документа."""
+        return obj.field_dict
+
+
+class ActivityItemSerializer(serializers.Serializer):
+    """Сериализатор для элемента timeline активности."""
+    type = serializers.CharField()  # 'version', 'audit', 'acknowledgement'
+    timestamp = serializers.DateTimeField()
+    user = serializers.DictField(allow_null=True)
+    action = serializers.CharField()
+    details = serializers.DictField(allow_null=True)
+
+
 class DocumentReadSerializer(serializers.ModelSerializer):
     """Сериализатор для чтения документа.
 

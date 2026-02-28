@@ -7,6 +7,8 @@ from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, QuerySet, Q
 from documents.models import Document, DocumentAcknowledgement
 from filer.models import Folder
+import reversion
+from reversion.models import Version
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -17,7 +19,13 @@ from rest_framework.viewsets import ModelViewSet
 from ..employees.serializers import EmployeeBriefSerializer
 from ..permissions import AdminOrActionOrModelPerms
 from .permissions import DocumentReadOrModelPerms
-from .serializers import DocumentReadSerializer, DocumentWriteSerializer, FolderSerializer
+from .serializers import (
+    DocumentReadSerializer,
+    DocumentWriteSerializer,
+    FolderSerializer,
+    VersionSerializer,
+    ActivityItemSerializer,
+)
 
 User = get_user_model()
 
@@ -325,6 +333,185 @@ class DocumentViewSet(ModelViewSet):
             document.save()
             serializer = self.get_serializer(document)
             return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    # -------------------------------------------------------------------------
+    # DJANGO-REVERSION ENDPOINTS
+    # -------------------------------------------------------------------------
+
+    @action(detail=True, methods=['get'])
+    def versions(self, request, pk=None):
+        """Получить историю версий документа.
+        
+        Returns:
+            [
+                {
+                    "id": 1,
+                    "revision_id": 123,
+                    "date_created": "2026-02-28T10:00:00Z",
+                    "user": {"id": 1, "full_name": "Иванов Иван"},
+                    "comment": "Изменено описание",
+                    "data": {"title": "...", "description": "..."}
+                },
+                ...
+            ]
+        """
+        document = self.get_object()
+        
+        # Получаем все версии документа
+        versions = Version.objects.get_for_object(document).select_related('revision', 'revision__user')
+        
+        serializer = VersionSerializer(versions, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def activity(self, request, pk=None):
+        """Получить timeline активности документа (версии + аудит).
+        
+        Объединяет данные из:
+        - reversion.Version (изменения документа)
+        - DocumentAuditLog (аудит действий)
+        - DocumentAcknowledgement (ознакомления)
+        
+        Returns:
+            [
+                {
+                    "type": "version",
+                    "timestamp": "2026-02-28T10:00:00Z",
+                    "user": {"id": 1, "full_name": "Иванов Иван"},
+                    "action": "Изменение документа",
+                    "details": {"comment": "...", "fields": ["title", "description"]}
+                },
+                {
+                    "type": "audit",
+                    "timestamp": "2026-02-28T09:00:00Z",
+                    "user": {...},
+                    "action": "Просмотрен",
+                    "details": {"ip_address": "192.168.1.1"}
+                },
+                ...
+            ]
+        """
+        document = self.get_object()
+        activity_items = []
+        
+        # 1. Добавляем версии
+        versions = Version.objects.get_for_object(document).select_related('revision', 'revision__user')
+        for version in versions:
+            user_data = None
+            if version.revision.user:
+                user = version.revision.user
+                user_data = {
+                    'id': user.id,
+                    'full_name': f'{user.last_name} {user.first_name}'.strip(),
+                    'avatar_url': getattr(user, 'avatar_url', None),
+                }
+            
+            activity_items.append({
+                'type': 'version',
+                'timestamp': version.revision.date_created,
+                'user': user_data,
+                'action': 'Изменение документа',
+                'details': {
+                    'comment': version.revision.comment or '',
+                    'version_id': version.id,
+                    'revision_id': version.revision.id,
+                }
+            })
+        
+        # 2. Добавляем аудит (если есть)
+        if hasattr(document, 'audit_log'):
+            audit_logs = document.audit_log.all().select_related('user')[:50]  # Ограничиваем 50 записями
+            for log in audit_logs:
+                user_data = None
+                if log.user:
+                    user_data = {
+                        'id': log.user.id,
+                        'full_name': f'{log.user.last_name} {log.user.first_name}'.strip(),
+                        'avatar_url': getattr(log.user, 'avatar_url', None),
+                    }
+                
+                activity_items.append({
+                    'type': 'audit',
+                    'timestamp': log.timestamp,
+                    'user': user_data,
+                    'action': log.get_action_display(),
+                    'details': {
+                        'ip_address': log.ip_address,
+                        'metadata': log.metadata,
+                    }
+                })
+        
+        # 3. Добавляем ознакомления
+        acknowledgements = DocumentAcknowledgement.objects.filter(document=document).select_related('user')[:50]
+        for ack in acknowledgements:
+            user_data = {
+                'id': ack.user.id,
+                'full_name': f'{ack.user.last_name} {ack.user.first_name}'.strip(),
+                'avatar_url': getattr(ack.user, 'avatar_url', None),
+            }
+            
+            activity_items.append({
+                'type': 'acknowledgement',
+                'timestamp': ack.acknowledged_at,
+                'user': user_data,
+                'action': 'Ознакомление',
+                'details': None
+            })
+        
+        # Сортируем по времени (новые сверху)
+        activity_items.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        serializer = ActivityItemSerializer(activity_items, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def revert(self, request, pk=None):
+        """Откатить документ к указанной версии.
+        
+        Body:
+            {
+                "version_id": 123,  // ID версии из reversion.Version
+                "comment": "Причина отката"  // опционально
+            }
+        
+        Returns:
+            Обновленный документ
+        """
+        document = self.get_object()
+        version_id = request.data.get('version_id')
+        comment = request.data.get('comment', '')
+        
+        if not version_id:
+            return Response(
+                {'error': 'version_id обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Получаем версию
+            version = Version.objects.get(id=version_id, object_id=str(document.pk))
+            
+            # Откатываем с комментарием
+            with reversion.create_revision():
+                version.revision.revert()
+                reversion.set_user(request.user)
+                reversion.set_comment(comment or f'Откат к версии {version_id}')
+            
+            # Обновляем объект из базы
+            document.refresh_from_db()
+            serializer = self.get_serializer(document)
+            return Response(serializer.data)
+            
+        except Version.DoesNotExist:
+            return Response(
+                {'error': 'Версия не найдена'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
             return Response(
                 {'error': str(e)},
