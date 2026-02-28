@@ -283,15 +283,121 @@ class ApiClient {
     }
 
     // Документы
-    async getDocuments(params?: { search?: string; type?: string; page?: number; limit?: number }): Promise<any> {
+    async getDocuments(params?: { search?: string; type?: string; status?: string; page?: number; limit?: number }): Promise<any> {
         const queryParams = new URLSearchParams();
         if (params?.search) queryParams.append('search', params.search);
         if (params?.type) queryParams.append('type', params.type);
+        if (params?.status) queryParams.append('status', params.status);
         if (params?.page) queryParams.append('page', params.page.toString());
         if (params?.limit) queryParams.append('limit', params.limit.toString());
 
         const url = `/api/v1/documents/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
         return this.request(url);
+    }
+
+    async getDocument(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/`);
+    }
+
+    async createDocument(data: { 
+        title: string; 
+        description?: string; 
+        document_type: string; 
+        file: File;
+        tags?: string[];
+    }): Promise<any> {
+        const formData = new FormData();
+        formData.append('title', data.title);
+        if (data.description) formData.append('description', data.description);
+        formData.append('document_type', data.document_type);
+        formData.append('file', data.file);
+        if (data.tags && data.tags.length > 0) {
+            formData.append('tags', JSON.stringify(data.tags));
+        }
+
+        return this.request('/api/v1/documents/', {
+            method: 'POST',
+            body: formData,
+            headers: {}, // Clear headers to let browser set Content-Type with boundary
+        });
+    }
+
+    async updateDocument(id: number, data: { 
+        title?: string; 
+        description?: string; 
+        document_type?: string; 
+        file?: File;
+        tags?: string[];
+    }): Promise<any> {
+        const formData = new FormData();
+        if (data.title) formData.append('title', data.title);
+        if (data.description) formData.append('description', data.description);
+        if (data.document_type) formData.append('document_type', data.document_type);
+        if (data.file) formData.append('file', data.file);
+        if (data.tags) formData.append('tags', JSON.stringify(data.tags));
+
+        return this.request(`/api/v1/documents/${id}/`, {
+            method: 'PATCH',
+            body: formData,
+            headers: {}, // Clear headers to let browser set Content-Type with boundary
+        });
+    }
+
+    async deleteDocument(id: number): Promise<void> {
+        return this.request(`/api/v1/documents/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    // FSM Workflow transitions
+    async submitDocumentForReview(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/submit-for-review/`, {
+            method: 'POST',
+        });
+    }
+
+    async approveDocument(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/approve/`, {
+            method: 'POST',
+        });
+    }
+
+    async rejectDocument(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/reject/`, {
+            method: 'POST',
+        });
+    }
+
+    async publishDocument(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/publish/`, {
+            method: 'POST',
+        });
+    }
+
+    async returnDocumentToDraft(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/return-to-draft/`, {
+            method: 'POST',
+        });
+    }
+
+    async archiveDocument(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/archive/`, {
+            method: 'POST',
+        });
+    }
+
+    async unarchiveDocument(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/unarchive/`, {
+            method: 'POST',
+        });
+    }
+
+    // Document acknowledgement
+    async acknowledgeDocument(id: number, notes?: string): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/acknowledge/`, {
+            method: 'POST',
+            body: JSON.stringify({ notes }),
+        });
     }
 
     // Заявки
