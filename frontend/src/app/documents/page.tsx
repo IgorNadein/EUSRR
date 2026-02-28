@@ -28,6 +28,7 @@ import { FolderTree, type FolderNode } from "@/components/documents/folders";
 import { AdvancedSearch } from "@/components/documents/search";
 import { BulkActionsToolbar, useDocumentSelection } from "@/components/documents/batch";
 import { DocumentsDashboard } from "@/components/documents/dashboard";
+import { Modal } from "@/components/ui";
 
 // Динамический импорт компонентов с PDF обработкой (избегаем SSR ошибок с DOMMatrix)
 const DocumentUploadForm = dynamic(
@@ -629,125 +630,110 @@ export default function DocumentsPage() {
       </div>
 
       {/* Upload Modal */}
-      {showUploadForm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-gray-900">Загрузить документ</h2>
-                  <button
-                    onClick={() => setShowUploadForm(false)}
-                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-                <DocumentUploadForm
-                  currentFolderId={selectedFolderId}
-                  onSuccess={() => {
-                    setShowUploadForm(false);
-                    loadDocuments();
-                  }}
-                  onCancel={() => setShowUploadForm(false)}
-                />
-              </div>
-            </div>
-          )}
+      <Modal
+        isOpen={showUploadForm}
+        onClose={() => setShowUploadForm(false)}
+        title="Загрузить документ"
+        size="lg"
+        showFullscreenToggle
+      >
+        <DocumentUploadForm
+          currentFolderId={selectedFolderId}
+          onSuccess={() => {
+            setShowUploadForm(false);
+            loadDocuments();
+          }}
+          onCancel={() => setShowUploadForm(false)}
+        />
+      </Modal>
 
           {/* Document Details Modal */}
-          {selectedDocument && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    {selectedDocument.title}
-                  </h2>
+      <Modal
+        isOpen={!!selectedDocument}
+        onClose={() => setSelectedDocument(null)}
+        title={selectedDocument?.title}
+        size="lg"
+        showFullscreenToggle
+      >
+        {selectedDocument && (
+          <div className="space-y-4">
+            <div>
+              <DocumentStatusBadge
+                status={selectedDocument.status}
+                statusCode={selectedDocument.status_code}
+              />
+            </div>
+
+            <div>
+              <h3 className="mb-1 text-sm font-medium text-gray-700">Описание</h3>
+              <p className="text-sm text-gray-600">
+                {selectedDocument.description || "Описание отсутствует"}
+              </p>
+            </div>
+
+            {selectedDocument.file_url && (
+              <div>
+                <button
+                  onClick={() =>
+                    setPreviewFile({
+                      url: selectedDocument.file_url!,
+                      name: selectedDocument.file_name || selectedDocument.title,
+                    })
+                  }
+                  className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+                >
+                  <Eye size={16} />
+                  Открыть файл
+                </button>
+              </div>
+            )}
+
+            {/* Workflow Actions */}
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-gray-700">Действия</h3>
+              <DocumentWorkflowButtons
+                documentId={selectedDocument.id}
+                currentStatus={selectedDocument.status_code}
+                onStatusChange={() => {
+                  loadDocuments();
+                  setSelectedDocument(null);
+                }}
+              />
+            </div>
+
+            {/* Acknowledgement */}
+            {selectedDocument.acknowledgement_required && (
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-gray-700">
+                    Подтверждение прочтения
+                  </h3>
                   <button
-                    onClick={() => setSelectedDocument(null)}
-                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    onClick={() => {
+                      setShowAcknowledgementsReport({
+                        documentId: selectedDocument.id,
+                        documentTitle: selectedDocument.title,
+                      });
+                      setSelectedDocument(null);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
                   >
-                    <X size={20} />
+                    Посмотреть ведомость
                   </button>
                 </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <DocumentStatusBadge
-                      status={selectedDocument.status}
-                      statusCode={selectedDocument.status_code}
-                    />
-                  </div>
-
-                  <div>
-                    <h3 className="mb-1 text-sm font-medium text-gray-700">Описание</h3>
-                    <p className="text-sm text-gray-600">
-                      {selectedDocument.description || "Описание отсутствует"}
-                    </p>
-                  </div>
-
-                  {selectedDocument.file_url && (
-                    <div>
-                      <button
-                        onClick={() =>
-                          setPreviewFile({
-                            url: selectedDocument.file_url!,
-                            name: selectedDocument.file_name || selectedDocument.title,
-                          })
-                        }
-                        className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
-                      >
-                        <Eye size={16} />
-                        Открыть файл
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Workflow Actions */}
-                  <div>
-                    <h3 className="mb-2 text-sm font-medium text-gray-700">Действия</h3>
-                    <DocumentWorkflowButtons
-                      documentId={selectedDocument.id}
-                      currentStatus={selectedDocument.status_code}
-                      onStatusChange={() => {
-                        loadDocuments();
-                        setSelectedDocument(null);
-                      }}
-                    />
-                  </div>
-
-                  {/* Acknowledgement */}
-                  {selectedDocument.acknowledgement_required && (
-                    <div>
-                      <div className="mb-2 flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-gray-700">
-                          Подтверждение прочтения
-                        </h3>
-                        <button
-                          onClick={() => {
-                            setShowAcknowledgementsReport({
-                              documentId: selectedDocument.id,
-                              documentTitle: selectedDocument.title,
-                            });
-                            setSelectedDocument(null);
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
-                        >
-                          Посмотреть ведомость
-                        </button>
-                      </div>
-                      <DocumentAcknowledgement
-                        document={selectedDocument}
-                        onAcknowledge={() => {
-                          loadDocuments();
-                          // Refresh selected document
-                          apiClient.getDocument(selectedDocument.id).then(setSelectedDocument);
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
+                <DocumentAcknowledgement
+                  document={selectedDocument}
+                  onAcknowledge={() => {
+                    loadDocuments();
+                    // Refresh selected document
+                    apiClient.getDocument(selectedDocument.id).then(setSelectedDocument);
+                  }}
+                />
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* File Preview Modal */}
       {previewFile && (
@@ -768,87 +754,78 @@ export default function DocumentsPage() {
       )}
 
       {/* Create Folder Modal */}
-      {showCreateFolder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Создать папку</h2>
-              <button
-                onClick={() => setShowCreateFolder(false)}
-                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
+      <Modal
+        isOpen={showCreateFolder}
+        onClose={() => setShowCreateFolder(false)}
+        title="Создать папку"
+        size="sm"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.currentTarget);
+            const name = formData.get('name') as string;
 
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const name = formData.get('name') as string;
+            if (!name.trim()) {
+              alert('Введите название папки');
+              return;
+            }
 
-                if (!name.trim()) {
-                  alert('Введите название папки');
-                  return;
-                }
-
-                try {
-                  await apiClient.createFolder({
-                    name: name.trim(),
-                    parent: selectedFolderId,
-                  });
-                  setShowCreateFolder(false);
-                  loadFolders();
-                } catch (err) {
-                  console.error('Ошибка создания папки:', err);
-                  alert('Не удалось создать папку');
-                }
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label htmlFor="folderName" className="mb-1 block text-sm font-medium text-gray-700">
-                  Название папки
-                </label>
-                <input
-                  id="folderName"
-                  name="name"
-                  type="text"
-                  required
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Введите название..."
-                  autoFocus
-                />
-              </div>
-
-              {selectedFolderId && (
-                <div className="rounded-lg bg-sky-50 p-3">
-                  <p className="text-xs text-sky-700">
-                    <FolderOpen className="mr-1 inline" size={14} />
-                    Будет создана в выбранной папке
-                  </p>
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateFolder(false)}
-                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
-                >
-                  Создать
-                </button>
-              </div>
-            </form>
+            try {
+              await apiClient.createFolder({
+                name: name.trim(),
+                parent: selectedFolderId,
+              });
+              setShowCreateFolder(false);
+              loadFolders();
+            } catch (err) {
+              console.error('Ошибка создания папки:', err);
+              alert('Не удалось создать папку');
+            }
+          }}
+          className="space-y-4"
+        >
+          <div>
+            <label htmlFor="folderName" className="mb-1 block text-sm font-medium text-gray-700">
+              Название папки
+            </label>
+            <input
+              id="folderName"
+              name="name"
+              type="text"
+              required
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              placeholder="Введите название..."
+              autoFocus
+            />
           </div>
-        </div>
-      )}
+
+          {selectedFolderId && (
+            <div className="rounded-lg bg-sky-50 p-3">
+              <p className="text-xs text-sky-700">
+                <FolderOpen className="mr-1 inline" size={14} />
+                Будет создана в выбранной папке
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCreateFolder(false)}
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              className="flex-1 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+            >
+              Создать
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Acknowledgements Report Modal */}
       {showAcknowledgementsReport && (

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { X, Search, CheckCircle, AlertCircle, Users, Download } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { toast } from "sonner";
+import { useModal, useClickOutside } from "@/hooks/useModal";
 
 interface Employee {
   id: number;
@@ -44,6 +45,17 @@ export function DocumentAcknowledgementsReport({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "acknowledged" | "unacknowledged">("all");
+
+  // Используем модальные хуки для улучшений UX
+  const contentRef = useModal({
+    isOpen: true,
+    onClose,
+    closeOnEsc: true,
+    trapFocus: true,
+    lockBodyScroll: true,
+  });
+
+  const backdropRef = useClickOutside(onClose, true);
 
   useEffect(() => {
     loadData();
@@ -117,8 +129,14 @@ export function DocumentAcknowledgementsReport({
   const displayList = getDisplayList();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-xl">
+    <div
+      ref={backdropRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 transition-opacity duration-200"
+    >
+      <div
+        ref={contentRef}
+        className="flex h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-xl transition-all duration-200"
+      >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-gray-200 p-6">
           <div>
