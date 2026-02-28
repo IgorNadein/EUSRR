@@ -151,6 +151,29 @@ export default function DocumentsPage() {
     });
   }, [documents, search]);
 
+  // Find selected folder and build breadcrumb path
+  const selectedFolder = useMemo(() => {
+    if (!selectedFolderId) return null;
+    
+    const findFolder = (foldersArray: FolderNode[]): FolderNode | null => {
+      for (const folder of foldersArray) {
+        if (folder.id === selectedFolderId) return folder;
+        if (folder.children) {
+          const found = findFolder(folder.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    
+    return findFolder(folders);
+  }, [selectedFolderId, folders]);
+
+  const breadcrumbs = useMemo(() => {
+    if (!selectedFolder) return [];
+    return selectedFolder.path.split(' / ');
+  }, [selectedFolder]);
+
   // Mock dashboard stats
   const dashboardStats = useMemo(() => {
     const byStatus = documents.reduce((acc: any[], doc) => {
@@ -211,10 +234,28 @@ export default function DocumentsPage() {
               <div className="relative">
                 <button
                   onClick={() => setShowFolderDropdown(!showFolderDropdown)}
-                  className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition ${
+                    selectedFolderId
+                      ? "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
                 >
                   <FolderOpen size={16} />
-                  {selectedFolderId ? "Папка выбрана" : "Все папки"}
+                  <span className="max-w-[200px] truncate">
+                    {selectedFolder ? selectedFolder.name : "Все папки"}
+                  </span>
+                  {selectedFolderId && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFolderId(null);
+                      }}
+                      className="rounded p-0.5 hover:bg-sky-200"
+                      title="Сбросить фильтр"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </button>
                 {showFolderDropdown && (
                   <div className="absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg">
@@ -384,6 +425,29 @@ export default function DocumentsPage() {
                   </div>
                 )}
 
+                {/* Breadcrumbs */}
+                {breadcrumbs.length > 0 && (
+                  <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-4 py-2 text-sm">
+                    <FolderOpen size={14} className="text-gray-500" />
+                    <nav className="flex items-center gap-1">
+                      <button
+                        onClick={() => setSelectedFolderId(null)}
+                        className="text-gray-600 hover:text-sky-600"
+                      >
+                        Все документы
+                      </button>
+                      {breadcrumbs.map((crumb, index) => (
+                        <span key={index} className="flex items-center gap-1">
+                          <span className="text-gray-400">/</span>
+                          <span className={index === breadcrumbs.length - 1 ? "font-medium text-gray-900" : "text-gray-600"}>
+                            {crumb}
+                          </span>
+                        </span>
+                      ))}
+                    </nav>
+                  </div>
+                )}
+
                 {/* Documents List */}
                 <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
                   <div className="space-y-3">
@@ -473,6 +537,12 @@ export default function DocumentsPage() {
                                   </div>
 
                                   <div className="grid grid-cols-1 gap-2 text-xs text-gray-500 sm:grid-cols-2">
+                                    {doc.folder_path && (
+                                      <p className="flex items-center gap-1 text-sky-600">
+                                        <FolderOpen size={12} />
+                                        {doc.folder_path}
+                                      </p>
+                                    )}
                                     <p>Автор: {authorName}</p>
                                     <p>Создано: {formatDate(doc.created_at)}</p>
                                     <p>Обновлено: {formatDate(doc.updated_at)}</p>

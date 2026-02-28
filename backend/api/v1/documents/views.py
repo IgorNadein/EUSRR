@@ -349,8 +349,13 @@ class FolderViewSet(ModelViewSet):
             ?parent_id=<id> - показать только дочерние папки указанного parent
             ?root=true - показать только корневые папки (parent=null)
         """
+        from django.db.models import Count
+        
         qs = super().get_queryset()
         request = getattr(self, "request", None)
+        
+        # Аннотируем количество документов в каждой папке
+        qs = qs.annotate(document_count=Count('documents'))
         
         if not request:
             return qs

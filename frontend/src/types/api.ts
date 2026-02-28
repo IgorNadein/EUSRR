@@ -121,6 +121,11 @@ export interface Document {
   file_url?: string;
   file_name?: string;
   file_size?: number;
+  folder?: {
+    id: number;
+    name: string;
+  };
+  folder_path?: string;
   status: string; // human-readable: "Черновик", "На рассмотрении", etc.
   status_code: DocumentStatus; // machine-readable: "draft", "in_review", etc.
   created_by: User;

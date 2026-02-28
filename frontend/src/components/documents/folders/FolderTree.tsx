@@ -8,6 +8,7 @@ export interface FolderNode {
   name: string;
   parent_id: number | null;
   path: string;
+  document_count?: number;
   children?: FolderNode[];
 }
 
@@ -116,6 +117,11 @@ export function FolderTree({
               <Folder size={16} className="shrink-0 text-gray-500" />
             )}
             <span className="truncate text-sm font-medium">{node.name}</span>
+            {node.document_count !== undefined && node.document_count > 0 && (
+              <span className="ml-auto shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                {node.document_count}
+              </span>
+            )}
           </button>
 
           {/* Actions */}

@@ -115,6 +115,7 @@ class FolderSerializer(serializers.Serializer):
     name = serializers.CharField()
     parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
     path = serializers.SerializerMethodField()
+    document_count = serializers.IntegerField(read_only=True, default=0)
     
     def get_path(self, obj) -> str:
         """Возвращает полный путь папки."""
