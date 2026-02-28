@@ -8,7 +8,7 @@ export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
-  children: ReactNode;
+  children: ReactNode | ((isFullscreen: boolean) => ReactNode);
   size?: "sm" | "md" | "lg" | "xl" | "full";
   showCloseButton?: boolean;
   closeOnClickOutside?: boolean;
@@ -173,7 +173,9 @@ export function Modal({
         )}
 
         {/* Content */}
-        <div className="px-6">{children}</div>
+        <div className="px-6">
+          {typeof children === "function" ? children(isFullscreen) : children}
+        </div>
 
         {/* Footer */}
         {footer && (

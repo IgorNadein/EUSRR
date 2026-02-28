@@ -658,301 +658,364 @@ export default function DocumentsPage() {
         isOpen={!!selectedDocument}
         onClose={() => setSelectedDocument(null)}
         title={selectedDocument?.title}
-        size="xl"
+        size="lg"
         showFullscreenToggle
       >
-        {selectedDocument && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Left Column - Information */}
-            <div className="space-y-6 lg:col-span-2">
-              {/* Status Badge */}
-              <div>
-                <DocumentStatusBadge
-                  status={selectedDocument.status}
-                  statusCode={selectedDocument.status_code}
-                />
-              </div>
+        {(isFullscreen) =>
+          selectedDocument && (
+            <div
+              className={`grid grid-cols-1 gap-6 ${
+                isFullscreen ? "lg:grid-cols-3" : ""
+              }`}
+            >
+              {/* Left Column - Information */}
+              <div className={`space-y-6 ${isFullscreen ? "lg:col-span-2" : ""}`}>
+                {/* Status Badge */}
+                <div>
+                  <DocumentStatusBadge
+                    status={selectedDocument.status}
+                    statusCode={selectedDocument.status_code}
+                  />
+                </div>
 
-              {/* Metadata Grid */}
-              <div className="grid grid-cols-2 gap-4">
-              {/* Author */}
-              <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                <div className="rounded-full bg-sky-100 p-2">
-                  <User size={16} className="text-sky-600" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-gray-500">Автор</p>
-                  <p className="truncate text-sm font-medium text-gray-900">
-                    {selectedDocument.uploaded_by
-                      ? `${selectedDocument.uploaded_by.last_name} ${selectedDocument.uploaded_by.first_name}`
-                      : selectedDocument.created_by
-                      ? `${selectedDocument.created_by.last_name} ${selectedDocument.created_by.first_name}`
-                      : "Не указан"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Created Date */}
-              <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                <div className="rounded-full bg-green-100 p-2">
-                  <Calendar size={16} className="text-green-600" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-gray-500">Дата создания</p>
-                  <p className="text-sm font-medium text-gray-900">
-                    {formatDate(selectedDocument.uploaded_at || selectedDocument.created_at)}
-                  </p>
-                </div>
-              </div>
-
-              {/* File Info */}
-              {selectedDocument.file_name && (
-                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                  <div className="rounded-full bg-purple-100 p-2">
-                    <File size={16} className="text-purple-600" />
+                {/* Metadata Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Author */}
+                  <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                    <div className="rounded-full bg-sky-100 p-2">
+                      <User size={16} className="text-sky-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-gray-500">Автор</p>
+                      <p className="truncate text-sm font-medium text-gray-900">
+                        {selectedDocument.uploaded_by
+                          ? `${selectedDocument.uploaded_by.last_name} ${selectedDocument.uploaded_by.first_name}`
+                          : selectedDocument.created_by
+                          ? `${selectedDocument.created_by.last_name} ${selectedDocument.created_by.first_name}`
+                          : "Не указан"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-gray-500">Файл</p>
-                    <p className="truncate text-sm font-medium text-gray-900">
-                      {selectedDocument.file_name}
-                    </p>
+
+                  {/* Created Date */}
+                  <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                    <div className="rounded-full bg-green-100 p-2">
+                      <Calendar size={16} className="text-green-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-gray-500">Дата создания</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {formatDate(selectedDocument.uploaded_at || selectedDocument.created_at)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
 
-              {/* File Size */}
-              {selectedDocument.file_size && (
-                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                  <div className="rounded-full bg-orange-100 p-2">
-                    <HardDrive size={16} className="text-orange-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-gray-500">Размер</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {(selectedDocument.file_size / 1024 / 1024).toFixed(2)} МБ
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Folder Path */}
-            {selectedDocument.folder_path && (
-              <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                <div className="flex items-center gap-2 text-sky-700">
-                  <FolderOpen size={16} />
-                  <span className="text-xs font-medium">Расположение</span>
-                </div>
-                <p className="mt-1 text-sm text-sky-900">{selectedDocument.folder_path}</p>
-              </div>
-            )}
-
-            {/* Description */}
-            <div>
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
-                <FileText size={16} />
-                Описание
-              </h3>
-              <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
-                {selectedDocument.description || "Описание отсутствует"}
-              </p>
-            </div>
-
-            {/* Recipients & Departments */}
-            {(selectedDocument.sent_to_all ||
-              (selectedDocument.recipients && selectedDocument.recipients.length > 0) ||
-              (selectedDocument.departments && selectedDocument.departments.length > 0)) && (
-              <div>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <Users size={16} />
-                  Получатели
-                </h3>
-                <div className="space-y-2">
-                  {selectedDocument.sent_to_all && (
-                    <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                      <CheckCircle size={14} />
-                      <span className="font-medium">Отправлено всем сотрудникам</span>
+                  {/* File Info */}
+                  {selectedDocument.file_name && (
+                    <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                      <div className="rounded-full bg-purple-100 p-2">
+                        <File size={16} className="text-purple-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-gray-500">Файл</p>
+                        <p className="truncate text-sm font-medium text-gray-900">
+                          {selectedDocument.file_name}
+                        </p>
+                      </div>
                     </div>
                   )}
-                  
-                  {selectedDocument.departments && selectedDocument.departments.length > 0 && (
-                    <div className="rounded-lg bg-gray-50 p-3">
-                      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
-                        <Building2 size={14} />
-                        Отделы
+
+                  {/* File Size */}
+                  {selectedDocument.file_size && (
+                    <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                      <div className="rounded-full bg-orange-100 p-2">
+                        <HardDrive size={16} className="text-orange-600" />
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedDocument.departments.map((dept) => (
-                          <span
-                            key={dept.id}
-                            className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700"
-                          >
-                            {dept.name}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-gray-500">Размер</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {(selectedDocument.file_size / 1024 / 1024).toFixed(2)} МБ
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Folder Path */}
+                {selectedDocument.folder_path && (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                    <div className="flex items-center gap-2 text-sky-700">
+                      <FolderOpen size={16} />
+                      <span className="text-xs font-medium">Расположение</span>
+                    </div>
+                    <p className="mt-1 text-sm text-sky-900">
+                      {selectedDocument.folder_path}
+                    </p>
+                  </div>
+                )}
+
+                {/* Description */}
+                <div>
+                  <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <FileText size={16} />
+                    Описание
+                  </h3>
+                  <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+                    {selectedDocument.description || "Описание отсутствует"}
+                  </p>
+                </div>
+
+                {/* Recipients & Departments */}
+                {(selectedDocument.sent_to_all ||
+                  (selectedDocument.recipients &&
+                    selectedDocument.recipients.length > 0) ||
+                  (selectedDocument.departments &&
+                    selectedDocument.departments.length > 0)) && (
+                  <div>
+                    <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <Users size={16} />
+                      Получатели
+                    </h3>
+                    <div className="space-y-2">
+                      {selectedDocument.sent_to_all && (
+                        <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                          <CheckCircle size={14} />
+                          <span className="font-medium">
+                            Отправлено всем сотрудникам
                           </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                        </div>
+                      )}
 
-                  {selectedDocument.recipients && selectedDocument.recipients.length > 0 && (
-                    <div className="rounded-lg bg-gray-50 p-3">
-                      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
-                        <User size={14} />
-                        Конкретные получатели ({selectedDocument.recipients.length})
-                      </div>
-                      <div className="max-h-32 space-y-1 overflow-y-auto">
-                        {selectedDocument.recipients.slice(0, 10).map((recipient) => (
-                          <div key={recipient.id} className="text-xs text-gray-700">
-                            {recipient.last_name} {recipient.first_name}
-                          </div>
-                        ))}
-                        {selectedDocument.recipients.length > 10 && (
-                          <div className="text-xs text-gray-500">
-                            ... и ещё {selectedDocument.recipients.length - 10}
+                      {selectedDocument.departments &&
+                        selectedDocument.departments.length > 0 && (
+                          <div className="rounded-lg bg-gray-50 p-3">
+                            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
+                              <Building2 size={14} />
+                              Отделы
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {selectedDocument.departments.map((dept) => (
+                                <span
+                                  key={dept.id}
+                                  className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700"
+                                >
+                                  {dept.name}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         )}
-                      </div>
+
+                      {selectedDocument.recipients &&
+                        selectedDocument.recipients.length > 0 && (
+                          <div className="rounded-lg bg-gray-50 p-3">
+                            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
+                              <User size={14} />
+                              Конкретные получатели (
+                              {selectedDocument.recipients.length})
+                            </div>
+                            <div className="max-h-32 space-y-1 overflow-y-auto">
+                              {selectedDocument.recipients
+                                .slice(0, 10)
+                                .map((recipient) => (
+                                  <div
+                                    key={recipient.id}
+                                    className="text-xs text-gray-700"
+                                  >
+                                    {recipient.last_name} {recipient.first_name}
+                                  </div>
+                                ))}
+                              {selectedDocument.recipients.length > 10 && (
+                                <div className="text-xs text-gray-500">
+                                  ... и ещё{" "}
+                                  {selectedDocument.recipients.length - 10}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
+                  </div>
+                )}
 
-            {/* Workflow Actions */}
-            <div>
-              <h3 className="mb-2 text-sm font-medium text-gray-700">Действия</h3>
-              <DocumentWorkflowButtons
-                documentId={selectedDocument.id}
-                currentStatus={selectedDocument.status_code}
-                onStatusChange={() => {
-                  loadDocuments();
-                  setSelectedDocument(null);
-                }}
-              />
-            </div>
+                {/* File Open Button - Show only when not fullscreen */}
+                {!isFullscreen && selectedDocument.file_url && (
+                  <div>
+                    <button
+                      onClick={() =>
+                        setPreviewFile({
+                          url: selectedDocument.file_url!,
+                          name: selectedDocument.file_name || selectedDocument.title,
+                        })
+                      }
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
+                    >
+                      <Eye size={16} />
+                      Открыть файл
+                    </button>
+                  </div>
+                )}
 
-            {/* Acknowledgement */}
-            {selectedDocument.acknowledgement_required && (
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-700">
-                    Подтверждение прочтения
+                {/* Workflow Actions */}
+                <div>
+                  <h3 className="mb-2 text-sm font-medium text-gray-700">
+                    Действия
                   </h3>
-                  <button
-                    onClick={() => {
-                      setShowAcknowledgementsReport({
-                        documentId: selectedDocument.id,
-                        documentTitle: selectedDocument.title,
-                      });
+                  <DocumentWorkflowButtons
+                    documentId={selectedDocument.id}
+                    currentStatus={selectedDocument.status_code}
+                    onStatusChange={() => {
+                      loadDocuments();
                       setSelectedDocument(null);
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
-                  >
-                    Посмотреть ведомость
-                  </button>
+                  />
                 </div>
-                <DocumentAcknowledgement
-                  document={selectedDocument}
-                  onAcknowledge={() => {
-                    loadDocuments();
-                    // Refresh selected document
-                    apiClient.getDocument(selectedDocument.id).then(setSelectedDocument);
-                  }}
-                />
-              </div>
-            )}
-            </div>
 
-            {/* Right Column - Document Thumbnail */}
-            <div className="lg:col-span-1">
-              <div className="sticky top-0">
-                {selectedDocument.file_url && (
-                  <div className="overflow-hidden rounded-lg border-2 border-gray-200 bg-gray-50">
-                    <div className="border-b border-gray-200 bg-white px-3 py-2">
-                      <p className="text-xs font-medium text-gray-500">Превью документа</p>
-                    </div>
-                    
-                    {/* Thumbnail Content */}
-                    <div className="relative aspect-[3/4] bg-white">
-                      {(() => {
-                        const fileExt = selectedDocument.file_name?.toLowerCase().split('.').pop() || '';
-                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(fileExt);
-                        const isPDF = fileExt === 'pdf';
-
-                        if (isImage) {
-                          return (
-                            <img
-                              src={selectedDocument.file_url}
-                              alt={selectedDocument.file_name || 'Preview'}
-                              className="h-full w-full object-contain p-4"
-                              onError={(e) => {
-                                // Fallback to icon on error
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          );
-                        }
-
-                        if (isPDF) {
-                          return (
-                            <div className="flex h-full items-center justify-center p-4">
-                              <iframe
-                                src={`${selectedDocument.file_url}#page=1&view=FitH`}
-                                className="h-full w-full border-0"
-                                title="PDF Preview"
-                              />
-                            </div>
-                          );
-                        }
-
-                        // Fallback for other file types
-                        return (
-                          <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-                            <div className="rounded-full bg-gray-100 p-4">
-                              <FileText size={48} className="text-gray-400" />
-                            </div>
-                            <p className="mt-4 text-xs font-medium text-gray-600">
-                              {selectedDocument.file_name}
-                            </p>
-                            <p className="mt-1 text-xs text-gray-400 uppercase">
-                              {fileExt} файл
-                            </p>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Quick Action Button */}
-                    <div className="border-t border-gray-200 bg-white p-3">
+                {/* Acknowledgement */}
+                {selectedDocument.acknowledgement_required && (
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-sm font-medium text-gray-700">
+                        Подтверждение прочтения
+                      </h3>
                       <button
-                        onClick={() =>
-                          setPreviewFile({
-                            url: selectedDocument.file_url!,
-                            name: selectedDocument.file_name || selectedDocument.title,
-                          })
-                        }
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-sky-700"
+                        onClick={() => {
+                          setShowAcknowledgementsReport({
+                            documentId: selectedDocument.id,
+                            documentTitle: selectedDocument.title,
+                          });
+                          setSelectedDocument(null);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
                       >
-                        <Eye size={14} />
-                        Открыть в полном размере
+                        Посмотреть ведомость
                       </button>
                     </div>
-                  </div>
-                )}
-
-                {/* No file placeholder */}
-                {!selectedDocument.file_url && (
-                  <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12">
-                    <div className="text-center">
-                      <FileText size={48} className="mx-auto text-gray-300" />
-                      <p className="mt-2 text-sm text-gray-500">Файл не прикреплен</p>
-                    </div>
+                    <DocumentAcknowledgement
+                      document={selectedDocument}
+                      onAcknowledge={() => {
+                        loadDocuments();
+                        // Refresh selected document
+                        apiClient
+                          .getDocument(selectedDocument.id)
+                          .then(setSelectedDocument);
+                      }}
+                    />
                   </div>
                 )}
               </div>
+
+              {/* Right Column - Document Thumbnail (Only in fullscreen) */}
+              {isFullscreen && (
+                <div className="lg:col-span-1">
+                  <div className="sticky top-0">
+                    {selectedDocument.file_url && (
+                      <div className="overflow-hidden rounded-lg border-2 border-gray-200 bg-gray-50">
+                        <div className="border-b border-gray-200 bg-white px-3 py-2">
+                          <p className="text-xs font-medium text-gray-500">
+                            Превью документа
+                          </p>
+                        </div>
+
+                        {/* Thumbnail Content */}
+                        <div className="relative aspect-[3/4] bg-white">
+                          {(() => {
+                            const fileExt =
+                              selectedDocument.file_name
+                                ?.toLowerCase()
+                                .split(".")
+                                .pop() || "";
+                            const isImage = [
+                              "jpg",
+                              "jpeg",
+                              "png",
+                              "gif",
+                              "webp",
+                              "svg",
+                              "bmp",
+                            ].includes(fileExt);
+                            const isPDF = fileExt === "pdf";
+
+                            if (isImage) {
+                              return (
+                                <img
+                                  src={selectedDocument.file_url}
+                                  alt={selectedDocument.file_name || "Preview"}
+                                  className="h-full w-full object-contain p-4"
+                                  onError={(e) => {
+                                    // Fallback to icon on error
+                                    e.currentTarget.style.display = "none";
+                                  }}
+                                />
+                              );
+                            }
+
+                            if (isPDF) {
+                              return (
+                                <div className="flex h-full items-center justify-center p-4">
+                                  <iframe
+                                    src={`${selectedDocument.file_url}#page=1&view=FitH`}
+                                    className="h-full w-full border-0"
+                                    title="PDF Preview"
+                                  />
+                                </div>
+                              );
+                            }
+
+                            // Fallback for other file types
+                            return (
+                              <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+                                <div className="rounded-full bg-gray-100 p-4">
+                                  <FileText size={48} className="text-gray-400" />
+                                </div>
+                                <p className="mt-4 text-xs font-medium text-gray-600">
+                                  {selectedDocument.file_name}
+                                </p>
+                                <p className="mt-1 text-xs uppercase text-gray-400">
+                                  {fileExt} файл
+                                </p>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Quick Action Button */}
+                        <div className="border-t border-gray-200 bg-white p-3">
+                          <button
+                            onClick={() =>
+                              setPreviewFile({
+                                url: selectedDocument.file_url!,
+                                name:
+                                  selectedDocument.file_name ||
+                                  selectedDocument.title,
+                              })
+                            }
+                            className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-sky-700"
+                          >
+                            <Eye size={14} />
+                            Открыть в полном размере
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No file placeholder */}
+                    {!selectedDocument.file_url && (
+                      <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12">
+                        <div className="text-center">
+                          <FileText size={48} className="mx-auto text-gray-300" />
+                          <p className="mt-2 text-sm text-gray-500">
+                            Файл не прикреплен
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )
+        }
       </Modal>
 
       {/* File Preview Modal */}
