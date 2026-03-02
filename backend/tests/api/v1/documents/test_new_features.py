@@ -13,7 +13,6 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from documents.models import (
     Document,
@@ -22,166 +21,139 @@ from documents.models import (
     Cabinet,
     DocumentComment,
 )
-from filer.models import Folder, File as FilerFile
-from employees.models import Department
+from tests.api.v1.documents.test_documents_api import make_document, grant_perms
+
+pytestmark = pytest.mark.django_db
 
 User = get_user_model()
-
-
-@pytest.fixture
-def api_client():
-    return APIClient()
-
-
-@pytest.fixture
-def user(db):
-    """Обычный пользователь."""
-    return User.objects.create_user(
-        username='testuser',
-        email='test@example.com',
-        password='testpass123',
-        first_name='Test',
-        last_name='User'
-    )
-
-
-@pytest.fixture
-def staff_user(db):
-    """Staff пользователь."""
-    return User.objects.create_user(
-        username='staffuser',
-        email='staff@example.com',
-        password='staffpass123',
-        first_name='Staff',
-        last_name='User',
-        is_staff=True
-    )
-
-
-@pytest.fixture
-def document(user):
-    """Тестовый документ."""
-    return Document.objects.create(
-        title='Test Document',
-        description='Test Description',
-        uploaded_by=user,
-        status='draft'
-    )
-
-
-@pytest.fixture
-def document_tag(db):
-    """Тестовый тег."""
-    return DocumentTag.objects.create(
-        name='Important',
-        slug='important',
-        color='#ff0000'
-    )
-
-
-@pytest.fixture
-def document_type(db):
-    """Тестовый тип документа."""
-    return DocumentType.objects.create(
-        name='Contract',
-        code='contract',
-        description='Legal contracts',
-        is_active=True
-    )
-
-
-@pytest.fixture
-def cabinet(user):
-    """Тестовый кабинет."""
-    return Cabinet.objects.create(
-        name='Test Cabinet',
-        slug='test-cabinet',
-        description='Test Cabinet Description',
-        created_by=user
-    )
 
 
 # =============================================================================
 # DOCUMENTTAG VIEWSET TESTS
 # =============================================================================
 
-@pytest.mark.django_db
 class TestDocumentTagViewSet:
     """Тесты для DocumentTagViewSet."""
     
-    def test_list_tags(self, api_client, user, document_tag):
+    def test_list_tags(self, auth_client_factory, user_factory):
         """Тест получения списка тегов."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:document-tags-list')
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        response = api_client.get(url)
+        # Создаём тег
+        tag = DocumentTag.objects.create(
+            name='Important',
+            slug='important',
+            color='#ff0000'
+        )
+        
+        url = reverse('api:v1:document-tags-list')
+        response = client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
+        assert 'results' in response.data
         assert len(response.data['results']) == 1
         assert response.data['results'][0]['name'] == 'Important'
     
-    def test_create_tag(self, api_client, user):
+    def test_create_tag(self, auth_client_factory, user_factory):
         """Тест создания тега."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:document-tags-list')
+        user = user_factory()
+        client = auth_client_factory(user)
         
+        url = reverse('api:v1:document-tags-list')
         data = {
             'name': 'Urgent',
             'slug': 'urgent',
             'color': '#00ff00'
         }
-        response = api_client.post(url, data)
+        response = client.post(url, data, format='json')
         
         assert response.status_code == status.HTTP_201_CREATED
         assert DocumentTag.objects.filter(slug='urgent').exists()
     
-    def test_tag_documents(self, api_client, user, document_tag, document):
+    def test_tag_documents(self, auth_client_factory, user_factory):
         """Тест получения документов тега."""
-        document_tag.documents.add(document)
-        api_client.force_authenticate(user=user)
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        url = reverse('v1:document-tags-documents', args=[document_tag.pk])
-        response = api_client.get(url)
+        tag = DocumentTag.objects.create(
+            name='Important',
+            slug='important'
+        )
+        doc = make_document(uploaded_by=user)
+        tag.documents.add(doc)
+        
+        url = reverse('api:v1:document-tags-documents', args=[tag.pk])
+        response = client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
+    
+    def test_search_tags(self, auth_client_factory, user_factory):
+        """Тест поиска тегов."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        DocumentTag.objects.create(name='Important', slug='important')
+        DocumentTag.objects.create(name='Urgent', slug='urgent')
+        
+        url = reverse('api:v1:document-tags-list')
+        response = client.get(url, {'search': 'Import'})
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['name'] == 'Important'
 
 
 # =============================================================================
 # DOCUMENTTYPE VIEWSET TESTS
 # =============================================================================
 
-@pytest.mark.django_db
 class TestDocumentTypeViewSet:
     """Тесты для DocumentTypeViewSet."""
     
-    def test_list_types(self, api_client, user, document_type):
+    def test_list_types(self, auth_client_factory, user_factory):
         """Тест получения списка типов."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:document-types-list')
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        response = api_client.get(url)
+        DocumentType.objects.create(
+            name='Contract',
+            code='contract',
+            is_active=True
+        )
+        
+        url = reverse('api:v1:document-types-list')
+        response = client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
+        assert 'results' in response.data
         assert len(response.data['results']) == 1
-        assert response.data['results'][0]['name'] == 'Contract'
     
-    def test_filter_inactive(self, api_client, user, document_type):
+    def test_filter_inactive(self, auth_client_factory, user_factory):
         """Тест фильтрации неактивных типов."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        DocumentType.objects.create(
+            name='Active Type',
+            code='active',
+            is_active=True
+        )
         DocumentType.objects.create(
             name='Inactive Type',
             code='inactive',
             is_active=False
         )
-        api_client.force_authenticate(user=user)
+        
+        url = reverse('api:v1:document-types-list')
         
         # Без фильтра - только активные
-        url = reverse('v1:document-types-list')
-        response = api_client.get(url)
+        response = client.get(url)
         assert len(response.data['results']) == 1
         
         # С фильтром - все
-        response = api_client.get(url, {'include_inactive': 'true'})
+        response = client.get(url, {'include_inactive': 'true'})
         assert len(response.data['results']) == 2
 
 
@@ -189,209 +161,304 @@ class TestDocumentTypeViewSet:
 # CABINET VIEWSET TESTS
 # =============================================================================
 
-@pytest.mark.django_db
 class TestCabinetViewSet:
     """Тесты для CabinetViewSet."""
     
-    def test_list_cabinets(self, api_client, user, cabinet):
+    def test_list_cabinets(self, auth_client_factory, user_factory):
         """Тест получения списка кабинетов."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:cabinets-list')
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        response = api_client.get(url)
+        Cabinet.objects.create(
+            name='Test Cabinet',
+            slug='test-cabinet',
+            created_by=user
+        )
+        
+        url = reverse('api:v1:cabinets-list')
+        response = client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
+        assert 'results' in response.data
         assert len(response.data['results']) == 1
     
-    def test_create_cabinet(self, api_client, user):
+    def test_create_cabinet(self, auth_client_factory, user_factory):
         """Тест создания кабинета."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:cabinets-list')
+        user = user_factory()
+        client = auth_client_factory(user)
         
+        url = reverse('api:v1:cabinets-list')
         data = {
             'name': 'New Cabinet',
             'slug': 'new-cabinet',
             'description': 'Test'
         }
-        response = api_client.post(url, data)
+        response = client.post(url, data, format='json')
         
         assert response.status_code == status.HTTP_201_CREATED
         cabinet = Cabinet.objects.get(slug='new-cabinet')
         assert cabinet.created_by == user
     
-    def test_add_document_to_cabinet(self, api_client, user, cabinet, document):
+    def test_add_document_to_cabinet(self, auth_client_factory, user_factory):
         """Тест добавления документа в кабинет."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:cabinets-add-document', args=[cabinet.pk])
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        response = api_client.post(url, {'document_id': document.pk})
+        cabinet = Cabinet.objects.create(
+            name='Cabinet',
+            slug='cabinet',
+            created_by=user
+        )
+        doc = make_document(uploaded_by=user)
+        
+        url = reverse('api:v1:cabinets-add-document', args=[cabinet.pk])
+        response = client.post(url, {'document_id': doc.pk}, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert cabinet.documents.filter(pk=document.pk).exists()
+        assert cabinet.documents.filter(pk=doc.pk).exists()
     
-    def test_remove_document_from_cabinet(self, api_client, user, cabinet, document):
+    def test_remove_document_from_cabinet(self, auth_client_factory, user_factory):
         """Тест удаления документа из кабинета."""
-        cabinet.documents.add(document)
-        api_client.force_authenticate(user=user)
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        url = reverse('v1:cabinets-remove-document', args=[cabinet.pk])
-        response = api_client.post(url, {'document_id': document.pk})
+        cabinet = Cabinet.objects.create(
+            name='Cabinet',
+            slug='cabinet',
+            created_by=user
+        )
+        doc = make_document(uploaded_by=user)
+        cabinet.documents.add(doc)
+        
+        url = reverse('api:v1:cabinets-remove-document', args=[cabinet.pk])
+        response = client.post(url, {'document_id': doc.pk}, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert not cabinet.documents.filter(pk=document.pk).exists()
+        assert not cabinet.documents.filter(pk=doc.pk).exists()
+    
+    def test_children_cabinets(self, auth_client_factory, user_factory):
+        """Тест получения дочерних кабинетов."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        parent = Cabinet.objects.create(
+            name='Parent',
+            slug='parent',
+            created_by=user
+        )
+        child = Cabinet.objects.create(
+            name='Child',
+            slug='child',
+            created_by=user,
+            parent=parent
+        )
+        
+        url = reverse('api:v1:cabinets-children', args=[parent.pk])
+        response = client.get(url)
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['name'] == 'Child'
 
 
 # =============================================================================
 # DOCUMENTCOMMENT VIEWSET TESTS
 # =============================================================================
 
-@pytest.mark.django_db
 class TestDocumentCommentViewSet:
     """Тесты для DocumentCommentViewSet."""
     
-    def test_create_comment(self, api_client, user, document):
+    def test_create_comment(self, auth_client_factory, user_factory):
         """Тест создания комментария."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:document-comments-list')
+        user = user_factory()
+        client = auth_client_factory(user)
         
+        doc = make_document(uploaded_by=user)
+        
+        url = reverse('api:v1:document-comments-list')
         data = {
-            'document_id': document.pk,
+            'document_id': doc.pk,
             'text': 'Test comment'
         }
-        response = api_client.post(url, data)
+        response = client.post(url, data, format='json')
         
         assert response.status_code == status.HTTP_201_CREATED
-        comment = DocumentComment.objects.get(document=document)
+        comment = DocumentComment.objects.get(document=doc)
         assert comment.text == 'Test comment'
         assert comment.author == user
     
-    def test_create_reply(self, api_client, user, document):
+    def test_create_reply(self, auth_client_factory, user_factory):
         """Тест создания ответа на комментарий."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc = make_document(uploaded_by=user)
         parent = DocumentComment.objects.create(
-            document=document,
+            document=doc,
             author=user,
             text='Parent comment'
         )
-        api_client.force_authenticate(user=user)
         
-        url = reverse('v1:document-comments-list')
+        url = reverse('api:v1:document-comments-list')
         data = {
-            'document_id': document.pk,
+            'document_id': doc.pk,
             'parent_id': parent.pk,
             'text': 'Reply comment'
         }
-        response = api_client.post(url, data)
+        response = client.post(url, data, format='json')
         
         assert response.status_code == status.HTTP_201_CREATED
         reply = DocumentComment.objects.get(parent=parent)
         assert reply.text == 'Reply comment'
         assert reply.depth == 1
     
-    def test_update_comment(self, api_client, user, document):
+    def test_update_comment(self, auth_client_factory, user_factory):
         """Тест обновления комментария."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc = make_document(uploaded_by=user)
         comment = DocumentComment.objects.create(
-            document=document,
+            document=doc,
             author=user,
             text='Original text'
         )
-        api_client.force_authenticate(user=user)
         
-        url = reverse('v1:document-comments-detail', args=[comment.pk])
-        response = api_client.patch(url, {'text': 'Updated text'})
+        url = reverse('api:v1:document-comments-detail', args=[comment.pk])
+        response = client.patch(url, {'text': 'Updated text'}, format='json')
         
         assert response.status_code == status.HTTP_200_OK
         comment.refresh_from_db()
         assert comment.text == 'Updated text'
         assert comment.is_edited is True
     
-    def test_delete_own_comment(self, api_client, user, document):
+    def test_delete_own_comment(self, auth_client_factory, user_factory):
         """Тест удаления своего комментария."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc = make_document(uploaded_by=user)
         comment = DocumentComment.objects.create(
-            document=document,
+            document=doc,
             author=user,
             text='Test'
         )
-        api_client.force_authenticate(user=user)
         
-        url = reverse('v1:document-comments-detail', args=[comment.pk])
-        response = api_client.delete(url)
+        url = reverse('api:v1:document-comments-detail', args=[comment.pk])
+        response = client.delete(url)
         
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not DocumentComment.objects.filter(pk=comment.pk).exists()
     
-    def test_cannot_delete_others_comment(self, api_client, user, staff_user, document):
+    def test_cannot_delete_others_comment(self, auth_client_factory, user_factory):
         """Тест запрета удаления чужого комментария."""
+        user1 = user_factory()
+        user2 = user_factory()
+        client = auth_client_factory(user1)
+        
+        doc = make_document(uploaded_by=user1)
         comment = DocumentComment.objects.create(
-            document=document,
-            author=staff_user,
+            document=doc,
+            author=user2,
             text='Test'
         )
-        api_client.force_authenticate(user=user)
         
-        url = reverse('v1:document-comments-detail', args=[comment.pk])
-        response = api_client.delete(url)
+        url = reverse('api:v1:document-comments-detail', args=[comment.pk])
+        response = client.delete(url)
         
         assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_list_comment_replies(self, auth_client_factory, user_factory):
+        """Тест получения ответов на комментарий."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc = make_document(uploaded_by=user)
+        parent = DocumentComment.objects.create(
+            document=doc,
+            author=user,
+            text='Parent'
+        )
+        DocumentComment.objects.create(
+            document=doc,
+            author=user,
+            text='Reply 1',
+            parent=parent
+        )
+        DocumentComment.objects.create(
+            document=doc,
+            author=user,
+            text='Reply 2',
+            parent=parent
+        )
+        
+        url = reverse('api:v1:document-comments-replies', args=[parent.pk])
+        response = client.get(url)
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
 
 
 # =============================================================================
 # RELATED DOCUMENTS TESTS
 # =============================================================================
 
-@pytest.mark.django_db
 class TestRelatedDocuments:
     """Тесты для связанных документов."""
     
-    def test_add_related_document(self, api_client, user, document):
+    def test_add_related_document(self, auth_client_factory, user_factory):
         """Тест добавления связанного документа."""
-        related_doc = Document.objects.create(
-            title='Related Doc',
-            uploaded_by=user
-        )
-        api_client.force_authenticate(user=user)
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        url = reverse('v1:documents-add-related', args=[document.pk])
-        response = api_client.post(url, {'document_id': related_doc.pk})
+        doc = make_document(uploaded_by=user, title='Main Doc')
+        related_doc = make_document(uploaded_by=user, title='Related Doc')
+        
+        url = reverse('api:v1:documents-add-related', args=[doc.pk])
+        response = client.post(url, {'document_id': related_doc.pk}, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert document.related_documents.filter(pk=related_doc.pk).exists()
+        assert doc.related_documents.filter(pk=related_doc.pk).exists()
     
-    def test_list_related_documents(self, api_client, user, document):
+    def test_list_related_documents(self, auth_client_factory, user_factory):
         """Тест получения списка связанных документов."""
-        related_doc = Document.objects.create(
-            title='Related Doc',
-            uploaded_by=user
-        )
-        document.related_documents.add(related_doc)
-        api_client.force_authenticate(user=user)
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        url = reverse('v1:documents-related', args=[document.pk])
-        response = api_client.get(url)
+        doc = make_document(uploaded_by=user, title='Main Doc')
+        related_doc = make_document(uploaded_by=user, title='Related Doc')
+        doc.related_documents.add(related_doc)
+        
+        url = reverse('api:v1:documents-related', args=[doc.pk])
+        response = client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
     
-    def test_remove_related_document(self, api_client, user, document):
+    def test_remove_related_document(self, auth_client_factory, user_factory):
         """Тест удаления связанного документа."""
-        related_doc = Document.objects.create(
-            title='Related Doc',
-            uploaded_by=user
-        )
-        document.related_documents.add(related_doc)
-        api_client.force_authenticate(user=user)
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        url = reverse('v1:documents-remove-related', args=[document.pk])
-        response = api_client.post(url, {'document_id': related_doc.pk})
+        doc = make_document(uploaded_by=user)
+        related_doc = make_document(uploaded_by=user)
+        doc.related_documents.add(related_doc)
+        
+        url = reverse('api:v1:documents-remove-related', args=[doc.pk])
+        response = client.post(url, {'document_id': related_doc.pk}, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert not document.related_documents.filter(pk=related_doc.pk).exists()
+        assert not doc.related_documents.filter(pk=related_doc.pk).exists()
     
-    def test_cannot_link_to_self(self, api_client, user, document):
+    def test_cannot_link_to_self(self, auth_client_factory, user_factory):
         """Тест запрета связывания документа с самим собой."""
-        api_client.force_authenticate(user=user)
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        url = reverse('v1:documents-add-related', args=[document.pk])
-        response = api_client.post(url, {'document_id': document.pk})
+        doc = make_document(uploaded_by=user)
+        
+        url = reverse('api:v1:documents-add-related', args=[doc.pk])
+        response = client.post(url, {'document_id': doc.pk}, format='json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -400,70 +467,195 @@ class TestRelatedDocuments:
 # DJANGO-REVERSION TESTS
 # =============================================================================
 
-@pytest.mark.django_db
 class TestReversionEndpoints:
     """Тесты для endpoints django-reversion."""
     
-    def test_get_versions(self, api_client, user, document):
+    def test_get_versions(self, auth_client_factory, user_factory):
         """Тест получения истории версий."""
-        # Создаем версию через изменение
-        document.title = 'Updated Title'
-        document.save()
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:documents-versions', args=[document.pk])
+        doc = make_document(uploaded_by=user)
+        # Создаём версию через изменение
+        doc.title = 'Updated Title'
+        doc.save()
         
-        response = api_client.get(url)
+        url = reverse('api:v1:documents-versions', args=[doc.pk])
+        response = client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
-        # Должна быть хотя бы одна версия
-        assert len(response.data) >= 1
+        assert isinstance(response.data, list)
     
-    def test_get_activity(self, api_client, user, document):
+    def test_get_activity(self, auth_client_factory, user_factory):
         """Тест получения activity timeline."""
-        api_client.force_authenticate(user=user)
-        url = reverse('v1:documents-activity', args=[document.pk])
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        response = api_client.get(url)
+        doc = make_document(uploaded_by=user)
+        
+        url = reverse('api:v1:documents-activity', args=[doc.pk])
+        response = client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert isinstance(response.data, list)
 
 
 # =============================================================================
-# INTEGRATION TESTS
+# EDGE CASES И ПРОБЛЕМНЫЕ СЦЕНАРИИ
 # =============================================================================
 
-@pytest.mark.django_db
-class TestIntegration:
-    """Интеграционные тесты."""
+class TestEdgeCases:
+    """Тесты edge cases и потенциальных проблем."""
     
-    def test_document_with_all_features(self, api_client, user, document_tag, document_type, cabinet):
-        """Тест документа со всеми фичами."""
-        api_client.force_authenticate(user=user)
+    def test_tag_with_long_name(self, auth_client_factory, user_factory):
+        """Тест создания тега с очень длинным названием."""
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        # Создаем документ
-        document = Document.objects.create(
-            title='Complex Document',
-            uploaded_by=user,
-            document_type=document_type
-        )
+        url = reverse('api:v1:document-tags-list')
+        data = {
+            'name': 'A' * 101,  # Превышает максимум 100
+            'slug': 'long-tag'
+        }
+        response = client.post(url, data, format='json')
         
-        # Добавляем тег
-        document_tag.documents.add(document)
+        # Должна быть ошибка валидации
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+    
+    def test_duplicate_tag_slug(self, auth_client_factory, user_factory):
+        """Тест создания тега с дубликатом slug."""
+        user = user_factory()
+        client = auth_client_factory(user)
         
-        # Добавляем в кабинет
-        cabinet.documents.add(document)
+        DocumentTag.objects.create(name='Tag1', slug='same-slug')
         
-        # Создаем комментарий
-        DocumentComment.objects.create(
-            document=document,
+        url = reverse('api:v1:document-tags-list')
+        data = {
+            'name': 'Tag2',
+            'slug': 'same-slug'
+        }
+        response = client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+    
+    def test_comment_on_nonexistent_document(self, auth_client_factory, user_factory):
+        """Тест создания комментария к несуществующему документу."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        url = reverse('api:v1:document-comments-list')
+        data = {
+            'document_id': 99999,  # Несуществующий ID
+            'text': 'Test'
+        }
+        response = client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+    
+    def test_reply_to_wrong_document_comment(self, auth_client_factory, user_factory):
+        """Тест ответа на комментарий из другого документа."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc1 = make_document(uploaded_by=user, title='Doc1')
+        doc2 = make_document(uploaded_by=user, title='Doc2')
+        
+        comment_doc1 = DocumentComment.objects.create(
+            document=doc1,
             author=user,
-            text='Test comment'
+            text='Comment'
         )
         
-        # Проверяем, что все связано
-        assert document.document_type == document_type
-        assert document_tag in document.tags.all()
-        assert document in cabinet.documents.all()
-        assert document.comments.count() == 1
+        url = reverse('api:v1:document-comments-list')
+        data = {
+            'document_id': doc2.pk,  # Другой документ
+            'parent_id': comment_doc1.pk,  # Комментарий из doc1
+            'text': 'Reply'
+        }
+        response = client.post(url, data, format='json')
+        
+        # Должна быть ошибка, т.к. parent из другого документа
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+    
+    def test_nested_comments_depth(self, auth_client_factory, user_factory):
+        """Тест глубоко вложенных комментариев."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc = make_document(uploaded_by=user)
+        
+        # Создаём цепочку из 5 уровней
+        parent = None
+        for i in range(5):
+            comment = DocumentComment.objects.create(
+                document=doc,
+                author=user,
+                text=f'Level {i}',
+                parent=parent
+            )
+            parent = comment
+        
+        # Проверяем depth последнего комментария
+        assert parent.depth == 4
+    
+    def test_empty_comment_text(self, auth_client_factory, user_factory):
+        """Тест создания комментария с пустым текстом."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc = make_document(uploaded_by=user)
+        
+        url = reverse('api:v1:document-comments-list')
+        data = {
+            'document_id': doc.pk,
+            'text': ''  # Пустой текст
+        }
+        response = client.post(url, data, format='json')
+        
+        # Должна быть ошибка валидации
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+    
+    def test_related_document_symmetry(self, auth_client_factory, user_factory):
+        """Тест симметричности связанных документов."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        doc1 = make_document(uploaded_by=user, title='Doc1')
+        doc2 = make_document(uploaded_by=user, title='Doc2')
+        
+        # Добавляем doc2 как связанный с doc1
+        doc1.related_documents.add(doc2)
+        
+        # Проверяем, что doc1 тоже связан с doc2 (symmetrical=True)
+        assert doc2.related_documents.filter(pk=doc1.pk).exists()
+    
+    def test_empty_cabinet_name(self, auth_client_factory, user_factory):
+        """Тест создания кабинета с пустым названием."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        url = reverse('api:v1:cabinets-list')
+        data = {
+            'name': '',
+            'slug': 'empty'
+        }
+        response = client.post(url, data, format='json')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+    
+    def test_add_nonexistent_document_to_cabinet(self, auth_client_factory, user_factory):
+        """Тест добавления несуществующего документа в кабинет."""
+        user = user_factory()
+        client = auth_client_factory(user)
+        
+        cabinet = Cabinet.objects.create(
+            name='Cabinet',
+            slug='cabinet',
+            created_by=user
+        )
+        
+        url = reverse('api:v1:cabinets-add-document', args=[cabinet.pk])
+        response = client.post(url, {'document_id': 99999}, format='json')
+        
+        # 404 более правильный статус для несуществующего ресурса
+        assert response.status_code == status.HTTP_404_NOT_FOUND

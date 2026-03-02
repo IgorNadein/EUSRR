@@ -476,6 +476,197 @@ class ApiClient {
         return this.request(`/api/v1/folders/${id}/documents/`);
     }
 
+    // Document Comments
+    async getDocumentComments(documentId: number): Promise<any> {
+        return this.request(`/api/v1/document-comments/?document=${documentId}`);
+    }
+
+    async createDocumentComment(data: { document: number; text: string; parent?: number }): Promise<any> {
+        return this.request('/api/v1/document-comments/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateDocumentComment(id: number, text: string): Promise<any> {
+        return this.request(`/api/v1/document-comments/${id}/`, {
+            method: 'PATCH',
+            body: JSON.stringify({ text }),
+        });
+    }
+
+    async deleteDocumentComment(id: number): Promise<void> {
+        return this.request(`/api/v1/document-comments/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async getCommentReplies(commentId: number): Promise<any> {
+        return this.request(`/api/v1/document-comments/${commentId}/replies/`);
+    }
+
+    // Document Tags
+    async getDocumentTags(): Promise<any> {
+        return this.request('/api/v1/document-tags/');
+    }
+
+    async getDocumentTag(id: number): Promise<any> {
+        return this.request(`/api/v1/document-tags/${id}/`);
+    }
+
+    async createDocumentTag(data: { name: string; color?: string }): Promise<any> {
+        return this.request('/api/v1/document-tags/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateDocumentTag(id: number, data: { name?: string; color?: string }): Promise<any> {
+        return this.request(`/api/v1/document-tags/${id}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteDocumentTag(id: number): Promise<void> {
+        return this.request(`/api/v1/document-tags/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async getDocumentsByTag(tagId: number): Promise<any> {
+        return this.request(`/api/v1/document-tags/${tagId}/documents/`);
+    }
+
+    // Document Types
+    async getDocumentTypes(): Promise<any> {
+        return this.request('/api/v1/document-types/');
+    }
+
+    async getDocumentType(id: number): Promise<any> {
+        return this.request(`/api/v1/document-types/${id}/`);
+    }
+
+    async createDocumentType(data: { name: string; description?: string; icon?: string }): Promise<any> {
+        return this.request('/api/v1/document-types/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateDocumentType(id: number, data: { name?: string; description?: string; icon?: string }): Promise<any> {
+        return this.request(`/api/v1/document-types/${id}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteDocumentType(id: number): Promise<void> {
+        return this.request(`/api/v1/document-types/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async getDocumentsByType(typeId: number): Promise<any> {
+        return this.request(`/api/v1/document-types/${typeId}/documents/`);
+    }
+
+    // Cabinets (Virtual collections)
+    async getCabinets(): Promise<any> {
+        return this.request('/api/v1/cabinets/');
+    }
+
+    async getCabinet(id: number): Promise<any> {
+        return this.request(`/api/v1/cabinets/${id}/`);
+    }
+
+    async createCabinet(data: { name: string; description?: string; parent?: number }): Promise<any> {
+        return this.request('/api/v1/cabinets/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateCabinet(id: number, data: { name?: string; description?: string; parent?: number }): Promise<any> {
+        return this.request(`/api/v1/cabinets/${id}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteCabinet(id: number): Promise<void> {
+        return this.request(`/api/v1/cabinets/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async getCabinetDocuments(id: number): Promise<any> {
+        return this.request(`/api/v1/cabinets/${id}/documents/`);
+    }
+
+    async addDocumentToCabinet(cabinetId: number, documentId: number): Promise<any> {
+        return this.request(`/api/v1/cabinets/${cabinetId}/add_document/`, {
+            method: 'POST',
+            body: JSON.stringify({ document_id: documentId }),
+        });
+    }
+
+    async removeDocumentFromCabinet(cabinetId: number, documentId: number): Promise<any> {
+        return this.request(`/api/v1/cabinets/${cabinetId}/remove_document/`, {
+            method: 'POST',
+            body: JSON.stringify({ document_id: documentId }),
+        });
+    }
+
+    async getCabinetChildren(id: number): Promise<any> {
+        return this.request(`/api/v1/cabinets/${id}/children/`);
+    }
+
+    async getCabinetHierarchy(id: number): Promise<any> {
+        return this.request(`/api/v1/cabinets/${id}/hierarchy/`);
+    }
+
+    // Document Versions (django-reversion)
+    async getDocumentVersions(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/versions/`);
+    }
+
+    async getDocumentActivity(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/activity/`);
+    }
+
+    async revertDocumentToVersion(id: number, versionId: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/revert/`, {
+            method: 'POST',
+            body: JSON.stringify({ version_id: versionId }),
+        });
+    }
+
+    // Related Documents
+    async getRelatedDocuments(id: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/related/`);
+    }
+
+    async addRelatedDocument(id: number, relatedId: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/add_related/`, {
+            method: 'POST',
+            body: JSON.stringify({ related_document_id: relatedId }),
+        });
+    }
+
+    async removeRelatedDocument(id: number, relatedId: number): Promise<any> {
+        return this.request(`/api/v1/documents/${id}/remove_related/`, {
+            method: 'DELETE',
+            body: JSON.stringify({ related_document_id: relatedId }),
+        });
+    }
+
+    // Document Thumbnails
+    getDocumentThumbnail(id: number, size?: 'small' | 'medium' | 'large' | 'original'): string {
+        const sizeParam = size ? `?size=${size}` : '';
+        return `/api/v1/documents/${id}/thumbnail/${sizeParam}`;
+    }
+
     // Заявки
     async getRequests(params?: { status?: string; type?: string; search?: string; page?: number; limit?: number }): Promise<any> {
         const queryParams = new URLSearchParams();
@@ -742,6 +933,30 @@ class ApiClient {
         return this.request('/api/v1/schedule/calendars/');
     }
 
+    async getCalendarSubscriptions(): Promise<any> {
+        return this.request('/api/v1/schedule/subscriptions/');
+    }
+
+    async subscribeToCalendar(calendarId: number): Promise<any> {
+        return this.request('/api/v1/schedule/subscriptions/', {
+            method: 'POST',
+            body: JSON.stringify({ calendar: calendarId }),
+        });
+    }
+
+    async unsubscribeFromCalendar(subscriptionId: number): Promise<any> {
+        return this.request(`/api/v1/schedule/subscriptions/${subscriptionId}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async updateSubscription(subscriptionId: number, data: any): Promise<any> {
+        return this.request(`/api/v1/schedule/subscriptions/${subscriptionId}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
     async getCalendar(id: number): Promise<any> {
         return this.request(`/api/v1/schedule/calendars/${id}/`);
     }
@@ -938,11 +1153,11 @@ class ApiClient {
     }
 
     // Посты - CRUD операции
-    async createPost(data: { content: string; attachments?: File[] }): Promise<any> {
+    async createPost(data: any): Promise<any> {
         const formData = new FormData();
         formData.append('content', data.content);
         if (data.attachments) {
-            data.attachments.forEach((file) => {
+            data.attachments.forEach((file: File) => {
                 formData.append('attachments', file);
             });
         }
@@ -966,11 +1181,11 @@ class ApiClient {
         return response.json();
     }
 
-    async updatePost(postId: number, data: { content: string; attachments?: File[] }): Promise<any> {
+    async updatePost(postId: number, data: any): Promise<any> {
         const formData = new FormData();
         formData.append('content', data.content);
         if (data.attachments) {
-            data.attachments.forEach((file) => {
+            data.attachments.forEach((file: File) => {
                 formData.append('attachments', file);
             });
         }

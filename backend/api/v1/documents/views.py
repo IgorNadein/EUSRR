@@ -194,10 +194,10 @@ class DocumentViewSet(ModelViewSet):
         return Response({"ok": True, "already": not created})
 
     @action(
-        detail=True, methods=["get"], permission_classes=[AdminOrActionOrModelPerms]
+        detail=True, methods=["get"], permission_classes=[IsAuthenticated]
     )
     def acknowledgements(self, request, pk=None):
-        """Ведомость ознакомлений: доступна только staff/модельные права.
+        """Ведомость ознакомлений: доступна всем авторизованным пользователям.
         Поддерживает ?search= для фильтра и отдаёт непагинированно (или подключите пагинацию).
         """
         doc = self.get_object()
@@ -494,6 +494,10 @@ class DocumentViewSet(ModelViewSet):
         
         Returns:
             Обновленный документ
+            
+        Note:
+            Поле status не откатывается, так как оно управляется через FSM transitions.
+            ManyToMany поля (departments, recipients, related_documents) откатываются отдельно.
         """
         document = self.get_object()
         version_id = request.data.get('version_id')
@@ -508,10 +512,41 @@ class DocumentViewSet(ModelViewSet):
         try:
             # Получаем версию
             version = Version.objects.get(id=version_id, object_id=str(document.pk))
+            version_data = version.field_dict
+            
+            # Исключаем защищенные FSM поля и служебные поля
+            excluded_fields = ['status', 'id', 'uploaded_at', 'modified_at', 'uploaded_by']
+            
+            # ManyToMany поля нужно обрабатывать отдельно через .set()
+            m2m_fields = ['departments', 'recipients', 'related_documents']
             
             # Откатываем с комментарием
             with reversion.create_revision():
-                version.revision.revert()
+                # Собираем обычные поля для восстановления
+                updated_fields = []
+                for field, value in version_data.items():
+                    if (field not in excluded_fields and 
+                        field not in m2m_fields and 
+                        hasattr(document, field)):
+                        setattr(document, field, value)
+                        updated_fields.append(field)
+                
+                # Сохраняем с автором отката (чтобы ID был доступен для M2M)
+                document.modified_by = request.user
+                updated_fields.append('modified_by')
+                
+                # ВАЖНО: Указываем update_fields, чтобы избежать проверки FSM protected=True
+                document.save(update_fields=updated_fields)
+                
+                # Восстанавливаем ManyToMany поля
+                for m2m_field in m2m_fields:
+                    if m2m_field in version_data:
+                        m2m_manager = getattr(document, m2m_field)
+                        m2m_value = version_data[m2m_field]
+                        # version_data хранит список ID
+                        if isinstance(m2m_value, list):
+                            m2m_manager.set(m2m_value)
+                
                 reversion.set_user(request.user)
                 reversion.set_comment(comment or f'Откат к версии {version_id}')
             

@@ -153,6 +153,121 @@ export interface Document {
   is_acknowledged?: boolean;
 }
 
+// Document Comments
+export interface DocumentComment {
+  id: number;
+  document: number;
+  author: {
+    id: number;
+    full_name: string;
+    avatar?: string;
+  };
+  text: string;
+  parent?: number;
+  created_at: string;
+  updated_at: string;
+  replies_count: number;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface CreateDocumentCommentData {
+  document: number;
+  text: string;
+  parent?: number;
+}
+
+// Document Tags
+export interface DocumentTag {
+  id: number;
+  name: string;
+  slug: string;
+  color?: string;
+  created_at: string;
+  documents_count: number;
+}
+
+export interface CreateDocumentTagData {
+  name: string;
+  color?: string;
+}
+
+// Document Types
+export interface DocumentType {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  created_at: string;
+  documents_count: number;
+}
+
+export interface CreateDocumentTypeData {
+  name: string;
+  description?: string;
+  icon?: string;
+}
+
+// Cabinets (Virtual collections)
+export interface Cabinet {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  parent?: number;
+  created_by: number;
+  created_at: string;
+  documents_count: number;
+  children_count: number;
+}
+
+export interface CreateCabinetData {
+  name: string;
+  description?: string;
+  parent?: number;
+}
+
+export interface CabinetHierarchy {
+  id: number;
+  name: string;
+  parent: number | null;
+  children: CabinetHierarchy[];
+}
+
+// Document Versions (django-reversion)
+export interface DocumentVersion {
+  id: number;
+  revision_id: number;
+  version: number;
+  created_at: string;
+  user: string;
+  comment: string;
+  changes: Record<string, any>;
+}
+
+export interface DocumentActivity {
+  id: number;
+  timestamp: string;
+  user: string;
+  action: string;
+  description: string;
+  related_object?: any;
+}
+
+export interface RevertDocumentData {
+  version_id: number;
+}
+
+// Related Documents
+export interface RelatedDocument {
+  id: number;
+  title: string;
+  file_type: string;
+  created_at: string;
+  uploaded_by: string;
+}
+
 // Requests types
 export interface Request {
   id: number;

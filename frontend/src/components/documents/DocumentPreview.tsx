@@ -166,11 +166,11 @@ export function DocumentPreview({ fileUrl, fileName, onClose }: DocumentPreviewP
   const goToNextPage = () => setPageNumber((prev) => Math.min(prev + 1, numPages));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="relative flex h-full max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-2 sm:p-4">
+      <div className="relative flex h-full max-h-[95vh] sm:max-h-[90vh] w-full max-w-[95vw] sm:max-w-4xl flex-col rounded-xl sm:rounded-2xl bg-white shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-          <h3 className="truncate text-lg font-semibold text-gray-900">{fileName}</h3>
+        <div className="flex items-center justify-between border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
+          <h3 className="truncate text-sm sm:text-lg font-semibold text-gray-900">{fileName}</h3>
           <div className="flex items-center gap-2">
             <a
               href={fileUrl}

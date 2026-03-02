@@ -85,7 +85,8 @@ export async function generatePDFThumbnail(
 
     await page.render({
       canvasContext: context,
-      viewport
+      viewport,
+      canvas
     }).promise;
 
     return canvas.toDataURL('image/jpeg', 0.7);
@@ -187,13 +188,15 @@ export async function getPDFInfo(file: File): Promise<{
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const metadata = await pdf.getMetadata();
+    
+    const info = metadata.info as any;
 
     return {
       numPages: pdf.numPages,
-      title: metadata.info?.Title,
-      author: metadata.info?.Author,
-      creationDate: metadata.info?.CreationDate
-        ? new Date(metadata.info.CreationDate)
+      title: info?.Title,
+      author: info?.Author,
+      creationDate: info?.CreationDate
+        ? new Date(info.CreationDate)
         : undefined
     };
   } catch (error) {

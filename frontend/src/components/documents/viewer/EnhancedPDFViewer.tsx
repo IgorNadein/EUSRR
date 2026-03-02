@@ -156,16 +156,16 @@ export function EnhancedPDFViewer({ fileUrl, fileName, onClose }: EnhancedPDFVie
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-900">
       {/* Шапка */}
-      <div className="flex items-center justify-between border-b border-gray-700 bg-gray-800 px-4 py-3 text-white">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between border-b border-gray-700 bg-gray-800 px-2 sm:px-4 py-2 sm:py-3 text-white">
+        <div className="flex items-center gap-2 sm:gap-4">
           <button
             onClick={() => setShowSidebar((prev) => !prev)}
-            className="rounded p-2 hover:bg-gray-700"
+            className="rounded p-1.5 sm:p-2 hover:bg-gray-700"
             title="Боковая панель"
           >
-            <Sidebar size={20} />
+            <Sidebar size={18} className="sm:w-5 sm:h-5" />
           </button>
-          <span className="text-sm font-medium">{fileName || "Документ"}</span>
+          <span className="text-xs sm:text-sm font-medium truncate max-w-[150px] sm:max-w-none">{fileName || "Документ"}</span>
         </div>
 
         {/* Поиск */}

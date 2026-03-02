@@ -142,13 +142,25 @@ class DocumentTypeSerializer(serializers.Serializer):
     icon = serializers.CharField(required=False)
     color = serializers.CharField(required=False)
     is_active = serializers.BooleanField(default=True)
+    
+    def create(self, validated_data):
+        """Создаёт новый тип документа."""
+        from documents.models import DocumentType
+        return DocumentType.objects.create(**validated_data)
+    
+    def update(self, instance, validated_data):
+        """Обновляет тип документа."""
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 class DocumentTagSerializer(serializers.Serializer):
     """Сериализатор для тегов документов."""
     id = serializers.IntegerField(read_only=True)
-    name = serializers.CharField()
-    slug = serializers.SlugField(required=False)
+    name = serializers.CharField(max_length=100)
+    slug = serializers.SlugField(required=False, max_length=100)
     color = serializers.CharField(required=False)
     description = serializers.CharField(required=False, allow_blank=True)
     document_count = serializers.SerializerMethodField()
@@ -156,6 +168,29 @@ class DocumentTagSerializer(serializers.Serializer):
     def get_document_count(self, obj) -> int:
         """Возвращает количество документов с этим тегом."""
         return obj.documents.count() if hasattr(obj, 'documents') else 0
+    
+    def validate_slug(self, value):
+        """Проверяет уникальность slug."""
+        from documents.models import DocumentTag
+        # Проверяем дубликаты (исключая текущий объект при обновлении)
+        qs = DocumentTag.objects.filter(slug=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Tag with this slug already exists.")
+        return value
+    
+    def create(self, validated_data):
+        """Создаёт новый тег документа."""
+        from documents.models import DocumentTag
+        return DocumentTag.objects.create(**validated_data)
+    
+    def update(self, instance, validated_data):
+        """Обновляет тег документа."""
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 class CabinetSerializer(serializers.Serializer):
@@ -174,6 +209,30 @@ class CabinetSerializer(serializers.Serializer):
     def get_document_count(self, obj) -> int:
         """Возвращает количество документов в кабинете."""
         return obj.documents.count() if hasattr(obj, 'documents') else 0
+    
+    def create(self, validated_data):
+        """Создаёт новый кабинет."""
+        from documents.models import Cabinet
+        # Обработка parent_id
+        parent_data = validated_data.pop('parent', {})
+        parent_id = parent_data.get('id')
+        parent = None
+        if parent_id:
+            parent = Cabinet.objects.get(id=parent_id)
+        return Cabinet.objects.create(parent=parent, **validated_data)
+    
+    def update(self, instance, validated_data):
+        """Обновляет кабинет."""
+        # Обработка parent_id
+        parent_data = validated_data.pop('parent', None)
+        if parent_data is not None:
+            parent_id = parent_data.get('id')
+            instance.parent = Cabinet.objects.get(id=parent_id) if parent_id else None
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 class VersionSerializer(serializers.Serializer):
@@ -228,6 +287,23 @@ class DocumentCommentSerializer(serializers.Serializer):
     def get_replies_count(self, obj) -> int:
         """Возвращает количество ответов на комментарий."""
         return obj.replies.count() if hasattr(obj, 'replies') else 0
+    
+    def create(self, validated_data):
+        """Создаёт новый комментарий."""
+        from documents.models import Document, DocumentComment
+        # document_id и parent_id должны быть установлены из контекста view
+        return DocumentComment.objects.create(**validated_data)
+    
+    def update(self, instance, validated_data):
+        """Обновляет комментарий."""
+        # При обновлении текста устанавливаем is_edited = True
+        if 'text' in validated_data and validated_data['text'] != instance.text:
+            instance.is_edited = True
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 class DocumentReadSerializer(serializers.ModelSerializer):
@@ -236,6 +312,7 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     Включает список получателей и флаг, ознакомился ли текущий пользователь.
     """
 
+    created_by = EmployeeBriefSerializer(read_only=True)
     uploaded_by = EmployeeBriefSerializer(read_only=True)
     modified_by = EmployeeBriefSerializer(read_only=True)
     recipients = EmployeeBriefSerializer(many=True, read_only=True)
@@ -264,6 +341,8 @@ class DocumentReadSerializer(serializers.ModelSerializer):
             "tags",  # Теги
             "status",  # Человекочитаемый статус
             "status_code",  # Код статуса для программной обработки
+            "created_by",  # Создатель документа
+            "created_at",  # Дата создания
             "uploaded_by",
             "uploaded_at",
             "modified_by",

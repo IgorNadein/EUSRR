@@ -195,7 +195,7 @@ export default function MessagesPage() {
 
         // FRONTEND-ONLY: добираем детали чатов, чтобы получить имя/аватар собеседника
         // для private/direct в случае, когда list не отдает avatar/participant_details.
-        const needDetails = items.filter((chat) => {
+        const needDetails = items.filter((chat: Chat) => {
           const kind = chat.chat_type || chat.type;
           if (kind !== "private" && kind !== "direct") return false;
 
@@ -211,7 +211,7 @@ export default function MessagesPage() {
         }
 
         const details = await Promise.all(
-          needDetails.map(async (chat) => {
+          needDetails.map(async (chat: Chat) => {
             try {
               return await apiClient.getChat(chat.id);
             } catch {
@@ -225,7 +225,7 @@ export default function MessagesPage() {
           if (d) detailsMap.set(d.id, d);
         });
 
-        const merged = items.map((chat) => {
+        const merged = items.map((chat: Chat) => {
           const detail = detailsMap.get(chat.id);
           if (!detail) return chat;
           return {
@@ -255,7 +255,7 @@ export default function MessagesPage() {
 
     if (!q) return sorted;
 
-    return sorted.filter((chat) => {
+    return sorted.filter((chat: Chat) => {
       const title = getChatTitle(chat, currentUserId, currentUserForMatch).toLowerCase();
       const lastMessage = chat.last_message?.content?.toLowerCase() || "";
       return title.includes(q) || lastMessage.includes(q);
@@ -291,7 +291,7 @@ export default function MessagesPage() {
                 <p className="text-sm text-gray-500">Чаты не найдены</p>
               </div>
             ) : (
-              filteredChats.map((chat) => (
+              filteredChats.map((chat: Chat) => (
                 (() => {
                   const chatTitle = getChatTitle(chat, currentUserId, currentUserForMatch);
                   const chatAvatar = getChatAvatar(chat, currentUserId);

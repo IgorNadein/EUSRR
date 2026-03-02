@@ -32,8 +32,8 @@ export async function performOCR(
   } = options;
 
   try {
-    const worker = await Tesseract.createWorker({
-      logger: (m) => {
+    const worker = await Tesseract.createWorker(languages as any, undefined, {
+      logger: (m: any) => {
         if (onProgress) {
           onProgress({
             status: m.status,
@@ -42,10 +42,6 @@ export async function performOCR(
         }
       }
     });
-
-    // Загружаем языки
-    await worker.loadLanguage(languages.join('+'));
-    await worker.initialize(languages.join('+'));
 
     // Распознаем текст
     const { data } = await worker.recognize(file);

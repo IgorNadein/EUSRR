@@ -237,6 +237,16 @@ class Document(models.Model):
         return self.title
 
     @property
+    def created_by(self):
+        """Алиас для uploaded_by (кто создал документ)."""
+        return self.uploaded_by
+
+    @property
+    def created_at(self):
+        """Алиас для uploaded_at (когда создан документ)."""
+        return self.uploaded_at
+
+    @property
     def file_size(self):
         """Размер файла в байтах (берется из filer)"""
         if self.file:

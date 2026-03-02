@@ -13,13 +13,14 @@ import {
   Undo2,
   CheckCircle2,
 } from "lucide-react";
+import { Document as ApiDocument } from "@/types/api";
 
 export interface Document {
   id: number;
   title: string;
   status?: string;
-  folder?: string;
-  tags?: string[];
+  folder?: string | { id: number; name: string };
+  tags?: string[] | Array<{ id: number; name: string; color?: string }>;
 }
 
 export interface BatchAction {

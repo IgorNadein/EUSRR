@@ -25,11 +25,15 @@ import {
   HardDrive,
   Users,
   Building2,
+  Download,
 } from "lucide-react";
 import { DocumentStatusBadge } from "@/components/documents/DocumentStatusBadge";
 import { DocumentWorkflowButtons } from "@/components/documents/DocumentWorkflowButtons";
 import { DocumentAcknowledgement } from "@/components/documents/DocumentAcknowledgement";
 import { DocumentAcknowledgementsReport } from "@/components/documents/DocumentAcknowledgementsReport";
+import { DocumentComments } from "@/components/documents/DocumentComments";
+import { DocumentVersionHistory } from "@/components/documents/DocumentVersionHistory";
+import { DocumentRelated } from "@/components/documents/DocumentRelated";
 import { FolderTree, type FolderNode } from "@/components/documents/folders";
 import { AdvancedSearch } from "@/components/documents/search";
 import { BulkActionsToolbar, useDocumentSelection } from "@/components/documents/batch";
@@ -72,6 +76,10 @@ export default function DocumentsPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | "all">("all");
+  const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  const [selectedTypes, setSelectedTypes] = useState<number[]>([]);
+  const [availableTags, setAvailableTags] = useState<Array<{ id: number; name: string }>>([]);
+  const [availableTypes, setAvailableTypes] = useState<Array<{ id: number; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("documents");
@@ -126,16 +134,32 @@ export default function DocumentsPage() {
     }
   };
 
+  const loadTags = async () => {
+    try {
+      const response = await apiClient.getDocumentTags();
+      setAvailableTags(response.results || response || []);
+    } catch (err) {
+      console.error("Ошибка загрузки тегов:", err);
+    }
+  };
+
+  const loadTypes = async () => {
+    try {
+      const response = await apiClient.getDocumentTypes();
+      setAvailableTypes(response.results || response || []);
+    } catch (err) {
+      console.error("Ошибка загрузки типов:", err);
+    }
+  };
+
   useEffect(() => {
     loadDocuments();
   }, [statusFilter, selectedFolderId]);
 
   useEffect(() => {
     loadFolders();
-  }, []);
-
-  useEffect(() => {
-    loadFolders();
+    loadTags();
+    loadTypes();
   }, []);
 
   const filteredDocuments = useMemo(() => {
@@ -146,17 +170,37 @@ export default function DocumentsPage() {
       return bTime - aTime;
     });
 
-    if (!q) return sorted;
-
     return sorted.filter((doc) => {
-      const title = doc.title.toLowerCase();
-      const description = (doc.description || "").toLowerCase();
-      const author = doc.created_by
-        ? `${doc.created_by.last_name} ${doc.created_by.first_name}`.toLowerCase()
-        : "";
-      return title.includes(q) || description.includes(q) || author.includes(q);
+      // Text search
+      if (q) {
+        const title = doc.title.toLowerCase();
+        const description = (doc.description || "").toLowerCase();
+        const author = doc.created_by
+          ? `${doc.created_by.last_name} ${doc.created_by.first_name}`.toLowerCase()
+          : "";
+        if (!title.includes(q) && !description.includes(q) && !author.includes(q)) {
+          return false;
+        }
+      }
+
+      // Tag filter
+      if (selectedTags.length > 0) {
+        const docTags = (doc.tags || []).map((t: any) => t.id);
+        const hasTag = selectedTags.some(tagId => docTags.includes(tagId));
+        if (!hasTag) return false;
+      }
+
+      // Type filter
+      if (selectedTypes.length > 0) {
+        const docTypeId = doc.document_type?.id;
+        if (!docTypeId || !selectedTypes.includes(docTypeId)) {
+          return false;
+        }
+      }
+
+      return true;
     });
-  }, [documents, search]);
+  }, [documents, search, selectedTags, selectedTypes]);
 
   // Find selected folder and build breadcrumb path
   const selectedFolder = useMemo(() => {
@@ -209,8 +253,8 @@ export default function DocumentsPage() {
         {/* Top Bar */}
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            {/* Left: Tabs + Folder Dropdown */}
-            <div className="flex flex-wrap items-center gap-3">
+            {/* Left Section: Navigation */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               {/* View Mode Tabs */}
               <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
                 <button
@@ -237,7 +281,7 @@ export default function DocumentsPage() {
                 </button>
               </div>
 
-              {/* Folder Dropdown */}
+              {/* Folder Filter */}
               <div className="relative">
                 <button
                   onClick={() => setShowFolderDropdown(!showFolderDropdown)}
@@ -275,6 +319,18 @@ export default function DocumentsPage() {
                 </button>
                 {showFolderDropdown && (
                   <div className="absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg">
+                    <div className="border-b border-gray-100 p-2">
+                      <button
+                        onClick={() => {
+                          setShowCreateFolder(true);
+                          setShowFolderDropdown(false);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sky-600 transition hover:bg-sky-50"
+                      >
+                        <Plus size={16} />
+                        Создать папку
+                      </button>
+                    </div>
                     <div className="max-h-96 overflow-y-auto p-2">
                       <FolderTree
                         folders={folders}
@@ -291,25 +347,11 @@ export default function DocumentsPage() {
               </div>
             </div>
 
-            {/* Right: Actions */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-              >
-                <SlidersHorizontal size={16} />
-                {showAdvancedSearch ? "Простой поиск" : "Расширенный"}
-              </button>
-              <button
-                onClick={() => setShowCreateFolder(true)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-              >
-                <FolderOpen size={16} />
-                Создать папку
-              </button>
+            {/* Right Section: Actions */}
+            <div className="flex shrink-0">
               <button
                 onClick={() => setShowUploadForm(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
               >
                 <Plus size={16} />
                 Загрузить
@@ -393,35 +435,136 @@ export default function DocumentsPage() {
                       />
                   ) : (
                     /* Simple Filters */
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <div className="relative flex-1">
-                        <Search
-                          size={16}
-                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        />
-                        <input
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          placeholder="Поиск по документам"
-                          className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                        />
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <div className="relative flex-1">
+                          <Search
+                            size={16}
+                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                          />
+                          <input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Поиск по документам"
+                            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                          />
+                        </div>
+
+                        <button
+                          onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                          title="Расширенный поиск"
+                        >
+                          <SlidersHorizontal size={16} />
+                        </button>
+
+                        <select
+                          value={statusFilter}
+                          onChange={(e) =>
+                            setStatusFilter(e.target.value as DocumentStatus | "all")
+                          }
+                          className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                        >
+                          <option value="all">Все статусы</option>
+                          <option value="draft">Черновик</option>
+                          <option value="in_review">На рассмотрении</option>
+                          <option value="approved">Утверждено</option>
+                          <option value="published">Опубликовано</option>
+                          <option value="archived">В архиве</option>
+                          <option value="rejected">Отклонено</option>
+                        </select>
                       </div>
 
-                      <select
-                        value={statusFilter}
-                        onChange={(e) =>
-                          setStatusFilter(e.target.value as DocumentStatus | "all")
-                        }
-                        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                      >
-                        <option value="all">Все статусы</option>
-                        <option value="draft">Черновик</option>
-                        <option value="in_review">На рассмотрении</option>
-                        <option value="approved">Утверждено</option>
-                        <option value="published">Опубликовано</option>
-                        <option value="archived">В архиве</option>
-                        <option value="rejected">Отклонено</option>
-                      </select>
+                      {/* Tags and Types filters */}
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        {/* Tags multi-select */}
+                        {availableTags.length > 0 && (
+                          <div className="flex-1">
+                            <select
+                              multiple
+                              value={selectedTags.map(String)}
+                              onChange={(e) => {
+                                const values = Array.from(e.target.selectedOptions, option => Number(option.value));
+                                setSelectedTags(values);
+                              }}
+                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                              size={3}
+                            >
+                              <option value="" disabled>Фильтр по тегам...</option>
+                              {availableTags.map(tag => (
+                                <option key={tag.id} value={tag.id}>
+                                  {tag.name}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedTags.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {selectedTags.map(tagId => {
+                                  const tag = availableTags.find(t => t.id === tagId);
+                                  return tag ? (
+                                    <span
+                                      key={tagId}
+                                      className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700"
+                                    >
+                                      {tag.name}
+                                      <button
+                                        onClick={() => setSelectedTags(prev => prev.filter(id => id !== tagId))}
+                                        className="hover:text-sky-900"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </span>
+                                  ) : null;
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Types multi-select */}
+                        {availableTypes.length > 0 && (
+                          <div className="flex-1">
+                            <select
+                              multiple
+                              value={selectedTypes.map(String)}
+                              onChange={(e) => {
+                                const values = Array.from(e.target.selectedOptions, option => Number(option.value));
+                                setSelectedTypes(values);
+                              }}
+                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                              size={3}
+                            >
+                              <option value="" disabled>Фильтр по типам...</option>
+                              {availableTypes.map(type => (
+                                <option key={type.id} value={type.id}>
+                                  {type.name}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedTypes.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {selectedTypes.map(typeId => {
+                                  const type = availableTypes.find(t => t.id === typeId);
+                                  return type ? (
+                                    <span
+                                      key={typeId}
+                                      className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700"
+                                    >
+                                      {type.name}
+                                      <button
+                                        onClick={() => setSelectedTypes(prev => prev.filter(id => id !== typeId))}
+                                        className="hover:text-purple-900"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </span>
+                                  ) : null;
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -492,20 +635,33 @@ export default function DocumentsPage() {
                         {/* Document Cards */}
                         {filteredDocuments.map((doc) => {
                           const authorName = doc.created_by
-                            ? `${doc.created_by.last_name} ${doc.created_by.first_name}`.trim()
-                            : "Неизвестно";
+                            ? `${doc.created_by.last_name || ''} ${doc.created_by.first_name || ''}`.trim()
+                            : null;
+                          const createdDate = formatDate(doc.created_at);
                           const isSelected = selection.isSelected(doc.id);
+
+                          // DEBUG: Проверка данных документа
+                          if (!authorName || !createdDate) {
+                            console.log('⚠️ Документ без метаданных:', {
+                              id: doc.id,
+                              title: doc.title,
+                              created_by: doc.created_by,
+                              created_at: doc.created_at,
+                              authorName,
+                              createdDate
+                            });
+                          }
 
                           return (
                             <article
                               key={doc.id}
-                              className={`rounded-xl border transition ${
+                              className={`group rounded-xl border transition-all ${
                                 isSelected
-                                  ? "border-sky-300 bg-sky-50/50"
-                                  : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
+                                  ? "border-sky-300 bg-sky-50/50 shadow-sm"
+                                  : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-md"
                               }`}
                             >
-                              {/* Header */}
+                              {/* Header - Checkbox + View Actions */}
                               <div className="flex items-start gap-3 border-b border-gray-100 bg-gray-50/50 px-4 py-3">
                                 {/* Checkbox */}
                                 <input
@@ -515,134 +671,38 @@ export default function DocumentsPage() {
                                   className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
                                 />
 
-                                {/* Title & Status */}
-                                <div className="min-w-0 flex-1">
-                                  <h3 className="mb-1.5 text-sm font-semibold text-gray-900">
-                                    {doc.title}
-                                  </h3>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <DocumentStatusBadge
-                                      status={doc.status}
-                                      statusCode={doc.status_code}
-                                    />
-                                    {/* Acknowledgement Badge */}
-                                    {doc.acknowledgement_required && (
-                                      doc.is_acknowledged ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-600/20">
-                                          <CheckCircle size={10} />
-                                          Ознакомлен
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
-                                          <AlertCircle size={10} />
-                                          Требуется ознакомление
-                                        </span>
-                                      )
-                                    )}
-                                  </div>
-                                </div>
+                                {/* Spacer */}
+                                <div className="flex-1"></div>
 
-                                {/* Quick Actions - Right Side */}
-                                <div className="flex shrink-0 gap-1.5">
-                                  {doc.file_url && (
-                                    <>
-                                      {doc.file_name?.toLowerCase().endsWith(".pdf") ? (
-                                        <button
-                                          onClick={() =>
-                                            setPdfViewerFile({
-                                              url: doc.file_url!,
-                                              name: doc.file_name || doc.title,
-                                            })
-                                          }
-                                          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-200"
-                                          title="Открыть PDF"
-                                        >
-                                          <Eye size={14} />
-                                          PDF
-                                        </button>
-                                      ) : (
-                                        <button
-                                          onClick={() =>
-                                            setPreviewFile({
-                                              url: doc.file_url!,
-                                              name: doc.file_name || doc.title,
-                                            })
-                                          }
-                                          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-200"
-                                          title="Просмотреть файл"
-                                        >
-                                          <Eye size={14} />
-                                          Просмотр
-                                        </button>
-                                      )}
-                                    </>
-                                  )}
-                                  <button
-                                    onClick={() => setSelectedDocument(doc)}
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200"
-                                    title="Подробная информация"
-                                  >
-                                    <FileText size={14} />
-                                    Детали
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Body */}
-                              <div className="px-4 py-3">
-                                {/* Description */}
-                                {doc.description && (
-                                  <p className="mb-3 text-sm leading-relaxed text-gray-700">
-                                    {doc.description}
-                                  </p>
-                                )}
-
-                                {/* Metadata Grid */}
-                                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                  {/* Folder */}
-                                  {doc.folder_path && (
-                                    <div className="flex items-center gap-2 rounded-lg bg-sky-50 px-3 py-2">
-                                      <FolderOpen size={14} className="shrink-0 text-sky-600" />
-                                      <span className="truncate text-xs text-sky-700">{doc.folder_path}</span>
-                                    </div>
-                                  )}
-                                  {/* Author */}
-                                  <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
-                                    <User size={14} className="shrink-0 text-gray-500" />
-                                    <span className="truncate text-xs text-gray-700">{authorName}</span>
-                                  </div>
-                                  {/* Created */}
-                                  <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
-                                    <Calendar size={14} className="shrink-0 text-gray-500" />
-                                    <span className="text-xs text-gray-700">{formatDate(doc.created_at)}</span>
-                                  </div>
-                                </div>
-
-                                {/* Workflow Actions */}
-                                {doc.status_code !== 'published' && doc.status_code !== 'archived' && (
-                                  <div className="mb-3">
-                                    <DocumentWorkflowButtons
-                                      documentId={doc.id}
-                                      currentStatus={doc.status_code}
-                                      onStatusChange={loadDocuments}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Footer - только если есть дополнительные действия */}
-                              {(doc.acknowledgement_required || doc.status_code === 'published' || doc.status_code === 'archived') && (
-                                <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 bg-gray-50/50 px-4 py-2.5">
-                                  {/* Acknowledge Button */}
-                                  {doc.acknowledgement_required && !doc.is_acknowledged && (
+                                {/* View/Info Actions - Right Side with wrapping */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {/* PDF Button - only for PDF files */}
+                                  {doc.file_url && doc.file_name?.toLowerCase().endsWith(".pdf") && (
                                     <button
-                                      onClick={() => setSelectedDocument(doc)}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-200"
+                                      onClick={() =>
+                                        setPdfViewerFile({
+                                          url: doc.file_url!,
+                                          name: doc.file_name || doc.title,
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-700"
+                                      title="Открыть PDF"
                                     >
-                                      <CheckCircle size={14} />
-                                      Ознакомиться
+                                      <Eye size={14} className="shrink-0" />
+                                      <span className="truncate">PDF</span>
                                     </button>
                                   )}
+                                  
+                                  {/* Details Button */}
+                                  <button
+                                    onClick={() => setSelectedDocument(doc)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                                    title="Подробная информация"
+                                  >
+                                    <FileText size={14} className="shrink-0" />
+                                    <span className="truncate">Детали</span>
+                                  </button>
+                                  
                                   {/* Acknowledgements Report */}
                                   {doc.acknowledgement_required && (
                                     <button
@@ -652,25 +712,105 @@ export default function DocumentsPage() {
                                           documentTitle: doc.title,
                                         })
                                       }
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-100 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 transition hover:bg-blue-200"
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
                                       title="Посмотреть кто ознакомился"
                                     >
-                                      <Users size={14} />
-                                      Ведомость
+                                      <Users size={14} className="shrink-0" />
+                                      <span className="truncate">Ведомость</span>
                                     </button>
                                   )}
-                                  {/* Workflow for published/archived */}
-                                  {(doc.status_code === 'published' || doc.status_code === 'archived') && (
-                                    <div className="ml-auto">
-                                      <DocumentWorkflowButtons
-                                        documentId={doc.id}
-                                        currentStatus={doc.status_code}
-                                        onStatusChange={loadDocuments}
-                                      />
-                                    </div>
+                                </div>
+                              </div>
+
+                              {/* Body */}
+                              <div className="px-4 py-3">
+                                {/* Title - с обрезкой */}
+                                <h3 className="mb-2 truncate text-base font-semibold text-gray-900" title={doc.title}>
+                                  {doc.title}
+                                </h3>
+
+                                {/* Metadata - показываем только если есть хотя бы одно значение */}
+                                {(authorName || createdDate || doc.folder_path) && (
+                                  <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-600">
+                                    {authorName && (
+                                      <>
+                                        <span className="inline-flex items-center gap-1.5">
+                                          <User size={13} className="text-gray-400" />
+                                          {authorName}
+                                        </span>
+                                        {(createdDate || doc.folder_path) && <span className="text-gray-300">•</span>}
+                                      </>
+                                    )}
+                                    {createdDate && (
+                                      <>
+                                        <span className="inline-flex items-center gap-1.5">
+                                          <Calendar size={13} className="text-gray-400" />
+                                          {createdDate}
+                                        </span>
+                                        {doc.folder_path && <span className="text-gray-300">•</span>}
+                                      </>
+                                    )}
+                                    {doc.folder_path && (
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <FolderOpen size={13} className="text-sky-500" />
+                                        <span className="text-sky-600">{doc.folder_path}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Status Badges */}
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                  <DocumentStatusBadge
+                                    status={doc.status}
+                                    statusCode={doc.status_code}
+                                  />
+                                  {doc.acknowledgement_required && (
+                                    doc.is_acknowledged ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-600/20">
+                                        <CheckCircle size={10} />
+                                        Ознакомлен
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
+                                        <AlertCircle size={10} />
+                                        Требуется ознакомление
+                                      </span>
+                                    )
                                   )}
                                 </div>
-                              )}
+
+                                {/* Description */}
+                                {doc.description && (
+                                  <p className="text-sm leading-relaxed text-gray-600">
+                                    {doc.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Footer - Workflow Actions */}
+                              <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {/* Acknowledgement Action */}
+                                  {doc.acknowledgement_required && !doc.is_acknowledged && (
+                                    <button
+                                      onClick={() => setSelectedDocument(doc)}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-600"
+                                      title="Ознакомиться с документом"
+                                    >
+                                      <CheckCircle size={14} className="shrink-0" />
+                                      <span className="truncate">Ознакомиться</span>
+                                    </button>
+                                  )}
+                                  
+                                  {/* Workflow Buttons */}
+                                  <DocumentWorkflowButtons
+                                    documentId={doc.id}
+                                    currentStatus={doc.status_code}
+                                    onStatusChange={loadDocuments}
+                                  />
+                                </div>
+                              </div>
                             </article>
                           );
                         })}
@@ -691,7 +831,6 @@ export default function DocumentsPage() {
         onClose={() => setShowUploadForm(false)}
         title="Загрузить документ"
         size="lg"
-        showFullscreenToggle
       >
         <DocumentUploadForm
           currentFolderId={selectedFolderId}
@@ -709,17 +848,9 @@ export default function DocumentsPage() {
         onClose={() => setSelectedDocument(null)}
         title={selectedDocument?.title}
         size="lg"
-        showFullscreenToggle
       >
-        {(isFullscreen) =>
-          selectedDocument && (
-            <div
-              className={`grid grid-cols-1 gap-6 ${
-                isFullscreen ? "lg:grid-cols-3" : ""
-              }`}
-            >
-              {/* Left Column - Information */}
-              <div className={`space-y-6 ${isFullscreen ? "lg:col-span-2" : ""}`}>
+        {selectedDocument && (
+            <div className="space-y-6">
                 {/* Status Badge */}
                 <div>
                   <DocumentStatusBadge
@@ -729,11 +860,11 @@ export default function DocumentsPage() {
                 </div>
 
                 {/* Metadata Grid */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   {/* Author */}
-                  <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                    <div className="rounded-full bg-sky-100 p-2">
-                      <User size={16} className="text-sky-600" />
+                  <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
+                    <div className="rounded-full bg-sky-100 p-1.5 sm:p-2">
+                      <User size={14} className="text-sky-600 sm:w-4 sm:h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-gray-500">Автор</p>
@@ -748,9 +879,9 @@ export default function DocumentsPage() {
                   </div>
 
                   {/* Created Date */}
-                  <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                    <div className="rounded-full bg-green-100 p-2">
-                      <Calendar size={16} className="text-green-600" />
+                  <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
+                    <div className="rounded-full bg-green-100 p-1.5 sm:p-2">
+                      <Calendar size={14} className="text-green-600 sm:w-4 sm:h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-gray-500">Дата создания</p>
@@ -762,9 +893,9 @@ export default function DocumentsPage() {
 
                   {/* File Info */}
                   {selectedDocument.file_name && (
-                    <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                      <div className="rounded-full bg-purple-100 p-2">
-                        <File size={16} className="text-purple-600" />
+                    <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
+                      <div className="rounded-full bg-purple-100 p-1.5 sm:p-2">
+                        <File size={14} className="text-purple-600 sm:w-4 sm:h-4" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs text-gray-500">Файл</p>
@@ -777,9 +908,9 @@ export default function DocumentsPage() {
 
                   {/* File Size */}
                   {selectedDocument.file_size && (
-                    <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                      <div className="rounded-full bg-orange-100 p-2">
-                        <HardDrive size={16} className="text-orange-600" />
+                    <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
+                      <div className="rounded-full bg-orange-100 p-1.5 sm:p-2">
+                        <HardDrive size={14} className="text-orange-600 sm:w-4 sm:h-4" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs text-gray-500">Размер</p>
@@ -793,12 +924,12 @@ export default function DocumentsPage() {
 
                 {/* Folder Path */}
                 {selectedDocument.folder_path && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                    <div className="flex items-center gap-2 text-sky-700">
-                      <FolderOpen size={16} />
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-2.5 sm:p-3">
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-sky-700">
+                      <FolderOpen size={14} className="sm:w-4 sm:h-4" />
                       <span className="text-xs font-medium">Расположение</span>
                     </div>
-                    <p className="mt-1 text-sm text-sky-900">
+                    <p className="mt-1 text-xs sm:text-sm text-sky-900 break-all">
                       {selectedDocument.folder_path}
                     </p>
                   </div>
@@ -806,11 +937,11 @@ export default function DocumentsPage() {
 
                 {/* Description */}
                 <div>
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <FileText size={16} />
+                  <h3 className="mb-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-700">
+                    <FileText size={14} className="sm:w-4 sm:h-4" />
                     Описание
                   </h3>
-                  <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+                  <p className="rounded-lg bg-gray-50 p-2.5 sm:p-3 text-xs sm:text-sm text-gray-600">
                     {selectedDocument.description || "Описание отсутствует"}
                   </p>
                 </div>
@@ -822,8 +953,8 @@ export default function DocumentsPage() {
                   (selectedDocument.departments &&
                     selectedDocument.departments.length > 0)) && (
                   <div>
-                    <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
-                      <Users size={16} />
+                    <h3 className="mb-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-700">
+                      <Users size={14} className="sm:w-4 sm:h-4" />
                       Получатели
                     </h3>
                     <div className="space-y-2">
@@ -888,23 +1019,44 @@ export default function DocumentsPage() {
                   </div>
                 )}
 
-                {/* File Open Button - Show only when not fullscreen */}
-                {!isFullscreen && selectedDocument.file_url && (
-                  <div>
-                    <button
-                      onClick={() =>
-                        setPreviewFile({
-                          url: selectedDocument.file_url!,
-                          name: selectedDocument.file_name || selectedDocument.title,
-                        })
-                      }
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
-                    >
-                      <Eye size={16} />
-                      Открыть файл
-                    </button>
-                  </div>
-                )}
+                {/* File Actions */}
+                {selectedDocument.file_url && (() => {
+                  const fileExt = selectedDocument.file_name?.toLowerCase().split('.').pop() || '';
+                  const isPreviewable = [
+                    'pdf',
+                    'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'
+                  ].includes(fileExt);
+                  
+                  return (
+                    <div className="flex gap-2">
+                      {isPreviewable && (
+                        <button
+                          onClick={() => {
+                            setSelectedDocument(null);
+                            setPreviewFile({
+                              url: selectedDocument.file_url!,
+                              name: selectedDocument.file_name || selectedDocument.title,
+                            });
+                          }}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
+                        >
+                          <Eye size={16} />
+                          Открыть файл
+                        </button>
+                      )}
+                      <a
+                        href={selectedDocument.file_url}
+                        download={selectedDocument.file_name || selectedDocument.title}
+                        className={`inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 ${
+                          isPreviewable ? '' : 'flex-1'
+                        }`}
+                      >
+                        <Download size={16} />
+                        Скачать
+                      </a>
+                    </div>
+                  );
+                })()}
 
                 {/* Workflow Actions */}
                 <div>
@@ -953,119 +1105,36 @@ export default function DocumentsPage() {
                     />
                   </div>
                 )}
-              </div>
 
-              {/* Right Column - Document Thumbnail (Only in fullscreen) */}
-              {isFullscreen && (
-                <div className="lg:col-span-1">
-                  <div className="sticky top-0">
-                    {selectedDocument.file_url && (
-                      <div className="overflow-hidden rounded-lg border-2 border-gray-200 bg-gray-50">
-                        <div className="border-b border-gray-200 bg-white px-3 py-2">
-                          <p className="text-xs font-medium text-gray-500">
-                            Превью документа
-                          </p>
-                        </div>
-
-                        {/* Thumbnail Content */}
-                        <div className="relative aspect-[3/4] bg-white">
-                          {(() => {
-                            const fileExt =
-                              selectedDocument.file_name
-                                ?.toLowerCase()
-                                .split(".")
-                                .pop() || "";
-                            const isImage = [
-                              "jpg",
-                              "jpeg",
-                              "png",
-                              "gif",
-                              "webp",
-                              "svg",
-                              "bmp",
-                            ].includes(fileExt);
-                            const isPDF = fileExt === "pdf";
-
-                            if (isImage) {
-                              return (
-                                <img
-                                  src={selectedDocument.file_url}
-                                  alt={selectedDocument.file_name || "Preview"}
-                                  className="h-full w-full object-contain p-4"
-                                  onError={(e) => {
-                                    // Fallback to icon on error
-                                    e.currentTarget.style.display = "none";
-                                  }}
-                                />
-                              );
-                            }
-
-                            if (isPDF) {
-                              return (
-                                <div className="flex h-full items-center justify-center p-4">
-                                  <iframe
-                                    src={`${selectedDocument.file_url}#page=1&view=FitH`}
-                                    className="h-full w-full border-0"
-                                    title="PDF Preview"
-                                  />
-                                </div>
-                              );
-                            }
-
-                            // Fallback for other file types
-                            return (
-                              <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-                                <div className="rounded-full bg-gray-100 p-4">
-                                  <FileText size={48} className="text-gray-400" />
-                                </div>
-                                <p className="mt-4 text-xs font-medium text-gray-600">
-                                  {selectedDocument.file_name}
-                                </p>
-                                <p className="mt-1 text-xs uppercase text-gray-400">
-                                  {fileExt} файл
-                                </p>
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        {/* Quick Action Button */}
-                        <div className="border-t border-gray-200 bg-white p-3">
-                          <button
-                            onClick={() =>
-                              setPreviewFile({
-                                url: selectedDocument.file_url!,
-                                name:
-                                  selectedDocument.file_name ||
-                                  selectedDocument.title,
-                              })
-                            }
-                            className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-sky-700"
-                          >
-                            <Eye size={14} />
-                            Открыть в полном размере
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* No file placeholder */}
-                    {!selectedDocument.file_url && (
-                      <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12">
-                        <div className="text-center">
-                          <FileText size={48} className="mx-auto text-gray-300" />
-                          <p className="mt-2 text-sm text-gray-500">
-                            Файл не прикреплен
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                {/* Comments */}
+                <div className="border-t border-gray-200 pt-4">
+                  <DocumentComments documentId={selectedDocument.id} />
                 </div>
-              )}
+
+                {/* Version History */}
+                <div className="border-t border-gray-200 pt-4">
+                  <DocumentVersionHistory
+                    documentId={selectedDocument.id}
+                    onRevert={() => {
+                      loadDocuments();
+                      apiClient
+                        .getDocument(selectedDocument.id)
+                        .then(setSelectedDocument);
+                    }}
+                  />
+                </div>
+
+                {/* Related Documents */}
+                <div className="border-t border-gray-200 pt-4">
+                  <DocumentRelated
+                    documentId={selectedDocument.id}
+                    onNavigate={(docId) => {
+                      apiClient.getDocument(docId).then(setSelectedDocument);
+                    }}
+                  />
+                </div>
             </div>
-          )
-        }
+        )}
       </Modal>
 
       {/* File Preview Modal */}
