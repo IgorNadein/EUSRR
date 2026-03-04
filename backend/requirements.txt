@@ -35,6 +35,7 @@ dj-database-url==3.0.1
 Django==5.2.4
 django-allauth==65.10.0
 django-bootstrap5==25.1
+django-cors-headers==4.7.0
 django-extensions==4.1
 django-filter==25.1
 django-phonenumber-field==8.1.0
