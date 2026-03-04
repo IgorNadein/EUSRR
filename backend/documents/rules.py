@@ -158,7 +158,10 @@ rules.add_rule(
 rules.add_perm('documents.view_document', is_superuser | has_document_access)
 rules.add_perm('documents.change_document', is_superuser | is_document_uploader | can_manage_documents)
 rules.add_perm('documents.delete_document', is_superuser | is_document_uploader | can_manage_documents)
-rules.add_perm('documents.add_document', rules.is_authenticated)  # Все авторизованные могут создавать
+# Создавать документы могут только superuser и те, у кого есть модельные права
+# (проверяется через DjangoModelPermissions в permission_classes ViewSet)
+# rules.add_perm('documents.add_document', is_superuser | can_manage_documents)
+# Комментируем, чтобы add_document проверялся через DjangoModelPermissions
 
 
 # -----------------------------------------------------------------------------

@@ -106,17 +106,24 @@ class DocumentViewSet(ModelViewSet):
                   departments__employeedepartment__is_active=True) |
                 Q(uploaded_by=user)
             ).distinct()
-        # Если нет прав view_document - тоже ограничиваем
-        elif (user and user.is_authenticated and
-              not user.has_perm("documents.view_document") and
-              not user.is_staff):
-            qs = qs.filter(
-                Q(sent_to_all=True) |
-                Q(recipients=user) |
-                Q(departments__employeedepartment__employee=user,
-                  departments__employeedepartment__is_active=True) |
-                Q(uploaded_by=user)
-            ).distinct()
+        # Если нет НИКАКИХ модельных прав на документы - ограничиваем queryset
+        elif (user and user.is_authenticated and not user.is_staff):
+            # Проверяем наличие любого права на модель Document
+            has_any_perm = (
+                user.has_perm("documents.view_document") or
+                user.has_perm("documents.add_document") or
+                user.has_perm("documents.change_document") or
+                user.has_perm("documents.delete_document")
+            )
+            if not has_any_perm:
+                # Ограничиваем доступ только документами, которые ему предназначены
+                qs = qs.filter(
+                    Q(sent_to_all=True) |
+                    Q(recipients=user) |
+                    Q(departments__employeedepartment__employee=user,
+                      departments__employeedepartment__is_active=True) |
+                    Q(uploaded_by=user)
+                ).distinct()
 
         # Для аутентифицированных аннотируем флаг "я ознакомился"
         if user and user.is_authenticated:
