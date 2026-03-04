@@ -171,3 +171,12 @@ next-env.d.ts
 docker-compose.yml
 Договор ООО.xls
 ooo.html
+
+# Archive files (should not be in git)
+*.zip
+*.tar.gz
+*.rar
+
+# Test reports
+newman-report*.json
+*-report.json
