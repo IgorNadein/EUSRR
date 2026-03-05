@@ -364,3 +364,92 @@ class TestFullWorkflowCycle:
         assert response.status_code == status.HTTP_200_OK
         doc = Document.objects.get(pk=doc.id)
         assert doc.status == 'published'
+
+
+# =============================================================================
+# DJANGO-RULES: Author Permissions Tests
+# =============================================================================
+
+@pytest.mark.django_db
+class TestAuthorCanSubmitOwnDocument:
+    """Тесты проверки что автор может отправить СВОЙ документ на рассмотрение
+    через django-rules (без модельного права change_document)."""
+    
+    def test_author_can_submit_own_document_without_model_permission(
+        self, api_client, make_user
+    ):
+        """Автор БЕЗ модельного права change_document может отправить 
+        свой документ на рассмотрение (через django-rules is_document_uploader)."""
+        from documents.models import Document
+        
+        author = make_user("author@example.com", staff=False)
+        
+        # Создаем документ в draft явно
+        doc = make_document(uploaded_by=author, status=Document.Status.DRAFT)
+        assert doc.status == Document.Status.DRAFT
+        assert doc.uploaded_by == author
+        
+        # Автор БЕЗ модельного права должен иметь возможность submit_for_review
+        # благодаря django-rules: is_document_uploader
+        api_client.force_authenticate(user=author)
+        url = reverse('api:v1:documents-submit-for-review', kwargs={'pk': doc.id})
+        response = api_client.post(url)
+        
+        # Должно работать!
+        assert response.status_code == status.HTTP_200_OK, \
+            f"Expected 200, got {response.status_code}. Author should be able to submit own document via django-rules"
+        
+        # Перечитываем из БД
+        doc = Document.objects.get(pk=doc.id)
+        assert doc.status == Document.Status.IN_REVIEW
+    
+    def test_regular_user_cannot_submit_others_document(
+        self, api_client, make_user
+    ):
+        """Обычный пользователь НЕ может отправить чужой документ на рассмотрение."""
+        from documents.models import Document
+        
+        author = make_user("author@example.com")
+        other_user = make_user("other@example.com", staff=False)
+        
+        # Документ автора в draft
+        doc = make_document(uploaded_by=author, status=Document.Status.DRAFT)
+        assert doc.status == Document.Status.DRAFT
+        
+        # Другой пользователь не должен иметь доступ
+        api_client.force_authenticate(user=other_user)
+        url = reverse('api:v1:documents-submit-for-review', kwargs={'pk': doc.id})
+        response = api_client.post(url)
+        
+        # 404 (документ не в queryset) или 403 (нет прав)
+        assert response.status_code in [
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND
+        ], f"Expected 403/404, got {response.status_code}"
+        
+        # Статус не должен измениться
+        doc = Document.objects.get(pk=doc.id)
+        assert doc.status == Document.Status.DRAFT, "Status should not change"
+    
+    def test_author_can_edit_own_draft_document(
+        self, api_client, make_user
+    ):
+        """Автор может редактировать свой черновик."""
+        from documents.models import Document
+        
+        author = make_user("author@example.com", staff=False)
+        
+        # Создаем документ в draft
+        doc = make_document(uploaded_by=author, title='Original Title', status=Document.Status.DRAFT)
+        assert doc.title == 'Original Title'
+        assert doc.status == Document.Status.DRAFT
+        
+        api_client.force_authenticate(user=author)
+        url = reverse('api:v1:documents-detail', kwargs={'pk': doc.id})
+        response = api_client.patch(url, {'title': 'Updated Title'}, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        
+        # Перечитываем документ из БД
+        doc = Document.objects.get(pk=doc.id)
+        assert doc.title == 'Updated Title'
