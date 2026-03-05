@@ -453,3 +453,66 @@ class TestAuthorCanSubmitOwnDocument:
         # Перечитываем документ из БД
         doc = Document.objects.get(pk=doc.id)
         assert doc.title == 'Updated Title'
+    
+    def test_author_cannot_approve_own_document(
+        self, api_client, make_user
+    ):
+        """КРИТИЧНО: Автор НЕ может одобрить свой документ (разделение обязанностей!)"""
+        from documents.models import Document
+        
+        author = make_user("author@example.com", staff=False)
+        
+        # Создаем документ и отправляем на рассмотрение
+        doc = make_document(uploaded_by=author, status=Document.Status.DRAFT)
+        
+        # Автор отправляет на рассмотрение - это ОК
+        api_client.force_authenticate(user=author)
+        url = reverse('api:v1:documents-submit-for-review', kwargs={'pk': doc.id})
+        response = api_client.post(url)
+        assert response.status_code == status.HTTP_200_OK
+        
+        # Проверяем что статус изменился
+        doc = Document.objects.get(pk=doc.id)
+        assert doc.status == Document.Status.IN_REVIEW
+        
+        # Теперь автор пытается ОДОБРИТЬ свой документ - должно быть запрещено!
+        url = reverse('api:v1:documents-approve', kwargs={'pk': doc.id})
+        response = api_client.post(url)
+        
+        # Должен получить 403 ИЛИ 400 (FSM не разрешает или нет прав)
+        assert response.status_code in [
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_400_BAD_REQUEST
+        ], f"Author should NOT be able to approve own document! Got {response.status_code}"
+        
+        # Статус НЕ должен измениться
+        doc = Document.objects.get(pk=doc.id)
+        assert doc.status == Document.Status.IN_REVIEW, "Status should remain IN_REVIEW"
+    
+    def test_author_cannot_publish_own_document(
+        self, api_client, make_user
+    ):
+        """КРИТИЧНО: Автор НЕ может опубликовать свой документ (разделение обязанностей!)"""
+        from documents.models import Document
+        
+        author = make_user("author@example.com", staff=False)
+        
+        # Создаем документ в статусе APPROVED (как будто менеджер одобрил)
+        doc = make_document_with_status(uploaded_by=author, status='approved')
+        doc = Document.objects.get(pk=doc.id)
+        assert doc.status == Document.Status.APPROVED
+        
+        # Автор пытается ОПУБЛИКОВАТЬ - должно быть запрещено!
+        api_client.force_authenticate(user=author)
+        url = reverse('api:v1:documents-publish', kwargs={'pk': doc.id})
+        response = api_client.post(url)
+        
+        # Должен получить 403 ИЛИ 400
+        assert response.status_code in [
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_400_BAD_REQUEST
+        ], f"Author should NOT be able to publish own document! Got {response.status_code}"
+        
+        # Статус НЕ должен измениться
+        doc = Document.objects.get(pk=doc.id)
+        assert doc.status == Document.Status.APPROVED, "Status should remain APPROVED"

@@ -80,8 +80,22 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if user.is_staff or _has_any_model_perm(user, "documents", "document"):
             return True
 
-        # FSM actions → проверяем django-rules change_document
-        if action in self.FSM_ACTIONS:
+        # FSM actions → проверяем специфичные django-rules права (разделение обязанностей!)
+        if action == "submit_for_review":
+            return user.has_perm("documents.submit_for_review_document", obj)
+        elif action == "approve":
+            return user.has_perm("documents.approve_document", obj)
+        elif action == "publish":
+            return user.has_perm("documents.publish_document", obj)
+        elif action == "reject":
+            return user.has_perm("documents.reject_document", obj)
+        elif action in ("archive", "unarchive"):
+            return user.has_perm("documents.archive_document", obj)
+        elif action == "return_to_draft":
+            # Вернуть в draft может автор или менеджер
+            return user.has_perm("documents.change_document", obj)
+        elif action == "revert":
+            # Откатить версию может автор или менеджер
             return user.has_perm("documents.change_document", obj)
 
         # add_related/remove_related → проверяем django-rules change_document
