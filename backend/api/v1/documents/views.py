@@ -125,6 +125,21 @@ class DocumentViewSet(ModelViewSet):
                     Q(uploaded_by=user)
                 ).distinct()
 
+        # Фильтрация по статусу: обычные пользователи БЕЗ прав видят только PUBLISHED
+        # (кроме своих собственных документов, которые они видят в любом статусе)
+        if user and user.is_authenticated and not user.is_staff:
+            has_any_perm = (
+                user.has_perm("documents.view_document") or
+                user.has_perm("documents.add_document") or
+                user.has_perm("documents.change_document") or
+                user.has_perm("documents.delete_document")
+            )
+            if not has_any_perm:
+                qs = qs.filter(
+                    Q(status=Document.Status.PUBLISHED) |
+                    Q(uploaded_by=user)
+                )
+
         # Для аутентифицированных аннотируем флаг "я ознакомился"
         if user and user.is_authenticated:
             subq = DocumentAcknowledgement.objects.filter(

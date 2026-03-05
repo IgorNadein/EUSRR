@@ -98,6 +98,7 @@ def make_document(
     description: str = "desc",
     sent_to_all: bool = True,
     recipients: Iterable[User] | None = None,
+    status: str = Document.Status.PUBLISHED,
 ) -> Document:
     """Создаёт Document напрямую (минует API).
 
@@ -107,6 +108,7 @@ def make_document(
         description (str): Описание.
         sent_to_all (bool): Признак рассылки всем.
         recipients (Iterable[User] | None): Конкретные получатели при sent_to_all=false.
+        status (str): Статус документа (по умолчанию PUBLISHED для видимости в тестах).
 
     Returns:
         Document: Созданная модель с прикреплённым файлом.
@@ -121,6 +123,7 @@ def make_document(
         uploaded_at=timezone.now(),
         sent_to_all=sent_to_all,
         file=filer_file,
+        status=status,
     )
     if not sent_to_all and recipients:
         doc.recipients.set(recipients)
