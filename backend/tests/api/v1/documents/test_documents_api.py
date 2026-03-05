@@ -5,10 +5,12 @@ from __future__ import annotations
 Тесты CRUD API документов (/api/v1/documents/ + экшен acknowledge) по чек-листу.
 
 Политика доступа (актуальная):
-- Создавать/редактировать/удалять — только админы и обладатели модельных прав.
+- Создавать — все аутентифицированные пользователи (документы создаются в draft).
+- Редактировать/удалять — только создатель, админы или обладатели модельных прав.
+- Approve/Publish — только пользователи с правом change_document (django-rules).
 - Читать/скачивать/ознакомливаться — только аутентифицированные, и только документы,
-  предназначенные им (или с sent_to_all=True). Получатели не имеют доступ к документам,
-  которые им не предназначались.
+  предназначенные им (или с sent_to_all=True). Обычные пользователи видят только PUBLISHED
+  документы (кроме своих собственных).
 
 Все функции и классы снабжены докстрингами (Google-style).
 """
@@ -215,8 +217,9 @@ class TestAuthAndPermissions:
     ):
         """Обычный user без модельных прав:
         - list → 200 (пустой список, если нет доступных документов);
-        - CRUD → 403;
-        - detail/ack чужого документа с sent_to_all=False → 403.
+        - create → 201 (разрешено создание в draft);
+        - update/delete чужого документа → 403/404;
+        - detail/ack чужого документа с sent_to_all=False → 403/404.
         """
         u = make_user("u@example.com")
         client = auth_client(u)
@@ -225,13 +228,18 @@ class TestAuthAndPermissions:
         # list — 200 (даже без прав), но результаты ограничены доступными документами
         assert client.get(list_url).status_code == 200
 
-        # POST (multipart) — запрещено
+        # POST (multipart) — теперь разрешено всем аутентифицированным
         resp = client.post(
             list_url,
-            {"title": "T", "file": _file(), "sent_to_all": True},
+            {"title": "My Document", "file": _file(), "sent_to_all": True},
             format="multipart",
         )
-        assert resp.status_code == 403
+        assert resp.status_code in (200, 201), f"Expected 200/201, got {resp.status_code}: {resp.content}"
+        # Проверяем что документ создан в статусе draft
+        doc_id = resp.json()["id"]
+        doc = Document.objects.get(id=doc_id)
+        assert doc.status == Document.Status.DRAFT, f"Expected DRAFT status, got {doc.status}"
+        assert doc.uploaded_by == u
 
         # object not intended for user
         author = make_user("a@example.com")
@@ -461,6 +469,39 @@ class TestCreate:
         ids = set(doc.recipients.values_list("id", flat=True))
         assert active.id in ids
         assert inactive.id not in ids
+
+    def test_regular_user_can_create_document_in_draft(
+        self, auth_client, make_user, api_urls
+    ):
+        """Обычный пользователь без прав может создать документ, и он создается в draft."""
+        regular_user = make_user("regular@example.com", staff=False)
+        client = auth_client(regular_user)
+
+        # Создаем документ
+        r = client.post(
+            api_urls["list"],
+            {
+                "title": "User Created Document",
+                "description": "Created by regular user",
+                "file": _file(name="user_doc.pdf"),
+                "sent_to_all": True,
+            },
+            format="multipart",
+        )
+        assert r.status_code in (200, 201), f"Expected 200/201, got {r.status_code}: {r.content}"
+        
+        body = r.json()
+        assert body["title"] == "User Created Document"
+        assert body["sent_to_all"] is True
+        
+        # Проверяем что документ создан в статусе DRAFT
+        doc = Document.objects.get(pk=body["id"])
+        assert doc.status == Document.Status.DRAFT
+        assert doc.uploaded_by == regular_user
+        
+        # Проверяем что обычный пользователь видит свой документ в любом статусе
+        detail_r = client.get(api_urls["detail"](doc.pk))
+        assert detail_r.status_code == 200
 
 # -------------------- C. Чтение (GET) --------------------
 

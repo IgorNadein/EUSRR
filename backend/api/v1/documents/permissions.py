@@ -54,9 +54,14 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if request.method in SAFE_METHODS or action in ("acknowledge", "download"):
             return bool(request.user and request.user.is_authenticated)
 
-        # FSM actions и update/destroy - проверяем на уровне объекта
+        # CREATE → разрешаем всем аутентифицированным (документы создаются в draft)
+        # FSM workflow обеспечит контроль: draft → review → approve → publish
+        if action == "create":
+            return bool(request.user and request.user.is_authenticated)
+
+        # FSM actions, update/destroy и related documents - проверяем на уровне объекта
         # Разрешаем здесь, has_object_permission проверит django-rules
-        if action in self.FSM_ACTIONS or action in ("update", "partial_update", "destroy"):
+        if action in self.FSM_ACTIONS or action in ("update", "partial_update", "destroy", "add_related", "remove_related"):
             return bool(request.user and request.user.is_authenticated)
 
         # небезопасные → staff ИЛИ стандартные модельные права (add/change/delete)
@@ -77,6 +82,10 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
 
         # FSM actions → проверяем django-rules change_document
         if action in self.FSM_ACTIONS:
+            return user.has_perm("documents.change_document", obj)
+
+        # add_related/remove_related → проверяем django-rules change_document
+        if action in ("add_related", "remove_related"):
             return user.has_perm("documents.change_document", obj)
 
         # PUT/PATCH → проверяем django-rules change_document
