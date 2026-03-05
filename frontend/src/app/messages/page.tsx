@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/url";
 import type { Chat } from "@/types/api";
 import { Search, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
 
 function getUserFullName(lastName?: string, firstName?: string): string {
   return `${lastName || ""} ${firstName || ""}`.trim();
@@ -111,20 +110,6 @@ function getChatInitials(chat: Chat, currentUserId?: number, currentUser?: { fir
     .join("") || "Ч";
 }
 
-function resolveAvatarUrl(url?: string | null): string {
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-  if (/^https?:\/\//i.test(url)) return encodeURI(url);
-  if (url.startsWith("//")) return encodeURI(`https:${url}`);
-  if (url.startsWith("/") && BACKEND_URL) {
-    return encodeURI(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
-  }
-  if (BACKEND_URL) {
-    return encodeURI(`${BACKEND_URL.replace(/\/$/, "")}/${url.replace(/^\/+/, "")}`);
-  }
-  return encodeURI(url);
-}
-
 function formatTime(date?: string): string {
   if (!date) return "";
   const d = new Date(date);
@@ -195,7 +180,7 @@ export default function MessagesPage() {
 
         // FRONTEND-ONLY: добираем детали чатов, чтобы получить имя/аватар собеседника
         // для private/direct в случае, когда list не отдает avatar/participant_details.
-        const needDetails = items.filter((chat) => {
+        const needDetails = items.filter((chat: Chat) => {
           const kind = chat.chat_type || chat.type;
           if (kind !== "private" && kind !== "direct") return false;
 
@@ -211,7 +196,7 @@ export default function MessagesPage() {
         }
 
         const details = await Promise.all(
-          needDetails.map(async (chat) => {
+          needDetails.map(async (chat: Chat) => {
             try {
               return await apiClient.getChat(chat.id);
             } catch {
@@ -225,7 +210,7 @@ export default function MessagesPage() {
           if (d) detailsMap.set(d.id, d);
         });
 
-        const merged = items.map((chat) => {
+        const merged = items.map((chat: Chat) => {
           const detail = detailsMap.get(chat.id);
           if (!detail) return chat;
           return {
@@ -306,7 +291,7 @@ export default function MessagesPage() {
                       <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-xs font-semibold text-white">
                         {chatAvatar ? (
                           <Image
-                            src={resolveAvatarUrl(chatAvatar)}
+                            src={resolveMediaUrl(chatAvatar)}
                             alt={chatTitle}
                             width={40}
                             height={40}

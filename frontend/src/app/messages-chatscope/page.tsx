@@ -20,24 +20,9 @@ import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import { AppShell } from '@/components/AppShell';
 import { apiClient } from '@/lib/api';
 import { useUser } from '@/contexts/UserContext';
+import { resolveMediaUrl, getWebSocketUrl } from '@/lib/url';
 import NewChatModal from '@/components/NewChatModal';
 import type { Chat as ChatType, Message as MessageType } from '@/types/api';
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
-
-function resolveAvatarUrl(url?: string | null): string {
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith("//")) return `https:${url}`;
-  if (url.startsWith("/") && BACKEND_URL) {
-    return `${BACKEND_URL.replace(/\/$/, "")}${url}`;
-  }
-  if (BACKEND_URL) {
-    return `${BACKEND_URL.replace(/\/$/, "")}/${url.replace(/^\/+/, "")}`;
-  }
-  return url;
-}
 
 function getChatTitle(chat: ChatType, currentUserId?: number): string {
   const chatKind = chat.chat_type || chat.type;
@@ -70,18 +55,18 @@ function getChatTitle(chat: ChatType, currentUserId?: number): string {
 function getChatAvatar(chat: ChatType, currentUserId?: number): string {
   const chatKind = chat.chat_type || chat.type;
   if (chatKind === "direct" || chatKind === "private") {
-    if (chat.interlocutor?.avatar) return resolveAvatarUrl(chat.interlocutor.avatar);
+    if (chat.interlocutor?.avatar) return resolveMediaUrl(chat.interlocutor.avatar);
 
     const detailsOther = (chat.participant_details || []).find((p) => p.id !== currentUserId);
-    if (detailsOther?.avatar) return resolveAvatarUrl(detailsOther.avatar);
+    if (detailsOther?.avatar) return resolveMediaUrl(detailsOther.avatar);
 
     const participants = (chat.participants || []).filter(
       (p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null
     );
     const other = participants.find((p) => p.id !== currentUserId);
-    if (other?.avatar) return resolveAvatarUrl(other.avatar);
+    if (other?.avatar) return resolveMediaUrl(other.avatar);
   }
-  return resolveAvatarUrl(chat.avatar);
+  return resolveMediaUrl(chat.avatar);
 }
 
 export default function ChatscapeMessenger() {
@@ -162,7 +147,7 @@ export default function ChatscapeMessenger() {
   useEffect(() => {
     if (!selectedChatId) return;
 
-    const ws = new WebSocket('ws://localhost:9000/ws/');
+    const ws = new WebSocket(getWebSocketUrl());
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -400,7 +385,7 @@ export default function ChatscapeMessenger() {
                     >
                       {!isOwn && msg.author && (
                         <Avatar
-                          src={resolveAvatarUrl(msg.author.avatar)}
+                          src={resolveMediaUrl(msg.author.avatar)}
                           name={msg.author_name || ''}
                           size="sm"
                         />
@@ -416,13 +401,13 @@ export default function ChatscapeMessenger() {
                                 <div key={att.id}>
                                   {isImage ? (
                                     <img
-                                      src={resolveAvatarUrl(att.file_url)}
+                                      src={resolveMediaUrl(att.file_url)}
                                       alt={att.file_name}
                                       className="max-w-xs rounded shadow"
                                     />
                                   ) : (
                                     <a
-                                      href={resolveAvatarUrl(att.file_url)}
+                                      href={resolveMediaUrl(att.file_url)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center gap-2 text-sky-600 hover:underline text-sm"

@@ -45,6 +45,7 @@ export const CalendarCard = memo(function CalendarCard({
 
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [eventsViewMode, setEventsViewMode] = useState<"week" | "month">("week");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Загружаем события через хук
@@ -217,6 +218,25 @@ export const CalendarCard = memo(function CalendarCard({
       .sort((a, b) => new Date(a.start || "").getTime() - new Date(b.start || "").getTime())
       .slice(0, 12);
   }, [events]);
+
+  // События в выбранном месяце (привязано к monthDate мини-календаря)
+  const monthEvents = useMemo(() => {
+    const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
+
+    return [...events]
+      .filter((ev) => ev.start)
+      .filter((ev) => {
+        const start = new Date(ev.start || "");
+        if (Number.isNaN(start.getTime())) return false;
+        return start >= monthStart && start <= monthEnd;
+      })
+      .sort((a, b) => new Date(a.start || "").getTime() - new Date(b.start || "").getTime())
+      .slice(0, 30);
+  }, [events, monthDate]);
 
   return (
     <>
@@ -411,55 +431,81 @@ export const CalendarCard = memo(function CalendarCard({
         </div>
       </div>
 
-      {/* События на этой неделе */}
+      {/* События — неделя / месяц */}
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">На этой неделе</p>
-        {loading ? (
-          <p className="text-xs text-gray-500">Загрузка...</p>
-        ) : error ? (
-          <p className="text-xs text-red-600">{error}</p>
-        ) : weekEvents.length === 0 ? (
-          <p className="text-xs text-gray-500">Событий нет</p>
-        ) : (
-          <div className="space-y-2">
-            {weekEvents.map((event) => {
-              const start = event.start ? new Date(event.start) : null;
-              const dateLabel =
-                start && !Number.isNaN(start.getTime())
-                  ? start.toLocaleString("ru-RU", {
-                      weekday: "short",
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : "Без даты";
+        <div className="mb-3 flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+          <button
+            type="button"
+            onClick={() => setEventsViewMode("week")}
+            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+              eventsViewMode === "week"
+                ? "bg-white text-gray-800 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Неделя
+          </button>
+          <button
+            type="button"
+            onClick={() => setEventsViewMode("month")}
+            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+              eventsViewMode === "month"
+                ? "bg-white text-gray-800 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Месяц
+          </button>
+        </div>
 
-              return (
-                <button
-                  key={`${event.id}-${event.start || ""}`}
-                  type="button"
-                  onClick={() => handleEventClick(event)}
-                  className="w-full rounded-lg bg-gray-50 px-2.5 py-2 text-left transition hover:bg-gray-100"
-                >
-                  <div className="flex items-center gap-1">
-                    <div
-                      className="h-2 w-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: event.color_event || event.color || "#3498db" }}
-                    />
-                    <p className="truncate text-xs font-medium text-gray-800">{event.title}</p>
-                    {(event.is_recurring || event.rule) && (
-                      <span className="text-[10px] text-sky-600 flex-shrink-0" title="Повторяющееся событие">
-                        ⟲
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-gray-500">{dateLabel}</p>
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {(() => {
+          const displayEvents = eventsViewMode === "week" ? weekEvents : monthEvents;
+
+          if (loading) return <p className="text-xs text-gray-500">Загрузка...</p>;
+          if (error) return <p className="text-xs text-red-600">{error}</p>;
+          if (displayEvents.length === 0) return <p className="text-xs text-gray-500">Событий нет</p>;
+
+          return (
+            <div className="space-y-2">
+              {displayEvents.map((event) => {
+                const start = event.start ? new Date(event.start) : null;
+                const dateLabel =
+                  start && !Number.isNaN(start.getTime())
+                    ? start.toLocaleString("ru-RU", {
+                        weekday: "short",
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "Без даты";
+
+                return (
+                  <button
+                    key={`${eventsViewMode}-${event.id}-${event.start || ""}`}
+                    type="button"
+                    onClick={() => handleEventClick(event)}
+                    className="w-full rounded-lg bg-gray-50 px-2.5 py-2 text-left transition hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-1">
+                      <div
+                        className="h-2 w-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: event.color_event || event.color || "#3498db" }}
+                      />
+                      <p className="truncate text-xs font-medium text-gray-800">{event.title}</p>
+                      {(event.is_recurring || event.rule) && (
+                        <span className="text-[10px] text-sky-600 flex-shrink-0" title="Повторяющееся событие">
+                          ⟲
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-gray-500">{dateLabel}</p>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </>
   );

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
 import { apiClient } from "@/lib/api";
+import { useUser } from "@/contexts/UserContext";
 
 type Calendar = {
   id: number;
@@ -22,6 +23,7 @@ type CalendarContextType = {
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
 
 export function CalendarProvider({ children }: { children: ReactNode }) {
+  const { user } = useUser();
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [selectedCalendarId, setSelectedCalendarId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -51,8 +53,13 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    loadCalendars();
-  }, []);
+    if (user) {
+      loadCalendars();
+    } else {
+      setCalendars([]);
+      initialLoadDone.current = false;
+    }
+  }, [user, loadCalendars]);
 
   return (
     <CalendarContext.Provider

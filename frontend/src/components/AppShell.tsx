@@ -1,14 +1,14 @@
 "use client";
 
-import { Bell, Building2, CalendarDays, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Search, Users, Wallet, X, Sparkles } from "lucide-react";
+import { Bell, Building2, CalendarDays, ChevronDown, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users, Wallet, X, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useState, useCallback } from "react";
+import { ReactNode, useEffect, useRef, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { CalendarModal } from "@/components/CalendarModal";
 import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
-import { NotificationCenter } from "@/components/NotificationCenter";
+import { NotificationCenter, NotificationPanel } from "@/components/NotificationCenter";
 import { EventModal } from "@/components/EventModal";
 import { ViewDayEventsModal } from "@/components/ViewDayEventsModal";
 import { ViewEventDetailsModal } from "@/components/ViewEventDetailsModal";
@@ -39,11 +39,11 @@ type LeftNavContentProps = {
 const navItems = [
   { href: "/", label: "Лента", icon: HomeIcon },
   { href: "/messages", label: "Сообщения", icon: MessageSquare },
-  { href: "/messages-chatscope", label: "Мессенджер (NEW)", icon: Sparkles },
-  { href: "/calendar", label: "Календарь", icon: CalendarDays },
   { href: "/employees", label: "Сотрудники", icon: Users },
   { href: "/departments", label: "Отделы", icon: Building2 },
   { href: "/requests", label: "Заявления", icon: FileSignature },
+  { href: "/equipment", label: "Оборудование", icon: Monitor },
+  { href: "/procurement", label: "Закупки", icon: ShoppingCart },
   { href: "/documents", label: "Документы", icon: FileText },
   { href: "/finances", label: "Финансы", icon: Wallet },
 ];
@@ -53,6 +53,9 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   const { user, logout } = useUser();
   const [searchQuery, setSearchQuery] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Закрытие меню при клике вне
   useEffect(() => {
@@ -87,19 +90,41 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
   return (
     <header className="sticky top-0 z-[40] border-b border-slate-100 bg-white/90 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 sm:px-8">
-        <div className="flex h-14 items-center justify-between gap-3">
+        <div className="flex h-8 lg:h-14 items-center justify-between gap-3">
           <button
             type="button"
             onClick={onOpenLeftNav}
             className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 lg:hidden"
             aria-label="Открыть левое меню"
           >
-            <Menu size={20} className="text-gray-700" />
+            <Menu size={20} className="text-gray-700"/>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen((v) => {
+                if (!v) setTimeout(() => searchInputRef.current?.focus(), 50);
+                return !v;
+              });
+              setIsNotificationsOpen(false);
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 lg:hidden"
+            aria-label="Поиск"
+          >
+            <Search size={20} className="text-gray-700" />
           </button>
 
           <Link href="/" className="flex items-center justify-center">
-            <img src="/logo.png" alt="Логотип" className="h-10 w-auto lg:h-11" />
+            <img src="/logo.png" alt="Логотип" className="mt-3 lg:mt-0 h-10 w-auto lg:h-11 bg-white lg:bg-transparent rounded pb-0.5 lg:pb-0" />
           </Link>
+
+          <div className="lg:hidden">
+            <NotificationCenter variant="mobile" isOpen={isNotificationsOpen} onToggle={() => {
+              setIsNotificationsOpen((v) => !v);
+              setIsSearchOpen(false);
+            }} />
+          </div>
 
           <button
             type="button"
@@ -168,62 +193,44 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
           </div>
         </div>
 
-        <div className="pb-3 lg:hidden">
-          <div className="flex items-center gap-2">
-            <NotificationCenter variant="mobile" />
-
-            <div className="relative flex-1">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    submitSearch();
-                  }
-                }}
-                className="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                placeholder="Поиск"
-              />
-            </div>
-
-            <div className="relative h-10 w-10" id="user-menu-root-mobile">
-              <div
-                className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white hover:bg-sky-500 cursor-pointer"
-                title={userName}
-                onClick={() => setUserMenuOpen((v) => !v)}
-              >
-                {user?.avatar ? (
-                  <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
-                ) : (
-                  userInitials
-                )}
-              </div>
-              {user?.is_active ? (
-                <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
-              ) : null}
-              {/* Меню пользователя */}
-              {userMenuOpen && (
-                <div className="absolute right-0 top-12 z-[60] w-48 rounded-xl bg-white py-2 shadow-lg ring-1 ring-slate-100 animate-fade-in">
-                  <button
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-sky-50"
-                    onClick={() => { setUserMenuOpen(false); router.push('/profile'); }}
-                  >Мой профиль</button>
-                  <button
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-sky-50"
-                    onClick={() => { setUserMenuOpen(false); router.push('/settings'); }}
-                  >Настройки</button>
-                  <div className="my-1 border-t border-slate-100" />
-                  <button
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                    onClick={() => { setUserMenuOpen(false); logout(); }}
-                  >Выйти</button>
-                </div>
-              )}
-            </div>
+        {/* Мобильная строка поиска */}
+        <div
+          className={`overflow-hidden transition-all duration-300 lg:hidden ${
+            isSearchOpen ? "max-h-20 pb-3" : "max-h-0"
+          }`}
+        >
+          <div className="relative">
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submitSearch();
+                  setIsSearchOpen(false);
+                }
+                if (e.key === "Escape") {
+                  setIsSearchOpen(false);
+                }
+              }}
+              className="w-full rounded-full border border-gray-200 bg-gray-50 py-2.5 pl-11 pr-4 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+              placeholder="Поиск по сайту..."
+            />
           </div>
+        </div>
+
+        {/* Мобильная панель уведомлений */}
+        <div
+          className={`overflow-hidden transition-all duration-300 lg:hidden ${
+            isNotificationsOpen ? "max-h-[70vh] pb-3" : "max-h-0"
+          }`}
+        >
+          {isNotificationsOpen && (
+            <NotificationPanel onClose={() => setIsNotificationsOpen(false)} />
+          )}
         </div>
 
       </div>
@@ -282,13 +289,22 @@ export function PageHeader({ title, subtitle, badge, eyebrow = "Раздел" }:
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { user, loading } = useUser();
+  const { user, loading, logout } = useUser();
   const router = useRouter();
   const pathname = usePathname();
   const isMessageDialogPage = pathname.startsWith('/messages/') && pathname !== '/messages';
 
+  // Вычисляем данные пользователя один раз на уровне AppShell
+  const userInitials = user
+    ? `${user.last_name?.[0] || ''}${user.first_name?.[0] || ''}`
+    : 'Г';
+  const userName = user
+    ? `${user.last_name} ${user.first_name}`.trim()
+    : 'Гость';
+
   const [isMobileLeftNavOpen, setIsMobileLeftNavOpen] = useState(false);
   const [isMobileCalendarOpen, setIsMobileCalendarOpen] = useState(false);
+  const [isProfileExpanded, setIsProfileExpanded] = useState(false);
 
   // Состояния модалов календаря
   const [showCalendarModal, setShowCalendarModal] = useState(false);
@@ -472,7 +488,7 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className={`${isMessageDialogPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-gradient-to-b from-sky-50 via-white to-white text-gray-900 flex flex-col`}>
         <Header onOpenLeftNav={() => setIsMobileLeftNavOpen(true)} onOpenCalendar={() => setIsMobileCalendarOpen(true)} />
-        <div className="mx-auto flex w-full flex-1 min-h-0 max-w-6xl gap-6 px-4 py-6 sm:px-8 lg:py-8">
+        <div className="mx-auto flex w-full flex-1 min-h-0 max-w-6xl gap-6 px-4 py-4 sm:px-8 lg:py-8">
           <LeftNav />
           <main className={`flex-1 min-w-0 min-h-0 space-y-6 ${isMessageDialogPage ? 'overflow-visible' : ''}`}>{children}</main>
           <CalendarSidebar
@@ -508,6 +524,49 @@ export function AppShell({ children }: AppShellProps) {
                 <X size={20} className="text-gray-700" />
               </button>
             </div>
+
+            {/* Профиль пользователя */}
+            <div className="mb-6 rounded-xl bg-gradient-to-br from-sky-50 to-sky-100 ring-1 ring-sky-100 overflow-hidden">
+              <button
+                onClick={() => setIsProfileExpanded(!isProfileExpanded)}
+                className="w-full flex items-center gap-3 p-4 hover:bg-sky-200/50 transition-colors"
+              >
+                <div className="h-12 w-12 overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white flex items-center justify-center flex-shrink-0">
+                  {user?.avatar ? (
+                    <img src={user.avatar} alt={userName} className="h-full w-full object-cover" />
+                  ) : (
+                    userInitials
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="text-sm font-semibold text-gray-900">{userName}</p>
+                  {user?.is_active && (
+                    <p className="text-xs text-sky-600">Онлайн</p>
+                  )}
+                </div>
+                <ChevronDown
+                  size={20}
+                  className={`text-gray-700 transition-transform flex-shrink-0 ${isProfileExpanded ? "rotate-180" : ""}`}
+                />
+              </button>
+              {isProfileExpanded && (
+                <div className="border-t border-sky-200 p-2 space-y-2">
+                  <button
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white text-gray-700"
+                    onClick={() => { setIsMobileLeftNavOpen(false); router.push('/profile'); }}
+                  >Мой профиль</button>
+                  <button
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white text-gray-700"
+                    onClick={() => { setIsMobileLeftNavOpen(false); router.push('/settings'); }}
+                  >Настройки</button>
+                  <button
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600"
+                    onClick={() => { setIsMobileLeftNavOpen(false); logout(); }}
+                  >Выйти</button>
+                </div>
+              )}
+            </div>
+
             <LeftNavContent onNavigate={() => setIsMobileLeftNavOpen(false)} />
           </div>
         </div>

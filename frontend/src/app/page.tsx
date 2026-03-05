@@ -1,8 +1,9 @@
 "use client";
 
-import { Heart, MessageSquare, Pencil, Plus, Send, Trash2, X } from "lucide-react";
+import { Heart, ImageIcon, MessageSquare, Paperclip, Pencil, Plus, Send, Trash2, X } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { apiClient } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/url";
 import { useEffect, useRef, useState } from "react";
 import type { Comment, Post } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
@@ -31,6 +32,10 @@ export default function Home() {
   const [commentSending, setCommentSending] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editingCommentText, setEditingCommentText] = useState("");
+  const [commentImage, setCommentImage] = useState<File | null>(null);
+  const [commentAttachment, setCommentAttachment] = useState<File | null>(null);
+  const commentImageRef = useRef<HTMLInputElement | null>(null);
+  const commentAttachmentRef = useRef<HTMLInputElement | null>(null);
   const [commentActionId, setCommentActionId] = useState<number | null>(null);
   const commentsBottomRef = useRef<HTMLDivElement | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
@@ -59,20 +64,7 @@ export default function Home() {
     return `${(lastName || "").trim().charAt(0)}${(firstName || "").trim().charAt(0)}` || "П";
   };
 
-  const resolveMediaUrl = (url?: string | null) => {
-    const raw = (url || "").trim();
-    if (!raw) return "";
 
-    if (/^https?:\/\//i.test(raw)) {
-      return raw;
-    }
-
-    const backendBase = (process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro").replace(/\/$/, "");
-    if (raw.startsWith("/")) {
-      return `${backendBase}${raw}`;
-    }
-    return `${backendBase}/${raw}`;
-  };
 
   const withImageCacheBuster = (url: string, postId: number) => {
     if (!url) return "";
@@ -306,13 +298,20 @@ export default function Home() {
   const handleCreateComment = async () => {
     if (!activePost) return;
     const text = newComment.trim();
-    if (!text) return;
+    if (!text && !commentImage && !commentAttachment) return;
 
     setCommentSending(true);
     try {
-      const created = await apiClient.createComment(activePost.id, text);
+      const created = await apiClient.createComment(
+        activePost.id,
+        text || " ",
+        commentImage || undefined,
+        commentAttachment || undefined
+      );
       setComments((prev) => [...prev, created]);
       setNewComment("");
+      setCommentImage(null);
+      setCommentAttachment(null);
       setPosts((prev) =>
         prev.map((p) =>
           p.id === activePost.id
@@ -438,8 +437,8 @@ export default function Home() {
           title,
           body,
           department: createType === "department" ? Number(createDepartmentId) : undefined,
-          image: createImage,
-          attachment: createAttachment,
+          image: createImage || undefined,
+          attachment: createAttachment || undefined,
         });
 
         if (createImage) {
@@ -454,8 +453,8 @@ export default function Home() {
           title,
           body,
           department: createType === "department" ? Number(createDepartmentId) : undefined,
-          image: createImage,
-          attachment: createAttachment,
+          image: createImage || undefined,
+          attachment: createAttachment || undefined,
         });
       }
 
@@ -540,7 +539,7 @@ export default function Home() {
                 ? post.author.is_active
                 : Boolean(post.author?.id && user?.id && post.author.id === user.id && user.is_active);
 
-            const postText = (post.content || post.body || "").trim();
+            const postText = (post.body || post.content || "").trim();
 
             // Форматируем дату
             const postDate = new Date(post.created_at);
@@ -602,12 +601,27 @@ export default function Home() {
                     </div>
                   ) : null}
                 </header>
+                {post.title ? (
+                  <h3 className="mb-1 text-base font-semibold text-gray-900">{post.title}</h3>
+                ) : null}
                 {postText ? (
-                  <p className="text-sm leading-6 text-gray-800">{postText}</p>
+                  <p className="text-sm leading-6 text-gray-800 whitespace-pre-line">{postText}</p>
                 ) : null}
                 {post.image && (
                   <div className="mt-3 overflow-hidden rounded-lg">
                     <img src={withImageCacheBuster(resolveMediaUrl(post.image), post.id)} alt="" className="w-full" />
+                  </div>
+                )}
+                {(post.attachment || post.attachment_url) && (
+                  <div className="mt-3">
+                    <a
+                      href={resolveMediaUrl(post.attachment || post.attachment_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-sky-600 ring-1 ring-gray-200 hover:bg-gray-100"
+                    >
+                      📎 Вложение
+                    </a>
                   </div>
                 )}
                 <div className="mt-4 flex items-center gap-4 text-sm text-gray-600">
@@ -685,7 +699,7 @@ export default function Home() {
             className="absolute inset-0 bg-black/50"
           />
 
-          <div className="absolute inset-x-3 top-4 bottom-4 mx-auto flex max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200 sm:inset-x-6">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[80vh] mx-auto px-3 flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200 sm:px-6">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <p className="text-sm font-semibold text-gray-900">
                 {editingPostId ? "Редактировать публикацию" : "Создать публикацию"}
@@ -906,7 +920,26 @@ export default function Home() {
                                 </div>
                               </div>
                             ) : (
-                              <p className="mt-1 text-sm leading-6 text-gray-800">{commentText}</p>
+                              <>
+                                {commentText && <p className="mt-1 text-sm leading-6 text-gray-800">{commentText}</p>}
+                                {comment.image && (
+                                  <div className="mt-2 overflow-hidden rounded-lg">
+                                    <img src={resolveMediaUrl(comment.image)} alt="" className="max-h-60 rounded-lg" />
+                                  </div>
+                                )}
+                                {comment.attachment && (
+                                  <div className="mt-2">
+                                    <a
+                                      href={resolveMediaUrl(comment.attachment)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 text-xs text-sky-600 ring-1 ring-gray-200 hover:bg-gray-50"
+                                    >
+                                      📎 Вложение
+                                    </a>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -919,7 +952,43 @@ export default function Home() {
             </div>
 
             <div className="border-t border-gray-100 px-4 py-3">
+              {(commentImage || commentAttachment) && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {commentImage && (
+                    <div className="flex items-center gap-1.5 rounded-md bg-sky-50 px-2 py-1 text-xs text-sky-700 ring-1 ring-sky-200">
+                      <ImageIcon size={12} />
+                      <span className="max-w-[120px] truncate">{commentImage.name}</span>
+                      <button type="button" onClick={() => setCommentImage(null)} className="ml-0.5 text-sky-400 hover:text-sky-700"><X size={12} /></button>
+                    </div>
+                  )}
+                  {commentAttachment && (
+                    <div className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 ring-1 ring-gray-200">
+                      <Paperclip size={12} />
+                      <span className="max-w-[120px] truncate">{commentAttachment.name}</span>
+                      <button type="button" onClick={() => setCommentAttachment(null)} className="ml-0.5 text-gray-400 hover:text-gray-700"><X size={12} /></button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2">
+                <input ref={commentImageRef} type="file" accept="image/*" className="hidden" onChange={(e) => { setCommentImage(e.target.files?.[0] || null); e.target.value = ""; }} />
+                <input ref={commentAttachmentRef} type="file" className="hidden" onChange={(e) => { setCommentAttachment(e.target.files?.[0] || null); e.target.value = ""; }} />
+                <button
+                  type="button"
+                  onClick={() => commentImageRef.current?.click()}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  title="Прикрепить изображение"
+                >
+                  <ImageIcon size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => commentAttachmentRef.current?.click()}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  title="Прикрепить файл"
+                >
+                  <Paperclip size={18} />
+                </button>
                 <input
                   type="text"
                   value={newComment}
@@ -935,7 +1004,7 @@ export default function Home() {
                 />
                 <button
                   type="button"
-                  disabled={commentSending || !newComment.trim()}
+                  disabled={commentSending || (!newComment.trim() && !commentImage && !commentAttachment)}
                   onClick={handleCreateComment}
                   className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500 text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >

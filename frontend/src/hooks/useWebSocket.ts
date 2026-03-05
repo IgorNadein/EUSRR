@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { getWebSocketUrl } from '@/lib/url';
 
 interface WebSocketMessage {
   type: string;
@@ -51,8 +52,8 @@ export function useWebSocket({
     isConnectingRef.current = true;
 
     try {
-      // Простую логику построения URL
-      let wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9000/ws/';
+      // Используем функцию для построения WebSocket URL
+      let wsUrl = getWebSocketUrl();
 
       // // Если нет протокола - добавляем
       // if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {

@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText, ChevronRight, Reply, Pencil, Trash2, Smile } from "lucide-react";
+import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText, ChevronRight, ChevronDown, Reply, Pencil, Trash2, Smile } from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import type { Chat, Message, MessageAttachment } from "@/types/api";
 import { useUser } from "@/contexts/UserContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import ScrollableMessageList, { ScrollableMessageListInner } from "@/components/ScrollableMessageList";
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
+import { resolveMediaUrl } from "@/lib/url";
 
 function getUserFullName(lastName?: string, firstName?: string): string {
   return `${lastName || ""} ${firstName || ""}`.trim();
@@ -188,34 +187,6 @@ function normalizePossiblyEncodedUrl(value: string): string {
   }
 }
 
-function resolveAttachmentUrl(url?: string | null): string {
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-  if (/^https?:\/\//i.test(url)) return normalizePossiblyEncodedUrl(url);
-  if (url.startsWith("//")) return normalizePossiblyEncodedUrl(`https:${url}`);
-  if (url.startsWith("/") && BACKEND_URL) {
-    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
-  }
-  if (BACKEND_URL) {
-    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}/${url.replace(/^\/+/, "")}`);
-  }
-  return normalizePossiblyEncodedUrl(url);
-}
-
-function resolveAvatarUrl(url?: string | null): string {
-  if (!url) return "";
-  if (url.startsWith("data:")) return url;
-  if (/^https?:\/\//i.test(url)) return normalizePossiblyEncodedUrl(url);
-  if (url.startsWith("//")) return normalizePossiblyEncodedUrl(`https:${url}`);
-  if (url.startsWith("/") && BACKEND_URL) {
-    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}${url}`);
-  }
-  if (BACKEND_URL) {
-    return normalizePossiblyEncodedUrl(`${BACKEND_URL.replace(/\/$/, "")}/${url.replace(/^\/+/, "")}`);
-  }
-  return normalizePossiblyEncodedUrl(url);
-}
-
 function uniqueMessagesById(items: Message[]): Message[] {
   const map = new Map<number, Message>();
   items.forEach((msg) => {
@@ -293,6 +264,10 @@ export default function MessageDialogPage() {
   const [brokenMedia, setBrokenMedia] = useState<Record<number, boolean>>({});
   const [useOriginalImage, setUseOriginalImage] = useState<Record<number, boolean>>({});
   const [mediaPreview, setMediaPreview] = useState<{ type: "image" | "video"; src: string; name: string } | null>(null);
+  const [floatingDate, setFloatingDate] = useState<string | null>(null);
+  const [showFloatingDate, setShowFloatingDate] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const floatingDateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesViewportRef = useRef<ScrollableMessageListInner | null>(null);
@@ -466,13 +441,13 @@ export default function MessageDialogPage() {
       }
       else if (data.type === 'reaction_added') {
         // Реакция добавлена
-        if (data.reactions_summary) {
+        if (data.reactions_summary && data.message_id) {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
       }
       else if (data.type === 'reaction_removed') {
         // Реакция удалена
-        if (data.reactions_summary) {
+        if (data.reactions_summary && data.message_id) {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
       }
@@ -496,6 +471,9 @@ export default function MessageDialogPage() {
     return () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
+      }
+      if (floatingDateTimeoutRef.current) {
+        clearTimeout(floatingDateTimeoutRef.current);
       }
     };
   }, []);
@@ -697,7 +675,11 @@ export default function MessageDialogPage() {
     if (initialAnchorId) {
       const el = viewport.querySelector(`[data-message-id="${initialAnchorId}"]`) as HTMLElement | null;
       if (el) {
-        el.scrollIntoView({ block: "center" });
+        // Ручной scrollTop вместо scrollIntoView (iOS Safari не поддерживает scrollIntoView в overflow контейнерах)
+        const containerRect = viewport.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const offset = elRect.top - containerRect.top + viewport.scrollTop - viewport.clientHeight / 2 + elRect.height / 2;
+        viewport.scrollTop = Math.max(0, offset);
         initialScrolledRef.current = true;
         anchorScrollAttemptsRef.current = 0;
         setInitialAnchorId(null);
@@ -710,7 +692,10 @@ export default function MessageDialogPage() {
         const children = viewport.querySelectorAll("[data-message-id]");
         const byIndex = children.item(initialAnchorIndex) as HTMLElement | null;
         if (byIndex) {
-          byIndex.scrollIntoView({ block: "center" });
+          const containerRect = viewport.getBoundingClientRect();
+          const elRect = byIndex.getBoundingClientRect();
+          const offset = elRect.top - containerRect.top + viewport.scrollTop - viewport.clientHeight / 2 + elRect.height / 2;
+          viewport.scrollTop = Math.max(0, offset);
           initialScrolledRef.current = true;
           anchorScrollAttemptsRef.current = 0;
           setInitialAnchorId(null);
@@ -719,15 +704,15 @@ export default function MessageDialogPage() {
         }
       }
 
-      // Даем DOM время на отрисовку (максимум 3 попытки вместо 8)
-      if (anchorScrollAttemptsRef.current < 3) {
+      // Даем DOM время на отрисовку (максимум 5 попыток, iOS рендерит медленнее)
+      if (anchorScrollAttemptsRef.current < 5) {
         anchorScrollAttemptsRef.current += 1;
-        setTimeout(() => setAnchorRetryTick((v) => v + 1), 50);
+        setTimeout(() => setAnchorRetryTick((v) => v + 1), 100);
         return;
       }
       
-      // Якорь не найден после 3 попыток - скроллим вниз
-      console.warn('Anchor not found after 3 attempts, scrolling to bottom');
+      // Якорь не найден после 5 попыток - скроллим вниз
+      console.warn('Anchor not found after 5 attempts, scrolling to bottom');
       setInitialAnchorId(null);
       setInitialAnchorIndex(null);
     }
@@ -834,6 +819,40 @@ export default function MessageDialogPage() {
       if (!loadingNewer && !messagesLoading && hasMoreNewer && distanceFromBottom <= 120) {
         loadNewerMessages();
       }
+
+      // Обновление плавающей даты
+      const messageEls = viewport.querySelectorAll<HTMLElement>('[data-message-date]');
+      let topDate: string | null = null;
+      const viewportTop = viewport.getBoundingClientRect().top;
+
+      for (let i = 0; i < messageEls.length; i++) {
+        const el = messageEls[i];
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom > viewportTop) {
+          const isoDate = el.getAttribute('data-message-date');
+          if (isoDate) {
+            const d = new Date(isoDate);
+            if (!Number.isNaN(d.getTime())) {
+              topDate = formatDayDivider(d);
+            }
+          }
+          break;
+        }
+      }
+
+      if (topDate) {
+        setFloatingDate(topDate);
+        setShowFloatingDate(true);
+
+        if (floatingDateTimeoutRef.current) clearTimeout(floatingDateTimeoutRef.current);
+        floatingDateTimeoutRef.current = setTimeout(() => {
+          setShowFloatingDate(false);
+        }, 1500);
+      }
+
+      // Показ кнопки scroll-to-bottom когда не внизу
+      const isAtBottom = isNearBottom();
+      setShowScrollToBottom(!isAtBottom);
     };
 
     viewport.addEventListener("scroll", onScroll, { passive: true });
@@ -1016,6 +1035,27 @@ export default function MessageDialogPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // При открытии мобильной клавиатуры прокручиваем чат вниз
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    let prevHeight = vv.height;
+
+    const onResize = () => {
+      const newHeight = vv.height;
+      if (newHeight < prevHeight) {
+        requestAnimationFrame(() => {
+          messagesViewportRef.current?.scrollToBottom('auto');
+        });
+      }
+      prevHeight = newHeight;
+    };
+
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect(() => {
     const onGlobalWheel = (e: WheelEvent) => {
       if (e.defaultPrevented || mediaPreview) return;
@@ -1074,14 +1114,14 @@ export default function MessageDialogPage() {
           </div>
         )}
         
-        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+        <section className="flex h-full min-h-0 flex-col overflow-hidden lg:bg-white lg:rounded-2xl lg:p-5 lg:shadow-sm lg:ring-1 lg:ring-gray-100">
           {chat ? (
             <>
-              <header className="mb-4 flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 pb-4">
+              <header className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 pb-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
                     {getChatAvatar(chat, user?.id) ? (
-                      <img src={resolveAvatarUrl(getChatAvatar(chat, user?.id))} alt={getChatTitle(chat, user?.id)} className="h-full w-full object-cover" />
+                      <img src={resolveMediaUrl(getChatAvatar(chat, user?.id))} alt={getChatTitle(chat, user?.id)} className="h-full w-full object-cover" />
                     ) : (
                       getChatInitials(chat, user?.id)
                     )}
@@ -1108,13 +1148,24 @@ export default function MessageDialogPage() {
                 </Link>
               </header>
 
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                {/* Плавающая дата */}
+                {floatingDate && (
+                  <div
+                    className={`pointer-events-none absolute left-0 right-0 top-2 z-20 text-center transition-opacity duration-300 ${showFloatingDate ? 'opacity-100' : 'opacity-0'}`}
+                  >
+                    <span className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur">
+                      {floatingDate}
+                    </span>
+                  </div>
+                )}
+
                 <ScrollableMessageList
                   ref={messagesViewportRef}
                   autoScrollToBottom={true}
                   autoScrollToBottomOnMount={true}
                   scrollBehavior="smooth"
-                  className="min-h-0 flex-1 rounded-xl bg-gray-50 p-4"
+                  className="min-h-0 flex-1 bg-gray-50 p-3"
                 >
                   {messagesLoading ? (
                     <p className="text-center text-sm text-gray-500">Загрузка сообщений...</p>
@@ -1141,22 +1192,15 @@ export default function MessageDialogPage() {
                         const hasActions = canReply || canManage;
 
                         return (
-                          <div key={message.id} data-message-id={message.id} className="mb-3 overflow-x-hidden last:mb-0">
-                            {showDayDivider && currentDate ? (
-                              <div className="sticky top-2 z-10 mb-4 text-center">
-                                <span className="inline-block rounded-full bg-white/95 px-3 py-1 text-xs text-gray-500 shadow-sm ring-1 ring-gray-200 backdrop-blur">
-                                  {formatDayDivider(currentDate)}
-                                </span>
-                              </div>
-                            ) : null}
-
+                          <React.Fragment key={message.id}>
+                          <div data-message-id={message.id} data-message-date={currentDate?.toISOString() || ''} className="mb-3 last:mb-0">
                             <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                               {!isMine ? (
                                 <div className="relative mr-2 mt-1 h-8 w-8 shrink-0">
                                   <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-[10px] font-semibold text-white">
                                     {message.avatar || message.author?.avatar ? (
                                       <img
-                                        src={resolveAvatarUrl(message.avatar || message.author?.avatar || "")}
+                                        src={resolveMediaUrl(message.avatar || message.author?.avatar || "")}
                                         alt={message.author_name || "Автор"}
                                         className="h-full w-full object-cover"
                                       />
@@ -1242,7 +1286,7 @@ export default function MessageDialogPage() {
                                           {isImageAttachment(att) ? (
                                             brokenMedia[att.id] ? (
                                               <a
-                                                href={resolveAttachmentUrl(att.file_url)}
+                                                href={resolveMediaUrl(att.file_url)}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
@@ -1253,14 +1297,14 @@ export default function MessageDialogPage() {
                                             ) : (
                                               <button
                                                 type="button"
-                                                onClick={() => setMediaPreview({ type: "image", src: resolveAttachmentUrl(att.file_url), name: att.file_name })}
+                                                onClick={() => setMediaPreview({ type: "image", src: resolveMediaUrl(att.file_url), name: att.file_name })}
                                                 className="block w-full overflow-hidden rounded-lg"
                                               >
                                                 {(() => {
                                                   const hasThumbnail = Boolean(att.thumbnail);
                                                   const src = useOriginalImage[att.id]
-                                                    ? resolveAttachmentUrl(att.file_url)
-                                                    : resolveAttachmentUrl(att.thumbnail || att.file_url);
+                                                    ? resolveMediaUrl(att.file_url)
+                                                    : resolveMediaUrl(att.thumbnail || att.file_url);
 
                                                   return (
                                                 <img
@@ -1289,7 +1333,7 @@ export default function MessageDialogPage() {
                                           ) : isVideoAttachment(att) ? (
                                             brokenMedia[att.id] ? (
                                               <a
-                                                href={resolveAttachmentUrl(att.file_url)}
+                                                href={resolveMediaUrl(att.file_url)}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
@@ -1302,14 +1346,14 @@ export default function MessageDialogPage() {
                                             ) : (
                                               <button
                                                 type="button"
-                                                onClick={() => setMediaPreview({ type: "video", src: resolveAttachmentUrl(att.file_url), name: att.file_name })}
+                                                onClick={() => setMediaPreview({ type: "video", src: resolveMediaUrl(att.file_url), name: att.file_name })}
                                                 className="block w-full overflow-hidden rounded-lg"
                                               >
                                                 <video
                                                   preload="metadata"
                                                   playsInline
                                                   muted
-                                                  src={resolveAttachmentUrl(att.file_url)}
+                                                  src={resolveMediaUrl(att.file_url)}
                                                   width={att.width || undefined}
                                                   height={att.height || undefined}
                                                   className="max-h-64 w-full rounded-lg bg-black"
@@ -1325,7 +1369,7 @@ export default function MessageDialogPage() {
                                           ) : isAudioAttachment(att) ? (
                                             brokenMedia[att.id] ? (
                                               <a
-                                                href={resolveAttachmentUrl(att.file_url)}
+                                                href={resolveMediaUrl(att.file_url)}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
@@ -1345,12 +1389,12 @@ export default function MessageDialogPage() {
                                                   messagesViewportRef.current?.updateScrollPosition();
                                                 }}
                                               >
-                                                <source src={resolveAttachmentUrl(att.file_url)} type={att.mime_type || "audio/mpeg"} />
+                                                <source src={resolveMediaUrl(att.file_url)} type={att.mime_type || "audio/mpeg"} />
                                               </audio>
                                             )
                                           ) : (
                                             <a
-                                              href={resolveAttachmentUrl(att.file_url)}
+                                              href={resolveMediaUrl(att.file_url)}
                                               target="_blank"
                                               rel="noreferrer"
                                               className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm text-sky-700 hover:bg-white"
@@ -1397,13 +1441,34 @@ export default function MessageDialogPage() {
                               </div>
                             </div>
                           </div>
+                          </React.Fragment>
                         );
                       })}
                     </div>
                   )}
                 </ScrollableMessageList>
 
-                <div className="mt-3 shrink-0 border-t border-gray-100 bg-white pt-3">
+                {/* Кнопка прокрутки вниз */}
+                {showScrollToBottom && (
+                  <div className="pointer-events-auto absolute bottom-25 right-3 z-20 transition-opacity duration-300">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const container = messagesViewportRef.current?.containerRef?.current;
+                        if (container) {
+                          container.scrollTop = container.scrollHeight;
+                        }
+                      }}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg transition hover:bg-sky-600 active:scale-95"
+                      title="Вернуться к новым сообщениям"
+                      aria-label="Вернуться к новым сообщениям"
+                    >
+                      <ChevronDown size={18} />
+                    </button>
+                  </div>
+                )}
+
+                <div className="shrink-0 border-t border-gray-100 bg-white pt-3">
                   {/* Индикатор "печатает..." */}
                   {isTyping && (
                     <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 italic">
@@ -1471,7 +1536,7 @@ export default function MessageDialogPage() {
                     </div>
                   ) : null}
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1483,10 +1548,10 @@ export default function MessageDialogPage() {
                       type="button"
                       onClick={handlePickFiles}
                       disabled={Boolean(editingMessageId)}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
                       title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
                     >
-                      <Paperclip size={16} />
+                      <Paperclip size={15} />
                     </button>
                   <div className="relative w-full" data-composer-emoji="true">
                     <button
@@ -1497,7 +1562,7 @@ export default function MessageDialogPage() {
                         setActionsMenuAnchor(null);
                         setReactionPickerForMessageId(null);
                       }}
-                      className="absolute right-2 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-sky-600"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-sky-600"
                       title="Смайлы"
                     >
                       <Smile size={14} />
@@ -1535,19 +1600,19 @@ export default function MessageDialogPage() {
                           handleSend();
                         }
                       }}
-                      rows={2}
+                      rows={1}
                       placeholder={editingMessageId ? "Редактируйте сообщение..." : "Введите сообщение..."}
-                      className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                      className="w-full resize-none rounded-lg border border-gray-200 bg-white h-9 px-3 py-2 pr-10 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSend}
                     disabled={sending || (editingMessageId ? !messageText.trim() : (!messageText.trim() && attachedFiles.length === 0))}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white leading-none transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500 text-white leading-none transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
                     title={editingMessageId ? "Сохранить" : "Отправить"}
                   >
-                    <Send size={16} />
+                    <Send size={15} />
                   </button>
                   </div>
                 </div>
