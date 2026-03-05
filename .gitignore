@@ -109,6 +109,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.kali
 env/
 venv/
 ENV/
@@ -180,3 +181,4 @@ ooo.html
 # Test reports
 newman-report*.json
 *-report.json
+dump.rdb
