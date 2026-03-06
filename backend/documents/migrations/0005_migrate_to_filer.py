@@ -53,6 +53,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('documents', '0004_documentv2_documentacknowledgementv2'),
         ('filer', '0018_alter_file_options'),
+        ('easy_thumbnails', '0001_initial'),  # Нужно для создания таблиц thumbnails
     ]
 
     operations = [
