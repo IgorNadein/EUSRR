@@ -73,7 +73,8 @@ class Migration(migrations.Migration):
         ),
         
         # Шаг 2: Мигрировать данные из file в filer_file
-        migrations.RunPython(migrate_files_to_filer, reverse_migration),
+        # ВРЕМЕННО ОТКЛЮЧЕНО: вызывает pending trigger events
+        # migrations.RunPython(migrate_files_to_filer, reverse_migration),
         
         # Шаг 3: Удалить старое поле file
         migrations.RemoveField(
