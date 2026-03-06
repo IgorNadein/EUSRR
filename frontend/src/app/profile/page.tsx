@@ -6,20 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/AppShell";
 import { useUser } from "@/contexts/UserContext";
 import { apiClient } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/url";
 import { Camera, Pencil, Save, X } from "lucide-react";
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://corp.robotail.pro";
-
-function resolveMediaUrl(url?: string | null): string {
-	const raw = (url || "").trim();
-	if (!raw) return "";
-	if (raw.startsWith("data:")) return raw;
-	if (/^https?:\/\//i.test(raw)) return raw;
-	if (raw.startsWith("//")) return `https:${raw}`;
-	const base = BACKEND_URL.replace(/\/$/, "");
-	if (raw.startsWith("/")) return `${base}${raw}`;
-	return `${base}/${raw.replace(/^\/+/, "")}`;
-}
 
 function formatDate(value?: string): string {
 	if (!value) return "";

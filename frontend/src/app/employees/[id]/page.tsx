@@ -6,24 +6,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "../../../components/AppShell";
 import { apiClient } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/url";
 import type { User } from "@/types/api";
-
-const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || "").trim();
-
-function resolveMediaUrl(url?: string | null): string {
-  const raw = (url || "").trim();
-  if (!raw) return "";
-  if (raw.startsWith("data:")) return raw;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (raw.startsWith("/")) return raw;
-
-  if (BACKEND_URL) {
-    const base = BACKEND_URL.replace(/\/$/, "");
-    return `${base}/${raw.replace(/^\/+/, "")}`;
-  }
-
-  return `/${raw.replace(/^\/+/, "")}`;
-}
 
 export default function EmployeeDetailPage() {
   const params = useParams<{ id: string }>();

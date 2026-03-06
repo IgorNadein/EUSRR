@@ -3,29 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { AppShell } from "../../../components/AppShell";
 import { apiClient } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/url";
 import type { User } from "@/types/api";
-
-const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || "").trim();
-
-function resolveMediaUrl(url?: string | null): string {
-  const raw = (url || "").trim();
-  if (!raw) return "";
-  if (raw.startsWith("data:")) return raw;
-  if (/^https?:\/\//i.test(raw)) return raw;
-
-  // Приоритет same-origin: для /media/... в dev/proxy это самый надёжный путь.
-  if (raw.startsWith("/")) return raw;
-
-  if (BACKEND_URL) {
-    const base = BACKEND_URL.replace(/\/$/, "");
-    return `${base}/${raw.replace(/^\/+/, "")}`;
-  }
-
-  return `/${raw.replace(/^\/+/, "")}`;
-}
 
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
@@ -73,7 +54,7 @@ export default function UserDetailPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <Link href="/users" className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+        <Link href="/employees" className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
           ← К списку пользователей
         </Link>
 
@@ -91,13 +72,10 @@ export default function UserDetailPage() {
             <div className="flex items-start gap-4">
               <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-lg font-semibold text-white">
                 {avatarUrl && !avatarFailed ? (
-                  <Image
+                  <img
                     src={avatarUrl}
                     alt={fullName}
-                    width={64}
-                    height={64}
                     className="h-full w-full object-cover"
-                    unoptimized
                     onError={() => setAvatarFailed(true)}
                   />
                 ) : (
@@ -110,8 +88,8 @@ export default function UserDetailPage() {
                 <p className="mt-1 text-sm text-gray-600">Должность: {person.position?.name || "—"}</p>
                 <p className="mt-1 text-sm text-gray-600">Email: {person.email || "—"}</p>
                 <p className="mt-1 text-sm text-gray-600">Телефон: {person.phone_number || "—"}</p>
-                <p className="mt-1 text-sm text-gray-600">Telegram: {person.telegram || "—"}</p>
-                <p className="mt-1 text-sm text-gray-600">WhatsApp: {person.whatsapp || "—"}</p>
+                {person.telegram ? <p className="mt-1 text-sm text-gray-600">Telegram: {person.telegram}</p> : null}
+                {person.whatsapp ? <p className="mt-1 text-sm text-gray-600">WhatsApp: {person.whatsapp}</p> : null}
                 {person.wechat ? <p className="mt-1 text-sm text-gray-600">WeChat: {person.wechat}</p> : null}
               </div>
             </div>

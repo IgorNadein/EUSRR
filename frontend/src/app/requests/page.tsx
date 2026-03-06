@@ -4,10 +4,10 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { canManageRequests, canProcessRequests } from "@/lib/permissions";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Request, RequestComment, User, Department } from "@/types/api";
-import { Check, FileSignature, MessageSquare, Plus, Search, X } from "lucide-react";
+import { Ban, Check, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X } from "lucide-react";
 
 type RequestFormState = {
   type: string;
@@ -111,6 +111,8 @@ export default function RequestsPage() {
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -185,14 +187,27 @@ export default function RequestsPage() {
   }, [view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter]);
 
   useEffect(() => {
+    async function loadAllPages<T extends { id: number }>(fetcher: (params: any) => Promise<any>): Promise<T[]> {
+      const all: T[] = [];
+      let page = 1;
+      while (true) {
+        const response = await fetcher({ page, limit: 200 });
+        const results = response.results || [];
+        all.push(...results);
+        if (!response.next) break;
+        page++;
+      }
+      return all;
+    }
+
     async function loadLookups() {
       try {
-        const [employeesResponse, departmentsResponse] = await Promise.all([
-          apiClient.getEmployees({ limit: 200 }),
-          apiClient.getDepartments({ limit: 200 }),
+        const [allEmployees, allDepartments] = await Promise.all([
+          loadAllPages<User>((p) => apiClient.getEmployees(p)),
+          loadAllPages<Department>((p) => apiClient.getDepartments(p)),
         ]);
-        setEmployees(employeesResponse.results || []);
-        setDepartments(departmentsResponse.results || []);
+        setEmployees(allEmployees);
+        setDepartments(allDepartments);
       } catch {
         setEmployees([]);
         setDepartments([]);
@@ -254,18 +269,20 @@ export default function RequestsPage() {
         return;
       }
 
-      const payload = {
+      const payload: Record<string, any> = {
         type: form.type,
         title: form.title,
         date_from: form.date_from || null,
         date_to: form.date_to || null,
         comment: form.comment,
-        department_ids: form.department_ids,
-        recipient_ids: form.recipient_ids,
-        cc_user_ids: form.cc_user_ids,
         sent_to_all_department: form.sent_to_all_department,
-        attachment: form.attachment,
       };
+
+      // Arrays need to be sent as separate FormData entries
+      if (form.department_ids.length > 0) payload.department_ids = form.department_ids;
+      if (form.recipient_ids.length > 0) payload.recipient_ids = form.recipient_ids;
+      if (form.cc_user_ids.length > 0) payload.cc_user_ids = form.cc_user_ids;
+      if (form.attachment) payload.attachment = form.attachment;
 
       if (mode === "create") {
         await apiClient.createRequest(payload, saveAs);
@@ -283,7 +300,14 @@ export default function RequestsPage() {
       setRequests(response.results || []);
       setNextPage(extractNextPage(response.next));
     } catch (e: any) {
-      setActionError(String(e?.message || "Не удалось сохранить заявление"));
+      const raw = String(e?.message || "Не удалось сохранить заявление");
+      let readable = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        const messages = Object.values(parsed).flat();
+        readable = messages.join(". ");
+      } catch {}
+      setActionError(readable);
     } finally {
       setBusyKey(null);
     }
@@ -406,155 +430,87 @@ export default function RequestsPage() {
 
   const isFinal = (status?: string) => ["approved", "rejected", "cancelled"].includes(String(status || "").toLowerCase());
 
-  const RequestEditor = ({ mode }: { mode: "create" | "edit" }) => (
-    <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <select
-          value={form.type}
-          onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* ---- Searchable multi-select dropdown ---- */
+  const SearchableSelect = ({ label, items, selectedIds, onToggle, placeholder }: {
+    label: string;
+    items: { id: number; name: string }[];
+    selectedIds: number[];
+    onToggle: (id: number) => void;
+    placeholder?: string;
+  }) => {
+    const [open, setOpen] = useState(false);
+    const [q, setQ] = useState("");
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      const handler = (e: MouseEvent) => {
+        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
+    const selectedNames = items.filter((i) => selectedIds.includes(i.id)).map((i) => i.name);
+
+    return (
+      <div ref={ref} className="relative">
+        <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-800"
         >
-          <option value="">Выберите тип</option>
-          {Object.entries(requestTypeLabels).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-
-        <input
-          value={form.title}
-          onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-          placeholder="Тема"
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-
-        <input
-          type="date"
-          value={form.date_from}
-          onChange={(e) => setForm((p) => ({ ...p, date_from: e.target.value }))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-
-        <input
-          type="date"
-          value={form.date_to}
-          onChange={(e) => setForm((p) => ({ ...p, date_to: e.target.value }))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-
-        <select
-          multiple
-          value={form.department_ids.map(String)}
-          onChange={(e) => {
-            const values = Array.from(e.target.selectedOptions).map((o) => Number(o.value));
-            setForm((p) => ({ ...p, department_ids: values }));
-          }}
-          className="h-28 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          multiple
-          value={form.recipient_ids.map(String)}
-          onChange={(e) => {
-            const values = Array.from(e.target.selectedOptions).map((o) => Number(o.value));
-            setForm((p) => ({ ...p, recipient_ids: values }));
-          }}
-          className="h-28 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          {employees
-            .filter((emp) => !user?.id || emp.id !== user.id)
-            .map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {displayUserName(emp)}
-              </option>
-            ))}
-        </select>
-
-        <select
-          multiple
-          value={form.cc_user_ids.map(String)}
-          onChange={(e) => {
-            const values = Array.from(e.target.selectedOptions).map((o) => Number(o.value));
-            setForm((p) => ({ ...p, cc_user_ids: values }));
-          }}
-          className="h-28 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          {employees
-            .filter((emp) => !user?.id || emp.id !== user.id)
-            .map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {displayUserName(emp)}
-              </option>
-            ))}
-        </select>
-
-        <textarea
-          value={form.comment}
-          onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
-          placeholder="Комментарий"
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm sm:col-span-2"
-          rows={3}
-        />
-
-        <input
-          type="file"
-          onChange={(e) => setForm((p) => ({ ...p, attachment: e.target.files?.[0] || null }))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm sm:col-span-2"
-        />
+          <span className="truncate">
+            {selectedNames.length > 0 ? selectedNames.join(", ") : <span className="text-gray-400">{placeholder || "Выбрать..."}</span>}
+          </span>
+          <ChevronDown size={14} className={`ml-2 shrink-0 text-gray-400 transition ${open ? "rotate-180" : ""}`} />
+        </button>
+        {open && (
+          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+            <div className="border-b border-gray-100 p-2">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Поиск..."
+                className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm focus:border-sky-400 focus:outline-none"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-40 overflow-y-auto p-1">
+              {filtered.length === 0 ? (
+                <p className="px-2 py-1.5 text-xs text-gray-400">Ничего не найдено</p>
+              ) : (
+                filtered.map((item) => (
+                  <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => onToggle(item.id)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
+    );
+  };
 
-      <label className="mt-2 flex items-center gap-2 text-sm text-gray-700">
-        <input
-          type="checkbox"
-          checked={form.sent_to_all_department}
-          onChange={(e) => setForm((p) => ({ ...p, sent_to_all_department: e.target.checked }))}
-        />
-        Отправить всем сотрудникам выбранных отделов
-      </label>
+  const modalMode: "create" | "edit" = editingRequestId ? "edit" : "create";
+  const isModalOpen = createOpen || editingRequestId !== null;
 
-      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (mode === "create") {
-              setCreateOpen(false);
-            } else {
-              setEditingRequestId(null);
-            }
-            resetForm();
-          }}
-          className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
-        >
-          Отмена
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleCreateOrUpdate(mode, "draft")}
-          disabled={busyKey !== null}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-        >
-          Сохранить как черновик
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleCreateOrUpdate(mode, "submitted")}
-          disabled={busyKey !== null}
-          className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60"
-        >
-          {mode === "create" ? "Создать" : "Сохранить"}
-        </button>
-      </div>
-    </div>
-  );
+  const closeModal = () => {
+    setCreateOpen(false);
+    setEditingRequestId(null);
+    resetForm();
+    setActionError(null);
+  };
 
   return (
     <AppShell>
@@ -574,11 +530,11 @@ export default function RequestsPage() {
             <button
               type="button"
               onClick={() => {
-                setCreateOpen((v) => !v);
                 setEditingRequestId(null);
+                resetForm();
                 setActionError(null);
                 setActionSuccess(null);
-                resetForm();
+                setCreateOpen(true);
               }}
               className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600"
             >
@@ -589,55 +545,91 @@ export default function RequestsPage() {
           {actionError ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p> : null}
           {actionSuccess ? <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{actionSuccess}</p> : null}
 
-          {createOpen ? <RequestEditor mode="create" /> : null}
-
-          <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <select value={view} onChange={(e) => setView(e.target.value as "" | "mine" | "addressed")} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-              <option value="">Все доступные</option>
-              <option value="mine">Мои заявления</option>
-              <option value="addressed">Адресованные мне</option>
-            </select>
-
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-              <option value="">Любой тип</option>
-              {Object.entries(requestTypeLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-              <option value="">Любой статус</option>
-              {Object.entries(statusMeta).map(([value, meta]) => (
-                <option key={value} value={value}>
-                  {meta.label}
-                </option>
-              ))}
-            </select>
-
-            <select value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-              <option value="">Любой сотрудник</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {displayUserName(emp)}
-                </option>
-              ))}
-            </select>
-
-            <input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800" />
-            <input type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800" />
+          <div className="mb-4 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск по заявлениям"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+              />
+            </div>
+            <button
+              type="button"
+              title="Фильтры"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className={`relative inline-flex items-center justify-center rounded-lg border p-2.5 transition ${
+                filtersOpen
+                  ? "border-sky-400 bg-sky-50 text-sky-600"
+                  : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100"
+              }`}
+            >
+              <Filter size={16} />
+              {(view || typeFilter || statusFilter || employeeFilter || dateFromFilter || dateToFilter) && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                  {[view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter].filter(Boolean).length}
+                </span>
+              )}
+            </button>
           </div>
 
-          <div className="relative mb-4">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск по заявлениям"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-            />
-          </div>
+          {filtersOpen && (
+            <div className="mb-3 flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <select value={view} onChange={(e) => setView(e.target.value as "" | "mine" | "addressed")} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                <option value="">Все заявления</option>
+                <option value="mine">Мои заявления</option>
+                <option value="addressed">Адресованные мне</option>
+              </select>
+
+              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                <option value="">Тип заявления</option>
+                {Object.entries(requestTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                <option value="">Статус заявления</option>
+                {Object.entries(statusMeta).map(([value, meta]) => (
+                  <option key={value} value={value}>
+                    {meta.label}
+                  </option>
+                ))}
+              </select>
+
+              <select value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                <option value="">Все сотрудники</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {displayUserName(emp)}
+                  </option>
+                ))}
+              </select>
+
+              <input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800" />
+              <input type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800" />
+
+              {(view || typeFilter || statusFilter || employeeFilter || dateFromFilter || dateToFilter) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView("");
+                    setTypeFilter("");
+                    setStatusFilter("");
+                    setEmployeeFilter("");
+                    setDateFromFilter("");
+                    setDateToFilter("");
+                  }}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Очистить фильтры
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="space-y-3">
             {filteredRequests.length === 0 ? (
@@ -656,12 +648,11 @@ export default function RequestsPage() {
                 const approverLink = userProfileLink(item.approver || item.assigned_to);
                 const requestTypeLabel = requestTypeLabels[String(item.type || item.request_type || "")] || String(item.type || item.request_type || "Другое");
                 const canProcessThis = Boolean(
-                  canProcess &&
-                    statusKey === "pending" &&
-                    item.is_recipient &&
+                  statusKey === "pending" &&
                     requestAuthor?.id &&
                     user?.id &&
-                    requestAuthor.id !== user.id
+                    requestAuthor.id !== user.id &&
+                    (canManage || (canProcess && item.is_recipient))
                 );
                 const isAuthor = Boolean(requestAuthor?.id && user?.id && requestAuthor.id === user.id);
                 const canEditThis = isAuthor && !isFinal(statusKey);
@@ -675,6 +666,28 @@ export default function RequestsPage() {
 
                 return (
                   <article key={item.id} className="rounded-xl border border-gray-100 bg-white p-4 transition hover:bg-gray-50">
+                    <div className="mb-2 flex items-center gap-2">
+                      {authorLink ? (
+                        <Link href={authorLink} className="flex items-center gap-2 group">
+                          {requestAuthor?.avatar ? (
+                            <img src={requestAuthor.avatar} alt={authorName} className="h-8 w-8 rounded-full object-cover ring-1 ring-gray-200" />
+                          ) : (
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
+                              {(requestAuthor?.first_name?.[0] || requestAuthor?.last_name?.[0] || "?").toUpperCase()}
+                            </span>
+                          )}
+                          <span className="text-sm font-medium text-gray-800 group-hover:text-sky-700">{authorName}</span>
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500 ring-1 ring-gray-200">
+                            ?
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">{authorName}</span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-gray-900">{item.display_title || item.title || "Без заголовка"}</p>
@@ -686,77 +699,170 @@ export default function RequestsPage() {
                       </span>
                     </div>
 
-                    <p className="mt-3 text-sm text-gray-700">{item.comment || item.description || "—"}</p>
+                    {(item.comment || item.description) ? (
+                      <p className="mt-3 text-sm text-gray-700">{item.comment || item.description}</p>
+                    ) : null}
 
-                    <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-500 sm:grid-cols-2 lg:grid-cols-3">
-                      <p>
-                        Автор:{" "}
-                        {authorLink ? (
-                          <Link href={authorLink} className="text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800">
-                            {authorName}
+                    <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                      <span>Решающий:</span>
+                      {(() => {
+                        const approver = item.approver || item.assigned_to;
+                        const aLink = userProfileLink(approver);
+                        const aName = displayUserName(approver);
+                        if (!approver) return <span className="text-gray-400">—</span>;
+                        const avatarEl = approver.avatar ? (
+                          <img src={approver.avatar} alt={aName} className="h-6 w-6 rounded-full object-cover ring-1 ring-gray-200" />
+                        ) : (
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                            {(approver.first_name?.[0] || approver.last_name?.[0] || "?").toUpperCase()}
+                          </span>
+                        );
+                        return aLink ? (
+                          <Link href={aLink} className="flex items-center gap-1.5 group">
+                            {avatarEl}
+                            <span className="font-medium text-gray-800 group-hover:text-sky-700">{aName}</span>
                           </Link>
                         ) : (
-                          <span>{authorName}</span>
-                        )}
-                      </p>
-                      <p>
-                        Решение:{" "}
-                        {approverLink && item.approver ? (
-                          <Link href={approverLink} className="text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800">
-                            {approverName}
-                          </Link>
-                        ) : (
-                          <span>{item.approver ? approverName : "—"}</span>
-                        )}
-                      </p>
-                      <p>Получатели: {item.recipient_count ?? item.recipients?.length ?? 0}</p>
-                      <p>В копии: {item.cc_count ?? item.cc_users?.length ?? 0}</p>
+                          <div className="flex items-center gap-1.5">
+                            {avatarEl}
+                            <span className="font-medium text-gray-800">{aName}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-1.5 text-xs text-gray-500">
+                      <div className="flex items-center gap-1.5">
+                        <span>Получатели:</span>
+                        {(item.recipients && item.recipients.length > 0) ? item.recipients.map((r) => {
+                          const rLink = userProfileLink(r);
+                          const rName = displayUserName(r);
+                          const avatarEl = r.avatar ? (
+                            <img src={r.avatar} alt={rName} className="h-6 w-6 rounded-full object-cover ring-1 ring-gray-200" />
+                          ) : (
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                              {(r.first_name?.[0] || r.last_name?.[0] || "?").toUpperCase()}
+                            </span>
+                          );
+                          return (
+                            <span key={r.id} className="inline-flex flex-1 items-center justify-between">
+                              <span className="inline-flex items-center gap-1">
+                                {rLink ? (
+                                  <Link href={rLink} className="flex items-center gap-1 group" title={rName}>
+                                    {avatarEl}
+                                    <span className="font-medium text-gray-800 group-hover:text-sky-700">{rName}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="flex items-center gap-1" title={rName}>
+                                    {avatarEl}
+                                    <span className="font-medium text-gray-800">{rName}</span>
+                                  </span>
+                                )}
+                              </span>
+                              
+                            </span>
+                          );
+                        }) : <span className="text-gray-400">{item.recipient_count ?? 0}</span>}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>В копии:</span>
+                        {(item.cc_users && item.cc_users.length > 0) ? item.cc_users.map((c) => {
+                          const cLink = userProfileLink(c);
+                          const cName = displayUserName(c);
+                          const avatarEl = c.avatar ? (
+                            <img src={c.avatar} alt={cName} className="h-6 w-6 rounded-full object-cover ring-1 ring-gray-200" />
+                          ) : (
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                              {(c.first_name?.[0] || c.last_name?.[0] || "?").toUpperCase()}
+                            </span>
+                          );
+                          return cLink ? (
+                            <Link key={c.id} href={cLink} className="flex items-center gap-1 group" title={cName}>
+                              {avatarEl}
+                              <span className="font-medium text-gray-800 group-hover:text-sky-700">{cName}</span>
+                            </Link>
+                          ) : (
+                            <div key={c.id} className="flex items-center gap-1" title={cName}>
+                              {avatarEl}
+                              <span className="font-medium text-gray-800">{cName}</span>
+                            </div>
+                          );
+                        }) : <span className="text-gray-400">—</span>}
+                      </div>
                       <p>Период: {item.date_from ? formatDate(item.date_from) : "—"}{item.date_to ? ` — ${formatDate(item.date_to)}` : ""}</p>
                       <p>Создано: {formatDate(item.created_at)}</p>
                       <p>Обновлено: {formatDate(item.updated_at)}</p>
-                      {departmentLabels ? <p className="sm:col-span-2 lg:col-span-3">Отделы: {departmentLabels}</p> : null}
+                      {departmentLabels ? <p>Отделы: {departmentLabels}</p> : null}
+
+                      {(item.attachment || item.attachment_url) && (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const url = item.attachment_url || item.attachment || "";
+                              const name = decodeURIComponent(url.split("/").pop() || "Вложение");
+                              setAttachmentPreview({ url, name });
+                            }}
+                            className="inline-flex items-center gap-1.5 min-w-0 max-w-full text-sky-700 hover:text-sky-800"
+                          >
+                            <Paperclip size={13} className="shrink-0" />
+                            <span className="truncate font-medium underline decoration-sky-300 underline-offset-2">
+                              {(() => {
+                                const url = item.attachment_url || item.attachment || "";
+                                return decodeURIComponent(url.split("/").pop() || "Вложение");
+                              })()}
+                            </span>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {canProcessThis ? (
-                        <>
-                          <button type="button" onClick={() => handleApprove(item.id)} disabled={busyKey === `approve-${item.id}`} className="inline-flex items-center gap-1 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-60">
-                            <Check size={14} /> Одобрить
-                          </button>
-                          <button type="button" onClick={() => handleReject(item.id)} disabled={busyKey === `reject-${item.id}`} className="inline-flex items-center gap-1 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-600 disabled:opacity-60">
-                            <X size={14} /> Отклонить
-                          </button>
-                        </>
-                      ) : null}
-
-                      {canEditThis ? (
-                        <button type="button" onClick={() => openEdit(item)} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                          Редактировать
-                        </button>
-                      ) : null}
-
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
                       {canCancelThis ? (
-                        <button type="button" onClick={() => handleCancel(item.id)} disabled={busyKey === `cancel-${item.id}`} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">
-                          Отменить
-                        </button>
-                      ) : null}
-
-                      {canDeleteThis ? (
-                        <button type="button" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60">
-                          Удалить
+                        <button type="button" title="Отменить" onClick={() => handleCancel(item.id)} disabled={busyKey === `cancel-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-60">
+                          <Ban size={15} />
                         </button>
                       ) : null}
 
                       <button
                         type="button"
+                        title={`Комментарии (${item.comments_count ?? comments.length})`}
                         onClick={() => toggleComments(item.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        className="relative inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50"
                       >
-                        <MessageSquare size={14} /> Комментарии ({item.comments_count ?? comments.length})
+                        <MessageSquare size={15} />
+                        {(item.comments_count ?? comments.length) > 0 && (
+                          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                            {item.comments_count ?? comments.length}
+                          </span>
+                        )}
                       </button>
-                    </div>
 
-                    {editingRequestId === item.id ? <RequestEditor mode="edit" /> : null}
+                      {canEditThis ? (
+                        <button type="button" title="Редактировать" onClick={() => openEdit(item)} className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50">
+                          <Pencil size={15} />
+                        </button>
+                      ) : null}
+
+                      {canDeleteThis ? (
+                        <button type="button" title="Удалить" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 disabled:opacity-60">
+                          <Trash2 size={15} />
+                        </button>
+                      ) : null}
+
+                      {canProcessThis && (
+                                <span className="inline-flex items-center gap-10 ml-auto">
+                                  <button type="button" title={`Одобрить`} onClick={() => handleApprove(item.id)} disabled={busyKey === `approve-${item.id}`} className="text-emerald-500 hover:text-emerald-600 disabled:opacity-60">
+                                    <ThumbsUp size={30} />
+                                  </button>
+                                  <button type="button" title={`Отклонить`} onClick={() => handleReject(item.id)} disabled={busyKey === `reject-${item.id}`} className="text-rose-500 hover:text-rose-600 disabled:opacity-60">
+                                    <ThumbsDown size={30} />
+                                  </button>
+                                </span>
+                              )}
+
+                    </div>
+                    
 
                     {commentsOpen ? (
                       <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -823,6 +929,263 @@ export default function RequestsPage() {
             </div>
           ) : null}
         </section>
+      )}
+
+      {/* ===== Modal create/edit ===== */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900">
+                {modalMode === "create" ? "Новое заявление" : "Редактировать заявление"}
+              </h2>
+              <button type="button" onClick={closeModal} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            {actionError ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p> : null}
+
+            <div className="flex flex-col gap-3">
+              {/* Тема */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Тема заявления</label>
+                <input
+                  value={form.title}
+                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                  placeholder="Тема заявления"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                />
+              </div>
+
+              {/* Тип */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Тип заявления</label>
+                <select
+                  value={form.type}
+                  onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                >
+                  <option value="">Выберите тип</option>
+                  {Object.entries(requestTypeLabels).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Период */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Период</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={form.date_from}
+                    onChange={(e) => setForm((p) => ({ ...p, date_from: e.target.value }))}
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  />
+                  <span className="text-xs text-gray-400">—</span>
+                  <input
+                    type="date"
+                    value={form.date_to}
+                    onChange={(e) => setForm((p) => ({ ...p, date_to: e.target.value }))}
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  />
+                </div>
+              </div>
+
+              {/* Решающий (recipients) */}
+              <SearchableSelect
+                label="Решающий"
+                placeholder="Выберите решающего..."
+                items={employees.filter((emp) => !user?.id || emp.id !== user.id).map((emp) => ({ id: emp.id, name: displayUserName(emp) }))}
+                selectedIds={form.recipient_ids}
+                onToggle={(id) => setForm((p) => ({
+                  ...p,
+                  recipient_ids: p.recipient_ids.includes(id) ? p.recipient_ids.filter((x) => x !== id) : [...p.recipient_ids, id],
+                }))}
+              />
+
+              {/* В копии */}
+              <SearchableSelect
+                label="В копии"
+                placeholder="Выберите пользователей..."
+                items={employees.filter((emp) => !user?.id || emp.id !== user.id).map((emp) => ({ id: emp.id, name: displayUserName(emp) }))}
+                selectedIds={form.cc_user_ids}
+                onToggle={(id) => setForm((p) => ({
+                  ...p,
+                  cc_user_ids: p.cc_user_ids.includes(id) ? p.cc_user_ids.filter((x) => x !== id) : [...p.cc_user_ids, id],
+                }))}
+              />
+
+              {/* Отдел */}
+              <SearchableSelect
+                label="Отдел"
+                placeholder="Выберите отдел..."
+                items={departments.map((d) => ({ id: d.id, name: d.name }))}
+                selectedIds={form.department_ids}
+                onToggle={(id) => setForm((p) => ({
+                  ...p,
+                  department_ids: p.department_ids.includes(id) ? p.department_ids.filter((x) => x !== id) : [...p.department_ids, id],
+                }))}
+              />
+
+              {/* Описание */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Описание</label>
+                <textarea
+                  value={form.comment}
+                  onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
+                  placeholder="Описание заявления"
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                />
+              </div>
+
+              {/* Прикрепить файл */}
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file) {
+                      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                      if (!["pdf", "jpg", "jpeg", "png"].includes(ext)) {
+                        setActionError(`Файл «${file.name}» не поддерживается. Разрешены: PDF, JPG, PNG.`);
+                        e.target.value = "";
+                        return;
+                      }
+                    }
+                    setForm((p) => ({ ...p, attachment: file }));
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  <Paperclip size={14} />
+                  {form.attachment ? form.attachment.name : "Прикрепить файл"}
+                </button>
+              </div>
+
+              {/* Чекбокс */}
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.sent_to_all_department}
+                  onChange={(e) => setForm((p) => ({ ...p, sent_to_all_department: e.target.checked }))}
+                  className="rounded border-gray-300"
+                />
+                Отправить всем сотрудникам выбранных отделов
+              </label>
+            </div>
+
+            {/* Кнопки */}
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-4">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
+              >
+                Отмена
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCreateOrUpdate(modalMode, "draft")}
+                disabled={busyKey !== null}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                Сохранить как черновик
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCreateOrUpdate(modalMode, "submitted")}
+                disabled={busyKey !== null}
+                className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60"
+              >
+                {modalMode === "create" ? "Создать" : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ===== Attachment preview modal ===== */}
+      {attachmentPreview && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setAttachmentPreview(null); }}>
+          <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+              <p className="truncate text-sm font-medium text-gray-800">{attachmentPreview.name}</p>
+              <div className="flex items-center gap-2">
+                <a
+                  href={attachmentPreview.url}
+                  download
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Скачать
+                </a>
+                <button type="button" onClick={() => setAttachmentPreview(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {(() => {
+                const url = attachmentPreview.url;
+                const ext = url.split(".").pop()?.toLowerCase() || "";
+                const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"];
+                const videoExts = ["mp4", "webm", "ogg", "mov"];
+                const audioExts = ["mp3", "wav", "ogg", "aac"];
+                const pdfExts = ["pdf"];
+
+                const fallback = (
+                  <div className="flex flex-col items-center gap-3 py-12 text-center">
+                    <FileSignature size={40} className="text-gray-300" />
+                    <p className="text-sm text-gray-500">{attachmentPreview.name}</p>
+                    <a
+                      href={url}
+                      download
+                      className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600"
+                    >
+                      Скачать файл
+                    </a>
+                  </div>
+                );
+
+                if (imageExts.includes(ext)) {
+                  return <img src={url} alt={attachmentPreview.name} className="mx-auto max-h-[70vh] rounded-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).parentElement!.querySelector(".fallback")?.classList.remove("hidden"); }} />;
+                }
+                if (videoExts.includes(ext)) {
+                  return <video src={url} controls className="mx-auto max-h-[70vh] rounded-lg" onError={(e) => { (e.target as HTMLVideoElement).style.display = "none"; (e.target as HTMLVideoElement).parentElement!.querySelector(".fallback")?.classList.remove("hidden"); }} />;
+                }
+                if (audioExts.includes(ext)) {
+                  return <audio src={url} controls className="mx-auto mt-8" onError={(e) => { (e.target as HTMLAudioElement).style.display = "none"; (e.target as HTMLAudioElement).parentElement!.querySelector(".fallback")?.classList.remove("hidden"); }} />;
+                }
+                if (pdfExts.includes(ext)) {
+                  return fallback;
+                }
+                return fallback;
+              })()}
+              <div className="fallback hidden">
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <FileSignature size={40} className="text-gray-300" />
+                  <p className="text-sm text-gray-500">{attachmentPreview.name}</p>
+                  <a
+                    href={attachmentPreview.url}
+                    download
+                    className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600"
+                  >
+                    Скачать файл
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </AppShell>
   );

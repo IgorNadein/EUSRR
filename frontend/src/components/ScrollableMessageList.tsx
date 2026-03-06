@@ -303,30 +303,12 @@ export class ScrollableMessageListInner extends Component<ScrollableMessageListP
    */
   scrollToEnd = (scrollBehavior: ScrollBehavior = this.props.scrollBehavior || 'smooth') => {
     const container = this.containerRef.current;
-    const scrollPoint = this.scrollPointRef.current;
-    
-    if (!container || !scrollPoint) return;
+    if (!container) return;
 
-    // Используем getBoundingClientRect для точного позиционирования
-    const parentRect = container.getBoundingClientRect();
-    const childRect = scrollPoint.getBoundingClientRect();
-
-    // Вычисляем offset относительно родителя
-    const scrollOffset = childRect.top + container.scrollTop - parentRect.top;
-
-    if (container.scrollBy) {
-      container.scrollBy({
-        top: scrollOffset,
-        behavior: scrollBehavior,
-      });
-    } else {
-      // Fallback для старых браузеров
-      container.scrollTop = scrollOffset;
-    }
+    // Принудительно ставим scrollTop на максимум — самый надёжный способ
+    container.scrollTop = container.scrollHeight;
 
     this.lastClientHeight = container.clientHeight;
-
-    // Блокируем автоматический скролл Chrome на мобильных
     this.noScroll = true;
   };
 

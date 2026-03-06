@@ -566,14 +566,19 @@ class ApiClient {
     async createRequest(data: any, saveAs?: 'draft' | 'submitted'): Promise<any> {
         const formData = new FormData();
 
-        // Добавляем все поля из data
         Object.keys(data).forEach((key) => {
             if (key === 'attachments' && Array.isArray(data[key])) {
                 data[key].forEach((file: File) => {
                     formData.append('attachments', file);
                 });
+            } else if (key === 'attachment' && data[key] instanceof File) {
+                formData.append('attachment', data[key]);
+            } else if (Array.isArray(data[key])) {
+                data[key].forEach((val: any) => {
+                    formData.append(key, String(val));
+                });
             } else if (data[key] !== null && data[key] !== undefined) {
-                formData.append(key, data[key]);
+                formData.append(key, String(data[key]));
             }
         });
 
@@ -594,7 +599,12 @@ class ApiClient {
         });
 
         if (!response.ok) {
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            let detail = `${response.status} ${response.statusText}`;
+            try {
+                const body = await response.json();
+                detail = JSON.stringify(body);
+            } catch {}
+            throw new Error(detail);
         }
 
         return response.json();
@@ -608,8 +618,14 @@ class ApiClient {
                 data[key].forEach((file: File) => {
                     formData.append('attachments', file);
                 });
+            } else if (key === 'attachment' && data[key] instanceof File) {
+                formData.append('attachment', data[key]);
+            } else if (Array.isArray(data[key])) {
+                data[key].forEach((val: any) => {
+                    formData.append(key, String(val));
+                });
             } else if (data[key] !== null && data[key] !== undefined) {
-                formData.append(key, data[key]);
+                formData.append(key, String(data[key]));
             }
         });
 
@@ -630,7 +646,12 @@ class ApiClient {
         });
 
         if (!response.ok) {
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            let detail = `${response.status} ${response.statusText}`;
+            try {
+                const body = await response.json();
+                detail = JSON.stringify(body);
+            } catch {}
+            throw new Error(detail);
         }
 
         return response.json();
@@ -1036,9 +1057,30 @@ class ApiClient {
     }
 
     // Посты - CRUD операции
-    async createPost(data: any): Promise<any> {
+    async createPost(data: { 
+        type?: 'company' | 'department' | 'employee'; 
+        title?: string;
+        body?: string;
+        content?: string;
+        department?: number;
+        image?: File;
+        attachment?: File;
+        attachments?: File[];
+    }): Promise<any> {
         const formData = new FormData();
-        formData.append('content', data.content);
+        
+        // API требует title и body как отдельные поля
+        if (data.title) formData.append('title', data.title);
+        if (data.body) formData.append('body', data.body);
+        if (data.content) formData.append('content', data.content);
+        
+        // Опциональные поля
+        if (data.type) formData.append('type', data.type);
+        if (data.department) formData.append('department', String(data.department));
+        if (data.image) formData.append('image', data.image);
+        if (data.attachment) formData.append('attachment', data.attachment);
+        
+        // Вложения (attachments)
         if (data.attachments) {
             data.attachments.forEach((file: File) => {
                 formData.append('attachments', file);
@@ -1058,15 +1100,38 @@ class ApiClient {
         });
 
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error Response:', errorText);
             throw new Error(`API Error: ${response.status} ${response.statusText}`);
         }
 
         return response.json();
     }
 
-    async updatePost(postId: number, data: any): Promise<any> {
+    async updatePost(postId: number, data: { 
+        type?: 'company' | 'department' | 'employee';
+        title?: string;
+        body?: string;
+        content?: string;
+        department?: number;
+        image?: File;
+        attachment?: File;
+        attachments?: File[];
+    }): Promise<any> {
         const formData = new FormData();
-        formData.append('content', data.content);
+        
+        // API требует title и body как отдельные поля
+        if (data.title) formData.append('title', data.title);
+        if (data.body) formData.append('body', data.body);
+        if (data.content) formData.append('content', data.content);
+        
+        // Опциональные поля
+        if (data.type) formData.append('type', data.type);
+        if (data.department !== undefined) formData.append('department', String(data.department));
+        if (data.image) formData.append('image', data.image);
+        if (data.attachment) formData.append('attachment', data.attachment);
+        
+        // Вложения (attachments)
         if (data.attachments) {
             data.attachments.forEach((file: File) => {
                 formData.append('attachments', file);
@@ -1086,6 +1151,8 @@ class ApiClient {
         });
 
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error Response:', errorText);
             throw new Error(`API Error: ${response.status} ${response.statusText}`);
         }
 
@@ -1125,7 +1192,35 @@ class ApiClient {
         return this.request(url);
     }
 
-    async createComment(postId: number, text: string): Promise<any> {
+    async createComment(postId: number, text: string, image?: File, attachment?: File): Promise<any> {
+        if (image || attachment) {
+            const formData = new FormData();
+            formData.append('post', String(postId));
+            formData.append('text', text);
+            if (image) formData.append('image', image);
+            if (attachment) formData.append('attachment', attachment);
+
+            const token = this.getToken();
+            const headers: HeadersInit = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch('/api/v1/comments/', {
+                method: 'POST',
+                headers,
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('API Error Response:', errorText);
+                throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            }
+
+            return response.json();
+        }
+
         return this.request('/api/v1/comments/', {
             method: 'POST',
             body: JSON.stringify({ post: postId, text }),
@@ -1307,6 +1402,299 @@ class ApiClient {
     async toggleChatNotifications(chatId: number): Promise<any> {
         return this.request(`/api/v1/communications/chats/${chatId}/notifications/`, {
             method: 'POST',
+        });
+    }
+
+    // ==================== Оборудование ====================
+
+    async getEquipmentCategories(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/equipment-categories/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async getEquipment(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/equipment/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async createEquipment(data: any): Promise<any> {
+        const formData = new FormData();
+
+        Object.keys(data).forEach((key) => {
+            if (key === 'attachment' && data[key] instanceof File) {
+                formData.append('attachment', data[key]);
+            } else if (Array.isArray(data[key])) {
+                data[key].forEach((val: any) => {
+                    formData.append(key, String(val));
+                });
+            } else if (data[key] !== null && data[key] !== undefined) {
+                formData.append(key, String(data[key]));
+            }
+        });
+
+        const token = this.getToken();
+        const headers: Record<string, string> = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch('/api/v1/procurement/equipment/', {
+            method: 'POST',
+            headers,
+            body: formData,
+        });
+
+        if (!response.ok) {
+            let detail = `${response.status} ${response.statusText}`;
+            try {
+                const body = await response.json();
+                detail = JSON.stringify(body);
+            } catch {}
+            throw new Error(detail);
+        }
+
+        return response.json();
+    }
+
+    async updateEquipment(equipmentId: number, data: any): Promise<any> {
+        const formData = new FormData();
+
+        Object.keys(data).forEach((key) => {
+            if (key === 'attachment' && data[key] instanceof File) {
+                formData.append('attachment', data[key]);
+            } else if (Array.isArray(data[key])) {
+                data[key].forEach((val: any) => {
+                    formData.append(key, String(val));
+                });
+            } else if (data[key] !== null && data[key] !== undefined) {
+                formData.append(key, String(data[key]));
+            }
+        });
+
+        const token = this.getToken();
+        const headers: Record<string, string> = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`/api/v1/procurement/equipment/${equipmentId}/`, {
+            method: 'PATCH',
+            headers,
+            body: formData,
+        });
+
+        if (!response.ok) {
+            let detail = `${response.status} ${response.statusText}`;
+            try {
+                const body = await response.json();
+                detail = JSON.stringify(body);
+            } catch {}
+            throw new Error(detail);
+        }
+
+        return response.json();
+    }
+
+    async deleteEquipment(equipmentId: number): Promise<void> {
+        await this.request(`/api/v1/procurement/equipment/${equipmentId}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async approveEquipment(equipmentId: number): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/approve/`, {
+            method: 'POST',
+        });
+    }
+
+    async rejectEquipment(equipmentId: number): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/reject/`, {
+            method: 'POST',
+        });
+    }
+
+    async cancelEquipment(equipmentId: number): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/cancel/`, {
+            method: 'POST',
+        });
+    }
+
+    async getEquipmentComments(equipmentId: number): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/comments/`);
+    }
+
+    async addEquipmentComment(equipmentId: number, text: string): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/comments/`, {
+            method: 'POST',
+            body: JSON.stringify({ text }),
+        });
+    }
+
+    async deleteEquipmentComment(equipmentId: number, commentId: number): Promise<void> {
+        await this.request(`/api/v1/procurement/equipment/${equipmentId}/comments/${commentId}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    // ==================== Закупки (Procurement Requests) ====================
+
+    async getProcurementRequests(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/requests/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async getProcurementRequest(id: number): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/`);
+    }
+
+    async createProcurementRequest(data: any): Promise<any> {
+        return this.request('/api/v1/procurement/requests/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateProcurementRequest(id: number, data: any): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteProcurementRequest(id: number): Promise<void> {
+        await this.request(`/api/v1/procurement/requests/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async submitProcurementRequest(id: number): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/submit/`, {
+            method: 'POST',
+        });
+    }
+
+    async approveProcurementRequest(id: number, comment?: string): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/approve/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment: comment || '' }),
+        });
+    }
+
+    async rejectProcurementRequest(id: number, comment?: string): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/reject/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment: comment || '' }),
+        });
+    }
+
+    async startWorkProcurementRequest(id: number): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/start_work/`, {
+            method: 'POST',
+        });
+    }
+
+    async completeProcurementRequest(id: number): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/complete/`, {
+            method: 'POST',
+        });
+    }
+
+    async cancelProcurementRequest(id: number, reason?: string): Promise<any> {
+        return this.request(`/api/v1/procurement/requests/${id}/cancel/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason || '' }),
+        });
+    }
+
+    async getMyProcurementRequests(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/requests/my_requests/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async getPendingApprovals(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/requests/pending_approvals/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    // ==================== Позиции закупок (Procurement Items) ====================
+
+    async getProcurementItems(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/items/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async createProcurementItem(data: any): Promise<any> {
+        return this.request('/api/v1/procurement/items/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateProcurementItem(id: number, data: any): Promise<any> {
+        return this.request(`/api/v1/procurement/items/${id}/`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteProcurementItem(id: number): Promise<void> {
+        await this.request(`/api/v1/procurement/items/${id}/`, {
+            method: 'DELETE',
         });
     }
 }

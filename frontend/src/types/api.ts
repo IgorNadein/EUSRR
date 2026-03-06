@@ -84,6 +84,8 @@ export interface Post {
   body?: string;
   title?: string;
   image?: string;
+  attachment?: string | null;
+  attachment_url?: string | null;
   tags?: string[];
   created_at: string;
   updated_at: string;
@@ -98,6 +100,8 @@ export interface Comment {
   author: User;
   content?: string;
   text?: string;
+  image?: string | null;
+  attachment?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -254,6 +258,99 @@ export interface RequestComment {
   author: User;
   text: string;
   created_at: string;
+}
+
+// Equipment types
+export interface EquipmentCategory {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+export interface Equipment {
+  id: number;
+  name: string;
+  description?: string;
+  category: number | EquipmentCategory;
+  category_name?: string;
+  department: number;
+  department_name?: string;
+  serial_number?: string;
+  inventory_number?: string;
+  status?: string;
+  condition?: string;
+  purchase_date: string;
+  purchase_cost: string | number;
+  assigned_to?: User | number | null;
+  assigned_to_details?: User;
+  location?: string;
+  notes?: string;
+  image?: string | null;
+  attachment?: string | null;
+  attachment_url?: string | null;
+  created_by?: User;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EquipmentComment {
+  id: number;
+  equipment: number;
+  author: User;
+  text: string;
+  created_at: string;
+}
+
+// Procurement Request types
+export type ProcurementStatus = 'draft' | 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
+export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+export type ApprovalRole = 'department_head' | 'finance_manager' | 'director';
+
+export interface ProcurementItem {
+  id: number;
+  request: number;
+  name: string;
+  description?: string;
+  quantity: string | number;
+  unit: string;
+  estimated_unit_price: string | number;
+  total_price?: string | number;
+  supplier_info?: string;
+  equipment?: number | null;
+}
+
+export interface ProcurementApproval {
+  id: number;
+  request: number;
+  approver: User;
+  role: ApprovalRole;
+  status: ApprovalStatus;
+  comment?: string;
+  decided_at?: string | null;
+  created_at: string;
+}
+
+export interface ProcurementRequest {
+  id: number;
+  title: string;
+  description: string;
+  department: number;
+  department_name?: string;
+  department_details?: Department;
+  requestor: User;
+  executor?: User | null;
+  status: ProcurementStatus;
+  urgency: UrgencyLevel;
+  items?: ProcurementItem[];
+  approvals?: ProcurementApproval[];
+  required_approvals?: ApprovalRole[];
+  actual_cost?: string | number | null;
+  is_editable?: boolean;
+  budget_available?: boolean;
+  total_estimated_cost?: string | number;
+  created_at: string;
+  updated_at: string;
 }
 
 // Communications types
