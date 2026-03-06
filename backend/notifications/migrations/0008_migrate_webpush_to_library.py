@@ -12,12 +12,14 @@ def migrate_webpush_subscriptions(apps, schema_editor):
     for subscription in WebPushSubscription.objects.filter(is_active=True):
         try:
             # Создаем WebPushDevice для каждой подписки
+            # browser поле ограничено 10 символами
+            browser_name = (subscription.device_name or 'Unknown')[:10]
             WebPushDevice.objects.create(
                 user=subscription.user,
                 registration_id=subscription.endpoint,
                 p256dh=subscription.p256dh_key,
                 auth=subscription.auth_key,
-                browser=subscription.device_name or 'Unknown',
+                browser=browser_name,
                 active=subscription.is_active,
             )
             migrated_count += 1
