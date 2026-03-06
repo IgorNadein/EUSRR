@@ -84,7 +84,7 @@ class UpsertBirthdayEventService(Service):
             hour=0,
             minute=0
         )
-        end_date = start_date + timedelta(hours=23)
+        # end_date = start_date + timedelta(hours=23)
         
         # Делаем aware если USE_TZ=True
         if timezone.is_naive(start_date):
