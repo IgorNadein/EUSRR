@@ -151,9 +151,15 @@ dmypy.json
 
 .mypy_cache
 
-# папки со статикой и медиа
-media/
+# Медиа файлы (загруженные пользователями)
+# Игнорируем все файлы в media/, но сохраняем структуру папок через .gitkeep
+*/media/*
+
+
+# Устаревшие пути (deprecated)
 smedia/
+filer_public/
+
 # Собранные статические файлы Django (collectstatic)
 staticfiles/
 # Исходные static файлы НЕ игнорируются (backend/static/)

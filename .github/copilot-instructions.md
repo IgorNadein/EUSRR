@@ -16,36 +16,6 @@
 - `backend/eusrr_backend/` - основные настройки
 - `backend/api/`, `employees/`, `documents/`, `feed/`, `requests_app/` и др. - Django приложения
 
-## Виртуальное окружение Python
-
-В этом проекте используется виртуальное окружение Python, расположенное в `.venv/`.
-
-### Важные правила при работе с Python:
-
-1. **Всегда используйте полный путь** к Python и pip из виртуального окружения
-2. **Никогда не используйте** команды `python` или `pip` без указания полного пути
-
-### Примеры:
-
-❌ **Неправильно:**
-```bash
-python manage.py runserver
-pip install django
-```
-
-✅ **Правильно:**
-```bash
-.venv/Scripts/python manage.py runserver
-.venv/Scripts/pip install django
-```
-
-### Пути к исполняемым файлам:
-
-- Python: `.venv/Scripts/python`
-- pip: `.venv/Scripts/pip`
-
-**Всегда используй эти полные пути вместо команд `python` и `pip`**
-
 ## Правила работы с документацией
 
 ### ⚠️ КРИТИЧНО: НЕ создавай новые MD файлы в корневых папках!
