@@ -315,6 +315,7 @@ class ApiClient {
         department_ids?: number[];
         folder_id?: number | null;
         acknowledgement_required?: boolean;
+        tag_ids?: number[];
     }): Promise<any> {
         const formData = new FormData();
         formData.append('title', data.title);
@@ -344,6 +345,13 @@ class ApiClient {
             });
         }
         
+        // Добавляем теги, если указаны
+        if (data.tag_ids && data.tag_ids.length > 0) {
+            data.tag_ids.forEach(id => {
+                formData.append('tag_ids', String(id));
+            });
+        }
+        
         formData.append('file', data.file);
 
         return this.request('/api/v1/documents/', {
@@ -356,11 +364,29 @@ class ApiClient {
         title?: string; 
         description?: string; 
         file?: File;
+        tag_ids?: number[];
+        folder?: number | null;
     }): Promise<any> {
         const formData = new FormData();
-        if (data.title) formData.append('title', data.title);
-        if (data.description) formData.append('description', data.description);
+        if (data.title !== undefined) formData.append('title', data.title);
+        if (data.description !== undefined) formData.append('description', data.description);
         if (data.file) formData.append('file', data.file);
+        
+        // Добавляем папку (может быть null)
+        if (data.folder !== undefined) {
+            if (data.folder === null) {
+                formData.append('folder', '');
+            } else {
+                formData.append('folder', String(data.folder));
+            }
+        }
+        
+        // Добавляем теги
+        if (data.tag_ids !== undefined) {
+            data.tag_ids.forEach(tagId => {
+                formData.append('tag_ids', String(tagId));
+            });
+        }
 
         return this.request(`/api/v1/documents/${id}/`, {
             method: 'PATCH',
@@ -374,54 +400,11 @@ class ApiClient {
         });
     }
 
-    // FSM Workflow transitions
-    async submitDocumentForReview(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/submit-for-review/`, {
-            method: 'POST',
-        });
-    }
-
-    async approveDocument(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/approve/`, {
-            method: 'POST',
-        });
-    }
-
-    async rejectDocument(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/reject/`, {
-            method: 'POST',
-        });
-    }
-
-    async publishDocument(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/publish/`, {
-            method: 'POST',
-        });
-    }
-
-    async returnDocumentToDraft(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/return-to-draft/`, {
-            method: 'POST',
-        });
-    }
-
-    async archiveDocument(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/archive/`, {
-            method: 'POST',
-        });
-    }
-
-    async unarchiveDocument(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/unarchive/`, {
-            method: 'POST',
-        });
-    }
-
     // Document acknowledgement
-    async acknowledgeDocument(id: number, notes?: string): Promise<any> {
+    async acknowledgeDocument(id: number): Promise<any> {
         return this.request(`/api/v1/documents/${id}/acknowledge/`, {
             method: 'POST',
-            body: JSON.stringify({ notes }),
+            body: JSON.stringify({}),
         });
     }
 
@@ -484,7 +467,11 @@ class ApiClient {
     async createDocumentComment(data: { document: number; text: string; parent?: number }): Promise<any> {
         return this.request('/api/v1/document-comments/', {
             method: 'POST',
-            body: JSON.stringify(data),
+            body: JSON.stringify({
+                document_id: data.document,
+                text: data.text,
+                parent_id: data.parent,
+            }),
         });
     }
 
@@ -536,110 +523,6 @@ class ApiClient {
 
     async getDocumentsByTag(tagId: number): Promise<any> {
         return this.request(`/api/v1/document-tags/${tagId}/documents/`);
-    }
-
-    // Document Types
-    async getDocumentTypes(): Promise<any> {
-        return this.request('/api/v1/document-types/');
-    }
-
-    async getDocumentType(id: number): Promise<any> {
-        return this.request(`/api/v1/document-types/${id}/`);
-    }
-
-    async createDocumentType(data: { name: string; description?: string; icon?: string }): Promise<any> {
-        return this.request('/api/v1/document-types/', {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-    }
-
-    async updateDocumentType(id: number, data: { name?: string; description?: string; icon?: string }): Promise<any> {
-        return this.request(`/api/v1/document-types/${id}/`, {
-            method: 'PATCH',
-            body: JSON.stringify(data),
-        });
-    }
-
-    async deleteDocumentType(id: number): Promise<void> {
-        return this.request(`/api/v1/document-types/${id}/`, {
-            method: 'DELETE',
-        });
-    }
-
-    async getDocumentsByType(typeId: number): Promise<any> {
-        return this.request(`/api/v1/document-types/${typeId}/documents/`);
-    }
-
-    // Cabinets (Virtual collections)
-    async getCabinets(): Promise<any> {
-        return this.request('/api/v1/cabinets/');
-    }
-
-    async getCabinet(id: number): Promise<any> {
-        return this.request(`/api/v1/cabinets/${id}/`);
-    }
-
-    async createCabinet(data: { name: string; description?: string; parent?: number }): Promise<any> {
-        return this.request('/api/v1/cabinets/', {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-    }
-
-    async updateCabinet(id: number, data: { name?: string; description?: string; parent?: number }): Promise<any> {
-        return this.request(`/api/v1/cabinets/${id}/`, {
-            method: 'PATCH',
-            body: JSON.stringify(data),
-        });
-    }
-
-    async deleteCabinet(id: number): Promise<void> {
-        return this.request(`/api/v1/cabinets/${id}/`, {
-            method: 'DELETE',
-        });
-    }
-
-    async getCabinetDocuments(id: number): Promise<any> {
-        return this.request(`/api/v1/cabinets/${id}/documents/`);
-    }
-
-    async addDocumentToCabinet(cabinetId: number, documentId: number): Promise<any> {
-        return this.request(`/api/v1/cabinets/${cabinetId}/add_document/`, {
-            method: 'POST',
-            body: JSON.stringify({ document_id: documentId }),
-        });
-    }
-
-    async removeDocumentFromCabinet(cabinetId: number, documentId: number): Promise<any> {
-        return this.request(`/api/v1/cabinets/${cabinetId}/remove_document/`, {
-            method: 'POST',
-            body: JSON.stringify({ document_id: documentId }),
-        });
-    }
-
-    async getCabinetChildren(id: number): Promise<any> {
-        return this.request(`/api/v1/cabinets/${id}/children/`);
-    }
-
-    async getCabinetHierarchy(id: number): Promise<any> {
-        return this.request(`/api/v1/cabinets/${id}/hierarchy/`);
-    }
-
-    // Document Versions (django-reversion)
-    async getDocumentVersions(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/versions/`);
-    }
-
-    async getDocumentActivity(id: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/activity/`);
-    }
-
-    async revertDocumentToVersion(id: number, versionId: number): Promise<any> {
-        return this.request(`/api/v1/documents/${id}/revert/`, {
-            method: 'POST',
-            body: JSON.stringify({ version_id: versionId }),
-        });
     }
 
     // Related Documents
