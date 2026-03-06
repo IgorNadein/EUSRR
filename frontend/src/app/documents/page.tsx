@@ -4,14 +4,13 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import type { Document, DocumentStatus } from "@/types/api";
+import type { Document } from "@/types/api";
 import {
   Search,
   FileText,
   Plus,
   Eye,
   X,
-  LayoutDashboard,
   FolderOpen,
   Tags,
   LayoutGrid,
@@ -21,23 +20,18 @@ import {
   AlertCircle,
   Calendar,
   User,
-  File,
-  HardDrive,
   Users,
   Building2,
   Download,
+  Edit,
+  ChevronDown,
 } from "lucide-react";
-import { DocumentStatusBadge } from "@/components/documents/DocumentStatusBadge";
-import { DocumentWorkflowButtons } from "@/components/documents/DocumentWorkflowButtons";
-import { DocumentAcknowledgement } from "@/components/documents/DocumentAcknowledgement";
 import { DocumentAcknowledgementsReport } from "@/components/documents/DocumentAcknowledgementsReport";
-import { DocumentComments } from "@/components/documents/DocumentComments";
-import { DocumentVersionHistory } from "@/components/documents/DocumentVersionHistory";
-import { DocumentRelated } from "@/components/documents/DocumentRelated";
+import { DocumentMetadataEditor } from "@/components/documents/DocumentMetadataEditor";
+import { DocumentDetailModal } from "@/components/documents/DocumentDetailModal";
 import { FolderTree, type FolderNode } from "@/components/documents/folders";
-import { AdvancedSearch } from "@/components/documents/search";
 import { BulkActionsToolbar, useDocumentSelection } from "@/components/documents/batch";
-import { DocumentsDashboard } from "@/components/documents/dashboard";
+import { TagManagementModal } from "@/components/documents/tags";
 import { Modal } from "@/components/ui";
 
 // Динамический импорт компонентов с PDF обработкой (избегаем SSR ошибок с DOMMatrix)
@@ -67,31 +61,31 @@ function formatDate(value?: string): string {
   });
 }
 
-type ViewMode = "documents" | "dashboard";
-
 export default function DocumentsPage() {
   // State
   const [documents, setDocuments] = useState<Document[]>([]);
   const [folders, setFolders] = useState<FolderNode[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<DocumentStatus | "all">("all");
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
-  const [selectedTypes, setSelectedTypes] = useState<number[]>([]);
   const [availableTags, setAvailableTags] = useState<Array<{ id: number; name: string }>>([]);
-  const [availableTypes, setAvailableTypes] = useState<Array<{ id: number; name: string }>>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "title">("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("documents");
   
   // Modals
   const [showUploadForm, setShowUploadForm] = useState(false);
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [showTagManagement, setShowTagManagement] = useState(false);
   const [showAcknowledgementsReport, setShowAcknowledgementsReport] = useState<{
     documentId: number;
     documentTitle: string;
   } | null>(null);
+  const [showMetadataEditor, setShowMetadataEditor] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
   const [pdfViewerFile, setPdfViewerFile] = useState<{ url: string; name: string } | null>(null);
@@ -107,9 +101,6 @@ export default function DocumentsPage() {
       setLoading(true);
       setError(null);
       const params: any = {};
-      if (statusFilter !== "all") {
-        params.status = statusFilter;
-      }
       if (selectedFolderId !== null) {
         params.folder_id = selectedFolderId;
       }
@@ -143,34 +134,20 @@ export default function DocumentsPage() {
     }
   };
 
-  const loadTypes = async () => {
-    try {
-      const response = await apiClient.getDocumentTypes();
-      setAvailableTypes(response.results || response || []);
-    } catch (err) {
-      console.error("Ошибка загрузки типов:", err);
-    }
-  };
-
   useEffect(() => {
     loadDocuments();
-  }, [statusFilter, selectedFolderId]);
+  }, [selectedFolderId]);
 
   useEffect(() => {
     loadFolders();
     loadTags();
-    loadTypes();
   }, []);
 
   const filteredDocuments = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const sorted = [...documents].sort((a, b) => {
-      const aTime = new Date(a.created_at).getTime() || 0;
-      const bTime = new Date(b.created_at).getTime() || 0;
-      return bTime - aTime;
-    });
-
-    return sorted.filter((doc) => {
+    
+    // Filter documents
+    let filtered = documents.filter((doc) => {
       // Text search
       if (q) {
         const title = doc.title.toLowerCase();
@@ -190,17 +167,41 @@ export default function DocumentsPage() {
         if (!hasTag) return false;
       }
 
-      // Type filter
-      if (selectedTypes.length > 0) {
-        const docTypeId = doc.document_type?.id;
-        if (!docTypeId || !selectedTypes.includes(docTypeId)) {
-          return false;
-        }
+      // Date from filter
+      if (dateFrom) {
+        const docDate = new Date(doc.created_at);
+        const fromDate = new Date(dateFrom);
+        if (docDate < fromDate) return false;
+      }
+
+      // Date to filter
+      if (dateTo) {
+        const docDate = new Date(doc.created_at);
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999); // Include the entire day
+        if (docDate > toDate) return false;
       }
 
       return true;
     });
-  }, [documents, search, selectedTags, selectedTypes]);
+
+    // Sort documents
+    filtered.sort((a, b) => {
+      let compareValue = 0;
+      
+      if (sortBy === "date") {
+        const aTime = new Date(a.created_at).getTime() || 0;
+        const bTime = new Date(b.created_at).getTime() || 0;
+        compareValue = bTime - aTime;
+      } else if (sortBy === "title") {
+        compareValue = a.title.localeCompare(b.title, 'ru');
+      }
+
+      return sortOrder === "desc" ? compareValue : -compareValue;
+    });
+
+    return filtered;
+  }, [documents, search, selectedTags, dateFrom, dateTo, sortBy, sortOrder]);
 
   // Find selected folder and build breadcrumb path
   const selectedFolder = useMemo(() => {
@@ -225,28 +226,6 @@ export default function DocumentsPage() {
     return selectedFolder.path.split(' / ');
   }, [selectedFolder]);
 
-  // Mock dashboard stats
-  const dashboardStats = useMemo(() => {
-    const byStatus = documents.reduce((acc: any[], doc) => {
-      const existing = acc.find((s) => s.status === doc.status);
-      if (existing) {
-        existing.count++;
-      } else {
-        acc.push({ status: doc.status, count: 1 });
-      }
-      return acc;
-    }, []);
-
-    return {
-      totalDocuments: documents.length,
-      documentsByType: [{ type: "Общие", count: documents.length }],
-      documentsByStatus: byStatus,
-      uploadsOverTime: [],
-      myDocuments: documents.filter((d) => d.created_by).length,
-      recentActivity: [],
-    };
-  }, [documents]);
-
   return (
     <AppShell>
       <div className="space-y-4">
@@ -255,32 +234,6 @@ export default function DocumentsPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             {/* Left Section: Navigation */}
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              {/* View Mode Tabs */}
-              <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-                <button
-                  onClick={() => setViewMode("documents")}
-                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
-                    viewMode === "documents"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-600 hover:text-gray-900"
-                  }`}
-                >
-                  <FileText size={16} />
-                  Документы
-                </button>
-                <button
-                  onClick={() => setViewMode("dashboard")}
-                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
-                    viewMode === "dashboard"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-600 hover:text-gray-900"
-                  }`}
-                >
-                  <LayoutDashboard size={16} />
-                  Дашборд
-                </button>
-              </div>
-
               {/* Folder Filter */}
               <div className="relative">
                 <button
@@ -373,200 +326,197 @@ export default function DocumentsPage() {
             </div>
           ) : (
             <>
-              {/* Dashboard View */}
-              {viewMode === "dashboard" && (
-                <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-                  <DocumentsDashboard
-                    stats={dashboardStats}
-                    recentDocuments={filteredDocuments.slice(0, 5).map((doc) => ({
-                      id: doc.id,
-                      title: doc.title,
-                      type: doc.status,
-                      uploaded_at: doc.created_at,
-                      uploaded_by: doc.created_by
-                        ? `${doc.created_by.last_name} ${doc.created_by.first_name}`
-                        : undefined,
-                    }))}
-                    myDocuments={filteredDocuments
-                      .filter((d) => d.created_by)
-                      .slice(0, 5)
-                      .map((doc) => ({
-                        id: doc.id,
-                        title: doc.title,
-                        status: doc.status,
-                        uploaded_at: doc.created_at,
-                      }))}
-                  />
-                </div>
-              )}
-
-              {/* Documents View */}
-              {viewMode === "documents" && (
-                <>
-                  {/* Search & Filters */}
+              {/* Search & Filters */}
                   <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                    {showAdvancedSearch ? (
-                      <AdvancedSearch
-                        onSearch={(filters) => {
-                          setSearch(filters.query);
-                          if (filters.statuses && filters.statuses.length > 0) {
-                            setStatusFilter(filters.statuses[0] as DocumentStatus);
-                          }
-                        }}
-                        results={filteredDocuments.map((doc) => ({
-                          id: doc.id,
-                          title: doc.title,
-                          description: doc.description || "",
-                          type: doc.status,
-                          status: doc.status,
-                          uploaded_at: doc.created_at,
-                          uploaded_by: doc.created_by
-                            ? `${doc.created_by.last_name} ${doc.created_by.first_name}`
-                            : undefined,
-                        }))}
-                        availableStatuses={[
-                          { id: "draft", name: "Черновик" },
-                          { id: "in_review", name: "На рассмотрении" },
-                          { id: "approved", name: "Утверждено" },
-                          { id: "published", name: "Опубликовано" },
-                          { id: "archived", name: "В архиве" },
-                          { id: "rejected", name: "Отклонено" },
-                        ]}
-                      />
-                  ) : (
-                    /* Simple Filters */
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-col gap-3 sm:flex-row">
-                        <div className="relative flex-1">
-                          <Search
-                            size={16}
-                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                          />
-                          <input
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Поиск по документам"
-                            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                          />
+                    {/* Search Bar */}
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Search
+                          size={16}
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                        <input
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          placeholder="Поиск по документам"
+                          className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition ${
+                          showFilters || selectedTags.length > 0 || dateFrom || dateTo
+                            ? 'border-sky-500 bg-sky-50 text-sky-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                        title="Фильтры"
+                      >
+                        <SlidersHorizontal size={16} />
+                        {(selectedTags.length > 0 || dateFrom || dateTo) && (
+                          <span className="rounded-full bg-sky-600 px-1.5 py-0.5 text-xs text-white">
+                            {selectedTags.length + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Active Filters Tags */}
+                    {(selectedTags.length > 0 || dateFrom || dateTo) && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedTags.map(tagId => {
+                          const tag = availableTags.find(t => t.id === tagId);
+                          return tag ? (
+                            <span
+                              key={tagId}
+                              className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-xs text-sky-700"
+                            >
+                              <Tags size={12} />
+                              {tag.name}
+                              <button
+                                onClick={() => setSelectedTags(prev => prev.filter(id => id !== tagId))}
+                                className="hover:text-sky-900"
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          ) : null;
+                        })}
+                        {dateFrom && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
+                            <Calendar size={12} />
+                            С: {new Date(dateFrom).toLocaleDateString('ru')}
+                            <button
+                              onClick={() => setDateFrom('')}
+                              className="hover:text-purple-900"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        )}
+                        {dateTo && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
+                            <Calendar size={12} />
+                            До: {new Date(dateTo).toLocaleDateString('ru')}
+                            <button
+                              onClick={() => setDateTo('')}
+                              className="hover:text-purple-900"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectedTags([]);
+                            setDateFrom('');
+                            setDateTo('');
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200"
+                        >
+                          Сбросить все
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Filters Panel */}
+                    {showFilters && (
+                      <div className="mt-4 space-y-4 border-t pt-4">
+                        {/* Tags Filter */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-medium text-gray-700">Теги</label>
+                            <button
+                              onClick={() => setShowTagManagement(true)}
+                              className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                            >
+                              Управление
+                            </button>
+                          </div>
+                          {availableTags.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                              {availableTags.map(tag => (
+                                <label
+                                  key={tag.id}
+                                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm transition hover:border-sky-300 hover:bg-sky-50"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedTags.includes(tag.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedTags(prev => [...prev, tag.id]);
+                                      } else {
+                                        setSelectedTags(prev => prev.filter(id => id !== tag.id));
+                                      }
+                                    }}
+                                    className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+                                  />
+                                  <span className="truncate">{tag.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500 italic">Нет доступных тегов</p>
+                          )}
                         </div>
 
-                        <button
-                          onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                          title="Расширенный поиск"
-                        >
-                          <SlidersHorizontal size={16} />
-                        </button>
-
-                        <select
-                          value={statusFilter}
-                          onChange={(e) =>
-                            setStatusFilter(e.target.value as DocumentStatus | "all")
-                          }
-                          className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                        >
-                          <option value="all">Все статусы</option>
-                          <option value="draft">Черновик</option>
-                          <option value="in_review">На рассмотрении</option>
-                          <option value="approved">Утверждено</option>
-                          <option value="published">Опубликовано</option>
-                          <option value="archived">В архиве</option>
-                          <option value="rejected">Отклонено</option>
-                        </select>
-                      </div>
-
-                      {/* Tags and Types filters */}
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        {/* Tags multi-select */}
-                        {availableTags.length > 0 && (
-                          <div className="flex-1">
-                            <select
-                              multiple
-                              value={selectedTags.map(String)}
-                              onChange={(e) => {
-                                const values = Array.from(e.target.selectedOptions, option => Number(option.value));
-                                setSelectedTags(values);
-                              }}
+                        {/* Date Range */}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Дата создания (с)
+                            </label>
+                            <input
+                              type="date"
+                              value={dateFrom}
+                              onChange={(e) => setDateFrom(e.target.value)}
                               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                              size={3}
-                            >
-                              <option value="" disabled>Фильтр по тегам...</option>
-                              {availableTags.map(tag => (
-                                <option key={tag.id} value={tag.id}>
-                                  {tag.name}
-                                </option>
-                              ))}
-                            </select>
-                            {selectedTags.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {selectedTags.map(tagId => {
-                                  const tag = availableTags.find(t => t.id === tagId);
-                                  return tag ? (
-                                    <span
-                                      key={tagId}
-                                      className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700"
-                                    >
-                                      {tag.name}
-                                      <button
-                                        onClick={() => setSelectedTags(prev => prev.filter(id => id !== tagId))}
-                                        className="hover:text-sky-900"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </span>
-                                  ) : null;
-                                })}
-                              </div>
-                            )}
+                            />
                           </div>
-                        )}
-
-                        {/* Types multi-select */}
-                        {availableTypes.length > 0 && (
-                          <div className="flex-1">
-                            <select
-                              multiple
-                              value={selectedTypes.map(String)}
-                              onChange={(e) => {
-                                const values = Array.from(e.target.selectedOptions, option => Number(option.value));
-                                setSelectedTypes(values);
-                              }}
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Дата создания (до)
+                            </label>
+                            <input
+                              type="date"
+                              value={dateTo}
+                              onChange={(e) => setDateTo(e.target.value)}
                               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                              size={3}
-                            >
-                              <option value="" disabled>Фильтр по типам...</option>
-                              {availableTypes.map(type => (
-                                <option key={type.id} value={type.id}>
-                                  {type.name}
-                                </option>
-                              ))}
-                            </select>
-                            {selectedTypes.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {selectedTypes.map(typeId => {
-                                  const type = availableTypes.find(t => t.id === typeId);
-                                  return type ? (
-                                    <span
-                                      key={typeId}
-                                      className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700"
-                                    >
-                                      {type.name}
-                                      <button
-                                        onClick={() => setSelectedTypes(prev => prev.filter(id => id !== typeId))}
-                                        className="hover:text-purple-900"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </span>
-                                  ) : null;
-                                })}
-                              </div>
-                            )}
+                            />
                           </div>
-                        )}
+                        </div>
+
+                        {/* Sorting */}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Сортировать по
+                            </label>
+                            <select
+                              value={sortBy}
+                              onChange={(e) => setSortBy(e.target.value as "date" | "title")}
+                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                            >
+                              <option value="date">Дата создания</option>
+                              <option value="title">Название</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Порядок
+                            </label>
+                            <select
+                              value={sortOrder}
+                              onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
+                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                            >
+                              <option value="desc">По убыванию</option>
+                              <option value="asc">По возрастанию</option>
+                            </select>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
 
                 {/* Bulk Actions Toolbar */}
@@ -577,7 +527,6 @@ export default function DocumentsPage() {
                       documents={filteredDocuments.map((d) => ({
                         id: d.id,
                         title: d.title,
-                        status: d.status,
                       }))}
                       onClearSelection={selection.clearSelection}
                     />
@@ -729,6 +678,26 @@ export default function DocumentsPage() {
                                   {doc.title}
                                 </h3>
 
+                                {/* Tags - отображаем теги документа */}
+                                {doc.tags && doc.tags.length > 0 && (
+                                  <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                                    {doc.tags.map((tag) => (
+                                      <span
+                                        key={tag.id}
+                                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset"
+                                        style={{
+                                          backgroundColor: tag.color ? `${tag.color}15` : '#f3f4f6',
+                                          color: tag.color || '#6b7280',
+                                          borderColor: tag.color ? `${tag.color}40` : '#e5e7eb',
+                                        }}
+                                      >
+                                        <Tags size={10} />
+                                        {tag.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
                                 {/* Metadata - показываем только если есть хотя бы одно значение */}
                                 {(authorName || createdDate || doc.folder_path) && (
                                   <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-600">
@@ -761,10 +730,6 @@ export default function DocumentsPage() {
 
                                 {/* Status Badges */}
                                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                                  <DocumentStatusBadge
-                                    status={doc.status}
-                                    statusCode={doc.status_code}
-                                  />
                                   {doc.acknowledgement_required && (
                                     doc.is_acknowledged ? (
                                       <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-600/20">
@@ -802,13 +767,6 @@ export default function DocumentsPage() {
                                       <span className="truncate">Ознакомиться</span>
                                     </button>
                                   )}
-                                  
-                                  {/* Workflow Buttons */}
-                                  <DocumentWorkflowButtons
-                                    documentId={doc.id}
-                                    currentStatus={doc.status_code}
-                                    onStatusChange={loadDocuments}
-                                  />
                                 </div>
                               </div>
                             </article>
@@ -818,8 +776,6 @@ export default function DocumentsPage() {
                     )}
                   </div>
                 </div>
-              </>
-              )}
             </>
           )}
         </div>
@@ -842,300 +798,33 @@ export default function DocumentsPage() {
         />
       </Modal>
 
-          {/* Document Details Modal */}
-      <Modal
+      {/* Document Details Modal */}
+      <DocumentDetailModal
+        document={selectedDocument}
         isOpen={!!selectedDocument}
         onClose={() => setSelectedDocument(null)}
-        title={selectedDocument?.title}
-        size="lg"
-      >
-        {selectedDocument && (
-            <div className="space-y-6">
-                {/* Status Badge */}
-                <div>
-                  <DocumentStatusBadge
-                    status={selectedDocument.status}
-                    statusCode={selectedDocument.status_code}
-                  />
-                </div>
-
-                {/* Metadata Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  {/* Author */}
-                  <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
-                    <div className="rounded-full bg-sky-100 p-1.5 sm:p-2">
-                      <User size={14} className="text-sky-600 sm:w-4 sm:h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-gray-500">Автор</p>
-                      <p className="truncate text-sm font-medium text-gray-900">
-                        {selectedDocument.uploaded_by
-                          ? `${selectedDocument.uploaded_by.last_name} ${selectedDocument.uploaded_by.first_name}`
-                          : selectedDocument.created_by
-                          ? `${selectedDocument.created_by.last_name} ${selectedDocument.created_by.first_name}`
-                          : "Не указан"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Created Date */}
-                  <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
-                    <div className="rounded-full bg-green-100 p-1.5 sm:p-2">
-                      <Calendar size={14} className="text-green-600 sm:w-4 sm:h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-gray-500">Дата создания</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {formatDate(selectedDocument.uploaded_at || selectedDocument.created_at)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* File Info */}
-                  {selectedDocument.file_name && (
-                    <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
-                      <div className="rounded-full bg-purple-100 p-1.5 sm:p-2">
-                        <File size={14} className="text-purple-600 sm:w-4 sm:h-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-gray-500">Файл</p>
-                        <p className="truncate text-sm font-medium text-gray-900">
-                          {selectedDocument.file_name}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* File Size */}
-                  {selectedDocument.file_size && (
-                    <div className="flex items-start gap-2 sm:gap-3 rounded-lg bg-gray-50 p-2.5 sm:p-3">
-                      <div className="rounded-full bg-orange-100 p-1.5 sm:p-2">
-                        <HardDrive size={14} className="text-orange-600 sm:w-4 sm:h-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-gray-500">Размер</p>
-                        <p className="text-sm font-medium text-gray-900">
-                          {(selectedDocument.file_size / 1024 / 1024).toFixed(2)} МБ
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Folder Path */}
-                {selectedDocument.folder_path && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-2.5 sm:p-3">
-                    <div className="flex items-center gap-1.5 sm:gap-2 text-sky-700">
-                      <FolderOpen size={14} className="sm:w-4 sm:h-4" />
-                      <span className="text-xs font-medium">Расположение</span>
-                    </div>
-                    <p className="mt-1 text-xs sm:text-sm text-sky-900 break-all">
-                      {selectedDocument.folder_path}
-                    </p>
-                  </div>
-                )}
-
-                {/* Description */}
-                <div>
-                  <h3 className="mb-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-700">
-                    <FileText size={14} className="sm:w-4 sm:h-4" />
-                    Описание
-                  </h3>
-                  <p className="rounded-lg bg-gray-50 p-2.5 sm:p-3 text-xs sm:text-sm text-gray-600">
-                    {selectedDocument.description || "Описание отсутствует"}
-                  </p>
-                </div>
-
-                {/* Recipients & Departments */}
-                {(selectedDocument.sent_to_all ||
-                  (selectedDocument.recipients &&
-                    selectedDocument.recipients.length > 0) ||
-                  (selectedDocument.departments &&
-                    selectedDocument.departments.length > 0)) && (
-                  <div>
-                    <h3 className="mb-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-700">
-                      <Users size={14} className="sm:w-4 sm:h-4" />
-                      Получатели
-                    </h3>
-                    <div className="space-y-2">
-                      {selectedDocument.sent_to_all && (
-                        <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                          <CheckCircle size={14} />
-                          <span className="font-medium">
-                            Отправлено всем сотрудникам
-                          </span>
-                        </div>
-                      )}
-
-                      {selectedDocument.departments &&
-                        selectedDocument.departments.length > 0 && (
-                          <div className="rounded-lg bg-gray-50 p-3">
-                            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
-                              <Building2 size={14} />
-                              Отделы
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {selectedDocument.departments.map((dept) => (
-                                <span
-                                  key={dept.id}
-                                  className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700"
-                                >
-                                  {dept.name}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                      {selectedDocument.recipients &&
-                        selectedDocument.recipients.length > 0 && (
-                          <div className="rounded-lg bg-gray-50 p-3">
-                            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500">
-                              <User size={14} />
-                              Конкретные получатели (
-                              {selectedDocument.recipients.length})
-                            </div>
-                            <div className="max-h-32 space-y-1 overflow-y-auto">
-                              {selectedDocument.recipients
-                                .slice(0, 10)
-                                .map((recipient) => (
-                                  <div
-                                    key={recipient.id}
-                                    className="text-xs text-gray-700"
-                                  >
-                                    {recipient.last_name} {recipient.first_name}
-                                  </div>
-                                ))}
-                              {selectedDocument.recipients.length > 10 && (
-                                <div className="text-xs text-gray-500">
-                                  ... и ещё{" "}
-                                  {selectedDocument.recipients.length - 10}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                    </div>
-                  </div>
-                )}
-
-                {/* File Actions */}
-                {selectedDocument.file_url && (() => {
-                  const fileExt = selectedDocument.file_name?.toLowerCase().split('.').pop() || '';
-                  const isPreviewable = [
-                    'pdf',
-                    'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'
-                  ].includes(fileExt);
-                  
-                  return (
-                    <div className="flex gap-2">
-                      {isPreviewable && (
-                        <button
-                          onClick={() => {
-                            setSelectedDocument(null);
-                            setPreviewFile({
-                              url: selectedDocument.file_url!,
-                              name: selectedDocument.file_name || selectedDocument.title,
-                            });
-                          }}
-                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
-                        >
-                          <Eye size={16} />
-                          Открыть файл
-                        </button>
-                      )}
-                      <a
-                        href={selectedDocument.file_url}
-                        download={selectedDocument.file_name || selectedDocument.title}
-                        className={`inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 ${
-                          isPreviewable ? '' : 'flex-1'
-                        }`}
-                      >
-                        <Download size={16} />
-                        Скачать
-                      </a>
-                    </div>
-                  );
-                })()}
-
-                {/* Workflow Actions */}
-                <div>
-                  <h3 className="mb-2 text-sm font-medium text-gray-700">
-                    Действия
-                  </h3>
-                  <DocumentWorkflowButtons
-                    documentId={selectedDocument.id}
-                    currentStatus={selectedDocument.status_code}
-                    onStatusChange={() => {
-                      loadDocuments();
-                      setSelectedDocument(null);
-                    }}
-                  />
-                </div>
-
-                {/* Acknowledgement */}
-                {selectedDocument.acknowledgement_required && (
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <h3 className="text-sm font-medium text-gray-700">
-                        Подтверждение прочтения
-                      </h3>
-                      <button
-                        onClick={() => {
-                          setShowAcknowledgementsReport({
-                            documentId: selectedDocument.id,
-                            documentTitle: selectedDocument.title,
-                          });
-                          setSelectedDocument(null);
-                        }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"
-                      >
-                        Посмотреть ведомость
-                      </button>
-                    </div>
-                    <DocumentAcknowledgement
-                      document={selectedDocument}
-                      onAcknowledge={() => {
-                        loadDocuments();
-                        // Refresh selected document
-                        apiClient
-                          .getDocument(selectedDocument.id)
-                          .then(setSelectedDocument);
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Comments */}
-                <div className="border-t border-gray-200 pt-4">
-                  <DocumentComments documentId={selectedDocument.id} />
-                </div>
-
-                {/* Version History */}
-                <div className="border-t border-gray-200 pt-4">
-                  <DocumentVersionHistory
-                    documentId={selectedDocument.id}
-                    onRevert={() => {
-                      loadDocuments();
-                      apiClient
-                        .getDocument(selectedDocument.id)
-                        .then(setSelectedDocument);
-                    }}
-                  />
-                </div>
-
-                {/* Related Documents */}
-                <div className="border-t border-gray-200 pt-4">
-                  <DocumentRelated
-                    documentId={selectedDocument.id}
-                    onNavigate={(docId) => {
-                      apiClient.getDocument(docId).then(setSelectedDocument);
-                    }}
-                  />
-                </div>
-            </div>
-        )}
-      </Modal>
+        onUpdate={() => {
+          loadDocuments();
+          if (selectedDocument) {
+            apiClient.getDocument(selectedDocument.id).then(setSelectedDocument);
+          }
+        }}
+        onEditMetadata={() => {
+          setShowMetadataEditor(true);
+        }}
+        onViewReport={() => {
+          if (selectedDocument) {
+            setShowAcknowledgementsReport({
+              documentId: selectedDocument.id,
+              documentTitle: selectedDocument.title,
+            });
+            setSelectedDocument(null);
+          }
+        }}
+        onNavigateToRelated={(docId) => {
+          apiClient.getDocument(docId).then(setSelectedDocument);
+        }}
+      />
 
       {/* File Preview Modal */}
       {previewFile && (
@@ -1235,6 +924,27 @@ export default function DocumentsPage() {
           documentId={showAcknowledgementsReport.documentId}
           documentTitle={showAcknowledgementsReport.documentTitle}
           onClose={() => setShowAcknowledgementsReport(null)}
+        />
+      )}
+
+      {/* Tag Management Modal */}
+      <TagManagementModal
+        isOpen={showTagManagement}
+        onClose={() => setShowTagManagement(false)}
+        onTagsUpdated={loadTags}
+      />
+
+      {/* Document Metadata Editor */}
+      {selectedDocument && (
+        <DocumentMetadataEditor
+          isOpen={showMetadataEditor}
+          onClose={() => setShowMetadataEditor(false)}
+          document={selectedDocument}
+          onUpdate={() => {
+            loadDocuments();
+            // Refresh selected document
+            apiClient.getDocument(selectedDocument.id).then(setSelectedDocument);
+          }}
         />
       )}
     </AppShell>
