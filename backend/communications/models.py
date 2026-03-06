@@ -11,6 +11,12 @@ Employee = get_user_model()
 
 
 class ChatReadState(models.Model):
+    """
+    Состояние прочтения чата пользователем.
+    
+    Использует Telegram-style подход: последнее прочитанное сообщение
+    отмечается автоматически при загрузке сообщений через GET запросы.
+    """
     chat = models.ForeignKey(
         "Chat", on_delete=models.CASCADE, related_name="read_states"
     )
@@ -19,31 +25,17 @@ class ChatReadState(models.Model):
         on_delete=models.CASCADE,
         related_name="chat_read_states",
     )
-    last_read_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # НОВЫЕ ПОЛЯ для расширенной функциональности
-    
-    # Последнее прочитанное сообщение (явная связь)
+    # Последнее прочитанное сообщение (единственный источник истины)
     last_read_message = models.ForeignKey(
         'Message',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name='+',
-        verbose_name="Последнее прочитанное сообщение"
-    )
-    
-    # Упоминания
-    unread_mentions_count = models.IntegerField(
-        default=0,
-        verbose_name="Непрочитанных упоминаний"
-    )
-    
-    # Треды
-    unread_thread_replies_count = models.IntegerField(
-        default=0,
-        verbose_name="Непрочитанных ответов в тредах"
+        verbose_name="Последнее прочитанное сообщение",
+        help_text="Обновляется автоматически при загрузке сообщений (Telegram-style)"
     )
     
     # Статус набора текста
@@ -58,7 +50,6 @@ class ChatReadState(models.Model):
     )
 
     class Meta:
-        # заменяем устаревший unique_together на UniqueConstraint
         constraints = [
             models.UniqueConstraint(
                 fields=["chat", "user"],
@@ -67,12 +58,13 @@ class ChatReadState(models.Model):
         ]
         indexes = [
             models.Index(fields=["chat", "user"]),
-            models.Index(fields=["chat", "last_read_at"]),
             models.Index(fields=["chat", "user", "is_typing"]),
+            models.Index(fields=["last_read_message"]),  # Для быстрого поиска по message
         ]
 
     def __str__(self):
-        return f"read:{self.user_id}@{self.chat_id} → {self.last_read_at or '-'}"
+        msg_id = self.last_read_message_id if self.last_read_message_id else '-'
+        return f"read:{self.user_id}@{self.chat_id} → msg#{msg_id}"
 
 
 class Chat(models.Model):
@@ -217,36 +209,46 @@ class Chat(models.Model):
 
     def mark_read(self, user):
         """
-        Помечает чат прочитанным «до последнего сообщения».
-        Сделано без update_or_create — устойчиво для SQLite.
+        [DEPRECATED] Помечает чат прочитанным до последнего сообщения.
+        
+        ВНИМАНИЕ: Этот метод устарел. Используйте автоматическую отметку
+        через ChatViewSet._auto_mark_read() при загрузке сообщений.
         """
-        last = self.messages.order_by("-created_at").only("created_at").first()
-        ts = last.created_at if last else timezone.now()
-        # обновим, только если новое время больше
-        updated = ChatReadState.objects.filter(
-            chat=self, user=user, last_read_at__lt=ts
-        ).update(last_read_at=ts)
-        if not updated:
-            try:
-                ChatReadState.objects.create(chat=self, user=user, last_read_at=ts)
-            except IntegrityError:
-                # гонка: запись уже есть — попробуем ещё раз обновить
-                ChatReadState.objects.filter(
-                    chat=self, user=user, last_read_at__lt=ts
-                ).update(last_read_at=ts)
+        last_message = self.messages.order_by("-created_at").first()
+        if not last_message:
+            return
+        
+        # Обновляем, только если новое сообщение НОВЕЕ текущего
+        read_state, created = ChatReadState.objects.get_or_create(
+            chat=self,
+            user=user,
+            defaults={'last_read_message': last_message}
+        )
+        
+        if not created:
+            if read_state.last_read_message_id:
+                if last_message.id <= read_state.last_read_message_id:
+                    return  # Не откатываем назад
+            
+            read_state.last_read_message = last_message
+            read_state.save(update_fields=['last_read_message', 'updated_at'])
 
     def unread_count_for(self, user):
         """
-        Количество непрочитанных (кроме своих).
+        Количество непрочитанных сообщений (кроме своих).
+        Считает сообщения после last_read_message.
         """
         rs = (
             ChatReadState.objects.filter(chat=self, user=user)
-            .only("last_read_at")
+            .only("last_read_message_id")
             .first()
         )
         qs = self.messages.exclude(author=user)
-        if rs and rs.last_read_at:
-            qs = qs.filter(created_at__gt=rs.last_read_at)
+        
+        if rs and rs.last_read_message_id:
+            # Считаем сообщения с ID больше последнего прочитанного
+            qs = qs.filter(id__gt=rs.last_read_message_id)
+        
         return qs.count()
 
     @property

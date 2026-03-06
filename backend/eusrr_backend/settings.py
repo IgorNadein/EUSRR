@@ -19,11 +19,13 @@ def _split_env_list(value: str) -> list[str]:
     return [x.strip() for x in (value or "").split(",") if x.strip()]
 
 
-ALLOWED_HOSTS = _split_env_list(os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1"))
+ALLOWED_HOSTS = _split_env_list(
+    os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1"))
 
 INSTALLED_APPS = [
     "daphne",
     "channels",
+    "corsheaders",  # django-cors-headers для CORS
     "django.contrib.admin",
     "django_bootstrap5",
     "django.contrib.auth",
@@ -35,6 +37,12 @@ INSTALLED_APPS = [
     "widget_tweaks",
     "simple_history",
     "rest_framework",
+    "rules",  # django-rules для декларативных permissions
+    # django-filer и зависимости
+    "easy_thumbnails",
+    "filer",
+    "mptt",  # зависимость filer
+    "reversion",  # django-reversion для версионирования
     # Celery приложения
     "django_celery_beat",  # Периодические задачи
     "django_celery_results",  # Хранение результатов
@@ -42,31 +50,38 @@ INSTALLED_APPS = [
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
     "hikcentral.apps.HikcentralConfig",
-    "calendar_app.apps.CalendarAppConfig",
+    "schedule",  # django-scheduler (проверенная библиотека для календаря)
+    "calendar_app.apps.CalendarAppConfig",  # Наше приложение календаря
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
     "realtime.apps.RealtimeConfig",  # WebSocket consumers для real-time
     "communications.apps.CommunicationsConfig",
     "notifications.apps.NotificationsConfig",
+    "watson",  # django-watson для полнотекстового поиска
     "search.apps.SearchConfig",
     "bots",
     "finance.apps.FinanceConfig",
+    "procurement.apps.ProcurementConfig",
+    "push_notifications",  # django-push-notifications для Web Push
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # CORS middleware должен быть перед CommonMiddleware
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "reversion.middleware.RevisionMiddleware",  # django-reversion для версионирования
     "simple_history.middleware.HistoryRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
     "eusrr_backend.middleware.AuthRequiredMiddleware",
     "eusrr_backend.middleware.EmailVerificationMiddleware",
-    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",  # IP ограничение для регистрации
+    # IP ограничение для регистрации
+    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",
     "eusrr_backend.middleware.CacheControlMiddleware",  # Cache-Control headers
 ]
 
@@ -183,6 +198,13 @@ REGISTRATION_ALLOWED_IPS = [
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 MEDIA_URL = "/media/"
 
+# Структура медиа папки:
+# media/
+#   ├── documents/          ← Документы (читаемая структура по годам/месяцам)
+#   ├── avatars/            ← Аватары пользователей
+#   ├── chat_attachments/   ← Вложения в чате
+#   └── temp/              ← Временные файлы
+
 # Лимиты загрузки файлов
 # По умолчанию Django ограничивает загрузку до 2.5MB
 # Увеличиваем до 10MB для аватаров и документов
@@ -249,7 +271,8 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "true").lower() == "true"
 # Если SSL включён (465), TLS должен быть False
 EMAIL_USE_TLS = (
-    False if EMAIL_USE_SSL else (os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
+    False if EMAIL_USE_SSL else (
+        os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
 )
 DEFAULT_FROM_EMAIL = os.getenv(
     "DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "webmaster@localhost"
@@ -260,7 +283,8 @@ DEFAULT_FROM_EMAIL = os.getenv(
 # -----------------------------------------------------------------------------
 # Порог для определения массовой рассылки (количество получателей)
 # При массовой рассылке уведомления создаются быстро, а отправка идёт в фоне
-NOTIFICATION_BULK_THRESHOLD = int(os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
+NOTIFICATION_BULK_THRESHOLD = int(
+    os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
 
 # -----------------------------------------------------------------------------
 # CHANNELS & CACHE
@@ -314,14 +338,15 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_ACCESS_MIN", "30"))),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "7"))),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "90"))),
     "ALGORITHM": "HS256",
     "AUTH_HEADER_TYPES": ("Bearer",),
     "LEEWAY": 30,
 }
 
 # Автообновление JWT токенов: за сколько минут до истечения обновлять
-JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
+JWT_REFRESH_THRESHOLD_MINUTES = int(
+    os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 
 
 # -----------------------------------------------------------------------------
@@ -332,10 +357,13 @@ JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 # -----------------------------------------------------------------------------
 # Порядок важен: первый успешный бэкенд останавливает цепочку
 AUTHENTICATION_BACKENDS = [
-    "eusrr_backend.auth_backends.LDAP3Backend",  # работает только если LDAP_ENABLED=True
+    # работает только если LDAP_ENABLED=True
+    "eusrr_backend.auth_backends.LDAP3Backend",
     "eusrr_backend.auth_backends.EmailOrPhoneBackend",  # фоллбэк для режима без LDAP
     "eusrr_backend.auth_backends.SuperuserOnlyBackend",  # экстренный доступ для админа
-    "eusrr_backend.auth_backends.PositionRoleBackend",  # расчёт прав на основе должностей
+    # расчёт прав на основе должностей
+    "eusrr_backend.auth_backends.PositionRoleBackend",
+    "rules.permissions.ObjectPermissionBackend",  # django-rules для object-level permissions
     "django.contrib.auth.backends.ModelBackend",  # стандартный Django бэкенд
 ]
 
@@ -350,7 +378,8 @@ LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")
 LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
 
 # TLS/CA
-LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")  # путь к CA bundle/серту (если нужен)
+# путь к CA bundle/серту (если нужен)
+LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")
 LDAP_TLS_REQUIRED = os.getenv("LDAP_TLS_REQUIRED", "true").lower() == "true"
 
 # Где искать пользователей
@@ -387,7 +416,8 @@ LDAP_SYNC_GROUPS = os.getenv("LDAP_SYNC_GROUPS", "false").lower() == "true"
 LDAP_GROUP_ATTR = os.getenv("LDAP_GROUP_ATTR", "memberOf")
 # Пример: {"CN=HR,OU=Groups,DC=...,DC=...": "hr"}
 LDAP_GROUP_MAP = {}
-LDAP_GROUPS_EXCLUSIVE = os.getenv("LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
+LDAP_GROUPS_EXCLUSIVE = os.getenv(
+    "LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
 
 # WRITE-BACK
 LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
@@ -448,7 +478,6 @@ LDAP_REGISTRATION_CREATE = True
 LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE")
 
 
-
 BRAND_NAME = os.getenv("BRAND_NAME", "HiRo")
 BRAND_LOGO = "img/logo.png"
 
@@ -467,11 +496,20 @@ VAPID_PRIVATE_KEY = os.getenv(
 )
 VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "robotail-info@yandex.ru")
 
+# django-push-notifications settings
+PUSH_NOTIFICATIONS_SETTINGS = {
+    "WP_PRIVATE_KEY": VAPID_PRIVATE_KEY,
+    "WP_CLAIMS": {"sub": f"mailto:{VAPID_ADMIN_EMAIL}"},
+    "UPDATE_ON_DUPLICATE_REG_ID": True,
+    "UNIQUE_REG_ID": True,
+}
+
 # -----------------------------------------------------------------------------
 # CELERY CONFIGURATION
 # -----------------------------------------------------------------------------
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
+CELERY_RESULT_BACKEND = os.getenv(
+    'CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
 
 # Сериализация
 CELERY_ACCEPT_CONTENT = ['json']
@@ -509,3 +547,79 @@ CELERY_BEAT_SCHEDULE = {
 CELERY_TASK_ACKS_LATE = True  # Подтверждаем выполнение после завершения
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Берем по 1 задаче за раз
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000  # Перезапуск worker после 1000 задач
+
+# -----------------------------------------------------------------------------
+# DJANGO-FILER CONFIGURATION
+# -----------------------------------------------------------------------------
+FILER_ENABLE_PERMISSIONS = True  # Включаем ACL для файлов
+FILER_IS_PUBLIC_DEFAULT = False  # По умолчанию файлы приватные
+FILER_CANONICAL_URL = 'canonical/'  # URL для канонических ссылок
+
+# Настройка хранилищ для разных типов файлов
+FILER_STORAGES = {
+    'public': {
+        'main': {
+            'ENGINE': 'filer.storage.PublicFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/public/'),
+                'base_url': '/media/documents/public/',
+            },
+            'UPLOAD_TO': 'filer.utils.generate_filename.by_date',  # Структура: 2026/03/14/filename.pdf
+        },
+        'thumbnails': {
+            'ENGINE': 'filer.storage.PublicFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/public_thumbnails/'),
+                'base_url': '/media/documents/public_thumbnails/',
+            },
+        },
+    },
+    'private': {
+        'main': {
+            'ENGINE': 'filer.storage.PrivateFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/private/'),
+                'base_url': '/smedia/documents/private/',
+            },
+            'UPLOAD_TO': 'filer.utils.generate_filename.by_date',  # Структура: 2026/03/14/filename.pdf
+        },
+        'thumbnails': {
+            'ENGINE': 'filer.storage.PrivateFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/private_thumbnails/'),
+                'base_url': '/smedia/documents/private_thumbnails/',
+            },
+        },
+    },
+}
+
+# easy-thumbnails настройки для filer
+THUMBNAIL_PROCESSORS = (
+    'easy_thumbnails.processors.colorspace',
+    'easy_thumbnails.processors.autocrop',
+    'filer.thumbnail_processors.scale_and_crop_with_subject_location',
+    'easy_thumbnails.processors.filters',
+)
+
+THUMBNAIL_HIGH_RESOLUTION = True  # Поддержка retina-дисплеев
+THUMBNAIL_PRESERVE_EXTENSIONS = ('png', 'gif')  # Сохранять расширения
+
+# Размеры thumbnails по умолчанию
+THUMBNAIL_ALIASES = {
+    '': {
+        'admin_thumbnail': {'size': (100, 100), 'crop': True},
+        'small': {'size': (200, 200), 'crop': False},
+        'medium': {'size': (400, 400), 'crop': False},
+        'large': {'size': (800, 800), 'crop': False},
+    },
+}
+
+# django-reversion настройки
+REVERSION_SAVE_EMPTY_REVISIONS = False  # Не сохранять пустые версии
+
+# CORS Configuration for Next.js frontend
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CORS_ALLOW_CREDENTIALS = True

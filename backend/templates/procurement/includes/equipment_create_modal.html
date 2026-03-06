@@ -1,0 +1,134 @@
+{# 
+  Модал создания оборудования (включаемый шаблон)
+  
+  Данные загружаются через API:
+  - /api/v1/procurement/categories/ - категории
+  - /api/v1/procurement/equipment/create-options/ - отделы и права
+  - /api/employees/users/ - пользователи (если нужен выбор)
+  
+  Опциональный контекст для предзаполнения:
+  - prefill_item_id: ID позиции заявки
+  - prefill_name: название
+  - prefill_price: стоимость
+  - prefill_dept_id: ID отдела
+#}
+
+<div class="modal fade" id="equipmentCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <form class="modal-content" id="equipmentCreateForm">
+      {% csrf_token %}
+      {# Скрытое поле для связи с позицией заявки #}
+      <input type="hidden" name="from_item_id" id="createFromItemId" value="{{ prefill_item_id|default:'' }}">
+      
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi-plus-circle me-2"></i>Добавить оборудование
+          {% if prefill_item_id %}
+          <small class="text-muted ms-2">(из заявки на закупку)</small>
+          {% endif %}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      
+      <div class="modal-body">
+        {# Индикатор загрузки #}
+        <div id="equipmentModalLoader" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+          </div>
+          <p class="text-muted mt-2 mb-0">Загрузка данных...</p>
+        </div>
+        
+        {# Форма (скрыта до загрузки) #}
+        <div id="equipmentModalContent" style="display: none;">
+          <div class="row g-3">
+            <div class="col-md-8">
+              <label class="form-label">Название <span class="text-danger">*</span></label>
+              <input type="text" name="name" id="createName" class="form-control" 
+                     placeholder="Например: Ноутбук Dell Latitude 5420" required maxlength="255"
+                     value="{{ prefill_name|default:'' }}">
+            </div>
+            
+            <div class="col-md-4">
+              <label class="form-label">Категория <span class="text-danger">*</span></label>
+              <select name="category" id="createCategory" class="form-select" required>
+                <option value="">Загрузка...</option>
+              </select>
+            </div>
+            
+            {% if not prefill_item_id %}
+            <div class="col-md-4">
+              <label class="form-label">Количество</label>
+              <input type="number" name="quantity" id="createQuantity" class="form-control" 
+                     value="1" min="1" max="100">
+              <small class="text-muted">При значении > 1 создаётся несколько единиц</small>
+            </div>
+            {% endif %}
+            
+            <div class="col-md-6">
+              <label class="form-label">Серийный номер</label>
+              <input type="text" name="serial_number" id="createSerialNumber" class="form-control" 
+                     placeholder="SN123456789" maxlength="100">
+            </div>
+            
+            <div class="col-md-6">
+              <label class="form-label">Отдел <span class="text-danger">*</span></label>
+              <select name="department" id="createDepartment" class="form-select" required>
+                <option value="">Загрузка...</option>
+              </select>
+            </div>
+            
+            <div class="col-md-6">
+              <label class="form-label">Ответственный</label>
+              <select name="responsible_person" id="createResponsiblePerson" class="form-select">
+                <option value="">Загрузка...</option>
+              </select>
+            </div>
+            
+            <div class="col-12">
+              <label class="form-label">Расположение</label>
+              <input type="text" name="location" id="createLocation" class="form-control" 
+                     placeholder="Например: Офис 3.14, Стеллаж А-5" maxlength="255">
+            </div>
+            
+            <div class="col-md-4">
+              <label class="form-label">Дата покупки <span class="text-danger">*</span></label>
+              <input type="date" name="purchase_date" id="createPurchaseDate" class="form-control" required>
+            </div>
+            
+            <div class="col-md-4">
+              <label class="form-label">Гарантия до</label>
+              <input type="date" name="warranty_until" id="createWarrantyUntil" class="form-control">
+            </div>
+            
+            <div class="col-md-4">
+              <label class="form-label">Стоимость <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <input type="number" name="purchase_cost" id="createPurchaseCost" class="form-control" 
+                       placeholder="0.00" min="0.01" step="0.01" required
+                       value="{{ prefill_price|default:'' }}">
+                <span class="input-group-text">₽</span>
+              </div>
+            </div>
+            
+            <div class="col-12">
+              <label class="form-label">Примечания</label>
+              <textarea name="notes" id="createNotes" class="form-control" rows="2" 
+                        placeholder="Дополнительная информация..."></textarea>
+            </div>
+          </div>
+        </div>
+        
+        {# Сообщение об ошибке #}
+        <div id="equipmentModalError" class="alert alert-danger" style="display: none;"></div>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary" id="equipmentModalSubmitBtn" disabled>
+          <i class="bi-check-lg me-1"></i>Добавить
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

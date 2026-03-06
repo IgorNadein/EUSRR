@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Новая заявка{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">
+            <i class="bi-cart-plus me-2"></i>Новая заявка на закупку
+          </h4>
+        </div>
+        
+        <form method="POST" id="requestForm">
+          {% csrf_token %}
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Название заявки <span class="text-danger">*</span></label>
+                <input type="text" name="title" class="form-control" 
+                       placeholder="Например: Закупка ноутбуков для нового сотрудника" 
+                       required maxlength="255">
+                <div class="form-text">Кратко опишите суть заявки</div>
+              </div>
+              
+              <div class="col-12">
+                <label class="form-label">Обоснование / описание</label>
+                <textarea name="description" class="form-control" rows="4" 
+                          placeholder="Опишите необходимость закупки, для каких целей..." 
+                          maxlength="2000"></textarea>
+              </div>
+              
+              <div class="col-md-6">
+                <label class="form-label">Отдел <span class="text-danger">*</span></label>
+                <select name="department" class="form-select" required id="departmentSelect">
+                  <option value="">Загрузка...</option>
+                </select>
+              </div>
+              
+              <div class="col-md-6">
+                <label class="form-label">Срочность <span class="text-danger">*</span></label>
+                <select name="urgency" class="form-select" required>
+                  <option value="low">🟢 Низкая — до 30 дней</option>
+                  <option value="medium" selected>🟡 Средняя — до 14 дней</option>
+                  <option value="high">🟠 Высокая — до 7 дней</option>
+                  <option value="critical">🔴 Критическая — до 3 дней</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card-footer d-flex gap-2 justify-content-between">
+            <a href="{% url 'procurement_frontend:request_list' %}" class="btn btn-outline-secondary">
+              <i class="bi-arrow-left me-1"></i>Отмена
+            </a>
+            <div class="d-flex gap-2">
+              <button type="submit" name="action" value="draft" class="btn btn-outline-primary">
+                <i class="bi-save me-1"></i>Сохранить черновик
+              </button>
+              <button type="submit" name="action" value="submit" class="btn btn-primary">
+                <i class="bi-send me-1"></i>Создать и отправить
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+      
+      <div class="alert alert-info mt-3">
+        <i class="bi-lightbulb me-2"></i>
+        <strong>Подсказка:</strong> После создания заявки вы сможете добавить детальные позиции 
+        (товары с количеством и ценами) на странице заявки.
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const requestId = {{ request_id|default:'null' }};
+  let isEdit = requestId !== null;
+
+  // Загрузка данных при старте
+  document.addEventListener('DOMContentLoaded', async () => {
+    console.log('[Init] Page loaded, requestId:', requestId);
+    
+    // Проверяем наличие элемента select
+    const select = document.getElementById('departmentSelect');
+    if (!select) {
+      console.error('[Init] Element #departmentSelect not found!');
+      return;
+    }
+    
+    await loadDepartments();
+    
+    if (isEdit) {
+      await loadRequestData();
+    }
+  });
+
+  async function loadDepartments() {
+    const select = document.getElementById('departmentSelect');
+    
+    try {
+      console.log('[Departments] Loading from /api/v1/departments/');
+      const resp = await fetch('/api/v1/departments/');
+      console.log('[Departments] Response status:', resp.status);
+      
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error('[Departments] Error response:', errorText);
+        select.innerHTML = '<option value="">Ошибка загрузки отделов</option>';
+        alert('Не удалось загрузить список отделов. Проверьте консоль.');
+        return;
+      }
+      
+      const departments = await resp.json();
+      console.log('[Departments] Raw response:', departments);
+      
+      // API может вернуть массив или объект с пагинацией {results: [...]}
+      const departmentsList = Array.isArray(departments) ? departments : (departments.results || []);
+      console.log('[Departments] Loaded:', departmentsList.length, 'departments');
+      
+      if (!departmentsList || departmentsList.length === 0) {
+        select.innerHTML = '<option value="">Нет доступных отделов</option>';
+        return;
+      }
+      
+      select.innerHTML = '<option value="">Выберите отдел...</option>';
+      
+      departmentsList.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept.id;
+        option.textContent = dept.name;
+        
+        // Автовыбор отдела текущего пользователя, если он один
+        if (!isEdit && departmentsList.length === 1) {
+          option.selected = true;
+        }
+        
+        select.appendChild(option);
+      });
+      
+      console.log('[Departments] Select populated successfully');
+      
+    } catch (e) {
+      console.error('[Departments] Error loading departments:', e);
+      select.innerHTML = '<option value="">Ошибка сети</option>';
+      alert('Ошибка загрузки отделов: ' + e.message);
+    }
+  }
+
+  async function loadRequestData() {
+    try {
+      const resp = await fetch(`/api/v1/procurement/requests/${requestId}/`);
+      if (!resp.ok) {
+        throw new Error('Не удалось загрузить заявку');
+      }
+      
+      const request = await resp.json();
+      
+      // Заполняем форму
+      document.querySelector('[name="title"]').value = request.title || '';
+      document.querySelector('[name="description"]').value = request.description || '';
+      document.querySelector('[name="urgency"]').value = request.urgency || 'medium';
+      
+      // Отдел выбираем после загрузки списка
+      const deptSelect = document.getElementById('departmentSelect');
+      if (request.department) {
+        const deptId = typeof request.department === 'object' ? request.department.id : request.department;
+        deptSelect.value = deptId;
+      }
+      
+      // Обновляем заголовок
+      const cardHeader = document.querySelector('.card-header h4');
+      if (cardHeader) {
+        cardHeader.innerHTML = '<i class="bi-pencil me-2"></i>Редактирование заявки #' + requestId;
+      }
+      
+      const breadcrumbItem = document.querySelector('.breadcrumb-item.active');
+      if (breadcrumbItem) {
+        breadcrumbItem.textContent = 'Редактирование заявки';
+      }
+      
+      // Скрываем кнопку "Создать и отправить" для редактирования
+      const submitBtn = document.querySelector('[name="action"][value="submit"]');
+      if (submitBtn) {
+        submitBtn.remove();
+      }
+      
+      // Меняем текст кнопки сохранения
+      const draftBtn = document.querySelector('[name="action"][value="draft"]');
+      if (draftBtn) {
+        draftBtn.innerHTML = '<i class="bi-save me-1"></i>Сохранить изменения';
+      }
+      
+    } catch (e) {
+      console.error('Error loading request:', e);
+      alert('Ошибка загрузки заявки: ' + e.message);
+    }
+  }
+
+  // Обработка отправки формы
+  document.getElementById('requestForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitBtn = e.submitter;
+    const action = submitBtn?.value || 'draft';
+    
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    // Блокируем кнопки
+    const buttons = form.querySelectorAll('button[type="submit"]');
+    buttons.forEach(btn => btn.disabled = true);
+    
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сохранение...';
+
+    try {
+      const formData = new FormData(form);
+      const data = {
+        title: formData.get('title'),
+        description: formData.get('description'),
+        department: parseInt(formData.get('department')),
+        urgency: formData.get('urgency')
+      };
+
+      let request;
+      
+      if (isEdit) {
+        // Обновляем существующую заявку
+        const resp = await fetch(`/api/v1/procurement/requests/${requestId}/`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+          },
+          body: JSON.stringify(data)
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.error || JSON.stringify(err));
+        }
+
+        request = await resp.json();
+        
+      } else {
+        // Создаём новую заявку
+        const resp = await fetch('/api/v1/procurement/requests/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+          },
+          body: JSON.stringify(data)
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.error || JSON.stringify(err));
+        }
+
+        request = await resp.json();
+
+        // Если нужно сразу отправить на согласование
+        if (action === 'submit') {
+          submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Отправка...';
+          
+          const submitResp = await fetch(`/api/v1/procurement/requests/${request.id}/submit/`, {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            }
+          });
+
+          if (!submitResp.ok) {
+            const err = await submitResp.json();
+            // Заявка создана, но не отправлена - перенаправляем на детали
+            alert('Заявка создана, но не удалось отправить на согласование: ' + (err.error || 'Неизвестная ошибка'));
+          }
+        }
+      }
+
+      // Перенаправляем на страницу заявки
+      window.location.href = `/procurement/orders/${request.id}/`;
+
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Ошибка: ' + error.message);
+      
+      // Разблокируем кнопки
+      buttons.forEach(btn => btn.disabled = false);
+      submitBtn.innerHTML = originalText;
+    }
+  });
+</script>
+{% endblock %}

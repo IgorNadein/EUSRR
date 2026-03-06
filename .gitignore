@@ -14,7 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Игнорируем только Python lib, но НЕ frontend/src/lib
+/.venv/lib/
+/.venv/lib64/
+/backend/.venv/lib/
+/backend/.venv/lib64/
 lib64/
 parts/
 sdist/
@@ -60,6 +64,7 @@ coverage.xml
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+db.sqlite3*
 
 # Flask stuff:
 instance/
@@ -104,6 +109,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.kali
 env/
 venv/
 ENV/
@@ -145,8 +151,14 @@ dmypy.json
 
 .mypy_cache
 
-# папки со статикой и медиа
-media/
+# Медиа файлы (загруженные пользователями)
+# Игнорируем все файлы в media/, но сохраняем структуру папок через .gitkeep
+*/media/*
+
+# Устаревшие пути (deprecated)
+smedia/
+filer_public/
+
 # Собранные статические файлы Django (collectstatic)
 staticfiles/
 # Исходные static файлы НЕ игнорируются (backend/static/)
@@ -154,7 +166,24 @@ staticfiles/
 # Others
 node_modules
 
+# Next.js
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
 # Docker
 docker-compose.yml
 Договор ООО.xls
 ooo.html
+
+# Archive files (should not be in git)
+*.zip
+*.tar.gz
+*.rar
+
+# Test reports
+newman-report*.json
+*-report.json
+dump.rdb

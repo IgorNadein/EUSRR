@@ -38,6 +38,7 @@ class DeptPerm:
     ADD_REQUESTCOMMENT = "add_requestcomment"
     VIEW_REQUEST = "view_request"
     CAN_PROCESS_REQUESTS = "can_process_requests"
+    MANAGE_EQUIPMENT = "manage_department_equipment"
 
     CHOICES = (
         (MANAGE, "Управлять отделом"),
@@ -50,4 +51,5 @@ class DeptPerm:
         (ADD_REQUESTCOMMENT, "Добавление коментариев по заявлениям"),
         (VIEW_REQUEST, "Просмотр заявлений отдела"),
         (CAN_PROCESS_REQUESTS, "Рассмотрение заявлений отдела"),
+        (MANAGE_EQUIPMENT, "Управлять оборудованием отдела"),
     )

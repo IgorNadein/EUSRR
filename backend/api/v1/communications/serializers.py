@@ -42,6 +42,7 @@ class ChatListSerializer(serializers.ModelSerializer):
     participant_names = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     notifications_enabled = serializers.SerializerMethodField()
+    last_read_message_id = serializers.SerializerMethodField()
     
     class Meta:
         model = Chat
@@ -49,7 +50,7 @@ class ChatListSerializer(serializers.ModelSerializer):
             'id', 'type', 'name', 'description', 'avatar',
             'created_at', 'is_main', 'department',
             'last_message', 'unread_count', 'participant_names',
-            'is_pinned', 'notifications_enabled'
+            'is_pinned', 'notifications_enabled', 'last_read_message_id'
         ]
     
     def get_last_message(self, obj):
@@ -85,6 +86,18 @@ class ChatListSerializer(serializers.ModelSerializer):
             settings = obj.user_settings.filter(user=request.user).first()
             return settings.notifications_enabled if settings else True
         return True
+    
+    def get_last_read_message_id(self, obj):
+        """ID последнего прочитанного сообщения для текущего пользователя"""
+        from communications.models import ChatReadState
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            read_state = ChatReadState.objects.filter(
+                chat=obj, 
+                user=request.user
+            ).only('last_read_message_id').first()
+            return read_state.last_read_message_id if read_state else None
+        return None
 
 
 class ChatDetailSerializer(serializers.ModelSerializer):
@@ -97,6 +110,7 @@ class ChatDetailSerializer(serializers.ModelSerializer):
     participant_details = serializers.SerializerMethodField()
     memberships = ChatMembershipSerializer(many=True, read_only=True, source='chatmembership_set')
     user_settings = serializers.SerializerMethodField()
+    last_read_message_id = serializers.SerializerMethodField()
     
     class Meta:
         model = Chat
@@ -105,7 +119,7 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             'created_by', 'created_at', 'is_main', 
             'include_all_employees', 'department',
             'participants', 'participant_details',
-            'memberships', 'user_settings'
+            'memberships', 'user_settings', 'last_read_message_id'
         ]
         read_only_fields = ['created_at', 'created_by']
     
@@ -126,6 +140,18 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             if settings:
                 return ChatUserSettingsSerializer(settings).data
         return {'is_pinned': False, 'notifications_enabled': True}
+    
+    def get_last_read_message_id(self, obj):
+        """ID последнего прочитанного сообщения для текущего пользователя"""
+        from communications.models import ChatReadState
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            read_state = ChatReadState.objects.filter(
+                chat=obj, 
+                user=request.user
+            ).only('last_read_message_id').first()
+            return read_state.last_read_message_id if read_state else None
+        return None
 
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):

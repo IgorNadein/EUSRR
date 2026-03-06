@@ -1,0 +1,42 @@
+{# Фильтры для списка бюджетов #}
+
+<form method="get" class="row g-2">
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Год</label>
+    <select name="year" class="form-select form-select-sm" id="filterYear">
+      {% for y in available_years %}
+      <option value="{{ y }}" {% if y == filter_year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  
+  <div class="col-md-3">
+    <label class="form-label small text-muted">Квартал</label>
+    <select name="quarter" class="form-select form-select-sm" id="filterQuarter">
+      <option value="">Все</option>
+      <option value="1" {% if filter_quarter == 1 %}selected{% endif %}>1 квартал</option>
+      <option value="2" {% if filter_quarter == 2 %}selected{% endif %}>2 квартал</option>
+      <option value="3" {% if filter_quarter == 3 %}selected{% endif %}>3 квартал</option>
+      <option value="4" {% if filter_quarter == 4 %}selected{% endif %}>4 квартал</option>
+    </select>
+  </div>
+  
+  <div class="col-md-4">
+    <label class="form-label small text-muted">Отдел</label>
+    <select name="department" class="form-select form-select-sm" id="filterDepartment">
+      <option value="">Все отделы</option>
+      {% for dept in departments %}
+      <option value="{{ dept.id }}" {% if dept.id == filter_department %}selected{% endif %}>{{ dept.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  
+  <div class="col-md-2 d-flex align-items-end gap-2">
+    <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+      <i class="bi-funnel me-1"></i>Применить
+    </button>
+    <a href="{% url 'procurement_frontend:budget_list' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi-x-lg"></i>
+    </a>
+  </div>
+</form>

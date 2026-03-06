@@ -4,26 +4,31 @@
  */
 
 /**
- * Базовые URL API эндпоинтов
+ * Базовые URL API эндпоинтов (django-scheduler)
  * @enum {string}
  */
 export const API_URLS = {
-  // Calendar Events API
-  EVENTS: "/api/v1/calendar/events/",
-  EVENT_DETAIL: (id) => `/api/v1/calendar/events/${id}/`,
+  // Schedule Events API (django-scheduler)
+  EVENTS: "/api/v1/schedule/events/",
+  EVENT_DETAIL: (id) => `/api/v1/schedule/events/${id}/`,
+  EVENT_OCCURRENCES: "/api/v1/schedule/events/occurrences/",
 
-  // Calendars API
-  CALENDARS: "/api/v1/calendar/calendars/",
-  CALENDARS_MY: "/api/v1/calendar/calendars/my-calendars/",
-  CALENDAR_DETAIL: (id) => `/api/v1/calendar/calendars/${id}/`,
-  CALENDAR_SUBSCRIBE: (id) => `/api/v1/calendar/calendars/${id}/subscribe/`,
-  CALENDAR_UNSUBSCRIBE: (id) => `/api/v1/calendar/calendars/${id}/unsubscribe/`,
-  CALENDAR_INVITE: (id) => `/api/v1/calendar/calendars/${id}/invite/`,
-  CALENDAR_INVITE_BULK: (id) => `/api/v1/calendar/calendars/${id}/invite-bulk/`,
+  // Schedule Calendars API (django-scheduler)
+  CALENDARS: "/api/v1/schedule/calendars/",
+  CALENDARS_MY: "/api/v1/schedule/calendars/", // django-scheduler не требует отдельного endpoint
+  CALENDAR_DETAIL: (id) => `/api/v1/schedule/calendars/${id}/`,
 
-  // Calendar Subscriptions API
-  SUBSCRIPTIONS: "/api/v1/calendar/subscriptions/",
-  SUBSCRIPTION_DETAIL: (id) => `/api/v1/calendar/subscriptions/${id}/`,
+  // Schedule Rules API (RFC 5545 rrule)
+  RULES: "/api/v1/schedule/rules/",
+  RULE_DETAIL: (id) => `/api/v1/schedule/rules/${id}/`,
+
+  // Schedule Occurrences API (materialized recurring events)
+  OCCURRENCES: "/api/v1/schedule/occurrences/",
+  OCCURRENCE_DETAIL: (id) => `/api/v1/schedule/occurrences/${id}/`,
+
+  // Schedule Relations API (event attendees)
+  RELATIONS: "/api/v1/schedule/relations/",
+  RELATION_DETAIL: (id) => `/api/v1/schedule/relations/${id}/`,
 
   // Departments API
   MY_DEPARTMENTS: "/api/v1/departments/my-departments/",

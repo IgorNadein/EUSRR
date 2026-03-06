@@ -1,0 +1,541 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Бюджеты отделов{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/page-header.css' %}">
+<link rel="stylesheet" href="{% static 'css/components/procurement.css' %}">
+<style>
+  .skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+  }
+  @keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  
+  /* Стили для строк бюджета - десктоп */
+  .budget-row {
+    display: grid;
+    grid-template-columns: 2fr 80px 1fr 1fr 1fr 2fr;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--bs-border-color);
+    transition: background 0.15s ease;
+  }
+  .budget-row:hover {
+    background: var(--bs-tertiary-bg);
+  }
+  .budget-row:last-child {
+    border-bottom: none;
+  }
+  
+  /* Мобильная версия - карточки */
+  @media (max-width: 991.98px) {
+    .budget-list-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1rem;
+    }
+    .budget-row {
+      display: block;
+      padding: 1rem;
+      border: 1px solid var(--bs-border-color);
+      border-radius: 0.5rem;
+      background: var(--bs-body-bg);
+    }
+    .budget-row:hover {
+      background: var(--bs-body-bg);
+      box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+    }
+    .budget-mobile-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--bs-border-color);
+    }
+    .budget-mobile-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .budget-mobile-stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      background: var(--bs-tertiary-bg);
+      border-radius: 0.375rem;
+    }
+    .budget-mobile-stat-label {
+      font-size: 0.875rem;
+      color: var(--bs-secondary-color);
+    }
+    .budget-mobile-stat-value {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+  {# ===== ШАПКА СТРАНИЦЫ ===== #}
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h4 class="mb-0"><i class="bi-wallet2 me-2"></i>Бюджеты отделов</h4>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" type="button" 
+              data-bs-toggle="collapse" data-bs-target="#budgetFilters">
+        <i class="bi-funnel"></i>
+      </button>
+      <button id="createNextQuarterBtn" class="btn btn-sm btn-outline-secondary d-none">
+        <i class="bi-arrow-repeat me-2"></i>Создать на сл. квартал
+      </button>
+      <a id="createBudgetBtn" href="/procurement/budgets/create/" class="btn btn-sm btn-primary d-none">
+        <i class="bi-plus-lg me-1"></i>Добавить бюджет
+      </a>
+    </div>
+  </div>
+
+  {# ===== ФИЛЬТРЫ ===== #}
+  <div class="collapse mb-3" id="budgetFilters">
+    <div class="card card-body">
+      <div class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label form-label-sm">Год</label>
+          <select id="filterYear" class="form-select form-select-sm">
+            <option value="">Все годы</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label form-label-sm">Квартал</label>
+          <select id="filterQuarter" class="form-select form-select-sm">
+            <option value="">Все кварталы</option>
+            <option value="1">Q1</option>
+            <option value="2">Q2</option>
+            <option value="3">Q3</option>
+            <option value="4">Q4</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label form-label-sm">Отдел</label>
+          <select id="filterDepartment" class="form-select form-select-sm">
+            <option value="">Все отделы</option>
+          </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button id="applyFiltersBtn" class="btn btn-sm btn-primary me-2">
+            <i class="bi-check-lg me-1"></i>Применить
+          </button>
+          <button id="clearFiltersBtn" class="btn btn-sm btn-outline-secondary">
+            <i class="bi-x-lg"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ===== СВОДКА ===== #}
+  <div class="row mb-4" id="summaryCards">
+    <div class="col-md-3">
+      <div class="card text-center">
+        <div class="card-body">
+          <div id="totalAllocated" class="fs-4 fw-bold text-primary">
+            <div class="skeleton" style="height:28px;width:80%;margin:0 auto;"></div>
+          </div>
+          <div class="small text-muted">Всего выделено</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center">
+        <div class="card-body">
+          <div id="totalSpent" class="fs-4 fw-bold text-danger">
+            <div class="skeleton" style="height:28px;width:80%;margin:0 auto;"></div>
+          </div>
+          <div class="small text-muted">Потрачено</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center">
+        <div class="card-body">
+          <div id="totalRemaining" class="fs-4 fw-bold text-success">
+            <div class="skeleton" style="height:28px;width:80%;margin:0 auto;"></div>
+          </div>
+          <div class="small text-muted">Остаток</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-center">
+        <div class="card-body">
+          <div id="totalCount" class="fs-4 fw-bold">
+            <div class="skeleton" style="height:28px;width:40%;margin:0 auto;"></div>
+          </div>
+          <div class="small text-muted">Бюджетов</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ===== ТАБЛИЦА БЮДЖЕТОВ - Десктоп ===== #}
+  <div class="card d-none d-lg-block">
+    <div class="proc-table-header">
+      <div class="budget-row" style="padding: 0.75rem 1.25rem; border-bottom: none;">
+        <div><h6 class="mb-0 text-secondary small text-uppercase">Отдел</h6></div>
+        <div><h6 class="mb-0 text-secondary small text-uppercase">Период</h6></div>
+        <div class="text-end"><h6 class="mb-0 text-secondary small text-uppercase">Выделено</h6></div>
+        <div class="text-end"><h6 class="mb-0 text-secondary small text-uppercase">Потрачено</h6></div>
+        <div class="text-end"><h6 class="mb-0 text-secondary small text-uppercase">Остаток</h6></div>
+        <div class="text-center"><h6 class="mb-0 text-secondary small text-uppercase">Использование</h6></div>
+      </div>
+    </div>
+    
+    <div id="budgetListDesktop" class="budget-list-content">
+      <!-- Skeleton loader -->
+      <div class="budget-row">
+        <div class="skeleton" style="height:20px;width:60%;"></div>
+        <div class="skeleton" style="height:20px;width:50px;"></div>
+        <div class="skeleton" style="height:20px;width:80%;"></div>
+        <div class="skeleton" style="height:20px;width:80%;"></div>
+        <div class="skeleton" style="height:20px;width:80%;"></div>
+        <div class="skeleton" style="height:8px;width:100%;"></div>
+      </div>
+      <div class="budget-row">
+        <div class="skeleton" style="height:20px;width:60%;"></div>
+        <div class="skeleton" style="height:20px;width:50px;"></div>
+        <div class="skeleton" style="height:20px;width:80%;"></div>
+        <div class="skeleton" style="height:20px;width:80%;"></div>
+        <div class="skeleton" style="height:20px;width:80%;"></div>
+        <div class="skeleton" style="height:8px;width:100%;"></div>
+      </div>
+    </div>
+  </div>
+  
+  {# ===== МОБИЛЬНАЯ ВЕРСИЯ ===== #}
+  <div id="budgetListMobile" class="d-lg-none budget-list-content">
+    <!-- Skeleton loader -->
+    <div class="card p-3">
+      <div class="skeleton mb-2" style="height:24px;width:70%;"></div>
+      <div class="skeleton mb-3" style="height:20px;width:40%;"></div>
+      <div class="skeleton mb-2" style="height:40px;"></div>
+      <div class="skeleton mb-2" style="height:40px;"></div>
+      <div class="skeleton" style="height:8px;"></div>
+    </div>
+  </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // === СОСТОЯНИЕ ===
+  let isStaff = false;
+  let currentFilters = {};
+  let departments = [];
+  
+  // === ИНИЦИАЛИЗАЦИЯ ===
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadUserInfo();
+    await loadDepartments();
+    loadBudgets();
+    setupEventListeners();
+  });
+  
+  // === ЗАГРУЗКА ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ ===
+  async function loadUserInfo() {
+    try {
+      const resp = await fetch('/api/v1/employees/me/');
+      if (resp.ok) {
+        const user = await resp.json();
+        isStaff = user.is_staff || user.is_superuser;
+        
+        // Показываем кнопки для staff
+        if (isStaff) {
+          document.getElementById('createBudgetBtn').classList.remove('d-none');
+          document.getElementById('createNextQuarterBtn').classList.remove('d-none');
+        }
+      }
+    } catch (e) {
+      console.error('Error loading user info:', e);
+    }
+  }
+  
+  // === ЗАГРУЗКА ОТДЕЛОВ ===
+  async function loadDepartments() {
+    try {
+      const resp = await fetch('/api/employees/departments/');
+      if (resp.ok) {
+        departments = await resp.json();
+        
+        const filterSelect = document.getElementById('filterDepartment');
+        departments.forEach(dept => {
+          filterSelect.insertAdjacentHTML('beforeend', 
+            `<option value="${dept.id}">${dept.name}</option>`);
+        });
+      }
+    } catch (e) {
+      console.error('Error loading departments:', e);
+    }
+  }
+  
+  // === ЗАГРУЗКА БЮДЖЕТОВ ===
+  async function loadBudgets() {
+    try {
+      // Формируем URL с параметрами
+      const params = new URLSearchParams();
+      if (currentFilters.year) params.set('year', currentFilters.year);
+      if (currentFilters.quarter) params.set('quarter', currentFilters.quarter);
+      if (currentFilters.department) params.set('department', currentFilters.department);
+      
+      const resp = await fetch(`/api/v1/procurement/budgets/?${params}`);
+      if (!resp.ok) throw new Error('Ошибка загрузки');
+      
+      const data = await resp.json();
+      const budgets = data.results || data;
+      
+      renderBudgets(budgets);
+      renderSummary(budgets);
+      populateYearFilter(budgets);
+      
+    } catch (e) {
+      console.error('Error loading budgets:', e);
+      document.getElementById('budgetListDesktop').innerHTML = `
+        <div class="text-center py-5 text-danger">
+          <i class="bi-exclamation-triangle fs-1 d-block mb-2"></i>
+          <p>Ошибка загрузки бюджетов</p>
+          <button class="btn btn-outline-primary btn-sm" onclick="loadBudgets()">
+            <i class="bi-arrow-clockwise me-1"></i>Повторить
+          </button>
+        </div>`;
+    }
+  }
+  
+  // === РЕНДЕРИНГ БЮДЖЕТОВ ===
+  function renderBudgets(budgets) {
+    const desktopContainer = document.getElementById('budgetListDesktop');
+    const mobileContainer = document.getElementById('budgetListMobile');
+    
+    if (!budgets || budgets.length === 0) {
+      const emptyHtml = `
+        <div class="text-center py-5 text-muted">
+          <i class="bi-wallet2 fs-1 d-block mb-3"></i>
+          <p class="mb-2">Бюджеты не найдены</p>
+          ${isStaff ? `
+            <a href="/procurement/budgets/create/" class="btn btn-primary">
+              <i class="bi-plus-lg me-2"></i>Добавить бюджет
+            </a>
+          ` : ''}
+        </div>`;
+      desktopContainer.innerHTML = emptyHtml;
+      mobileContainer.innerHTML = emptyHtml;
+      return;
+    }
+    
+    // Десктоп-версия
+    let desktopHtml = '';
+    budgets.forEach(budget => {
+      const deptName = typeof budget.department === 'object' 
+        ? budget.department.name 
+        : (departments.find(d => d.id == budget.department)?.name || 'Отдел');
+      const deptId = typeof budget.department === 'object' ? budget.department.id : budget.department;
+      const pct = budget.utilization_percentage || 0;
+      const progressClass = pct < 50 ? 'bg-success' : pct < 75 ? 'bg-warning' : pct < 90 ? 'bg-orange' : 'bg-danger';
+      
+      desktopHtml += `
+        <div class="budget-row">
+          <div>
+            <a href="/employees/departments/${deptId}/" class="text-decoration-none fw-medium">
+              <i class="bi-building text-muted me-1"></i>${escapeHtml(deptName)}
+            </a>
+          </div>
+          
+          <div>
+            <span class="badge bg-secondary">${budget.year} Q${budget.quarter}</span>
+          </div>
+          
+          <div class="text-end">
+            <span class="fw-bold">${formatNumber(budget.allocated_amount)} ₽</span>
+          </div>
+          
+          <div class="text-end">
+            <span class="text-danger">${formatNumber(budget.spent_amount)} ₽</span>
+          </div>
+          
+          <div class="text-end">
+            <span class="text-success fw-medium">${formatNumber(budget.remaining_amount)} ₽</span>
+          </div>
+          
+          <div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="progress flex-grow-1" style="height: 8px;">
+                <div class="progress-bar ${progressClass}" role="progressbar" style="width: ${pct}%"></div>
+              </div>
+              <span class="small text-muted" style="min-width: 40px;">${Math.round(pct)}%</span>
+              ${isStaff ? `
+                <a href="/procurement/budgets/${budget.id}/edit/" class="btn btn-sm btn-link p-0" title="Редактировать">
+                  <i class="bi-pencil"></i>
+                </a>
+              ` : ''}
+            </div>
+          </div>
+        </div>`;
+    });
+    desktopContainer.innerHTML = desktopHtml;
+    
+    // Мобильная версия
+    let mobileHtml = '';
+    budgets.forEach(budget => {
+      const deptName = typeof budget.department === 'object' 
+        ? budget.department.name 
+        : (departments.find(d => d.id == budget.department)?.name || 'Отдел');
+      const deptId = typeof budget.department === 'object' ? budget.department.id : budget.department;
+      const pct = budget.utilization_percentage || 0;
+      const progressClass = pct < 50 ? 'bg-success' : pct < 75 ? 'bg-warning' : pct < 90 ? 'bg-orange' : 'bg-danger';
+      
+      mobileHtml += `
+        <div class="budget-row">
+          <div class="budget-mobile-header">
+            <div>
+              <a href="/employees/departments/${deptId}/" class="text-decoration-none fw-medium d-block mb-1">
+                <i class="bi-building text-muted me-1"></i>${escapeHtml(deptName)}
+              </a>
+              <span class="badge bg-secondary">${budget.year} Q${budget.quarter}</span>
+            </div>
+            ${isStaff ? `
+              <a href="/procurement/budgets/${budget.id}/edit/" class="btn btn-sm btn-outline-secondary" title="Редактировать">
+                <i class="bi-pencil"></i>
+              </a>
+            ` : ''}
+          </div>
+          
+          <div class="budget-mobile-stats">
+            <div class="budget-mobile-stat">
+              <span class="budget-mobile-stat-label">Выделено</span>
+              <span class="budget-mobile-stat-value text-primary">${formatNumber(budget.allocated_amount)} ₽</span>
+            </div>
+            <div class="budget-mobile-stat">
+              <span class="budget-mobile-stat-label">Потрачено</span>
+              <span class="budget-mobile-stat-value text-danger">${formatNumber(budget.spent_amount)} ₽</span>
+            </div>
+            <div class="budget-mobile-stat">
+              <span class="budget-mobile-stat-label">Остаток</span>
+              <span class="budget-mobile-stat-value text-success">${formatNumber(budget.remaining_amount)} ₽</span>
+            </div>
+            <div class="budget-mobile-stat">
+              <span class="budget-mobile-stat-label">Использовано</span>
+              <span class="budget-mobile-stat-value">${Math.round(pct)}%</span>
+            </div>
+          </div>
+          
+          <div>
+            <div class="progress" style="height: 8px;">
+              <div class="progress-bar ${progressClass}" role="progressbar" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        </div>`;
+    });
+    mobileContainer.innerHTML = mobileHtml;
+  }
+  
+  // === РЕНДЕРИНГ СВОДКИ ===
+  function renderSummary(budgets) {
+    const totalAllocated = budgets.reduce((sum, b) => sum + parseFloat(b.allocated_amount || 0), 0);
+    const totalSpent = budgets.reduce((sum, b) => sum + parseFloat(b.spent_amount || 0), 0);
+    const totalRemaining = budgets.reduce((sum, b) => sum + parseFloat(b.remaining_amount || 0), 0);
+    
+    document.getElementById('totalAllocated').textContent = formatNumber(totalAllocated) + ' ₽';
+    document.getElementById('totalSpent').textContent = formatNumber(totalSpent) + ' ₽';
+    document.getElementById('totalRemaining').textContent = formatNumber(totalRemaining) + ' ₽';
+    document.getElementById('totalCount').textContent = budgets.length;
+  }
+  
+  // === ЗАПОЛНЕНИЕ ФИЛЬТРА ГОДОВ ===
+  function populateYearFilter(budgets) {
+    const years = [...new Set(budgets.map(b => b.year))].sort((a, b) => b - a);
+    const filterYear = document.getElementById('filterYear');
+    
+    // Очистим и заполним заново
+    filterYear.innerHTML = '<option value="">Все годы</option>';
+    years.forEach(year => {
+      filterYear.insertAdjacentHTML('beforeend', `<option value="${year}">${year}</option>`);
+    });
+  }
+  
+  // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+  function formatNumber(num) {
+    return new Intl.NumberFormat('ru-RU').format(Math.round(num));
+  }
+  
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+           document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+  }
+  
+  // === ОБРАБОТЧИКИ СОБЫТИЙ ===
+  function setupEventListeners() {
+    // Фильтры
+    document.getElementById('applyFiltersBtn').addEventListener('click', () => {
+      currentFilters.year = document.getElementById('filterYear').value;
+      currentFilters.quarter = document.getElementById('filterQuarter').value;
+      currentFilters.department = document.getElementById('filterDepartment').value;
+      loadBudgets();
+    });
+    
+    document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+      document.getElementById('filterYear').value = '';
+      document.getElementById('filterQuarter').value = '';
+      document.getElementById('filterDepartment').value = '';
+      currentFilters = {};
+      loadBudgets();
+    });
+    
+    // Создать бюджеты на следующий квартал
+    document.getElementById('createNextQuarterBtn').addEventListener('click', async () => {
+      if (!confirm('Создать бюджеты на следующий квартал для всех отделов?\n\nБудут скопированы суммы из текущего квартала.')) {
+        return;
+      }
+      
+      try {
+        const resp = await fetch('/api/v1/procurement/budgets/create_next_quarter/', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (resp.ok) {
+          const data = await resp.json();
+          alert(`Создано бюджетов: ${data.created}\nПропущено: ${data.skipped}`);
+          loadBudgets();
+        } else {
+          const err = await resp.json();
+          alert(err.error || 'Ошибка создания бюджетов');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Ошибка сети');
+      }
+    });
+  }
+</script>
+{% endblock %}

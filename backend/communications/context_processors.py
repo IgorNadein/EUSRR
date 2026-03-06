@@ -9,16 +9,19 @@ from .models import Chat, ChatReadState, Message
 
 
 def chat_unread_total(request):
+    """
+    Считает общее количество непрочитанных сообщений пользователя.
+    Использует last_read_message_id (Telegram-style) вместо last_read_at.
+    """
     if not request.user.is_authenticated:
         return {"chat_unread_total": 0}
 
     user = request.user
-    default_dt = timezone.make_aware(datetime.datetime(1970, 1, 1))
 
-    # last_read_at для каждого чата текущего юзера
-    last_read_sq = ChatReadState.objects.filter(
+    # last_read_message_id для каждого чата текущего юзера
+    last_read_msg_sq = ChatReadState.objects.filter(
         chat=models.OuterRef("pk"), user=user
-    ).values("last_read_at")[:1]
+    ).values("last_read_message_id")[:1]
 
     # доступные юзеру чаты
     deps = getattr(user, "departments", None)
@@ -31,11 +34,11 @@ def chat_unread_total(request):
             | Q(type="department", department__in=deps_qs)
         )
         .distinct()
-        .annotate(last_read_at=Coalesce(Subquery(last_read_sq), Value(default_dt)))
+        .annotate(last_read_msg_id=Coalesce(Subquery(last_read_msg_sq), Value(0)))
         .annotate(
             unread=Count(
                 "messages",
-                filter=Q(messages__created_at__gt=F("last_read_at"))
+                filter=Q(messages__id__gt=F("last_read_msg_id"))
                 & ~Q(messages__author=user),
                 distinct=True,
             )

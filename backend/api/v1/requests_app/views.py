@@ -478,6 +478,13 @@ class RequestViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         instance = serializer.instance
-        read = RequestReadSerializer(instance, context=self.get_serializer_context())
+        read = RequestReadSerializer(
+            instance,
+            context=self.get_serializer_context()
+        )
         headers = self.get_success_headers(read.data)
-        return Response(read.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response(
+            read.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )

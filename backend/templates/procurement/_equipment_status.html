@@ -1,0 +1,29 @@
+{# Бейдж статуса оборудования #}
+
+{% if status == 'available' %}
+  <span class="proc-eq-status available">
+    <i class="bi-check-circle me-1"></i>Доступно
+  </span>
+{% elif status == 'in_use' %}
+  <span class="proc-eq-status in_use">
+    <i class="bi-person-check me-1"></i>В использовании
+  </span>
+{% elif status == 'maintenance' %}
+  <span class="proc-eq-status maintenance">
+    <i class="bi-tools me-1"></i>На ТО
+  </span>
+{% elif status == 'repair' %}
+  <span class="proc-eq-status repair">
+    <i class="bi-wrench me-1"></i>В ремонте
+  </span>
+{% elif status == 'retired' %}
+  <span class="proc-eq-status retired">
+    <i class="bi-x-circle me-1"></i>Списано
+  </span>
+{% elif status == 'lost' %}
+  <span class="proc-eq-status retired">
+    <i class="bi-question-circle me-1"></i>Утеряно
+  </span>
+{% else %}
+  <span class="proc-eq-status">{{ status }}</span>
+{% endif %}

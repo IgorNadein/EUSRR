@@ -189,8 +189,12 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         if content.get("load_history", False):
             await self._send_initial_messages(chat_id)
         
-        # Помечаем как прочитанное
-        await self._mark_read(chat, self.user)
+        # НЕ отмечаем как прочитанное при открытии!
+        # Автоотметка происходит автоматически при загрузке сообщений через:
+        # - GET /messages-around/ → отмечает последнее ЗАГРУЖЕННОЕ
+        # - GET /messages/?after_id= → отмечает последнее ЗАГРУЖЕННОЕ
+        # - WebSocket new_message → отмечает если внизу
+        # Старый вызов chat.mark_read() отмечал ПОСЛЕДНЕЕ В ЧАТЕ, что неправильно!
         
         await self.send_json({
             "type": "chat_opened",
@@ -388,17 +392,15 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         await self.chat_poll_update(event)
     
     async def chat_marked_read(self, event):
-        """Синхронизация отметки прочитанного между вкладками"""
+        """Синхронизация отметки прочитанного между вкладками (Telegram-style)"""
         chat_id = event.get("chat_id")
-        last_read_at = event.get("last_read_at")
         last_read_message_id = event.get("last_read_message_id")
         
-        logger.info(f"[Consumer.chat_marked_read] Sending to client: chat={chat_id}, last_read_at={last_read_at}, last_read_message_id={last_read_message_id}")
+        logger.info(f"[Consumer.chat_marked_read] Sending to client: chat={chat_id}, last_read_message_id={last_read_message_id}")
         
         await self.send_json({
             "type": "marked_read",
             "chat_id": chat_id,
-            "last_read_at": last_read_at,
             "last_read_message_id": last_read_message_id
         })
     
@@ -419,6 +421,19 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             "type": "unread_count",
             "count": event.get("count", 0)
+        })
+
+    # ==================== Обработка событий закупок ====================
+
+    async def procurement_update(self, event):
+        """
+        Обновление заявки на закупку.
+        Вызывается из procurement/signals.py
+        """
+        await self.send_json({
+            "type": "procurement_update",
+            "event": event.get("event", "request_updated"),
+            "data": event.get("data", {})
         })
     
     # ==================== Обработка действий пользователя ====================
@@ -626,23 +641,28 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         )
     
     async def _handle_mark_read(self, content):
-        """Отметка сообщений как прочитанных"""
+        """
+        [DEPRECATED] Отметка сообщений как прочитанных через WebSocket.
+        
+        Используйте POST /api/v1/communications/chats/{id}/mark-read/ вместо этого.
+        Автоотметка происходит автоматически при загрузке сообщений.
+        """
         import logging
         logger = logging.getLogger(__name__)
         
         chat_id = content.get("chat_id")
         if not chat_id:
-            logger.warning(f"[Consumer._handle_mark_read] No chat_id provided")
+            logger.warning(f"[Consumer._handle_mark_read] [DEPRECATED] No chat_id provided")
             return
         
-        logger.info(f"[Consumer._handle_mark_read] User {self.user.id} marking chat {chat_id} as read")
+        logger.warning(
+            f"[Consumer._handle_mark_read] [DEPRECATED] "
+            f"User {self.user.id} tried to mark chat {chat_id} as read via WebSocket. "
+            f"This is deprecated. Use POST /mark-read/ API endpoint instead."
+        )
         
-        chat = await self._get_chat(int(chat_id))
-        if not chat:
-            logger.warning(f"[Consumer._handle_mark_read] Chat {chat_id} not found")
-            return
-        
-        await self._mark_read(chat, self.user)
+        # НЕ вызываем _mark_read! Автоотметка происходит автоматически.
+        # Если нужна точная отметка, frontend должен вызвать POST API endpoint.
     
     async def _handle_vote_poll(self, content):
         """Голосование в опросе"""
@@ -777,26 +797,27 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     
     @database_sync_to_async
     def _mark_read(self, chat, user):
-        """Отметить чат как прочитанный"""
+        """
+        [DEPRECATED] НЕ ИСПОЛЬЗУЕТСЯ!
+        
+        Автоотметка происходит автоматически через ChatViewSet._auto_mark_read()
+        при загрузке сообщений через GET запросы.
+        
+        Этот метод отмечал ПОСЛЕДНЕЕ СООБЩЕНИЕ В ЧАТЕ, что неправильно!
+        Правильная логика: отмечать последнее ЗАГРУЖЕННОЕ сообщение.
+        """
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"[Consumer._mark_read] Marking chat {chat.id} as read for user {user.id}")
-        
-        # Получаем старое состояние для сравнения
-        try:
-            old_state = ChatReadState.objects.get(chat=chat, user=user)
-            logger.info(f"[Consumer._mark_read] OLD state: last_read_at={old_state.last_read_at}, last_read_message_id={old_state.last_read_message_id}")
-        except ChatReadState.DoesNotExist:
-            logger.info(f"[Consumer._mark_read] No previous ReadState found")
-        
-        read_state, created = ChatReadState.objects.update_or_create(
-            chat=chat,
-            user=user,
-            defaults={"last_read_at": timezone.now()}
+        logger.warning(
+            f"[Consumer._mark_read] [DEPRECATED] "
+            f"Attempt to mark chat {chat.id} as read for user {user.id}. "
+            f"This method is deprecated and does nothing. "
+            f"Auto-mark happens automatically via ChatViewSet._auto_mark_read()"
         )
         
-        logger.info(f"[Consumer._mark_read] {'CREATED' if created else 'UPDATED'} ReadState: last_read_at={read_state.last_read_at}, last_read_message_id={read_state.last_read_message_id}")
+        # НЕ вызываем chat.mark_read(user)!
+        # Это отмечало последнее сообщение в чате вместо последнего загруженного.
     
     @database_sync_to_async
     def _set_typing_status(self, chat, user, is_typing):

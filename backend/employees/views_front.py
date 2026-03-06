@@ -1123,6 +1123,25 @@ def department_detail(request, pk: int):
             "posts": _fetch_department_posts(api, pk),
         }
     )
+    
+    # Добавляем бюджет отдела на текущий квартал
+    from django.utils import timezone
+    from procurement.models import Budget
+    now = timezone.now()
+    current_quarter = (now.month - 1) // 3 + 1
+    try:
+        department_budget = Budget.objects.get(
+            department_id=pk,
+            year=now.year,
+            quarter=current_quarter
+        )
+    except Budget.DoesNotExist:
+        department_budget = None
+    
+    ctx["department_budget"] = department_budget
+    ctx["budget_year"] = now.year
+    ctx["budget_quarter"] = current_quarter
+    
     return render(request, "employees/department_detail.html", ctx)
 
 

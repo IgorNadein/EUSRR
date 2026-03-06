@@ -94,6 +94,43 @@ export function initRequestListPage(config) {
     }
   }
 
+  // Если включен AJAX режим - инициализируем обработчик списка
+  if (useAjaxList) {
+    const userId = parseInt(document.body.dataset.userId || '0', 10);
+    const canProcess = document.body.dataset.canProcess === 'true';
+    
+    console.log('Request list AJAX mode:', {
+      apiListUrl,
+      userId,
+      canProcess
+    });
+    
+    // Инициализация списка заявлений (AJAX загрузка с бесконечной прокруткой)
+    const requestListHandler = initRequestListHandler({
+      apiListUrl,
+      detailUrlTemplate: '/requests/{id}/',
+      userId,
+      canProcess,
+      headers
+    });
+    
+    // Обработка переключения фильтров через URL параметры
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentView = urlParams.get('view') || '';
+    const currentType = urlParams.get('type') || '';
+    const currentStatus = urlParams.get('status') || '';
+    
+    if (currentView && requestListHandler.setView) {
+      requestListHandler.setView(currentView);
+    }
+    if (currentType && requestListHandler.setType) {
+      requestListHandler.setType(currentType);
+    }
+    if (currentStatus && requestListHandler.setStatus) {
+      requestListHandler.setStatus(currentStatus);
+    }
+  }
+
   // Инициализация обработчиков модальных окон
   initRequestModalHandler({
     autoShowComments,

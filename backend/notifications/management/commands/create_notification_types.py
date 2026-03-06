@@ -133,6 +133,30 @@ class Command(BaseCommand):
                         },
                         'is_groupable': True,
                     },
+                    {
+                        'code': 'document_comment_reply',
+                        'name': 'Ответ на комментарий',
+                        'description': 'Ответ на ваш комментарий к документу',
+                        'priority': 'normal',
+                        'default_channels': {
+                            'web': True,
+                            'email': False,
+                            'telegram': True
+                        },
+                        'is_groupable': True,
+                    },
+                    {
+                        'code': 'document_related',
+                        'name': 'Документ связан',
+                        'description': 'Ваш документ связан с другим документом',
+                        'priority': 'low',
+                        'default_channels': {
+                            'web': True,
+                            'email': False,
+                            'telegram': False
+                        },
+                        'is_groupable': True,
+                    },
                 ],
             },
             'requests': {
