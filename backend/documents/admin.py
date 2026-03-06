@@ -15,7 +15,6 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html, mark_safe
 from django.urls import reverse
-from django_fsm import get_available_FIELD_transitions
 from .models import Document, DocumentAcknowledgement
 from django.contrib.auth import get_user_model
 
@@ -61,14 +60,13 @@ class DocumentAdmin(admin.ModelAdmin):
 
     list_display = (
         'title', 
-        'status_badge',  # FSM статус с цветовым индикатором
         'file_thumbnail',
         'file_info',
         'uploaded_at', 
         'sent_to_all',
         'acknowledgement_status',
     )
-    list_filter = ('status', 'sent_to_all', 'uploaded_at', 'departments')
+    list_filter = ('sent_to_all', 'uploaded_at', 'departments')
     search_fields = ('title', 'description', 'file__name', 'file__description')
     filter_horizontal = ('recipients', 'departments')
     actions = ['send_document']
@@ -80,7 +78,6 @@ class DocumentAdmin(admin.ModelAdmin):
         (None, {
             'fields': (
                 'title',
-                'status',  # FSM статус
                 'file',  # FilerFileField с drag & drop
                 'file_preview',  # Превью файла
                 'description',
@@ -88,10 +85,6 @@ class DocumentAdmin(admin.ModelAdmin):
                 'departments', 
                 'recipients'
             ),
-        }),
-        (_('Workflow'), {
-            'fields': ('available_transitions',),
-            'classes': ('collapse',),
         }),
         (_('Meta'), {
             'fields': ('uploaded_by', 'uploaded_at', 'file_size', 'file_extension'),
@@ -102,8 +95,6 @@ class DocumentAdmin(admin.ModelAdmin):
         }),
     )
     readonly_fields = (
-        'status',  # FSM поле только через transitions
-        'available_transitions',
         'uploaded_by', 
         'uploaded_at',
         'file_preview',
@@ -118,43 +109,6 @@ class DocumentAdmin(admin.ModelAdmin):
         if not obj.pk:
             obj.uploaded_by = request.user
         super().save_model(request, obj, form, change)
-
-    def status_badge(self, obj):
-        """Статус документа с цветовым индикатором."""
-        colors = {
-            'draft': '#6c757d',       # серый
-            'in_review': '#0dcaf0',   # голубой  
-            'approved': '#198754',    # зеленый
-            'published': '#0d6efd',   # синий
-            'archived': '#6c757d',    # серый
-            'rejected': '#dc3545',    # красный
-        }
-        color = colors.get(obj.status, '#6c757d')
-        return format_html(
-            '<span style="background-color:{}; color:white; padding:3px 8px; '
-            'border-radius:3px; font-size:11px; font-weight:bold;">{}</span>',
-            color,
-            obj.get_status_display()
-        )
-    status_badge.short_description = _('Статус')
-
-    def available_transitions(self, obj):
-        """Список доступных переходов (transitions) для текущего состояния."""
-        if not obj.pk:
-            return '—'
-        
-        transitions = get_available_FIELD_transitions(obj, Document.status)
-        if not transitions:
-            return format_html('<em>Нет доступных переходов</em>')
-        
-        html = '<ul style="margin:0; padding-left:20px;">'
-        for transition in transitions:
-            html += f'<li><strong>{transition.name}</strong>: {transition.target}</li>'
-        html += '</ul>'
-        
-        return mark_safe(html)
-    
-    available_transitions.short_description = _('Доступные переходы')
 
     def file_thumbnail(self, obj):
         """Превью файла в списке документов."""

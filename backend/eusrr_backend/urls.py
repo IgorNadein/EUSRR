@@ -42,7 +42,11 @@ urlpatterns = [
     path("api/", include(("api.urls", "api"), namespace="api")),
     # Service Worker должен быть в корне для правильного scope
     path("sw.js", serve_service_worker, name="sw"),
-    # django-filer URLs для обработки приватных файлов
+    # django-filer URLs для обработки приватных файлов (с проверкой прав доступа)
     path("", include("filer.server.urls")),
     path("", include("feed.urls_front", namespace="feed")),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+]
+
+# Публичные медиа файлы (без проверки прав) - только в режиме разработки
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

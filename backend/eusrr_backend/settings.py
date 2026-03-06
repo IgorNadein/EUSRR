@@ -198,6 +198,13 @@ REGISTRATION_ALLOWED_IPS = [
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 MEDIA_URL = "/media/"
 
+# Структура медиа папки:
+# media/
+#   ├── documents/          ← Документы (читаемая структура по годам/месяцам)
+#   ├── avatars/            ← Аватары пользователей
+#   ├── chat_attachments/   ← Вложения в чате
+#   └── temp/              ← Временные файлы
+
 # Лимиты загрузки файлов
 # По умолчанию Django ограничивает загрузку до 2.5MB
 # Увеличиваем до 10MB для аватаров и документов
@@ -547,6 +554,44 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000  # Перезапуск worker посл
 FILER_ENABLE_PERMISSIONS = True  # Включаем ACL для файлов
 FILER_IS_PUBLIC_DEFAULT = False  # По умолчанию файлы приватные
 FILER_CANONICAL_URL = 'canonical/'  # URL для канонических ссылок
+
+# Настройка хранилищ для разных типов файлов
+FILER_STORAGES = {
+    'public': {
+        'main': {
+            'ENGINE': 'filer.storage.PublicFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/public/'),
+                'base_url': '/media/documents/public/',
+            },
+            'UPLOAD_TO': 'filer.utils.generate_filename.by_date',  # Структура: 2026/03/14/filename.pdf
+        },
+        'thumbnails': {
+            'ENGINE': 'filer.storage.PublicFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/public_thumbnails/'),
+                'base_url': '/media/documents/public_thumbnails/',
+            },
+        },
+    },
+    'private': {
+        'main': {
+            'ENGINE': 'filer.storage.PrivateFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/private/'),
+                'base_url': '/smedia/documents/private/',
+            },
+            'UPLOAD_TO': 'filer.utils.generate_filename.by_date',  # Структура: 2026/03/14/filename.pdf
+        },
+        'thumbnails': {
+            'ENGINE': 'filer.storage.PrivateFileSystemStorage',
+            'OPTIONS': {
+                'location': os.path.join(MEDIA_ROOT, 'documents/private_thumbnails/'),
+                'base_url': '/smedia/documents/private_thumbnails/',
+            },
+        },
+    },
+}
 
 # easy-thumbnails настройки для filer
 THUMBNAIL_PROCESSORS = (

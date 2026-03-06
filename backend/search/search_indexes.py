@@ -163,7 +163,7 @@ if Document:
         Document,
         adapter_cls=DocumentAdapter,
         fields=("title", "description", "extracted_text"),  # Добавлен extracted_text!
-        store=("title", "uploaded_at", "status"),
+        store=("title", "uploaded_at"),
     )
 
 # 12. Уведомления (Notifications)
