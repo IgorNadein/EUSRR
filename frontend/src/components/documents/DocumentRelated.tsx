@@ -8,7 +8,6 @@ import { toast } from "sonner";
 interface RelatedDocument {
   id: number;
   title: string;
-  status: string;
   created_at: string;
   file_name?: string;
 }
@@ -105,32 +104,6 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      draft: "bg-gray-100 text-gray-700",
-      in_review: "bg-yellow-100 text-yellow-700",
-      approved: "bg-green-100 text-green-700",
-      published: "bg-blue-100 text-blue-700",
-      archived: "bg-gray-100 text-gray-500",
-      rejected: "bg-red-100 text-red-700",
-    };
-    
-    const labels: Record<string, string> = {
-      draft: "Черновик",
-      in_review: "На рассмотрении",
-      approved: "Утверждено",
-      published: "Опубликовано",
-      archived: "В архиве",
-      rejected: "Отклонено",
-    };
-
-    return (
-      <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${colors[status] || colors.draft}`}>
-        {labels[status] || status}
-      </span>
-    );
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -203,9 +176,6 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
                         {doc.title}
                       </span>
                     </div>
-                    <div className="mt-1">
-                      {getStatusBadge(doc.status)}
-                    </div>
                   </div>
                   <button
                     onClick={() => handleAdd(doc.id)}
@@ -255,7 +225,6 @@ export function DocumentRelated({ documentId, onNavigate }: DocumentRelatedProps
                   )}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
-                  {getStatusBadge(doc.status)}
                   <span className="text-xs text-gray-400">
                     {new Date(doc.created_at).toLocaleDateString("ru-RU")}
                   </span>

@@ -62,11 +62,17 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
   const [selectedDepartments, setSelectedDepartments] = useState<number[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
   
+  // Metadata fields
+  const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  
   // Data for selects
   const [departments, setDepartments] = useState<Department[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
+  const [documentTags, setDocumentTags] = useState<any[]>([]);
+  
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [loadingDocumentTags, setLoadingDocumentTags] = useState(false);
 
   // Load departments and employees
   useEffect(() => {
@@ -89,6 +95,16 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         console.error("Ошибка загрузки сотрудников:", err);
       } finally {
         setLoadingEmployees(false);
+      }
+      
+      try {
+        setLoadingDocumentTags(true);
+        const tagsResponse = await apiClient.getDocumentTags();
+        setDocumentTags(tagsResponse.results || tagsResponse);
+      } catch (err) {
+        console.error("Ошибка загрузки тегов:", err);
+      } finally {
+        setLoadingDocumentTags(false);
       }
     };
     
@@ -194,6 +210,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
         department_ids: sentToAll ? undefined : selectedDepartments,
         recipient_ids: sentToAll ? undefined : selectedRecipients,
         acknowledgement_required: acknowledgementRequired,
+        tag_ids: selectedTags.length > 0 ? selectedTags : undefined,
       });
 
       toast.success("Документ успешно загружен");
@@ -208,6 +225,7 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
       setAcknowledgementRequired(false);
       setSelectedDepartments([]);
       setSelectedRecipients([]);
+      setSelectedTags([]);
       
       if (onSuccess) {
         onSuccess();
@@ -348,6 +366,48 @@ export function DocumentUploadForm({ onSuccess, onCancel, currentFolderId }: Doc
           rows={3}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
         />
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-gray-200 pt-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <TagIcon size={16} />
+          Категоризация
+        </h3>
+      </div>
+
+      {/* Tags */}
+      <div>
+        <label htmlFor="tags" className="mb-1.5 block text-sm font-medium text-gray-700">
+          Теги
+        </label>
+        <select
+          id="tags"
+          multiple
+          value={selectedTags.map(String)}
+          onChange={(e) => {
+            const values = Array.from(e.target.selectedOptions, (option) => Number(option.value));
+            setSelectedTags(values);
+          }}
+          disabled={loadingDocumentTags}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+          size={4}
+        >
+          {loadingDocumentTags ? (
+            <option disabled>Загрузка...</option>
+          ) : documentTags.length === 0 ? (
+            <option disabled>Нет доступных тегов</option>
+          ) : (
+            documentTags.map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name}
+              </option>
+            ))
+          )}
+        </select>
+        <p className="mt-1 text-xs text-gray-500">
+          Удерживайте Ctrl/Cmd для выбора нескольких тегов
+        </p>
       </div>
 
       {/* Извлеченный текст */}

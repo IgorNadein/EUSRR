@@ -59,7 +59,6 @@ interface DocumentsDashboardProps {
   myDocuments?: Array<{
     id: number;
     title: string;
-    status?: string;
     uploaded_at: string;
   }>;
 }
@@ -149,24 +148,6 @@ export function DocumentsDashboard({
             </div>
             <div className="rounded-full bg-green-100 p-3">
               <Users size={24} className="text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* Одобренные */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Одобренные</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">
-                {
-                  stats.documentsByStatus.find((s) => s.status === "approved" || s.status === "Одобрено")
-                    ?.count || 0
-                }
-              </p>
-            </div>
-            <div className="rounded-full bg-emerald-100 p-3">
-              <CheckCircle2 size={24} className="text-emerald-600" />
             </div>
           </div>
         </div>
@@ -356,9 +337,6 @@ export function DocumentsDashboard({
               >
                 <p className="truncate text-sm font-medium text-gray-900">{doc.title}</p>
                 <p className="text-xs text-gray-500">
-                  {doc.status && (
-                    <span className="mr-2 rounded bg-gray-100 px-1">{doc.status}</span>
-                  )}
                   {new Date(doc.uploaded_at).toLocaleDateString("ru-RU")}
                 </p>
               </div>
