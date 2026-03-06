@@ -103,16 +103,116 @@ export interface Comment {
 }
 
 // Documents types
+export interface DocumentAcknowledgement {
+  id: number;
+  document: number;
+  user: User;
+  acknowledged_at: string;
+}
+
 export interface Document {
   id: number;
   title: string;
   description?: string;
   file?: string;
-  document_type: string;
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
+  folder?: {
+    id: number;
+    name: string;
+  };
+  folder_path?: string;
+  tags?: {
+    id: number;
+    name: string;
+    color?: string;
+  }[];
   created_by: User;
   created_at: string;
   updated_at: string;
-  tags?: string[];
+  uploaded_by?: User;
+  uploaded_at?: string;
+  modified_by?: User;
+  modified_at?: string;
+  sent_to_all?: boolean;
+  recipients?: User[];
+  departments?: { id: number; name: string }[];
+  acknowledgements?: DocumentAcknowledgement[];
+  acknowledgement_required?: boolean;
+  is_acknowledged?: boolean;
+}
+
+// Document Comments
+export interface DocumentComment {
+  id: number;
+  document: number;
+  author: {
+    id: number;
+    full_name: string;
+    avatar?: string;
+  };
+  text: string;
+  parent?: number;
+  created_at: string;
+  updated_at: string;
+  replies_count: number;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface CreateDocumentCommentData {
+  document: number;
+  text: string;
+  parent?: number;
+}
+
+// Document Tags
+export interface DocumentTag {
+  id: number;
+  name: string;
+  slug: string;
+  color?: string;
+  created_at: string;
+  documents_count: number;
+}
+
+export interface CreateDocumentTagData {
+  name: string;
+  color?: string;
+}
+
+// Document Versions (django-reversion)
+export interface DocumentVersion {
+  id: number;
+  revision_id: number;
+  version: number;
+  created_at: string;
+  user: string;
+  comment: string;
+  changes: Record<string, any>;
+}
+
+export interface DocumentActivity {
+  id: number;
+  timestamp: string;
+  user: string;
+  action: string;
+  description: string;
+  related_object?: any;
+}
+
+export interface RevertDocumentData {
+  version_id: number;
+}
+
+// Related Documents
+export interface RelatedDocument {
+  id: number;
+  title: string;
+  file_type: string;
+  created_at: string;
+  uploaded_by: string;
 }
 
 // Requests types

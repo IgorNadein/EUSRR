@@ -109,6 +109,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.kali
 env/
 venv/
 ENV/
@@ -150,8 +151,14 @@ dmypy.json
 
 .mypy_cache
 
-# папки со статикой и медиа
-media/
+# Медиа файлы (загруженные пользователями)
+# Игнорируем все файлы в media/, но сохраняем структуру папок через .gitkeep
+*/media/*
+
+# Устаревшие пути (deprecated)
+smedia/
+filer_public/
+
 # Собранные статические файлы Django (collectstatic)
 staticfiles/
 # Исходные static файлы НЕ игнорируются (backend/static/)
@@ -170,3 +177,13 @@ next-env.d.ts
 docker-compose.yml
 Договор ООО.xls
 ooo.html
+
+# Archive files (should not be in git)
+*.zip
+*.tar.gz
+*.rar
+
+# Test reports
+newman-report*.json
+*-report.json
+dump.rdb

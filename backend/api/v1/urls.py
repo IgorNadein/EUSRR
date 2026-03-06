@@ -12,7 +12,12 @@ from .schedule.views import (
 
 # Communications ViewSets
 from .communications.views import ChatViewSet, MessageViewSet, PollViewSet
-from .documents.views import DocumentViewSet
+from .documents.views import (
+    DocumentViewSet,
+    FolderViewSet,
+    DocumentTagViewSet,
+    DocumentCommentViewSet,
+)
 from .employees.views import (
     DepartmentRoleViewSet,
     DepartmentViewSet,
@@ -41,6 +46,9 @@ router.register(r"schedule/occurrences", ScheduleOccurrenceViewSet, basename="sc
 router.register(r"schedule/relations", ScheduleEventRelationViewSet, basename="schedule-relations")
 
 router.register(r"documents", DocumentViewSet, basename="documents")
+router.register(r"folders", FolderViewSet, basename="folders")
+router.register(r"document-tags", DocumentTagViewSet, basename="document-tags")
+router.register(r"document-comments", DocumentCommentViewSet, basename="document-comments")
 
 router.register(r"requests", RequestViewSet, basename="request")
 

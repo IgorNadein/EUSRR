@@ -685,9 +685,9 @@ export default function Home() {
             className="absolute inset-0 bg-black/50"
           />
 
-          <div className="absolute inset-x-3 top-4 bottom-4 mx-auto flex max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200 sm:inset-x-6">
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-              <p className="text-sm font-semibold text-gray-900">
+          <div className="absolute inset-x-2 sm:inset-x-3 top-2 sm:top-4 bottom-2 sm:bottom-4 mx-auto flex max-w-[95vw] sm:max-w-2xl flex-col overflow-hidden rounded-xl sm:rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200">
+            <div className="flex items-center justify-between border-b border-gray-100 px-3 sm:px-4 py-2.5 sm:py-3">
+              <p className="text-xs sm:text-sm font-semibold text-gray-900">
                 {editingPostId ? "Редактировать публикацию" : "Создать публикацию"}
               </p>
               <button
@@ -807,11 +807,11 @@ export default function Home() {
             className="absolute inset-0 bg-black/50"
           />
 
-          <div className="absolute inset-x-3 top-4 bottom-4 mx-auto flex max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200 sm:inset-x-6">
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+          <div className="absolute inset-x-2 sm:inset-x-3 top-2 sm:top-4 bottom-2 sm:bottom-4 mx-auto flex max-w-[95vw] sm:max-w-2xl flex-col overflow-hidden rounded-xl sm:rounded-2xl bg-white shadow-2xl ring-1 ring-gray-200">
+            <div className="flex items-center justify-between border-b border-gray-100 px-3 sm:px-4 py-2.5 sm:py-3">
               <div>
-                <p className="text-sm font-semibold text-gray-900">Комментарии</p>
-                <p className="text-xs text-gray-500">Публикация #{activePost.id}</p>
+                <p className="text-xs sm:text-sm font-semibold text-gray-900">Комментарии</p>
+                <p className="text-[10px] sm:text-xs text-gray-500">Публикация #{activePost.id}</p>
               </div>
               <button
                 type="button"

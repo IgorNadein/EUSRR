@@ -138,11 +138,11 @@ export function CalendarSubscriptionsModal({ isOpen, onClose, onUpdate }: Props)
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+      <div className="w-full max-w-[95vw] sm:max-w-2xl rounded-xl sm:rounded-2xl bg-white shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">Подписки на календари</h3>
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 sm:px-6 py-3 sm:py-4">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-900">Подписки на календари</h3>
           <button
             onClick={onClose}
             className="rounded-full p-1 hover:bg-gray-100"
@@ -155,7 +155,7 @@ export function CalendarSubscriptionsModal({ isOpen, onClose, onUpdate }: Props)
         <div className="flex border-b border-gray-100">
           <button
             onClick={() => setActiveTab("available")}
-            className={`flex-1 px-6 py-3 text-sm font-medium transition ${
+            className={`flex-1 px-3 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium transition ${
               activeTab === "available"
                 ? "border-b-2 border-sky-500 text-sky-600"
                 : "text-gray-600 hover:text-gray-900"
@@ -165,7 +165,7 @@ export function CalendarSubscriptionsModal({ isOpen, onClose, onUpdate }: Props)
           </button>
           <button
             onClick={() => setActiveTab("subscribed")}
-            className={`flex-1 px-6 py-3 text-sm font-medium transition ${
+            className={`flex-1 px-3 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium transition ${
               activeTab === "subscribed"
                 ? "border-b-2 border-sky-500 text-sky-600"
                 : "text-gray-600 hover:text-gray-900"

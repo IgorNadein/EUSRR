@@ -243,13 +243,13 @@ export default function RequestsPage() {
     });
   };
 
-  const handleCreateOrUpdate = async (mode: "create" | "edit", saveAs: "draft" | "submit") => {
+  const handleCreateOrUpdate = async (mode: "create" | "edit", saveAs: "draft" | "submitted") => {
     try {
       setBusyKey(`${mode}-${saveAs}`);
       setActionError(null);
       setActionSuccess(null);
 
-      if (saveAs === "submit" && !form.sent_to_all_department && form.department_ids.length === 0 && form.recipient_ids.length === 0) {
+      if (saveAs === "submitted" && !form.sent_to_all_department && form.department_ids.length === 0 && form.recipient_ids.length === 0) {
         setActionError("Укажите получателей или отделы.");
         return;
       }
@@ -297,8 +297,8 @@ export default function RequestsPage() {
       const response = await apiClient.getRequests(buildRequestParams(nextPage));
       const chunk = response.results || [];
       setRequests((prev) => {
-        const known = new Set(prev.map((r) => r.id));
-        const uniqueChunk = chunk.filter((r) => !known.has(r.id));
+        const known = new Set(prev.map((r: Request) => r.id));
+        const uniqueChunk = chunk.filter((r: Request) => !known.has(r.id));
         return [...prev, ...uniqueChunk];
       });
       setNextPage(extractNextPage(response.next));
@@ -546,7 +546,7 @@ export default function RequestsPage() {
 
         <button
           type="button"
-          onClick={() => handleCreateOrUpdate(mode, "submit")}
+          onClick={() => handleCreateOrUpdate(mode, "submitted")}
           disabled={busyKey !== null}
           className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60"
         >

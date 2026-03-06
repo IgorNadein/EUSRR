@@ -13,7 +13,7 @@ from django.db.models.signals import post_save, m2m_changed
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 
-from .models import Document, DocumentAcknowledgement
+from .models import Document, DocumentAcknowledgement, DocumentComment
 from notifications.services import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -485,7 +485,6 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
             ),
             'sent_to_all': document.sent_to_all,
         },
-        send_immediately=send_immediately  # Передаём параметр
     )
     
     if notification:
@@ -497,4 +496,160 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
         logger.warning(
             f"[notification_signals] Failed to create notification "
             f"for user={recipient.id}"
+        )
+
+
+# =============================================================================
+# НОВЫЕ СИГНАЛЫ ДЛЯ КОММЕНТАРИЕВ И СВЯЗАННЫХ ДОКУМЕНТОВ
+# =============================================================================
+
+@receiver(post_save, sender=DocumentComment)
+def notify_on_new_comment(sender, instance, created, **kwargs):
+    """
+    Отправка уведомлений при создании нового комментария.
+    
+    - Если это ответ на комментарий (parent != None): уведомить автора родительского комментария
+    - Если это обычный комментарий: уведомить автора документа (если он не автор комментария)
+    """
+    if not created:
+        return
+    
+    comment = instance
+    document = comment.document
+    author = comment.author
+    
+    logger.info(
+        f"[notification_signals] New comment on document={document.pk} "
+        f"by user={author.pk} parent={comment.parent_id}"
+    )
+    
+    # Если это ответ на комментарий
+    if comment.parent:
+        parent_author = comment.parent.author
+        
+        # Не уведомляем самого себя
+        if parent_author.id == author.id:
+            logger.info(
+                f"[notification_signals] Skipping self-reply notification"
+            )
+            return
+        
+        logger.info(
+            f"[notification_signals] Notifying parent author={parent_author.pk} "
+            f"about reply"
+        )
+        
+        # Используем новый тип document_comment_reply
+        NotificationService.create_notification_async(
+            recipient=parent_author,
+            notification_type_code='document_comment_reply',
+            title=f'Ответ на ваш комментарий',
+            message=(
+                f'{author.get_full_name() or author.username} ответил на ваш '
+                f'комментарий к документу "{document.title}"'
+            ),
+            content_object=comment,
+            action_url=f'/documents/{document.pk}/#comment-{comment.pk}',
+            action_text='Посмотреть',
+            metadata={
+                'document_id': document.id,
+                'comment_id': comment.id,
+                'parent_comment_id': comment.parent_id,
+                'author_id': author.id,
+            },
+        )
+    else:
+        # Обычный комментарий - уведомляем автора документа
+        if not document.uploaded_by:
+            logger.info(
+                f"[notification_signals] Document has no author, skipping"
+            )
+            return
+        
+        doc_author = document.uploaded_by
+        
+        # Не уведомляем самого себя
+        if doc_author.id == author.id:
+            logger.info(
+                f"[notification_signals] Skipping self-comment notification"
+            )
+            return
+        
+        logger.info(
+            f"[notification_signals] Notifying document author={doc_author.pk} "
+            f"about new comment"
+        )
+        
+        NotificationService.create_notification_async(
+            recipient=doc_author,
+            notification_type_code='document_comment',
+            title=f'Новый комментарий к документу',
+            message=(
+                f'{author.get_full_name() or author.username} оставил комментарий '
+                f'к вашему документу "{document.title}"'
+            ),
+            content_object=comment,  
+            action_url=f'/documents/{document.pk}/#comment-{comment.pk}',
+            action_text='Посмотреть',
+            metadata={
+                'document_id': document.id,
+                'comment_id': comment.id,
+                'author_id': author.id,
+            },
+        )
+
+
+@receiver(m2m_changed, sender=Document.related_documents.through)
+def notify_on_related_document_added(sender, instance, action, pk_set, **kwargs):
+    """
+    Уведомление при добавлении связанного документа.
+    Уведомляем автора связанного документа (если это не тот же пользователь).
+    """
+    if action != 'post_add':
+        return
+    
+    if not pk_set:
+        return
+    
+    main_document = instance
+    
+    logger.info(
+        f"[notification_signals] Related documents added to doc={main_document.pk} "
+        f"related_ids={pk_set}"
+    )
+    
+    # Получаем связанные документы
+    related_documents = Document.objects.filter(pk__in=pk_set).select_related('uploaded_by')
+    
+    for related_doc in related_documents:
+        # Если у связанного документа есть автор
+        if not related_doc.uploaded_by:
+            continue
+        
+        # Не уведомляем если авторы совпадают
+        if (main_document.uploaded_by and 
+            related_doc.uploaded_by.id == main_document.uploaded_by.id):
+            continue
+        
+        logger.info(
+            f"[notification_signals] Notifying author={related_doc.uploaded_by.pk} "
+            f"that their document was linked"
+        )
+        
+        # Используем новый тип document_related
+        NotificationService.create_notification_async(
+            recipient=related_doc.uploaded_by,
+            notification_type_code='document_related',
+            title=f'Документ связан с другим',
+            message=(
+                f'Ваш документ "{related_doc.title}" связан '
+                f'с документом "{main_document.title}"'
+            ),
+            content_object=main_document,
+            action_url=f'/documents/{main_document.pk}/',
+            action_text='Посмотреть',
+            metadata={
+                'document_id': main_document.id,
+                'related_document_id': related_doc.id,
+            },
         )

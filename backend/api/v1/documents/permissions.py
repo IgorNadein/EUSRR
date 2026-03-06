@@ -36,11 +36,18 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
     perms_map["OPTIONS"] = []
 
     def has_permission(self, request: Request, view: View) -> bool:
+        action = getattr(view, "action", None)
+        
         # SAFE + acknowledge/download → достаточно быть аутентифицированным
-        if request.method in SAFE_METHODS or getattr(view, "action", None) in (
-            "acknowledge",
-            "download",
-        ):
+        if request.method in SAFE_METHODS or action in ("acknowledge", "download"):
+            return bool(request.user and request.user.is_authenticated)
+
+        # CREATE → разрешаем всем аутентифицированным (документы создаются неопубликованными)
+        if action == "create":
+            return bool(request.user and request.user.is_authenticated)
+
+        # update/destroy и related documents - проверяем на уровне объекта
+        if action in ("update", "partial_update", "destroy", "add_related", "remove_related", "revert"):
             return bool(request.user and request.user.is_authenticated)
 
         # небезопасные → staff ИЛИ стандартные модельные права (add/change/delete)
@@ -53,18 +60,33 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if not (user and user.is_authenticated):
             return False
 
+        action = getattr(view, "action", None)
+
         # Полный доступ при наличии ЛЮБОГО модельного права или staff
         if user.is_staff or _has_any_model_perm(user, "documents", "document"):
             return True
 
+        # revert - откатить версию может автор или менеджер
+        if action == "revert":
+            return user.has_perm("documents.change_document", obj)
+
+        # add_related/remove_related → проверяем django-rules change_document
+        if action in ("add_related", "remove_related"):
+            return user.has_perm("documents.change_document", obj)
+
+        # PUT/PATCH → проверяем django-rules change_document
+        if request.method in ("PUT", "PATCH"):
+            return user.has_perm("documents.change_document", obj)
+
+        # DELETE → проверяем django-rules delete_document
+        if request.method == "DELETE":
+            return user.has_perm("documents.delete_document", obj)
+
         # SAFE/ack/download без модельных прав → только получатели или sent_to_all
-        if request.method in SAFE_METHODS or getattr(view, "action", None) in (
-            "acknowledge",
-            "download",
-        ):
+        if request.method in SAFE_METHODS or action in ("acknowledge", "download"):
             if getattr(obj, "sent_to_all", False):
                 return True
             return obj.recipients.filter(pk=user.pk, is_active=True).exists()
 
-        # Небезопасные без прав — нельзя
+        # Небезопасные без прав — нельзя (POST custom actions)
         return False

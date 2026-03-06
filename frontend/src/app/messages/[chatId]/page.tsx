@@ -466,13 +466,13 @@ export default function MessageDialogPage() {
       }
       else if (data.type === 'reaction_added') {
         // Реакция добавлена
-        if (data.reactions_summary) {
+        if (data.reactions_summary && data.message_id) {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
       }
       else if (data.type === 'reaction_removed') {
         // Реакция удалена
-        if (data.reactions_summary) {
+        if (data.reactions_summary && data.message_id) {
           updateMessageReactionsSummary(data.message_id, data.reactions_summary);
         }
       }
@@ -1663,20 +1663,20 @@ export default function MessageDialogPage() {
       ) : null}
 
       {reactionPickerForMessageId ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" data-reaction-picker="true">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Выберите реакцию</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 sm:p-4" data-reaction-picker="true">
+          <div className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-xl">
+            <div className="mb-3 sm:mb-4 flex items-center justify-between">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">Выберите реакцию</h3>
               <button
                 type="button"
                 onClick={() => setReactionPickerForMessageId(null)}
                 className="rounded-full p-1 hover:bg-gray-100"
                 aria-label="Закрыть"
               >
-                <X size={20} className="text-gray-600" />
+                <X size={18} className="text-gray-600 sm:w-5 sm:h-5" />
               </button>
             </div>
-            <div className="grid max-h-[55vh] grid-cols-8 gap-2 overflow-y-auto">
+            <div className="grid max-h-[60vh] sm:max-h-[55vh] grid-cols-6 sm:grid-cols-8 gap-1.5 sm:gap-2 overflow-y-auto">
               {ALL_REACTIONS.map((emoji) => (
                 <button
                   key={`picker-${emoji}`}

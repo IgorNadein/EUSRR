@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "../../components/AppShell";
@@ -41,6 +41,23 @@ const modelNames: Record<SearchModelType, string> = {
 };
 
 export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <AppShell>
+        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+            <p className="mt-2">Загрузка...</p>
+          </div>
+        </section>
+      </AppShell>
+    }>
+      <SearchPageContent />
+    </Suspense>
+  );
+}
+
+function SearchPageContent() {
   const searchParams = useSearchParams();
   const queryRaw = searchParams.get("q") || "";
   const query = queryRaw.trim();

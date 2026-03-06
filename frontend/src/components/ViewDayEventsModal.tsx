@@ -51,11 +51,11 @@ export function ViewDayEventsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+      <div className="w-full max-w-[95vw] sm:max-w-md rounded-xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+        <div className="mb-3 sm:mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">События на {capitalizedDate}</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900">События на {capitalizedDate}</h3>
             <p className="text-xs text-gray-500 mt-1">
               {sortedEvents.length === 0
                 ? "Нет событий"

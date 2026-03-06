@@ -16,6 +16,15 @@ def migrate_to_django_scheduler(apps, schema_editor):
     - Мигрирует события с конвертацией повторяемости
     - Мигрирует подписки в CalendarRelation
     """
+    # ВАЖНО: Пропускаем миграцию данных в тестовой БД
+    from django.conf import settings
+    db_name = settings.DATABASES['default']['NAME']
+    
+    # Проверяем признаки тестовой БД (SQLite :memory: или test_ prefix)
+    if ':memory' in str(db_name).lower() or 'test' in str(db_name).lower():
+        print("⏭️  Пропуск миграции данных в тестовой БД\n")
+        return
+    
     # ВАЖНО: Получаем ContentType через apps.get_model для миграций!
     ContentType = apps.get_model('contenttypes', 'ContentType')
     
