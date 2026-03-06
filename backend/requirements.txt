@@ -131,8 +131,6 @@ flower>=2.0.1
 
 # Push Notifications
 django-push-notifications==3.1.0
-<<<<<<< HEAD
-=======
 
 # File Management with django-filer
 django-filer==3.4.4
@@ -144,4 +142,3 @@ django-reversion==6.1.0
 
 # Workflow State Machine
 django-fsm==3.0.1
->>>>>>> feature/django-filer-documents
