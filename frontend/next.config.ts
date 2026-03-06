@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   // Отключаем React Strict Mode для production-like поведения в dev
   reactStrictMode: false,
 
+  // Standalone output для production сборки
+  output: 'standalone',
+
   // Указываем корень проекта для Turbopack, чтобы не путался с lockfile в корне монорепо
   turbopack: {
     root: __dirname,
