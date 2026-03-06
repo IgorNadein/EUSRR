@@ -100,7 +100,6 @@ def make_document(
     description: str = "desc",
     sent_to_all: bool = True,
     recipients: Iterable[User] | None = None,
-    status: str = Document.Status.PUBLISHED,
 ) -> Document:
     """Создаёт Document напрямую (минует API).
 
@@ -110,7 +109,6 @@ def make_document(
         description (str): Описание.
         sent_to_all (bool): Признак рассылки всем.
         recipients (Iterable[User] | None): Конкретные получатели при sent_to_all=false.
-        status (str): Статус документа (по умолчанию PUBLISHED для видимости в тестах).
 
     Returns:
         Document: Созданная модель с прикреплённым файлом.
@@ -125,7 +123,6 @@ def make_document(
         uploaded_at=timezone.now(),
         sent_to_all=sent_to_all,
         file=filer_file,
-        status=status,
     )
     if not sent_to_all and recipients:
         doc.recipients.set(recipients)
@@ -235,10 +232,9 @@ class TestAuthAndPermissions:
             format="multipart",
         )
         assert resp.status_code in (200, 201), f"Expected 200/201, got {resp.status_code}: {resp.content}"
-        # Проверяем что документ создан в статусе draft
+        # Проверяем что документ создан
         doc_id = resp.json()["id"]
         doc = Document.objects.get(id=doc_id)
-        assert doc.status == Document.Status.DRAFT, f"Expected DRAFT status, got {doc.status}"
         assert doc.uploaded_by == u
 
         # object not intended for user
@@ -494,12 +490,11 @@ class TestCreate:
         assert body["title"] == "User Created Document"
         assert body["sent_to_all"] is True
         
-        # Проверяем что документ создан в статусе DRAFT
+        # Проверяем что документ создан
         doc = Document.objects.get(pk=body["id"])
-        assert doc.status == Document.Status.DRAFT
         assert doc.uploaded_by == regular_user
         
-        # Проверяем что обычный пользователь видит свой документ в любом статусе
+        # Проверяем что обычный пользователь видит свой документ
         detail_r = client.get(api_urls["detail"](doc.pk))
         assert detail_r.status_code == 200
 

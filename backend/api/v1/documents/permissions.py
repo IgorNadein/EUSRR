@@ -35,18 +35,6 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
     perms_map["HEAD"] = []
     perms_map["OPTIONS"] = []
 
-    # FSM workflow actions - разрешаем на основе object-level permissions
-    FSM_ACTIONS = (
-        "submit_for_review",
-        "approve",
-        "reject",
-        "publish",
-        "archive",
-        "unarchive",
-        "return_to_draft",
-        "revert",
-    )
-
     def has_permission(self, request: Request, view: View) -> bool:
         action = getattr(view, "action", None)
         
@@ -54,14 +42,12 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if request.method in SAFE_METHODS or action in ("acknowledge", "download"):
             return bool(request.user and request.user.is_authenticated)
 
-        # CREATE → разрешаем всем аутентифицированным (документы создаются в draft)
-        # FSM workflow обеспечит контроль: draft → review → approve → publish
+        # CREATE → разрешаем всем аутентифицированным (документы создаются неопубликованными)
         if action == "create":
             return bool(request.user and request.user.is_authenticated)
 
-        # FSM actions, update/destroy и related documents - проверяем на уровне объекта
-        # Разрешаем здесь, has_object_permission проверит django-rules
-        if action in self.FSM_ACTIONS or action in ("update", "partial_update", "destroy", "add_related", "remove_related"):
+        # update/destroy и related documents - проверяем на уровне объекта
+        if action in ("update", "partial_update", "destroy", "add_related", "remove_related", "revert"):
             return bool(request.user and request.user.is_authenticated)
 
         # небезопасные → staff ИЛИ стандартные модельные права (add/change/delete)
@@ -80,22 +66,8 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if user.is_staff or _has_any_model_perm(user, "documents", "document"):
             return True
 
-        # FSM actions → проверяем специфичные django-rules права (разделение обязанностей!)
-        if action == "submit_for_review":
-            return user.has_perm("documents.submit_for_review_document", obj)
-        elif action == "approve":
-            return user.has_perm("documents.approve_document", obj)
-        elif action == "publish":
-            return user.has_perm("documents.publish_document", obj)
-        elif action == "reject":
-            return user.has_perm("documents.reject_document", obj)
-        elif action in ("archive", "unarchive"):
-            return user.has_perm("documents.archive_document", obj)
-        elif action == "return_to_draft":
-            # Вернуть в draft может автор или менеджер
-            return user.has_perm("documents.change_document", obj)
-        elif action == "revert":
-            # Откатить версию может автор или менеджер
+        # revert - откатить версию может автор или менеджер
+        if action == "revert":
             return user.has_perm("documents.change_document", obj)
 
         # add_related/remove_related → проверяем django-rules change_document

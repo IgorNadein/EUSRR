@@ -79,14 +79,6 @@ def is_same_department(user, document):
 
 
 @rules.predicate
-def is_not_document_uploader(user, document):
-    """Пользователь НЕ загрузил документ (для разделения обязанностей)"""
-    if document is None:
-        return True
-    return document.uploaded_by != user
-
-
-@rules.predicate
 def has_acknowledged_document(user, document):
     """Пользователь уже ознакомился с документом"""
     if document is None:
@@ -155,41 +147,6 @@ rules.add_rule(
 rules.add_rule(
     'documents.view_department_documents',
     is_superuser | can_manage_documents
-)
-
-
-# -----------------------------------------------------------------------------
-# FSM TRANSITIONS PERMISSIONS (разделение обязанностей)
-# -----------------------------------------------------------------------------
-
-# Submit for review: автор может отправить СВОЙ документ на рассмотрение
-rules.add_rule(
-    'documents.submit_for_review_document',
-    is_superuser | is_document_uploader | can_manage_documents
-)
-
-# Approve: ТОЛЬКО менеджеры/superuser, НЕ автор (разделение обязанностей!)
-rules.add_rule(
-    'documents.approve_document',
-    is_superuser | (can_manage_documents & is_not_document_uploader)
-)
-
-# Publish: ТОЛЬКО менеджеры/superuser, НЕ автор (разделение обязанностей!)
-rules.add_rule(
-    'documents.publish_document',
-    is_superuser | (can_manage_documents & is_not_document_uploader)
-)
-
-# Reject: ТОЛЬКО менеджеры/superuser
-rules.add_rule(
-    'documents.reject_document',
-    is_superuser | can_manage_documents
-)
-
-# Archive/Unarchive: менеджеры или автор может архивировать свой документ
-rules.add_rule(
-    'documents.archive_document',
-    is_superuser | is_document_uploader | can_manage_documents
 )
 
 

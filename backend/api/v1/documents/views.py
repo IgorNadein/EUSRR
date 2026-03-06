@@ -10,8 +10,6 @@ from documents.models import (
     Document,
     DocumentAcknowledgement,
     DocumentTag,
-    DocumentType,
-    Cabinet,
     DocumentComment,
 )
 from easy_thumbnails.files import get_thumbnailer
@@ -35,8 +33,6 @@ from .serializers import (
     VersionSerializer,
     ActivityItemSerializer,
     DocumentTagSerializer,
-    DocumentTypeSerializer,
-    CabinetSerializer,
     DocumentCommentSerializer,
 )
 
@@ -124,21 +120,6 @@ class DocumentViewSet(ModelViewSet):
                       departments__employeedepartment__is_active=True) |
                     Q(uploaded_by=user)
                 ).distinct()
-
-        # Фильтрация по статусу: обычные пользователи БЕЗ прав видят только PUBLISHED
-        # (кроме своих собственных документов, которые они видят в любом статусе)
-        if user and user.is_authenticated and not user.is_staff:
-            has_any_perm = (
-                user.has_perm("documents.view_document") or
-                user.has_perm("documents.add_document") or
-                user.has_perm("documents.change_document") or
-                user.has_perm("documents.delete_document")
-            )
-            if not has_any_perm:
-                qs = qs.filter(
-                    Q(status=Document.Status.PUBLISHED) |
-                    Q(uploaded_by=user)
-                )
 
         # Для аутентифицированных аннотируем флаг "я ознакомился"
         if user and user.is_authenticated:
@@ -264,115 +245,6 @@ class DocumentViewSet(ModelViewSet):
                 },
             }
         )
-
-    # -------------------------------------------------------------------------
-    # FSM WORKFLOW ACTIONS
-    # -------------------------------------------------------------------------
-
-    @action(detail=True, methods=['post'], url_path='submit-for-review')
-    def submit_for_review(self, request, pk=None):
-        """Отправить документ на рассмотрение (draft → in_review)."""
-        document = self.get_object()
-        try:
-            document.submit_for_review()
-            document.save()
-            serializer = self.get_serializer(document)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=True, methods=['post'])
-    def approve(self, request, pk=None):
-        """Одобрить документ (in_review → approved)."""
-        document = self.get_object()
-        try:
-            document.approve()
-            document.save()
-            serializer = self.get_serializer(document)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=True, methods=['post'])
-    def reject(self, request, pk=None):
-        """Отклонить документ (in_review → rejected)."""
-        document = self.get_object()
-        try:
-            document.reject()
-            document.save()
-            serializer = self.get_serializer(document)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=True, methods=['post'])
-    def publish(self, request, pk=None):
-        """Опубликовать документ (approved → published)."""
-        document = self.get_object()
-        try:
-            document.publish()
-            document.save()
-            serializer = self.get_serializer(document)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=True, methods=['post'], url_path='return-to-draft')
-    def return_to_draft(self, request, pk=None):
-        """Вернуть документ в черновики."""
-        document = self.get_object()
-        try:
-            document.return_to_draft()
-            document.save()
-            serializer = self.get_serializer(document)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=True, methods=['post'])
-    def archive(self, request, pk=None):
-        """Архивировать документ (published → archived)."""
-        document = self.get_object()
-        try:
-            document.archive()
-            document.save()
-            serializer = self.get_serializer(document)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=True, methods=['post'])
-    def unarchive(self, request, pk=None):
-        """Разархивировать документ (archived → published)."""
-        document = self.get_object()
-        try:
-            document.unarchive()
-            document.save()
-            serializer = self.get_serializer(document)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
     # -------------------------------------------------------------------------
     # DJANGO-REVERSION ENDPOINTS
@@ -933,166 +805,4 @@ class DocumentTagViewSet(ModelViewSet):
         return Response(serializer.data)
 
 
-class DocumentTypeViewSet(ModelViewSet):
-    """CRUD для типов документов.
-    
-    Типы определяют структуру метаданных и workflow для документов.
-    """
-    queryset = DocumentType.objects.filter(is_active=True)
-    serializer_class = DocumentTypeSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        """Возвращает типы документов.
-        
-        Параметры:
-            ?include_inactive=true - показать неактивные типы
-        """
-        qs = super().get_queryset()
-        
-        # Опционально показываем неактивные
-        include_inactive = self.request.query_params.get('include_inactive', '').lower() == 'true'
-        if include_inactive:
-            qs = DocumentType.objects.all()
-        
-        # Поиск
-        search = self.request.query_params.get('search', '')
-        if search:
-            qs = qs.filter(
-                Q(name__icontains=search) |
-                Q(code__icontains=search) |
-                Q(description__icontains=search)
-            )
-        
-        return qs.order_by('order', 'name')
-    
-    @action(detail=True, methods=['get'])
-    def documents(self, request, pk=None):
-        """Получить все документы этого типа."""
-        doc_type = self.get_object()
-        documents = Document.objects.filter(document_type=doc_type)
-        serializer = DocumentReadSerializer(
-            documents,
-            many=True,
-            context={'request': request}
-        )
-        return Response(serializer.data)
-
-
-class CabinetViewSet(ModelViewSet):
-    """CRUD для кабинетов (виртуальных коллекций документов).
-    
-    Кабинеты позволяют организовать документы в виртуальные коллекции
-    независимо от физической структуры папок.
-    """
-    queryset = Cabinet.objects.all()
-    serializer_class = CabinetSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        """Возвращает кабинеты с поддержкой иерархии.
-        
-        Параметры:
-            ?parent_id=<id> - показать только дочерние кабинеты
-            ?root=true - показать только корневые кабинеты
-        """
-        qs = super().get_queryset()
-        
-        # Аннотируем количество документов
-        qs = qs.annotate(document_count=Count('documents'))
-        
-        parent_id = self.request.query_params.get('parent_id')
-        root = self.request.query_params.get('root', '').lower() == 'true'
-        
-        if root:
-            qs = qs.filter(parent__isnull=True)
-        elif parent_id:
-            qs = qs.filter(parent_id=parent_id)
-        
-        # Поиск
-        search = self.request.query_params.get('search', '')
-        if search:
-            qs = qs.filter(
-                Q(name__icontains=search) |
-                Q(description__icontains=search)
-            )
-        
-        return qs.order_by('order', 'name')
-    
-    @transaction.atomic
-    def perform_create(self, serializer):
-        """Автоматически устанавливаем created_by при создании."""
-        serializer.save(created_by=self.request.user)
-    
-    @action(detail=True, methods=['get'])
-    def children(self, request, pk=None):
-        """Получить дочерние кабинеты."""
-        cabinet = self.get_object()
-        children = cabinet.children.all().order_by('order', 'name')
-        serializer = self.get_serializer(children, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['get'])
-    def documents(self, request, pk=None):
-        """Получить документы в этом кабинете."""
-        cabinet = self.get_object()
-        documents = cabinet.documents.all()
-        serializer = DocumentReadSerializer(
-            documents,
-            many=True,
-            context={'request': request}
-        )
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def add_document(self, request, pk=None):
-        """Добавить документ в кабинет.
-        
-        Body:
-            {"document_id": 123}
-        """
-        cabinet = self.get_object()
-        document_id = request.data.get('document_id')
-        
-        if not document_id:
-            return Response(
-                {'error': 'document_id обязателен'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            document = Document.objects.get(pk=document_id)
-            cabinet.documents.add(document)
-            return Response({'status': 'added'})
-        except Document.DoesNotExist:
-            return Response(
-                {'error': 'Документ не найден'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-    
-    @action(detail=True, methods=['post'])
-    def remove_document(self, request, pk=None):
-        """Удалить документ из кабинета.
-        
-        Body:
-            {"document_id": 123}
-        """
-        cabinet = self.get_object()
-        document_id = request.data.get('document_id')
-        
-        if not document_id:
-            return Response(
-                {'error': 'document_id обязателен'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            document = Document.objects.get(pk=document_id)
-            cabinet.documents.remove(document)
-            return Response({'status': 'removed'})
-        except Document.DoesNotExist:
-            return Response(
-                {'error': 'Документ не найден'},
-                status=status.HTTP_404_NOT_FOUND
-            )
 
