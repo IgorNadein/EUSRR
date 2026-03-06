@@ -22,7 +22,7 @@ class UpsertBirthdayEventService(Service):
     Сервис создания/обновления события дня рождения сотрудника.
     
     Использует паттерн External ID: creator_id + title для идентификации.
-    Создает ежегодное повторяющееся событие в личном календаре сотрудника.
+    Создает ежегодное повторяющееся событие в общем календаре "🎂 Дни рождения".
     """
     employee = ModelField(Employee)
     
@@ -37,11 +37,11 @@ class UpsertBirthdayEventService(Service):
                 'event': None
             }
         
-        # Получаем личный календарь сотрудника
-        personal_calendar = self._get_or_create_personal_calendar(employee)
+        # Получаем общий календарь дней рождений
+        birthday_calendar = self._get_or_create_birthday_calendar()
         
         # Создаем или обновляем событие
-        event, created = self._upsert_birthday_event(employee, personal_calendar)
+        event, created = self._upsert_birthday_event(employee, birthday_calendar)
         
         return {
             'success': True,
@@ -49,30 +49,14 @@ class UpsertBirthdayEventService(Service):
             'created': created
         }
     
-    def _get_or_create_personal_calendar(self, employee: Employee) -> Calendar:
-        """Получить или создать личный календарь сотрудника."""
+    def _get_or_create_birthday_calendar(self) -> Calendar:
+        """Получить или создать общий календарь дней рождений."""
         calendar, created = Calendar.objects.get_or_create(
-            slug=f'personal-{employee.pk}',
+            slug='birthdays',
             defaults={
-                'name': '👤 Мой календарь'
+                'name': '🎂 Дни рождения'
             }
         )
-        
-        # Убедиться что есть связь owner
-        if created:
-            from schedule.models import CalendarRelation
-            from django.contrib.contenttypes.models import ContentType
-            
-            ct = ContentType.objects.get_for_model(Employee)
-            CalendarRelation.objects.get_or_create(
-                calendar=calendar,
-                content_type=ct,
-                object_id=employee.pk,
-                defaults={
-                    'distinction': 'owner',
-                    'inheritable': True
-                }
-            )
         
         return calendar
     
@@ -100,7 +84,7 @@ class UpsertBirthdayEventService(Service):
             hour=0,
             minute=0
         )
-        end_date = start_date + timedelta(days=1)
+        end_date = start_date + timedelta(hours=23, minutes=59, seconds=59)
         
         # Делаем aware если USE_TZ=True
         if timezone.is_naive(start_date):
