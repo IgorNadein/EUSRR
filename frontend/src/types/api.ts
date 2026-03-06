@@ -103,14 +103,11 @@ export interface Comment {
 }
 
 // Documents types
-export type DocumentStatus = 'draft' | 'in_review' | 'approved' | 'published' | 'archived' | 'rejected';
-
 export interface DocumentAcknowledgement {
   id: number;
   document: number;
   user: User;
   acknowledged_at: string;
-  notes?: string;
 }
 
 export interface Document {
@@ -126,18 +123,11 @@ export interface Document {
     name: string;
   };
   folder_path?: string;
-  document_type?: {
-    id: number;
-    name: string;
-    description?: string;
-  };
   tags?: {
     id: number;
     name: string;
     color?: string;
   }[];
-  status: string; // human-readable: "Черновик", "На рассмотрении", etc.
-  status_code: DocumentStatus; // machine-readable: "draft", "in_review", etc.
   created_by: User;
   created_at: string;
   updated_at: string;
@@ -190,49 +180,6 @@ export interface DocumentTag {
 export interface CreateDocumentTagData {
   name: string;
   color?: string;
-}
-
-// Document Types
-export interface DocumentType {
-  id: number;
-  name: string;
-  slug: string;
-  description?: string;
-  icon?: string;
-  created_at: string;
-  documents_count: number;
-}
-
-export interface CreateDocumentTypeData {
-  name: string;
-  description?: string;
-  icon?: string;
-}
-
-// Cabinets (Virtual collections)
-export interface Cabinet {
-  id: number;
-  name: string;
-  slug: string;
-  description?: string;
-  parent?: number;
-  created_by: number;
-  created_at: string;
-  documents_count: number;
-  children_count: number;
-}
-
-export interface CreateCabinetData {
-  name: string;
-  description?: string;
-  parent?: number;
-}
-
-export interface CabinetHierarchy {
-  id: number;
-  name: string;
-  parent: number | null;
-  children: CabinetHierarchy[];
 }
 
 // Document Versions (django-reversion)

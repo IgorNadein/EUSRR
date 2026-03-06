@@ -17,14 +17,12 @@ export function DocumentAcknowledgement({
 }: DocumentAcknowledgementProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAcknowledgements, setShowAcknowledgements] = useState(false);
-  const [notes, setNotes] = useState("");
 
   const handleAcknowledge = async () => {
     setIsSubmitting(true);
     try {
-      await apiClient.acknowledgeDocument(document.id, notes || undefined);
+      await apiClient.acknowledgeDocument(document.id);
       toast.success("Прочтение подтверждено");
-      setNotes("");
       if (onAcknowledge) {
         onAcknowledge();
       }
@@ -55,14 +53,6 @@ export function DocumentAcknowledgement({
               </p>
             </div>
           </div>
-
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Комментарий (необязательно)"
-            rows={2}
-            className="mb-3 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
-          />
 
           <button
             onClick={handleAcknowledge}
@@ -115,9 +105,6 @@ export function DocumentAcknowledgement({
                       <span className="font-medium text-gray-900">{userName}</span>
                       <span className="text-gray-500">{date}</span>
                     </div>
-                    {ack.notes && (
-                      <p className="mt-1 text-gray-600">{ack.notes}</p>
-                    )}
                   </div>
                 );
               })}
