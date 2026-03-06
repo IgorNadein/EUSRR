@@ -82,14 +82,16 @@ class UpsertBirthdayEventService(Service):
             month=employee.birth_date.month,
             day=employee.birth_date.day,
             hour=0,
-            minute=0
+            minute=0,
+            second=0
         )
-        end_date = start_date + timedelta(minutes=1439)
         
-        # Делаем aware если USE_TZ=True
+        # Делаем aware ПЕРЕД вычислением end_date
         if timezone.is_naive(start_date):
             start_date = timezone.make_aware(start_date)
-            end_date = timezone.make_aware(end_date)
+        
+        # Теперь добавляем timedelta к уже aware datetime
+        end_date = start_date + timedelta(hours=23, minutes=59, seconds=59)
         
         if existing_event:
             # Обновляем существующее событие
