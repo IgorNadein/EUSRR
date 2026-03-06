@@ -65,11 +65,10 @@ class UpsertBirthdayEventService(Service):
         title = f"🎂 День рождения: {str(employee)}"
         
         # Ищем существующее событие по creator + начало title (паттерн External ID)
-        # Используем startswith чтобы обновлять даже если имя сотрудника изменилось
+        # НЕ фильтруем по календарю, чтобы найти старые события в персональных календарях
         existing_event = Event.objects.filter(
             creator_id=employee.pk,
-            title__startswith='🎂 День рождения:',
-            calendar=calendar
+            title__startswith='🎂 День рождения:'
         ).first()
         
         # Создаем правило для ежегодного повторения
@@ -94,14 +93,22 @@ class UpsertBirthdayEventService(Service):
         end_date = start_date + timedelta(hours=23, minutes=59, seconds=59)
         
         if existing_event:
-            # Обновляем существующее событие
+            # Обновляем существующее событие и переносим в правильный календарь
             existing_event.title = title
             existing_event.start = start_date
             existing_event.end = end_date
+            existing_event.calendar = calendar  # Переносим в общий календарь birthdays
             existing_event.rule = rule
             existing_event.end_recurring_period = None  # Бесконечное повторение
             existing_event.color_event = BIRTHDAY_COLOR
             existing_event.save()
+            
+            # Удаляем дубликаты (другие события ДР этого сотрудника)
+            Event.objects.filter(
+                creator_id=employee.pk,
+                title__startswith='🎂 День рождения:'
+            ).exclude(pk=existing_event.pk).delete()
+            
             return existing_event, False  # Обновлено
         else:
             # Создаем новое событие
