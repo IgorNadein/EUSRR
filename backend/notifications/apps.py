@@ -8,4 +8,4 @@ class NotificationsConfig(AppConfig):
     
     def ready(self):
         import notifications.signals  # noqa
-        import notifications.signals_telegram  # noqa
+        # Old signals_telegram removed - Telegram support moved to new architecture

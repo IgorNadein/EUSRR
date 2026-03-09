@@ -13,8 +13,15 @@ from .models import (
     NotificationType,
     UserNotificationSettings,
 )
-from .email_sender import EmailNotificationSender
-from .telegram_sender import TelegramNotificationSender
+
+# DEPRECATED: Old senders, use new architecture in senders/
+# from .email_sender import EmailNotificationSender
+# from .telegram_sender import TelegramNotificationSender
+# New senders available in notifications.senders module
+from .senders import EmailNotificationSender
+
+# Telegram support removed, use new notification system
+TelegramNotificationSender = None  # Placeholder for backward compatibility
 
 logger = logging.getLogger(__name__)
 
@@ -381,26 +388,12 @@ class NotificationService:
                     )
                     
                     logger.debug(
-                        f"[NotificationService.send_notification] ➡️ Вызов TelegramNotificationSender.send_notification"
+                        f"[NotificationService.send_notification] ⚠️ Telegram support deprecated - use new notification system"
                     )
                     
-                    # Отправляем через Bot API по chat_id
-                    from .telegram_sender import TelegramNotificationSender
-                    success = TelegramNotificationSender.send_notification(
-                        notification=notification,
-                        chat_id=telegram_chat_id,
-                        site_url=site_url
-                    )
-                    notification.sent_telegram = success
-                    
-                    if success:
-                        logger.debug(
-                            f"[NotificationService.send_notification] ✅ Telegram: успешно отправлено (chat_id={telegram_chat_id})"
-                        )
-                    else:
-                        logger.warning(
-                            f"[NotificationService.send_notification] ⚠️ Telegram: отправка вернула False"
-                        )
+                    # DEPRECATED: Telegram support moved to new architecture
+                    # Use notifications.signals_new.notify() with new UserChannelPreferences
+                    notification.sent_telegram = False
                 else:
                     notification.sent_telegram = False
                     logger.warning(
