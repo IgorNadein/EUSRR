@@ -1,5 +1,11 @@
 """
 Email отправитель для системы уведомлений
+
+TODO: Создать email шаблоны:
+      - templates/notifications/email/notification.html
+      - templates/notifications/email/notification.txt
+      - templates/notifications/email/digest.html
+      - templates/notifications/email/digest.txt
 """
 from typing import Optional
 
@@ -80,6 +86,7 @@ class EmailNotificationSender(BaseNotificationSender):
                 'description': notification.description,
                 'action_url': self._get_full_url(notification.action_url),
                 'action_text': 'Посмотреть',
+                # TODO: Убрать хардкод 'EUSRR', использовать 'My Site' как fallback
                 'site_name': getattr(settings, 'SITE_NAME', 'EUSRR'),
                 'site_url': self._get_site_url(),
                 'verb_icon': self.VERB_ICONS.get(notification.verb, '🔔'),
@@ -151,6 +158,7 @@ class EmailNotificationSender(BaseNotificationSender):
                 'digest_name': digest_name,
                 'total_count': len(notifications),
                 'verb_icons': self.VERB_ICONS,
+                # TODO: Убрать хардкод 'EUSRR', использовать 'My Site' как fallback
                 'site_name': getattr(settings, 'SITE_NAME', 'EUSRR'),
                 'site_url': self._get_site_url(),
             }

@@ -49,6 +49,24 @@ notification.mark_as_read()
 
 ## 📚 Документация
 
+## 🚧 TODO
+
+### Критичные задачи:
+- [ ] Написать unit и integration тесты (coverage >80%)
+- [ ] Создать email шаблоны (notification.html/txt, digest.html/txt)
+- [ ] Убрать хардкод 'EUSRR' из email sender
+
+### Важные улучшения:
+- [ ] Переместить API endpoints в notifications/api/
+- [ ] Создать notifications/settings.py для централизованной конфигурации
+- [ ] Добавить больше примеров использования в README
+
+### Желательно:
+- [ ] Подготовить setup.py для публикации в PyPI
+- [ ] Sphinx документация
+- [ ] CI/CD pipeline (GitHub Actions)
+- [ ] Pre-commit hooks для линтеров
+
 Полная документация: [`backend/docs/guides/NOTIFICATIONS_V2_USAGE.md`](../docs/guides/NOTIFICATIONS_V2_USAGE.md)
 
 ## 🏗️ Архитектура

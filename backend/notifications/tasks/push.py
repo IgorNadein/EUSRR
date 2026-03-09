@@ -1,5 +1,10 @@
 """
 Celery задачи для отправки Web Push уведомлений
+
+TODO: Вынести конфигурацию в settings:
+      - NOTIFICATIONS_PUSH_RATE_LIMIT (сейчас '50/m')
+      - NOTIFICATIONS_PUSH_MAX_RETRIES (сейчас 2)
+      - NOTIFICATIONS_PUSH_RETRY_DELAY (сейчас 60)
 """
 from .base import BaseNotificationTask
 

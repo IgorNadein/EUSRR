@@ -7,6 +7,13 @@
 - GenericForeignKey для универсальности
 - Простой API через сигналы
 - Multi-channel поддержка (Web, Email, Push)
+
+TODO: Добавить тесты для моделей:
+      - NotificationQuerySet методы (unread, read, mark_all_as_*)
+      - Notification.mark_as_read/unread()
+      - Notification.timesince()
+      - UserChannelPreferences.is_verb_enabled()
+      - UserChannelPreferences.is_in_dnd_period()
 """
 
 from django.db import models

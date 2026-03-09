@@ -14,6 +14,12 @@
         description='liked your comment on "Post Title"',
         action_url='/posts/123/',
     )
+
+TODO: Добавить тесты для:
+      - Создания уведомления через notify.send()
+      - Множественных получателей (recipient=[user1, user2])
+      - Валидации параметров (recipient required, verb required)
+      - GenericForeignKey полей (actor, action_object, target)
 """
 
 from django.dispatch import Signal

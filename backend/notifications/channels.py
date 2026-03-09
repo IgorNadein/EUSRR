@@ -5,6 +5,12 @@
 - WebSocket (realtime) - мгновенно
 - Email - с retry и rate limiting  
 - Web Push - с автоматическим удалением неактивных устройств
+
+TODO: Добавить integration тесты:
+      - Проверка вызова Celery tasks при создании Notification
+      - Режим DND (только WebSocket silent)
+      - Отключенные каналы (email_enabled=False)
+      - Отключенные verb'ы (is_verb_enabled)
 """
 
 from django.db.models.signals import post_save

@@ -1,5 +1,10 @@
 """
 Celery задачи для отправки email уведомлений
+
+TODO: Вынести конфигурацию в settings:
+      - NOTIFICATIONS_EMAIL_RATE_LIMIT (сейчас '10/m')
+      - NOTIFICATIONS_EMAIL_MAX_RETRIES (сейчас 3)
+      - NOTIFICATIONS_EMAIL_RETRY_DELAY (сейчас 300)
 """
 from .base import BaseNotificationTask
 
