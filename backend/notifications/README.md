@@ -6,7 +6,7 @@
 
 - 🎯 **Простота** - 2 модели вместо 6
 - 🔄 **Универсальность** - GenericForeignKey для любых объектов
-- 📡 **Multi-channel** - WebSocket, Email, Telegram, Web Push
+- 📡 **Multi-channel** - WebSocket, Email, Web Push
 - ⚡ **Производительность** - оптимизированные индексы и QuerySet
 - 🎨 **Гибкость** - легко расширяется под любые нужды
 - 🏗️ **Архитектура** - по образу django-notifications-hq
@@ -133,7 +133,6 @@ prefs = user.channel_preferences
 
 # Включить/выключить каналы
 prefs.email_enabled = True
-prefs.telegram_enabled = True
 prefs.push_enabled = False
 prefs.save()
 
@@ -169,12 +168,6 @@ from notifications.channels import send_email_digest
 
 send_email_digest(user, frequency='daily')
 ```
-
-### Telegram
-
-Требуется:
-- Модель `TelegramUser` с настроенной интеграцией
-- `telegram_enabled=True` в настройках
 
 ### Web Push
 

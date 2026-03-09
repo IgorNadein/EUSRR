@@ -202,7 +202,6 @@ class UserChannelPreferencesAdmin(admin.ModelAdmin):
         'user',
         'web_enabled',
         'email_enabled',
-        'telegram_enabled',
         'push_enabled',
         'email_frequency',
         'dnd_enabled',
@@ -212,7 +211,6 @@ class UserChannelPreferencesAdmin(admin.ModelAdmin):
     list_filter = [
         'web_enabled',
         'email_enabled',
-        'telegram_enabled',
         'push_enabled',
         'email_frequency',
         'dnd_enabled',
@@ -233,7 +231,6 @@ class UserChannelPreferencesAdmin(admin.ModelAdmin):
             'fields': (
                 'web_enabled',
                 'email_enabled',
-                'telegram_enabled',
                 'push_enabled',
             )
         }),

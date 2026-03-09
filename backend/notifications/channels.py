@@ -3,8 +3,7 @@
 
 Слушают post_save сигнал от Notification и отправляют по каналам:
 - WebSocket (realtime)
-- Email
-- Telegram
+- Email  
 - Web Push
 """
 
@@ -58,9 +57,6 @@ def handle_notification_channels(sender, instance, created, **kwargs):
     
     if prefs.email_enabled and prefs.email_frequency == 'instant':
         send_email_notification(notification)
-    
-    if prefs.telegram_enabled:
-        send_telegram_notification(notification)
     
     if prefs.push_enabled:
         send_push_notification(notification)
@@ -164,51 +160,6 @@ def send_email_notification(notification):
         
     except Exception as e:
         logger.error(f'Failed to send email notification: {e}', exc_info=True)
-
-
-def send_telegram_notification(notification):
-    """
-    Отправка Telegram уведомления
-    
-    Args:
-        notification: Объект Notification
-    """
-    try:
-        from .telegram_models import TelegramUser
-        from .telegram_sender import TelegramNotificationSender
-        
-        user = notification.recipient
-        
-        # Проверяем, есть ли у пользователя Telegram
-        try:
-            telegram_user = TelegramUser.objects.get(user=user, is_active=True)
-        except TelegramUser.DoesNotExist:
-            logger.debug(f'User {user.id} has no active Telegram account')
-            return
-        
-        # Формируем сообщение
-        actor_str = str(notification.actor) if notification.actor else 'Система'
-        message = f"🔔 {actor_str} {notification.verb}"
-        
-        if notification.description:
-            message += f"\n{notification.description}"
-        
-        if notification.action_url:
-            site_url = settings.SITE_URL if hasattr(settings, 'SITE_URL') else 'http://localhost:8000'
-            full_url = f"{site_url}{notification.action_url}"
-            message += f"\n\n🔗 {full_url}"
-        
-        # Отправляем
-        sender = TelegramNotificationSender()
-        sender.send(
-            chat_id=telegram_user.telegram_id,
-            message=message,
-        )
-        
-        logger.info(f'Telegram notification sent to user {user.id}')
-        
-    except Exception as e:
-        logger.error(f'Failed to send Telegram notification: {e}', exc_info=True)
 
 
 def send_push_notification(notification):

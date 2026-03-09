@@ -6,7 +6,7 @@
 - Одна модель Notification вместо 6
 - GenericForeignKey для универсальности
 - Простой API через сигналы
-- Multi-channel поддержка
+- Multi-channel поддержка (Web, Email, Push)
 """
 
 from django.db import models
@@ -303,11 +303,6 @@ class UserChannelPreferences(models.Model):
         verbose_name='Email уведомления'
     )
     
-    telegram_enabled = models.BooleanField(
-        default=False,
-        verbose_name='Telegram уведомления'
-    )
-    
     push_enabled = models.BooleanField(
         default=False,
         verbose_name='Push уведомления',
@@ -414,5 +409,4 @@ class UserChannelPreferences(models.Model):
 
 # === Переэкспорт моделей которые остаются без изменений ===
 
-from .telegram_models import TelegramUser  # noqa: F401, E402
 from .web_push_models import WebPushSubscription  # noqa: F401, E402

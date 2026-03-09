@@ -13,9 +13,11 @@
 - ✅ Универсализации (переиспользуемое решение)
 - ✅ Стандартизации API (как в django-notifications-hq)
 - ✅ Совместимости с Django 5.2+
-- ✅ Сохранения multi-channel функционала
+- ✅ Сохранения multi-channel функционала (Web, Email, Push)
 
 **Результат:** Создана современная универсальная система уведомлений, готовая к использованию.
+
+**Каналы доставки:** WebSocket, Email, Web Push
 
 ---
 
@@ -89,7 +91,6 @@
 - user: OneToOneField
 - web_enabled: bool
 - email_enabled: bool
-- telegram_enabled: bool
 - push_enabled: bool
 - email_frequency: 'instant'|'daily'|'weekly'
 - dnd_enabled: bool (Do Not Disturb)
@@ -134,7 +135,6 @@ notify.send(
 **Функционал:**
 - WebSocket (realtime) через Django Channels
 - Email (instant/daily/weekly digest)
-- Telegram через TelegramNotificationSender
 - Web Push через django-push-notifications
 
 **Логика:**
@@ -502,7 +502,7 @@ notification.mark_as_read()
 ✅ **Стандартнее** - API как в django-notifications-hq  
 ✅ **Универсальнее** - GenericForeignKey для любых объектов  
 ✅ **Современнее** - Django 5.2+ совместимость  
-✅ **Функциональнее** - сохранен multi-channel функционал  
+✅ **Функциональнее** - сохранен multi-channel (Web, Email, Push)  
 ✅ **Переиспользуемее** - готов к использованию в других проектах  
 
 **Рекомендация:** Внедрять немедленно.

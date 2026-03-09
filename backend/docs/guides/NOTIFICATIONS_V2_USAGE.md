@@ -27,7 +27,7 @@
 ✅ **Проста** - 2 модели вместо 6  
 ✅ **Универсальна** - GenericForeignKey для любых объектов  
 ✅ **Стандартна** - API как в django-notifications-hq  
-✅ **Multi-channel** - WebSocket, Email, Telegram, Push  
+✅ **Multi-channel** - WebSocket, Email, Push  
 ✅ **Переиспользуема** - можно использовать в других проектах  
 ✅ **Современна** - Django 5.2+ совместима
 
@@ -68,7 +68,6 @@ System (actor) approved (verb) your request (action_object)
 **Поля:**
 - `web_enabled` - веб уведомления (bool)
 - `email_enabled` - email уведомления (bool)
-- `telegram_enabled` - Telegram уведомления (bool)
 - `push_enabled` - Web Push уведомления (bool)
 - `email_frequency` - частота email: instant/daily/weekly
 - `dnd_enabled` - режим "Не беспокоить" (bool)
@@ -78,7 +77,7 @@ System (actor) approved (verb) your request (action_object)
 ### Компоненты
 
 1. **signals_new.py** - `notify.send()` API для создания уведомлений
-2. **channels.py** - роутинг по каналам доставки (WebSocket, Email, Telegram, Push)
+2. **channels.py** - роутинг по каналам доставки (WebSocket, Email, Push)
 3. **models_new.py** - модели с QuerySet методами
 4. **admin_new.py** - Django Admin интерфейс
 
@@ -414,7 +413,6 @@ prefs, created = UserChannelPreferences.objects.get_or_create(
     defaults={
         'web_enabled': True,
         'email_enabled': True,
-        'telegram_enabled': False,
         'push_enabled': True,
         'email_frequency': 'instant',
     }
@@ -429,7 +427,7 @@ prefs = user.channel_preferences
 
 # Изменить каналы
 prefs.email_enabled = True
-prefs.telegram_enabled = True
+prefs.push_enabled = True
 prefs.save()
 
 # Отключить определенный тип
