@@ -14,6 +14,7 @@ from django.template.loader import render_to_string
 from django.core.mail import send_mail
 
 from .base import BaseNotificationSender
+from notifications import config
 
 
 class EmailNotificationSender(BaseNotificationSender):
@@ -86,8 +87,7 @@ class EmailNotificationSender(BaseNotificationSender):
                 'description': notification.description,
                 'action_url': self._get_full_url(notification.action_url),
                 'action_text': 'Посмотреть',
-                # TODO: Убрать хардкод 'EUSRR', использовать 'My Site' как fallback
-                'site_name': getattr(settings, 'SITE_NAME', 'EUSRR'),
+                'site_name': config.site_name(),
                 'site_url': self._get_site_url(),
                 'verb_icon': self.VERB_ICONS.get(notification.verb, '🔔'),
             }
@@ -100,7 +100,7 @@ class EmailNotificationSender(BaseNotificationSender):
             send_mail(
                 subject=subject,
                 message=text_message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=config.from_email(),
                 recipient_list=[recipient_email],
                 html_message=html_message,
                 fail_silently=False,
@@ -158,8 +158,7 @@ class EmailNotificationSender(BaseNotificationSender):
                 'digest_name': digest_name,
                 'total_count': len(notifications),
                 'verb_icons': self.VERB_ICONS,
-                # TODO: Убрать хардкод 'EUSRR', использовать 'My Site' как fallback
-                'site_name': getattr(settings, 'SITE_NAME', 'EUSRR'),
+                'site_name': config.site_name(),
                 'site_url': self._get_site_url(),
             }
             

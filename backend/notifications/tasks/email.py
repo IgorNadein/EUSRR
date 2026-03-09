@@ -1,12 +1,8 @@
 """
 Celery задачи для отправки email уведомлений
-
-TODO: Вынести конфигурацию в settings:
-      - NOTIFICATIONS_EMAIL_RATE_LIMIT (сейчас '10/m')
-      - NOTIFICATIONS_EMAIL_MAX_RETRIES (сейчас 3)
-      - NOTIFICATIONS_EMAIL_RETRY_DELAY (сейчас 300)
 """
 from .base import BaseNotificationTask
+from notifications import config
 
 
 class EmailNotificationTask(BaseNotificationTask):
@@ -14,15 +10,15 @@ class EmailNotificationTask(BaseNotificationTask):
     Celery задача для асинхронной отправки email уведомлений.
     
     Особенности:
-    - Rate limiting: 10 email/минуту (защита от SMTP бана)
-    - Retry: 3 попытки с интервалом 5 минут
+    - Rate limiting: из config (default: 10 email/минуту)
+    - Retry: из config (default: 3 попытки с интервалом 5 минут)
     - Поддержка кастомных тем и получателей
     """
     
     task_name = "notifications.send_email"
-    max_retries = 3
-    retry_delay = 300  # 5 минут между попытками
-    rate_limit = '10/m'  # Не более 10 email в минуту
+    max_retries = config.email_max_retries()
+    retry_delay = config.email_retry_delay()
+    rate_limit = config.email_rate_limit()
     
     def send_notification(self, notification, **kwargs) -> bool:
         """

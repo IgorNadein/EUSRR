@@ -2,6 +2,7 @@
 Celery задачи для отправки WebSocket уведомлений (realtime)
 """
 from .base import BaseNotificationTask
+from notifications import config
 
 
 class WebSocketNotificationTask(BaseNotificationTask):
@@ -9,14 +10,14 @@ class WebSocketNotificationTask(BaseNotificationTask):
     Celery задача для асинхронной отправки WebSocket уведомлений.
     
     Особенности:
-    - Минимальный retry (1 попытка) - realtime не критично
-    - Быстрая повторная попытка (5 секунд)
+    - Минимальный retry: из config (default: 1 попытка)
+    - Быстрая повторная попытка: из config (default: 5 секунд)
     - Поддержка silent режима (DND)
     """
     
     task_name = "notifications.send_websocket"
-    max_retries = 1  # WebSocket - не критично, 1 попытка достаточно
-    retry_delay = 5  # 5 секунд (быстро)
+    max_retries = config.websocket_max_retries()
+    retry_delay = config.websocket_retry_delay()
     rate_limit = None  # Без ограничений для realtime
     
     def execute(self, celery_task, notification_id: int, silent: bool = False, **kwargs):

@@ -1,12 +1,8 @@
 """
 Celery задачи для отправки Web Push уведомлений
-
-TODO: Вынести конфигурацию в settings:
-      - NOTIFICATIONS_PUSH_RATE_LIMIT (сейчас '50/m')
-      - NOTIFICATIONS_PUSH_MAX_RETRIES (сейчас 2)
-      - NOTIFICATIONS_PUSH_RETRY_DELAY (сейчас 60)
 """
 from .base import BaseNotificationTask
+from notifications import config
 
 
 class PushNotificationTask(BaseNotificationTask):
@@ -14,15 +10,15 @@ class PushNotificationTask(BaseNotificationTask):
     Celery задача для асинхронной отправки Web Push уведомлений.
     
     Особенности:
-    - Rate limiting: 50 push/минуту
-    - Retry: 2 попытки с интервалом 1 минута
+    - Rate limiting: из config (default: 50 push/минуту)
+    - Retry: из config (default: 2 попытки с интервалом 1 минута)
     - Автоматическое удаление неактивных устройств
     """
     
     task_name = "notifications.send_push"
-    max_retries = 2
-    retry_delay = 60  # 1 минута между попытками
-    rate_limit = '50/m'  # Не более 50 push в минуту
+    max_retries = config.push_max_retries()
+    retry_delay = config.push_retry_delay()
+    rate_limit = config.push_rate_limit()
     
     def send_notification(self, notification, **kwargs) -> bool:
         """
