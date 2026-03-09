@@ -407,6 +407,5 @@ class UserChannelPreferences(models.Model):
         return now >= self.dnd_start_time or now <= self.dnd_end_time
 
 
-# === Переэкспорт моделей которые остаются без изменений ===
-
-from .web_push_models import WebPushSubscription  # noqa: F401, E402
+# === Web Push устройства управляются через django-push-notifications ===
+# Используйте: from push_notifications.models import WebPushDevice

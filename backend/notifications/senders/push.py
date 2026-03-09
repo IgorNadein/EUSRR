@@ -1,7 +1,7 @@
 """
 Web Push отправитель для browser push notifications
 """
-from django.conf import settings
+from push_notifications.models import WebPushDevice
 
 from .base import BaseNotificationSender
 
@@ -31,19 +31,16 @@ class PushNotificationSender(BaseNotificationSender):
             True если отправлено успешно, False иначе
         """
         try:
-            from push_notifications.models import WebPushDevice
-            from ..web_push_models import WebPushSubscription
-            
             user = notification.recipient
             
-            # Получаем активные подписки
-            subscriptions = WebPushSubscription.objects.filter(
+            # Получаем активные устройства через django-push-notifications
+            devices = WebPushDevice.objects.filter(
                 user=user,
-                is_active=True
+                active=True
             )
             
-            if not subscriptions.exists():
-                self.log_skip(notification, "no active push subscriptions")
+            if not devices.exists():
+                self.log_skip(notification, "no active push devices")
                 return False
             
             # Формируем данные для push
@@ -51,45 +48,52 @@ class PushNotificationSender(BaseNotificationSender):
             title = f'{actor_str} {notification.verb}'
             body = notification.description or ''
             
-            push_data = {
+            # django-push-notifications использует другой формат
+            message = {
                 'head': title,
                 'body': body,
                 'icon': '/static/img/logo.png',
                 'url': notification.action_url or '/',
                 'tag': f'notification-{notification.id}',
                 'requireInteraction': False,
+                'data': {
+                    'notification_id': notification.id,
+                    'verb': notification.verb,
+                }
             }
             
             sent_count = 0
-            # Отправляем через django-push-notifications
-            for sub in subscriptions:
+            failed_count = 0
+            
+            # Отправляем через все устройства пользователя
+            for device in devices:
                 try:
-                    # Используем push_notifications для отправки
-                    device = WebPushDevice.objects.filter(
-                        registration_id=sub.endpoint
-                    ).first()
-                    
-                    if device:
-                        device.send_message(
-                            message=push_data,
-                            extra={
-                                'notification_id': notification.id
-                            }
-                        )
-                        sent_count += 1
-                        self.logger.debug(f"Push отправлен на device {device.id}")
-                        
-                except Exception as e:
-                    self.logger.error(
-                        f"Ошибка отправки push на subscription {sub.id}: {e}"
+                    device.send_message(message)
+                    sent_count += 1
+                    self.logger.debug(
+                        f"Push отправлен на device {device.id} ({device.browser})"
                     )
-                    continue
+                except Exception as e:
+                    failed_count += 1
+                    self.logger.error(
+                        f"Ошибка отправки push на device {device.id}: {e}"
+                    )
+                    # Деактивируем устройство если ошибка
+                    if "expired" in str(e).lower() or "unregistered" in str(e).lower():
+                        device.active = False
+                        device.save()
+                        self.logger.info(f"Device {device.id} деактивирован")
             
             if sent_count > 0:
                 self.log_success(notification, f"{sent_count} devices")
+                if failed_count > 0:
+                    self.logger.warning(
+                        f"Push отправлен частично: {sent_count} успешно, "
+                        f"{failed_count} ошибок"
+                    )
                 return True
             else:
-                self.log_skip(notification, "no successful sends")
+                self.log_skip(notification, f"no successful sends ({failed_count} failures)")
                 return False
             
         except ImportError:
