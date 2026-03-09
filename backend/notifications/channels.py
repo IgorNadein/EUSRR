@@ -1,30 +1,26 @@
 """
 Обработчики каналов доставки уведомлений
 
-Слушают post_save сигнал от Notification и отправляют по каналам:
-- WebSocket (realtime)
-- Email  
-- Web Push
+Слушают post_save сигнал от Notification и асинхронно отправляют через Celery:
+- WebSocket (realtime) - мгновенно
+- Email - с retry и rate limiting  
+- Web Push - с автоматическим удалением неактивных устройств
 """
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 import logging
 
-from .senders import (
-    EmailNotificationSender,
-    WebSocketNotificationSender,
-    PushNotificationSender,
-)
-
 logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender='notifications.Notification')
-def handle_notification_channels(sender, instance, created, **kwargs):
+def route_notification_to_channels(sender, instance, created, **kwargs):
     """
-    Главный роутер уведомлений по каналам
-    Вызывается при создании нового уведомления
+    Главный роутер уведомлений по каналам.
+    Вызывается при создании нового уведомления.
+    
+    Асинхронно отправляет в Celery очередь для каждого канала.
     """
     if not created:
         return  # Обрабатываем только новые уведомления
@@ -37,7 +33,7 @@ def handle_notification_channels(sender, instance, created, **kwargs):
         prefs = user.channel_preferences
     except Exception:
         # Если настроек нет - создаем с дефолтными значениями
-        from .models_new import UserChannelPreferences
+        from .models import UserChannelPreferences
         prefs = UserChannelPreferences.objects.create(user=user)
     
     # Проверяем, не отключен ли этот тип уведомлений
@@ -45,59 +41,33 @@ def handle_notification_channels(sender, instance, created, **kwargs):
         logger.debug(f'Notification verb "{notification.verb}" disabled for user {user.id}')
         return
     
+    # Импортируем задачи
+    from .tasks import (
+        send_websocket_notification,
+        send_email_notification,
+        send_push_notification,
+    )
+    
     # Проверяем режим "Не беспокоить"
-    if prefs.is_in_dnd_period():
-        logger.debug(f'User {user.id} is in DND period, skipping non-web channels')
-        # В DND режиме отправляем только веб (без звука)
+    is_dnd = prefs.is_in_dnd_period()
+    
+    if is_dnd:
+        logger.debug(f'User {user.id} is in DND period, only web notifications (silent)')
+        # В DND режиме только WebSocket без звука
         if prefs.web_enabled:
-            send_websocket_notification(notification, silent=True)
+            send_websocket_notification.delay(notification.id, silent=True)
         return
     
-    # Отправляем по каналам согласно настройкам
+    # Отправляем по каналам асинхронно через Celery
     
     if prefs.web_enabled:
-        sender = WebSocketNotificationSender()
-        sender.send(notification, silent=prefs.is_in_dnd_period())
+        send_websocket_notification.delay(notification.id, silent=False)
     
     if prefs.email_enabled and prefs.email_frequency == 'instant':
-        sender = EmailNotificationSender()
-        sender.send(notification)
+        send_email_notification.delay(notification.id)
     
     if prefs.push_enabled:
-        sender = PushNotificationSender()
-        sender.send(notification)
-
-
-def send_websocket_notification(notification, silent=False):
-    """
-    Отправка через WebSocket (realtime)
-    
-    Args:
-        notification: Объект Notification
-        silent: Если True, уведомление без звука/визуальных эффектов
-    
-    DEPRECATED: Используйте WebSocketNotificationSender().send()
-    """
-    sender = WebSocketNotificationSender()
-    return sender.send(notification, silent=silent)
-
-
-def send_email_notification(notification):
-    """
-    Отправка email уведомления
-    
-    Args:
-        notification: Объект Notification
-    
-    DEPRECATED: Используйте EmailNotificationSender().send()
-    """
-    sender = EmailNotificationSender()
-    return sender.send(notification)
-
-
-def send_push_notification(notification):
-    """
-    Отправка Web Push уведомления
+        send_push_notification.delay(notification.id)
     
     Args:
         notification: Объект Notification
@@ -121,7 +91,7 @@ def send_email_digest(user, frequency='daily'):
     try:
         from datetime import timedelta
         from django.utils import timezone
-        from .models_new import Notification
+        from .models import Notification
         
         # Определяем период
         if frequency == 'daily':

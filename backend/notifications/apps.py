@@ -7,5 +7,11 @@ class NotificationsConfig(AppConfig):
     verbose_name = 'Уведомления'
     
     def ready(self):
+        # Загружаем сигналы (notify.send API)
         import notifications.signals  # noqa
-        # Old signals_telegram removed - Telegram support moved to new architecture
+        
+        # Загружаем обработчики каналов (post_save → Celery tasks)
+        import notifications.channels  # noqa
+        
+        # Загружаем Celery задачи
+        import notifications.tasks  # noqa
