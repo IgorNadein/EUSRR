@@ -77,7 +77,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 f' прокомментировал: {truncate_text(comment.text, 80)}'
             ),
             content_object=post,
-            action_url=f'/post/{post.id}/',
+            action_url='/',
             metadata={
                 'post_id': post.id,
                 'post_title': post.title,
@@ -115,7 +115,7 @@ def notify_new_post(post):
             title=f'Новая публикация {context}',
             message=f'{post.title}',
             content_object=post,
-            action_url=f'/post/{post.id}/',
+            action_url='/',
             metadata={
                 'post_id': post.id,
                 'post_type': post.type,
@@ -191,7 +191,7 @@ def notify_post_reaction(post, user):
                 f'понравилась публикация "{post.title}"'
             ),
             content_object=post,
-            action_url=f'/post/{post.id}/',
+            action_url='/',
             metadata={
                 'post_id': post.id,
                 'post_title': post.title,

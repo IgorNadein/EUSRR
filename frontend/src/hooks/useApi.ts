@@ -179,7 +179,8 @@ export function useNotifications() {
     async function fetchNotifications() {
       try {
         const data = await apiClient.getNotifications();
-        const notifs = data.results || data;
+        // Бэкенд возвращает { notifications: [...] }
+        const notifs = data.notifications || data.results || data;
         // Убеждаемся что notifs это массив
         const notificationsArray = Array.isArray(notifs) ? notifs : [];
         setNotifications(notificationsArray);

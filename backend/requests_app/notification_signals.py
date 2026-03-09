@@ -269,7 +269,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
                 f'"{request_type}": {instance.text[:100]}'
             ),
             content_object=request_obj,
-            action_url=f"/requests/{request_obj.id}/",
+            action_url="/requests",
             metadata={
                 "request_id": request_obj.id,
                 "request_type": request_obj.type,
@@ -457,7 +457,7 @@ def notify_new_request(request_obj):
             title=title,
             message=message,
             content_object=request_obj,
-            action_url=f"/requests/{request_obj.id}/",
+            action_url="/requests",
             metadata={
                 "request_id": request_obj.id,
                 "request_type": request_obj.type,
@@ -562,7 +562,7 @@ def notify_status_change(request_obj, old_status, new_status):
             title=title,
             message=message,
             content_object=request_obj,
-            action_url=f"/requests/{request_obj.id}/",
+            action_url="/requests",
             metadata={
                 "request_id": request_obj.id,
                 "request_type": request_obj.type,

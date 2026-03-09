@@ -358,7 +358,7 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
                 f'"{document.title}"'
             ),
             content_object=document,
-            action_url='/documents/',
+            action_url='/documents',
             metadata={
                 'document_id': document.id,
                 'total_recipients': total_recipients,
@@ -477,7 +477,7 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
             f'Требуется ознакомление.'
         ),
         content_object=document,
-        action_url='/documents/',
+        action_url='/documents',
         metadata={
             'document_id': document.id,
             'uploaded_by_id': (
@@ -549,7 +549,7 @@ def notify_on_new_comment(sender, instance, created, **kwargs):
                 f'комментарий к документу "{document.title}"'
             ),
             content_object=comment,
-            action_url=f'/documents/{document.pk}/#comment-{comment.pk}',
+            action_url='/documents',
             action_text='Посмотреть',
             metadata={
                 'document_id': document.id,
@@ -589,7 +589,7 @@ def notify_on_new_comment(sender, instance, created, **kwargs):
                 f'к вашему документу "{document.title}"'
             ),
             content_object=comment,  
-            action_url=f'/documents/{document.pk}/#comment-{comment.pk}',
+            action_url='/documents',
             action_text='Посмотреть',
             metadata={
                 'document_id': document.id,
@@ -646,7 +646,7 @@ def notify_on_related_document_added(sender, instance, action, pk_set, **kwargs)
                 f'с документом "{main_document.title}"'
             ),
             content_object=main_document,
-            action_url=f'/documents/{main_document.pk}/',
+            action_url='/documents',
             action_text='Посмотреть',
             metadata={
                 'document_id': main_document.id,

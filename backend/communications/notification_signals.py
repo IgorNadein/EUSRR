@@ -146,7 +146,7 @@ def _create_message_notifications_sync(instance):
                             title=f'Вас упомянул {author.get_full_name() or author.username}',
                             message=truncate_message(content, 100),
                             content_object=instance,
-                            action_url=f'/communications/chats/{chat.id}/?message={instance.id}',
+                            action_url='/messages',
                             metadata={
                                 'chat_id': chat.id,
                                 'chat_name': get_chat_name(chat),
@@ -170,7 +170,7 @@ def _create_message_notifications_sync(instance):
                     title=f'{author.get_full_name() or author.username} ответил на ваше сообщение',
                     message=truncate_message(content, 100),
                     content_object=instance,
-                    action_url=f'/communications/chats/{chat.id}/?message={instance.id}',
+                    action_url='/messages',
                     metadata={
                         'chat_id': chat.id,
                         'chat_name': get_chat_name(chat),
@@ -219,7 +219,7 @@ def _create_message_notifications_sync(instance):
             title=title,
             message=truncate_message(content, 150 if is_announcement else 100),
             content_object=instance,
-            action_url=f'/communications/chats/{chat.id}/',
+            action_url='/messages',
             metadata=metadata
         )
 
@@ -260,7 +260,7 @@ def create_chat_added_notifications(sender, instance, action, pk_set, **kwargs):
             title=f'Вас добавили в чат',
             message=f'Вы были добавлены в чат "{get_chat_name(chat)}"',
             content_object=chat,
-            action_url=f'/communications/chats/{chat.id}/',
+            action_url='/messages',
             metadata={
                 'chat_id': chat.id,
                 'chat_type': chat.type,
