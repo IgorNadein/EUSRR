@@ -537,7 +537,7 @@ class RequestNotificationProcessor(BaseNotificationProcessor):
                 title=title_map.get(notification_type, f'Обновление заявки #{request_obj.id}'),
                 message=truncate_text(request_obj.comment or '', 150),
                 content_object=request_obj,
-                action_url=f'/requests/{request_obj.id}/',
+                action_url='/requests',
                 metadata={
                     'request_id': request_obj.id,
                     'request_type': request_obj.type,
@@ -594,7 +594,7 @@ class DocumentNotificationProcessor(BaseNotificationProcessor):
                 title=f'Новый документ: {document.title}',
                 message=truncate_text(document.description or '', 150),
                 content_object=document,
-                action_url=f'/documents/{document.id}/',
+                action_url='/documents',
                 metadata={
                     'document_id': document.id,
                     'document_title': document.title,

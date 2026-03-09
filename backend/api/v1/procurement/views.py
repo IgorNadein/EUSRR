@@ -184,7 +184,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'Остаток: {budget.remaining_amount}₽ '
                     f'({remaining_ratio*100:.1f}%)'
                 ),
-                action_url='/procurement/budgets/',
+                action_url='/procurement',
                 send_immediately=True,
             )
         elif remaining_ratio <= LOW_BUDGET_THRESHOLD:
@@ -198,7 +198,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'Остаток: {budget.remaining_amount}₽ '
                     f'({remaining_ratio*100:.1f}%)'
                 ),
-                action_url='/procurement/budgets/',
+                action_url='/procurement',
                 send_immediately=True,
             )
 
@@ -289,7 +289,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'ожидает вашего согласования. '
                     f'Сумма: {procurement_request.total_cost}₽'
                 ),
-                action_url=f'/procurement/orders/{procurement_request.id}/',
+                action_url='/procurement',
                 send_immediately=True,
             )
 
@@ -330,7 +330,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 f'{request.user.get_full_name()} одобрил '
                 f'заявку "{procurement_request.title}".'
             ),
-            action_url=f'/procurement/orders/{procurement_request.id}/',
+            action_url='/procurement',
             send_immediately=True,
         )
 
@@ -353,7 +353,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'Ваша заявка "{procurement_request.title}" '
                     f'была полностью одобрена. Можно приступать к закупке.'
                 ),
-                action_url=f'/procurement/orders/{procurement_request.id}/',
+                action_url='/procurement',
                 send_immediately=True,
             )
 
@@ -402,7 +402,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 f'заявку "{procurement_request.title}". '
                 f'Причина: {approval.comment}'
             ),
-            action_url=f'/procurement/orders/{procurement_request.id}/',
+            action_url='/procurement',
             send_immediately=True,
         )
 
@@ -513,7 +513,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'взята в работу пользователем '
                     f'{request.user.get_full_name()}.'
                 ),
-                action_url=f'/procurement/orders/{procurement_request.id}/',
+                action_url='/procurement',
                 send_immediately=True,
             )
 
@@ -530,7 +530,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'взята в работу пользователем '
                     f'{request.user.get_full_name()}.'
                 ),
-                action_url=f'/procurement/orders/{procurement_request.id}/',
+                action_url='/procurement',
                 send_immediately=True,
             )
 
@@ -576,7 +576,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'Заявка "{procurement_request.title}" '
                     f'успешно завершена.'
                 ),
-                action_url=f'/procurement/orders/{procurement_request.id}/',
+                action_url='/procurement',
                 send_immediately=True,
             )
 
@@ -659,7 +659,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                     f'была отменена автором. '
                     f'Причина: {reason or "не указана"}'
                 ),
-                action_url=f'/procurement/orders/{procurement_request.id}/',
+                action_url='/procurement',
                 send_immediately=True,
             )
 
