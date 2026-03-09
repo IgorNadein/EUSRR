@@ -1,10 +1,8 @@
-from django.urls import path
-from . import views, test_views
+"""
+URL routing для модуля notifications
 
-app_name = 'notifications'
+Для обратной совместимости импортирует из api.urls
+"""
+from notifications.api.urls import urlpatterns, app_name  # noqa
 
-urlpatterns = [
-    path('', views.notification_list, name='list'),
-    path('settings/', views.notification_settings, name='settings'),
-    path('test/create/', test_views.create_test_notification, name='test_create'),
-]
+__all__ = ['urlpatterns', 'app_name']

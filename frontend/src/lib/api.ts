@@ -830,6 +830,43 @@ class ApiClient {
         return this.request('/api/v1/notifications/push/subscriptions/');
     }
 
+    // Дополнительные методы уведомлений
+    async deleteNotification(id: number): Promise<void> {
+        await this.request(`/api/v1/notifications/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async deleteAllReadNotifications(): Promise<{ status: string; count: number }> {
+        return this.request('/api/v1/notifications/delete-all-read/', {
+            method: 'DELETE',
+        });
+    }
+
+    async getNotificationPreferences(): Promise<any> {
+        return this.request('/api/v1/notifications/preferences/');
+    }
+
+    async updateNotificationPreferences(data: {
+        web_enabled?: boolean;
+        email_enabled?: boolean;
+        email_frequency?: 'instant' | 'daily' | 'weekly' | 'disabled';
+        push_enabled?: boolean;
+        dnd_enabled?: boolean;
+        dnd_start_time?: string;
+        dnd_end_time?: string;
+        disabled_verbs?: string[];
+    }): Promise<any> {
+        return this.request('/api/v1/notifications/preferences/', {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async getVerbTypes(): Promise<{ verb_types: any[] }> {
+        return this.request('/api/v1/notifications/verb-types/');
+    }
+
     // Календарь (django-scheduler API)
     async getCalendarEvents(params?: { start?: string; end?: string; calendar?: number }): Promise<any> {
         const queryParams = new URLSearchParams();

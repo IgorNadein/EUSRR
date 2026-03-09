@@ -1,0 +1,33 @@
+📬 {{ digest_name }}
+================================================================================
+
+{{ site_name }}
+
+У вас {{ total_count }} новых уведомлений
+
+{% for verb, notifications in grouped_notifications.items %}
+
+--------------------------------------------------------------------------------
+{{ verb|upper }} ({{ notifications|length }})
+--------------------------------------------------------------------------------
+
+{% for notification in notifications %}
+  * {% if notification.actor %}{{ notification.actor }}{% else %}Система{% endif %}
+    {% if notification.description %}{{ notification.description }}{% endif %}
+    ({{ notification.timestamp|timesince }} назад)
+
+{% endfor %}
+{% endfor %}
+
+================================================================================
+
+Посмотреть все уведомления: {{ site_url }}/notifications/
+
+Настройки: {{ site_url }}/settings/notifications/
+
+
+Вы получили это письмо, потому что включили {{ frequency|lower }} дайджест 
+уведомлений. Вы можете изменить частоту или отключить дайджест в настройках.
+
+{{ site_name }}
+{{ site_url }}

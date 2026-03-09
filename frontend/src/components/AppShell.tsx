@@ -3,9 +3,11 @@
 import { Bell, Building2, CalendarDays, ChevronDown, FileSignature, FileText, Home as HomeIcon, Menu, MessageSquare, Monitor, Search, ShoppingCart, Users, Wallet, X, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useRef, useState, useCallback } from "react";
+import { ReactNode, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
+import { useNotifications } from "@/hooks/useApi";
+import { getVerbCategory } from "@/lib/verbTranslations";
 import { CalendarModal } from "@/components/CalendarModal";
 import CalendarParticipantsModal from "@/components/CalendarParticipantsModal";
 import { NotificationCenter, NotificationPanel } from "@/components/NotificationCenter";
@@ -37,14 +39,14 @@ type LeftNavContentProps = {
 };
 
 const navItems = [
-  { href: "/", label: "Лента", icon: HomeIcon },
-  { href: "/messages", label: "Сообщения", icon: MessageSquare },
+  { href: "/", label: "Лента", icon: HomeIcon, category: "Новости" },
+  { href: "/messages", label: "Сообщения", icon: MessageSquare, category: "Сообщения" },
   { href: "/employees", label: "Сотрудники", icon: Users },
   { href: "/departments", label: "Отделы", icon: Building2 },
-  { href: "/requests", label: "Заявления", icon: FileSignature },
+  { href: "/requests", label: "Заявления", icon: FileSignature, category: "Заявки" },
   { href: "/equipment", label: "Оборудование", icon: Monitor },
-  { href: "/procurement", label: "Закупки", icon: ShoppingCart },
-  { href: "/documents", label: "Документы", icon: FileText },
+  { href: "/procurement", label: "Закупки", icon: ShoppingCart, category: "Закупки" },
+  { href: "/documents", label: "Документы", icon: FileText, category: "Документы" },
   { href: "/finances", label: "Финансы", icon: Wallet },
 ];
 
@@ -240,6 +242,21 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
 
 function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   const pathname = usePathname();
+  const { notifications: notificationsData } = useNotifications();
+  const notifications = Array.isArray(notificationsData) ? notificationsData : [];
+
+  // Подсчет уведомлений по категориям
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    
+    notifications.forEach((n: any) => {
+      if (!n.category || n.is_read) return; // Только непрочитанные
+      const category = getVerbCategory(n.category);
+      counts[category] = (counts[category] || 0) + 1;
+    });
+    
+    return counts;
+  }, [notifications]);
 
   const navLinkClass = (href: string) =>
     `flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-gray-50 ${pathname === href ? "bg-sky-50 text-sky-700 ring-1 ring-sky-100" : "text-gray-700"
@@ -250,12 +267,21 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   return (
     <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
       <div className="space-y-2 text-sm text-gray-700">
-        {navItems.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={navLinkClass(href)} onClick={onNavigate}>
-            <Icon size={18} className={navIconClass(href)} />
-            {label}
-          </Link>
-        ))}
+        {navItems.map(({ href, label, icon: Icon, category }) => {
+          const count = category ? categoryCounts[category] || 0 : 0;
+          
+          return (
+            <Link key={href} href={href} className={navLinkClass(href)} onClick={onNavigate}>
+              <Icon size={18} className={navIconClass(href)} />
+              <span className="flex-1">{label}</span>
+              {count > 0 && (
+                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-sky-500 px-1.5 text-[10px] font-bold text-white">
+                  {count > 99 ? '99+' : count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
