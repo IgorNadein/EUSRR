@@ -88,8 +88,8 @@ urlpatterns = [
         VerifyEmailAPIView.as_view(),
         name="verify-email",
     ),
-    # Notifications API
-    path("notifications/", include("api.v1.notifications.urls")),
+    # Notifications API (из самого модуля notifications)
+    path("notifications/", include("notifications.api.urls")),
     # Procurement API
     path("procurement/", include("api.v1.procurement.urls")),
     # Search API

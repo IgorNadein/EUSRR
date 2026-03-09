@@ -66,8 +66,8 @@ urlpatterns = [
     path("auth/resend-email/", ResendEmailAPIView.as_view(), name="resend-email"),
     path("auth/verify-email/", VerifyEmailAPIView.as_view(), name="verify-email"),
 
-    # Notifications (используем v1, пока нет специфичной логики для v2)
-    path("notifications/", include("api.v1.notifications.urls")),
+    # Notifications (из самого модуля notifications)
+    path("notifications/", include("notifications.api.urls")),
 
     # Router URLs (все ViewSets)
     path("", include(router.urls)),

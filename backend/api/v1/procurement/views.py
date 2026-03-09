@@ -45,7 +45,7 @@ from .serializers import (
     ProcurementRequestListSerializer,
     SupplierSerializer,
 )
-from notifications.services import NotificationService
+from notifications.signals import notify
 
 
 class ProcurementRequestViewSet(viewsets.ModelViewSet):
@@ -175,31 +175,31 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         
         if remaining_ratio <= CRITICAL_BUDGET_THRESHOLD:
             # Критический уровень - менее 10%
-            NotificationService.create_notification(
+            notify.send(
+                sender=None,
                 recipient=dept_head,
-                notification_type_code='budget_critical',
-                title="⚠️ Критически низкий бюджет!",
-                message=(
+                verb='budget_critical',
+                description=(
                     f'Бюджет отдела "{department.name}" почти исчерпан! '
                     f'Остаток: {budget.remaining_amount}₽ '
                     f'({remaining_ratio*100:.1f}%)'
                 ),
                 action_url='/procurement',
-                send_immediately=True,
+                data={'title': '⚠️ Критически низкий бюджет!'},
             )
         elif remaining_ratio <= LOW_BUDGET_THRESHOLD:
             # Низкий уровень - менее 20%
-            NotificationService.create_notification(
+            notify.send(
+                sender=None,
                 recipient=dept_head,
-                notification_type_code='budget_low',
-                title="Низкий остаток бюджета",
-                message=(
+                verb='budget_low',
+                description=(
                     f'Бюджет отдела "{department.name}" снижается. '
                     f'Остаток: {budget.remaining_amount}₽ '
                     f'({remaining_ratio*100:.1f}%)'
                 ),
                 action_url='/procurement',
-                send_immediately=True,
+                data={'title': 'Низкий остаток бюджета'},
             )
 
     @action(detail=True, methods=['post'])
@@ -278,20 +278,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 )
                 created_approvals.append(approval)
 
-        # Отправляем уведомления согласующим через NotificationService
-        for approval in created_approvals:
-            NotificationService.create_notification(
-                recipient=approval.approver,
-                notification_type_code='procurement_pending_approval',
-                title="Требуется согласование заявки",
-                message=(
-                    f'Заявка "{procurement_request.title}" '
-                    f'ожидает вашего согласования. '
-                    f'Сумма: {procurement_request.total_cost}₽'
-                ),
-                action_url='/procurement',
-                send_immediately=True,
-            )
+        # Уведомления согласующим отправит сигнал post_save(Approval, created=True)
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -319,20 +306,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Одобряем
         approval.status = ApprovalStatus.APPROVED
         approval.comment = request.data.get('comment', '')
-        approval.save()
-
-        # Отправляем уведомление о согласовании
-        NotificationService.create_notification(
-            recipient=procurement_request.requestor,
-            notification_type_code='procurement_stage_approved',
-            title="Этап согласования пройден",
-            message=(
-                f'{request.user.get_full_name()} одобрил '
-                f'заявку "{procurement_request.title}".'
-            ),
-            action_url='/procurement',
-            send_immediately=True,
-        )
+        approval.save()  # Сигнал post_save(Approval) отправит уведомление
 
         # Проверяем, все ли одобрили
         pending_approvals = procurement_request.approvals.filter(
@@ -341,21 +315,9 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         if pending_approvals == 0:
             # Все одобрили - меняем статус заявки
+            # Сигнал post_save(ProcurementRequest) отправит уведомление requestor'у
             procurement_request.status = ProcurementStatus.APPROVED
             procurement_request.save()
-
-            # Отправляем уведомление о полном одобрении
-            NotificationService.create_notification(
-                recipient=procurement_request.requestor,
-                notification_type_code='procurement_approved',
-                title="Заявка одобрена",
-                message=(
-                    f'Ваша заявка "{procurement_request.title}" '
-                    f'была полностью одобрена. Можно приступать к закупке.'
-                ),
-                action_url='/procurement',
-                send_immediately=True,
-            )
 
             # Проверяем бюджет и отправляем алерт если низкий
             self._check_budget_alert(procurement_request)
@@ -386,25 +348,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Отклоняем
         approval.status = ApprovalStatus.REJECTED
         approval.comment = request.data.get('comment', '')
-        approval.save()
+        approval.save()  # Сигнал post_save(Approval) отправит уведомление
 
-        # Меняем статус заявки
+        # Меняем статус заявки; сигнал post_save(ProcurementRequest) уведомит requestor'а
         procurement_request.status = ProcurementStatus.REJECTED
         procurement_request.save()
-
-        # Отправляем уведомление об отклонении
-        NotificationService.create_notification(
-            recipient=procurement_request.requestor,
-            notification_type_code='procurement_rejected',
-            title="Заявка отклонена",
-            message=(
-                f'{request.user.get_full_name()} отклонил '
-                f'заявку "{procurement_request.title}". '
-                f'Причина: {approval.comment}'
-            ),
-            action_url='/procurement',
-            send_immediately=True,
-        )
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -497,42 +445,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             )
 
         # Назначаем исполнителя и меняем статус
+        # Сигнал post_save(ProcurementRequest) с IN_PROGRESS отправит уведомления
         procurement_request.executor = request.user
         procurement_request.started_at = timezone.now()
         procurement_request.status = ProcurementStatus.IN_PROGRESS
         procurement_request.save()
-
-        # Уведомляем автора заявки
-        if procurement_request.requestor != request.user:
-            NotificationService.create_notification(
-                recipient=procurement_request.requestor,
-                notification_type_code='procurement_in_progress',
-                title="Ваша заявка взята в работу",
-                message=(
-                    f'Заявка "{procurement_request.title}" '
-                    f'взята в работу пользователем '
-                    f'{request.user.get_full_name()}.'
-                ),
-                action_url='/procurement',
-                send_immediately=True,
-            )
-
-        # Уведомляем согласующих о начале работы
-        for approval in procurement_request.approvals.filter(
-            status=ApprovalStatus.APPROVED
-        ):
-            NotificationService.create_notification(
-                recipient=approval.approver,
-                notification_type_code='procurement_in_progress',
-                title="Заявка взята в работу",
-                message=(
-                    f'Заявка "{procurement_request.title}" '
-                    f'взята в работу пользователем '
-                    f'{request.user.get_full_name()}.'
-                ),
-                action_url='/procurement',
-                send_immediately=True,
-            )
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -563,22 +480,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         # Списываем бюджет отдела
         self._deduct_budget(procurement_request)
-
-        # Уведомляем согласующих о завершении
-        for approval in procurement_request.approvals.filter(
-            status=ApprovalStatus.APPROVED
-        ):
-            NotificationService.create_notification(
-                recipient=approval.approver,
-                notification_type_code='procurement_completed',
-                title="Заявка завершена",
-                message=(
-                    f'Заявка "{procurement_request.title}" '
-                    f'успешно завершена.'
-                ),
-                action_url='/procurement',
-                send_immediately=True,
-            )
+        # Сигнал post_save(ProcurementRequest) с COMPLETED отправит уведомления
+        # requestor'у и согласующим
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -644,24 +547,13 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         reason = request.data.get('reason', '')
 
-        # Меняем статус
+        # Сохраняем причину на экземпляре, чтобы сигнал мог её использовать
+        procurement_request.cancellation_reason = reason or 'не указана'
+
+        # Меняем статус; сигнал post_save(ProcurementRequest) с CANCELLED
+        # уведомит согласующих с указанием причины
         procurement_request.status = ProcurementStatus.CANCELLED
         procurement_request.save()
-
-        # Уведомляем согласующих об отмене
-        for approval in procurement_request.approvals.all():
-            NotificationService.create_notification(
-                recipient=approval.approver,
-                notification_type_code='procurement_cancelled',
-                title="Заявка отменена",
-                message=(
-                    f'Заявка "{procurement_request.title}" '
-                    f'была отменена автором. '
-                    f'Причина: {reason or "не указана"}'
-                ),
-                action_url='/procurement',
-                send_immediately=True,
-            )
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)

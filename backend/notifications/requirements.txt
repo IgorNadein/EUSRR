@@ -1,0 +1,23 @@
+# Django Universal Notifications - Requirements
+# Базовые зависимости для работы модуля
+
+# Django framework
+Django>=5.2,<6.0
+
+# Django REST Framework (для API endpoints)
+djangorestframework>=3.14
+
+# Celery (для асинхронной обработки уведомлений)
+celery>=5.3
+
+# Redis (рекомендуемый broker для Celery и Channels)
+redis>=5.0
+
+# Django Channels (для WebSocket уведомлений)
+channels>=4.0
+channels-redis>=4.0
+
+# Опциональные зависимости (раскомментируйте при необходимости):
+
+# django-push-notifications>=3.0  # Для Web Push уведомлений
+# django-celery-beat>=2.5         # Для периодических задач (digest)

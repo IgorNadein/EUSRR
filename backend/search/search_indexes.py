@@ -166,11 +166,11 @@ if Document:
         store=("title", "uploaded_at"),
     )
 
-# 12. Уведомления (Notifications)
+# 12. Уведомления (Notifications v2)
 Notification = get_model_safe("notifications", "Notification")
 if Notification:
     register(
         Notification,
-        fields=("title", "message", "short_message"),
-        store=("title", "is_read", "created_at"),
+        fields=("verb", "description"),  # v2 поля
+        store=("verb", "unread", "timestamp"),
     )

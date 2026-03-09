@@ -14,7 +14,7 @@ from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 
 from .models import CalendarEvent
-from notifications.services import NotificationService
+from notifications.signals import notify
 
 Employee = get_user_model()
 
@@ -28,42 +28,13 @@ def create_event_notifications(sender, instance, created, **kwargs):
     - При создании - всем сотрудникам компании или отдела
     - При изменении - участникам события
     """
-    from django.db import transaction
-    from notifications.tasks import process_event_notifications_task
-    
-    def send_task():
-        """Отложенная отправка задачи после commit транзакции"""
-        try:
-            if created:
-                # Новое событие
-                process_event_notifications_task.delay(
-                    event_id=instance.id,
-                    action='created'
-                )
-            else:
-                # Изменение события
-                changed_fields = getattr(instance, '_changed_fields', [])
-                if changed_fields:
-                    process_event_notifications_task.delay(
-                        event_id=instance.id,
-                        action='updated',
-                        changed_fields=changed_fields
-                    )
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"Failed to queue event notifications task: {e}, "
-                f"falling back to sync"
-            )
-            # Fallback на старую логику
-            if created:
-                notify_event_created(instance)
-            else:
-                if hasattr(instance, '_changed_fields'):
-                    notify_event_changed(instance, instance._changed_fields)
-    
-    transaction.on_commit(send_task)
+    # Отправляем уведомления напрямую - channels.py автоматически отправит через Celery
+    if created:
+        notify_event_created(instance)
+    else:
+        changed_fields = getattr(instance, '_changed_fields', [])
+        if changed_fields:
+            notify_event_changed(instance, changed_fields)
 
 
 @receiver(pre_save, sender=CalendarEvent)
@@ -98,35 +69,20 @@ def notify_event_cancelled(sender, instance, **kwargs):
     """
     Создает уведомления при удалении (отмене) события асинхронно.
     """
-    from notifications.tasks import process_event_notifications_task
-    
-    try:
-        # Запускаем задачу синхронно, т.к. pre_delete выполняется до удаления
-        # и объект ещё существует в БД
-        process_event_notifications_task.apply_async(
-            args=[instance.id, 'cancelled'],
-            countdown=1  # Небольшая задержка чтобы удаление успело произойти
-        )
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            f"Failed to queue event cancellation task: {e}, "
-            f"falling back to sync"
-        )
-        # Fallback на старую логику
-        recipients = get_event_recipients(instance)
-        for recipient in recipients:
-            NotificationService.create_notification(
+    # Отправляем уведомления напрямую - channels.py автоматически отправит через Celery
+    recipients = get_event_recipients(instance)
+    for recipient in recipients:
+            notify.send(
+                sender=None,
                 recipient=recipient,
-                notification_type_code='event_cancelled',
-                title='Событие отменено',
-                message=(
+                verb='event_cancelled',
+                description=(
                     f'Событие "{instance.title}" '
                     f'({instance.start_date.strftime("%d.%m.%Y")}) отменено'
                 ),
                 action_url=get_calendar_url(instance),
-                metadata={
+                data={
+                    'title': 'Событие отменено',
                     'event_title': instance.title,
                     'event_date': instance.start_date.isoformat(),
                     'department_id': (
@@ -156,17 +112,18 @@ def notify_event_created(event):
     )
     
     for recipient in recipients:
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=event.created_by,
             recipient=recipient,
-            notification_type_code='event_created',
-            title='Новое событие в календаре',
-            message=(
+            verb='event_created',
+            action_object=event,
+            description=(
                 f'Добавлено событие {event_scope}: "{event.title}" '
                 f'({event.start_date.strftime("%d.%m.%Y")})'
             ),
-            content_object=event,
             action_url=get_calendar_url(event),
-            metadata={
+            data={
+                'title': 'Новое событие в календаре',
                 'event_id': event.id,
                 'event_title': event.title,
                 'event_date': event.start_date.isoformat(),
@@ -205,17 +162,18 @@ def notify_event_changed(event, changed_fields):
     ])
     
     for recipient in recipients:
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=None,
             recipient=recipient,
-            notification_type_code='event_changed',
-            title='Событие изменено',
-            message=(
+            verb='event_changed',
+            action_object=event,
+            description=(
                 f'Событие "{event.title}" изменено. '
                 f'Изменения: {changes_text}'
             ),
-            content_object=event,
             action_url=get_calendar_url(event),
-            metadata={
+            data={
+                'title': 'Событие изменено',
                 'event_id': event.id,
                 'event_title': event.title,
                 'changed_fields': changed_fields,

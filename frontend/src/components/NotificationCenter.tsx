@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Bell, Settings, X } from 'lucide-react';
+import { Bell, Settings, X, Trash2 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useApi';
-import { useWebPush } from '@/hooks/useWebPush';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
+import { getVerbName } from '@/lib/verbTranslations';
+import Link from 'next/link';
 
 interface NotificationCenterProps {
     variant?: 'default' | 'mobile';
@@ -17,11 +18,9 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
     const [internalIsOpen, setInternalIsOpen] = useState(false);
     const isControlled = externalIsOpen !== undefined;
     const isOpen = isControlled ? externalIsOpen : internalIsOpen;
-    const [showSettings, setShowSettings] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     
-    const { notifications: notificationsData, unreadCount, markAsRead, markAllAsRead, loading } = useNotifications();
-    const { isSupported, isSubscribed, subscribe, unsubscribe, permission, isLoading: pushLoading } = useWebPush();
+    const { notifications: notificationsData, unreadCount, markAsRead, markAllAsRead, deleteNotification, loading } = useNotifications();
     
     const notifications = Array.isArray(notificationsData) ? notificationsData : [];
 
@@ -39,7 +38,6 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
         } else {
             setInternalIsOpen(false);
         }
-        setShowSettings(false);
     };
 
     // Закрытие при клике вне компонента
@@ -55,21 +53,16 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
     }, [isOpen]);
 
     const handleNotificationClick = async (notification: any) => {
-        if (!notification.is_read) {
+        // v2 API использует unread вместо is_read (инвертированное)
+        const isUnread = notification.unread ?? !notification.is_read;
+        
+        if (isUnread) {
             await markAsRead(notification.id);
         }
         
         // Навигация если есть action_url
         if (notification.action_url) {
             window.location.href = notification.action_url;
-        }
-    };
-
-    const handleTogglePush = async () => {
-        if (isSubscribed) {
-            await unsubscribe();
-        } else {
-            await subscribe();
         }
     };
 
@@ -108,13 +101,14 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                     Прочитать все
                                 </button>
                             )}
-                            <button
-                                onClick={() => setShowSettings(!showSettings)}
+                            <Link
+                                href="/notifications/settings"
                                 className="p-1 hover:bg-slate-100 rounded"
                                 aria-label="Настройки"
+                                title="Настройки уведомлений"
                             >
                                 <Settings className="w-4 h-4 text-gray-500" />
-                            </button>
+                            </Link>
                             <button
                                 onClick={() => close()}
                                 className="p-1 hover:bg-slate-100 rounded"
@@ -125,38 +119,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                         </div>
                     </div>
 
-                    {/* Настройки Push */}
-                    {showSettings && (
-                        <div className="p-4 bg-slate-50 border-b border-slate-100">
-                            <h4 className="font-medium mb-2 text-sm">Push уведомления</h4>
-                            {!isSupported ? (
-                                <p className="text-xs text-gray-500">
-                                    Push уведомления не поддерживаются вашим браузером
-                                </p>
-                            ) : permission === 'denied' ? (
-                                <p className="text-xs text-red-500">
-                                    Вы запретили уведомления. Измените настройки браузера.
-                                </p>
-                            ) : (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs text-gray-600">
-                                        {isSubscribed ? 'Включены' : 'Отключены'}
-                                    </span>
-                                    <button
-                                        onClick={handleTogglePush}
-                                        disabled={pushLoading}
-                                        className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                                            isSubscribed
-                                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                                : 'bg-sky-600 text-white hover:bg-sky-700'
-                                        } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                    >
-                                        {pushLoading ? 'Загрузка...' : isSubscribed ? 'Отключить' : 'Включить'}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
+
 
                     {/* Список уведомлений */}
                     <div className="overflow-y-auto flex-1">
@@ -171,35 +134,57 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                             </div>
                         ) : (
                             <ul>
-                                {notifications.slice(0, 20).map((notification) => (
+                                {notifications.slice(0, 20).map((notification) => {
+                                    // v2 API: unread вместо is_read (инвертированное)
+                                    const isUnread = notification.unread ?? !notification.is_read;
+                                    // v2 API: timestamp вместо created_at
+                                    const timestamp = notification.timestamp || notification.created_at;
+                                    // v2 API: verb + description вместо title + message
+                                    const title = notification.title || getVerbName(notification.verb);
+                                    const message = notification.description || notification.short_message || notification.message;
+                                    
+                                    return (
                                     <li
                                         key={notification.id}
-                                        onClick={() => handleNotificationClick(notification)}
-                                        className={`p-3 border-b border-slate-100 hover:bg-slate-100 cursor-pointer transition-colors ${
-                                            !notification.is_read ? 'bg-sky-50/50' : ''
+                                        className={`group p-3 border-b border-slate-100 hover:bg-slate-100 transition-colors ${
+                                            isUnread ? 'bg-sky-50/50' : ''
                                         }`}
                                     >
                                         <div className="flex items-start gap-2.5">
-                                            {!notification.is_read && (
+                                            {isUnread && (
                                                 <div className="w-1.5 h-1.5 bg-sky-600 rounded-full mt-1.5 flex-shrink-0" />
                                             )}
-                                            <div className="flex-1 min-w-0">
+                                            <div 
+                                                onClick={() => handleNotificationClick(notification)}
+                                                className="flex-1 min-w-0 cursor-pointer"
+                                            >
                                                 <h4 className="font-medium text-sm mb-0.5 truncate text-gray-800">
-                                                    {notification.title}
+                                                    {title}
                                                 </h4>
                                                 <p className="text-xs text-gray-600 line-clamp-2 mb-1">
-                                                    {notification.short_message || notification.message}
+                                                    {message}
                                                 </p>
                                                 <p className="text-[10px] text-gray-400">
-                                                    {formatDistanceToNow(new Date(notification.created_at), {
+                                                    {formatDistanceToNow(new Date(timestamp), {
                                                         addSuffix: true,
                                                         locale: ru,
                                                     })}
                                                 </p>
                                             </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    deleteNotification(notification.id);
+                                                }}
+                                                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 rounded transition-all flex-shrink-0"
+                                                aria-label="Удалить"
+                                                title="Удалить уведомление"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-600" />
+                                            </button>
                                         </div>
                                     </li>
-                                ))}
+                                )})}
                             </ul>
                         )}
                     </div>
@@ -223,25 +208,18 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
 
 /** Встраиваемая панель уведомлений (для выдвижных блоков) */
 export function NotificationPanel({ onClose }: { onClose?: () => void }) {
-    const { notifications: notificationsData, unreadCount, markAsRead, markAllAsRead, loading } = useNotifications();
-    const { isSupported, isSubscribed, subscribe, unsubscribe, permission, isLoading: pushLoading } = useWebPush();
-    const [showSettings, setShowSettings] = useState(false);
+    const { notifications: notificationsData, unreadCount, markAsRead, markAllAsRead, deleteNotification, loading } = useNotifications();
     const notifications = Array.isArray(notificationsData) ? notificationsData : [];
 
     const handleNotificationClick = async (notification: any) => {
-        if (!notification.is_read) {
+        // v2 API использует unread вместо is_read (инвертированное)
+        const isUnread = notification.unread ?? !notification.is_read;
+        
+        if (isUnread) {
             await markAsRead(notification.id);
         }
         if (notification.action_url) {
             window.location.href = notification.action_url;
-        }
-    };
-
-    const handleTogglePush = async () => {
-        if (isSubscribed) {
-            await unsubscribe();
-        } else {
-            await subscribe();
         }
     };
 
@@ -255,9 +233,14 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                             Прочитать все
                         </button>
                     )}
-                    <button onClick={() => setShowSettings(!showSettings)} className="p-1 hover:bg-slate-100 rounded" aria-label="Настройки">
+                    <Link
+                        href="/notifications/settings"
+                        className="p-1 hover:bg-slate-100 rounded"
+                        aria-label="Настройки"
+                        title="Настройки уведомлений"
+                    >
                         <Settings className="w-4 h-4 text-gray-500" />
-                    </button>
+                    </Link>
                     {onClose && (
                         <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded" aria-label="Закрыть">
                             <X className="w-4 h-4 text-gray-500" />
@@ -266,29 +249,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                 </div>
             </div>
 
-            {showSettings && (
-                <div className="p-3 bg-slate-50 border-b border-slate-100">
-                    <h4 className="font-medium mb-2 text-xs">Push уведомления</h4>
-                    {!isSupported ? (
-                        <p className="text-xs text-gray-500">Не поддерживаются браузером</p>
-                    ) : permission === 'denied' ? (
-                        <p className="text-xs text-red-500">Запрещены. Измените настройки браузера.</p>
-                    ) : (
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-600">{isSubscribed ? 'Включены' : 'Отключены'}</span>
-                            <button
-                                onClick={handleTogglePush}
-                                disabled={pushLoading}
-                                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                                    isSubscribed ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-sky-600 text-white hover:bg-sky-700'
-                                } disabled:opacity-50`}
-                            >
-                                {pushLoading ? '...' : isSubscribed ? 'Отключить' : 'Включить'}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
+
 
             <div className="overflow-y-auto flex-1">
                 {loading ? (
@@ -300,28 +261,37 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                     </div>
                 ) : (
                     <ul>
-                        {notifications.slice(0, 20).map((notification) => (
+                        {notifications.slice(0, 20).map((notification) => {
+                            // v2 API: unread вместо is_read (инвертированное)
+                            const isUnread = notification.unread ?? !notification.is_read;
+                            // v2 API: timestamp вместо created_at
+                            const timestamp = notification.timestamp || notification.created_at;
+                            // v2 API: verb + description вместо title + message
+                            const title = notification.title || getVerbName(notification.verb);
+                            const message = notification.description || notification.short_message || notification.message;
+                            
+                            return (
                             <li
                                 key={notification.id}
                                 onClick={() => handleNotificationClick(notification)}
                                 className={`p-3 border-b border-slate-100 hover:bg-slate-100 cursor-pointer transition-colors ${
-                                    !notification.is_read ? 'bg-sky-50/50' : ''
+                                    isUnread ? 'bg-sky-50/50' : ''
                                 }`}
                             >
                                 <div className="flex items-start gap-2">
-                                    {!notification.is_read && (
+                                    {isUnread && (
                                         <div className="w-1.5 h-1.5 bg-sky-600 rounded-full mt-1.5 flex-shrink-0" />
                                     )}
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="font-medium text-sm mb-0.5 truncate text-gray-800">{notification.title}</h4>
-                                        <p className="text-xs text-gray-600 line-clamp-2 mb-1">{notification.short_message || notification.message}</p>
+                                        <h4 className="font-medium text-sm mb-0.5 truncate text-gray-800">{title}</h4>
+                                        <p className="text-xs text-gray-600 line-clamp-2 mb-1">{message}</p>
                                         <p className="text-[10px] text-gray-400">
-                                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: ru })}
+                                            {formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: ru })}
                                         </p>
                                     </div>
                                 </div>
                             </li>
-                        ))}
+                        )})}
                     </ul>
                 )}
             </div>
