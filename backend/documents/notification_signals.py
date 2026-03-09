@@ -14,7 +14,7 @@ from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 
 from .models import Document, DocumentAcknowledgement, DocumentComment
-from notifications.services import NotificationService
+from notifications.signals import notify
 
 logger = logging.getLogger(__name__)
 Employee = get_user_model()
@@ -30,9 +30,6 @@ def create_document_notification(sender, instance, created, **kwargs):
     - Сотрудникам выбранных отделов (через m2m_changed signal)
     - Выбранным получателям (через m2m_changed signal)
     """
-    from django.db import transaction
-    from notifications.tasks import process_document_notifications_task
-    
     logger.info(
         f"[notification_signals] post_save Document id={instance.pk} "
         f"created={created} sent_to_all={instance.sent_to_all}"
@@ -43,25 +40,13 @@ def create_document_notification(sender, instance, created, **kwargs):
     
     document = instance
     
-    # Если документ отправляется всем - создаем уведомления сразу асинхронно
+    # Если документ отправляется всем - создаем уведомления напрямую
+    # channels.py автоматически отправит через Celery
     if document.sent_to_all:
         logger.info(
-            f"[notification_signals] Queuing task for doc={document.pk} (sent_to_all=True)"
+            f"[notification_signals] Creating notifications for doc={document.pk} (sent_to_all=True)"
         )
-        
-        def send_task():
-            """Отложенная отправка задачи после commit транзакции"""
-            try:
-                process_document_notifications_task.delay(document_id=document.pk)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to queue document notifications task: {e}, "
-                    f"falling back to sync"
-                )
-                # Fallback на старую логику
-                notify_all_employees(document)
-        
-        transaction.on_commit(send_task)
+        notify_all_employees(document)
     else:
         logger.info(
             f"[notification_signals] Skipping notifications (sent_to_all=False), "
@@ -119,63 +104,37 @@ def notify_specific_recipients(sender, instance, action, pk_set, **kwargs):
             logger.debug(
                 f"[notification_signals] Creating notification for user={user_id}"
             )
-            
-            # Для массовой рассылки - без немедленной отправки
-            notification = create_document_ready_notification(
-                document, 
-                user,
-                send_immediately=not is_bulk  # False для массовой
+            uploader_name = (
+                document.uploaded_by.get_full_name()
+                if document.uploaded_by
+                else 'Администратор'
             )
-            
-            # Для массовой - отправляем только веб сразу
-            if is_bulk and notification:
-                try:
-                    settings = NotificationService.get_user_settings(
-                        user,
-                        notification.notification_type
-                    )
-                    
-                    if settings.send_web:
-                        NotificationService.send_web_socket(notification)
-                        notification.sent_web = True
-                        notification.save(update_fields=['sent_web'])
-                except Exception as e:
-                    logger.error(f"Error sending web notification: {e}")
-            
+            notify.send(
+                sender=document.uploaded_by,
+                recipient=user,
+                verb='document_ready',
+                action_object=document,
+                description=(
+                    f'{uploader_name} загрузил документ "{document.title}". '
+                    f'Требуется ознакомление.'
+                ),
+                action_url='/documents',
+                data={
+                    'title': 'Новый документ на ознакомление',
+                    'document_id': document.id,
+                    'uploaded_by_id': (
+                        document.uploaded_by.id if document.uploaded_by else None
+                    ),
+                    'sent_to_all': document.sent_to_all,
+                },
+            )
             created_count += 1
         except Employee.DoesNotExist:
-            logger.warning(
-                f"[notification_signals] User {user_id} not found"
-            )
-            continue
-    
-    logger.info(
-        f"[notification_signals] Created {created_count}/{recipient_count} "
-        f"notifications (bulk={is_bulk})"
-    )
-    
-    # Для массовой рассылки - запускаем фоновую отправку
-    if is_bulk:
-        try:
-            from django.core.management import call_command
-            import threading
-            
-            def send_pending():
-                try:
-                    call_command(
-                        'send_pending_notifications', 
-                        '--batch-size=100'
-                    )
-                except Exception as e:
-                    logger.error(f"Error in background send: {e}")
-            
-            thread = threading.Thread(target=send_pending, daemon=True)
-            thread.start()
-            logger.info(
-                "[notification_signals] Started background email/telegram send"
-            )
+            logger.warning(f"[notification_signals] User {user_id} not found, skipping")
         except Exception as e:
-            logger.error(f"Error starting background send: {e}")
+            logger.error(f"[notification_signals] Error creating notification for user {user_id}: {e}")
+
+    logger.info(f"[notification_signals] Created {created_count} notifications")
 
 
 @receiver(m2m_changed, sender=Document.departments.through)
@@ -255,62 +214,37 @@ def notify_department_employees(sender, instance, action, pk_set, **kwargs):
     
     # Создаём уведомления
     created_count = 0
+    uploader_name = (
+        document.uploaded_by.get_full_name()
+        if document.uploaded_by
+        else 'Администратор'
+    )
     for employee in all_employees:
         try:
-            notification = create_document_ready_notification(
-                document,
-                employee,
-                send_immediately=not is_bulk
+            notify.send(
+                sender=document.uploaded_by,
+                recipient=employee,
+                verb='document_ready',
+                action_object=document,
+                description=(
+                    f'{uploader_name} загрузил документ "{document.title}". '
+                    f'Требуется ознакомление.'
+                ),
+                action_url='/documents',
+                data={
+                    'title': 'Новый документ на ознакомление',
+                    'document_id': document.id,
+                    'uploaded_by_id': (
+                        document.uploaded_by.id if document.uploaded_by else None
+                    ),
+                    'sent_to_all': document.sent_to_all,
+                },
             )
-            
-            # Для массовой - отправляем только веб сразу
-            if is_bulk and notification:
-                try:
-                    settings_obj = NotificationService.get_user_settings(
-                        employee,
-                        notification.notification_type
-                    )
-                    
-                    if settings_obj.send_web:
-                        NotificationService.send_web_socket(notification)
-                        notification.sent_web = True
-                        notification.save(update_fields=['sent_web'])
-                except Exception as e:
-                    logger.error(f"Error sending web notification: {e}")
-            
             created_count += 1
         except Exception as e:
-            logger.error(
-                f"Error creating notification for user {employee.id}: {e}"
-            )
-    
-    logger.info(
-        f"[notification_signals] Created {created_count}/{recipient_count} "
-        f"notifications (bulk={is_bulk})"
-    )
-    
-    # Для массовой рассылки - запускаем фоновую отправку
-    if is_bulk:
-        try:
-            from django.core.management import call_command
-            import threading
-            
-            def send_pending():
-                try:
-                    call_command(
-                        'send_pending_notifications',
-                        '--batch-size=100'
-                    )
-                except Exception as e:
-                    logger.error(f"Error in background send: {e}")
-            
-            thread = threading.Thread(target=send_pending, daemon=True)
-            thread.start()
-            logger.info(
-                "[notification_signals] Started background email/telegram send"
-            )
-        except Exception as e:
-            logger.error(f"Error starting background send: {e}")
+            logger.error(f"[notification_signals] Error creating notification for employee {employee.id}: {e}")
+
+    logger.info(f"[notification_signals] Created {created_count} notifications")
 
 
 @receiver(post_save, sender=DocumentAcknowledgement)
@@ -348,18 +282,19 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
     if (acknowledged_count >= total_recipients and 
         total_recipients > 0 and
         document.uploaded_by):
-        
-        NotificationService.create_notification_async(
+
+        notify.send(
+            sender=None,
             recipient=document.uploaded_by,
-            notification_type_code='document_signed_all',
-            title='Все ознакомились с документом',
-            message=(
+            verb='document_signed_all',
+            action_object=document,
+            description=(
                 f'Все сотрудники ознакомились с документом '
                 f'"{document.title}"'
             ),
-            content_object=document,
             action_url='/documents',
-            metadata={
+            data={
+                'title': 'Все ознакомились с документом',
                 'document_id': document.id,
                 'total_recipients': total_recipients,
                 'acknowledged_count': acknowledged_count,
@@ -394,31 +329,32 @@ def notify_all_employees(document):
     
     # Создаём уведомления с ЧАСТИЧНОЙ отправкой
     created_count = 0
+    uploader_name = (
+        document.uploaded_by.get_full_name()
+        if document.uploaded_by
+        else 'Администратор'
+    )
     for employee in active_employees:
         try:
-            notification = create_document_ready_notification(
-                document,
-                employee,
-                send_immediately=False  # Не отправляем email/telegram сразу
+            notify.send(
+                sender=document.uploaded_by,
+                recipient=employee,
+                verb='document_ready',
+                action_object=document,
+                description=(
+                    f'{uploader_name} загрузил документ "{document.title}". '
+                    f'Требуется ознакомление.'
+                ),
+                action_url='/documents',
+                data={
+                    'title': 'Новый документ на ознакомление',
+                    'document_id': document.id,
+                    'uploaded_by_id': (
+                        document.uploaded_by.id if document.uploaded_by else None
+                    ),
+                    'sent_to_all': document.sent_to_all,
+                },
             )
-            
-            # Отправляем только веб-уведомление (быстро, через WebSocket)
-            if notification:
-                try:
-                    from notifications.services import NotificationService
-                    settings = NotificationService.get_user_settings(
-                        employee,
-                        notification.notification_type
-                    )
-                    
-                    # Только веб
-                    if settings.send_web:
-                        NotificationService.send_web_socket(notification)
-                        notification.sent_web = True
-                        notification.save(update_fields=['sent_web'])
-                except Exception as e:
-                    logger.error(f"Error sending web notification: {e}")
-            
             created_count += 1
         except Exception as e:
             logger.error(
@@ -450,35 +386,30 @@ def notify_all_employees(document):
 def create_document_ready_notification(document, recipient, send_immediately=True):
     """
     Создает уведомление о новом документе для конкретного получателя.
-    
-    Args:
-        document: Документ
-        recipient: Получатель
-        send_immediately: Отправить сразу или отложить (для массовых рассылок)
     """
     logger.info(
         f"[notification_signals] create_document_ready_notification "
-        f"doc={document.id} recipient={recipient.id} "
-        f"send_immediately={send_immediately}"
+        f"doc={document.id} recipient={recipient.id}"
     )
-    
+
     uploader_name = (
         document.uploaded_by.get_full_name()
         if document.uploaded_by
         else 'Администратор'
     )
-    
-    notification = NotificationService.create_notification_async(
+
+    notify.send(
+        sender=document.uploaded_by,
         recipient=recipient,
-        notification_type_code='document_ready',
-        title='Новый документ на ознакомление',
-        message=(
+        verb='document_ready',
+        action_object=document,
+        description=(
             f'{uploader_name} загрузил документ "{document.title}". '
             f'Требуется ознакомление.'
         ),
-        content_object=document,
         action_url='/documents',
-        metadata={
+        data={
+            'title': 'Новый документ на ознакомление',
             'document_id': document.id,
             'uploaded_by_id': (
                 document.uploaded_by.id if document.uploaded_by else None
@@ -486,17 +417,6 @@ def create_document_ready_notification(document, recipient, send_immediately=Tru
             'sent_to_all': document.sent_to_all,
         },
     )
-    
-    if notification:
-        logger.debug(
-            f"[notification_signals] Created notification id={notification.id} "
-            f"for user={recipient.id}"
-        )
-    else:
-        logger.warning(
-            f"[notification_signals] Failed to create notification "
-            f"for user={recipient.id}"
-        )
 
 
 # =============================================================================
@@ -539,19 +459,18 @@ def notify_on_new_comment(sender, instance, created, **kwargs):
             f"about reply"
         )
         
-        # Используем новый тип document_comment_reply
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=author,
             recipient=parent_author,
-            notification_type_code='document_comment_reply',
-            title=f'Ответ на ваш комментарий',
-            message=(
+            verb='document_comment_reply',
+            action_object=comment,
+            description=(
                 f'{author.get_full_name() or author.username} ответил на ваш '
                 f'комментарий к документу "{document.title}"'
             ),
-            content_object=comment,
             action_url='/documents',
-            action_text='Посмотреть',
-            metadata={
+            data={
+                'title': 'Ответ на ваш комментарий',
                 'document_id': document.id,
                 'comment_id': comment.id,
                 'parent_comment_id': comment.parent_id,
@@ -580,18 +499,18 @@ def notify_on_new_comment(sender, instance, created, **kwargs):
             f"about new comment"
         )
         
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=author,
             recipient=doc_author,
-            notification_type_code='document_comment',
-            title=f'Новый комментарий к документу',
-            message=(
+            verb='document_comment',
+            action_object=comment,
+            description=(
                 f'{author.get_full_name() or author.username} оставил комментарий '
                 f'к вашему документу "{document.title}"'
             ),
-            content_object=comment,  
             action_url='/documents',
-            action_text='Посмотреть',
-            metadata={
+            data={
+                'title': 'Новый комментарий к документу',
                 'document_id': document.id,
                 'comment_id': comment.id,
                 'author_id': author.id,
@@ -636,19 +555,18 @@ def notify_on_related_document_added(sender, instance, action, pk_set, **kwargs)
             f"that their document was linked"
         )
         
-        # Используем новый тип document_related
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=main_document.uploaded_by,
             recipient=related_doc.uploaded_by,
-            notification_type_code='document_related',
-            title=f'Документ связан с другим',
-            message=(
+            verb='document_related',
+            action_object=main_document,
+            description=(
                 f'Ваш документ "{related_doc.title}" связан '
                 f'с документом "{main_document.title}"'
             ),
-            content_object=main_document,
             action_url='/documents',
-            action_text='Посмотреть',
-            metadata={
+            data={
+                'title': 'Документ связан с другим',
                 'document_id': main_document.id,
                 'related_document_id': related_doc.id,
             },

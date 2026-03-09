@@ -15,7 +15,7 @@ class WebSocketNotificationTask(BaseNotificationTask):
     - Поддержка silent режима (DND)
     """
     
-    task_name = "notifications.send_websocket"
+    task_name = "notifications.send_websocket_notification"
     max_retries = config.websocket_max_retries()
     retry_delay = config.websocket_retry_delay()
     rate_limit = None  # Без ограничений для realtime
@@ -26,7 +26,10 @@ class WebSocketNotificationTask(BaseNotificationTask):
             notification = self.get_notification(notification_id)
             
             if not notification:
-                self.logger.error(f"❌ Notification {notification_id} not found")
+                self.logger.warning(
+                    f"⚠️ Notification {notification_id} not found "
+                    f"(possibly deleted by user before delivery)"
+                )
                 return False
             
             # Отправляем с учетом silent режима

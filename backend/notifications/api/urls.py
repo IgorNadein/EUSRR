@@ -27,6 +27,7 @@ urlpatterns = [
     path('preferences/', views.channel_preferences, name='preferences'),
     
     # Web Push интеграция
+    path('push/vapid-key/', views.get_vapid_public_key, name='vapid_key'),
     path('push/subscribe/', views.subscribe_push, name='push_subscribe'),
     path('push/unsubscribe/', views.unsubscribe_push, name='push_unsubscribe'),
 ]

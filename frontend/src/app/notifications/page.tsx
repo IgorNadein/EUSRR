@@ -2,14 +2,15 @@
 
 import { AppShell } from '@/components/AppShell';
 import { useNotifications } from '@/hooks/useApi';
-import { Bell, Check, CheckCheck, Filter, Search, Trash2 } from 'lucide-react';
+import { Bell, Check, CheckCheck, Filter, Search, Trash2, Settings } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
+import { getVerbCategory, getVerbName } from '@/lib/verbTranslations';
 import Link from 'next/link';
 
 export default function NotificationsPage() {
-  const { notifications: notificationsData, loading, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications: notificationsData, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead } = useNotifications();
   const notifications = Array.isArray(notificationsData) ? notificationsData : [];
 
   const [search, setSearch] = useState('');
@@ -21,7 +22,7 @@ export default function NotificationsPage() {
   const categories = useMemo(() => {
     const cats = new Set<string>();
     notifications.forEach((n: any) => {
-      if (n.category_name) cats.add(n.category_name);
+      if (n.category) cats.add(getVerbCategory(n.category));
     });
     return Array.from(cats).sort();
   }, [notifications]);
@@ -34,7 +35,7 @@ export default function NotificationsPage() {
       if (filterRead === 'read' && !n.is_read) return false;
 
       // Фильтр по категории
-      if (filterCategory && n.category_name !== filterCategory) return false;
+      if (filterCategory && n.category && getVerbCategory(n.category) !== filterCategory) return false;
 
       // Поиск
       if (search) {
@@ -49,6 +50,31 @@ export default function NotificationsPage() {
   }, [notifications, search, filterRead, filterCategory]);
 
   const unreadCount = notifications.filter((n: any) => !n.is_read).length;
+  const readCount = notifications.filter((n: any) => n.is_read).length;
+
+  // Подсчет уведомлений по категориям
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, { total: number; unread: number }> = {};
+    
+    notifications.forEach((n: any) => {
+      if (!n.category) return;
+      const category = getVerbCategory(n.category);
+      
+      if (!counts[category]) {
+        counts[category] = { total: 0, unread: 0 };
+      }
+      
+      counts[category].total++;
+      if (!n.is_read) {
+        counts[category].unread++;
+      }
+    });
+    
+    // Сортируем по количеству непрочитанных
+    return Object.entries(counts)
+      .sort(([, a], [, b]) => b.unread - a.unread || b.total - a.total)
+      .map(([category, data]) => ({ category, ...data }));
+  }, [notifications]);
 
   const handleNotificationClick = async (notification: any) => {
     if (!notification.is_read) {
@@ -87,15 +113,38 @@ export default function NotificationsPage() {
               {unreadCount > 0 ? `${unreadCount} непрочитанных` : 'Все прочитано'}
             </p>
           </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 transition"
+          <div className="flex gap-2">
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllAsRead}
+                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 transition"
+              >
+                <CheckCheck size={16} />
+                Прочитать все
+              </button>
+            )}
+            {readCount > 0 && (
+              <button
+                onClick={async () => {
+                  const count = await deleteAllRead();
+                  if (count > 0) {
+                    console.log(`Удалено ${count} прочитанных уведомлений`);
+                  }
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                <Trash2 size={16} />
+                Удалить прочитанные
+              </button>
+            )}
+            <Link
+              href="/notifications/settings"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
             >
-              <CheckCheck size={16} />
-              Прочитать все
-            </button>
-          )}
+              <Settings size={16} />
+              Настройки
+            </Link>
+          </div>
         </div>
 
         {/* Поиск и фильтры */}
@@ -169,6 +218,58 @@ export default function NotificationsPage() {
           )}
         </div>
 
+        {/* Бейджи категорий с счетчиками */}
+        {categoryCounts.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => setFilterCategory('')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                filterCategory === ''
+                  ? 'bg-sky-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <span>Все</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                filterCategory === ''
+                  ? 'bg-sky-500 text-white'
+                  : 'bg-gray-200 text-gray-600'
+              }`}>
+                {notifications.length}
+              </span>
+            </button>
+            
+            {categoryCounts.map(({ category, total, unread }) => (
+              <button
+                key={category}
+                onClick={() => setFilterCategory(filterCategory === category ? '' : category)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  filterCategory === category
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <span>{category}</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  filterCategory === category
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-gray-200 text-gray-600'
+                }`}>
+                  <span>{total}</span>
+                  {unread > 0 && (
+                    <>
+                      <span className={filterCategory === category ? 'text-sky-300' : 'text-gray-400'}>•</span>
+                      <span className={filterCategory === category ? 'text-sky-100' : 'text-sky-600'}>
+                        {unread}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Список уведомлений */}
         {loading ? (
           <div className="rounded-xl bg-gray-50 p-12 text-center">
@@ -194,8 +295,7 @@ export default function NotificationsPage() {
             {filteredNotifications.map((notification: any) => (
               <article
                 key={notification.id}
-                onClick={() => handleNotificationClick(notification)}
-                className={`group cursor-pointer rounded-xl border transition hover:shadow-md ${
+                className={`group rounded-xl border transition hover:shadow-md ${
                   notification.is_read
                     ? 'border-gray-200 bg-white'
                     : 'border-sky-200 bg-sky-50/30'
@@ -217,10 +317,13 @@ export default function NotificationsPage() {
                   </div>
 
                   {/* Содержимое */}
-                  <div className="min-w-0 flex-1">
+                  <div 
+                    onClick={() => handleNotificationClick(notification)}
+                    className="min-w-0 flex-1 cursor-pointer"
+                  >
                     <div className="mb-1 flex items-start justify-between gap-2">
                       <h3 className="font-semibold text-gray-900 group-hover:text-sky-600 transition">
-                        {notification.title}
+                        {notification.title || getVerbName(notification.verb || notification.category)}
                       </h3>
                       {!notification.is_read && (
                         <div className="h-2 w-2 shrink-0 rounded-full bg-sky-500 mt-1.5"></div>
@@ -232,19 +335,40 @@ export default function NotificationsPage() {
                     </p>
 
                     <div className="flex items-center gap-3 text-xs text-gray-400">
-                      {notification.category_name && (
+                      {notification.category && (
                         <span className="rounded bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
-                          {notification.category_name}
+                          {getVerbCategory(notification.category)}
                         </span>
                       )}
                       <span>
-                        {formatDistanceToNow(new Date(notification.created_at), {
-                          addSuffix: true,
-                          locale: ru,
-                        })}
+                        {(() => {
+                          const timestamp = notification.created_at || notification.timestamp;
+                          if (!timestamp) return 'недавно';
+                          try {
+                            return formatDistanceToNow(new Date(timestamp), {
+                              addSuffix: true,
+                              locale: ru,
+                            });
+                          } catch (e) {
+                            return 'недавно';
+                          }
+                        })()}
                       </span>
                     </div>
                   </div>
+                  
+                  {/* Кнопка удаления */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNotification(notification.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                    aria-label="Удалить"
+                    title="Удалить уведомление"
+                  >
+                    <Trash2 size={18} className="text-gray-400 hover:text-red-600" />
+                  </button>
                 </div>
               </article>
             ))}

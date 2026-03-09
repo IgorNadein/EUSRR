@@ -15,7 +15,7 @@ class EmailNotificationTask(BaseNotificationTask):
     - Поддержка кастомных тем и получателей
     """
     
-    task_name = "notifications.send_email"
+    task_name = "notifications.send_email_notification"
     max_retries = config.email_max_retries()
     retry_delay = config.email_retry_delay()
     rate_limit = config.email_rate_limit()

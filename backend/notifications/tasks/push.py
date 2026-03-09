@@ -15,7 +15,7 @@ class PushNotificationTask(BaseNotificationTask):
     - Автоматическое удаление неактивных устройств
     """
     
-    task_name = "notifications.send_push"
+    task_name = "notifications.send_push_notification"
     max_retries = config.push_max_retries()
     retry_delay = config.push_retry_delay()
     rate_limit = config.push_rate_limit()

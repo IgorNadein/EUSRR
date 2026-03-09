@@ -11,8 +11,19 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import models
+from django.conf import settings
 
 from ..models import Notification, UserChannelPreferences
+
+
+def _get_notification_title(notification):
+    """Получить заголовок уведомления из data или сгенерировать fallback"""
+    # Приоритет: title из data (задается при создании уведомления)
+    if notification.data and 'title' in notification.data:
+        return notification.data['title']
+    
+    # Fallback: генерируем простой заголовок из verb
+    return notification.verb.replace('_', ' ').title()
 
 
 @api_view(['GET'])
@@ -56,7 +67,7 @@ def get_notifications(request):
     end = start + page_size
     notifications = queryset[start:end]
 
-    # Сериализация
+    # Сериализация (совместимость с frontend)
     data = {
         'total': total,
         'page': page,
@@ -65,6 +76,19 @@ def get_notifications(request):
         'notifications': [
             {
                 'id': n.id,
+                # Frontend ожидает title, message, is_read, created_at
+                'title': _get_notification_title(n),
+                'message': n.description,
+                'short_message': (
+                    n.description[:100] + '...' 
+                    if len(n.description) > 100 
+                    else n.description
+                ),
+                'is_read': not n.unread,
+                'created_at': n.timestamp.isoformat(),
+                'category': n.verb,
+                'action_url': n.action_url,
+                # Дополнительные поля для обратной совместимости
                 'verb': n.verb,
                 'description': n.description,
                 'actor': {
@@ -72,13 +96,12 @@ def get_notifications(request):
                     'name': str(n.actor) if n.actor else 'Система',
                     'type': n.actor_content_type.model if n.actor else None,
                 } if n.actor else None,
-                'action_url': n.action_url,
                 'unread': n.unread,
                 'public': n.public,
                 'deleted': n.deleted,
                 'emailed': n.emailed,
                 'timestamp': n.timestamp.isoformat(),
-                'timesince': n.timesince(),
+                'timesince': n.timesince,
             }
             for n in notifications
         ]
@@ -224,26 +247,11 @@ def get_verb_types(request):
         unread=Count('id', filter=Q(unread=True))
     ).order_by('-total')
 
-    # Маппинг verb → человекочитаемое название
-    verb_names = {
-        'liked': 'Понравилось',
-        'commented': 'Прокомментировал',
-        'mentioned': 'Упомянул',
-        'messaged': 'Отправил сообщение',
-        'shared': 'Поделился',
-        'posted': 'Опубликовал',
-        'created': 'Создал',
-        'updated': 'Обновил',
-        'approved': 'Одобрил',
-        'rejected': 'Отклонил',
-        'scheduled': 'Запланировал',
-        'notified': 'Уведомил',
-    }
-    
+    # Возвращаем verb как есть - фронтенд сам сделает перевод
     data = [
         {
             'verb': item['verb'],
-            'name': verb_names.get(item['verb'], item['verb'].title()),
+            'name': item['verb'],  # Фронтенд переведет
             'total': item['total'],
             'unread': item['unread'],
         }
@@ -332,6 +340,35 @@ def channel_preferences(request):
         })
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_vapid_public_key(request):
+    """
+    Получить публичный VAPID ключ для Web Push подписки
+    
+    Returns:
+        - vapid_public_key: публичный ключ в формате base64url
+    """
+    from django.conf import settings
+    
+    vapid_key = getattr(settings, 'VAPID_PUBLIC_KEY', None)
+    
+    if not vapid_key:
+        return Response(
+            {
+                'status': 'error',
+                'message': 'VAPID keys not configured',
+                'vapid_public_key': None
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+    
+    return Response({
+        'status': 'success',
+        'vapid_public_key': vapid_key
+    })
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def subscribe_push(request):
@@ -339,38 +376,43 @@ def subscribe_push(request):
     Подписка на Web Push уведомления
     
     Body:
-        - subscription: объект subscription от браузера
+        - endpoint: URL для отправки push
+        - keys: {p256dh, auth} ключи шифрования
+        - device_name: название устройства/браузера (опционально)
     """
     from push_notifications.models import WebPushDevice
     
-    subscription_data = request.data.get('subscription')
+    endpoint = request.data.get('endpoint')
+    keys = request.data.get('keys', {})
+    device_name = request.data.get('device_name', 'unknown')
     
-    if not subscription_data:
+    if not endpoint or not keys:
         return Response(
-            {'status': 'error', 'message': 'Subscription data required'},
+            {'status': 'error', 'message': 'endpoint and keys required'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
     # Регистрируем устройство
     device, created = WebPushDevice.objects.update_or_create(
         user=request.user,
-        registration_id=subscription_data.get('endpoint'),
+        registration_id=endpoint,
         defaults={
-            'p256dh': subscription_data.get('keys', {}).get('p256dh'),
-            'auth': subscription_data.get('keys', {}).get('auth'),
-            'browser': request.data.get('browser', 'unknown'),
+            'p256dh': keys.get('p256dh', ''),
+            'auth': keys.get('auth', ''),
+            'browser': device_name,
             'active': True,
         }
     )
     
     return Response({
         'status': 'success',
+        'message': 'Push subscription created' if created else 'Push subscription updated',
         'created': created,
         'device_id': device.id
     })
 
 
-@api_view(['POST'])
+@api_view(['POST', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def unsubscribe_push(request):
     """Отписка от Web Push уведомлений"""
@@ -391,5 +433,6 @@ def unsubscribe_push(request):
     
     return Response({
         'status': 'success',
+        'message': f'Deleted {deleted_count} push subscription(s)',
         'deleted_count': deleted_count
     })

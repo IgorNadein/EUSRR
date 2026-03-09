@@ -955,33 +955,9 @@ class CalendarViewSet(ModelViewSet):
     ):
         """Отправляет уведомление о приглашении в календарь."""
         try:
-            from notifications.models import (
-                Notification,
-                NotificationCategory,
-                NotificationType,
-            )
+            from notifications.signals import notify
 
-            # Получаем или создаем категорию
-            category, _ = NotificationCategory.objects.get_or_create(
-                code="calendar",
-                defaults={
-                    "name": "Календарь",
-                    "description": "Уведомления связанные с календарем",
-                    "icon": "calendar",
-                },
-            )
-
-            # Получаем или создаем тип уведомления
-            notification_type, _ = NotificationType.objects.get_or_create(
-                code="calendar_invitation",
-                defaults={
-                    "category": category,
-                    "name": "Приглашение в календарь",
-                    "description": "Уведомление о приглашении в календарь",
-                },
-            )
-
-            # Формируем текст уведомления
+            # Формируем текст о правах
             permissions_text = []
             if can_edit:
                 permissions_text.append("редактирование событий")
@@ -994,13 +970,22 @@ class CalendarViewSet(ModelViewSet):
 
             owner_name = owner.get_full_name() or owner.username
 
-            Notification.objects.create(
+            notify.send(
+                sender=owner,
                 recipient=invited_user,
-                title=f"Приглашение в календарь: {calendar.title}",
-                message=f"{owner_name} пригласил вас в календарь "
-                f'"{calendar.title}"{permissions_str}.',
-                notification_type=notification_type,
-                content_object=calendar,
+                verb='calendar_invitation',
+                action_object=calendar,
+                description=(
+                    f'{owner_name} пригласил вас в календарь '
+                    f'"{calendar.title}"{permissions_str}.'
+                ),
+                action_url='/calendar',
+                data={
+                    'title': f'Приглашение в календарь: {calendar.title}',
+                    'calendar_id': calendar.id,
+                    'can_edit': can_edit,
+                    'can_manage': can_manage,
+                },
             )
             logger.info(
                 f"Sent invitation notification to user {invited_user.id} "

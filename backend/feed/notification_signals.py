@@ -13,7 +13,7 @@ from django.contrib.auth import get_user_model
 
 from .models import Post, Comment
 from .constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
-from notifications.services import NotificationService
+from notifications.signals import notify
 
 Employee = get_user_model()
 
@@ -31,27 +31,8 @@ def create_post_notification(sender, instance, created, **kwargs):
     if not created:
         return
     
-    from django.db import transaction
-    from notifications.tasks import process_post_notifications_task
-    
-    def send_task():
-        """Отложенная отправка задачи после commit транзакции"""
-        try:
-            process_post_notifications_task.delay(
-                post_id=instance.id,
-                action='created'
-            )
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"Failed to queue post notifications task: {e}, "
-                f"falling back to sync"
-            )
-            # Fallback на старую логику
-            notify_new_post(instance)
-    
-    transaction.on_commit(send_task)
+    # Отправляем уведомления напрямую - channels.py автоматически отправит через Celery
+    notify_new_post(instance)
 
 
 @receiver(post_save, sender=Comment)
@@ -68,17 +49,18 @@ def create_comment_notification(sender, instance, created, **kwargs):
     
     # Уведомляем автора публикации (если комментарий не от него)
     if post.author.id != comment_author.id:
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=comment_author,
             recipient=post.author,
-            notification_type_code='feed_post_comment',
-            title='Новый комментарий к вашей публикации',
-            message=(
+            verb='feed_post_comment',
+            action_object=post,
+            description=(
                 f'{comment_author.get_full_name() or comment_author.username}'
                 f' прокомментировал: {truncate_text(comment.text, 80)}'
             ),
-            content_object=post,
             action_url='/',
-            metadata={
+            data={
+                'title': 'Новый комментарий к вашей публикации',
                 'post_id': post.id,
                 'post_title': post.title,
                 'comment_id': comment.id,
@@ -109,14 +91,15 @@ def notify_new_post(post):
         )
     
     for recipient in recipients:
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=post.author,
             recipient=recipient,
-            notification_type_code='feed_new_post',
-            title=f'Новая публикация {context}',
-            message=f'{post.title}',
-            content_object=post,
+            verb='feed_new_post',
+            action_object=post,
+            description=f'{post.title}',
             action_url='/',
-            metadata={
+            data={
+                'title': f'Новая публикация {context}',
                 'post_id': post.id,
                 'post_type': post.type,
                 'post_title': post.title,
@@ -182,17 +165,18 @@ def notify_post_reaction(post, user):
     """
     # Уведомляем автора (если лайк не от него)
     if post.author.id != user.id:
-        NotificationService.create_notification_async(
+        notify.send(
+            sender=user,
             recipient=post.author,
-            notification_type_code='feed_post_reaction',
-            title='Ваша публикация понравилась',
-            message=(
+            verb='feed_post_reaction',
+            action_object=post,
+            description=(
                 f'{user.get_full_name() or user.username} '
                 f'понравилась публикация "{post.title}"'
             ),
-            content_object=post,
             action_url='/',
-            metadata={
+            data={
+                'title': 'Ваша публикация понравилась',
                 'post_id': post.id,
                 'post_title': post.title,
                 'user_id': user.id,

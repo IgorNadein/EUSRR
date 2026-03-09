@@ -69,7 +69,10 @@ class BaseNotificationTask(ABC):
             notification = self.get_notification(notification_id)
             
             if not notification:
-                self.logger.error(f"❌ Notification {notification_id} not found")
+                self.logger.warning(
+                    f"⚠️ Notification {notification_id} not found "
+                    f"(possibly deleted by user before delivery)"
+                )
                 return False
             
             # Отправляем через конкретный sender

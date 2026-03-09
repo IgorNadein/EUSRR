@@ -432,15 +432,36 @@ export interface Calendar {
   events_count?: number;
 }
 
-// Notifications types
+// Notifications types (v2 API)
 export interface Notification {
   id: number;
-  title: string;
-  message: string;
-  notification_type: string;
-  is_read: boolean;
-  created_at: string;
+  // v2 fields
+  verb: string;
+  description: string;
+  unread: boolean;
+  timestamp: string;
+  action_url?: string;
+  data?: Record<string, any>;
+  // Optional actor/target
+  actor?: {
+    type: string;
+    id: number;
+    str: string;
+  };
+  target?: {
+    type: string;
+    id: number;
+    str: string;
+  };
+  // Legacy v1 fields (для обратной совместимости)
+  title?: string;
+  message?: string;
+  short_message?: string;
+  notification_type?: string;
+  is_read?: boolean;
+  created_at?: string;
   link?: string;
+  category?: string; // verb alias для фильтрации
 }
 
 // API Response types

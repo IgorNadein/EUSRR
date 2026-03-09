@@ -5,13 +5,18 @@
 export function getBackendUrl(): string {
   if (typeof window === 'undefined') {
     // На сервере используем публичный адрес
-    return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://corp.robotail.pro';
+    return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:9000';
   }
   // На клиенте используем публичный URL
-  return process.env.NEXT_PUBLIC_BACKEND_URL || 'https://corp.robotail.pro';
+  return process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:9000';
 }
 
 export function getWebSocketUrl(): string {
+  // Если есть прямая переменная для WebSocket - используем её
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  
   const backendUrl = getBackendUrl();
   
   // Преобразуем http(s) в ws(s)

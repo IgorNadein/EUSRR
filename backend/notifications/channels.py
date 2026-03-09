@@ -13,6 +13,7 @@ TODO: Добавить integration тесты:
       - Отключенные verb'ы (is_verb_enabled)
 """
 
+from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 import logging
@@ -27,12 +28,22 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
     Вызывается при создании нового уведомления.
     
     Асинхронно отправляет в Celery очередь для каждого канала.
+    
+    ВАЖНО: Использует transaction.on_commit() чтобы гарантировать,
+    что уведомление сохранено в БД перед отправкой в Celery.
     """
     if not created:
         return  # Обрабатываем только новые уведомления
     
     notification = instance
     user = notification.recipient
+    
+    # Проверяем что получатель указан
+    if not user:
+        logger.warning(
+            f'⚠️ Notification {notification.id} has no recipient, skipping delivery'
+        )
+        return
     
     # Получаем настройки пользователя
     try:
@@ -57,23 +68,28 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
     # Проверяем режим "Не беспокоить"
     is_dnd = prefs.is_in_dnd_period()
     
-    if is_dnd:
-        logger.debug(f'User {user.id} is in DND period, only web notifications (silent)')
-        # В DND режиме только WebSocket без звука
+    # КРИТИЧНО: Отправляем задачи ПОСЛЕ коммита транзакции
+    # Без этого Celery не найдет уведомление в БД (race condition)
+    # Django документация: https://docs.djangoproject.com/en/5.0/topics/db/transactions/#performing-actions-after-commit
+    def send_to_channels():
+        """Отправка по каналам после успешного коммита транзакции"""
+        if is_dnd:
+            logger.debug(f'User {user.id} is in DND period, only web notifications (silent)')
+            if prefs.web_enabled:
+                send_websocket_notification.delay(notification.id, silent=True)
+            return
+        
+        # Отправляем по каналам асинхронно через Celery
         if prefs.web_enabled:
-            send_websocket_notification.delay(notification.id, silent=True)
-        return
+            send_websocket_notification.delay(notification.id, silent=False)
+        
+        if prefs.email_enabled and prefs.email_frequency == 'instant':
+            send_email_notification.delay(notification.id)
+        
+        if prefs.push_enabled:
+            send_push_notification.delay(notification.id)
     
-    # Отправляем по каналам асинхронно через Celery
-    
-    if prefs.web_enabled:
-        send_websocket_notification.delay(notification.id, silent=False)
-    
-    if prefs.email_enabled and prefs.email_frequency == 'instant':
-        send_email_notification.delay(notification.id)
-    
-    if prefs.push_enabled:
-        send_push_notification.delay(notification.id)
+    transaction.on_commit(send_to_channels)
 
 
 # === Digest Email (для email_frequency = daily/weekly) ===

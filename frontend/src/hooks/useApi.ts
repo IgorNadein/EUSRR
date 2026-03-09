@@ -175,6 +175,7 @@ export function useNotifications() {
   const [error, setError] = useState<Error | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Загрузка начальных данных
   useEffect(() => {
     async function fetchNotifications() {
       try {
@@ -196,11 +197,121 @@ export function useNotifications() {
     fetchNotifications();
   }, []);
 
+  // WebSocket для realtime обновлений
+  useEffect(() => {
+    // Проверяем что мы в браузере и пользователь авторизован
+    if (typeof window === 'undefined' || !localStorage.getItem('access_token')) {
+      console.log('[Notifications] WebSocket disabled: not in browser or not authenticated');
+      return;
+    }
+
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+
+    const connect = () => {
+      try {
+        // Используем функцию getWebSocketUrl для определения URL
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:9000';
+        const protocol = backendUrl.startsWith('https') ? 'wss:' : 'ws:';
+        const host = backendUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        let wsUrl = `${protocol}//${host}/ws/`;
+
+        // Добавляем токен
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          wsUrl += `?token=${token}`;
+        }
+
+        console.log('[Notifications] WebSocket connecting to:', wsUrl);
+        console.log('[Notifications] Backend URL:', backendUrl);
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('[Notifications] WebSocket connected');
+          reconnectAttempts = 0;
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+
+            // Игнорируем служебные события
+            if (['ping', 'list_update', 'new_message', 'marked_read', 'message_edited', 'reaction_added', 'reaction_removed', 'poll_update'].includes(data.type)) {
+              return;
+            }
+
+            // Новое уведомление
+            if (data.type === 'notification' && data.notification) {
+              console.log('[Notifications] New notification:', data.notification);
+              
+              // Добавляем в начало списка если это новое
+              setNotifications(prev => {
+                // Проверяем не дубликат ли
+                if (prev.some(n => n.id === data.notification.id)) {
+                  return prev;
+                }
+                return [data.notification, ...prev];
+              });
+
+              // Обновляем счетчик если непрочитанное
+              if (data.notification.unread) {
+                setUnreadCount(prev => prev + 1);
+              }
+            }
+
+            // Обновление счетчика
+            if (data.type === 'unread_count' && typeof data.count === 'number') {
+              console.log('[Notifications] Unread count update:', data.count);
+              setUnreadCount(data.count);
+            }
+          } catch (error) {
+            console.error('[Notifications] Parse error:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('[Notifications] WebSocket error:', error);
+          console.error('[Notifications] WebSocket URL was:', wsUrl);
+          console.error('[Notifications] WebSocket state:', ws?.readyState);
+        };
+
+        ws.onclose = () => {
+          console.log('[Notifications] WebSocket disconnected');
+          ws = null;
+
+          // Автоматический reconnect
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+            console.log(`[Notifications] Reconnecting in ${delay}ms... (${reconnectAttempts}/${maxReconnectAttempts})`);
+            reconnectTimeout = setTimeout(connect, delay);
+          }
+        };
+      } catch (error) {
+        console.error('[Notifications] Connection failed:', error);
+      }
+    };
+
+    connect();
+
+    // Cleanup
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, []);
+
   const markAsRead = async (id: number) => {
     try {
       await apiClient.markNotificationAsRead(id);
       setNotifications(prev =>
-        prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
+        prev.map(n => (n.id === id ? { ...n, is_read: true, unread: false } : n))
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (err) {
@@ -211,12 +322,37 @@ export function useNotifications() {
   const markAllAsRead = async () => {
     try {
       await apiClient.markAllNotificationsAsRead();
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true, unread: false })));
       setUnreadCount(0);
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
     }
   };
 
-  return { notifications, loading, error, unreadCount, markAsRead, markAllAsRead };
+  const deleteNotification = async (id: number) => {
+    try {
+      await apiClient.deleteNotification(id);
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      // Если удаленное было непрочитанным, уменьшаем счетчик
+      const deletedNotif = notifications.find(n => n.id === id);
+      if (deletedNotif && (deletedNotif.unread ?? !deletedNotif.is_read)) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch (err) {
+      console.error('Failed to delete notification:', err);
+    }
+  };
+
+  const deleteAllRead = async () => {
+    try {
+      const result = await apiClient.deleteAllReadNotifications();
+      setNotifications(prev => prev.filter(n => n.unread ?? !n.is_read));
+      return result.count;
+    } catch (err) {
+      console.error('Failed to delete all read notifications:', err);
+      return 0;
+    }
+  };
+
+  return { notifications, loading, error, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllRead };
 }
