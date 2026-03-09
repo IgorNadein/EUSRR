@@ -393,7 +393,7 @@ class EventNotificationProcessor(BaseNotificationProcessor):
                 title=f'Новое событие: {event.title}',
                 message=truncate_text(event.description or '', 150),
                 content_object=event,
-                action_url=f'/calendar/?event={event.id}',
+                action_url='/calendar',
                 metadata={
                     'event_id': event.id,
                     'event_title': event.title,
@@ -444,7 +444,7 @@ class PostNotificationProcessor(BaseNotificationProcessor):
                 title=f'{post.title}',
                 message=truncate_text(post.body, 200),
                 content_object=post,
-                action_url=f'/feed/?post={post.id}',
+                action_url='/',
                 metadata={
                     'post_id': post.id,
                     'author_id': post.author.id if post.author else None,
