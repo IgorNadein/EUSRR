@@ -63,7 +63,8 @@ def get_notifications(request):
             {
                 'id': n.id,
                 'title': n.title,
-                'message': n.message,  # Полное сообщение для списка
+                'message': n.message,
+                'short_message': n.short_message or n.message[:150],  # Краткое сообщение для превью
                 'category': n.notification_type.category.code,
                 'category_name': n.notification_type.category.name,
                 'icon': n.notification_type.category.icon,

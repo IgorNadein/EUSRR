@@ -792,13 +792,13 @@ class ApiClient {
     }
 
     async markNotificationAsRead(id: number): Promise<void> {
-        await this.request(`/api/v1/notifications/${id}/mark_read/`, {
+        await this.request(`/api/v1/notifications/${id}/read/`, {
             method: 'POST',
         });
     }
 
     async markAllNotificationsAsRead(): Promise<void> {
-        await this.request('/api/v1/notifications/mark_all_read/', {
+        await this.request('/api/v1/notifications/read-all/', {
             method: 'POST',
         });
     }
