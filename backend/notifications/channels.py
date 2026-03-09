@@ -74,14 +74,6 @@ def route_notification_to_channels(sender, instance, created, **kwargs):
     
     if prefs.push_enabled:
         send_push_notification.delay(notification.id)
-    
-    Args:
-        notification: Объект Notification
-    
-    DEPRECATED: Используйте PushNotificationSender().send()
-    """
-    sender = PushNotificationSender()
-    return sender.send(notification)
 
 
 # === Digest Email (для email_frequency = daily/weekly) ===
