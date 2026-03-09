@@ -4,7 +4,7 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
 import { canManageRequests, canProcessRequests } from "@/lib/permissions";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Request, RequestComment, User, Department } from "@/types/api";
 import { Ban, Check, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X } from "lucide-react";
@@ -313,7 +313,7 @@ export default function RequestsPage() {
     }
   };
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (!nextPage || loadingMore) return;
     try {
       setLoadingMore(true);
@@ -331,7 +331,7 @@ export default function RequestsPage() {
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [nextPage, loadingMore, view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter]);
 
   const handleApprove = async (id: number) => {
     try {
@@ -431,6 +431,33 @@ export default function RequestsPage() {
   const isFinal = (status?: string) => ["approved", "rejected", "cancelled"].includes(String(status || "").toLowerCase());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Автоматическая подгрузка при прокрутке
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting && nextPage && !loadingMore && !loading) {
+          handleLoadMore();
+        }
+      },
+      {
+        rootMargin: '100px', // Начинаем загрузку за 100px до конца
+      }
+    );
+
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [nextPage, loadingMore, loading, handleLoadMore]);
 
   /* ---- Searchable multi-select dropdown ---- */
   const SearchableSelect = ({ label, items, selectedIds, onToggle, placeholder }: {
@@ -916,18 +943,17 @@ export default function RequestsPage() {
             )}
           </div>
 
-          {nextPage ? (
-            <div className="mt-4 flex justify-center">
-              <button
-                type="button"
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-              >
-                {loadingMore ? "Загружаем..." : "Загрузить ещё"}
-              </button>
+          {/* Элемент-наблюдатель для автоматической подгрузки */}
+          {nextPage && (
+            <div ref={loadMoreRef} className="mt-4 flex justify-center py-4">
+              {loadingMore && (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-sky-500"></div>
+                  <span>Загрузка...</span>
+                </div>
+              )}
             </div>
-          ) : null}
+          )}
         </section>
       )}
 
