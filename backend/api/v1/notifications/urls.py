@@ -1,5 +1,7 @@
 """
-URL routing для API v1 уведомлений.
+URL routing для API v2 уведомлений.
+
+Новая архитектура: verb-based notifications с channel preferences.
 """
 from django.urls import path
 from . import views
@@ -7,29 +9,24 @@ from . import views
 app_name = 'notifications_api_v1'
 
 urlpatterns = [
-    # CRUD уведомлений
+    # Список и счетчики
     path('', views.get_notifications, name='list'),
     path('count/', views.get_unread_count, name='count'),
+    path('verb-types/', views.get_verb_types, name='verb_types'),
+    
+    # Операции с уведомлениями
     path('<int:notification_id>/read/', views.mark_as_read, name='mark_read'),
-    path('read-all/', views.mark_all_as_read, name='mark_all_read'),
+    path('<int:notification_id>/unread/', views.mark_as_unread, name='mark_unread'),
     path('<int:notification_id>/', views.delete_notification, name='delete'),
     
-    # Категории
-    path('categories/', views.get_categories, name='categories'),
+    # Массовые операции
+    path('read-all/', views.mark_all_as_read, name='mark_all_read'),
+    path('delete-all-read/', views.delete_all_read, name='delete_all_read'),
     
-    # Настройки
-    path('settings/', views.get_user_settings, name='settings_get'),
-    path('settings/update/', views.update_user_settings, name='settings_update'),
-    path('settings/category/update/', views.update_category_settings, name='category_settings_update'),
-    
-    # Telegram интеграция
-    path('telegram/status/', views.get_telegram_link_status, name='telegram_status'),
-    path('telegram/generate-code/', views.generate_telegram_link_code, name='telegram_generate_code'),
-    path('telegram/unlink/', views.unlink_telegram, name='telegram_unlink'),
+    # Настройки каналов
+    path('preferences/', views.channel_preferences, name='preferences'),
     
     # Web Push интеграция
-    path('push/vapid-key/', views.get_vapid_public_key, name='push_vapid_key'),
     path('push/subscribe/', views.subscribe_push, name='push_subscribe'),
     path('push/unsubscribe/', views.unsubscribe_push, name='push_unsubscribe'),
-    path('push/subscriptions/', views.get_push_subscriptions, name='push_subscriptions'),
 ]
