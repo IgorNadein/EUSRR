@@ -363,22 +363,10 @@ class UserChannelPreferences(models.Model):
         help_text='Список verb для которых не показывать уведомления. Например: ["liked", "followed"]'
     )
     
-    # === Временные метки ===
-    
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='Создано'
-    )
-    
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name='Обновлено'
-    )
-    
     class Meta:
         verbose_name = 'Настройки каналов пользователя'
         verbose_name_plural = 'Настройки каналов пользователей'
-        db_table = 'notifications_user_channel_preferences'
+        db_table = 'notifications_userchannelpreferences'
     
     def __str__(self):
         return f'{self.user.get_short_name()} - настройки каналов'

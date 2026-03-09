@@ -252,16 +252,9 @@ class UserChannelPreferencesAdmin(admin.ModelAdmin):
             ),
             'classes': ('collapse',),
         }),
-        ('Метаданные', {
-            'fields': (
-                'created_at',
-                'updated_at',
-            ),
-            'classes': ('collapse',),
-        }),
     )
     
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = []
     
     def get_disabled_verbs_count(self, obj):
         """Количество отключенных типов"""
