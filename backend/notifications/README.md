@@ -34,40 +34,116 @@ notification.mark_as_read()
 
 ## 📦 Установка
 
-1. Скопируйте приложение `notifications/` в ваш проект
-2. Добавьте в `INSTALLED_APPS`:
-   ```python
-   INSTALLED_APPS = [
-       ...
-       'notifications',
-   ]
-   ```
-3. Примените миграции:
-   ```bash
-   python manage.py migrate notifications
-   ```
+### 1. Скопируйте модуль
+
+```bash
+cp -r notifications/ /path/to/your-django-project/
+```
+
+### 2. Установите зависимости
+
+```bash
+# Основные зависимости
+pip install -r notifications/requirements.txt
+
+# Или установите вручную:
+pip install Django>=5.2 djangorestframework celery redis channels channels-redis
+```
+
+### 3. Настройте Django
+
+Добавьте в `settings.py`:
+
+```python
+INSTALLED_APPS = [
+    ...,
+    'channels',           # Для WebSocket
+    'rest_framework',     # Для API
+    'notifications',      # Модуль уведомлений
+]
+
+# Настройки Channels (WebSocket)
+ASGI_APPLICATION = 'your_project.asgi.application'
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('127.0.0.1', 6379)],
+        },
+    },
+}
+
+# Настройки Celery (асинхронные задачи)
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+```
+
+### 4. Подключите URL-ы
+
+В `urls.py`:
+
+```python
+urlpatterns = [
+    ...,
+    path('api/v1/notifications/', include('notifications.api.urls')),
+]
+```
+
+### 5. Примените миграции
+
+```bash
+python manage.py migrate notifications
+```
+
+**Production-safe миграции:**
+Миграции безопасны для production - используют `DROP TABLE IF EXISTS` для идемпотентности. 
+Можно применять на любом окружении без ручной очистки БД.
+
+## � Структура модуля
+
+```
+notifications/
+├── requirements.txt          # Зависимости модуля
+├── README.md                # Документация
+├── models.py                # Модели (Notification, UserChannelPreferences)
+├── signals.py               # notify.send() API
+├── channels.py              # Роутинг по каналам доставки
+├── config.py                # Конфигурация (переопределяемая)
+├── admin.py                 # Django Admin
+├── api/                     # REST API endpoints
+│   ├── views.py            # 11 API endpoints
+│   ├── urls.py             # URL routing
+│   └── serializers.py      # (планируется)
+├── tasks/                   # Celery задачи
+│   ├── base.py             # Базовый класс с retry/rate limiting
+│   ├── email.py            # Email отправка
+│   ├── websocket.py        # WebSocket отправка
+│   └── push.py             # Push уведомления
+├── senders/                 # Низкоуровневые отправители
+├── templates/               # Email и Web шаблоны
+└── migrations/              # Production-safe миграции
+```
 
 ## 📚 Документация
+
+Полная документация: [`backend/docs/guides/NOTIFICATIONS_V2_USAGE.md`](../docs/guides/NOTIFICATIONS_V2_USAGE.md)
 
 ## 🚧 TODO
 
 ### Критичные задачи:
 - [ ] Написать unit и integration тесты (coverage >80%)
 - [ ] Создать email шаблоны (notification.html/txt, digest.html/txt)
-- [ ] Убрать хардкод 'EUSRR' из email sender
+- [ ] Убрать хардкод из config.py (сделать полностью переопределяемым)
 
 ### Важные улучшения:
-- [ ] Переместить API endpoints в notifications/api/
+- [ ] Добавить DRF serializers для API
 - [ ] Создать notifications/settings.py для централизованной конфигурации
-- [ ] Добавить больше примеров использования в README
+- [ ] Добавить больше примеров использования
 
 ### Желательно:
 - [ ] Подготовить setup.py для публикации в PyPI
 - [ ] Sphinx документация
 - [ ] CI/CD pipeline (GitHub Actions)
-- [ ] Pre-commit hooks для линтеров
-
-Полная документация: [`backend/docs/guides/NOTIFICATIONS_V2_USAGE.md`](../docs/guides/NOTIFICATIONS_V2_USAGE.md)
 
 ## 🏗️ Архитектура
 
@@ -83,10 +159,13 @@ notification.mark_as_read()
 
 ### Компоненты
 
-- `models_new.py` - модели с QuerySet методами
-- `signals_new.py` - `notify.send()` API
-- `channels.py` - роутинг уведомлений по каналам
-- `admin_new.py` - Django Admin интерфейс
+- `models.py` - модели с QuerySet методами (Notification, UserChannelPreferences)
+- `signals.py` - простой API `notify.send()` для создания уведомлений
+- `channels.py` - автоматический роутинг по каналам (WebSocket, Email, Push)
+- `admin.py` - Django Admin интерфейс для управления
+- `api/` - REST API endpoints (11 эндпоинтов)
+- `tasks/` - Celery задачи с retry и rate limiting
+- `config.py` - централизованная конфигурация
 
 ## 💡 Примеры
 
@@ -258,8 +337,35 @@ MIT License - используйте свободно в своих проект
 
 Не стесняйтесь адаптировать под свои нужды!
 
+## 🔧 Настройка конфигурации
+
+Переопределите настройки в `notifications/config.py` или создайте свой конфиг:
+
+```python
+from notifications import config
+
+# Переопределение
+config.site_name = lambda: 'Мой Сайт'
+config.site_url = lambda: 'https://mysite.com'
+config.from_email = lambda: 'notifications@mysite.com'
+```
+
+## 🚀 Запуск Celery worker
+
+Для обработки асинхронных задач:
+
+```bash
+# Запуск worker
+celery -A your_project worker -l info
+
+# Для периодических задач (digest)
+celery -A your_project beat -l info
+```
+
 ---
 
 **Версия:** 2.0  
 **Django:** 5.2+  
-**Python:** 3.10+
+**Python:** 3.10+  
+**Статус:** ✅ Production-ready  
+**Зависимости:** См. `requirements.txt`
