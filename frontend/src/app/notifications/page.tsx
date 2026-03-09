@@ -59,9 +59,21 @@ export default function NotificationsPage() {
     }
   };
 
-  const getCategoryIcon = (icon?: string) => {
-    // Можно добавить маппинг иконок по необходимости
-    return icon || '📋';
+  const getCategoryIconEmoji = (categoryCode?: string, icon?: string) => {
+    // Маппинг категорий на эмодзи
+    const iconMap: Record<string, string> = {
+      'communications': '💬',
+      'messages': '💬',
+      'requests': '📝',
+      'documents': '📄',
+      'calendar': '📅',
+      'system': '⚙️',
+      'finance': '💰',
+      'procurement': '🛒',
+      'equipment': '🖥️',
+    };
+    
+    return iconMap[categoryCode || ''] || '📋';
   };
 
   return (
@@ -192,7 +204,7 @@ export default function NotificationsPage() {
                 <div className="flex gap-4 p-4">
                   {/* Иконка */}
                   <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg ${
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl ${
                       notification.is_read ? 'bg-gray-100' : 'bg-sky-100'
                     }`}
                     style={
@@ -201,7 +213,7 @@ export default function NotificationsPage() {
                         : undefined
                     }
                   >
-                    {getCategoryIcon(notification.icon)}
+                    {getCategoryIconEmoji(notification.category, notification.icon)}
                   </div>
 
                   {/* Содержимое */}
