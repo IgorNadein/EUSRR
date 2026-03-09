@@ -551,13 +551,30 @@ class ApiClient {
     }
 
     // Заявки
-    async getRequests(params?: { status?: string; type?: string; search?: string; page?: number; limit?: number }): Promise<any> {
+    async getRequests(params?: { 
+        status?: string; 
+        type?: string; 
+        search?: string; 
+        page?: number; 
+        limit?: number;
+        view?: string;
+        addressed_to_me?: string;
+        employee_id?: string | number;
+        date_from?: string;
+        date_to?: string;
+        [key: string]: any;
+    }): Promise<any> {
         const queryParams = new URLSearchParams();
         if (params?.status) queryParams.append('status', params.status);
         if (params?.type) queryParams.append('type', params.type);
         if (params?.search) queryParams.append('search', params.search);
         if (params?.page) queryParams.append('page', params.page.toString());
         if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.view) queryParams.append('view', params.view);
+        if (params?.addressed_to_me) queryParams.append('addressed_to_me', params.addressed_to_me);
+        if (params?.employee_id) queryParams.append('employee_id', params.employee_id.toString());
+        if (params?.date_from) queryParams.append('date_from', params.date_from);
+        if (params?.date_to) queryParams.append('date_to', params.date_to);
 
         const url = `/api/v1/requests/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
         return this.request(url);
