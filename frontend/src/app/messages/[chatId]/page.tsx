@@ -3,7 +3,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText, ChevronRight, ChevronDown, Reply, Pencil, Trash2, Smile } from "lucide-react";
+import { MessageCircle, Send, ArrowLeft, Paperclip, X, FileText, ChevronRight, ChevronDown, Reply, Pencil, Trash2, Smile, Pin, Bell, BellOff } from "lucide-react";
 import { AppShell } from "../../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import type { Chat, Message, MessageAttachment } from "@/types/api";
@@ -286,10 +286,22 @@ export default function MessageDialogPage() {
   const [anchorRetryTick, setAnchorRetryTick] = useState(0);
   const hasMoreNewerRef = useRef(false);
   
+  // Локальное состояние для настроек чата
+  const [isPinned, setIsPinned] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  
   // Синхронизируем ref с state
   useEffect(() => {
     hasMoreNewerRef.current = hasMoreNewer;
   }, [hasMoreNewer]);
+  
+  // Синхронизация настроек чата
+  useEffect(() => {
+    if (chat) {
+      setIsPinned(chat.is_pinned ?? false);
+      setNotificationsEnabled(chat.notifications_enabled ?? true);
+    }
+  }, [chat]);
   
   const messagesById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
   const selectedActionMessage = expandedReplyActionForId ? messagesById.get(expandedReplyActionForId) || null : null;
@@ -999,6 +1011,40 @@ export default function MessageDialogPage() {
     }
   };
 
+  const handleTogglePin = async () => {
+    if (!chatId) return;
+    
+    try {
+      const response = await apiClient.togglePinChat(chatId);
+      const newIsPinned = response.is_pinned ?? !isPinned;
+      setIsPinned(newIsPinned);
+      
+      // Обновляем chat объект
+      if (chat) {
+        setChat({ ...chat, is_pinned: newIsPinned });
+      }
+    } catch (e) {
+      console.error("Ошибка переключения закрепления:", e);
+    }
+  };
+
+  const handleToggleNotifications = async () => {
+    if (!chatId) return;
+    
+    try {
+      const response = await apiClient.toggleChatNotifications(chatId);
+      const newNotificationsEnabled = response.notifications_enabled ?? !notificationsEnabled;
+      setNotificationsEnabled(newNotificationsEnabled);
+      
+      // Обновляем chat объект
+      if (chat) {
+        setChat({ ...chat, notifications_enabled: newNotificationsEnabled });
+      }
+    } catch (e) {
+      console.error("Ошибка переключения уведомлений:", e);
+    }
+  };
+
   useEffect(() => {
     const onWindowClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
@@ -1138,14 +1184,47 @@ export default function MessageDialogPage() {
                   </div>
                 </div>
 
-                <Link
-                  href="/messages"
-                  aria-label="К списку чатов"
-                  title="К списку чатов"
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
-                >
-                  <ArrowLeft size={16} />
-                </Link>
+                <div className="flex items-center gap-2">
+                  {/* Кнопка закрепления чата */}
+                  <button
+                    type="button"
+                    onClick={handleTogglePin}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                      isPinned
+                        ? "border-sky-500 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-sky-700"
+                    }`}
+                    title={isPinned ? "Открепить чат" : "Закрепить чат"}
+                    aria-label={isPinned ? "Открепить чат" : "Закрепить чат"}
+                  >
+                    <Pin size={16} className={isPinned ? "fill-current" : ""} />
+                  </button>
+                  
+                  {/* Кнопка управления уведомлениями */}
+                  <button
+                    type="button"
+                    onClick={handleToggleNotifications}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                      notificationsEnabled
+                        ? "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-sky-700"
+                        : "border-amber-500 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    }`}
+                    title={notificationsEnabled ? "Отключить уведомления" : "Включить уведомления"}
+                    aria-label={notificationsEnabled ? "Отключить уведомления" : "Включить уведомления"}
+                  >
+                    {notificationsEnabled ? <Bell size={16} /> : <BellOff size={16} />}
+                  </button>
+                  
+                  {/* Кнопка возврата к списку */}
+                  <Link
+                    href="/messages"
+                    aria-label="К списку чатов"
+                    title="К списку чатов"
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-sky-700"
+                  >
+                    <ArrowLeft size={16} />
+                  </Link>
+                </div>
               </header>
 
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">

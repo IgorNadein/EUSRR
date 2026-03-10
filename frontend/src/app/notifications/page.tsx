@@ -1,22 +1,79 @@
 'use client';
 
 import { AppShell } from '@/components/AppShell';
-import { useNotifications } from '@/hooks/useApi';
+import { apiClient } from '@/lib/api';
 import { Bell, Check, CheckCheck, Filter, Search, Trash2, Settings } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale/ru';
 import { getVerbCategory, getVerbName } from '@/lib/verbTranslations';
 import Link from 'next/link';
 
 export default function NotificationsPage() {
-  const { notifications: notificationsData, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead } = useNotifications();
-  const notifications = Array.isArray(notificationsData) ? notificationsData : [];
+  // Локальное состояние для ВСЕХ уведомлений (не только непрочитанных)
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const [filterRead, setFilterRead] = useState<'all' | 'unread' | 'read'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Загрузка всех уведомлений (100 последних)
+  useEffect(() => {
+    async function fetchAllNotifications() {
+      try {
+        const data = await apiClient.getNotifications({ page_size: 100 });
+        const notifs = data.notifications || data.results || data;
+        setNotifications(Array.isArray(notifs) ? notifs : []);
+      } catch (err) {
+        console.error('Ошибка загрузки уведомлений:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchAllNotifications();
+  }, []);
+
+  // Функции для операций с уведомлениями
+  const markAsRead = async (id: number) => {
+    try {
+      await apiClient.markNotificationAsRead(id);
+      setNotifications(prev =>
+        prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
+      );
+    } catch (err) {
+      console.error('Ошибка отметки уведомления:', err);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await apiClient.markAllNotificationsAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error('Ошибка отметки всех уведомлений:', err);
+    }
+  };
+
+  const deleteNotification = async (id: number) => {
+    try {
+      await apiClient.deleteNotification(id);
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    } catch (err) {
+      console.error('Ошибка удаления уведомления:', err);
+    }
+  };
+
+  const deleteAllRead = async () => {
+    try {
+      await apiClient.deleteAllReadNotifications();
+      setNotifications(prev => prev.filter(n => !n.is_read));
+    } catch (err) {
+      console.error('Ошибка удаления прочитанных:', err);
+    }
+  };
 
   // Уникальные категории
   const categories = useMemo(() => {

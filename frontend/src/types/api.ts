@@ -367,6 +367,8 @@ export interface Chat {
   last_message?: Message;
   unread_count?: number;
   created_at: string;
+  is_pinned?: boolean;
+  notifications_enabled?: boolean;
 }
 
 export interface Message {

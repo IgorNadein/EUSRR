@@ -41,6 +41,8 @@ export const VERB_CATEGORIES: Record<string, string> = {
   
   // Новости
   feed_new_post: 'Новости',
+  feed_post_comment: 'Новости',
+  feed_post_reaction: 'Новости',
   
   // Системные
   system_announcement: 'Система',
@@ -83,6 +85,8 @@ export const VERB_NAMES: Record<string, string> = {
   
   // Новости
   feed_new_post: 'Новая публикация',
+  feed_post_comment: 'Комментарий к публикации',
+  feed_post_reaction: 'Реакция на публикацию',
   
   // Системные
   system_announcement: 'Системное объявление',

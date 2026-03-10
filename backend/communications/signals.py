@@ -1,5 +1,6 @@
 # backend\communications\signals.py
 from django.core.files.base import ContentFile
+from django.db.models import F
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from employees.models import Department
@@ -77,3 +78,66 @@ def compress_and_cleanup_chat_avatar(sender, instance, **kwargs):
                 )
         except Exception as e:
             logger.error(f"Error processing chat avatar: {e}")
+
+
+@receiver(post_save, sender='communications.Message')
+def increment_unread_count_on_new_message(sender, instance, created, **kwargs):
+    """
+    Инкрементирует unread_count для всех участников чата (кроме автора)
+    при создании нового сообщения.
+    
+    Денормализация: вместо подсчета COUNT(*) в реальном времени,
+    обновляем кешированный счетчик инкрементом.
+    """
+    if not created or instance.is_deleted:
+        return
+    
+    from communications.models import ChatReadState
+    
+    try:
+        # Получаем всех участников чата
+        chat = instance.chat
+        participants = chat.get_participants.exclude(id=instance.author_id)
+        
+        # Инкрементируем счетчик для существующих ChatReadState
+        # Только для тех, кто еще не прочитал это сообщение
+        updated_count = ChatReadState.objects.filter(
+            chat=chat,
+            user__in=participants
+        ).exclude(
+            # Пропускаем тех, кто уже прочитал дальше этого сообщения
+            last_read_message_id__gte=instance.id
+        ).update(
+            unread_count=F('unread_count') + 1
+        )
+        
+        # Создаем ChatReadState для участников, у которых его еще нет
+        existing_users = ChatReadState.objects.filter(
+            chat=chat,
+            user__in=participants
+        ).values_list('user_id', flat=True)
+        
+        new_users = participants.exclude(id__in=existing_users)
+        
+        if new_users.exists():
+            # Создаем ChatReadState с unread_count=1 для новых участников
+            ChatReadState.objects.bulk_create([
+                ChatReadState(
+                    chat=chat,
+                    user=user,
+                    last_read_message=None,
+                    unread_count=1
+                )
+                for user in new_users
+            ], ignore_conflicts=True)
+            
+            logger.info(
+                f"[increment_unread] Created {new_users.count()} new ChatReadState for msg={instance.id}"
+            )
+        
+        logger.debug(
+            f"[increment_unread] Updated {updated_count} ChatReadState for msg={instance.id} in chat={chat.id}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error incrementing unread_count for message {instance.id}: {e}", exc_info=True)

@@ -49,9 +49,8 @@ INSTALLED_APPS = [
     # Основные приложения
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
-    "hikcentral.apps.HikcentralConfig",
     "schedule",  # django-scheduler (проверенная библиотека для календаря)
-    "calendar_app.apps.CalendarAppConfig",  # Наше приложение календаря
+    "scheduling.apps.SchedulingConfig",  # Интеграция и расширения для django-scheduler
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
@@ -60,7 +59,6 @@ INSTALLED_APPS = [
     "notifications.apps.NotificationsConfig",
     "watson",  # django-watson для полнотекстового поиска
     "search.apps.SearchConfig",
-    "bots",
     "finance.apps.FinanceConfig",
     "procurement.apps.ProcurementConfig",
     "push_notifications",  # django-push-notifications для Web Push
@@ -98,7 +96,6 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "communications.context_processors.chat_unread_total",
                 "eusrr_backend.context_processors.branding",
             ],
         },
@@ -115,15 +112,6 @@ USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 DATABASES = {
     "default": {},
-    "hikcentral": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "cms",
-        "USER": "postgres",
-        "PASSWORD": None,
-        "HOST": "127.0.0.1",
-        "PORT": "5432",
-        "OPTIONS": {"options": "-c search_path=platform"},
-    },
 }
 
 if USE_SQLITE:
@@ -232,7 +220,6 @@ LOGGING = {
     },
     "loggers": {
         "documents": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
-        "bots": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "api.v1.communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         "notifications": {"handlers": ["console"], "level": "INFO", "propagate": False},
@@ -240,7 +227,6 @@ LOGGING = {
         "employees": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "common": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "aiogram": {"handlers": ["console"], "level": "INFO", "propagate": False},
         # полезно видеть ошибки и отладку ldap3
         "ldap3": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },

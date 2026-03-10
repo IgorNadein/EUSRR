@@ -53,10 +53,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
     }, [isOpen]);
 
     const handleNotificationClick = async (notification: any) => {
-        // v2 API использует unread вместо is_read (инвертированное)
-        const isUnread = notification.unread ?? !notification.is_read;
-        
-        if (isUnread) {
+        if (!notification.is_read) {
             await markAsRead(notification.id);
         }
         
@@ -135,8 +132,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                         ) : (
                             <ul>
                                 {notifications.slice(0, 20).map((notification) => {
-                                    // v2 API: unread вместо is_read (инвертированное)
-                                    const isUnread = notification.unread ?? !notification.is_read;
+                                    const isUnread = !notification.is_read;
                                     // v2 API: timestamp вместо created_at
                                     const timestamp = notification.timestamp || notification.created_at;
                                     // v2 API: verb + description вместо title + message
@@ -212,10 +208,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
     const notifications = Array.isArray(notificationsData) ? notificationsData : [];
 
     const handleNotificationClick = async (notification: any) => {
-        // v2 API использует unread вместо is_read (инвертированное)
-        const isUnread = notification.unread ?? !notification.is_read;
-        
-        if (isUnread) {
+        if (!notification.is_read) {
             await markAsRead(notification.id);
         }
         if (notification.action_url) {
@@ -262,8 +255,7 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                 ) : (
                     <ul>
                         {notifications.slice(0, 20).map((notification) => {
-                            // v2 API: unread вместо is_read (инвертированное)
-                            const isUnread = notification.unread ?? !notification.is_read;
+                            const isUnread = !notification.is_read;
                             // v2 API: timestamp вместо created_at
                             const timestamp = notification.timestamp || notification.created_at;
                             // v2 API: verb + description вместо title + message

@@ -8,7 +8,7 @@ class CommunicationsConfig(AppConfig):
 
     def ready(self):
         import communications.signals
-        import communications.notification_signals  # Подключаем signals уведомлений
+        import communications.notifications  # Модуль уведомлений (signals регистрируются автоматически)
         import communications.rules  # django-rules: регистрация предикатов и правил доступа
         
         def create_main_global_chat(sender, **kwargs):
