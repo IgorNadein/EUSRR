@@ -6,7 +6,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { getWebSocketUrl } from '@/lib/url';
 
 interface NotificationMessage {
-  type: 'notification' | 'unread_count';
+  type: 'notification' | 'unread_count' | 'ping' | 'list_update' | 'new_message' | 'marked_read';
   notification?: any;
   count?: number;
 }
