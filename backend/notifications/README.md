@@ -339,15 +339,46 @@ MIT License - используйте свободно в своих проект
 
 ## 🔧 Настройка конфигурации
 
-Переопределите настройки в `notifications/config.py` или создайте свой конфиг:
+Переопределите настройки в `settings.py` вашего проекта:
 
 ```python
-from notifications import config
+# settings.py
 
-# Переопределение
-config.site_name = lambda: 'Мой Сайт'
-config.site_url = lambda: 'https://mysite.com'
-config.from_email = lambda: 'notifications@mysite.com'
+NOTIFICATIONS_CONFIG = {
+    # Общие
+    'SITE_NAME': 'Моя Компания',
+    'NOTIFICATION_MAX_AGE_DAYS': 90,
+    
+    # Email
+    'EMAIL_RATE_LIMIT': '10/m',
+    'EMAIL_MAX_RETRIES': 3,
+    
+    # Web Push
+    'PUSH_RATE_LIMIT': '50/m',
+    'PUSH_DEFAULT_ICON': '/static/img/logo-192.png',  # None = browser default
+    'PUSH_DEFAULT_BADGE': '/static/img/badge.png',     # None = без badge
+    
+    # WebSocket
+    'WEBSOCKET_MAX_RETRIES': 1,
+    
+    # DND режим
+    'DND_ENABLED': True,
+}
+```
+
+**Важно:** Приложение полностью самодостаточное и не требует project-specific путей. 
+Если не указать `PUSH_DEFAULT_ICON`, браузер будет использовать свою дефолтную иконку.
+
+### Использование в коде
+
+```python
+from notifications.config import get, get_config
+
+# Получить всю конфигурацию
+config = get_config()
+
+# Получить конкретную настройку
+icon_url = get('PUSH_DEFAULT_ICON')
 ```
 
 ## 🚀 Запуск Celery worker

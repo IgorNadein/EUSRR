@@ -26,6 +26,8 @@ DEFAULT_CONFIG = {
     'PUSH_RATE_LIMIT': '50/m',  # 50 push в минуту
     'PUSH_MAX_RETRIES': 2,
     'PUSH_RETRY_DELAY': 60,  # 1 минута в секундах
+    'PUSH_DEFAULT_ICON': None,  # URL иконки по умолчанию (None = browser default)
+    'PUSH_DEFAULT_BADGE': None,  # URL badge по умолчанию (None = без badge)
     
     # === WebSocket настройки ===
     'WEBSOCKET_MAX_RETRIES': 1,
