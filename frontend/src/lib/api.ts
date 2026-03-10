@@ -787,8 +787,20 @@ class ApiClient {
     }
 
     // Уведомления
-    async getNotifications(): Promise<any> {
-        return this.request('/api/v1/notifications/');
+    async getNotifications(params?: { page?: number; page_size?: number; unread_only?: boolean }): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.append('page', String(params.page));
+        if (params?.page_size) queryParams.append('page_size', String(params.page_size));
+        if (params?.unread_only) queryParams.append('unread_only', 'true');
+        
+        const url = queryParams.toString() 
+            ? `/api/v1/notifications/?${queryParams.toString()}`
+            : '/api/v1/notifications/';
+        return this.request(url);
+    }
+
+    async getUnreadNotificationsCount(): Promise<{ count: number }> {
+        return this.request('/api/v1/notifications/count/');
     }
 
     async markNotificationAsRead(id: number): Promise<void> {

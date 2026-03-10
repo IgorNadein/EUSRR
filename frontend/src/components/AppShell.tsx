@@ -250,7 +250,8 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
     const counts: Record<string, number> = {};
     
     notifications.forEach((n: any) => {
-      if (!n.category || n.is_read) return; // Только непрочитанные
+      // Пропускаем прочитанные
+      if (!n.category || n.is_read) return;
       const category = getVerbCategory(n.category);
       counts[category] = (counts[category] || 0) + 1;
     });

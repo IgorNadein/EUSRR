@@ -5,7 +5,7 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
 import type { Chat } from "@/types/api";
-import { Search, MessageCircle } from "lucide-react";
+import { Search, MessageCircle, Pin, BellOff } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
@@ -236,7 +236,17 @@ export default function MessagesPage() {
 
   const filteredChats = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const sorted = [...chats].sort((a, b) => getChatSortTimestamp(b) - getChatSortTimestamp(a));
+    
+    // Сортировка: закрепленные сверху, потом по времени последнего сообщения
+    const sorted = [...chats].sort((a, b) => {
+      // Сначала сортируем по закрепленности
+      const aPinned = a.is_pinned ? 1 : 0;
+      const bPinned = b.is_pinned ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      
+      // Затем по времени последнего сообщения
+      return getChatSortTimestamp(b) - getChatSortTimestamp(a);
+    });
 
     if (!q) return sorted;
 
@@ -284,7 +294,11 @@ export default function MessagesPage() {
                 <Link
                   key={chat.id}
                   href={`/messages/${chat.id}`}
-                  className="block w-full rounded-xl border border-transparent p-3 text-left transition hover:border-gray-200 hover:bg-gray-50"
+                  className={`block w-full rounded-xl border p-3 text-left transition hover:border-gray-300 hover:bg-gray-50 ${
+                    (chat.unread_count ?? 0) > 0
+                      ? "border-sky-100 bg-sky-50/30"
+                      : "border-transparent"
+                  }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className="relative h-10 w-10">
@@ -305,13 +319,30 @@ export default function MessagesPage() {
                       {isChatOnline(chat, user?.id) ? (
                         <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
                       ) : null}
+                      {(chat.unread_count ?? 0) > 0 ? (
+                        <span className="absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-white">
+                          {chat.unread_count! > 99 ? '99+' : chat.unread_count}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-gray-900">{chatTitle}</p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className={`truncate text-sm ${
+                            (chat.unread_count ?? 0) > 0 ? "font-bold text-gray-900" : "font-semibold text-gray-900"
+                          }`}>{chatTitle}</p>
+                          {chat.is_pinned ? (
+                            <Pin size={12} className="shrink-0 text-sky-600 fill-current" />
+                          ) : null}
+                          {chat.notifications_enabled === false ? (
+                            <BellOff size={12} className="shrink-0 text-gray-400" />
+                          ) : null}
+                        </div>
                         <span className="shrink-0 text-xs text-gray-500">{formatTime(chat.last_message?.created_at)}</span>
                       </div>
-                      <p className="mt-1 truncate text-xs text-gray-500">
+                      <p className={`mt-1 truncate text-xs ${
+                        (chat.unread_count ?? 0) > 0 ? "font-medium text-gray-700" : "text-gray-500"
+                      }`}>
                         {chat.last_message?.content || "Нет сообщений"}
                       </p>
                     </div>

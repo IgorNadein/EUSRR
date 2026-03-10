@@ -179,13 +179,18 @@ export function useNotifications() {
   useEffect(() => {
     async function fetchNotifications() {
       try {
-        const data = await apiClient.getNotifications();
-        // Бэкенд возвращает { notifications: [...] }
+        // Для бейджей загружаем только непрочитанные (первые 50)
+        const data = await apiClient.getNotifications({ 
+          page_size: 50, 
+          unread_only: true 
+        });
+        // Бэкенд возвращает { notifications: [...], unread_count: N }
         const notifs = data.notifications || data.results || data;
         // Убеждаемся что notifs это массив
         const notificationsArray = Array.isArray(notifs) ? notifs : [];
         setNotifications(notificationsArray);
-        setUnreadCount(notificationsArray.filter((n: any) => !n.is_read).length);
+        // Используем unread_count из API или считаем сами
+        setUnreadCount(data.unread_count ?? notificationsArray.length);
       } catch (err) {
         setError(err as Error);
         setNotifications([]); // В случае ошибки устанавливаем пустой массив
@@ -256,7 +261,7 @@ export function useNotifications() {
               });
 
               // Обновляем счетчик если непрочитанное
-              if (data.notification.unread) {
+              if (!data.notification.is_read) {
                 setUnreadCount(prev => prev + 1);
               }
             }
@@ -311,7 +316,7 @@ export function useNotifications() {
     try {
       await apiClient.markNotificationAsRead(id);
       setNotifications(prev =>
-        prev.map(n => (n.id === id ? { ...n, is_read: true, unread: false } : n))
+        prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (err) {
@@ -322,7 +327,7 @@ export function useNotifications() {
   const markAllAsRead = async () => {
     try {
       await apiClient.markAllNotificationsAsRead();
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true, unread: false })));
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
@@ -335,7 +340,7 @@ export function useNotifications() {
       setNotifications(prev => prev.filter(n => n.id !== id));
       // Если удаленное было непрочитанным, уменьшаем счетчик
       const deletedNotif = notifications.find(n => n.id === id);
-      if (deletedNotif && (deletedNotif.unread ?? !deletedNotif.is_read)) {
+      if (deletedNotif && !deletedNotif.is_read) {
         setUnreadCount(prev => Math.max(0, prev - 1));
       }
     } catch (err) {
@@ -346,7 +351,7 @@ export function useNotifications() {
   const deleteAllRead = async () => {
     try {
       const result = await apiClient.deleteAllReadNotifications();
-      setNotifications(prev => prev.filter(n => n.unread ?? !n.is_read));
+      setNotifications(prev => prev.filter(n => !n.is_read));
       return result.count;
     } catch (err) {
       console.error('Failed to delete all read notifications:', err);
