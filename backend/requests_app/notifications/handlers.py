@@ -9,7 +9,7 @@ import logging
 from django.contrib.auth import get_user_model
 from notifications.signals import notify
 
-from .constants import NotificationVerbs, MessageTemplates, ActionURLs
+from .config import NotificationVerbs, MessageTemplates, ActionURLs
 
 Employee = get_user_model()
 logger = logging.getLogger(__name__)

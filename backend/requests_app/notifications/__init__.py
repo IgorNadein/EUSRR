@@ -9,7 +9,7 @@
 Использует универсальную систему уведомлений (backend/notifications).
 
 Структура:
-- constants.py - константы (типы уведомлений, шаблоны сообщений)
+- config.py - конфигурация (типы уведомлений, шаблоны сообщений, URLs)
 - handlers.py - бизнес-логика отправки уведомлений
 - signals.py - Django сигналы для автоматической генерации
 
@@ -21,7 +21,7 @@ Usage:
 """
 
 # Импорты для удобства и обратной совместимости
-from .constants import NotificationVerbs, MessageTemplates, ActionURLs
+from .config import NotificationVerbs, MessageTemplates, ActionURLs
 from .handlers import (
     notify_new_request,
     notify_status_change,
