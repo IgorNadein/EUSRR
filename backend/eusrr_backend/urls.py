@@ -28,7 +28,6 @@ def serve_service_worker(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("documents/", include("documents.urls", namespace="documents")),
-    path("communications/", include("communications.urls", namespace="communications")),
     path("api/", include(("api.urls", "api"), namespace="api")),
     # Service Worker должен быть в корне для правильного scope
     path("sw.js", serve_service_worker, name="sw"),

@@ -98,7 +98,6 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "communications.context_processors.chat_unread_total",
                 "eusrr_backend.context_processors.branding",
             ],
         },
