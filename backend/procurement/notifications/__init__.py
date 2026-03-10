@@ -5,15 +5,14 @@
 - Создании новой заявки на закупку
 - Изменении статуса заявки
 - Создании/изменении согласования
-- WebSocket broadcast для real-time обновлений
 
 Использует универсальную систему уведомлений (backend/notifications).
+Все уведомления (включая WebSocket) отправляются через notify.send().
 
 Структура:
 - config.py - конфигурация (типы уведомлений, шаблоны, URLs)
 - handlers.py - бизнес-логика отправки уведомлений
 - signals.py - Django сигналы для автоматической генерации
-- websocket.py - WebSocket broadcast для real-time уведомлений
 
 Usage:
     # Сигналы подключаются автоматически через AppConfig.ready()
@@ -21,9 +20,8 @@ Usage:
     from procurement.notifications import notify_new_request
     notify_new_request(request_obj)
     
-    # Для WebSocket broadcast:
-    from procurement.notifications import broadcast_request_update
-    broadcast_request_update(request_obj, 'request_updated')
+    # WebSocket broadcast происходит автоматически через:
+    # notify.send() → channels.py → Celery → WebSocketNotificationSender
 """
 
 # Импорты для удобства и обратной совместимости
@@ -40,11 +38,6 @@ from .handlers import (
     notify_request_cancelled,
     notify_stage_approved,
     notify_stage_rejected,
-)
-from .websocket import (
-    broadcast_request_update,
-    broadcast_request_created,
-    broadcast_request_status_changed,
 )
 
 # Сигналы импортируются для регистрации через AppConfig.ready()
@@ -69,11 +62,6 @@ __all__ = [
     'notify_request_cancelled',
     'notify_stage_approved',
     'notify_stage_rejected',
-    
-    # WebSocket
-    'broadcast_request_update',
-    'broadcast_request_created',
-    'broadcast_request_status_changed',
     
     # Signals module (для импорта в AppConfig)
     'signals',
