@@ -27,19 +27,13 @@ def serve_service_worker(request):
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("auth/", include("employees.urls_front_auth", namespace="auth_front")),
     path("documents/", include("documents.urls", namespace="documents")),
-    path("employees/", include("employees.urls_front", namespace="employees")),
     path("communications/", include("communications.urls", namespace="communications")),
-    path("notifications/", include("notifications.urls", namespace="notifications")),
-    path("search/", include("search.urls", namespace="search")),
-    path("finance/", include("finance.urls", namespace="finance")),
     path("api/", include(("api.urls", "api"), namespace="api")),
     # Service Worker должен быть в корне для правильного scope
     path("sw.js", serve_service_worker, name="sw"),
     # django-filer URLs для обработки приватных файлов (с проверкой прав доступа)
     path("", include("filer.server.urls")),
-    path("", include("feed.urls_front", namespace="feed")),
 ]
 
 # Публичные медиа файлы (без проверки прав) - только в режиме разработки
