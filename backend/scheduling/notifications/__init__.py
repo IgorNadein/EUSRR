@@ -1,5 +1,5 @@
 """
-Конфигурация уведомлений для модуля Calendar.
+Конфигурация уведомлений для django-scheduler.
 
 Содержит:
 - NotificationVerbs - глаголы для уведомлений
@@ -10,7 +10,7 @@
 
 
 class NotificationVerbs:
-    """Глаголы (verbs) для уведомлений calendar."""
+    """Глаголы (verbs) для уведомлений событий календаря."""
     
     EVENT_CREATED = 'event_created'
     EVENT_CHANGED = 'event_changed'
@@ -19,24 +19,21 @@ class NotificationVerbs:
 
 
 class MessageTemplates:
-    """Шаблоны сообщений для уведомлений calendar."""
+    """Шаблоны сообщений для уведомлений календаря."""
     
     @staticmethod
-    def event_created_company(event_title: str, event_date: str) -> str:
-        """Шаблон для нового события компании."""
-        return f'Добавлено событие компании: "{event_title}" ({event_date})'
-    
-    @staticmethod
-    def event_created_department(
-        department_name: str,
+    def event_created(
         event_title: str,
-        event_date: str
+        event_date: str,
+        calendar_name: str = None
     ) -> str:
-        """Шаблон для нового события отдела."""
-        return (
-            f'Добавлено событие отдела {department_name}: '
-            f'"{event_title}" ({event_date})'
-        )
+        """Шаблон для нового события."""
+        if calendar_name:
+            return (
+                f'Добавлено событие в календарь "{calendar_name}": '
+                f'"{event_title}" ({event_date})'
+            )
+        return f'Добавлено новое событие: "{event_title}" ({event_date})'
     
     @staticmethod
     def event_created_title() -> str:
@@ -44,9 +41,17 @@ class MessageTemplates:
         return 'Новое событие в календаре'
     
     @staticmethod
-    def event_changed(event_title: str, changes_text: str) -> str:
+    def event_changed(
+        event_title: str,
+        changes_text: str = None
+    ) -> str:
         """Шаблон для изменения события."""
-        return f'Событие "{event_title}" изменено. Изменения: {changes_text}'
+        if changes_text:
+            return (
+                f'Событие "{event_title}" изменено. '
+                f'Изменения: {changes_text}'
+            )
+        return f'Событие "{event_title}" изменено'
     
     @staticmethod
     def event_changed_title() -> str:
@@ -79,36 +84,49 @@ class ActionURLs:
         return f'/calendar?event={event_id}'
 
 
-# ===== Константы для полей =====
+# ===== Константы для полей django-scheduler Event =====
 
 FIELD_NAMES = {
     'title': 'название',
-    'start_date': 'дата начала',
-    'end_date': 'дата окончания',
-    'start_time': 'время начала',
-    'end_time': 'время окончания',
-    'location': 'место проведения',
+    'start': 'время начала',
+    'end': 'время окончания',
+    'description': 'описание',
+    'end_recurring_period': 'окончание повторения',
 }
 
 IMPORTANT_FIELDS = [
-    'title', 'start_date', 'end_date',
-    'start_time', 'end_time', 'location'
+    'title', 'start', 'end', 'description'
 ]
 
 
-def format_date(date) -> str:
+def format_datetime(dt) -> str:
     """
-    Форматирует дату в строку.
+    Форматирует дату/время в строку.
     
     Args:
-        date: Объект date или datetime
+        dt: Объект datetime
+    
+    Returns:
+        str: Отформатированная дата и время (например, "10.03.2026 14:30")
+    """
+    if not dt:
+        return ''
+    return dt.strftime('%d.%m.%Y %H:%M')
+
+
+def format_date(dt) -> str:
+    """
+    Форматирует только дату в строку.
+    
+    Args:
+        dt: Объект datetime или date
     
     Returns:
         str: Отформатированная дата (например, "10.03.2026")
     """
-    if not date:
+    if not dt:
         return ''
-    return date.strftime('%d.%m.%Y')
+    return dt.strftime('%d.%m.%Y')
 
 
 def format_changes(changed_fields: list[str]) -> str:

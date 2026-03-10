@@ -3,8 +3,8 @@ Monkey patch для django-scheduler: исправление бага с byweekd
 
 ПРОБЛЕМА:
 ---------
-Когда событие создается в день, который входит в byweekday, django-scheduler 
-заменяет весь массив byweekday на только этот день.
+Когда событие создается в день, который входит в byweekday,
+django-scheduler заменяет весь массив byweekday на только этот день.
 
 ПРИМЕР БАГА:
 - Создаем событие в пятницу (weekday = 4)
@@ -24,6 +24,9 @@ Monkey patch для django-scheduler: исправление бага с byweekd
 Переопределяем Event._event_params() с исправленной логикой для byweekday.
 Используем ленивый импорт чтобы избежать проблем с порядком загрузки Django.
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def create_patched_method():
@@ -34,8 +37,9 @@ def create_patched_method():
     def patched_event_params(self):
         """
         Исправленная версия Event._event_params().
-        
-        Для byweekday с несколькими днями НЕ заменяем массив, если день начала входит в него.
+
+        Для byweekday с несколькими днями НЕ заменяем массив,
+        если день начала входит в него.
         """
         freq_order = freq_dict_order[self.rule.frequency]
         rule_params = self.event_rule_params
@@ -54,11 +58,12 @@ def create_patched_method():
                 sp = start_params[param]
                 
                 # ИСПРАВЛЕНИЕ: Для byweekday не заменяем массив
-                if param == 'byweekday' and hasattr(rule_params[param], "__iter__"):
+                if (param == 'byweekday' and
+                        hasattr(rule_params[param], "__iter__")):
                     event_params[param] = rule_params[param]
-                elif sp == rule_params[param] or (
-                    hasattr(rule_params[param], "__iter__") and sp in rule_params[param]
-                ):
+                elif (sp == rule_params[param] or
+                      (hasattr(rule_params[param], "__iter__") and
+                       sp in rule_params[param])):
                     event_params[param] = [sp]
                 else:
                     event_params[param] = rule_params[param]
@@ -93,7 +98,10 @@ def apply_patch():
         patched_method = create_patched_method()
         Event._event_params = patched_method
         
-        print(f"   Патч применён: Event._event_params = {patched_method.__name__}")
+        print(
+            f"   Патч применён: Event._event_params = "
+            f"{patched_method.__name__}"
+        )
         print("=" * 80)
         
         _patch_applied = True
@@ -101,12 +109,6 @@ def apply_patch():
     except Exception as e:
         print("=" * 80)
         print(f"❌ ОШИБКА применения патча: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Ошибка применения патча: {e}", exc_info=True)
         print("=" * 80)
         return False
-
-
-# НЕ вызываем apply_patch() здесь! 
-# Патч будет применён через AppConfig.ready() в calendar_app/apps.py
-

@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
     "schedule",  # django-scheduler (проверенная библиотека для календаря)
-    "calendar_app.apps.CalendarAppConfig",  # Наше приложение календаря
+    "scheduling.apps.SchedulingConfig",  # Интеграция и расширения для django-scheduler
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",

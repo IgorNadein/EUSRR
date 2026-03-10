@@ -8,6 +8,5 @@ class ApiConfig(AppConfig):
 
     def ready(self):
         """Инициализация при загрузке приложения."""
-        # Применяем патч для django-scheduler (исправление бага с byweekday)
-        import schedule_patch
-        schedule_patch.apply_patch()
+        # Патч для django-scheduler теперь применяется в scheduling.apps.SchedulingConfig
+        pass
