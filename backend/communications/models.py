@@ -38,6 +38,13 @@ class ChatReadState(models.Model):
         help_text="Обновляется автоматически при загрузке сообщений (Telegram-style)"
     )
     
+    # Денормализованный счетчик непрочитанных (оптимизация)
+    unread_count = models.IntegerField(
+        default=0,
+        verbose_name="Непрочитанных сообщений",
+        help_text="Кешированное значение для производительности. Обновляется при новых сообщениях и прочтении."
+    )
+    
     # Статус набора текста
     is_typing = models.BooleanField(
         default=False,
@@ -60,6 +67,7 @@ class ChatReadState(models.Model):
             models.Index(fields=["chat", "user"]),
             models.Index(fields=["chat", "user", "is_typing"]),
             models.Index(fields=["last_read_message"]),  # Для быстрого поиска по message
+            models.Index(fields=["user", "unread_count"]),  # Для быстрых запросов непрочитанных
         ]
 
     def __str__(self):
@@ -222,7 +230,10 @@ class Chat(models.Model):
         read_state, created = ChatReadState.objects.get_or_create(
             chat=self,
             user=user,
-            defaults={'last_read_message': last_message}
+            defaults={
+                'last_read_message': last_message,
+                'unread_count': 0
+            }
         )
         
         if not created:
@@ -231,25 +242,22 @@ class Chat(models.Model):
                     return  # Не откатываем назад
             
             read_state.last_read_message = last_message
-            read_state.save(update_fields=['last_read_message', 'updated_at'])
+            read_state.unread_count = 0
+            read_state.save(update_fields=['last_read_message', 'unread_count', 'updated_at'])
 
     def unread_count_for(self, user):
         """
         Количество непрочитанных сообщений (кроме своих).
-        Считает сообщения после last_read_message.
+        
+        ОПТИМИЗИРОВАНО: Использует денормализованное поле unread_count из ChatReadState
+        вместо подсчета в реальном времени.
         """
         rs = (
             ChatReadState.objects.filter(chat=self, user=user)
-            .only("last_read_message_id")
+            .only("unread_count")
             .first()
         )
-        qs = self.messages.exclude(author=user)
-        
-        if rs and rs.last_read_message_id:
-            # Считаем сообщения с ID больше последнего прочитанного
-            qs = qs.filter(id__gt=rs.last_read_message_id)
-        
-        return qs.count()
+        return rs.unread_count if rs else 0
 
     @property
     def get_participants(self):

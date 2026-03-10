@@ -38,7 +38,7 @@ class ChatMembershipSerializer(serializers.ModelSerializer):
 class ChatListSerializer(serializers.ModelSerializer):
     """Сериализатор для списка чатов (облегченный)"""
     last_message = serializers.SerializerMethodField()
-    unread_count = serializers.IntegerField(read_only=True)
+    unread_count = serializers.SerializerMethodField()
     participant_names = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     notifications_enabled = serializers.SerializerMethodField()
@@ -52,6 +52,16 @@ class ChatListSerializer(serializers.ModelSerializer):
             'last_message', 'unread_count', 'participant_names',
             'is_pinned', 'notifications_enabled', 'last_read_message_id'
         ]
+    
+    def get_unread_count(self, obj):
+        """
+        Количество непрочитанных из денормализованного поля.
+        
+        ОПТИМИЗИРОВАНО: Использует prefetch'нутый my_read_state вместо подзапроса.
+        """
+        if hasattr(obj, 'my_read_state') and obj.my_read_state:
+            return obj.my_read_state[0].unread_count
+        return 0
     
     def get_last_message(self, obj):
         """Последнее сообщение в чате"""
@@ -72,31 +82,21 @@ class ChatListSerializer(serializers.ModelSerializer):
         return []
     
     def get_is_pinned(self, obj):
-        """Закреплен ли чат для текущего пользователя"""
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            settings = obj.user_settings.filter(user=request.user).first()
-            return settings.is_pinned if settings else False
+        """Закреплен ли чат для текущего пользователя (из prefetch)"""
+        if hasattr(obj, 'my_settings') and obj.my_settings:
+            return obj.my_settings[0].is_pinned
         return False
     
     def get_notifications_enabled(self, obj):
-        """Включены ли уведомления"""
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            settings = obj.user_settings.filter(user=request.user).first()
-            return settings.notifications_enabled if settings else True
+        """Включены ли уведомления (из prefetch)"""
+        if hasattr(obj, 'my_settings') and obj.my_settings:
+            return obj.my_settings[0].notifications_enabled
         return True
     
     def get_last_read_message_id(self, obj):
-        """ID последнего прочитанного сообщения для текущего пользователя"""
-        from communications.models import ChatReadState
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            read_state = ChatReadState.objects.filter(
-                chat=obj, 
-                user=request.user
-            ).only('last_read_message_id').first()
-            return read_state.last_read_message_id if read_state else None
+        """ID последнего прочитанного сообщения (из prefetch)"""
+        if hasattr(obj, 'my_read_state') and obj.my_read_state:
+            return obj.my_read_state[0].last_read_message_id
         return None
 
 
@@ -136,40 +136,27 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         } for p in participants]
     
     def get_user_settings(self, obj):
-        """Настройки текущего пользователя для чата"""
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            settings = obj.user_settings.filter(user=request.user).first()
-            if settings:
-                return ChatUserSettingsSerializer(settings).data
+        """Настройки текущего пользователя для чата (из prefetch)"""
+        if hasattr(obj, 'my_settings') and obj.my_settings:
+            return ChatUserSettingsSerializer(obj.my_settings[0]).data
         return {'is_pinned': False, 'notifications_enabled': True}
     
     def get_is_pinned(self, obj):
-        """Закреплен ли чат для текущего пользователя"""
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            settings = obj.user_settings.filter(user=request.user).first()
-            return settings.is_pinned if settings else False
+        """Закреплен ли чат для текущего пользователя (из prefetch)"""
+        if hasattr(obj, 'my_settings') and obj.my_settings:
+            return obj.my_settings[0].is_pinned
         return False
     
     def get_notifications_enabled(self, obj):
-        """Включены ли уведомления для текущего пользователя"""
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            settings = obj.user_settings.filter(user=request.user).first()
-            return settings.notifications_enabled if settings else True
+        """Включены ли уведомления для текущего пользователя (из prefetch)"""
+        if hasattr(obj, 'my_settings') and obj.my_settings:
+            return obj.my_settings[0].notifications_enabled
         return True
     
     def get_last_read_message_id(self, obj):
-        """ID последнего прочитанного сообщения для текущего пользователя"""
-        from communications.models import ChatReadState
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            read_state = ChatReadState.objects.filter(
-                chat=obj, 
-                user=request.user
-            ).only('last_read_message_id').first()
-            return read_state.last_read_message_id if read_state else None
+        """ID последнего прочитанного сообщения (из prefetch)"""
+        if hasattr(obj, 'my_read_state') and obj.my_read_state:
+            return obj.my_read_state[0].last_read_message_id
         return None
 
 
