@@ -6,6 +6,6 @@ class DocumentsConfig(AppConfig):
     name = "documents"
 
     def ready(self):
-        # импортируем сигналы, чтобы они подхватились
-        import documents.notification_signals  # noqa
+        # Модуль уведомлений (signals регистрируются автоматически)
+        import documents.notifications  # noqa
         import documents.rules  # django-rules: регистрация предикатов и правил доступа

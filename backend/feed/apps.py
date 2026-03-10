@@ -6,6 +6,6 @@ class FeedConfig(AppConfig):
     name = 'feed'
     
     def ready(self):
-        # Подключаем signals для уведомлений
-        import feed.notification_signals  # noqa
+        # Подключаем модуль уведомлений (signals регистрируются автоматически)
+        import feed.notifications  # noqa
         import feed.rules  # django-rules: регистрация предикатов и правил доступа

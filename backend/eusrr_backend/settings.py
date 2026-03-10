@@ -49,7 +49,6 @@ INSTALLED_APPS = [
     # Основные приложения
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
-    "hikcentral.apps.HikcentralConfig",
     "schedule",  # django-scheduler (проверенная библиотека для календаря)
     "calendar_app.apps.CalendarAppConfig",  # Наше приложение календаря
     "documents.apps.DocumentsConfig",
@@ -60,7 +59,6 @@ INSTALLED_APPS = [
     "notifications.apps.NotificationsConfig",
     "watson",  # django-watson для полнотекстового поиска
     "search.apps.SearchConfig",
-    "bots",
     "finance.apps.FinanceConfig",
     "procurement.apps.ProcurementConfig",
     "push_notifications",  # django-push-notifications для Web Push
@@ -98,7 +96,6 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "communications.context_processors.chat_unread_total",
                 "eusrr_backend.context_processors.branding",
             ],
         },
@@ -115,15 +112,6 @@ USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 DATABASES = {
     "default": {},
-    "hikcentral": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "cms",
-        "USER": "postgres",
-        "PASSWORD": None,
-        "HOST": "127.0.0.1",
-        "PORT": "5432",
-        "OPTIONS": {"options": "-c search_path=platform"},
-    },
 }
 
 if USE_SQLITE:

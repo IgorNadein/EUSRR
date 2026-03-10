@@ -6,6 +6,6 @@ class RequestsAppConfig(AppConfig):
     name = 'requests_app'
     
     def ready(self):
-        # Подключаем signals для уведомлений
-        import requests_app.notification_signals  # noqa
+        # Подключаем модуль уведомлений (signals регистрируются автоматически)
+        import requests_app.notifications.signals  # noqa
         import requests_app.rules  # django-rules: регистрация предикатов и правил доступа

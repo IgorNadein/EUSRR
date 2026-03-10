@@ -7,6 +7,7 @@ from django.db.models import BooleanField, Count, Exists, F, OuterRef, Subquery,
 from employees.constants import DeptPerm
 from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
 from feed.models import Comment, Post, PostLike
+from feed.notifications import notify_post_reaction
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -227,6 +228,8 @@ class PostViewSet(viewsets.ModelViewSet):
         _, created = PostLike.objects.get_or_create(post=post, user=request.user)
         if created:
             Post.objects.filter(pk=post.pk).update(likes_count=F("likes_count") + 1)
+            # Отправляем уведомление автору публикации
+            notify_post_reaction(post, request.user)
         post.refresh_from_db(fields=["likes_count"])
         return Response(
             {"liked": True, "likes_count": post.likes_count}, status=status.HTTP_200_OK

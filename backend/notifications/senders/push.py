@@ -4,6 +4,7 @@ Web Push отправитель для browser push notifications
 from push_notifications.models import WebPushDevice
 
 from .base import BaseNotificationSender
+from ..config import get
 
 
 class PushNotificationSender(BaseNotificationSender):
@@ -48,11 +49,14 @@ class PushNotificationSender(BaseNotificationSender):
             title = f'{actor_str} {notification.verb}'
             body = notification.description or ''
             
+            # Получаем иконки из конфигурации (None = browser default)
+            default_icon = get('PUSH_DEFAULT_ICON')
+            default_badge = get('PUSH_DEFAULT_BADGE')
+            
             # django-push-notifications использует другой формат
             message = {
                 'head': title,
                 'body': body,
-                'icon': '/static/img/logo.png',
                 'url': notification.action_url or '/',
                 'tag': f'notification-{notification.id}',
                 'requireInteraction': False,
@@ -61,6 +65,12 @@ class PushNotificationSender(BaseNotificationSender):
                     'verb': notification.verb,
                 }
             }
+            
+            # Добавляем иконки только если они настроены
+            if default_icon:
+                message['icon'] = default_icon
+            if default_badge:
+                message['badge'] = default_badge
             
             sent_count = 0
             failed_count = 0
