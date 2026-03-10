@@ -34,7 +34,7 @@ def serialize_message(m) -> dict:
         "content": m.content,
         "author_id": author.id if author else None,
         "author_name": author_name,
-        "author_url": reverse("employees:employee_detail", args=[author.id]) if author else "",
+        "author_url": f"/api/v1/employees/{author.id}/" if author else "",
         "avatar": avatar,
         "created": m.created_at.strftime("%d.%m.%Y %H:%M"),
         "created_ts": int(m.created_at.timestamp() * 1000),
