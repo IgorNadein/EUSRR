@@ -316,6 +316,11 @@ def search_api_view(request: DRFRequest) -> Response:
     
     for search_result in search_results:
         obj = search_result.object
+        
+        # Пропускаем удаленные объекты
+        if obj is None:
+            continue
+        
         model_name = _get_model_name(obj)
         
         # Фильтрация по правам доступа
