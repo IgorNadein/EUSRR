@@ -34,10 +34,6 @@ urlpatterns = [
     path("notifications/", include("notifications.urls", namespace="notifications")),
     path("search/", include("search.urls", namespace="search")),
     path("finance/", include("finance.urls", namespace="finance")),
-    path(
-        "procurement/",
-        include("procurement.urls_frontend", namespace="procurement_frontend")
-    ),
     path("api/", include(("api.urls", "api"), namespace="api")),
     # Service Worker должен быть в корне для правильного scope
     path("sw.js", serve_service_worker, name="sw"),
