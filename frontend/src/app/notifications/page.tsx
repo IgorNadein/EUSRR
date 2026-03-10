@@ -66,12 +66,16 @@ export default function NotificationsPage() {
     }
   };
 
-  const deleteAllRead = async () => {
+  const deleteAllRead = async (): Promise<number> => {
     try {
+      const readNotifications = notifications.filter(n => n.is_read);
+      const count = readNotifications.length;
       await apiClient.deleteAllReadNotifications();
       setNotifications(prev => prev.filter(n => !n.is_read));
+      return count;
     } catch (err) {
       console.error('Ошибка удаления прочитанных:', err);
+      return 0;
     }
   };
 
