@@ -117,6 +117,7 @@ class Notification(models.Model):
     # Что произошло
     verb = models.CharField(
         max_length=255,
+        default='notification',
         verbose_name='Действие',
         help_text='Например: liked, commented, approved, mentioned',
         db_index=True

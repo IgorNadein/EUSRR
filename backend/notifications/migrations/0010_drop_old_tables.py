@@ -24,4 +24,13 @@ class Migration(migrations.Migration):
             """,
             reverse_sql=migrations.RunSQL.noop,
         ),
+        # Удаляем модели из состояния Django (state_operations)
+        # Порядок важен: сначала связанные модели, потом основные
+        migrations.DeleteModel(name='UserNotificationSettings'),
+        migrations.DeleteModel(name='NotificationTemplate'),
+        migrations.DeleteModel(name='TelegramUser'),
+        migrations.DeleteModel(name='WebPushSubscription'),
+        migrations.DeleteModel(name='Notification'),
+        migrations.DeleteModel(name='NotificationType'),
+        migrations.DeleteModel(name='NotificationCategory'),
     ]
