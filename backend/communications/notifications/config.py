@@ -69,19 +69,17 @@ class ActionURLs:
     def chat_detail(chat_id: int) -> str:
         """
         Возвращает URL-адрес чата.
-        
-        TODO: реализовать прямые ссылки на конкретные чаты
         """
-        return f'/messages?chat={chat_id}'
+        return f'/messages/{chat_id}'
     
     @staticmethod
     def message_detail(chat_id: int, message_id: int) -> str:
         """
         Возвращает URL-адрес сообщения.
         
-        TODO: реализовать прямые ссылки на конкретные сообщения
+        В будущем можно добавить прокрутку к конкретному сообщению.
         """
-        return f'/messages?chat={chat_id}&message={message_id}'
+        return f'/messages/{chat_id}?message={message_id}'
 
 
 # ===== Вспомогательные функции =====

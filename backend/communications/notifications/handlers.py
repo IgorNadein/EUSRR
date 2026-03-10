@@ -101,7 +101,7 @@ def notify_new_message(message):
                             verb=NotificationVerbs.MENTION,
                             action_object=message,
                             description=truncate_message(content, 100),
-                            action_url=ActionURLs.MESSAGES,
+                            action_url=ActionURLs.chat_detail(chat.id),
                             data={
                                 'title': MessageTemplates.mention(author_name),
                                 'chat_id': chat.id,
@@ -126,7 +126,7 @@ def notify_new_message(message):
                     verb=NotificationVerbs.REPLY,
                     action_object=message,
                     description=truncate_message(content, 100),
-                    action_url=ActionURLs.MESSAGES,
+                    action_url=ActionURLs.chat_detail(chat.id),
                     data={
                         'title': MessageTemplates.reply(author_name),
                         'chat_id': chat.id,
@@ -177,7 +177,7 @@ def notify_new_message(message):
             verb=notification_verb,
             action_object=message,
             description=truncate_message(content, max_length),
-            action_url=ActionURLs.MESSAGES,
+            action_url=ActionURLs.chat_detail(chat.id),
             data={**metadata, 'title': title},
         )
 
@@ -210,7 +210,7 @@ def notify_chat_added(chat, new_users, added_by=None):
             verb=NotificationVerbs.ADDED_TO_CHAT,
             action_object=chat,
             description=MessageTemplates.added_to_chat(get_chat_name(chat)),
-            action_url=ActionURLs.MESSAGES,
+            action_url=ActionURLs.chat_detail(chat.id),
             data={
                 'title': MessageTemplates.added_to_chat_title(),
                 'chat_id': chat.id,

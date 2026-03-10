@@ -110,6 +110,8 @@ class ChatDetailSerializer(serializers.ModelSerializer):
     participant_details = serializers.SerializerMethodField()
     memberships = ChatMembershipSerializer(many=True, read_only=True, source='chatmembership_set')
     user_settings = serializers.SerializerMethodField()
+    is_pinned = serializers.SerializerMethodField()
+    notifications_enabled = serializers.SerializerMethodField()
     last_read_message_id = serializers.SerializerMethodField()
     
     class Meta:
@@ -119,7 +121,8 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             'created_by', 'created_at', 'is_main', 
             'include_all_employees', 'department',
             'participants', 'participant_details',
-            'memberships', 'user_settings', 'last_read_message_id'
+            'memberships', 'user_settings', 'is_pinned', 
+            'notifications_enabled', 'last_read_message_id'
         ]
         read_only_fields = ['created_at', 'created_by']
     
@@ -140,6 +143,22 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             if settings:
                 return ChatUserSettingsSerializer(settings).data
         return {'is_pinned': False, 'notifications_enabled': True}
+    
+    def get_is_pinned(self, obj):
+        """Закреплен ли чат для текущего пользователя"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            settings = obj.user_settings.filter(user=request.user).first()
+            return settings.is_pinned if settings else False
+        return False
+    
+    def get_notifications_enabled(self, obj):
+        """Включены ли уведомления для текущего пользователя"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            settings = obj.user_settings.filter(user=request.user).first()
+            return settings.notifications_enabled if settings else True
+        return True
     
     def get_last_read_message_id(self, obj):
         """ID последнего прочитанного сообщения для текущего пользователя"""
