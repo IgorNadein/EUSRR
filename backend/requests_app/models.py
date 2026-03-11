@@ -286,28 +286,3 @@ class Request(models.Model):
         return (
             f"{self.get_type_display()} — {self.employee} ({self.get_status_display()})"
         )
-
-
-class RequestComment(models.Model):
-    request = models.ForeignKey(
-        Request,
-        on_delete=models.CASCADE,
-        related_name="comments",
-        verbose_name=_("Заявка"),
-    )
-    author = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        verbose_name=_("Автор"),
-    )
-    text = models.TextField(_("Комментарий"))
-    created_at = models.DateTimeField(_("Создано"), auto_now_add=True)
-
-    class Meta:
-        verbose_name = _("Комментарий к заявке")
-        verbose_name_plural = _("Комментарии к заявкам")
-        ordering = ["created_at"]
-        indexes = [models.Index(fields=["created_at"])]
-
-    def __str__(self):
-        return f"Комментарий {self.author} к заявке #{self.request_id}"

@@ -3,27 +3,36 @@ from __future__ import annotations
 from typing import Any, List
 
 from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Count, Exists, F, OuterRef, Subquery, Value
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import (
+    BooleanField,
+    Count,
+    Exists,
+    F,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+)
 from employees.constants import DeptPerm
-from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT, TYPE_EMPLOYEE
-from feed.models import Comment, Post, PostLike
+from feed.constants import TYPE_COMPANY, TYPE_DEPARTMENT
+from feed.models import Post, PostLike
 from feed.notifications import notify_post_reaction
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.parsers import (
+    FormParser,
+    JSONParser,
+    MultiPartParser,
+)
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
 from ..permissions import (
     AdminOrActionOrModelPerms,
     AdminOrDeptAllowed,
-    IsSelfOrStaff,
-    user_has_dept_perm,
-    user_is_dept_head,
-    user_is_staffish,
 )
-from .serializers import CommentSerializer, PostListSerializer, PostSerializer
+from .serializers import PostListSerializer, PostSerializer
 
 Employee = get_user_model()
 
@@ -57,7 +66,6 @@ class PostViewSet(viewsets.ModelViewSet):
 
     queryset = (
         Post.objects.select_related("author", "department")
-        .annotate(comments_count=Count("comments", distinct=True))
         .order_by("-pinned", "-created_at")
     )
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -140,16 +148,29 @@ class PostViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         user = self.request.user
 
+        # Аннотируем счётчик комментариев через communications.Chat
+        from communications.models import Chat, Message
+        
+        # ContentType для Post
+        post_ct = ContentType.objects.get_for_model(Post)
+        
+        # Подсчёт сообщений в чате комментариев для каждого поста
+        comments_subquery = Message.objects.filter(
+            chat__type='comments',
+            chat__context_content_type=post_ct,
+            chat__context_object_id=OuterRef('pk')
+        ).values('chat').annotate(count=Count('id')).values('count')
+        
+        qs = qs.annotate(
+            comments_count=Subquery(comments_subquery)
+        )
+
         if user.is_authenticated:
             qs = qs.annotate(
                 is_liked=Exists(PostLike.objects.filter(post=OuterRef("pk"), user=user))
             )
         else:
             qs = qs.annotate(is_liked=Value(False, output_field=BooleanField()))
-
-        # последний комментарий (id) — без N+1
-        lc = Comment.objects.filter(post_id=OuterRef("pk")).order_by("-created_at")
-        qs = qs.annotate(last_comment_id=Subquery(lc.values("id")[:1]))
 
         # фильтры
         qp = self.request.query_params
@@ -171,25 +192,12 @@ class PostViewSet(viewsets.ModelViewSet):
         return qs
 
     def list(self, request, *args, **kwargs):
-        """Возвращает список постов с картой последних комментариев без N+1."""
+        """Возвращает список постов."""
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         objects = page if page is not None else queryset
 
-        ids = [getattr(o, "last_comment_id", None) for o in objects]
-        ids = [i for i in ids if i]
-        last_comments_map = {}
-        if ids:
-            last_comments_map = Comment.objects.select_related("author").in_bulk(ids)
-
-        serializer = self.get_serializer(
-            objects,
-            many=True,
-            context={
-                **self.get_serializer_context(),
-                "last_comments_map": last_comments_map,
-            },
-        )
+        serializer = self.get_serializer(objects, many=True)
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
@@ -250,40 +258,65 @@ class PostViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-
-class CommentViewSet(viewsets.ModelViewSet):
-    """
-    /api/v1/comments/
-      - GET: аутентифицированные
-      - POST: аутентифицированные (author = request.user)
-      - PATCH/PUT/DELETE: автор или staff/superuser
-      Фильтры: ?post=<id>, ?author=<id>
-      Сортировка: created_at ASC
-    """
-
-    queryset = Comment.objects.select_related("post", "author").all()
-    serializer_class = CommentSerializer
-    owner_id_attrs = ("author_id",)
-    owner_obj_attrs = ("author",)
-    permission_classes = [IsAuthenticated, (IsSelfOrStaff | AdminOrActionOrModelPerms)]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ["created_at", "id"]
-    ordering = ["created_at"]
-
-    def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        qp = self.request.query_params
-
-        pid = _to_id(qp.get("post"))
-        if pid is not None:
-            qs = qs.filter(post_id=pid)
-
-        aid = _to_id(qp.get("author"))
-        if aid is not None:
-            qs = qs.filter(author_id=aid)
-
-        return qs
+    @action(detail=True, methods=["get", "post"], permission_classes=[IsAuthenticated])
+    def comments(self, request, pk=None):
+        """Управление комментариями к посту.
+        
+        GET: получение списка комментариев
+        POST: создание комментария {"text": "..."}
+        """
+        from communications import comments_helpers
+        from ..employees.serializers import EmployeeBriefSerializer
+        
+        post = self.get_object()
+        
+        if request.method in {"GET", "HEAD"}:
+            # Получаем комментарии через unified system
+            messages = comments_helpers.get_comments(post)
+            
+            # Форматируем в формат, совместимый со старым API
+            comments_data = []
+            for msg in messages:
+                author_ser = EmployeeBriefSerializer(msg.author)
+                comments_data.append({
+                    "id": msg.id,
+                    "post": post.id,
+                    "post_id": post.id,
+                    "author": author_ser.data,
+                    "author_id": msg.author.id if msg.author else None,
+                    "text": msg.content,
+                    "created_at": msg.created_at,
+                    "created_at_display": msg.created_at.strftime("%d.%m.%Y %H:%M"),
+                })
+            
+            return Response(comments_data)
+        
+        # POST - создание комментария
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response(
+                {"text": ["Это поле не может быть пустым."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Создаём комментарий через unified system
+        message = comments_helpers.create_comment(
+            obj=post,
+            author=request.user,
+            content=text
+        )
+        
+        # Форматируем ответ
+        author_ser = EmployeeBriefSerializer(message.author)
+        response_data = {
+            "id": message.id,
+            "post": post.id,
+            "post_id": post.id,
+            "author": author_ser.data,
+            "author_id": message.author.id if message.author else None,
+            "text": message.content,
+            "created_at": message.created_at,
+            "created_at_display": message.created_at.strftime("%d.%m.%Y %H:%M"),
+        }
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)

@@ -16,7 +16,6 @@ from .documents.views import (
     DocumentViewSet,
     FolderViewSet,
     DocumentTagViewSet,
-    DocumentCommentViewSet,
 )
 from .employees.views import (
     DepartmentRoleViewSet,
@@ -30,7 +29,7 @@ from .employees.views import (
     SkillViewSet,
     VerifyEmailAPIView,
 )
-from .feed.views import CommentViewSet, PostViewSet
+from .feed.views import PostViewSet
 from .requests_app.views import RequestViewSet
 from .search.views import search_api_view
 
@@ -48,7 +47,6 @@ router.register(r"schedule/relations", ScheduleEventRelationViewSet, basename="s
 router.register(r"documents", DocumentViewSet, basename="documents")
 router.register(r"folders", FolderViewSet, basename="folders")
 router.register(r"document-tags", DocumentTagViewSet, basename="document-tags")
-router.register(r"document-comments", DocumentCommentViewSet, basename="document-comments")
 
 router.register(r"requests", RequestViewSet, basename="request")
 
@@ -67,7 +65,6 @@ router.register(
 )
 router.register(r"skills", SkillViewSet, basename="skills")
 router.register(r"posts", PostViewSet, basename="posts")
-router.register(r"comments", CommentViewSet, basename="comments")
 router.register(r"groups", GroupViewSet, basename="groups")
 
 # NEW: Communications ViewSets

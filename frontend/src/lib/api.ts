@@ -1262,17 +1262,15 @@ class ApiClient {
     // Комментарии
     async getComments(params: { post: number; page?: number }): Promise<any> {
         const queryParams = new URLSearchParams();
-        queryParams.append('post', params.post.toString());
         if (params.page) queryParams.append('page', params.page.toString());
 
-        const url = `/api/v1/comments/?${queryParams.toString()}`;
+        const url = `/api/v1/posts/${params.post}/comments/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
         return this.request(url);
     }
 
     async createComment(postId: number, text: string, image?: File, attachment?: File): Promise<any> {
         if (image || attachment) {
             const formData = new FormData();
-            formData.append('post', String(postId));
             formData.append('text', text);
             if (image) formData.append('image', image);
             if (attachment) formData.append('attachment', attachment);
@@ -1283,7 +1281,7 @@ class ApiClient {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch('/api/v1/comments/', {
+            const response = await fetch(`/api/v1/posts/${postId}/comments/`, {
                 method: 'POST',
                 headers,
                 body: formData,
@@ -1298,21 +1296,27 @@ class ApiClient {
             return response.json();
         }
 
-        return this.request('/api/v1/comments/', {
+        return this.request(`/api/v1/posts/${postId}/comments/`, {
             method: 'POST',
-            body: JSON.stringify({ post: postId, text }),
-        });
-    }
-
-    async updateComment(commentId: number, text: string): Promise<any> {
-        return this.request(`/api/v1/comments/${commentId}/`, {
-            method: 'PATCH',
             body: JSON.stringify({ text }),
         });
     }
 
+    async updateComment(commentId: number, text: string): Promise<any> {
+        const response = await this.request(`/api/v1/communications/messages/${commentId}/`, {
+            method: 'PATCH',
+            body: JSON.stringify({ content: text }),
+        });
+        
+        // Конвертируем content -> text для совместимости
+        return {
+            ...response,
+            text: response.content || text,
+        };
+    }
+
     async deleteComment(commentId: number): Promise<void> {
-        await this.request(`/api/v1/comments/${commentId}/`, {
+        await this.request(`/api/v1/communications/messages/${commentId}/`, {
             method: 'DELETE',
         });
     }

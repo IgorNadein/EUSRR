@@ -442,7 +442,7 @@
     }
 
     try {
-      const response = await fetch(`/api/v1/comments/`, {
+      const response = await fetch(`/api/v1/posts/${postId}/comments/`, {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrfToken,
@@ -450,7 +450,6 @@
           'X-Requested-With': 'XMLHttpRequest'
         },
         body: JSON.stringify({ 
-          post: parseInt(postId),
           text: text 
         })
       });

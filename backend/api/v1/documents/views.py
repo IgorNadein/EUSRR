@@ -10,7 +10,6 @@ from documents.models import (
     Document,
     DocumentAcknowledgement,
     DocumentTag,
-    DocumentComment,
 )
 from easy_thumbnails.files import get_thumbnailer
 from filer.models import Folder
@@ -33,7 +32,6 @@ from .serializers import (
     VersionSerializer,
     ActivityItemSerializer,
     DocumentTagSerializer,
-    DocumentCommentSerializer,
 )
 
 User = get_user_model()
@@ -589,87 +587,6 @@ class DocumentViewSet(ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-
-class DocumentCommentViewSet(ModelViewSet):
-    """CRUD для комментариев к документам.
-    
-    Поддерживает вложенные ответы (threading) через поле parent.
-    """
-    serializer_class = DocumentCommentSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        """Возвращает комментарии, опционально фильтрованные по документу.
-        
-        Параметры:
-            ?document_id=<id> - показать только комментарии к этому документу
-            ?root=true - показать только корневые комментарии (без parent)
-        """
-        qs = DocumentComment.objects.all().select_related('author', 'document', 'parent')
-        
-        document_id = self.request.query_params.get('document_id')
-        root = self.request.query_params.get('root', '').lower() == 'true'
-        
-        if document_id:
-            qs = qs.filter(document_id=document_id)
-        
-        if root:
-            qs = qs.filter(parent__isnull=True)
-        
-        return qs.order_by('created_at')
-    
-    @transaction.atomic
-    def perform_create(self, serializer):
-        """Автоматически устанавливаем author при создании."""
-        # Получаем document_id и parent_id из request.data
-        document_id = self.request.data.get('document_id')
-        parent_id = self.request.data.get('parent_id')
-        
-        if not document_id:
-            raise rest_serializers.ValidationError({'document_id': 'Это поле обязательно.'})
-        
-        try:
-            document = Document.objects.get(pk=document_id)
-        except Document.DoesNotExist:
-            raise rest_serializers.ValidationError({'document_id': 'Документ не найден.'})
-        
-        parent = None
-        if parent_id:
-            try:
-                parent = DocumentComment.objects.get(pk=parent_id, document=document)
-            except DocumentComment.DoesNotExist:
-                raise rest_serializers.ValidationError({'parent_id': 'Родительский комментарий не найден.'})
-        
-        serializer.save(
-            author=self.request.user,
-            document=document,
-            parent=parent
-        )
-    
-    @transaction.atomic
-    def perform_update(self, serializer):
-        """При обновлении помечаем комментарий как отредактированный."""
-        serializer.save(is_edited=True)
-    
-    def destroy(self, request, *args, **kwargs):
-        """Разрешаем удалять только свои комментарии (или staff)."""
-        comment = self.get_object()
-        
-        if comment.author != request.user and not request.user.is_staff:
-            return Response(
-                {'error': 'Вы можете удалять только свои комментарии'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        return super().destroy(request, *args, **kwargs)
-    
-    @action(detail=True, methods=['get'])
-    def replies(self, request, pk=None):
-        """Получить все ответы на комментарий."""
-        comment = self.get_object()
-        replies = comment.replies.all().select_related('author')
-        serializer = self.get_serializer(replies, many=True)
-        return Response(serializer.data)
 
 class FolderViewSet(ModelViewSet):
     """CRUD для папок документов (filer.Folder).
