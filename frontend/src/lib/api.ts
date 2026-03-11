@@ -1303,7 +1303,7 @@ class ApiClient {
     }
 
     async updateComment(commentId: number, text: string): Promise<any> {
-        const response = await this.request(`/api/v1/communications/messages/${commentId}/`, {
+        const response = await this.request<any>(`/api/v1/communications/messages/${commentId}/`, {
             method: 'PATCH',
             body: JSON.stringify({ content: text }),
         });
