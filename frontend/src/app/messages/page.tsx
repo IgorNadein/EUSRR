@@ -5,7 +5,7 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
 import type { Chat } from "@/types/api";
-import { Search, MessageCircle, Pin, BellOff } from "lucide-react";
+import { Search, MessageCircle, Pin, BellOff, Filter } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
@@ -167,6 +167,10 @@ export default function MessagesPage() {
   );
   const [chats, setChats] = useState<Chat[]>([]);
   const [search, setSearch] = useState("");
+  const [chatTypeFilter, setChatTypeFilter] = useState<string>("all");
+  const [filterUnread, setFilterUnread] = useState<'all' | 'unread' | 'read'>('all');
+  const [filterPinned, setFilterPinned] = useState<'all' | 'pinned' | 'unpinned'>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -248,14 +252,62 @@ export default function MessagesPage() {
       return getChatSortTimestamp(b) - getChatSortTimestamp(a);
     });
 
-    if (!q) return sorted;
-
+    // Фильтруем по типу и поисковому запросу
     return sorted.filter((chat: Chat) => {
-      const title = getChatTitle(chat, currentUserId, currentUserForMatch).toLowerCase();
-      const lastMessage = chat.last_message?.content?.toLowerCase() || "";
-      return title.includes(q) || lastMessage.includes(q);
+      // Фильтр по типу чата
+      if (chatTypeFilter !== "all") {
+        const chatType = chat.chat_type || chat.type;
+        if (chatType !== chatTypeFilter) return false;
+      }
+
+      // Фильтр по прочитанности
+      if (filterUnread === 'unread' && (chat.unread_count || 0) === 0) return false;
+      if (filterUnread === 'read' && (chat.unread_count || 0) > 0) return false;
+
+      // Фильтр по закрепленности
+      if (filterPinned === 'pinned' && !chat.is_pinned) return false;
+      if (filterPinned === 'unpinned' && chat.is_pinned) return false;
+
+      // Фильтр по поисковому запросу
+      if (q) {
+        const title = getChatTitle(chat, currentUserId, currentUserForMatch).toLowerCase();
+        const lastMessage = chat.last_message?.content?.toLowerCase() || "";
+        if (!title.includes(q) && !lastMessage.includes(q)) return false;
+      }
+
+      return true;
     });
-  }, [chats, currentUserForMatch, currentUserId, search]);
+  }, [chats, currentUserForMatch, currentUserId, search, chatTypeFilter, filterUnread, filterPinned]);
+
+  // Подсчет чатов по типам
+  const chatTypeCounts = useMemo(() => {
+    const counts: Record<string, { total: number; unread: number }> = {
+      all: { total: chats.length, unread: 0 },
+      global: { total: 0, unread: 0 },
+      channel: { total: 0, unread: 0 },
+      private: { total: 0, unread: 0 },
+      group: { total: 0, unread: 0 },
+      announcement: { total: 0, unread: 0 },
+    };
+
+    chats.forEach((chat: Chat) => {
+      const chatType = chat.chat_type || chat.type;
+      const unreadCount = chat.unread_count || 0;
+
+      if (unreadCount > 0) {
+        counts.all.unread += unreadCount;
+      }
+
+      if (chatType && counts[chatType] !== undefined) {
+        counts[chatType].total++;
+        if (unreadCount > 0) {
+          counts[chatType].unread += unreadCount;
+        }
+      }
+    });
+
+    return counts;
+  }, [chats]);
 
   return (
     <AppShell>
@@ -270,14 +322,240 @@ export default function MessagesPage() {
         </div>
       ) : (
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-          <div className="relative mb-4">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск по чатам"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-            />
+          {/* Поиск и кнопка фильтров */}
+          <div className="mb-4 flex gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск по чатам"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className={`relative inline-flex items-center justify-center rounded-lg border p-2.5 transition ${
+                filtersOpen
+                  ? "border-sky-400 bg-sky-50 text-sky-600"
+                  : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100"
+              }`}
+            >
+              <Filter size={16} />
+              {(filterUnread !== 'all' || filterPinned !== 'all') && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                  {[filterUnread !== 'all', filterPinned !== 'all'].filter(Boolean).length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Панель дополнительных фильтров */}
+          {filtersOpen && (
+            <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <select
+                value={filterUnread}
+                onChange={(e) => setFilterUnread(e.target.value as any)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+              >
+                <option value="all">Все чаты</option>
+                <option value="unread">Только с непрочитанными</option>
+                <option value="read">Только прочитанные</option>
+              </select>
+
+              <select
+                value={filterPinned}
+                onChange={(e) => setFilterPinned(e.target.value as any)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+              >
+                <option value="all">Все чаты</option>
+                <option value="pinned">Только закрепленные</option>
+                <option value="unpinned">Только незакрепленные</option>
+              </select>
+
+              {(filterUnread !== 'all' || filterPinned !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterUnread('all');
+                    setFilterPinned('all');
+                  }}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Очистить фильтры
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Фильтры по типу чата с бэйджами */}
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => setChatTypeFilter("all")}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                chatTypeFilter === "all"
+                  ? "bg-sky-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              <span>Все</span>
+              <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                chatTypeFilter === "all"
+                  ? "bg-sky-500 text-white"
+                  : "bg-gray-200 text-gray-600"
+              }`}>
+                <span>{chatTypeCounts.all.total}</span>
+                {chatTypeCounts.all.unread > 0 && (
+                  <>
+                    <span className={chatTypeFilter === "all" ? "text-sky-300" : "text-gray-400"}>•</span>
+                    <span className={chatTypeFilter === "all" ? "text-sky-100" : "text-sky-600"}>
+                      {chatTypeCounts.all.unread}
+                    </span>
+                  </>
+                )}
+              </span>
+            </button>
+
+            {chatTypeCounts.global.total > 0 && (
+              <button
+                onClick={() => setChatTypeFilter("global")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  chatTypeFilter === "global"
+                    ? "bg-sky-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                <span>Глобальный</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  chatTypeFilter === "global"
+                    ? "bg-sky-500 text-white"
+                    : "bg-gray-200 text-gray-600"
+                }`}>
+                  <span>{chatTypeCounts.global.total}</span>
+                  {chatTypeCounts.global.unread > 0 && (
+                    <>
+                      <span className={chatTypeFilter === "global" ? "text-sky-300" : "text-gray-400"}>•</span>
+                      <span className={chatTypeFilter === "global" ? "text-sky-100" : "text-sky-600"}>
+                        {chatTypeCounts.global.unread}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </button>
+            )}
+
+            {chatTypeCounts.channel.total > 0 && (
+              <button
+                onClick={() => setChatTypeFilter("channel")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  chatTypeFilter === "channel"
+                    ? "bg-sky-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                <span>Каналы</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  chatTypeFilter === "channel"
+                    ? "bg-sky-500 text-white"
+                    : "bg-gray-200 text-gray-600"
+                }`}>
+                  <span>{chatTypeCounts.channel.total}</span>
+                  {chatTypeCounts.channel.unread > 0 && (
+                    <>
+                      <span className={chatTypeFilter === "channel" ? "text-sky-300" : "text-gray-400"}>•</span>
+                      <span className={chatTypeFilter === "channel" ? "text-sky-100" : "text-sky-600"}>
+                        {chatTypeCounts.channel.unread}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </button>
+            )}
+
+            {chatTypeCounts.private.total > 0 && (
+              <button
+                onClick={() => setChatTypeFilter("private")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  chatTypeFilter === "private"
+                    ? "bg-sky-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                <span>Личные</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  chatTypeFilter === "private"
+                    ? "bg-sky-500 text-white"
+                    : "bg-gray-200 text-gray-600"
+                }`}>
+                  <span>{chatTypeCounts.private.total}</span>
+                  {chatTypeCounts.private.unread > 0 && (
+                    <>
+                      <span className={chatTypeFilter === "private" ? "text-sky-300" : "text-gray-400"}>•</span>
+                      <span className={chatTypeFilter === "private" ? "text-sky-100" : "text-sky-600"}>
+                        {chatTypeCounts.private.unread}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </button>
+            )}
+
+            {chatTypeCounts.group.total > 0 && (
+              <button
+                onClick={() => setChatTypeFilter("group")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  chatTypeFilter === "group"
+                    ? "bg-sky-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                <span>Группы</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  chatTypeFilter === "group"
+                    ? "bg-sky-500 text-white"
+                    : "bg-gray-200 text-gray-600"
+                }`}>
+                  <span>{chatTypeCounts.group.total}</span>
+                  {chatTypeCounts.group.unread > 0 && (
+                    <>
+                      <span className={chatTypeFilter === "group" ? "text-sky-300" : "text-gray-400"}>•</span>
+                      <span className={chatTypeFilter === "group" ? "text-sky-100" : "text-sky-600"}>
+                        {chatTypeCounts.group.unread}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </button>
+            )}
+
+            {chatTypeCounts.announcement.total > 0 && (
+              <button
+                onClick={() => setChatTypeFilter("announcement")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  chatTypeFilter === "announcement"
+                    ? "bg-sky-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                <span>Объявления</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  chatTypeFilter === "announcement"
+                    ? "bg-sky-500 text-white"
+                    : "bg-gray-200 text-gray-600"
+                }`}>
+                  <span>{chatTypeCounts.announcement.total}</span>
+                  {chatTypeCounts.announcement.unread > 0 && (
+                    <>
+                      <span className={chatTypeFilter === "announcement" ? "text-sky-300" : "text-gray-400"}>•</span>
+                      <span className={chatTypeFilter === "announcement" ? "text-sky-100" : "text-sky-600"}>
+                        {chatTypeCounts.announcement.unread}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="space-y-2">
