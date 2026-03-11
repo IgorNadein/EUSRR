@@ -6,7 +6,6 @@ Django signals для автоматической генерации уведо
 - m2m_changed для Document.recipients - добавление конкретных получателей
 - m2m_changed для Document.departments - добавление отделов
 - post_save для DocumentAcknowledgement - проверка полного ознакомления
-- post_save для DocumentComment - новый комментарий или ответ
 """
 
 import logging
@@ -15,14 +14,12 @@ from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save, m2m_changed
 from django.dispatch import receiver
 
-from ..models import Document, DocumentAcknowledgement, DocumentComment
+from ..models import Document, DocumentAcknowledgement
 from .handlers import (
     notify_all_employees,
     notify_specific_users,
     notify_department_employees,
     notify_all_acknowledged,
-    notify_document_comment,
-    notify_comment_reply,
 )
 
 logger = logging.getLogger(__name__)
@@ -160,31 +157,3 @@ def check_all_acknowledged(sender, instance, created, **kwargs):
         document.uploaded_by):
         
         notify_all_acknowledged(document, total_recipients, acknowledged_count)
-
-
-@receiver(post_save, sender=DocumentComment)
-def notify_on_new_comment(sender, instance, created, **kwargs):
-    """
-    Отправка уведомлений при создании нового комментария.
-    
-    - Если это ответ на комментарий (parent != None): уведомить автора родительского комментария
-    - Если это обычный комментарий: уведомить автора документа (если он не автор комментария)
-    """
-    if not created:
-        return
-    
-    comment = instance
-    document = comment.document
-    author = comment.author
-    
-    logger.info(
-        f"[signals] New comment on document={document.pk} "
-        f"by user={author.pk} parent={comment.parent_id}"
-    )
-    
-    # Если это ответ на комментарий
-    if comment.parent:
-        notify_comment_reply(comment.parent, comment)
-    else:
-        # Обычный комментарий - уведомляем автора документа
-        notify_document_comment(document, comment)

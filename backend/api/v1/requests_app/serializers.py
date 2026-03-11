@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from employees.models import Department
 from requests_app.enums import RequestStatus, RequestType
-from requests_app.models import Request, RequestComment
+from requests_app.models import Request
 from rest_framework import serializers
 
 from ..employees.serializers import EmployeeBriefSerializer
@@ -86,7 +86,7 @@ class RequestReadSerializer(serializers.ModelSerializer):
     cc_count = serializers.SerializerMethodField()
     is_recipient = serializers.SerializerMethodField()
     # Используем аннотированное поле из queryset
-    comments_count = serializers.IntegerField(read_only=True)
+    comments_count = serializers.IntegerField(read_only=True, allow_null=True)
 
     class Meta:
         model = Request
@@ -420,14 +420,3 @@ class RequestWriteSerializer(serializers.ModelSerializer):
             self._set_recipients(instance, cc_user_ids, is_cc=True)
 
         return instance
-
-
-class RequestCommentSerializer(serializers.ModelSerializer):
-    """Сериализатор комментариев к заявке."""
-
-    author = EmployeeBriefSerializer(read_only=True)
-
-    class Meta:
-        model = RequestComment
-        fields = ("id", "request", "author", "text", "created_at")
-        read_only_fields = ("id", "author", "created_at", "request")

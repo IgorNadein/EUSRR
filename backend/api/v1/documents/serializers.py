@@ -206,41 +206,6 @@ class ActivityItemSerializer(serializers.Serializer):
     details = serializers.DictField(allow_null=True)
 
 
-class DocumentCommentSerializer(serializers.Serializer):
-    """Сериализатор для комментариев к документам."""
-    id = serializers.IntegerField(read_only=True)
-    document_id = serializers.IntegerField(read_only=True)
-    author = EmployeeBriefSerializer(read_only=True)
-    text = serializers.CharField()
-    parent_id = serializers.IntegerField(required=False, allow_null=True)
-    created_at = serializers.DateTimeField(read_only=True)
-    updated_at = serializers.DateTimeField(read_only=True)
-    is_edited = serializers.BooleanField(read_only=True)
-    depth = serializers.IntegerField(read_only=True)
-    replies_count = serializers.SerializerMethodField()
-    
-    def get_replies_count(self, obj) -> int:
-        """Возвращает количество ответов на комментарий."""
-        return obj.replies.count() if hasattr(obj, 'replies') else 0
-    
-    def create(self, validated_data):
-        """Создаёт новый комментарий."""
-        from documents.models import Document, DocumentComment
-        # document_id и parent_id должны быть установлены из контекста view
-        return DocumentComment.objects.create(**validated_data)
-    
-    def update(self, instance, validated_data):
-        """Обновляет комментарий."""
-        # При обновлении текста устанавливаем is_edited = True
-        if 'text' in validated_data and validated_data['text'] != instance.text:
-            instance.is_edited = True
-        
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
-
-
 class DocumentReadSerializer(serializers.ModelSerializer):
     """Сериализатор для чтения документа.
 

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Any, List, Optional  # было: Any, Dict, List, Type
 
-from django.db.models import Count, Q, QuerySet
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import Count, OuterRef, Q, QuerySet, Subquery
 from django.shortcuts import get_object_or_404  # раскомментируйте импорт
 from employees.models import Department, EmployeeDepartment  # добавлен Department
 from requests_app.enums import RequestStatus
 from requests_app.models import Request as EmployeeRequest
-from requests_app.models import RequestComment
+from communications import comments_helpers
 
 # from django.shortcuts import get_object_or_404  # <- не используется
 from rest_framework import status, viewsets
@@ -37,7 +38,6 @@ from .permissions import (
     NotFinalOrStaff,
 )
 from .serializers import (
-    RequestCommentSerializer,
     RequestReadSerializer,
     RequestWriteSerializer,
 )
@@ -61,7 +61,6 @@ class RequestViewSet(viewsets.ModelViewSet):
 
     queryset = (
         EmployeeRequest.objects.select_related("employee", "approver", "department")
-        .annotate(comments_count=Count("comments"))
         .order_by("-created_at")
     )
     parser_classes = (MultiPartParser, FormParser, JSONParser)
@@ -251,6 +250,23 @@ class RequestViewSet(viewsets.ModelViewSet):
             # Фильтр по дате создания (created_at <= указанной даты)
             qs = qs.filter(created_at__date__lte=date_to)
 
+        # Аннотируем счётчик комментариев через communications.Chat
+        from communications.models import Chat, Message
+        
+        # ContentType для EmployeeRequest
+        request_ct = ContentType.objects.get_for_model(EmployeeRequest)
+        
+        # Подсчёт сообщений в чате комментариев для каждой заявки
+        comments_subquery = Message.objects.filter(
+            chat__type='comments',
+            chat__context_content_type=request_ct,
+            chat__context_object_id=OuterRef('pk')
+        ).values('chat').annotate(count=Count('id')).values('count')
+        
+        qs = qs.annotate(
+            comments_count=Subquery(comments_subquery)
+        )
+
         return qs
 
     # --- ВАЖНО: не ловить 404 на detail-экшенах из-за урезанного get_queryset() ---
@@ -342,6 +358,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         POST: создание {"text": "..."} (staff, владелец или право add_requestcomment).
         """
         import logging
+        from .serializers import EmployeeBriefSerializer
         logger = logging.getLogger(__name__)
         
         req_obj = self.get_object()
@@ -351,21 +368,53 @@ class RequestViewSet(viewsets.ModelViewSet):
         )
 
         if request.method in {"GET", "HEAD"}:
-            qs = RequestComment.objects.filter(request=req_obj).select_related("author")
-            ser = RequestCommentSerializer(
-                qs, many=True, context=self.get_serializer_context()
-            )
-            logger.info(f"[RequestViewSet.comments] GET: returning {qs.count()} comments")
-            return Response(ser.data)
+            # Используем unified comments system
+            messages = comments_helpers.get_comments(req_obj)
+            
+            # Форматируем в старый формат API для совместимости
+            comments_data = []
+            for msg in messages:
+                author_ser = EmployeeBriefSerializer(msg.author)
+                comments_data.append({
+                    "id": msg.id,
+                    "request": req_obj.id,
+                    "author": author_ser.data,
+                    "text": msg.content,  # content -> text для совместимости
+                    "created_at": msg.created_at,
+                })
+            
+            logger.info(f"[RequestViewSet.comments] GET: returning {len(comments_data)} comments")
+            return Response(comments_data)
 
-        logger.info(f"[RequestViewSet.comments] POST: creating comment with data={request.data}")
-        ser = RequestCommentSerializer(
-            data=request.data, context=self.get_serializer_context()
+        # POST - создание комментария
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response(
+                {"text": ["Это поле не может быть пустым."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        logger.info(f"[RequestViewSet.comments] POST: creating comment with text length={len(text)}")
+        
+        # Используем unified comments system
+        message = comments_helpers.create_comment(
+            obj=req_obj,
+            author=request.user,
+            content=text
         )
-        ser.is_valid(raise_exception=True)
-        saved = ser.save(request=req_obj, author=request.user)
-        logger.info(f"[RequestViewSet.comments] POST: comment created id={saved.id}")
-        return Response(ser.data, status=status.HTTP_201_CREATED)
+        
+        # Форматируем ответ
+        author_ser = EmployeeBriefSerializer(message.author)
+        response_data = {
+            "id": message.id,
+            "request": req_obj.id,
+            "author": author_ser.data,
+            "text": message.content,
+            "created_at": message.created_at,
+        }
+        
+        logger.info(f"[RequestViewSet.comments] POST: comment created id={message.id}")
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["delete"], url_path="comments/(?P<comment_id>[^/.]+)")
     def delete_comment(self, request: DRFRequest, pk: int | str | None = None, comment_id: int | str | None = None) -> Response:
@@ -376,25 +425,38 @@ class RequestViewSet(viewsets.ModelViewSet):
         Права: только автор комментария или staff.
         """
         import logging
+        from communications.models import Message
         logger = logging.getLogger(__name__)
         
         req_obj = self.get_object()
         
+        # Получаем чат для этой заявки
+        chat = comments_helpers.get_or_create_comments_chat(req_obj)[0]
+        
+        # Находим комментарий
         try:
-            comment = RequestComment.objects.get(id=comment_id, request=req_obj)
-        except RequestComment.DoesNotExist:
-            return Response({"detail": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+            message = Message.objects.get(id=comment_id, chat=chat)
+        except Message.DoesNotExist:
+            return Response(
+                {"detail": "Comment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         # Проверка прав: только автор или staff
-        if not (request.user.is_staff or comment.author == request.user):
+        if not (request.user.is_staff or message.author == request.user):
             return Response(
                 {"detail": "You don't have permission to delete this comment"},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        logger.info(f"[RequestViewSet.delete_comment] user={request.user.id} deleting comment_id={comment_id}")
-        comment.delete()
+        # Используем unified comment system (мягкое удаление)
+        comments_helpers.delete_comment(
+            message=message,
+            deleted_by=request.user,
+            soft_delete=True
+        )
         
+        logger.info(f"[RequestViewSet.delete_comment] user={request.user.id} deleted comment_id={comment_id}")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ---------- Экшены статусов (только бизнес-валидация) ----------

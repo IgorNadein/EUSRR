@@ -10,27 +10,33 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Удаляем все старые таблицы (безопасно - IF EXISTS)
-        # Данные уведомлений не критичны, можно удалить
-        migrations.RunSQL(
-            sql="""
-                DROP TABLE IF EXISTS notifications_notification;
-                DROP TABLE IF EXISTS notifications_notificationtype;
-                DROP TABLE IF EXISTS notifications_notificationcategory;
-                DROP TABLE IF EXISTS notifications_notificationtemplate;
-                DROP TABLE IF EXISTS notifications_usernotificationsettings;
-                DROP TABLE IF EXISTS notifications_telegramuser;
-                DROP TABLE IF EXISTS notifications_webpushsubscription;
-            """,
-            reverse_sql=migrations.RunSQL.noop,
+        # Разделяем операции на БД и состояние Django
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                # Удаляем все старые таблицы (безопасно - IF EXISTS)
+                migrations.RunSQL(
+                    sql="""
+                        DROP TABLE IF EXISTS notifications_notification;
+                        DROP TABLE IF EXISTS notifications_notificationtype;
+                        DROP TABLE IF EXISTS notifications_notificationcategory;
+                        DROP TABLE IF EXISTS notifications_notificationtemplate;
+                        DROP TABLE IF EXISTS notifications_usernotificationsettings;
+                        DROP TABLE IF EXISTS notifications_telegramuser;
+                        DROP TABLE IF EXISTS notifications_webpushsubscription;
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                # Удаляем модели из состояния Django
+                # Порядок важен: сначала связанные модели, потом основные
+                migrations.DeleteModel(name='UserNotificationSettings'),
+                migrations.DeleteModel(name='NotificationTemplate'),
+                migrations.DeleteModel(name='TelegramUser'),
+                migrations.DeleteModel(name='WebPushSubscription'),
+                migrations.DeleteModel(name='Notification'),
+                migrations.DeleteModel(name='NotificationType'),
+                migrations.DeleteModel(name='NotificationCategory'),
+            ],
         ),
-        # Удаляем модели из состояния Django (state_operations)
-        # Порядок важен: сначала связанные модели, потом основные
-        migrations.DeleteModel(name='UserNotificationSettings'),
-        migrations.DeleteModel(name='NotificationTemplate'),
-        migrations.DeleteModel(name='TelegramUser'),
-        migrations.DeleteModel(name='WebPushSubscription'),
-        migrations.DeleteModel(name='Notification'),
-        migrations.DeleteModel(name='NotificationType'),
-        migrations.DeleteModel(name='NotificationCategory'),
     ]

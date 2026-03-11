@@ -189,11 +189,10 @@
     submitBtn.disabled = true;
 
     const formData = new FormData();
-    formData.append('post', postId);
     formData.append('text', text);
 
     try {
-      const response = await fetch('/api/v1/comments/', {
+      const response = await fetch(`/api/v1/posts/${postId}/comments/`, {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrfToken,
@@ -313,11 +312,10 @@
     submitBtn.disabled = true;
 
     const formData = new FormData();
-    formData.append('post', postId);
     formData.append('text', text);
 
     try {
-      const response = await fetch('/api/v1/comments/', {
+      const response = await fetch(`/api/v1/posts/${postId}/comments/`, {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrfToken,

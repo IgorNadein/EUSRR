@@ -132,68 +132,6 @@ class Post(models.Model):
             prefix = "Публикация"
         return f"[{prefix}] {self.title}"
 
-
-class Comment(models.Model):
-    text = models.TextField("Комментарий", blank=True, default="")
-    image = models.ImageField(
-        "Изображение",
-        upload_to="feed/comments/images/%Y/%m/",
-        blank=True, null=True,
-        validators=[
-            FileExtensionValidator(allowed_extensions=IMAGE_EXTS),
-            FileSizeValidator(10),
-        ],
-    )
-
-    attachment = models.FileField(
-        "Вложение",
-        upload_to="feed/comments/attachments/%Y/%m/",
-        blank=True, null=True,
-        validators=[
-            FileExtensionValidator(allowed_extensions=FILE_EXTS),
-            FileSizeValidator(25),
-        ],
-    )
-    created_at = models.DateTimeField("Создано", auto_now_add=True)
-    author = models.ForeignKey(
-        "employees.Employee",
-        on_delete=models.CASCADE,
-        related_name="comments",
-        verbose_name="Автор",
-        db_index=True,
-    )
-    post = models.ForeignKey(
-        "feed.Post",
-        on_delete=models.CASCADE,
-        related_name="comments",
-        verbose_name="Публикация",
-    )
-
-    class Meta:
-        verbose_name = "Комментарий"
-        verbose_name_plural = "Комментарии"
-        ordering = ["created_at"]
-        indexes = [
-            models.Index(fields=["created_at"]),
-            models.Index(fields=["post", "created_at"]),
-            models.Index(fields=["author", "created_at"]),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                name="comment_has_any_content_v3",
-                condition=(
-                    (Q(text__isnull=False) & ~Q(text=""))
-                    | Q(image__isnull=False)
-                    | Q(attachment__isnull=False)
-                ),
-                violation_error_message="Нужно указать текст, изображение или файл.",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        base = (self.text or "").strip()
-        return f"Комментарий #{self.pk or '∅'} от {self.author_id} к посту {self.post_id}: {base[:40]}"
-
     # --- бизнес-валидация ---
     def clean(self):
         super().clean()

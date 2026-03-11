@@ -3,7 +3,6 @@
 
 Функции:
 - notify_new_post - уведомление о новой публикации
-- notify_comment - уведомление о комментарии
 - notify_post_reaction - уведомление о реакции (лайке)
 - get_post_recipients - определение получателей уведомлений
 """
@@ -63,40 +62,6 @@ def notify_new_post(post):
                 ),
             }
         )
-
-
-def notify_comment(comment):
-    """
-    Отправляет уведомление автору публикации о новом комментарии.
-    
-    Args:
-        comment: Экземпляр модели Comment
-    """
-    post = comment.post
-    comment_author = comment.author
-    
-    # Уведомляем автора публикации (если комментарий не от него)
-    if post.author.id == comment_author.id:
-        return
-    
-    author_name = comment_author.get_full_name() or comment_author.username
-    comment_text = truncate_text(comment.text, 80)
-    
-    notify.send(
-        sender=comment_author,
-        recipient=post.author,
-        verb=NotificationVerbs.POST_COMMENT,
-        action_object=post,
-        description=MessageTemplates.comment(author_name, comment_text),
-        action_url=ActionURLs.FEED_HOME,
-        data={
-            'title': MessageTemplates.comment_title(),
-            'post_id': post.id,
-            'post_title': post.title,
-            'comment_id': comment.id,
-            'author_id': comment_author.id,
-        }
-    )
 
 
 def notify_post_reaction(post, user):

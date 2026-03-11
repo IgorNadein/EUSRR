@@ -5,7 +5,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from .enums import RequestStatus
-from .models import Request, RequestComment
+from .models import Request
 
 
 # Админ-форма: без принуждения вводить approver (мы выставим его автоматически)
@@ -155,18 +155,3 @@ class RequestAdmin(admin.ModelAdmin):
         )
 
     actions = ("action_approve", "action_reject", "action_cancel")
-
-
-@admin.register(RequestComment)
-class RequestCommentAdmin(admin.ModelAdmin):
-    list_display = ("id", "request", "author", "short_text", "created_at")
-    list_select_related = ("request", "author")
-    search_fields = ("text", "request__title", "request__employee__last_name")
-    autocomplete_fields = ("request", "author")
-    date_hierarchy = "created_at"
-
-    def short_text(self, obj):
-        s = (obj.text or "").strip()
-        return (s[:80] + "…") if len(s) > 80 else s
-
-    short_text.short_description = _("Комментарий")

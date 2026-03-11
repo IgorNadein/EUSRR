@@ -12,7 +12,7 @@ import logging
 from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
 
-from ..models import Request, RequestComment
+from ..models import Request
 from .handlers import notify_new_request, notify_status_change, notify_comment
 
 logger = logging.getLogger(__name__)
@@ -130,30 +130,3 @@ def notify_on_cc_users_changed(sender, instance, action, **kwargs):
     
     except Exception as e:
         logger.exception(f"[SIGNAL ERROR] notify_on_cc_users_changed: {e}")
-
-
-@receiver(post_save, sender=RequestComment)
-def create_comment_notification(sender, instance, created, **kwargs):
-    """
-    Создает уведомления при добавлении комментария к заявлению.
-    
-    Уведомляет:
-    - Автора заявления
-    - Всех получателей
-    - Всех в копии
-    - Согласующего
-    - Сотрудников отделов (если sent_to_all_department)
-    
-    notify.send() → channels.py автоматически отправит через Celery
-    """
-    if not created:
-        return
-    
-    try:
-        logger.info(
-            f"[SIGNAL] Новый комментарий #{instance.id} к заявлению #{instance.request.id}"
-        )
-        notify_comment(instance)
-    
-    except Exception as e:
-        logger.exception(f"[SIGNAL ERROR] create_comment_notification: {e}")

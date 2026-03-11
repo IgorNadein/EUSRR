@@ -19,6 +19,7 @@ class NotificationVerbs:
     MENTION = 'chat_mention'
     REPLY = 'chat_reply'
     ADDED_TO_CHAT = 'chat_added_to_chat'
+    COMMENTED = 'commented'  # Для комментариев к объектам
 
 
 class MessageTemplates:
