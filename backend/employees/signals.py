@@ -42,7 +42,7 @@ def create_main_department_chat(sender, instance, created, **kwargs):
         
         # Проверка: существует ли уже чат для этого отдела
         existing = Chat.objects.filter(
-            type="department",
+            type="channel",
             context_content_type=dept_ct,
             context_object_id=instance.id,
             flags__is_primary=True
@@ -50,7 +50,7 @@ def create_main_department_chat(sender, instance, created, **kwargs):
         
         if not existing:
             Chat.objects.create(
-                type="department",
+                type="channel",
                 context_content_type=dept_ct,
                 context_object_id=instance.id,
                 flags={'is_primary': True},
