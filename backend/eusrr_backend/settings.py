@@ -609,3 +609,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+# ===== Communications App Settings =====
+# Функция для разрешения участников чата (callback)
+# Позволяет подключить бизнес-специфичную логику (EUSRR: Department, EmployeeDepartment)
+COMMUNICATIONS_PARTICIPANT_RESOLVER = 'employees.utils.resolve_chat_participants'

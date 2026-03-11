@@ -200,3 +200,103 @@ def _build_links_for_dept(dept: Department, serializer) -> list[dict]:
         links.insert(0, {"employee": head_data, "role": None, "is_active": True})
 
     return links
+
+
+# ===== Communications callbacks (EUSRR-specific) =====
+
+def resolve_chat_participants_for_department(context_object, **kwargs):
+    """
+    EUSRR callback для разрешения участников чата отдела.
+    
+    Args:
+        context_object: Department instance
+        **kwargs: Дополнительные параметры (chat, type и т.д.)
+    
+    Returns:
+        QuerySet Employee objects - участники чата
+    """
+    from django.db.models import Q
+    
+    # Проверяем что это Department
+    if not isinstance(context_object, Department):
+        return Employee.objects.none()
+    
+    department = context_object
+    
+    # Получаем активных сотрудников отдела
+    employee_ids = EmployeeDepartment.objects.filter(
+        department_id=department.id,
+        is_active=True
+    ).values_list("employee_id", flat=True)
+    
+    # Включаем руководителя отдела
+    return Employee.objects.filter(
+        Q(id__in=employee_ids) | Q(id=department.head_id)
+    ).distinct()
+
+
+def resolve_chat_participants(chat):
+    """
+    Главная функция для разрешения участников чата в EUSRR.
+    
+    Вызывается из Chat.get_participants() через настройки.
+    
+    Args:
+        chat: Chat instance
+    
+    Returns:
+        QuerySet Employee objects или None (если не обработали)
+    """
+    from django.db.models import Q
+    
+    # 1. Приватные чаты - используем M2M participants
+    if chat.type == "private":
+        return chat.participants.all()
+    
+    # 2. Глобальные чаты - все активные пользователи
+    if chat.type == "global":
+        return Employee.objects.filter(is_active=True)
+    
+    # 3. Announcement / Channel с include_all_users
+    if chat.type in ["announcement", "channel"] and chat.include_all_users:
+        return Employee.objects.filter(is_active=True)
+    
+    # 4. Context-based чаты
+    if chat.context_object:
+        # Department context
+        if isinstance(chat.context_object, Department):
+            return resolve_chat_participants_for_department(
+                chat.context_object,
+                chat=chat,
+                type=chat.type
+            )
+        
+        # Можно добавить другие типы контекстов:
+        # - Project
+        # - Team
+        # - Event
+        # и т.д.
+    
+    # 5. Legacy: department field (DEPRECATED, для обратной совместимости)
+    if chat.type == "department" and hasattr(chat, 'department') and chat.department_id:
+        employee_ids = EmployeeDepartment.objects.filter(
+            department_id=chat.department_id,
+            is_active=True
+        ).values_list("employee_id", flat=True)
+        
+        return Employee.objects.filter(
+            Q(id__in=employee_ids) | Q(id=chat.department.head_id)
+        ).distinct()
+    
+    # 6. Fallback: ChatMembership или participants
+    from communications.models import ChatMembership
+    
+    membership_ids = ChatMembership.objects.filter(
+        chat=chat
+    ).values_list("user_id", flat=True)
+    
+    participant_ids = chat.participants.values_list('id', flat=True)
+    
+    return Employee.objects.filter(
+        Q(id__in=participant_ids) | Q(id__in=membership_ids)
+    ).distinct()
