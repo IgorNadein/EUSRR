@@ -45,7 +45,7 @@ def migrate_comments_forward(apps, schema_editor):
             is_system, has_attachments,
             is_deleted, is_edited, edited_at,
             is_pinned, is_forwarded, is_cross_chat,
-            system_metadata
+            system_type, system_metadata
         )
         SELECT 
             cc.id,
@@ -56,13 +56,7 @@ def migrate_comments_forward(apps, schema_editor):
             dc.is_edited,
             CASE WHEN dc.is_edited THEN dc.updated_at ELSE NULL END,
             FALSE, FALSE, FALSE,
-            jsonb_build_object(
-                'legacy_comment_id', dc.id,
-                'legacy_model', 'documents.DocumentComment'
-            )
-        FROM documents_documentcomment dc
-        JOIN communications_chat cc ON (
-            cc.type = 'comments'
+            '',
             AND cc.context_content_type_id = (SELECT id FROM django_content_type WHERE app_label='documents' AND model='document')
             AND cc.context_object_id = dc.document_id
         )
@@ -83,7 +77,7 @@ def migrate_comments_forward(apps, schema_editor):
             is_deleted, is_edited, edited_at,
             is_pinned, is_forwarded, is_cross_chat,
             reply_to_id, thread_root_id,
-            system_metadata
+            system_type, system_metadata
         )
         SELECT 
             cc.id,
@@ -96,6 +90,7 @@ def migrate_comments_forward(apps, schema_editor):
             FALSE, FALSE, FALSE,
             parent_msg.id,
             parent_msg.id,
+            '',
             jsonb_build_object(
                 'legacy_comment_id', dc.id,
                 'legacy_model', 'documents.DocumentComment'

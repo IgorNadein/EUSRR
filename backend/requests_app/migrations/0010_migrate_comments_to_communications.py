@@ -43,7 +43,7 @@ def migrate_comments_forward(apps, schema_editor):
             chat_id, author_id, content, created_at,
             is_system, has_attachments,
             is_deleted, is_edited, is_pinned, is_forwarded, is_cross_chat,
-            system_metadata
+            system_type, system_metadata
         )
         SELECT 
             cc.id,
@@ -51,6 +51,7 @@ def migrate_comments_forward(apps, schema_editor):
             rc.text,
             rc.created_at,
             FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+            '',
             jsonb_build_object(
                 'legacy_comment_id', rc.id,
                 'legacy_model', 'requests_app.RequestComment'
