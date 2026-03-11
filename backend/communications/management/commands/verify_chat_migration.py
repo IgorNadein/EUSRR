@@ -44,42 +44,51 @@ class Command(BaseCommand):
         has_department_field = hasattr(Chat, 'department')
         
         if has_department_field:
-            from employees.models import Department
-            dept_ct = ContentType.objects.get_for_model(Department)
-            chats_with_dept = Chat.objects.filter(department__isnull=False)
-            count_dept = chats_with_dept.count()
-            
-            self.stdout.write(f"   Найдено чатов с department: {count_dept}")
-            
-            for chat in chats_with_dept:
-                # Проверяем что context заполнен
-                if not chat.context_object_id:
-                    errors.append(
-                        f"Chat #{chat.id}: есть department но context_object_id is NULL"
-                    )
-                elif chat.context_object_id != chat.department_id:
-                    errors.append(
-                        f"Chat #{chat.id}: context_object_id ({chat.context_object_id}) "
-                        f"!= department_id ({chat.department_id})"
-                    )
-                elif chat.context_content_type_id != dept_ct.id:
-                    errors.append(
-                        f"Chat #{chat.id}: context_content_type не Department"
-                    )
-                elif verbose:
-                    self.stdout.write(
-                        f"   ✓ Chat #{chat.id}: department={chat.department_id} "
-                        f"→ context={chat.context_object_id}"
-                    )
-            
-            if not errors and count_dept > 0:
-                self.stdout.write(self.style.SUCCESS(
-                    f"   ✓ Все {count_dept} чатов с department мигрированы корректно"
-                ))
-            elif count_dept == 0:
+            # Опциональная зависимость от employees.Department
+            try:
+                from employees.models import Department
+                dept_ct = ContentType.objects.get_for_model(Department)
+            except (ImportError, LookupError):
                 self.stdout.write(self.style.WARNING(
-                    "   ⚠ Чатов с department не найдено"
+                    "   ⚠ Модуль 'employees' не установлен, пропускаем проверку department"
                 ))
+                dept_ct = None
+            
+            if dept_ct:
+                chats_with_dept = Chat.objects.filter(department__isnull=False)
+                count_dept = chats_with_dept.count()
+                
+                self.stdout.write(f"   Найдено чатов с department: {count_dept}")
+                
+                for chat in chats_with_dept:
+                    # Проверяем что context заполнен
+                    if not chat.context_object_id:
+                        errors.append(
+                            f"Chat #{chat.id}: есть department но context_object_id is NULL"
+                        )
+                    elif chat.context_object_id != chat.department_id:
+                        errors.append(
+                            f"Chat #{chat.id}: context_object_id ({chat.context_object_id}) "
+                            f"!= department_id ({chat.department_id})"
+                        )
+                    elif chat.context_content_type_id != dept_ct.id:
+                        errors.append(
+                            f"Chat #{chat.id}: context_content_type не Department"
+                        )
+                    elif verbose:
+                        self.stdout.write(
+                            f"   ✓ Chat #{chat.id}: department={chat.department_id} "
+                            f"→ context={chat.context_object_id}"
+                        )
+                
+                if not errors and count_dept > 0:
+                    self.stdout.write(self.style.SUCCESS(
+                        f"   ✓ Все {count_dept} чатов с department мигрированы корректно"
+                    ))
+                elif count_dept == 0:
+                    self.stdout.write(self.style.WARNING(
+                        "   ⚠ Чатов с department не найдено"
+                    ))
         else:
             # Поле department удалено - проверяем только context
             chats_with_context = Chat.objects.filter(

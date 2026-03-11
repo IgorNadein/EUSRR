@@ -1,9 +1,50 @@
 # communications/serialization.py
 """
 Утилиты сериализации для модуля communications.
-Вынесены из consumers.py для переиспользования в API, WebSocket и других местах.
+Вынесены из consumers.py для переиспользования в API, WebSocket и других
+местах.
 """
-from django.urls import reverse
+from django.conf import settings
+
+
+def _get_author_url(author) -> str:
+    """
+    Получает URL профиля автора используя настройку из settings.
+    
+    Settings:
+        COMMUNICATIONS_AUTHOR_URL_PATTERN (str): Шаблон URL для профиля автора.
+            По умолчанию: '/api/v1/employees/{id}/' (проектно-специфичный)
+            Для standalone: '/users/{id}/' или None (пустая строка)
+            Должен содержать placeholder {id} для подстановки ID пользователя
+    
+    Args:
+        author: Объект пользователя (User model)
+    
+    Returns:
+        str: URL профиля автора или пустая строка
+    
+    Examples:
+        >>> # settings.py
+        >>> COMMUNICATIONS_AUTHOR_URL_PATTERN = '/users/{id}/'
+        >>> _get_author_url(user)
+        '/users/123/'
+    """
+    if not author:
+        return ""
+    
+    url_pattern = getattr(
+        settings,
+        'COMMUNICATIONS_AUTHOR_URL_PATTERN',
+        '/api/v1/employees/{id}/'  # backward compatibility
+    )
+    
+    if url_pattern is None:
+        return ""
+    
+    try:
+        return url_pattern.format(id=author.id)
+    except (KeyError, ValueError, AttributeError):
+        return ""
 
 
 def serialize_message(m) -> dict:
@@ -34,7 +75,7 @@ def serialize_message(m) -> dict:
         "content": m.content,
         "author_id": author.id if author else None,
         "author_name": author_name,
-        "author_url": f"/api/v1/employees/{author.id}/" if author else "",
+        "author_url": _get_author_url(author),
         "avatar": avatar,
         "created": m.created_at.strftime("%d.%m.%Y %H:%M"),
         "created_ts": int(m.created_at.timestamp() * 1000),
@@ -164,7 +205,7 @@ def serialize_message(m) -> dict:
                     else "Неизвестный"
                 )
             }
-        except Exception as e:
+        except Exception:
             # Если не удалось загрузить reply_to, просто пропускаем
             pass
     

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-communications"
+version = "1.0.0"
+description = "Universal chat system for Django with WebSocket support, real-time messaging, and flexible context binding"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+keywords = ["django", "chat", "messaging", "websocket", "django-channels", "real-time"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 4.0",
+    "Framework :: Django :: 5.0",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Chat",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+
+dependencies = [
+    "Django>=4.0",
+    "djangorestframework>=3.14",
+    "channels>=4.0",
+    "django-rules>=3.0",
+]
+
+[project.optional-dependencies]
+# Опциональные зависимости для расширенной функциональности
+notifications = [
+    "django-notifications-hq>=1.8",
+]
+celery = [
+    "celery>=5.0",
+]
+all = [
+    "django-notifications-hq>=1.8",
+    "celery>=5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/django-communications"
+Documentation = "https://github.com/yourusername/django-communications#readme"
+Repository = "https://github.com/yourusername/django-communications"
+Issues = "https://github.com/yourusername/django-communications/issues"
+
+[tool.setuptools]
+packages = ["communications"]
+
+[tool.setuptools.package-data]
+communications = [
+    "templates/**/*.html",
+    "static/**/*",
+    "migrations/*.py",
+]

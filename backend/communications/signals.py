@@ -1,7 +1,10 @@
 # backend\communications\signals.py
+from django.conf import settings
 from django.core.files.base import ContentFile
+from django.db.models import F
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from django.utils.module_loading import import_string
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,27 +14,65 @@ logger = logging.getLogger(__name__)
 # Example: employees/signals.py - create_main_department_chat()
 
 
+def _get_image_compressor():
+    """
+    Получает функцию сжатия изображений из настроек или использует дефолтную.
+    
+    Settings:
+        COMMUNICATIONS_IMAGE_COMPRESSOR (str): Путь к функции сжатия.
+            По умолчанию: 'common.image_utils.compress_avatar' (проектно-специфичный)
+            Для standalone: None (отключает сжатие)
+            Пример: 'myapp.utils.compress_image'
+    
+    Returns:
+        callable or None: Функция сжатия или None если отключено
+    """
+    compressor_path = getattr(
+        settings,
+        'COMMUNICATIONS_IMAGE_COMPRESSOR',
+        'common.image_utils.compress_avatar'  # backward compatibility
+    )
+    
+    if compressor_path is None:
+        return None
+    
+    try:
+        return import_string(compressor_path)
+    except (ImportError, AttributeError) as e:
+        logger.warning(
+            f"Failed to import image compressor '{compressor_path}': {e}. "
+            "Avatar compression disabled. Set COMMUNICATIONS_IMAGE_COMPRESSOR=None "
+            "to suppress this warning."
+        )
+        return None
+
+
 @receiver(pre_save, sender='communications.Chat')
 def compress_and_cleanup_chat_avatar(sender, instance, **kwargs):
     """
-    Сжимает новый аватар чата и удаляет старый файл
+    Сжимает новый аватар чата и удаляет старый файл.
+    
+    Использует COMMUNICATIONS_IMAGE_COMPRESSOR из settings.
+    Если compressor не настроен - пропускает сжатие.
     """
     if not instance.avatar:
         return
+    
+    compress_avatar = _get_image_compressor()
 
     # Если это новый объект (нет pk), просто сжимаем
     if not instance.pk:
-        try:
-            from common.image_utils import compress_avatar
-            compressed = compress_avatar(instance.avatar.read())
-            if compressed:
-                instance.avatar.save(
-                    instance.avatar.name,
-                    ContentFile(compressed),
-                    save=False
-                )
-        except Exception as e:
-            logger.error(f"Error compressing new chat avatar: {e}")
+        if compress_avatar:
+            try:
+                compressed = compress_avatar(instance.avatar.read())
+                if compressed:
+                    instance.avatar.save(
+                        instance.avatar.name,
+                        ContentFile(compressed),
+                        save=False
+                    )
+            except Exception as e:
+                logger.error(f"Error compressing new chat avatar: {e}")
         return
 
     # Проверяем, изменился ли файл аватара
@@ -46,15 +87,15 @@ def compress_and_cleanup_chat_avatar(sender, instance, **kwargs):
     # Если путь изменился - это новый файл
     if old_avatar and new_avatar and old_avatar.name != new_avatar.name:
         try:
-            # Сжимаем новый аватар
-            from common.image_utils import compress_avatar
-            compressed = compress_avatar(new_avatar.read())
-            if compressed:
-                new_avatar.save(
-                    new_avatar.name,
-                    ContentFile(compressed),
-                    save=False
-                )
+            # Сжимаем новый аватар (если compressor настроен)
+            if compress_avatar:
+                compressed = compress_avatar(new_avatar.read())
+                if compressed:
+                    new_avatar.save(
+                        new_avatar.name,
+                        ContentFile(compressed),
+                        save=False
+                    )
 
             # Удаляем старый файл
             if old_avatar.name:
