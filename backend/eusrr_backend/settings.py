@@ -512,11 +512,11 @@ CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 минут максимум на зада
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Мягкий лимит - 25 минут
 
 # Приоритеты очередей
-# CELERY_TASK_ROUTES = {
-#     'notifications.tasks.*': {'queue': 'notifications'},
-#     'documents.tasks.*': {'queue': 'default'},
-#     'employees.tasks.*': {'queue': 'default'},
-# }
+CELERY_TASK_ROUTES = {
+    'notifications.*': {'queue': 'notifications'},
+    'documents.tasks.*': {'queue': 'default'},
+    'employees.tasks.*': {'queue': 'default'},
+}
 
 # Настройки для периодических задач (Celery Beat)
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
