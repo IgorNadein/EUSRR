@@ -82,7 +82,7 @@ def migrate_comments_forward(apps, schema_editor):
             m.id,
             c.image,
             'image',
-            substr(c.image, instr(c.image, '/') + 1),
+            substring(c.image from '[^/]*$'),
             0,
             c.created_at
         FROM feed_comment c
@@ -108,7 +108,7 @@ def migrate_comments_forward(apps, schema_editor):
             m.id,
             c.attachment,
             'file',
-            substr(c.attachment, instr(c.attachment, '/') + 1),
+            substring(c.attachment from '[^/]*$'),
             0,
             c.created_at
         FROM feed_comment c
