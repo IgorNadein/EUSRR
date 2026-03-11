@@ -5,10 +5,20 @@
 - get_users_with_notifications_enabled - проверка настроек уведомлений
 - notify_new_message - уведомление о новом сообщении (с упоминаниями и ответами)
 - notify_chat_added - уведомление о добавлении в чат
+
+ПРИМЕЧАНИЕ: Опциональная зависимость от notifications модуля.
+Если notifications не установлен - уведомления просто не отправляются.
 """
 
 from django.contrib.auth import get_user_model
-from notifications.signals import notify
+
+# Опциональная зависимость от notifications (graceful degradation)
+try:
+    from notifications.signals import notify
+    NOTIFICATIONS_AVAILABLE = True
+except ImportError:
+    NOTIFICATIONS_AVAILABLE = False
+    notify = None
 
 from ..models import ChatUserSettings
 from .config import (
@@ -21,6 +31,16 @@ from .config import (
 )
 
 User = get_user_model()
+
+
+def _send_notification(**kwargs):
+    """
+    Обертка для отправки уведомлений.
+    Если notifications модуль не доступен - ничего не делает.
+    """
+    if NOTIFICATIONS_AVAILABLE and notify:
+        notify.send(**kwargs)
+    # Иначе тихо игнорируем - модуль работает без уведомлений
 
 
 def get_users_with_notifications_enabled(chat, users) -> dict[int, bool]:
@@ -95,7 +115,7 @@ def notify_new_message(message):
                 user = User.objects.get(email=email)
                 if user in participants_list and user.id != author.id:
                     if notification_settings.get(user.id, True):
-                        notify.send(
+                        _send_notification(
                             sender=author,
                             recipient=user,
                             verb=NotificationVerbs.MENTION,
@@ -120,7 +140,7 @@ def notify_new_message(message):
         
         if original_author.id not in notified_user_ids:
             if notification_settings.get(original_author.id, True):
-                notify.send(
+                _send_notification(
                     sender=author,
                     recipient=original_author,
                     verb=NotificationVerbs.REPLY,
@@ -171,7 +191,7 @@ def notify_new_message(message):
         if is_announcement:
             metadata['is_announcement'] = True
         
-        notify.send(
+        _send_notification(
             sender=author,
             recipient=recipient,
             verb=notification_verb,
@@ -204,7 +224,7 @@ def notify_chat_added(chat, new_users, added_by=None):
         if not notification_settings.get(user.id, True):
             continue
         
-        notify.send(
+        _send_notification(
             sender=added_by,
             recipient=user,
             verb=NotificationVerbs.ADDED_TO_CHAT,
