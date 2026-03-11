@@ -24,7 +24,7 @@ from communications.models import (Chat, ChatMembership, ChatReadState,
                                    MessageAttachment, MessageReaction, Poll,
                                    PollOption, PollVote)
 from communications.serialization import serialize_message
-from communications.views import _coerce_ts, user_can_access_chat
+from communications.utils import _coerce_ts, user_can_access_chat
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
