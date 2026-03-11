@@ -8,9 +8,6 @@ from django.db import IntegrityError, models
 from django.db.models import Q
 from django.utils import timezone
 
-# DEPRECATED: Will be removed after migration complete
-from employees.models import Department, EmployeeDepartment
-
 Employee = get_user_model()
 
 
@@ -137,16 +134,9 @@ class Chat(models.Model):
         verbose_name="Участники",
         help_text="Используется только для личных чатов",
     )
-    department = models.ForeignKey(
-        Department,
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,  # при удалении отдела чат удалится
-        verbose_name="Отдел",
-        help_text="Указывается только для чатов отдела",
-    )
     
-    # ===== NEW: Universal context (GenericForeignKey) =====
+    # ===== Universal context (GenericForeignKey) =====
+    # REMOVED: department FK (replaced by context_object)
     # Позволяет привязать чат к ЛЮБОЙ модели (Department, Project, Team, Event, etc.)
     context_content_type = models.ForeignKey(
         ContentType,
@@ -218,12 +208,6 @@ class Chat(models.Model):
                 condition=Q(is_main=True, type="global"),
                 name="unique_main_global_chat",
             ),
-            # Ровно один «главный» чат на отдел
-            models.UniqueConstraint(
-                fields=["type", "department"],
-                condition=Q(is_main=True, type="department"),
-                name="unique_main_department_chat",
-            ),
             # Только 1 announcement на сотрудника
             models.UniqueConstraint(
                 fields=["type", "created_by"],
@@ -233,9 +217,8 @@ class Chat(models.Model):
         ]
         indexes = [
             models.Index(fields=["type", "is_main"]),
-            models.Index(fields=["department"]),
             models.Index(fields=["created_at"]),
-            # NEW: Index for GenericForeignKey
+            # Index for GenericForeignKey
             models.Index(fields=["context_content_type", "context_object_id"], name="chat_context_idx"),
         ]
 
@@ -306,7 +289,7 @@ class Chat(models.Model):
         Возвращает QuerySet участников чата.
         
         Использует callback из settings.COMMUNICATIONS_PARTICIPANT_RESOLVER
-        для проектно-специфичной логики (EUSRR: Department, EmployeeDepartment).
+        для проектно-специфичной логики.
         
         Fallback логика:
         - private: M2M participants
@@ -366,8 +349,8 @@ class Chat(models.Model):
         if self.type == "group":
             return self.name or "Групповой чат"
         if self.type == "department":
-            # Проверяем context_object (GenericFK) или старое поле department
-            dept = self.context_object if self.context_object else self.department
+            # Used context_object (GenericFK)
+            dept = self.context_object if self.context_object else None
             return f"Чат отдела: {dept or '—'}"
         if self.type == "channel":
             return self.name or "Канал"

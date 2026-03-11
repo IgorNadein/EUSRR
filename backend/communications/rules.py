@@ -114,24 +114,17 @@ def is_department_chat(user, chat):
     """
     Чат отдела пользователя.
     
-    Проверяет как старое поле department (DEPRECATED), 
-    так и новое context_object (GenericFK).
+    Проверяет context_object (GenericFK) для чатов типа department.
+    Использует get_participants() для проверки доступа.
     """
-    if chat is None or not hasattr(user, 'department'):
+    if chat is None:
         return False
     
-    # 1. Проверяем старое поле department (для обратной совместимости)
-    if hasattr(chat, 'department') and chat.department:
-        if chat.department == user.department:
-            return True
+    if chat.type != "department":
+        return False
     
-    # 2. Проверяем новое поле context_object (GenericFK)
-    if hasattr(chat, 'context_object') and chat.context_object:
-        from employees.models import Department
-        if isinstance(chat.context_object, Department):
-            return chat.context_object == user.department
-    
-    return False
+    # Используем get_participants() - поддерживает любую логику определения участников
+    return chat.get_participants().filter(pk=user.pk).exists()
 
 
 # -----------------------------------------------------------------------------
@@ -378,6 +371,7 @@ def get_accessible_chats(user):
     return Chat.objects.filter(
         Q(members=user) |  # Участник чата
         Q(is_public=True) |  # Публичный чат
-        Q(department=user.department)  # Чат отдела
+        # Department чаты через get_participants() (поддерживает GenericFK)
+        Q(type='department')  # Будем проверять через get_participants()
     ).distinct()
 """

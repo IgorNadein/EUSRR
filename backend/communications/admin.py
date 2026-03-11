@@ -36,16 +36,14 @@ class ChatAdmin(admin.ModelAdmin):
         "id",
         "type",
         "name",
-        "department",
+        "context_object",
         "is_main",
         "created_by",
         "created_at"
     )
     list_filter = ("type", "is_main", "created_at")
-    # Поддержка поиска по старому и новому полю
-    # department__name - старое поле (DEPRECATED)
-    # Для context_object поиск невозможен через GenericFK
-    search_fields = ("name", "description", "department__name")
+    # Поиск по context_object невозможен через GenericFK
+    search_fields = ("name", "description")
     ordering = ("-created_at",)
     filter_horizontal = ("participants",)
     inlines = [ChatMembershipInline, MessageInline]
@@ -56,7 +54,7 @@ class ChatAdmin(admin.ModelAdmin):
         if obj:
             is_primary = obj.is_main or (obj.flags and obj.flags.get('is_primary'))
             if is_primary:
-                return self.readonly_fields + ("type", "department", "is_main", "flags", "context_object_id", "context_content_type")
+                return self.readonly_fields + ("type", "is_main", "flags", "context_object_id", "context_content_type")
         return self.readonly_fields
 
 

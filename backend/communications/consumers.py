@@ -546,10 +546,13 @@ class ChatConsumerMixin:
         departments = user.departments.all()
         dept_ids = list(departments.values_list('id', flat=True))
         
+        # GenericFK support для department чатов
         dept_ct = None
         if dept_ids:
-            from employees.models import Department
-            dept_ct = ContentType.objects.get_for_model(Department)
+            try:
+                dept_ct = ContentType.objects.get(app_label='employees', model='department')
+            except ContentType.DoesNotExist:
+                pass
         
         # Получаем ID через membership
         membership_chat_ids = list(
@@ -559,8 +562,7 @@ class ChatConsumerMixin:
         chat_ids = list(
             Chat.objects.filter(
                 Q(type="global")
-                | Q(type="department", department__in=departments)  # OLD: department FK
-                | (Q(type="department", context_content_type=dept_ct, context_object_id__in=dept_ids) if dept_ct else Q(pk__in=[]))  # NEW: GenericFK
+                | (Q(type="department", context_content_type=dept_ct, context_object_id__in=dept_ids) if dept_ct else Q(pk__in=[]))  # GenericFK
                 | Q(type="private", participants=user)
                 | Q(id__in=membership_chat_ids)
             ).values_list("id", flat=True).distinct()
@@ -600,7 +602,7 @@ class ChatConsumerMixin:
             )
         
         if chat.type == "department":
-            # Используем get_participants() - поддерживает и department, и context_object
+            # Используем get_participants() - поддерживает GenericFK
             return chat.get_participants().filter(pk=user.pk).exists()
         
         if chat.type in ("channel", "announcement"):

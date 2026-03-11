@@ -1,54 +1,14 @@
 # backend\communications\signals.py
-from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
-from django.db.models import F, Q
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from employees.models import Department
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-@receiver(post_save, sender=Department)
-def create_main_department_chat(sender, instance, created, **kwargs):
-    """
-    Создает главный чат для нового отдела.
-    
-    Использует context_object (GenericFK) и flags['is_primary'].
-    Для обратной совместимости также заполняет department и is_main (DEPRECATED).
-    """
-    from communications.models import Chat
-
-    if created:
-        dept_ct = ContentType.objects.get_for_model(Department)
-        
-        # Проверка: существует ли уже чат для этого отдела
-        # (проверяем и старые, и новые поля)
-        existing = Chat.objects.filter(
-            Q(type="department") & (
-                Q(department=instance) |
-                Q(context_content_type=dept_ct, context_object_id=instance.id)
-            ) & (
-                Q(is_main=True) | Q(flags__is_primary=True)
-            )
-        )
-        
-        if not existing.exists():
-            # Создаем чат с ОБОИМИ способами привязки (для совместимости)
-            Chat.objects.create(
-                type="department",
-                # NEW: GenericFK
-                context_content_type=dept_ct,
-                context_object_id=instance.id,
-                # NEW: flags
-                flags={'is_primary': True},
-                # DEPRECATED: старые поля (для обратной совместимости)
-                department=instance,
-                is_main=True,
-                # Имя чата
-                name=f"Основной чат {instance.name}"
-            )
+# Signal for auto-creating department chats moved to employees app
+# See: employees/signals.py - create_main_department_chat()
 
 
 @receiver(pre_save, sender='communications.Chat')
