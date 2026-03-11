@@ -15,9 +15,9 @@ def migrate_comments_forward(apps, schema_editor):
         SELECT DISTINCT
             'comments',
             'Комментарии: ' || substr(p.title, 1, 50),
-            NULL,
-            1,
-            '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}',
+            NULL::bigint,
+            TRUE,
+            '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}'::jsonb,
             (SELECT id FROM django_content_type WHERE app_label='feed' AND model='post'),
             c.post_id
         FROM feed_comment c
@@ -43,10 +43,10 @@ def migrate_comments_forward(apps, schema_editor):
             c.author_id,
             c.text,
             c.created_at,
-            0,
-            CASE WHEN (c.image != '' OR c.attachment != '') THEN 1 ELSE 0 END,
-            0, 0, 0, 0, 0,
-            json_object(
+            FALSE,
+            CASE WHEN (c.image != '' OR c.attachment != '') THEN TRUE ELSE FALSE END,
+            FALSE, FALSE, FALSE, FALSE, FALSE,
+            jsonb_build_object(
                 'legacy_comment_id', c.id,
                 'legacy_model', 'feed.Comment'
             )
