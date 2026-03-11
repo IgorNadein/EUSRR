@@ -815,6 +815,17 @@ class ApiClient {
         });
     }
 
+    async markCategoryAsRead(category: string): Promise<{ status: string; count: number }> {
+        // Получаем список verb'ов для категории
+        const { getVerbsByCategory } = await import('./verbTranslations');
+        const verbs = getVerbsByCategory(category);
+        
+        return this.request('/api/v1/notifications/category/read/', {
+            method: 'POST',
+            body: JSON.stringify({ verbs, category }),
+        });
+    }
+
     // Web Push подписки
     async getVapidPublicKey(): Promise<{ vapid_public_key: string }> {
         return this.request('/api/v1/notifications/push/vapid-key/');

@@ -312,6 +312,65 @@ export function useNotifications() {
     };
   }, []);
 
+  // Синхронизация между экземплярами хука через CustomEvent
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleMarkedRead = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { id } = customEvent.detail;
+      setNotifications(prev =>
+        prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    };
+
+    const handleAllMarkedRead = () => {
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    };
+
+    const handleCategoryMarkedRead = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { category, verbs } = customEvent.detail;
+      
+      // Используем переданные verb'ы для проверки
+      setNotifications(prev => {
+        const updated = prev.map(n => {
+          const isInCategory = verbs.includes(n.verb);
+          return isInCategory ? { ...n, is_read: true } : n;
+        });
+        
+        // Пересчитываем счетчик
+        const newUnreadCount = updated.filter(n => !n.is_read).length;
+        setUnreadCount(newUnreadCount);
+        
+        return updated;
+      });
+    };
+
+    const handleDeleted = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { id, wasUnread } = customEvent.detail;
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      if (wasUnread) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    };
+
+    window.addEventListener('notification-marked-read', handleMarkedRead);
+    window.addEventListener('notifications-all-marked-read', handleAllMarkedRead);
+    window.addEventListener('category-marked-read', handleCategoryMarkedRead);
+    window.addEventListener('notification-deleted', handleDeleted);
+
+    return () => {
+      window.removeEventListener('notification-marked-read', handleMarkedRead);
+      window.removeEventListener('notifications-all-marked-read', handleAllMarkedRead);
+      window.removeEventListener('category-marked-read', handleCategoryMarkedRead);
+      window.removeEventListener('notification-deleted', handleDeleted);
+    };
+  }, []);
+
   const markAsRead = async (id: number) => {
     try {
       await apiClient.markNotificationAsRead(id);
@@ -319,6 +378,13 @@ export function useNotifications() {
         prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
+      
+      // Синхронизация между экземплярами хука через CustomEvent
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('notification-marked-read', { 
+          detail: { id } 
+        }));
+      }
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
@@ -329,6 +395,11 @@ export function useNotifications() {
       await apiClient.markAllNotificationsAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
+      
+      // Синхронизация между экземплярами хука через CustomEvent
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('notifications-all-marked-read'));
+      }
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
     }
@@ -337,11 +408,21 @@ export function useNotifications() {
   const deleteNotification = async (id: number) => {
     try {
       await apiClient.deleteNotification(id);
-      setNotifications(prev => prev.filter(n => n.id !== id));
-      // Если удаленное было непрочитанным, уменьшаем счетчик
+      
+      // Проверяем было ли непрочитанным ДО удаления
       const deletedNotif = notifications.find(n => n.id === id);
-      if (deletedNotif && !deletedNotif.is_read) {
+      const wasUnread = deletedNotif && !deletedNotif.is_read;
+      
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      if (wasUnread) {
         setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+      
+      // Синхронизация между экземплярами хука через CustomEvent
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('notification-deleted', { 
+          detail: { id, wasUnread } 
+        }));
       }
     } catch (err) {
       console.error('Failed to delete notification:', err);
@@ -359,5 +440,52 @@ export function useNotifications() {
     }
   };
 
-  return { notifications, loading, error, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllRead };
+  const markCategoryAsRead = async (category: string) => {
+    try {
+      const result = await apiClient.markCategoryAsRead(category);
+      
+      // Импортируем getVerbCategory, getVerbsByCategory для обработки
+      const { getVerbCategory, getVerbsByCategory } = await import('@/lib/verbTranslations');
+      const categoryVerbs = getVerbsByCategory(category);
+      
+      // Помечаем уведомления этой категории как прочитанные
+      setNotifications(prev =>
+        prev.map(n => {
+          const isInCategory = categoryVerbs.includes(n.verb);
+          return isInCategory ? { ...n, is_read: true } : n;
+        })
+      );
+      
+      // Пересчитываем счетчик непрочитанных
+      setNotifications(prev => {
+        const newUnreadCount = prev.filter(n => !n.is_read).length;
+        setUnreadCount(newUnreadCount);
+        return prev;
+      });
+      
+      // Синхронизация между экземплярами хука через CustomEvent
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('category-marked-read', { 
+          detail: { category, verbs: categoryVerbs } 
+        }));
+      }
+      
+      return result.count;
+    } catch (err) {
+      console.error('Failed to mark category as read:', err);
+      return 0;
+    }
+  };
+
+  return { 
+    notifications, 
+    loading, 
+    error, 
+    unreadCount, 
+    markAsRead, 
+    markAllAsRead, 
+    markCategoryAsRead,
+    deleteNotification, 
+    deleteAllRead 
+  };
 }
