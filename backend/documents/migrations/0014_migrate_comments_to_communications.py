@@ -15,9 +15,9 @@ def migrate_comments_forward(apps, schema_editor):
         SELECT DISTINCT
             'comments',
             'Комментарии: ' || substr(d.title, 1, 50),
-            NULL,
-            1,
-            '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}',
+            NULL::bigint,
+            TRUE,
+            '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}'::jsonb,
             (SELECT id FROM django_content_type WHERE app_label='documents' AND model='document'),
             dc.document_id
         FROM documents_documentcomment dc
@@ -44,11 +44,11 @@ def migrate_comments_forward(apps, schema_editor):
             dc.author_id,
             dc.text,
             dc.created_at,
-            0, 0, 0,
+            FALSE, FALSE, FALSE,
             dc.is_edited,
             CASE WHEN dc.is_edited THEN dc.updated_at ELSE NULL END,
-            0, 0, 0,
-            json_object(
+            FALSE, FALSE, FALSE,
+            jsonb_build_object(
                 'legacy_comment_id', dc.id,
                 'legacy_model', 'documents.DocumentComment'
             )
@@ -82,13 +82,13 @@ def migrate_comments_forward(apps, schema_editor):
             dc.author_id,
             dc.text,
             dc.created_at,
-            0, 0, 0,
+            FALSE, FALSE, FALSE,
             dc.is_edited,
             CASE WHEN dc.is_edited THEN dc.updated_at ELSE NULL END,
-            0, 0, 0,
+            FALSE, FALSE, FALSE,
             parent_msg.id,
             parent_msg.id,
-            json_object(
+            jsonb_build_object(
                 'legacy_comment_id', dc.id,
                 'legacy_model', 'documents.DocumentComment'
             )
@@ -100,7 +100,7 @@ def migrate_comments_forward(apps, schema_editor):
         )
         JOIN communications_message parent_msg ON (
             parent_msg.chat_id = cc.id
-            AND json_extract(parent_msg.system_metadata, '$.legacy_comment_id') = dc.parent_id
+            AND (parent_msg.system_metadata->>'legacy_comment_id')::bigint = dc.parent_id
         )
         WHERE dc.parent_id IS NOT NULL
         AND NOT EXISTS (
