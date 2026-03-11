@@ -71,7 +71,7 @@ def notify_new_message(message):
     
     # Получаем всех участников чата кроме автора
     if chat.type in ['announcement', 'channel', 'department', 'global']:
-        participants = chat.get_participants.exclude(id=author.id)
+        participants = chat.get_participants().exclude(id=author.id)
     else:
         participants = chat.participants.exclude(id=author.id)
     

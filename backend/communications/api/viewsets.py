@@ -19,12 +19,12 @@ from datetime import timezone as dt_tz
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from communications.models import (Chat, ChatMembership, ChatReadState,
+from ..models import (Chat, ChatMembership, ChatReadState,
                                    ChatUserSettings, Message,
                                    MessageAttachment, MessageReaction, Poll,
                                    PollOption, PollVote)
 from communications.serialization import serialize_message
-from communications.utils import _coerce_ts, user_can_access_chat
+from ..utils import _coerce_ts, user_can_access_chat
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery

@@ -123,7 +123,7 @@ def increment_unread_count_on_new_message(sender, instance, created, **kwargs):
     try:
         # Получаем всех участников чата
         chat = instance.chat
-        participants = chat.get_participants.exclude(id=instance.author_id)
+        participants = chat.get_participants().exclude(id=instance.author_id)
         
         # Инкрементируем счетчик для существующих ChatReadState
         # Только для тех, кто еще не прочитал это сообщение

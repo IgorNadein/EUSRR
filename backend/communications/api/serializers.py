@@ -3,12 +3,12 @@ Serializers for Communications API
 """
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from communications.models import (
+from ..models import (
     Chat, Message, MessageAttachment, 
     MessageReaction, Poll, PollOption, PollVote,
     ChatMembership, ChatUserSettings
 )
-from communications.serialization import serialize_message
+from ..serialization import serialize_message
 
 Employee = get_user_model()
 
