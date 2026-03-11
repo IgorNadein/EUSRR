@@ -40,8 +40,12 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
         }
     };
 
-    // Закрытие при клике вне компонента
+    // Закрытие при клике вне компонента (только для desktop варианта)
     useEffect(() => {
+        // Для mobile варианта не используем этот обработчик, 
+        // т.к. панель уведомлений рендерится отдельно в AppShell
+        if (!isOpen || variant === 'mobile') return;
+
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 close();
@@ -50,7 +54,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
 
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isOpen]);
+    }, [isOpen, variant]);
 
     const handleNotificationClick = async (notification: any) => {
         if (!notification.is_read) {
@@ -92,7 +96,10 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                         <div className="flex items-center gap-2">
                             {unreadCount > 0 && (
                                 <button
-                                    onClick={markAllAsRead}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        markAllAsRead();
+                                    }}
                                     className="text-xs text-sky-600 hover:text-sky-700 font-medium"
                                 >
                                     Прочитать все
@@ -100,6 +107,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                             )}
                             <Link
                                 href="/notifications/settings"
+                                onClick={(e) => e.stopPropagation()}
                                 className="p-1 hover:bg-slate-100 rounded"
                                 aria-label="Настройки"
                                 title="Настройки уведомлений"
@@ -107,7 +115,10 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                                 <Settings className="w-4 h-4 text-gray-500" />
                             </Link>
                             <button
-                                onClick={() => close()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    close();
+                                }}
                                 className="p-1 hover:bg-slate-100 rounded"
                                 aria-label="Закрыть"
                             >
@@ -189,6 +200,7 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                     <div className="p-3 border-t border-slate-100 bg-slate-50 text-center">
                         <a
                             href="/notifications"
+                            onClick={(e) => e.stopPropagation()}
                             className="text-xs text-sky-600 hover:text-sky-700 font-medium"
                         >
                             Показать все уведомления
@@ -220,12 +232,19 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                 <h3 className="font-semibold text-sm">Уведомления</h3>
                 <div className="flex items-center gap-2">
                     {unreadCount > 0 && (
-                        <button onClick={markAllAsRead} className="text-xs text-sky-600 hover:text-sky-700 font-medium">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                markAllAsRead();
+                            }} 
+                            className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                        >
                             Прочитать все
                         </button>
                     )}
                     <Link
                         href="/notifications/settings"
+                        onClick={(e) => e.stopPropagation()}
                         className="p-1 hover:bg-slate-100 rounded"
                         aria-label="Настройки"
                         title="Настройки уведомлений"
@@ -244,10 +263,10 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
 
             <div className="overflow-y-auto flex-1">
                 {loading ? (
-                    <div className="p-6 text-center text-gray-500 text-sm">Загрузка...</div>
+                    <div className="p-8 text-center text-gray-500 text-sm">Загрузка...</div>
                 ) : notifications.length === 0 ? (
-                    <div className="p-6 text-center text-gray-500">
-                        <Bell className="w-10 h-10 mx-auto mb-2 opacity-20 text-gray-400" />
+                    <div className="p-8 text-center text-gray-500">
+                        <Bell className="w-12 h-12 mx-auto mb-2 opacity-20 text-gray-400" />
                         <p className="text-sm">Нет уведомлений</p>
                     </div>
                 ) : (
@@ -287,7 +306,13 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
             </div>
 
             <div className="p-2 border-t border-slate-100 bg-slate-50 text-center">
-                <a href="/notifications" className="text-xs text-sky-600 hover:text-sky-700 font-medium">Показать все</a>
+                <a 
+                    href="/notifications" 
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                >
+                    Показать все
+                </a>
             </div>
         </div>
     );

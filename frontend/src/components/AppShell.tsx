@@ -76,6 +76,25 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, [userMenuOpen]);
 
+  // Закрытие панели уведомлений при клике вне
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const notificationButton = document.querySelector('[aria-label="Уведомления"]');
+      const notificationPanel = document.querySelector('.notification-panel-mobile');
+      
+      const insideButton = notificationButton && notificationButton.contains(target);
+      const insidePanel = notificationPanel && notificationPanel.contains(target);
+      
+      if (!insideButton && !insidePanel) {
+        setIsNotificationsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isNotificationsOpen]);
+
   const userInitials = user
     ? `${user.last_name?.[0] || ''}${user.first_name?.[0] || ''}`
     : 'Г';
@@ -226,7 +245,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
 
         {/* Мобильная панель уведомлений */}
         <div
-          className={`overflow-hidden transition-all duration-300 lg:hidden ${
+          className={`notification-panel-mobile overflow-hidden transition-all duration-300 lg:hidden ${
             isNotificationsOpen ? "max-h-[70vh] pb-3" : "max-h-0"
           }`}
         >
