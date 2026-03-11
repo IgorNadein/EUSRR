@@ -1,10 +1,14 @@
 # backend/communications/models.py
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 from django.db.models import Q
 from django.utils import timezone
+
+# DEPRECATED: Will be removed after migration complete
 from employees.models import Department, EmployeeDepartment
 
 Employee = get_user_model()
@@ -86,10 +90,11 @@ class Chat(models.Model):
     ]
 
     type = models.CharField(
-        max_length=16,
+        max_length=32,  # Увеличено с 16 для кастомных типов
         choices=CHAT_TYPE_CHOICES,
         verbose_name="Тип чата",
-        db_index=True
+        db_index=True,
+        help_text="Chat type: private, group, channel, announcement, department, global"
     )
     
     # Новые базовые поля
@@ -119,9 +124,9 @@ class Chat(models.Model):
     )
     
     # Для гибкой настройки участников
-    include_all_employees = models.BooleanField(
+    include_all_users = models.BooleanField(
         default=False,
-        verbose_name="Включить всех сотрудников",
+        verbose_name="Включить всех пользователей",
         help_text="Для анонсов и общих чатов"
     )
     
@@ -140,8 +145,43 @@ class Chat(models.Model):
         verbose_name="Отдел",
         help_text="Указывается только для чатов отдела",
     )
+    
+    # ===== NEW: Universal context (GenericForeignKey) =====
+    # Позволяет привязать чат к ЛЮБОЙ модели (Department, Project, Team, Event, etc.)
+    context_content_type = models.ForeignKey(
+        ContentType,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        verbose_name="Context type",
+        help_text="Type of related object (e.g., Department, Project, Team)"
+    )
+    context_object_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Context object ID"
+    )
+    context_object = GenericForeignKey(
+        'context_content_type',
+        'context_object_id'
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
     is_main = models.BooleanField(default=False, verbose_name="Основной чат")
+    
+    # ===== NEW: Flexible flags & metadata =====
+    flags = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Flags",
+        help_text="Custom flags: {'is_primary': true, 'is_archived': false, etc.}"
+    )
+    extra_data = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Extra data",
+        help_text="Additional chat metadata (extensible)"
+    )
     
     # Новые поля для announcement и channel
     is_blocked = models.BooleanField(
@@ -195,6 +235,8 @@ class Chat(models.Model):
             models.Index(fields=["type", "is_main"]),
             models.Index(fields=["department"]),
             models.Index(fields=["created_at"]),
+            # NEW: Index for GenericForeignKey
+            models.Index(fields=["context_content_type", "context_object_id"], name="chat_context_idx"),
         ]
 
     def clean(self):
@@ -259,37 +301,58 @@ class Chat(models.Model):
         )
         return rs.unread_count if rs else 0
 
-    @property
     def get_participants(self):
         """
-        Возвращает QuerySet участников чата (по типу).
-        Для отдела берём активные связи + руководителя.
+        Возвращает QuerySet участников чата.
+        
+        Использует callback из settings.COMMUNICATIONS_PARTICIPANT_RESOLVER
+        для проектно-специфичной логики (EUSRR: Department, EmployeeDepartment).
+        
+        Fallback логика:
+        - private: M2M participants
+        - global: все активные пользователи
+        - announcement/channel с include_all_users: все активные
+        - иначе: ChatMembership + participants
         """
+        # Попытка использовать callback из settings
+        from django.conf import settings
+        from django.utils.module_loading import import_string
+        
+        resolver_path = getattr(settings, 'COMMUNICATIONS_PARTICIPANT_RESOLVER', None)
+        
+        if resolver_path:
+            try:
+                resolver_func = import_string(resolver_path)
+                result = resolver_func(self)
+                if result is not None:
+                    return result
+            except (ImportError, AttributeError) as e:
+                # Логируем ошибку, но не падаем
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to import participant resolver '{resolver_path}': {e}")
+        
+        # Fallback логика (универсальная, без бизнес-специфики)
         if self.type == "private":
             return self.participants.all()
-        if self.type == "department" and self.department_id:
-            employee_ids = EmployeeDepartment.objects.filter(
-                department_id=self.department_id, is_active=True
-            ).values_list("employee_id", flat=True)
-            return Employee.objects.filter(
-                Q(id__in=employee_ids) | Q(id=self.department.head_id)
-            ).distinct()
+        
         if self.type == "global":
             return Employee.objects.filter(is_active=True)
-        if self.type in ["announcement", "channel"]:
-            # Если include_all_employees - все активные сотрудники
-            if self.include_all_employees:
-                return Employee.objects.filter(is_active=True)
-            # Иначе только явно добавленные через participants или ChatMembership
-            from .models import ChatMembership
-            membership_ids = ChatMembership.objects.filter(
-                chat=self
-            ).values_list("user_id", flat=True)
-            return Employee.objects.filter(
-                Q(id__in=self.participants.values_list('id', flat=True)) |
-                Q(id__in=membership_ids)
-            ).distinct()
-        return Employee.objects.none()
+        
+        if self.type in ["announcement", "channel"] and self.include_all_users:
+            return Employee.objects.filter(is_active=True)
+        
+        # Для group/channel/announcement без флага - явные участники
+        from communications.models import ChatMembership
+        
+        membership_ids = ChatMembership.objects.filter(
+            chat=self
+        ).values_list("user_id", flat=True)
+        
+        return Employee.objects.filter(
+            Q(id__in=self.participants.values_list('id', flat=True)) |
+            Q(id__in=membership_ids)
+        ).distinct()
 
     def __str__(self):
         if self.type == "private":
