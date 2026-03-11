@@ -1,28 +1,14 @@
 # backend\communications\signals.py
 from django.core.files.base import ContentFile
-from django.db.models import F
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from employees.models import Department
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-@receiver(post_save, sender=Department)
-def create_main_department_chat(sender, instance, created, **kwargs):
-    from communications.models import Chat
-
-    if created:
-        if not Chat.objects.filter(
-            type="department", department=instance, is_main=True
-        ).exists():
-            Chat.objects.create(
-                type="department",
-                department=instance,
-                is_main=True,
-                name=f"Основной чат {instance.name}"
-            )
+# NOTE: Project-specific chat creation signals should be in your project's app
+# Example: employees/signals.py - create_main_department_chat()
 
 
 @receiver(pre_save, sender='communications.Chat')
@@ -97,7 +83,7 @@ def increment_unread_count_on_new_message(sender, instance, created, **kwargs):
     try:
         # Получаем всех участников чата
         chat = instance.chat
-        participants = chat.get_participants.exclude(id=instance.author_id)
+        participants = chat.get_participants().exclude(id=instance.author_id)
         
         # Инкрементируем счетчик для существующих ChatReadState
         # Только для тех, кто еще не прочитал это сообщение

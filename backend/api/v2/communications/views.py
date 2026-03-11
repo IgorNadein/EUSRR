@@ -1,5 +1,5 @@
 """Communications API v2 Views."""
-from api.v1.communications.views import (
+from communications.api.viewsets import (
     ChatViewSet as V1ChatViewSet,
     MessageViewSet as V1MessageViewSet,
     PollViewSet as V1PollViewSet,

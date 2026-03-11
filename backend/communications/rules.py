@@ -110,14 +110,14 @@ def is_public_chat(user, chat):
 
 
 @rules.predicate
-def is_department_chat(user, chat):
-    """Чат отдела пользователя"""
-    if chat is None or not hasattr(user, 'department'):
-        return False
+def deprecated_is_department_chat(user, chat):
+    """
+    DEPRECATED: This predicate is deprecated.
+    Use callback resolver pattern via get_participants() instead.
     
-    if hasattr(chat, 'department'):
-        return chat.department == user.department
-    
+    For backward compatibility, always returns False.
+    Configure COMMUNICATIONS_PARTICIPANT_RESOLVER in settings.py.
+    """
     return False
 
 
@@ -364,7 +364,6 @@ from django.db.models import Q
 def get_accessible_chats(user):
     return Chat.objects.filter(
         Q(members=user) |  # Участник чата
-        Q(is_public=True) |  # Публичный чат
-        Q(department=user.department)  # Чат отдела
+        Q(is_public=True)  # Публичный чат
     ).distinct()
 """

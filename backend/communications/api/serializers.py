@@ -3,14 +3,14 @@ Serializers for Communications API
 """
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from communications.models import (
+from ..models import (
     Chat, Message, MessageAttachment, 
     MessageReaction, Poll, PollOption, PollVote,
     ChatMembership, ChatUserSettings
 )
-from communications.serialization import serialize_message
+from ..serialization import serialize_message
 
-Employee = get_user_model()
+User = get_user_model()
 
 
 class ChatUserSettingsSerializer(serializers.ModelSerializer):
@@ -44,11 +44,19 @@ class ChatListSerializer(serializers.ModelSerializer):
     notifications_enabled = serializers.SerializerMethodField()
     last_read_message_id = serializers.SerializerMethodField()
     
+    # NEW: context info
+    context_type = serializers.CharField(source='context_content_type.model', read_only=True)
+    
     class Meta:
         model = Chat
         fields = [
             'id', 'type', 'name', 'description', 'avatar',
-            'created_at', 'is_main', 'department',
+            'created_at',
+            # NEW: universal fields
+            'context_object_id', 'context_type', 'flags', 'extra_data', 'include_all_users',
+            # DEPRECATED: для обратной совместимости
+            'is_main',
+            # Messages & status
             'last_message', 'unread_count', 'participant_names',
             'is_pinned', 'notifications_enabled', 'last_read_message_id'
         ]
@@ -104,7 +112,7 @@ class ChatDetailSerializer(serializers.ModelSerializer):
     """Детальный сериализатор чата"""
     participants = serializers.PrimaryKeyRelatedField(
         many=True, 
-        queryset=Employee.objects.all(),
+        queryset=User.objects.all(),
         required=False
     )
     participant_details = serializers.SerializerMethodField()
@@ -114,17 +122,25 @@ class ChatDetailSerializer(serializers.ModelSerializer):
     notifications_enabled = serializers.SerializerMethodField()
     last_read_message_id = serializers.SerializerMethodField()
     
+    # NEW: context info
+    context_type = serializers.CharField(source='context_content_type.model', read_only=True, allow_null=True)
+    context_app = serializers.CharField(source='context_content_type.app_label', read_only=True, allow_null=True)
+    
     class Meta:
         model = Chat
         fields = [
             'id', 'type', 'name', 'description', 'avatar',
-            'created_by', 'created_at', 'is_main', 
-            'include_all_employees', 'department',
+            'created_by', 'created_at',
+            # NEW: universal fields
+            'context_object_id', 'context_type', 'context_app', 'flags', 'extra_data', 'include_all_users',
+            # DEPRECATED: для обратной совместимости (не удалять до полной миграции клиента)
+            'is_main',
+            # Participants & memberships
             'participants', 'participant_details',
             'memberships', 'user_settings', 'is_pinned', 
             'notifications_enabled', 'last_read_message_id'
         ]
-        read_only_fields = ['created_at', 'created_by']
+        read_only_fields = ['created_at', 'created_by', 'context_type', 'context_app']
     
     def get_participant_details(self, obj):
         """Детали участников"""

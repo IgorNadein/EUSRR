@@ -80,11 +80,14 @@ def group_chat(user1, user2, user3):
 
 @pytest.fixture
 def department_chat(department, user1):
-    """Чат отдела"""
+    """Чат отдела (через GenericFK context_object)"""
+    from django.contrib.contenttypes.models import ContentType
+    dept_ct = ContentType.objects.get_for_model(Department)
     return Chat.objects.create(
-        type="department",
+        type="channel",
         name="Department Chat",
-        department=department,
+        context_content_type=dept_ct,
+        context_object_id=department.id,
         created_by=user1,
     )
 
@@ -1576,20 +1579,23 @@ class TestChatCreation:
         assert chat.participants.count() >= 3
 
     def test_create_department_chat(self, auth_client, user1, department):
-        """Создание чата отдела"""
+        """Создание чата отдела через GenericFK"""
+        from django.contrib.contenttypes.models import ContentType
         url = "/api/v1/communications/chats/"
+        dept_ct = ContentType.objects.get_for_model(Department)
         data = {
-            "type": "department",
+            "type": "channel",
             "name": "Department Chat",
-            "department": department.id,
+            "context_content_type": dept_ct.id,
+            "context_object_id": department.id,
         }
         response = auth_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.data["type"] == "department"
+        assert response.data["type"] == "channel"
 
         chat = Chat.objects.get(id=response.data["id"])
-        assert chat.department_id == department.id
+        assert chat.context_object == department
 
     def test_create_announcement_chat(self, auth_client, user1):
         """Создание чата-объявления"""

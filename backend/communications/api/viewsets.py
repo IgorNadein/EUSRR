@@ -19,12 +19,12 @@ from datetime import timezone as dt_tz
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from communications.models import (Chat, ChatMembership, ChatReadState,
+from ..models import (Chat, ChatMembership, ChatReadState,
                                    ChatUserSettings, Message,
                                    MessageAttachment, MessageReaction, Poll,
                                    PollOption, PollVote)
 from communications.serialization import serialize_message
-from communications.views import _coerce_ts, user_can_access_chat
+from ..utils import _coerce_ts, user_can_access_chat
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Subquery
@@ -44,7 +44,7 @@ from .serializers import (BulkDeleteSerializer, ChatDetailSerializer,
                           ReactionSerializer)
 
 logger = logging.getLogger(__name__)
-Employee = get_user_model()
+User = get_user_model()
 
 
 class ChatViewSet(viewsets.ModelViewSet):
@@ -83,15 +83,14 @@ class ChatViewSet(viewsets.ModelViewSet):
         вместо подзапросов COUNT(*). Это убирает N+1 проблему и ускоряет в ~100x.
         """
         user = self.request.user
+        from django.contrib.contenttypes.models import ContentType
 
         queryset = Chat.objects.filter(
-            Q(participants=user) |
-            Q(department__in=user.departments_links.filter(
-                is_active=True
-            ).values('department')) |
-            Q(include_all_employees=True)
+            Q(participants=user)
+            # include_all_users для глобальных чатов
+            | Q(include_all_users=True)
         ).select_related(
-            'department', 'created_by'
+            'created_by', 'context_content_type'
         ).prefetch_related(
             'participants',
             # Prefetch ChatUserSettings для текущего пользователя
@@ -553,14 +552,12 @@ class MessageViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Сообщения доступные пользователю"""
         user = self.request.user
+        from django.contrib.contenttypes.models import ContentType
 
         # Чаты пользователя
         user_chats = Chat.objects.filter(
-            Q(participants=user) |
-            Q(department__in=user.departments_links.filter(
-                is_active=True
-            ).values('department')) |
-            Q(include_all_employees=True)
+            Q(participants=user)
+            | Q(include_all_users=True)
         )
 
         return Message.objects.filter(
