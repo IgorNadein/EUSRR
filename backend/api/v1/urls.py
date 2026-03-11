@@ -10,8 +10,8 @@ from .schedule.views import (
     ScheduleEventRelationViewSet,
 )
 
-# Communications ViewSets
-from .communications.views import ChatViewSet, MessageViewSet, PollViewSet
+# Communications ViewSets (перенесены в communications.api)
+from communications.api.viewsets import ChatViewSet, MessageViewSet, PollViewSet
 from .documents.views import (
     DocumentViewSet,
     FolderViewSet,

@@ -83,15 +83,28 @@ class ChatViewSet(viewsets.ModelViewSet):
         вместо подзапросов COUNT(*). Это убирает N+1 проблему и ускоряет в ~100x.
         """
         user = self.request.user
+        from django.contrib.contenttypes.models import ContentType
+
+        # Подготовка данных для фильтрации по department
+        dept_ids = list(user.departments_links.filter(
+            is_active=True
+        ).values_list('department_id', flat=True))
+        
+        dept_ct = None
+        if dept_ids:
+            from employees.models import Department
+            dept_ct = ContentType.objects.get_for_model(Department)
 
         queryset = Chat.objects.filter(
-            Q(participants=user) |
-            Q(department__in=user.departments_links.filter(
-                is_active=True
-            ).values('department')) |
-            Q(include_all_employees=True)
+            Q(participants=user)
+            # OLD: department FK (для обратной совместимости)
+            | Q(department__in=dept_ids)
+            # NEW: context_object (GenericFK)
+            | (Q(context_content_type=dept_ct, context_object_id__in=dept_ids) if dept_ct else Q(pk__in=[]))
+            # NEW: include_all_users (renamed from include_all_employees)
+            | Q(include_all_users=True)
         ).select_related(
-            'department', 'created_by'
+            'department', 'created_by', 'context_content_type'
         ).prefetch_related(
             'participants',
             # Prefetch ChatUserSettings для текущего пользователя
@@ -553,14 +566,24 @@ class MessageViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Сообщения доступные пользователю"""
         user = self.request.user
+        from django.contrib.contenttypes.models import ContentType
+
+        # Подготовка данных для фильтрации
+        dept_ids = list(user.departments_links.filter(
+            is_active=True
+        ).values_list('department_id', flat=True))
+        
+        dept_ct = None
+        if dept_ids:
+            from employees.models import Department
+            dept_ct = ContentType.objects.get_for_model(Department)
 
         # Чаты пользователя
         user_chats = Chat.objects.filter(
-            Q(participants=user) |
-            Q(department__in=user.departments_links.filter(
-                is_active=True
-            ).values('department')) |
-            Q(include_all_employees=True)
+            Q(participants=user)
+            | Q(department__in=dept_ids)  # OLD: department FK
+            | (Q(context_content_type=dept_ct, context_object_id__in=dept_ids) if dept_ct else Q(pk__in=[]))  # NEW: GenericFK
+            | Q(include_all_users=True)  # NEW: renamed from include_all_employees
         )
 
         return Message.objects.filter(
