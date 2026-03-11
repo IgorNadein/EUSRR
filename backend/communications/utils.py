@@ -69,7 +69,7 @@ def user_can_access_chat(chat: Chat, user) -> bool:
     
     Args:
         chat: Объект Chat
-        user: Объект User (Employee)
+        user: Объект User
         
     Returns:
         bool: True если пользователь имеет доступ

@@ -20,7 +20,7 @@ from .config import (
     get_chat_name,
 )
 
-Employee = get_user_model()
+User = get_user_model()
 
 
 def get_users_with_notifications_enabled(chat, users) -> dict[int, bool]:
@@ -92,7 +92,7 @@ def notify_new_message(message):
     if mentioned_users:
         for email in mentioned_users:
             try:
-                user = Employee.objects.get(email=email)
+                user = User.objects.get(email=email)
                 if user in participants_list and user.id != author.id:
                     if notification_settings.get(user.id, True):
                         notify.send(
@@ -111,7 +111,7 @@ def notify_new_message(message):
                             }
                         )
                     notified_user_ids.add(user.id)
-            except Employee.DoesNotExist:
+            except User.DoesNotExist:
                 continue
     
     # 2. ОТВЕТЫ НА СООБЩЕНИЯ

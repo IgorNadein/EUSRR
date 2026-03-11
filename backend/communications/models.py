@@ -8,7 +8,7 @@ from django.db import IntegrityError, models
 from django.db.models import Q
 from django.utils import timezone
 
-Employee = get_user_model()
+User = get_user_model()
 
 
 class ChatReadState(models.Model):
@@ -320,10 +320,10 @@ class Chat(models.Model):
             return self.participants.all()
         
         if self.type == "global":
-            return Employee.objects.filter(is_active=True)
+            return User.objects.filter(is_active=True)
         
         if self.type in ["announcement", "channel"] and self.include_all_users:
-            return Employee.objects.filter(is_active=True)
+            return User.objects.filter(is_active=True)
         
         # Для group/channel/announcement без флага - явные участники
         from communications.models import ChatMembership
@@ -332,7 +332,7 @@ class Chat(models.Model):
             chat=self
         ).values_list("user_id", flat=True)
         
-        return Employee.objects.filter(
+        return User.objects.filter(
             Q(id__in=self.participants.values_list('id', flat=True)) |
             Q(id__in=membership_ids)
         ).distinct()

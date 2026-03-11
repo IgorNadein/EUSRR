@@ -10,7 +10,7 @@ from ..models import (
 )
 from ..serialization import serialize_message
 
-Employee = get_user_model()
+User = get_user_model()
 
 
 class ChatUserSettingsSerializer(serializers.ModelSerializer):
@@ -112,7 +112,7 @@ class ChatDetailSerializer(serializers.ModelSerializer):
     """Детальный сериализатор чата"""
     participants = serializers.PrimaryKeyRelatedField(
         many=True, 
-        queryset=Employee.objects.all(),
+        queryset=User.objects.all(),
         required=False
     )
     participant_details = serializers.SerializerMethodField()

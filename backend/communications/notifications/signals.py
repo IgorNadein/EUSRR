@@ -13,7 +13,7 @@ from django.dispatch import receiver
 from ..models import Message, Chat
 from .handlers import notify_new_message, notify_chat_added
 
-Employee = get_user_model()
+User = get_user_model()
 
 
 @receiver(post_save, sender=Message)
@@ -56,7 +56,7 @@ def create_chat_added_notifications(sender, instance, action, pk_set, **kwargs):
     added_by = getattr(chat, 'created_by', None) or chat.participants.first()
     
     # ОПТИМИЗАЦИЯ: Получаем всех новых пользователей одним запросом
-    new_users = Employee.objects.filter(id__in=pk_set)
+    new_users = User.objects.filter(id__in=pk_set)
     
     # Отправляем уведомления через handlers
     notify_chat_added(chat, new_users, added_by=added_by)

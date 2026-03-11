@@ -44,7 +44,7 @@ from .serializers import (BulkDeleteSerializer, ChatDetailSerializer,
                           ReactionSerializer)
 
 logger = logging.getLogger(__name__)
-Employee = get_user_model()
+User = get_user_model()
 
 
 class ChatViewSet(viewsets.ModelViewSet):
