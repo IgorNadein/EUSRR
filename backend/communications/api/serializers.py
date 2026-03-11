@@ -55,7 +55,7 @@ class ChatListSerializer(serializers.ModelSerializer):
             # NEW: universal fields
             'context_object_id', 'context_type', 'flags', 'extra_data', 'include_all_users',
             # DEPRECATED: для обратной совместимости
-            'is_main', 'department',
+            'is_main',
             # Messages & status
             'last_message', 'unread_count', 'participant_names',
             'is_pinned', 'notifications_enabled', 'last_read_message_id'
@@ -134,7 +134,7 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             # NEW: universal fields
             'context_object_id', 'context_type', 'context_app', 'flags', 'extra_data', 'include_all_users',
             # DEPRECATED: для обратной совместимости (не удалять до полной миграции клиента)
-            'is_main', 'department',
+            'is_main',
             # Participants & memberships
             'participants', 'participant_details',
             'memberships', 'user_settings', 'is_pinned', 
