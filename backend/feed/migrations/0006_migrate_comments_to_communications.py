@@ -9,13 +9,15 @@ def migrate_comments_forward(apps, schema_editor):
     # 1. Создаем чаты для постов с комментариями
     schema_editor.execute("""
         INSERT INTO communications_chat (
-            type, name, created_by_id, can_reply, flags,
+            type, name, description, avatar, created_by_id, can_reply, flags,
             context_content_type_id, context_object_id,
             created_at, is_main, is_blocked, include_all_users, extra_data
         )
         SELECT DISTINCT
             'comments',
             'Комментарии: ' || substr(p.title, 1, 50),
+            '',
+            NULL,
             NULL::bigint,
             TRUE,
             '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}'::jsonb,
