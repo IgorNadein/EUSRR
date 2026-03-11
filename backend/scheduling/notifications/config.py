@@ -1,7 +1,7 @@
 """
 Конфигурация уведомлений для django-scheduler.
 """
-from .config import (
+from . import (
     NotificationVerbs,
     MessageTemplates,
     ActionURLs,
