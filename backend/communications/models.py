@@ -80,10 +80,12 @@ class Chat(models.Model):
     CHAT_TYPE_CHOICES = [
         ("private", "Личный"),
         ("group", "Групповой"),
-        ("department", "Отдел"),
         ("channel", "Канал"),
         ("announcement", "Объявления"),
         ("global", "Глобальный"),
+        ("comments", "Комментарии"),
+        # DEPRECATED: проектно-специфичные типы (для обратной совместимости)
+        ("department", "[Legacy] Отдел"),
     ]
 
     type = models.CharField(
@@ -91,7 +93,7 @@ class Chat(models.Model):
         choices=CHAT_TYPE_CHOICES,
         verbose_name="Тип чата",
         db_index=True,
-        help_text="Chat type: private, group, channel, announcement, department, global"
+        help_text="Chat type: private, group, channel, announcement, global, comments. Use 'group' + context_object for domain-specific chats."
     )
     
     # Новые базовые поля
@@ -348,14 +350,18 @@ class Chat(models.Model):
             return f"Личный чат: {names}"
         if self.type == "group":
             return self.name or "Групповой чат"
-        if self.type == "department":
-            # Used context_object (GenericFK)
-            dept = self.context_object if self.context_object else None
-            return f"Чат отдела: {dept or '—'}"
+        if self.type == "comments":
+            # Comments linked to any object via GenericFK
+            context = self.context_object if self.context_object else None
+            return f"Комментарии: {context or self.name or '—'}"
         if self.type == "channel":
             return self.name or "Канал"
         if self.type == "announcement":
             return self.name or "Объявления"
+        if self.type == "department":
+            # LEGACY: Use type='group' + context_object instead
+            dept = self.context_object if self.context_object else None
+            return f"[Legacy] Чат отдела: {dept or '—'}"
         return "Глобальный чат"
 
 
