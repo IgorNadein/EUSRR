@@ -21,6 +21,7 @@ urlpatterns = [
     
     # Массовые операции
     path('read-all/', views.mark_all_as_read, name='mark_all_read'),
+    path('category/read/', views.mark_category_as_read, name='mark_category_read'),
     path('delete-all-read/', views.delete_all_read, name='delete_all_read'),
     
     # Настройки каналов

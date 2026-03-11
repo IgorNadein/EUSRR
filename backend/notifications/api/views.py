@@ -10,8 +10,6 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import models
-from django.conf import settings
 
 from ..models import Notification, UserChannelPreferences
 
@@ -188,6 +186,48 @@ def mark_all_as_read(request):
 
     return Response({
         'status': 'success',
+        'count': count
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_category_as_read(request):
+    """
+    Отметить группу уведомлений по списку verb'ов как прочитанные
+
+    Body:
+        - verbs: список verb'ов для отметки (array)
+        - category: название категории (опционально, для логирования)
+
+    Example:
+        POST /api/v1/notifications/category/read/
+        {
+            "verbs": ["request_new", "request_updated"],
+            "category": "Заявки"
+        }
+    """
+    verbs = request.data.get('verbs', [])
+
+    if not verbs or not isinstance(verbs, list):
+        return Response(
+            {'status': 'error', 'message': 'verbs array is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Отмечаем все уведомления с этими verb'ами
+    queryset = Notification.objects.filter(
+        recipient=request.user,
+        unread=True,
+        deleted=False,
+        verb__in=verbs,
+    )
+
+    count = queryset.mark_all_as_read()
+
+    return Response({
+        'status': 'success',
+        'verbs': verbs,
         'count': count
     })
 

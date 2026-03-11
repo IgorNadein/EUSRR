@@ -242,7 +242,7 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
 
 function LeftNavContent({ onNavigate }: LeftNavContentProps) {
   const pathname = usePathname();
-  const { notifications: notificationsData } = useNotifications();
+  const { notifications: notificationsData, markCategoryAsRead } = useNotifications();
   const notifications = Array.isArray(notificationsData) ? notificationsData : [];
 
   // Подсчет уведомлений по категориям
@@ -251,13 +251,25 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
     
     notifications.forEach((n: any) => {
       // Пропускаем прочитанные
-      if (!n.category || n.is_read) return;
-      const category = getVerbCategory(n.category);
+      if (!n.verb || n.is_read) return;
+      const category = getVerbCategory(n.verb);
       counts[category] = (counts[category] || 0) + 1;
     });
     
     return counts;
   }, [notifications]);
+
+  const handleNavClick = async (category?: string) => {
+    // Помечаем уведомления категории как прочитанные
+    if (category && categoryCounts[category] > 0) {
+      await markCategoryAsRead(category);
+    }
+    
+    // Вызываем callback для закрытия мобильного меню
+    if (onNavigate) {
+      onNavigate();
+    }
+  };
 
   const navLinkClass = (href: string) =>
     `flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-gray-50 ${pathname === href ? "bg-sky-50 text-sky-700 ring-1 ring-sky-100" : "text-gray-700"
@@ -272,7 +284,12 @@ function LeftNavContent({ onNavigate }: LeftNavContentProps) {
           const count = category ? categoryCounts[category] || 0 : 0;
           
           return (
-            <Link key={href} href={href} className={navLinkClass(href)} onClick={onNavigate}>
+            <Link 
+              key={href} 
+              href={href} 
+              className={navLinkClass(href)} 
+              onClick={() => handleNavClick(category)}
+            >
               <Icon size={18} className={navIconClass(href)} />
               <span className="flex-1">{label}</span>
               {count > 0 && (

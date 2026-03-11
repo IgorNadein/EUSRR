@@ -101,6 +101,15 @@ export function getVerbCategory(verb: string): string {
 }
 
 /**
+ * Получить все verb'ы для заданной категории
+ */
+export function getVerbsByCategory(category: string): string[] {
+  return Object.entries(VERB_CATEGORIES)
+    .filter(([_, cat]) => cat === category)
+    .map(([verb, _]) => verb);
+}
+
+/**
  * Получить название для verb (fallback если нет title в notification.data)
  */
 export function getVerbName(verb: string): string {
