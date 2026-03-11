@@ -15,9 +15,9 @@ def migrate_comments_forward(apps, schema_editor):
         SELECT DISTINCT
             'comments',
             'Комментарии к заявке #' || rc.request_id,
-            NULL,
-            1,
-            '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}',
+            NULL::bigint,
+            TRUE,
+            '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}'::jsonb,
             (SELECT id FROM django_content_type WHERE app_label='requests_app' AND model='request'),
             rc.request_id
         FROM requests_app_requestcomment rc
@@ -42,8 +42,8 @@ def migrate_comments_forward(apps, schema_editor):
             rc.author_id,
             rc.text,
             rc.created_at,
-            0, 0, 0, 0, 0, 0, 0,
-            json_object(
+            FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+            jsonb_build_object(
                 'legacy_comment_id', rc.id,
                 'legacy_model', 'requests_app.RequestComment'
             )
