@@ -46,12 +46,15 @@ def check_chat_access():
             participants = chat.participants.all()
             print(f"   Участники (через participants): {[u.username for u in participants]}")
         
-        if chat.type == "department":
-            print(f"   Отдел: {chat.department}")
-            if chat.department:
-                # Используем get_participants для department чатов
-                dept_users = chat.get_participants
-                print(f"   Сотрудники отдела: {[u.username or u.id for u in dept_users[:5]]}")
+        if chat.type == "group" or chat.type == "channel":
+            # Для групповых чатов и каналов показываем участников
+            participants = chat.participants.all()
+            if participants.exists():
+                print(f"   Участники: {[u.username for u in participants[:5]]}")
+            
+            # Для каналов может быть привязан объект через GenericFK
+            if chat.context_object:
+                print(f"   Привязан к: {chat.context_object} (тип: {chat.context_content_type})")
         
         # Проверяем membership
         memberships = ChatMembership.objects.filter(chat=chat)
@@ -61,15 +64,15 @@ def check_chat_access():
         # Проверяем доступ для каждого пользователя
         print(f"\n   Доступ пользователей к этому чату:")
         for user in users[:3]:
-            departments = user.departments
             membership_chat_ids = ChatMembership.objects.filter(
                 user=user
             ).values_list('chat_id', flat=True)
             
             has_access = Chat.objects.filter(
                 Q(type="global")
-                | Q(type="department", department__in=departments)
                 | Q(type="private", participants=user)
+                | Q(type="group", participants=user)
+                | Q(type="channel", participants=user)
                 | Q(id__in=membership_chat_ids)
             ).filter(id=chat.id).exists()
             
@@ -79,15 +82,16 @@ def check_chat_access():
             if not has_access:
                 # Детальная проверка
                 is_global = chat.type == "global"
-                is_dept = chat.type == "department" and departments.filter(id=chat.department_id).exists()
                 is_private = chat.type == "private" and chat.participants.filter(id=user.id).exists()
+                is_group = chat.type == "group" and chat.participants.filter(id=user.id).exists()
+                is_channel = chat.type == "channel" and chat.participants.filter(id=user.id).exists()
                 is_member = chat.id in membership_chat_ids
                 
                 print(f"      - Глобальный: {is_global}")
-                print(f"      - Отдел: {is_dept}")
                 print(f"      - Личный участник: {is_private}")
+                print(f"      - Группа: {is_group}")
+                print(f"      - Канал: {is_channel}")
                 print(f"      - Через membership: {is_member}")
-                print(f"      - Отделы пользователя: {[d.name for d in departments]}")
 
 if __name__ == "__main__":
     check_chat_access()
