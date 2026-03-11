@@ -7,8 +7,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# Signal for auto-creating department chats moved to employees app
-# See: employees/signals.py - create_main_department_chat()
+# NOTE: Project-specific chat creation signals should be in your project's app
+# Example: employees/signals.py - create_main_department_chat()
 
 
 @receiver(pre_save, sender='communications.Chat')

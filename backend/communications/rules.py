@@ -110,21 +110,15 @@ def is_public_chat(user, chat):
 
 
 @rules.predicate
-def is_department_chat(user, chat):
+def deprecated_is_department_chat(user, chat):
     """
-    Чат отдела пользователя.
+    DEPRECATED: This predicate is deprecated.
+    Use callback resolver pattern via get_participants() instead.
     
-    Проверяет context_object (GenericFK) для чатов типа department.
-    Использует get_participants() для проверки доступа.
+    For backward compatibility, always returns False.
+    Configure COMMUNICATIONS_PARTICIPANT_RESOLVER in settings.py.
     """
-    if chat is None:
-        return False
-    
-    if chat.type != "department":
-        return False
-    
-    # Используем get_participants() - поддерживает любую логику определения участников
-    return chat.get_participants().filter(pk=user.pk).exists()
+    return False
 
 
 # -----------------------------------------------------------------------------
@@ -370,8 +364,6 @@ from django.db.models import Q
 def get_accessible_chats(user):
     return Chat.objects.filter(
         Q(members=user) |  # Участник чата
-        Q(is_public=True) |  # Публичный чат
-        # Department чаты через get_participants() (поддерживает GenericFK)
-        Q(type='department')  # Будем проверять через get_participants()
+        Q(is_public=True)  # Публичный чат
     ).distinct()
 """

@@ -64,8 +64,8 @@ def user_can_access_chat(chat: Chat, user) -> bool:
     - global: доступ всем
     - private: только участники (participants)
     - group: участники (participants) или ChatMembership
-    - department: через get_participants() (поддерживает department и context_object)
     - channel/announcement: include_all_users или participants/membership
+    - comments: participants/membership or callback
     
     Args:
         chat: Объект Chat
@@ -90,11 +90,7 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         in_membership = ChatMembership.objects.filter(chat=chat, user=user).exists()
         return in_participants or in_membership
 
-    if chat.type == "department":
-        # Проверяем через get_participants() (поддерживает и department, и context_object)
-        return chat.get_participants().filter(pk=user.pk).exists()
-
-    if chat.type in ("channel", "announcement"):
+    if chat.type in ("channel", "announcement", "comments"):
         # Для каналов и объявлений может быть include_all_users или membership
         if chat.include_all_users:
             return user.is_active

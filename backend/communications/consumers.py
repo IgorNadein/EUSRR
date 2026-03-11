@@ -543,17 +543,6 @@ class ChatConsumerMixin:
         """Получить ID всех доступных чатов пользователя"""
         from django.contrib.contenttypes.models import ContentType
         
-        departments = user.departments.all()
-        dept_ids = list(departments.values_list('id', flat=True))
-        
-        # GenericFK support для department чатов
-        dept_ct = None
-        if dept_ids:
-            try:
-                dept_ct = ContentType.objects.get(app_label='employees', model='department')
-            except ContentType.DoesNotExist:
-                pass
-        
         # Получаем ID через membership
         membership_chat_ids = list(
             ChatMembership.objects.filter(user=user).values_list('chat_id', flat=True)
@@ -562,9 +551,9 @@ class ChatConsumerMixin:
         chat_ids = list(
             Chat.objects.filter(
                 Q(type="global")
-                | (Q(type="department", context_content_type=dept_ct, context_object_id__in=dept_ids) if dept_ct else Q(pk__in=[]))  # GenericFK
                 | Q(type="private", participants=user)
                 | Q(id__in=membership_chat_ids)
+                | Q(include_all_users=True)
             ).values_list("id", flat=True).distinct()
         )
         
@@ -601,11 +590,7 @@ class ChatConsumerMixin:
                 or ChatMembership.objects.filter(chat=chat, user=user).exists()
             )
         
-        if chat.type == "department":
-            # Используем get_participants() - поддерживает GenericFK
-            return chat.get_participants().filter(pk=user.pk).exists()
-        
-        if chat.type in ("channel", "announcement"):
+        if chat.type in ("channel", "announcement", "comments"):
             if chat.include_all_users:
                 return user.is_active
             return (

@@ -85,24 +85,8 @@ class ChatViewSet(viewsets.ModelViewSet):
         user = self.request.user
         from django.contrib.contenttypes.models import ContentType
 
-        # Подготовка данных для фильтрации по department через GenericFK
-        dept_ids = list(user.departments_links.filter(
-            is_active=True
-        ).values_list('department_id', flat=True))
-        
-        # GenericFK support для department чатов
-        dept_ct = None
-        if dept_ids:
-            # Получаем ContentType динамически без импорта Department
-            try:
-                dept_ct = ContentType.objects.get(app_label='employees', model='department')
-            except ContentType.DoesNotExist:
-                pass
-
         queryset = Chat.objects.filter(
             Q(participants=user)
-            # GenericFK context_object для department чатов
-            | (Q(context_content_type=dept_ct, context_object_id__in=dept_ids) if dept_ct else Q(pk__in=[]))
             # include_all_users для глобальных чатов
             | Q(include_all_users=True)
         ).select_related(
@@ -570,23 +554,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         user = self.request.user
         from django.contrib.contenttypes.models import ContentType
 
-        # Подготовка данных для фильтрации
-        dept_ids = list(user.departments_links.filter(
-            is_active=True
-        ).values_list('department_id', flat=True))
-        
-        # GenericFK support для department чатов
-        dept_ct = None
-        if dept_ids:
-            try:
-                dept_ct = ContentType.objects.get(app_label='employees', model='department')
-            except ContentType.DoesNotExist:
-                pass
-
         # Чаты пользователя
         user_chats = Chat.objects.filter(
             Q(participants=user)
-            | (Q(context_content_type=dept_ct, context_object_id__in=dept_ids) if dept_ct else Q(pk__in=[]))  # GenericFK
             | Q(include_all_users=True)
         )
 

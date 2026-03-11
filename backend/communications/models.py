@@ -84,8 +84,6 @@ class Chat(models.Model):
         ("announcement", "Объявления"),
         ("global", "Глобальный"),
         ("comments", "Комментарии"),
-        # DEPRECATED: проектно-специфичные типы (для обратной совместимости)
-        ("department", "[Legacy] Отдел"),
     ]
 
     type = models.CharField(
@@ -138,15 +136,14 @@ class Chat(models.Model):
     )
     
     # ===== Universal context (GenericForeignKey) =====
-    # REMOVED: department FK (replaced by context_object)
-    # Позволяет привязать чат к ЛЮБОЙ модели (Department, Project, Team, Event, etc.)
+    # Позволяет привязать чат к ЛЮБОЙ модели (Project, Team, Event, Document, etc.)
     context_content_type = models.ForeignKey(
         ContentType,
         null=True,
         blank=True,
         on_delete=models.CASCADE,
         verbose_name="Context type",
-        help_text="Type of related object (e.g., Department, Project, Team)"
+        help_text="Type of related object (e.g., Project, Team, Event, Document)"
     )
     context_object_id = models.PositiveIntegerField(
         null=True,
@@ -358,10 +355,6 @@ class Chat(models.Model):
             return self.name or "Канал"
         if self.type == "announcement":
             return self.name or "Объявления"
-        if self.type == "department":
-            # LEGACY: Use type='group' + context_object instead
-            dept = self.context_object if self.context_object else None
-            return f"[Legacy] Чат отдела: {dept or '—'}"
         return "Глобальный чат"
 
 
