@@ -10,7 +10,8 @@ def migrate_comments_forward(apps, schema_editor):
     schema_editor.execute("""
         INSERT INTO communications_chat (
             type, name, created_by_id, can_reply, flags,
-            context_content_type_id, context_object_id
+            context_content_type_id, context_object_id,
+            created_at, is_main, is_blocked, include_all_users, extra_data
         )
         SELECT DISTINCT
             'comments',
@@ -19,7 +20,12 @@ def migrate_comments_forward(apps, schema_editor):
             TRUE,
             '{"allow_replies": true, "allow_reactions": true, "allow_attachments": true, "allow_editing": true}'::jsonb,
             (SELECT id FROM django_content_type WHERE app_label='feed' AND model='post'),
-            c.post_id
+            c.post_id,
+            NOW(),
+            FALSE,
+            FALSE,
+            FALSE,
+            '{}'::jsonb
         FROM feed_comment c
         JOIN feed_post p ON p.id = c.post_id
         WHERE NOT EXISTS (
