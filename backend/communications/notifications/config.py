@@ -144,8 +144,11 @@ def get_chat_name(chat) -> str:
     if chat.type == 'global':
         return 'Глобальный чат'
     
-    if chat.type == 'department' and chat.department:
-        return f'Чат отдела: {chat.department.name}'
+    if chat.type == 'department':
+        # Проверяем context_object (GenericFK) или старое поле department
+        dept = chat.context_object if hasattr(chat, 'context_object') and chat.context_object else getattr(chat, 'department', None)
+        if dept:
+            return f'Чат отдела: {dept.name}'
     
     if chat.type == 'private':
         # Для приватного чата можно вернуть имена участников

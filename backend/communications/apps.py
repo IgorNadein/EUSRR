@@ -12,8 +12,26 @@ class CommunicationsConfig(AppConfig):
         import communications.rules  # django-rules: регистрация предикатов и правил доступа
         
         def create_main_global_chat(sender, **kwargs):
+            """
+            Создает главный глобальный чат при первом запуске.
+            
+            Использует flags['is_primary'] вместо is_main.
+            Для обратной совместимости также устанавливает is_main=True.
+            """
             from communications.models import Chat
+            from django.db.models import Q
 
-            if not Chat.objects.filter(type="global", is_main=True).exists():
-                Chat.objects.create(type="global", is_main=True)
+            # Проверяем по обоим полям (старому и новому)
+            if not Chat.objects.filter(
+                Q(type="global") & (
+                    Q(is_main=True) | Q(flags__is_primary=True)
+                )
+            ).exists():
+                Chat.objects.create(
+                    type="global",
+                    # NEW: flags
+                    flags={'is_primary': True},
+                    # DEPRECATED: для обратной совместимости
+                    is_main=True
+                )
 

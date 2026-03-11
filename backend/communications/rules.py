@@ -111,12 +111,25 @@ def is_public_chat(user, chat):
 
 @rules.predicate
 def is_department_chat(user, chat):
-    """Чат отдела пользователя"""
+    """
+    Чат отдела пользователя.
+    
+    Проверяет как старое поле department (DEPRECATED), 
+    так и новое context_object (GenericFK).
+    """
     if chat is None or not hasattr(user, 'department'):
         return False
     
-    if hasattr(chat, 'department'):
-        return chat.department == user.department
+    # 1. Проверяем старое поле department (для обратной совместимости)
+    if hasattr(chat, 'department') and chat.department:
+        if chat.department == user.department:
+            return True
+    
+    # 2. Проверяем новое поле context_object (GenericFK)
+    if hasattr(chat, 'context_object') and chat.context_object:
+        from employees.models import Department
+        if isinstance(chat.context_object, Department):
+            return chat.context_object == user.department
     
     return False
 

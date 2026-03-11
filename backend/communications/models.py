@@ -366,7 +366,9 @@ class Chat(models.Model):
         if self.type == "group":
             return self.name or "Групповой чат"
         if self.type == "department":
-            return f"Чат отдела: {self.department or '—'}"
+            # Проверяем context_object (GenericFK) или старое поле department
+            dept = self.context_object if self.context_object else self.department
+            return f"Чат отдела: {dept or '—'}"
         if self.type == "channel":
             return self.name or "Канал"
         if self.type == "announcement":

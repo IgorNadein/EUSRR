@@ -76,14 +76,15 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         print(f"[CHAT DEBUG] Group chat, participants={in_participants}, membership={in_membership}, result={result}")
         return result
 
-    if chat.type == "department" and chat.department_id:
-        result = chat.get_participants.filter(pk=user.pk).exists()
+    if chat.type == "department":
+        # Проверяем через get_participants() (поддерживает и department, и context_object)
+        result = chat.get_participants().filter(pk=user.pk).exists()
         print(f"[CHAT DEBUG] Department chat, result={result}")
         return result
 
     if chat.type in ("channel", "announcement"):
-        # Для каналов и объявлений может быть include_all или membership
-        if chat.include_all_employees:
+        # Для каналов и объявлений может быть include_all_users или membership
+        if chat.include_all_users:
             return user.is_active
         # Проверяем и participants и membership для гибкости
         result = (
@@ -136,14 +137,21 @@ class ChatListView(LoginRequiredMixin, ListView):
         # Получаем ID чатов, где пользователь является участником
         # через membership
         from communications.models import ChatMembership
+        from django.contrib.contenttypes.models import ContentType
+        
         membership_chat_ids = ChatMembership.objects.filter(
             user=user
         ).values_list('chat_id', flat=True)
+        
+        # Для department: проверяем и старое поле department, и новое context_object
+        dept_ct = ContentType.objects.get_for_model(departments.model)
+        dept_ids = list(departments.values_list('id', flat=True))
 
         qs = (
             Chat.objects.filter(
                 Q(type="global")
-                | Q(type="department", department__in=departments)
+                | Q(type="department", department__in=departments)  # старое поле
+                | Q(type="department", context_content_type=dept_ct, context_object_id__in=dept_ids)  # новое поле
                 | Q(type="private", participants=user)
                 | Q(id__in=membership_chat_ids)  # group/channel/announcement
             )
@@ -229,6 +237,8 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
 
         # Получаем ID чатов через membership
         from communications.models import ChatMembership
+        from django.contrib.contenttypes.models import ContentType
+        
         membership_chat_ids = list(
             ChatMembership.objects.filter(user=user).values_list('chat_id', flat=True)
         )
@@ -241,10 +251,14 @@ class ChatDetailView(LoginRequiredMixin, DetailView, FormView):
             f"User departments: {list(departments.values_list('id', flat=True))}, "
             f"membership_chat_ids: {membership_chat_ids}"
         )
+        
+        # Для department: проверяем и старое поле, и новое
+        dept_ct = ContentType.objects.get_for_model(departments.model)
 
         qs = Chat.objects.filter(
             Q(type="global")
-            | Q(type="department", department__in=departments)
+            | Q(type="department", department__in=departments)  # старое поле
+            | Q(type="department", context_content_type=dept_ct, context_object_id__in=dept_ids)  # новое поле
             | Q(type="private", participants=user)
             | Q(id__in=membership_chat_ids)
         ).distinct()
@@ -470,11 +484,12 @@ def chat_mark_read(request, pk: int):
             return True
         if c.type in ("private", "group"):  # Групповые и личные чаты
             return c.participants.filter(pk=u.pk).exists()
-        if c.type == "department" and c.department_id:
-            return c.get_participants.filter(pk=u.pk).exists()
+        if c.type == "department":
+            # Используем get_participants() - поддерживает и department, и context_object
+            return c.get_participants().filter(pk=u.pk).exists()
         if c.type in ("channel", "announcement"):
-            # Для каналов и объявлений проверяем participants или include_all
-            if c.include_all_employees:
+            # Для каналов и объявлений проверяем participants или include_all_users
+            if c.include_all_users:
                 return u.is_active
             return c.participants.filter(pk=u.pk).exists()
         return False
