@@ -186,16 +186,14 @@ export function NotificationCenter({ variant = 'default', isOpen: externalIsOpen
                     </div>
 
                     {/* Футер */}
-                    {notifications.length > 0 && (
-                        <div className="p-3 border-t border-slate-100 bg-slate-50 text-center">
-                            <a
-                                href="/notifications"
-                                className="text-xs text-sky-600 hover:text-sky-700 font-medium"
-                            >
-                                Показать все уведомления
-                            </a>
-                        </div>
-                    )}
+                    <div className="p-3 border-t border-slate-100 bg-slate-50 text-center">
+                        <a
+                            href="/notifications"
+                            className="text-xs text-sky-600 hover:text-sky-700 font-medium"
+                        >
+                            Показать все уведомления
+                        </a>
+                    </div>
                 </div>
             )}
         </div>
@@ -288,11 +286,9 @@ export function NotificationPanel({ onClose }: { onClose?: () => void }) {
                 )}
             </div>
 
-            {notifications.length > 0 && (
-                <div className="p-2 border-t border-slate-100 bg-slate-50 text-center">
-                    <a href="/notifications" className="text-xs text-sky-600 hover:text-sky-700 font-medium">Показать все</a>
-                </div>
-            )}
+            <div className="p-2 border-t border-slate-100 bg-slate-50 text-center">
+                <a href="/notifications" className="text-xs text-sky-600 hover:text-sky-700 font-medium">Показать все</a>
+            </div>
         </div>
     );
 }
