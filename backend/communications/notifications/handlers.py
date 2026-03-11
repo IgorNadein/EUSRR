@@ -82,12 +82,21 @@ def notify_new_message(message):
     2. Ответы на сообщения - средний приоритет
     3. Обычные сообщения в чате - низкий приоритет
     
+    Специальная обработка для чатов комментариев (type='comments'):
+    - Уведомляет автора объекта (поста/документа/заявки)
+    - Уведомляет других участников дискуссии
+    
     Args:
         message: Экземпляр модели Message
     """
     chat = message.chat
     author = message.author
     content = message.content
+    
+    # Специальная обработка для чатов комментариев
+    if chat.type == 'comments':
+        _notify_comment(message)
+        return
     
     # Получаем всех участников чата кроме автора
     if chat.type in ['announcement', 'channel', 'global']:
@@ -199,6 +208,92 @@ def notify_new_message(message):
             description=truncate_message(content, max_length),
             action_url=ActionURLs.chat_detail(chat.id),
             data={**metadata, 'title': title},
+        )
+
+
+def _notify_comment(message):
+    """
+    Отправляет уведомления о новом комментарии к объекту.
+    
+    Уведомляет:
+    1. Автора объекта (Post/Document/Request)
+    2. Других участников обсуждения (кто оставлял комментарии)
+    
+    Args:
+        message: Экземпляр модели Message (в чате type='comments')
+    """
+    chat = message.chat
+    author = message.author
+    content = message.content
+    
+    if not chat.context_object:
+        # Нет привязанного объекта - обычная обработка
+        return
+    
+    recipients_set = set()
+    context_obj = chat.context_object
+    
+    # Определяем автора объекта в зависимости от типа
+    object_author = None
+    object_url = None
+    object_type = "объекта"
+    
+    # Проверяем тип объекта через модель
+    model_name = context_obj.__class__.__name__
+    
+    if model_name == 'Post':
+        object_author = getattr(context_obj, 'author', None)
+        object_url = f"/feed/#{context_obj.id}"
+        object_type = "публикации"
+    elif model_name == 'Document':
+        object_author = getattr(context_obj, 'uploaded_by', None)
+        object_url = f"/documents/{context_obj.id}/"
+        object_type = "документа"
+    elif hasattr(context_obj, 'employee'):  # Request
+        object_author = getattr(context_obj, 'employee', None)
+        object_url = f"/requests/{context_obj.id}/"
+        object_type = "заявки"
+    
+    # 1. Уведомляем автора объекта
+    if object_author and object_author.id != author.id:
+        recipients_set.add(object_author)
+    
+    # 2. Уведомляем всех, кто участвовал в обсуждении
+    from ..models import Message
+    previous_commenters = Message.objects.filter(
+        chat=chat,
+        is_deleted=False
+    ).exclude(
+        author_id=author.id
+    ).values_list('author_id', flat=True).distinct()
+    
+    if previous_commenters:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        recipients_set.update(
+            User.objects.filter(id__in=previous_commenters, is_active=True)
+        )
+    
+    # Отправляем уведомления
+    author_name = author.get_full_name() or author.username
+    
+    for recipient in recipients_set:
+        _send_notification(
+            sender=author,
+            recipient=recipient,
+            verb='commented',
+            action_object=message,
+            target=context_obj,
+            description=truncate_message(content, 100),
+            action_url=object_url or f"/chat/{chat.id}/",
+            data={
+                'title': f'{author_name} оставил комментарий к {object_type}',
+                'chat_id': chat.id,
+                'message_id': message.id,
+                'author_id': author.id,
+                'object_type': model_name,
+                'object_id': context_obj.id,
+            }
         )
 
 
