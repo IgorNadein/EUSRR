@@ -76,6 +76,11 @@ class Command(BaseCommand):
             help='Проверить видимость чатов для конкретного пользователя (как в API)',
         )
         parser.add_argument(
+            '--migrate-memberships',
+            action='store_true',
+            help='Создать ChatMembership для всех участников из participants',
+        )
+        parser.add_argument(
             '--export',
             type=str,
             metavar='TYPE',
@@ -105,6 +110,8 @@ class Command(BaseCommand):
             self.show_stats()
         elif options['check_visibility']:
             self.check_visibility(options['check_visibility'])
+        elif options['migrate_memberships']:
+            self.migrate_memberships(no_confirm=options['no_confirm'])
         elif options['export']:
             self.export_chats(options['export'], options['output'])
         elif options['list_type']:
@@ -127,7 +134,7 @@ class Command(BaseCommand):
         elif options['delete']:
             self.delete_chat(options['delete'], no_confirm=options['no_confirm'])
         else:
-            self.stdout.write(self.style.ERROR('Укажите действие: --stats, --check-visibility, --export, --list-type, --find, --check, --fix, --change-type, --cleanup или --delete'))
+            self.stdout.write(self.style.ERROR('Укажите действие: --stats, --check-visibility, --migrate-memberships, --export, --list-type, --find, --check, --fix, --change-type, --cleanup или --delete'))
             self.stdout.write('Используйте --help для справки')
 
     def show_stats(self):
@@ -269,6 +276,65 @@ class Command(BaseCommand):
             for membership in inactive_memberships[:10]:
                 chat = membership.chat
                 self.stdout.write(f'    • ID:{chat.id} {chat.name or "[без названия]"} (тип: {chat.type}, роль: {membership.role})')
+
+    def migrate_memberships(self, no_confirm=False):
+        """Создает ChatMembership для всех участников из participants"""
+        from communications.models import ChatMembership
+        
+        self.stdout.write(self.style.SUCCESS('🔄 Миграция participants → ChatMembership\n'))
+        
+        # Находим все чаты с участниками
+        chats_with_participants = Chat.objects.prefetch_related('participants').all()
+        
+        total_chats = 0
+        total_created = 0
+        total_existing = 0
+        total_participants = 0
+        
+        for chat in chats_with_participants:
+            participants = chat.participants.all()
+            if not participants.exists():
+                continue
+            
+            total_chats += 1
+            chat_created = 0
+            
+            for participant in participants:
+                total_participants += 1
+                
+                # Проверяем, есть ли уже membership
+                membership, created = ChatMembership.objects.get_or_create(
+                    chat=chat,
+                    user=participant,
+                    defaults={
+                        'role': 'admin' if chat.created_by_id == participant.id else 'member',
+                        'is_active': True,
+                        'invited_by': chat.created_by,
+                    }
+                )
+                
+                if created:
+                    total_created += 1
+                    chat_created += 1
+                else:
+                    total_existing += 1
+                    # Если membership существует, но неактивный - активируем
+                    if not membership.is_active:
+                        membership.is_active = True
+                        membership.save(update_fields=['is_active'])
+                        self.stdout.write(f'    ✅ Активирован ID:{chat.id} для пользователя {participant.email}')
+            
+            if chat_created > 0:
+                self.stdout.write(f'  📁 Чат ID:{chat.id} "{chat.name or "[без названия]"}" → создано {chat_created} memberships')
+        
+        self.stdout.write(self.style.SUCCESS(f'\n✅ Миграция завершена:'))
+        self.stdout.write(f'   Обработано чатов: {total_chats}')
+        self.stdout.write(f'   Обработано участников: {total_participants}')
+        self.stdout.write(f'   Создано memberships: {total_created}')
+        self.stdout.write(f'   Уже существовали: {total_existing}')
+        
+        if total_created > 0:
+            self.stdout.write(self.style.NOTICE(f'\n💡 Теперь эти чаты будут видны в API'))
 
     def export_chats(self, chat_type, output_file):
         """Экспортирует чаты указанного типа в JSON файл"""
