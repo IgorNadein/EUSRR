@@ -59,6 +59,17 @@ class Command(BaseCommand):
             help='Удалить конкретный чат по ID',
         )
         parser.add_argument(
+            '--stats',
+            action='store_true',
+            help='Показать статистику чатов по типам',
+        )
+        parser.add_argument(
+            '--list-type',
+            type=str,
+            metavar='TYPE',
+            help='Показать все чаты указанного типа (например: private)',
+        )
+        parser.add_argument(
             '--target-type',
             type=str,
             default='group',
@@ -72,7 +83,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        if options['find']:
+        if options['stats']:
+            self.show_stats()
+        elif options['list_type']:
+            self.list_chats_by_type(options['list_type'])
+        elif options['find']:
             self.find_invalid_chats()
         elif options['check']:
             self.check_chat(options['check'])
@@ -90,8 +105,84 @@ class Command(BaseCommand):
         elif options['delete']:
             self.delete_chat(options['delete'], no_confirm=options['no_confirm'])
         else:
-            self.stdout.write(self.style.ERROR('Укажите действие: --find, --check, --fix, --change-type, --cleanup или --delete'))
+            self.stdout.write(self.style.ERROR('Укажите действие: --stats, --list-type, --find, --check, --fix, --change-type, --cleanup или --delete'))
             self.stdout.write('Используйте --help для справки')
+
+    def show_stats(self):
+        """Показывает статистику чатов по типам"""
+        from django.db.models import Count
+        
+        total_chats = Chat.objects.count()
+        self.stdout.write(self.style.SUCCESS(f'📊 Статистика чатов (всего: {total_chats})\n'))
+        
+        # Статистика по типам
+        stats = Chat.objects.values('type').annotate(count=Count('id')).order_by('-count')
+        
+        type_labels = {
+            'private': 'Личные диалоги',
+            'group': 'Групповые чаты',
+            'channel': 'Каналы',
+            'announcement': 'Объявления',
+            'global': 'Глобальные',
+            'comments': 'Комментарии',
+        }
+        
+        valid_count = 0
+        invalid_count = 0
+        
+        for stat in stats:
+            chat_type = stat['type']
+            count = stat['count']
+            label = type_labels.get(chat_type, f'❌ {chat_type} (некорректный)')
+            
+            if chat_type in VALID_TYPES:
+                valid_count += count
+                self.stdout.write(f'  ✅ {label}: {count}')
+            else:
+                invalid_count += count
+                self.stdout.write(self.style.ERROR(f'  ❌ {label}: {count}'))
+        
+        if invalid_count > 0:
+            self.stdout.write(self.style.WARNING(f'\n⚠️  Найдено {invalid_count} чатов с некорректными типами'))
+            self.stdout.write(self.style.NOTICE('Для исправления используйте: python manage.py check_chats --fix'))
+        else:
+            self.stdout.write(self.style.SUCCESS(f'\n✅ Все {valid_count} чатов имеют корректные типы'))
+
+    def list_chats_by_type(self, chat_type):
+        """Показывает все чаты указанного типа"""
+        chats = Chat.objects.filter(type=chat_type).order_by('-created_at')
+        
+        if not chats.exists():
+            self.stdout.write(self.style.WARNING(f'⚠️  Чатов типа "{chat_type}" не найдено'))
+            return
+        
+        count = chats.count()
+        type_label = {
+            'private': 'Личных диалогов',
+            'group': 'Групповых чатов',
+            'channel': 'Каналов',
+            'announcement': 'Объявлений',
+            'global': 'Глобальных чатов',
+            'comments': 'Чатов комментариев',
+        }.get(chat_type, f'Чатов типа "{chat_type}"')
+        
+        self.stdout.write(self.style.SUCCESS(f'📋 {type_label}: {count}\n'))
+        
+        for chat in chats:
+            participants_count = chat.participants.count()
+            messages_count = chat.messages.count() if hasattr(chat, 'messages') else 'N/A'
+            
+            self.stdout.write(f'ID {chat.id}: {chat.name}')
+            self.stdout.write(f'  Участников: {participants_count}')
+            self.stdout.write(f'  Сообщений: {messages_count}')
+            self.stdout.write(f'  Создан: {chat.created_at.strftime("%Y-%m-%d %H:%M")}')
+            if hasattr(chat, 'last_message') and chat.last_message:
+                last_msg_date = getattr(chat.last_message, 'created_at', None)
+                if last_msg_date:
+                    self.stdout.write(f'  Последнее сообщение: {last_msg_date.strftime("%Y-%m-%d %H:%M")}')
+            self.stdout.write('')
+        
+        self.stdout.write(self.style.SUCCESS(f'Всего найдено: {count} чатов'))
 
     def find_invalid_chats(self):
         """Находит все чаты с некорректными типами"""
