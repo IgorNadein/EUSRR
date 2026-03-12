@@ -85,6 +85,61 @@ cd backend
 
 ---
 
+## check_chats
+
+Проверка и очистка чатов с некорректными типами.
+
+### Примеры использования
+
+#### Найти все чаты с некорректными типами
+
+```bash
+.venv/bin/python manage.py check_chats --find
+```
+
+#### Проверить конкретный чат
+
+```bash
+.venv/bin/python manage.py check_chats --check 6
+```
+
+#### Удалить все чаты с некорректными типами (с подтверждением)
+
+```bash
+.venv/bin/python manage.py check_chats --cleanup
+```
+
+#### Удалить все чаты с некорректными типами (без подтверждения)
+
+```bash
+.venv/bin/python manage.py check_chats --cleanup --no-confirm
+```
+
+#### Удалить конкретный чат
+
+```bash
+.venv/bin/python manage.py check_chats --delete 6
+```
+
+### Допустимые типы чатов
+
+- `private` - Личный диалог
+- `group` - Групповой чат
+- `channel` - Канал
+- `announcement` - Объявления
+- `global` - Глобальный чат
+- `comments` - Комментарии
+
+### Опции
+
+- `--find` - Найти все чаты с некорректными типами
+- `--check CHAT_ID` - Проверить конкретный чат по ID
+- `--cleanup` - Удалить все чаты с некорректными типами
+- `--delete CHAT_ID` - Удалить конкретный чат по ID
+- `--no-confirm` - Не запрашивать подтверждение при удалении
+
+---
+
 ## Другие команды
 
 - `init_reactions.py` - Инициализация реакций

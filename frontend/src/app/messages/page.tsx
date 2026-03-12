@@ -5,7 +5,7 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
 import type { Chat } from "@/types/api";
-import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Upload, Image as ImageIcon } from "lucide-react";
+import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Upload, Image as ImageIcon, Megaphone, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
@@ -109,6 +109,27 @@ function getChatInitials(chat: Chat, currentUserId?: number, currentUser?: { fir
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() || "")
     .join("") || "Ч";
+}
+
+function getChatTypeIcon(chat: Chat) {
+  const chatType = chat.chat_type || chat.type;
+  switch (chatType) {
+    case 'global':
+      return <Globe size={10} className="text-white" />;
+    case 'channel':
+      return <Radio size={10} className="text-white" />;
+    case 'group':
+      return <Users size={10} className="text-white" />;
+    case 'private':
+    case 'direct':
+      return <MessageCircle size={10} className="text-white" />;
+    case 'announcement':
+      return <Megaphone size={10} className="text-white" />;
+    case 'comments':
+      return <MessageSquare size={10} className="text-white" />;
+    default:
+      return null;
+  }
 }
 
 function formatTime(date?: string): string {
@@ -685,9 +706,15 @@ export default function MessagesPage() {
                           getChatInitials(chat, currentUserId, currentUserForMatch)
                         )}
                       </div>
+                      {/* Иконка типа чата */}
+                      <span className="absolute -bottom-0.5 -left-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 ring-2 ring-white">
+                        {getChatTypeIcon(chat)}
+                      </span>
+                      {/* Онлайн-статус */}
                       {isChatOnline(chat, user?.id) ? (
                         <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
                       ) : null}
+                      {/* Счетчик непрочитанных */}
                       {(chat.unread_count ?? 0) > 0 ? (
                         <span className="absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-white">
                           {chat.unread_count! > 99 ? '99+' : chat.unread_count}
