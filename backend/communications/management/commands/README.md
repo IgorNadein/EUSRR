@@ -91,6 +91,24 @@ cd backend
 
 ### Примеры использования
 
+#### Показать статистику чатов по типам
+
+```bash
+.venv/bin/python manage.py check_chats --stats
+```
+
+#### Показать все личные чаты
+
+```bash
+.venv/bin/python manage.py check_chats --list-type private
+```
+
+#### Показать все групповые чаты
+
+```bash
+.venv/bin/python manage.py check_chats --list-type group
+```
+
 #### Найти все чаты с некорректными типами
 
 ```bash
@@ -155,6 +173,8 @@ cd backend
 
 ### Опции
 
+- `--stats` - Показать статистику чатов по типам
+- `--list-type TYPE` - Показать все чаты указанного типа (например: private, group)
 - `--find` - Найти все чаты с некорректными типами
 - `--check CHAT_ID` - Проверить конкретный чат по ID
 - `--fix` - Исправить все чаты с некорректными типами (по умолчанию заменяет на group)
