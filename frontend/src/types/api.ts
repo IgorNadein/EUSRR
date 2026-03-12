@@ -358,17 +358,60 @@ export interface Chat {
   id: number;
   name?: string;
   avatar?: string | null;
+  description?: string | null;
   interlocutor?: { id: number; name?: string; avatar?: string | null } | null;
-  chat_type?: 'direct' | 'group' | 'department';
-  type?: 'private' | 'group' | 'department' | 'announcement';
+  chat_type?: 'direct' | 'group' | 'department' | 'global' | 'channel' | 'private' | 'announcement' | 'comments';
+  type?: 'private' | 'group' | 'department' | 'announcement' | 'global' | 'channel' | 'direct' | 'comments';
   participants?: Array<User | number>;
   participant_names?: string[];
   participant_details?: Array<{ id: number; name?: string; avatar?: string | null }>;
   last_message?: Message;
   unread_count?: number;
   created_at: string;
+  created_by?: number;
   is_pinned?: boolean;
   notifications_enabled?: boolean;
+  can_manage?: boolean;
+  can_reply?: boolean;
+  include_all_users?: boolean;
+  is_main?: boolean;
+  is_blocked?: boolean;
+  blocked_at?: string | null;
+  blocked_by?: number | null;
+  flags?: Record<string, any>;
+  extra_data?: Record<string, any>;
+  context_object_id?: number | null;
+  context_type?: string | null;
+  context_app?: string | null;
+  memberships?: ChatMembership[];
+  user_settings?: ChatUserSettings;
+  last_read_message_id?: number | null;
+}
+
+export interface ChatMembership {
+  id: number;
+  user: number;
+  user_name?: string;
+  role: 'admin' | 'moderator' | 'member' | 'guest';
+  joined_at: string;
+  invited_by?: number | null;
+  is_active: boolean;
+  left_at?: string | null;
+  can_send_messages: boolean;
+  can_add_members: boolean;
+  can_remove_members: boolean;
+  can_pin_messages: boolean;
+  can_manage_members?: boolean;
+}
+
+export interface ChatUserSettings {
+  id?: number;
+  is_pinned: boolean;
+  pinned_at?: string | null;
+  pin_order: number;
+  notifications_enabled: boolean;
+  custom_name?: string;
+  is_hidden: boolean;
 }
 
 export interface Message {

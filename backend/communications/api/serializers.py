@@ -24,15 +24,17 @@ class ChatUserSettingsSerializer(serializers.ModelSerializer):
 class ChatMembershipSerializer(serializers.ModelSerializer):
     """Членство в чате"""
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    can_manage_members = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = ChatMembership
         fields = [
             'id', 'user', 'user_name', 'role', 
-            'can_send_messages', 'can_manage_members',
-            'joined_at'
+            'joined_at', 'invited_by', 'is_active', 'left_at',
+            'can_send_messages', 'can_add_members', 'can_remove_members',
+            'can_pin_messages', 'can_manage_members'
         ]
-        read_only_fields = ['joined_at']
+        read_only_fields = ['joined_at', 'left_at']
 
 
 class ChatListSerializer(serializers.ModelSerializer):
@@ -84,9 +86,12 @@ class ChatListSerializer(serializers.ModelSerializer):
         return None
     
     def get_participant_names(self, obj):
-        """Имена участников (для приватных чатов)"""
+        """Имена участников (для приватных чатов)
+        MIGRATION: Используем memberships вместо participants
+        """
         if obj.type == 'private':
-            return [p.get_full_name() for p in obj.participants.all()[:5]]
+            active_members = obj.memberships.filter(is_active=True).select_related('user')[:5]
+            return [m.user.get_full_name() for m in active_members]
         return []
     
     def get_is_pinned(self, obj):
@@ -109,14 +114,11 @@ class ChatListSerializer(serializers.ModelSerializer):
 
 
 class ChatDetailSerializer(serializers.ModelSerializer):
-    """Детальный сериализатор чата"""
-    participants = serializers.PrimaryKeyRelatedField(
-        many=True, 
-        queryset=User.objects.all(),
-        required=False
-    )
+    """Детальный сериализатор чата
+    MIGRATION: Убрали participants, используем только memberships
+    """
     participant_details = serializers.SerializerMethodField()
-    memberships = ChatMembershipSerializer(many=True, read_only=True, source='chatmembership_set')
+    memberships = ChatMembershipSerializer(many=True, read_only=True)
     user_settings = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     notifications_enabled = serializers.SerializerMethodField()
@@ -135,21 +137,28 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             'context_object_id', 'context_type', 'context_app', 'flags', 'extra_data', 'include_all_users',
             # DEPRECATED: для обратной совместимости (не удалять до полной миграции клиента)
             'is_main',
-            # Participants & memberships
-            'participants', 'participant_details',
+            # MIGRATION: Убрали 'participants', используем только memberships
+            'participant_details',
             'memberships', 'user_settings', 'is_pinned', 
             'notifications_enabled', 'last_read_message_id'
         ]
         read_only_fields = ['created_at', 'created_by', 'context_type', 'context_app']
     
     def get_participant_details(self, obj):
-        """Детали участников"""
-        participants = obj.participants.all()[:20]
+        """Детали участников
+        MIGRATION: Используем memberships вместо participants
+        """
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        # Получаем активных участников через memberships
+        active_memberships = obj.memberships.filter(is_active=True).select_related('user')[:20]
+        
         return [{
-            'id': p.id,
-            'name': p.get_full_name(),
-            'avatar': p.avatar.url if p.avatar else None
-        } for p in participants]
+            'id': m.user.id,
+            'name': m.user.get_full_name(),
+            'avatar': m.user.avatar.url if m.user.avatar else None
+        } for m in active_memberships]
     
     def get_user_settings(self, obj):
         """Настройки текущего пользователя для чата (из prefetch)"""

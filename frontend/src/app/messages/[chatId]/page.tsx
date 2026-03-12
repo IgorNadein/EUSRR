@@ -304,6 +304,21 @@ export default function MessageDialogPage() {
   }, [chat]);
   
   const messagesById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  
+  // Определяем текущий membership и права на отправку сообщений
+  const myMembership = useMemo(() => {
+    if (!chat?.memberships || !user?.id) return null;
+    return chat.memberships.find(m => m.user === user.id) || null;
+  }, [chat?.memberships, user?.id]);
+  
+  const canSendMessages = useMemo(() => {
+    // Если нет membership - разрешаем (обычные чаты без ролей)
+    if (!myMembership) return true;
+    
+    // Проверяем флаг can_send_messages (гости имеют false)
+    return myMembership.can_send_messages;
+  }, [myMembership]);
+  
   const selectedActionMessage = expandedReplyActionForId ? messagesById.get(expandedReplyActionForId) || null : null;
   const selectedActionCanManage = Boolean(
     selectedActionMessage &&
@@ -1172,7 +1187,7 @@ export default function MessageDialogPage() {
                       getChatInitials(chat, user?.id)
                     )}
                   </div>
-                  <div>
+                  <Link href={`/messages/${chatId}/settings`} className="hover:opacity-80 transition">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-gray-900">{getChatTitle(chat, user?.id)}</p>
                       {/* Индикатор WebSocket соединения */}
@@ -1181,7 +1196,7 @@ export default function MessageDialogPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-500">{(chat.type || chat.chat_type) === "group" ? "Групповой чат" : "Диалог"}</p>
-                  </div>
+                  </Link>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1615,85 +1630,100 @@ export default function MessageDialogPage() {
                     </div>
                   ) : null}
 
-                  <div className="flex items-start gap-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      onChange={handleFilesChange}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={handlePickFiles}
-                      disabled={Boolean(editingMessageId)}
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
-                    >
-                      <Paperclip size={15} />
-                    </button>
-                  <div className="relative w-full" data-composer-emoji="true">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowComposerEmojiPicker((prev) => !prev);
-                        setExpandedReplyActionForId(null);
-                        setActionsMenuAnchor(null);
-                        setReactionPickerForMessageId(null);
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-sky-600"
-                      title="Смайлы"
-                    >
-                      <Smile size={14} />
-                    </button>
+                  {canSendMessages ? (
+                    <div className="flex items-start gap-2">
+                      <input
+                        ref={fileInputRef}
+                        multiple
+                        type="file"
+                        className="hidden"
+                        onChange={handleFilesChange}
+                      />
+                      <button
+                        type="button"
+                        onClick={handlePickFiles}
+                        disabled={Boolean(editingMessageId)}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 leading-none transition hover:bg-gray-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={editingMessageId ? "При редактировании вложения недоступны" : "Добавить файлы"}
+                      >
+                        <Paperclip size={15} />
+                      </button>
 
-                    {showComposerEmojiPicker ? (
-                      <div className="absolute bottom-full right-0 z-20 mb-2 w-[260px] rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
-                        <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
-                          {ALL_REACTIONS.map((emoji) => (
-                            <button
-                              key={`composer-${emoji}`}
-                              type="button"
-                              onClick={() => appendEmojiToComposer(emoji)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base hover:bg-sky-50"
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="relative w-full" data-composer-emoji="true">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerEmojiPicker((prev) => !prev);
+                            setExpandedReplyActionForId(null);
+                            setActionsMenuAnchor(null);
+                            setReactionPickerForMessageId(null);
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-sky-600"
+                          title="Смайлы"
+                        >
+                          <Smile size={14} />
+                        </button>
+
+                        {showComposerEmojiPicker ? (
+                          <div className="absolute bottom-full right-0 z-20 mb-2 w-[260px] rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
+                            <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
+                              {ALL_REACTIONS.map((emoji) => (
+                                <button
+                                  key={`composer-${emoji}`}
+                                  type="button"
+                                  onClick={() => {
+                                    appendEmojiToComposer(emoji);
+                                    setShowComposerEmojiPicker(false);
+                                  }}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-base hover:bg-sky-50"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <textarea
+                          ref={messageInputRef}
+                          value={messageText}
+                          onChange={(e) => {
+                            setMessageText(e.target.value);
+                            // Отправляем индикатор "печатает..."
+                            sendTyping();
+                          }}
+                          onClick={() => setShowComposerEmojiPicker(false)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSend();
+                            }
+                          }}
+                          rows={1}
+                          placeholder={editingMessageId ? "Редактируйте сообщение..." : "Введите сообщение..."}
+                          className="w-full resize-none rounded-lg border border-gray-200 bg-white h-9 px-3 py-2 pr-10 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                        />
                       </div>
-                    ) : null}
-
-                    <textarea
-                      ref={messageInputRef}
-                      value={messageText}
-                      onChange={(e) => {
-                        setMessageText(e.target.value);
-                        // Отправляем индикатор "печатает..."
-                        sendTyping();
-                      }}
-                      onClick={() => setShowComposerEmojiPicker(false)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      rows={1}
-                      placeholder={editingMessageId ? "Редактируйте сообщение..." : "Введите сообщение..."}
-                      className="w-full resize-none rounded-lg border border-gray-200 bg-white h-9 px-3 py-2 pr-10 text-sm text-gray-900 outline-none ring-0 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={sending || (editingMessageId ? !messageText.trim() : (!messageText.trim() && attachedFiles.length === 0))}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500 text-white leading-none transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={editingMessageId ? "Сохранить" : "Отправить"}
-                  >
-                    <Send size={15} />
-                  </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={handleSend}
+                        disabled={sending || (editingMessageId ? !messageText.trim() : (!messageText.trim() && attachedFiles.length === 0))}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500 text-white leading-none transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={editingMessageId ? "Сохранить" : "Отправить"}
+                      >
+                        <Send size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-800">
+                      <p className="font-medium">У вас нет прав на отправку сообщений</p>
+                      <p className="mt-1 text-xs text-amber-700">
+                        {myMembership?.role === 'guest' 
+                          ? 'Гости могут только просматривать сообщения и отправлять реакции' 
+                          : 'Обратитесь к администратору чата для получения прав'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </>

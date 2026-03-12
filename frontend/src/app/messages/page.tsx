@@ -5,10 +5,11 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/url";
 import type { Chat } from "@/types/api";
-import { Search, MessageCircle, Pin, BellOff, Filter } from "lucide-react";
+import { Search, MessageCircle, Pin, BellOff, Filter, Plus, X, Users, Globe, Radio, Upload, Image as ImageIcon, Megaphone, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
+import { useRouter } from "next/navigation";
 
 function getUserFullName(lastName?: string, firstName?: string): string {
   return `${lastName || ""} ${firstName || ""}`.trim();
@@ -110,6 +111,27 @@ function getChatInitials(chat: Chat, currentUserId?: number, currentUser?: { fir
     .join("") || "Ч";
 }
 
+function getChatTypeIcon(chat: Chat) {
+  const chatType = chat.chat_type || chat.type;
+  switch (chatType) {
+    case 'global':
+      return <Globe size={10} className="text-white" />;
+    case 'channel':
+      return <Radio size={10} className="text-white" />;
+    case 'group':
+      return <Users size={10} className="text-white" />;
+    case 'private':
+    case 'direct':
+      return <MessageCircle size={10} className="text-white" />;
+    case 'announcement':
+      return <Megaphone size={10} className="text-white" />;
+    case 'comments':
+      return <MessageSquare size={10} className="text-white" />;
+    default:
+      return null;
+  }
+}
+
 function formatTime(date?: string): string {
   if (!date) return "";
   const d = new Date(date);
@@ -150,6 +172,7 @@ function isChatOnline(chat: Chat, currentUserId?: number): boolean {
 
 export default function MessagesPage() {
   const { user } = useUser();
+  const router = useRouter();
   const currentUserId = user?.id;
   const currentUserFirstName = user?.first_name;
   const currentUserLastName = user?.last_name;
@@ -173,6 +196,15 @@ export default function MessagesPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Состояния для создания чата
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newChatType, setNewChatType] = useState<'group' | 'channel' | 'global'>('group');
+  const [newChatName, setNewChatName] = useState("");
+  const [newChatDescription, setNewChatDescription] = useState("");
+  const [newChatAvatar, setNewChatAvatar] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     async function loadChats() {
@@ -309,6 +341,78 @@ export default function MessagesPage() {
     return counts;
   }, [chats]);
 
+  const handleCreateChat = async () => {
+    if (creating) return;
+    
+    // Валидация: все типы кроме comments требуют название
+    if (!newChatName.trim()) {
+      alert('Введите название чата');
+      return;
+    }
+    
+    setCreating(true);
+    try {
+      const chatData: any = {
+        type: newChatType,
+        name: newChatName.trim(),
+      };
+      
+      if (newChatDescription.trim()) {
+        chatData.description = newChatDescription.trim();
+      }
+      
+      if (newChatAvatar) {
+        chatData.avatar = newChatAvatar;
+      }
+      
+      const newChat = await apiClient.createChat(chatData);
+      
+      // Закрываем модалку и сбрасываем форму
+      setShowCreateModal(false);
+      setNewChatType('group');
+      setNewChatName('');
+      setNewChatDescription('');
+      setNewChatAvatar(null);
+      setAvatarPreview(null);
+      
+      // Перенаправляем на страницу настроек созданного чата
+      router.push(`/messages/${newChat.id}/settings`);
+    } catch (e: unknown) {
+      console.error('Ошибка создания чата:', e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      alert(`Не удалось создать чат: ${errorMessage}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB
+        alert('Файл слишком большой. Максимум 5MB');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        alert('Можно загружать только изображения');
+        return;
+      }
+      setNewChatAvatar(file);
+      
+      // Создаем превью
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveAvatar = () => {
+    setNewChatAvatar(null);
+    setAvatarPreview(null);
+  };
+
   return (
     <AppShell>
       {loading ? (
@@ -333,6 +437,14 @@ export default function MessagesPage() {
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center justify-center rounded-lg border border-sky-200 bg-sky-500 p-2.5 text-white transition hover:bg-sky-600"
+              title="Создать чат"
+            >
+              <Plus size={16} />
+            </button>
             <button
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
@@ -594,9 +706,15 @@ export default function MessagesPage() {
                           getChatInitials(chat, currentUserId, currentUserForMatch)
                         )}
                       </div>
+                      {/* Иконка типа чата */}
+                      <span className="absolute -bottom-0.5 -left-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 ring-2 ring-white">
+                        {getChatTypeIcon(chat)}
+                      </span>
+                      {/* Онлайн-статус */}
                       {isChatOnline(chat, user?.id) ? (
                         <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
                       ) : null}
+                      {/* Счетчик непрочитанных */}
                       {(chat.unread_count ?? 0) > 0 ? (
                         <span className="absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-white">
                           {chat.unread_count! > 99 ? '99+' : chat.unread_count}
@@ -641,6 +759,169 @@ export default function MessagesPage() {
             </div>
           ) : null}
         </section>
+      )}
+      
+      {/* Модальное окно создания чата */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Создать чат</h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Тип чата */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Тип чата
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewChatType('group')}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 transition ${
+                      newChatType === 'group'
+                        ? 'border-sky-500 bg-sky-50 text-sky-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Users size={18} />
+                    <span className="text-sm font-medium">Групповой</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewChatType('channel')}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 transition ${
+                      newChatType === 'channel'
+                        ? 'border-sky-500 bg-sky-50 text-sky-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Radio size={18} />
+                    <span className="text-sm font-medium">Канал</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewChatType('global')}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 transition ${
+                      newChatType === 'global'
+                        ? 'border-sky-500 bg-sky-50 text-sky-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Globe size={18} />
+                    <span className="text-sm font-medium">Глобальный</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Название и описание */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Название *
+                </label>
+                <input
+                  type="text"
+                  value={newChatName}
+                  onChange={(e) => setNewChatName(e.target.value)}
+                  placeholder="Введите название чата..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Описание (необязательно)
+                </label>
+                <textarea
+                  value={newChatDescription}
+                  onChange={(e) => setNewChatDescription(e.target.value)}
+                  placeholder="Краткое описание чата..."
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                />
+              </div>
+
+              {/* Аватар */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Аватар (необязательно)
+                </label>
+                {avatarPreview ? (
+                  <div className="flex items-center gap-3">
+                    <div className="relative h-20 w-20">
+                      <Image
+                        src={avatarPreview}
+                        alt="Preview"
+                        width={80}
+                        height={80}
+                        className="h-20 w-20 rounded-full object-cover"
+                        unoptimized
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600 mb-2">{newChatAvatar?.name}</p>
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-100"
+                      >
+                        <X size={14} />
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-6 transition hover:border-sky-400 hover:bg-sky-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                    />
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="rounded-full bg-sky-100 p-3">
+                        <ImageIcon size={24} className="text-sky-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-gray-700">
+                          Загрузить изображение
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          PNG, JPG до 5MB
+                        </p>
+                      </div>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              {/* Кнопки */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateChat}
+                  disabled={creating}
+                  className="flex-1 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-50"
+                >
+                  {creating ? 'Создание...' : 'Создать'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </AppShell>
   );

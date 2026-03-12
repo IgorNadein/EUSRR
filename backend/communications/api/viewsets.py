@@ -42,6 +42,7 @@ from .serializers import (BulkDeleteSerializer, ChatDetailSerializer,
                           MessageDetailSerializer, MessageEditSerializer,
                           MessageListSerializer, PollSerializer,
                           ReactionSerializer)
+from .permissions import ChatPermission, MessagePermission
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -68,7 +69,7 @@ class ChatViewSet(viewsets.ModelViewSet):
     Ручной вызов /mark-read/ больше не требуется.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ChatPermission]
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -81,18 +82,27 @@ class ChatViewSet(viewsets.ModelViewSet):
         
         ОПТИМИЗИРОВАНО: Используем денормализованное поле unread_count из ChatReadState
         вместо подзапросов COUNT(*). Это убирает N+1 проблему и ускоряет в ~100x.
+        
+        ФИЛЬТРАЦИЯ: Чаты типа 'comments' исключены из списка (list action),
+        но доступны по прямой ссылке (retrieve action).
         """
         user = self.request.user
         from django.contrib.contenttypes.models import ContentType
 
+        # MIGRATION: Используем только memberships вместо participants
         queryset = Chat.objects.filter(
-            Q(participants=user)
-            # include_all_users для глобальных чатов
+            Q(memberships__user=user, memberships__is_active=True)
             | Q(include_all_users=True)
+            | Q(created_by=user)  # Создатель всегда видит свои чаты
         ).select_related(
             'created_by', 'context_content_type'
         ).prefetch_related(
             'participants',
+            # Prefetch ChatMembership с информацией о пользователе
+            Prefetch(
+                'memberships',
+                queryset=ChatMembership.objects.select_related('user').filter(is_active=True)
+            ),
             # Prefetch ChatUserSettings для текущего пользователя
             Prefetch(
                 'user_settings',
@@ -105,9 +115,14 @@ class ChatViewSet(viewsets.ModelViewSet):
                 queryset=ChatReadState.objects.filter(user=user),
                 to_attr='my_read_state'
             )
-        ).distinct().order_by('-created_at')
-
-        return queryset
+        ).distinct()
+        
+        # Исключаем чаты-комментарии из общего списка
+        # Они доступны только через прямой запрос (retrieve) или через контекст поста
+        if self.action == 'list':
+            queryset = queryset.exclude(type='comments')
+        
+        return queryset.order_by('-created_at')
 
     def create(self, request, *args, **kwargs):
         """Создание чата"""
@@ -117,9 +132,31 @@ class ChatViewSet(viewsets.ModelViewSet):
         # Устанавливаем создателя
         chat = serializer.save(created_by=request.user)
 
-        # Для приватного чата добавляем создателя в участники
-        if chat.type == 'private':
-            chat.participants.add(request.user)
+        # MIGRATION: Создаем membership для всех типов кроме глобальных (убрали participants.add)
+        if chat.type != 'global':
+            # Для чатов с управлением участниками создаем membership с ролью admin
+            if chat.type in ['group', 'channel', 'announcement']:
+                ChatMembership.objects.create(
+                    chat=chat,
+                    user=request.user,
+                    role='admin',
+                    invited_by=request.user,
+                    is_active=True
+                )
+            # Для других типов (private, direct) создаем обычного участника
+            else:
+                ChatMembership.objects.create(
+                    chat=chat,
+                    user=request.user,
+                    role='member',
+                    invited_by=request.user,
+                    is_active=True
+                )
+        
+        # Для глобальных чатов устанавливаем include_all_users=True
+        if chat.type == 'global':
+            chat.include_all_users = True
+            chat.save()
 
         headers = self.get_success_headers(serializer.data)
         return Response(
@@ -158,6 +195,275 @@ class ChatViewSet(viewsets.ModelViewSet):
         return Response({
             'ok': True,
             'notifications_enabled': settings.notifications_enabled
+        })
+
+    @action(detail=True, methods=['post'])
+    def leave(self, request, pk=None):
+        """Покинуть чат (выход пользователя из чата)"""
+        import rules
+        
+        chat = self.get_object()
+        
+        # Проверка прав через django-rules
+        if not rules.test_rule('communications.leave_chat', request.user, chat):
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Нельзя покинуть чат, если ты его владелец
+        if chat.created_by == request.user:
+            return Response(
+                {'error': 'Chat owner cannot leave the chat'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # MIGRATION: Убрали participants.remove, только деактивируем membership
+        membership = ChatMembership.objects.filter(
+            chat=chat,
+            user=request.user
+        ).first()
+        
+        if membership:
+            membership.is_active = False
+            membership.left_at = timezone.now()
+            membership.save(update_fields=['is_active', 'left_at'])
+        else:
+            return Response(
+                {'error': 'You are not a member of this chat'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response({
+            'ok': True,
+            'message': 'Successfully left the chat'
+        })
+
+    @action(detail=True, methods=['post'], url_path='add-member')
+    def add_member(self, request, pk=None):
+        """Добавить участника в чат"""
+        import rules
+        
+        chat = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        if not user_id:
+            return Response(
+                {'error': 'user_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверка прав
+        if not rules.test_rule('communications.add_members', request.user, chat):
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            user_to_add = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # MIGRATION: Проверяем через memberships вместо participants
+        if ChatMembership.objects.filter(
+            chat=chat,
+            user=user_to_add,
+            is_active=True
+        ).exists():
+            return Response(
+                {'error': 'User is already a member'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Создаем или восстанавливаем membership для чатов с управлением участниками
+        if chat.type in ['group', 'channel', 'announcement']:
+            membership, created = ChatMembership.objects.get_or_create(
+                chat=chat,
+                user=user_to_add,
+                defaults={
+                    'role': 'member',
+                    'invited_by': request.user,
+                    'is_active': True
+                }
+            )
+            
+            # Если membership уже существовал (например, пользователь раньше покинул чат),
+            # восстанавливаем его активность
+            if not created and not membership.is_active:
+                membership.is_active = True
+                membership.left_at = None
+                membership.invited_by = request.user  # Обновляем кто пригласил повторно
+                membership.save()
+        
+        return Response({
+            'ok': True,
+            'message': 'User added successfully'
+        })
+
+    @action(detail=True, methods=['post'], url_path='remove-member')
+    def remove_member(self, request, pk=None):
+        """Удалить участника из чата"""
+        import rules
+        
+        chat = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        if not user_id:
+            return Response(
+                {'error': 'user_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверка прав
+        if not rules.test_rule('communications.remove_members', request.user, chat):
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            user_to_remove = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Нельзя удалить владельца
+        if chat.created_by == user_to_remove:
+            return Response(
+                {'error': 'Cannot remove chat owner'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # MIGRATION: Убрали participants.remove, только деактивируем membership
+        membership = ChatMembership.objects.filter(
+            chat=chat,
+            user=user_to_remove
+        ).first()
+        
+        if not membership:
+            return Response(
+                {'error': 'User is not a member'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        membership.is_active = False
+        membership.left_at = timezone.now()
+        membership.save(update_fields=['is_active', 'left_at'])
+        
+        return Response({
+            'ok': True,
+            'message': 'User removed successfully'
+        })
+
+    @action(detail=True, methods=['post'], url_path='change-role')
+    def change_role(self, request, pk=None):
+        """Изменить роль участника чата"""
+        import rules
+        
+        chat = self.get_object()
+        user_id = request.data.get('user_id')
+        new_role = request.data.get('role')
+        
+        if not user_id or not new_role:
+            return Response(
+                {'error': 'user_id and role are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверка валидности роли
+        valid_roles = ['admin', 'moderator', 'member', 'guest']
+        if new_role not in valid_roles:
+            return Response(
+                {'error': f'Invalid role. Must be one of: {", ".join(valid_roles)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверка прав (только владелец может менять роли)
+        can_change = rules.test_rule('communications.change_member_role', request.user, chat)
+        
+        # Добавляем логирование для отладки
+        logger.warning(
+            f"[change_role] User {request.user.id} trying to change role in chat {chat.id}. "
+            f"chat.created_by={chat.created_by.id if chat.created_by else None}, "
+            f"request.user.id={request.user.id}, "
+            f"can_change={can_change}"
+        )
+        
+        if not can_change:
+            return Response(
+                {'error': 'Permission denied. Only chat owner can change roles.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            user_to_change = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Нельзя изменить роль владельца
+        if chat.created_by == user_to_change:
+            return Response(
+                {'error': 'Cannot change role of chat owner'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Получаем или создаем membership
+        membership, created = ChatMembership.objects.get_or_create(
+            chat=chat,
+            user=user_to_change,
+            defaults={
+                'role': new_role,
+                'invited_by': request.user,
+                'is_active': True  # Явно устанавливаем is_active при создании
+            }
+        )
+        
+        logger.warning(
+            f"[change_role] membership found: created={created}, "
+            f"user_id={user_to_change.id}, old_role={membership.role}, new_role={new_role}, "
+            f"is_active={membership.is_active}"
+        )
+        
+        if not created:
+            # Обновляем существующий membership
+            old_role = membership.role
+            old_is_active = membership.is_active
+            membership.role = new_role
+            membership.is_active = True  # Убеждаемся что is_active = True
+            membership.left_at = None  # Сбрасываем left_at если был
+            membership.set_permissions_for_role()
+            membership.save()
+            
+            # Перезагружаем из БД чтобы убедиться что сохранилось
+            membership.refresh_from_db()
+            logger.warning(
+                f"[change_role] after save: user_id={user_to_change.id}, "
+                f"old_role={old_role}, new_role={membership.role}, "
+                f"old_is_active={old_is_active}, new_is_active={membership.is_active}, "
+                f"saved_correctly={membership.role == new_role and membership.is_active}"
+            )
+        
+        return Response({
+            'ok': True,
+            'message': f'User role changed to {new_role}',
+            'membership': {
+                'user_id': membership.user_id,
+                'role': membership.role,
+                'can_send_messages': membership.can_send_messages,
+                'can_add_members': membership.can_add_members,
+                'can_remove_members': membership.can_remove_members,
+                'can_pin_messages': membership.can_pin_messages,
+                'can_manage_members': membership.can_manage_members
+            }
         })
 
     def _auto_mark_read(self, chat, user, messages):
@@ -537,7 +843,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     - upload: POST /api/v1/communications/messages/upload/ - загрузить с вложениями
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [MessagePermission]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
@@ -550,18 +856,37 @@ class MessageViewSet(viewsets.ModelViewSet):
         return MessageDetailSerializer
 
     def get_queryset(self):
-        """Сообщения доступные пользователю"""
+        """
+        Сообщения доступные пользователю
+        
+        Включает сообщения из чатов:
+        - где user в participants (прямое участие)
+        - где user в ChatMembership (роли)
+        - где include_all_users=True (открытые чаты)
+        - context-based чаты (type=comments с context_object)
+        
+        Детальная проверка доступа выполняется через MessagePermission
+        """
         user = self.request.user
         from django.contrib.contenttypes.models import ContentType
 
-        # Чаты пользователя
-        user_chats = Chat.objects.filter(
-            Q(participants=user)
+        # MIGRATION: Чаты где пользователь состоит через memberships (убрали participants)
+        accessible_chats = Chat.objects.filter(
+            Q(memberships__user=user, memberships__is_active=True)
             | Q(include_all_users=True)
-        )
+        ).distinct()
+        
+        # Context-based чаты (комментарии к постам и т.д.)
+        # Проверка доступа к context_object будет в permissions
+        context_based_chats = Chat.objects.filter(
+            Q(type='comments') & ~Q(context_object_id=None)
+        ).distinct()
+        
+        # Объединяем оба набора
+        all_chats = accessible_chats | context_based_chats
 
         return Message.objects.filter(
-            chat__in=user_chats
+            chat__in=all_chats
         ).select_related(
             'author', 'chat', 'reply_to', 'reply_to__author', 'poll'
         ).prefetch_related(

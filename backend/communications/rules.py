@@ -6,6 +6,9 @@ https://github.com/dfunckt/django-rules
 """
 
 import rules
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
@@ -24,28 +27,42 @@ def is_chat_member(user, chat):
     if chat is None:
         return False
     
-    # Проверка через members/participants
-    if hasattr(chat, 'members'):
-        return user in chat.members.all()
+    # Используем прямые запросы к БД в обход prefetch cache
+    from .models import Chat, ChatMembership
     
-    if hasattr(chat, 'participants'):
-        return user in chat.participants.all()
+    # Глобальный чат доступен всем
+    if chat.type == "global":
+        return True
     
-    return False
+    # MIGRATION: Используем только ChatMembership для всех типов чатов
+    # Для любого типа чата проверяем активное membership
+    return ChatMembership.objects.filter(
+        chat=chat, 
+        user=user, 
+        is_active=True
+    ).exists()
 
 
 @rules.predicate
 def is_chat_owner(user, chat):
     """Пользователь является владельцем/создателем чата"""
     if chat is None:
+        logger.warning(f"[is_chat_owner] chat is None")
         return False
     
     if hasattr(chat, 'owner'):
-        return chat.owner == user
+        owner = chat.owner
+        result = owner.id == user.id if owner else False
+        logger.warning(f"[is_chat_owner] checking via owner: user={user.id}, owner={owner.id if owner else None}, result={result}")
+        return result
     
     if hasattr(chat, 'created_by'):
-        return chat.created_by == user
+        created_by = chat.created_by
+        result = created_by.id == user.id if created_by else False
+        logger.warning(f"[is_chat_owner] checking via created_by: user={user.id}, created_by={created_by.id if created_by else None}, result={result}")
+        return result
     
+    logger.warning(f"[is_chat_owner] no owner or created_by attribute")
     return False
 
 
@@ -59,12 +76,130 @@ def is_chat_admin(user, chat):
     if hasattr(chat, 'admins'):
         return user in chat.admins.all()
     
-    # Проверка через membership с ролью admin
-    if hasattr(chat, 'chatmembership_set'):
-        return chat.chatmembership_set.filter(
-            user=user, role__in=['admin', 'moderator']
+    # Проверка через membership с ролью admin (только активные)
+    if hasattr(chat, 'memberships'):
+        result = chat.memberships.filter(
+            user=user,
+            role__in=['admin', 'moderator'],
+            is_active=True
         ).exists()
+        logger.warning(
+            f"[is_chat_admin] user={user.id}, chat={chat.id}, "
+            f"result={result}"
+        )
+        return result
+
+    logger.warning(
+        f"[is_chat_admin] no memberships for chat {chat.id}"
+    )
+    return False
+
+
+@rules.predicate
+def can_add_members_flag(user, chat):
+    """Пользователь имеет флаг can_add_members в ChatMembership"""
+    if chat is None:
+        return False
+
+    if hasattr(chat, 'memberships'):
+        result = chat.memberships.filter(
+            user=user,
+            can_add_members=True,
+            is_active=True
+        ).exists()
+        logger.warning(
+            f"[can_add_members_flag] user={user.id}, "
+            f"chat={chat.id}, result={result}"
+        )
+        return result
+
+    return False
+
+
+@rules.predicate
+def can_remove_members_flag(user, chat):
+    """Пользователь имеет флаг can_remove_members в ChatMembership"""
+    if chat is None:
+        return False
+
+    if hasattr(chat, 'memberships'):
+        result = chat.memberships.filter(
+            user=user,
+            can_remove_members=True,
+            is_active=True
+        ).exists()
+        logger.warning(
+            f"[can_remove_members_flag] user={user.id}, "
+            f"chat={chat.id}, result={result}"
+        )
+        return result
+
+    return False
+
+
+@rules.predicate
+def can_pin_messages_flag(user, chat):
+    """Пользователь имеет флаг can_pin_messages в ChatMembership"""
+    if chat is None:
+        return False
+
+    if hasattr(chat, 'memberships'):
+        result = chat.memberships.filter(
+            user=user,
+            can_pin_messages=True,
+            is_active=True
+        ).exists()
+        logger.warning(
+            f"[can_pin_messages_flag] user={user.id}, "
+            f"chat={chat.id}, result={result}"
+        )
+        return result
+
+    return False
+
+
+@rules.predicate
+def has_send_messages_permission(user, chat):
+    """
+    Пользователь имеет право отправлять сообщения в чат
     
+    Проверяет:
+    1. Если НЕТ ChatMembership - разрешено (для обратной совместимости)
+    2. Если ЕСТЬ ChatMembership - проверяется флаг can_send_messages
+    """
+    if chat is None:
+        return False
+    
+    # Для личных/глобальных чатов без ChatMembership - разрешено всем
+    if chat.type in ['private', 'global']:
+        return True
+    
+    # Для чатов с ChatMembership проверяем флаг can_send_messages
+    if hasattr(chat, 'memberships'):
+        from .models import ChatMembership
+        
+        # Проверяем, есть ли membership для пользователя
+        try:
+            membership = chat.memberships.get(
+                user=user,
+                is_active=True
+            )
+            result = membership.can_send_messages
+            logger.warning(
+                f"[has_send_messages_permission] user={user.id}, "
+                f"chat={chat.id}, can_send={result}"
+            )
+            return result
+        except ChatMembership.DoesNotExist:
+            # MIGRATION: Убрали fallback на participants
+            # После миграции все участники должны быть в ChatMembership
+            logger.warning(
+                f"[has_send_messages_permission] no membership found: "
+                f"user={user.id}, chat={chat.id}, denying access"
+            )
+            return False
+    
+    # Если нет memberships (не должно быть после миграции) - запрещено
     return False
 
 
@@ -134,7 +269,7 @@ rules.add_rule(
 # Отправка сообщений в чат
 rules.add_rule(
     'communications.send_message',
-    is_superuser | is_chat_member
+    is_superuser | (is_chat_member & has_send_messages_permission)
 )
 
 # Изменение чата (название, описание, настройки)
@@ -146,7 +281,7 @@ rules.add_rule(
 # Удаление чата
 rules.add_rule(
     'communications.delete_chat',
-    is_superuser | is_chat_owner
+    is_superuser | is_chat_owner | is_chat_admin
 )
 
 # Просмотр сообщения
@@ -170,19 +305,19 @@ rules.add_rule(
 # Добавление участников в чат
 rules.add_rule(
     'communications.add_members',
-    is_superuser | is_chat_owner | is_chat_admin
+    is_superuser | is_chat_owner | is_chat_admin | can_add_members_flag
 )
 
 # Удаление участников из чата
 rules.add_rule(
     'communications.remove_members',
-    is_superuser | is_chat_owner | is_chat_admin
+    is_superuser | is_chat_owner | is_chat_admin | can_remove_members_flag
 )
 
 # Закрепление сообщений
 rules.add_rule(
     'communications.pin_message',
-    is_superuser | is_chat_owner | is_chat_admin
+    is_superuser | is_chat_owner | is_chat_admin | can_pin_messages_flag
 )
 
 # Изменение ролей участников

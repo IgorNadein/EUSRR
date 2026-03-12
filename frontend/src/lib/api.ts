@@ -1425,7 +1425,30 @@ class ApiClient {
         description?: string;
         department?: number;
         include_all_employees?: boolean;
+        avatar?: File;
     }): Promise<any> {
+        // Если есть файл, используем FormData
+        if (data.avatar) {
+            const formData = new FormData();
+            formData.append('type', data.type);
+            if (data.name) formData.append('name', data.name);
+            if (data.description) formData.append('description', data.description);
+            if (data.avatar) formData.append('avatar', data.avatar);
+            if (data.participants) {
+                data.participants.forEach(id => formData.append('participants', id.toString()));
+            }
+            if (data.department) formData.append('department', data.department.toString());
+            if (data.include_all_employees !== undefined) {
+                formData.append('include_all_employees', data.include_all_employees.toString());
+            }
+            
+            return this.request('/api/v1/communications/chats/', {
+                method: 'POST',
+                body: formData,
+            });
+        }
+        
+        // Без файла - обычный JSON
         return this.request('/api/v1/communications/chats/', {
             method: 'POST',
             body: JSON.stringify(data),
@@ -1483,6 +1506,100 @@ class ApiClient {
     async toggleChatNotifications(chatId: number): Promise<any> {
         return this.request(`/api/v1/communications/chats/${chatId}/notifications/`, {
             method: 'POST',
+        });
+    }
+
+    /**
+     * Покинуть чат (для групповых чатов)
+     */
+    async leaveChat(chatId: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/leave/`, {
+            method: 'POST',
+        });
+    }
+
+    /**
+     * Удалить чат (требует прав администратора чата)
+     */
+    async deleteChat(chatId: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    /**
+     * Обновить информацию о чате (частичное обновление)
+     */
+    async updateChat(chatId: number, data: Partial<{
+        name: string;
+        description: string;
+        type: string;
+        can_reply: boolean;
+        include_all_users: boolean;
+        flags: Record<string, any>;
+        extra_data: Record<string, any>;
+    }>): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    /**
+     * Загрузить аватар чата
+     */
+    async uploadChatAvatar(chatId: number, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('avatar', file);
+        
+        return this.request(`/api/v1/communications/chats/${chatId}/`, {
+            method: 'PATCH',
+            body: formData,
+        });
+    }
+
+    /**
+     * Добавить участника в чат
+     */
+    async addChatMember(chatId: number, userId: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/add-member/`, {
+            method: 'POST',
+            body: JSON.stringify({ user_id: userId }),
+        });
+    }
+
+    /**
+     * Удалить участника из чата
+     */
+    async removeChatMember(chatId: number, userId: number): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/remove-member/`, {
+            method: 'POST',
+            body: JSON.stringify({ user_id: userId }),
+        });
+    }
+
+    /**
+     * Изменить роль участника в чате
+     */
+    async changeChatMemberRole(chatId: number, userId: number, role: 'admin' | 'moderator' | 'member' | 'guest'): Promise<any> {
+        return this.request(`/api/v1/communications/chats/${chatId}/change-role/`, {
+            method: 'POST',
+            body: JSON.stringify({ user_id: userId, role }),
+        });
+    }
+
+    /**
+     * Обновить пользовательские настройки чата
+     */
+    async updateChatUserSettings(chatId: number, data: Partial<{
+        custom_name: string;
+        is_hidden: boolean;
+    }>): Promise<any> {
+        // Примечание: может потребоваться отдельный endpoint на backend
+        // Сейчас используем PATCH чата, но лучше создать /api/v1/communications/chats/{id}/user-settings/
+        return this.request(`/api/v1/communications/chats/${chatId}/user-settings/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
         });
     }
 

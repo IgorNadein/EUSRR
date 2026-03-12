@@ -132,7 +132,6 @@ class Chat(models.Model):
         blank=True,
         related_name="chats",
         verbose_name="Участники",
-        help_text="Используется только для личных чатов",
     )
     
     # ===== Universal context (GenericForeignKey) =====
@@ -234,9 +233,8 @@ class Chat(models.Model):
                 raise ValidationError("Основной глобальный чат уже существует.")
 
     def delete(self, *args, **kwargs):
-        # Запрещаем удалять только глобальный основной чат
-        if self.is_main and self.type == "global":
-            raise ValidationError("Основной глобальный чат компании нельзя удалить!")
+        # Удаление глобального чата разрешено администраторам и владельцам
+        # Проверка прав происходит на уровне API permissions
         return super().delete(*args, **kwargs)
 
     def mark_read(self, user):
@@ -287,14 +285,15 @@ class Chat(models.Model):
         """
         Возвращает QuerySet участников чата.
         
+        MIGRATION: Переписано для использования только ChatMembership
+        
         Использует callback из settings.COMMUNICATIONS_PARTICIPANT_RESOLVER
         для проектно-специфичной логики.
         
         Fallback логика:
-        - private: M2M participants
+        - private/group/channel/announcement: только активные ChatMembership
         - global: все активные пользователи
-        - announcement/channel с include_all_users: все активные
-        - иначе: ChatMembership + participants
+        - с include_all_users: все активные пользователи
         """
         # Попытка использовать callback из settings
         from django.conf import settings
@@ -315,33 +314,29 @@ class Chat(models.Model):
                 logger.warning(f"Failed to import participant resolver '{resolver_path}': {e}")
         
         # Fallback логика (универсальная, без бизнес-специфики)
-        if self.type == "private":
-            return self.participants.all()
-        
-        if self.type == "global":
+        if self.type == "global" or self.include_all_users:
             return User.objects.filter(is_active=True)
         
-        if self.type in ["announcement", "channel"] and self.include_all_users:
-            return User.objects.filter(is_active=True)
-        
-        # Для group/channel/announcement без флага - явные участники
+        # Для всех остальных типов - используем только активные memberships
         from communications.models import ChatMembership
         
-        membership_ids = ChatMembership.objects.filter(
-            chat=self
+        membership_user_ids = ChatMembership.objects.filter(
+            chat=self,
+            is_active=True
         ).values_list("user_id", flat=True)
         
-        return User.objects.filter(
-            Q(id__in=self.participants.values_list('id', flat=True)) |
-            Q(id__in=membership_ids)
-        ).distinct()
+        return User.objects.filter(id__in=membership_user_ids).distinct()
 
     def __str__(self):
         if self.type == "private":
-            # лениво формируем подпись, без лишних запросов
-            parts = list(self.participants.values_list("first_name", "last_name")[:3])
-            names = ", ".join(f"{ln} {fn}".strip() for fn, ln in parts) or "—"
-            more = self.participants.count() - len(parts)
+            # MIGRATION: используем memberships вместо participants
+            members = ChatMembership.objects.filter(
+                chat=self, 
+                is_active=True
+            ).select_related('user')[:3]
+            names = ", ".join(f"{m.user.last_name} {m.user.first_name}".strip() for m in members) or "—"
+            total_count = ChatMembership.objects.filter(chat=self, is_active=True).count()
+            more = total_count - len(members)
             if more > 0:
                 names += f" и ещё {more}"
             return f"Личный чат: {names}"
@@ -765,10 +760,20 @@ class MessageForwardMetadata(models.Model):
 
 
 class ChatMembership(models.Model):
-    """Явное управление участниками чатов"""
+    """
+    Явное управление участниками чатов
+    
+    Роли и права:
+    - admin: полный доступ к управлению чатом (кроме удаления)
+    - moderator: может модерировать контент (закреплять, удалять чужие сообщения)
+    - member: обычный участник (может отправлять сообщения)
+    - guest: ограниченный доступ (только чтение, может быть отключен can_send_messages)
+    
+    Примечание: роль 'owner' (владелец) НЕ используется - владелец определяется
+    через Chat.created_by и имеет максимальные права через django-rules.
+    """
     
     ROLE_CHOICES = [
-        ('owner', 'Владелец'),
         ('admin', 'Администратор'),
         ('moderator', 'Модератор'),
         ('member', 'Участник'),
@@ -844,6 +849,55 @@ class ChatMembership(models.Model):
     
     def __str__(self):
         return f"{self.user} в {self.chat} ({self.get_role_display()})"
+    
+    @property
+    def can_manage_members(self):
+        """Может ли участник управлять другими участниками (добавлять/удалять)"""
+        return self.can_add_members and self.can_remove_members
+    
+    def set_permissions_for_role(self):
+        """
+        Устанавливает права доступа автоматически на основе роли.
+        Вызывается при save() если права не были установлены явно.
+        """
+        if self.role == 'admin':
+            self.can_send_messages = True
+            self.can_add_members = True
+            self.can_remove_members = True
+            self.can_pin_messages = True
+        elif self.role == 'moderator':
+            self.can_send_messages = True
+            self.can_add_members = False
+            self.can_remove_members = False
+            self.can_pin_messages = True
+        elif self.role == 'member':
+            self.can_send_messages = True
+            self.can_add_members = False
+            self.can_remove_members = False
+            self.can_pin_messages = False
+        elif self.role == 'guest':
+            self.can_send_messages = False
+            self.can_add_members = False
+            self.can_remove_members = False
+            self.can_pin_messages = False
+    
+    def promote_to_admin(self):
+        """Повышает участника до администратора"""
+        self.role = 'admin'
+        self.set_permissions_for_role()
+        self.save()
+    
+    def demote_to_member(self):
+        """Понижает участника до обычного члена"""
+        self.role = 'member'
+        self.set_permissions_for_role()
+        self.save()
+    
+    def save(self, *args, **kwargs):
+        # Автоматически устанавливаем права при создании
+        if not self.pk:
+            self.set_permissions_for_role()
+        super().save(*args, **kwargs)
 
 
 class MessageReaction(models.Model):
