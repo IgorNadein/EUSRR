@@ -70,6 +70,18 @@ class Command(BaseCommand):
             help='Показать все чаты указанного типа (например: private)',
         )
         parser.add_argument(
+            '--export',
+            type=str,
+            metavar='TYPE',
+            help='Экспортировать чаты указанного типа в JSON файл',
+        )
+        parser.add_argument(
+            '--output',
+            type=str,
+            default='chats_export.json',
+            help='Путь к файлу для экспорта (по умолчанию: chats_export.json)',
+        )
+        parser.add_argument(
             '--target-type',
             type=str,
             default='group',
@@ -85,6 +97,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if options['stats']:
             self.show_stats()
+        elif options['export']:
+            self.export_chats(options['export'], options['output'])
         elif options['list_type']:
             self.list_chats_by_type(options['list_type'])
         elif options['find']:
@@ -105,7 +119,7 @@ class Command(BaseCommand):
         elif options['delete']:
             self.delete_chat(options['delete'], no_confirm=options['no_confirm'])
         else:
-            self.stdout.write(self.style.ERROR('Укажите действие: --stats, --list-type, --find, --check, --fix, --change-type, --cleanup или --delete'))
+            self.stdout.write(self.style.ERROR('Укажите действие: --stats, --export, --list-type, --find, --check, --fix, --change-type, --cleanup или --delete'))
             self.stdout.write('Используйте --help для справки')
 
     def show_stats(self):
@@ -148,6 +162,57 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.SUCCESS(f'\n✅ Все {valid_count} чатов имеют корректные типы'))
 
+    def export_chats(self, chat_type, output_file):
+        """Экспортирует чаты указанного типа в JSON файл"""
+        import json
+        from django.core.serializers.json import DjangoJSONEncoder
+        
+        chats = Chat.objects.filter(type=chat_type).order_by('-created_at')
+        
+        if not chats.exists():
+            self.stdout.write(self.style.WARNING(f'Chats of type "{chat_type}" not found'))
+            return
+        
+        export_data = []
+        for chat in chats:
+            participants_list = []
+            for p in chat.participants.all():
+                participants_list.append({
+                    'id': p.id,
+                    'email': p.email,
+                    'first_name': getattr(p, 'first_name', ''),
+                    'last_name': getattr(p, 'last_name', ''),
+                })
+            
+            chat_data = {
+                'id': chat.id,
+                'name': chat.name,
+                'type': chat.type,
+                'created_at': chat.created_at.isoformat() if chat.created_at else None,
+                'participants_count': chat.participants.count(),
+                'participants': participants_list,
+                'messages_count': chat.messages.count() if hasattr(chat, 'messages') else 0,
+            }
+            
+            if hasattr(chat, 'last_message') and chat.last_message:
+                last_msg_date = getattr(chat.last_message, 'created_at', None)
+                if last_msg_date:
+                    chat_data['last_message_at'] = last_msg_date.isoformat()
+            
+            export_data.append(chat_data)
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                'total': len(export_data),
+                'type': chat_type,
+                'exported_at': DjangoJSONEncoder().default(None),
+                'chats': export_data
+            }, f, ensure_ascii=False, indent=2, cls=DjangoJSONEncoder)
+        
+        self.stdout.write(self.style.SUCCESS(f'Exported {len(export_data)} chats to {output_file}'))
+        self.stdout.write(f'Type: {chat_type}')
+        self.stdout.write(f'File size: {len(json.dumps(export_data))} bytes')
+
     def list_chats_by_type(self, chat_type):
         """Показывает все чаты указанного типа"""
         chats = Chat.objects.filter(type=chat_type).order_by('-created_at')
@@ -172,14 +237,96 @@ class Command(BaseCommand):
             participants_count = chat.participants.count()
             messages_count = chat.messages.count() if hasattr(chat, 'messages') else 'N/A'
             
-            self.stdout.write(f'ID {chat.id}: {chat.name}')
-            self.stdout.write(f'  Участников: {participants_count}')
-            self.stdout.write(f'  Сообщений: {messages_count}')
-            self.stdout.write(f'  Создан: {chat.created_at.strftime("%Y-%m-%d %H:%M")}')
+            # Заголовок чата
+            self.stdout.write(self.style.SUCCESS(f'═══ ID {chat.id}: {chat.name or "[без названия]"} ═══'))
+            
+            # Базовые поля
+            self.stdout.write(f'  📌 Тип: {chat.type}')
+            self.stdout.write(f'  📅 Создан: {chat.created_at.strftime("%Y-%m-%d %H:%M")}')
+            
+            # Создатель
+            if chat.created_by:
+                creator_name = f"{getattr(chat.created_by, 'last_name', '')} {getattr(chat.created_by, 'first_name', '')}".strip()
+                self.stdout.write(f'  👤 Создатель: {creator_name or chat.created_by.email}')
+            else:
+                self.stdout.write(f'  👤 Создатель: [не указан]')
+            
+            # Критичные флаги
+            flags = []
+            if getattr(chat, 'is_blocked', False):
+                flags.append('🚫 ЗАБЛОКИРОВАН')
+            if getattr(chat, 'is_main', False):
+                flags.append('⭐ ОСНОВНОЙ')
+            if getattr(chat, 'include_all_users', False):
+                flags.append('👥 ВСЕ ПОЛЬЗОВАТЕЛИ')
+            
+            if flags:
+                self.stdout.write(f'  🚩 Флаги: {" | ".join(flags)}')
+            
+            # Контекстный объект
+            if hasattr(chat, 'context_content_type') and chat.context_content_type:
+                ctx = f"{chat.context_content_type.model}"
+                if hasattr(chat, 'context_object_id') and chat.context_object_id:
+                    ctx += f" (ID: {chat.context_object_id})"
+                self.stdout.write(f'  🔗 Контекст: {ctx}')
+            
+            # Аватар
+            if chat.avatar:
+                self.stdout.write(f'  🖼️  Аватар: {chat.avatar.url if hasattr(chat.avatar, "url") else "есть"}')
+            
+            # Описание
+            if chat.description:
+                desc = chat.description[:60] + '...' if len(chat.description) > 60 else chat.description
+                self.stdout.write(f'  📝 Описание: {desc}')
+            
+            # Участники
+            self.stdout.write(f'  👥 Участников: {participants_count}')
+            
+            if participants_count > 0:
+                participants = chat.participants.all()
+                for p in participants:
+                    full_name = f"{getattr(p, 'last_name', '')} {getattr(p, 'first_name', '')}".strip()
+                    email = getattr(p, 'email', 'N/A')
+                    user_id = p.id
+                    
+                    # Проверяем membership для детальной инфы
+                    membership_info = ""
+                    try:
+                        from communications.models import ChatMembership
+                        membership = ChatMembership.objects.filter(chat=chat, user=p).first()
+                        if membership:
+                            role_emoji = {'owner': '👑', 'admin': '🔴', 'moderator': '🟠', 'member': '🟢', 'guest': '⚪'}.get(membership.role, '❓')
+                            membership_info = f" {role_emoji}{membership.role}"
+                            if not membership.is_active:
+                                membership_info += " [НЕАКТИВЕН]"
+                    except:
+                        pass
+                    
+                    if full_name:
+                        self.stdout.write(f'      • ID:{user_id} {full_name} ({email}){membership_info}')
+                    else:
+                        self.stdout.write(f'      • ID:{user_id} {email}{membership_info}')
+            
+            # Сообщения
+            self.stdout.write(f'  💬 Сообщений: {messages_count}')
+            
+            # Последнее сообщение
             if hasattr(chat, 'last_message') and chat.last_message:
-                last_msg_date = getattr(chat.last_message, 'created_at', None)
+                last_msg = chat.last_message
+                last_msg_date = getattr(last_msg, 'created_at', None)
                 if last_msg_date:
-                    self.stdout.write(f'  Последнее сообщение: {last_msg_date.strftime("%Y-%m-%d %H:%M")}')
+                    last_msg_preview = getattr(last_msg, 'content', '')[:50]
+                    self.stdout.write(f'  💭 Последнее сообщение: {last_msg_date.strftime("%Y-%m-%d %H:%M")}')
+                    if last_msg_preview:
+                        self.stdout.write(f'      "{last_msg_preview}..."')
+            
+            # JSON поля
+            if hasattr(chat, 'flags') and chat.flags:
+                self.stdout.write(f'  🏴 Flags: {chat.flags}')
+            
+            if hasattr(chat, 'extra_data') and chat.extra_data:
+                self.stdout.write(f'  📦 Extra data: {chat.extra_data}')
+            
             self.stdout.write('')
         
         self.stdout.write(self.style.SUCCESS(f'Всего найдено: {count} чатов'))
