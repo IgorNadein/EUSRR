@@ -1,6 +1,8 @@
 """
 Web Push отправитель для browser push notifications
 """
+import json
+
 from push_notifications.models import WebPushDevice
 
 from .base import BaseNotificationSender
@@ -47,14 +49,20 @@ class PushNotificationSender(BaseNotificationSender):
             # Формируем данные для push
             actor_str = str(notification.actor) if notification.actor else 'Система'
             title = f'{actor_str} {notification.verb}'
+            
+            # Ограничиваем длину body (Web Push имеет лимит ~4KB на весь payload)
+            # Оставляем 300 символов для body, чтобы гарантировать что весь message поместится
             body = notification.description or ''
+            if len(body) > 300:
+                body = body[:297] + '...'
             
             # Получаем иконки из конфигурации (None = browser default)
             default_icon = get('PUSH_DEFAULT_ICON')
             default_badge = get('PUSH_DEFAULT_BADGE')
             
             # django-push-notifications использует другой формат
-            message = {
+            # Формируем данные для Web Push API
+            message_data = {
                 'head': title,
                 'body': body,
                 'url': notification.action_url or '/',
@@ -68,9 +76,12 @@ class PushNotificationSender(BaseNotificationSender):
             
             # Добавляем иконки только если они настроены
             if default_icon:
-                message['icon'] = default_icon
+                message_data['icon'] = default_icon
             if default_badge:
-                message['badge'] = default_badge
+                message_data['badge'] = default_badge
+            
+            # Преобразуем в JSON-строку для send_message()
+            message = json.dumps(message_data)
             
             sent_count = 0
             failed_count = 0
@@ -85,8 +96,11 @@ class PushNotificationSender(BaseNotificationSender):
                     )
                 except Exception as e:
                     failed_count += 1
+                    # Вычисляем размер payload для диагностики
+                    message_size = len(message.encode('utf-8'))
                     self.logger.error(
-                        f"Ошибка отправки push на device {device.id}: {e}"
+                        f"Ошибка отправки push на device {device.id}: {e} "
+                        f"(payload size: {message_size} bytes)"
                     )
                     # Деактивируем устройство если ошибка
                     if "expired" in str(e).lower() or "unregistered" in str(e).lower():

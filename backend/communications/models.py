@@ -234,9 +234,8 @@ class Chat(models.Model):
                 raise ValidationError("Основной глобальный чат уже существует.")
 
     def delete(self, *args, **kwargs):
-        # Запрещаем удалять только глобальный основной чат
-        if self.is_main and self.type == "global":
-            raise ValidationError("Основной глобальный чат компании нельзя удалить!")
+        # Удаление глобального чата разрешено администраторам и владельцам
+        # Проверка прав происходит на уровне API permissions
         return super().delete(*args, **kwargs)
 
     def mark_read(self, user):
@@ -765,10 +764,20 @@ class MessageForwardMetadata(models.Model):
 
 
 class ChatMembership(models.Model):
-    """Явное управление участниками чатов"""
+    """
+    Явное управление участниками чатов
+    
+    Роли и права:
+    - admin: полный доступ к управлению чатом (кроме удаления)
+    - moderator: может модерировать контент (закреплять, удалять чужие сообщения)
+    - member: обычный участник (может отправлять сообщения)
+    - guest: ограниченный доступ (только чтение, может быть отключен can_send_messages)
+    
+    Примечание: роль 'owner' (владелец) НЕ используется - владелец определяется
+    через Chat.created_by и имеет максимальные права через django-rules.
+    """
     
     ROLE_CHOICES = [
-        ('owner', 'Владелец'),
         ('admin', 'Администратор'),
         ('moderator', 'Модератор'),
         ('member', 'Участник'),
@@ -844,6 +853,55 @@ class ChatMembership(models.Model):
     
     def __str__(self):
         return f"{self.user} в {self.chat} ({self.get_role_display()})"
+    
+    @property
+    def can_manage_members(self):
+        """Может ли участник управлять другими участниками (добавлять/удалять)"""
+        return self.can_add_members and self.can_remove_members
+    
+    def set_permissions_for_role(self):
+        """
+        Устанавливает права доступа автоматически на основе роли.
+        Вызывается при save() если права не были установлены явно.
+        """
+        if self.role == 'admin':
+            self.can_send_messages = True
+            self.can_add_members = True
+            self.can_remove_members = True
+            self.can_pin_messages = True
+        elif self.role == 'moderator':
+            self.can_send_messages = True
+            self.can_add_members = False
+            self.can_remove_members = False
+            self.can_pin_messages = True
+        elif self.role == 'member':
+            self.can_send_messages = True
+            self.can_add_members = False
+            self.can_remove_members = False
+            self.can_pin_messages = False
+        elif self.role == 'guest':
+            self.can_send_messages = False
+            self.can_add_members = False
+            self.can_remove_members = False
+            self.can_pin_messages = False
+    
+    def promote_to_admin(self):
+        """Повышает участника до администратора"""
+        self.role = 'admin'
+        self.set_permissions_for_role()
+        self.save()
+    
+    def demote_to_member(self):
+        """Понижает участника до обычного члена"""
+        self.role = 'member'
+        self.set_permissions_for_role()
+        self.save()
+    
+    def save(self, *args, **kwargs):
+        # Автоматически устанавливаем права при создании
+        if not self.pk:
+            self.set_permissions_for_role()
+        super().save(*args, **kwargs)
 
 
 class MessageReaction(models.Model):

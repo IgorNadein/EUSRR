@@ -65,7 +65,7 @@ def user_can_access_chat(chat: Chat, user) -> bool:
     - private: только участники (participants)
     - group: участники (participants) или ChatMembership
     - channel/announcement: include_all_users или participants/membership
-    - comments: participants/membership or callback
+    - comments: context-based доступ через get_participants()
     
     Args:
         chat: Объект Chat
@@ -73,6 +73,9 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         
     Returns:
         bool: True если пользователь имеет доступ
+        
+    Note:
+        Использует прямые запросы к БД в обход prefetch cache
     """
     if not chat or not user:
         return False
@@ -82,21 +85,66 @@ def user_can_access_chat(chat: Chat, user) -> bool:
 
     if chat.type == "private":
         # Личные чаты только через participants
-        return chat.participants.filter(pk=user.pk).exists()
+        # Обходим prefetch cache используя прямой запрос
+        from .models import Chat
+        return Chat.objects.filter(pk=chat.pk, participants=user).exists()
 
     if chat.type == "group":
-        # Групповые чаты через participants ИЛИ ChatMembership
-        in_participants = chat.participants.filter(pk=user.pk).exists()
-        in_membership = ChatMembership.objects.filter(chat=chat, user=user).exists()
+        # Групповые чаты с контекстным объектом используют resolver
+        if chat.context_object_id:
+            try:
+                participants = chat.get_participants()
+                return participants.filter(pk=user.pk).exists()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"[user_can_access_chat] Failed to resolve for chat "
+                    f"{chat.id}: {e}"
+                )
+        
+        # Обычные групповые чаты через participants ИЛИ ChatMembership
+        from .models import Chat
+        in_participants = Chat.objects.filter(
+            pk=chat.pk, participants=user
+        ).exists()
+        in_membership = ChatMembership.objects.filter(
+            chat=chat, user=user
+        ).exists()
         return in_participants or in_membership
 
-    if chat.type in ("channel", "announcement", "comments"):
+    if chat.type in ("channel", "announcement"):
         # Для каналов и объявлений может быть include_all_users или membership
         if chat.include_all_users:
             return user.is_active
         # Проверяем и participants и membership для гибкости
+        from .models import Chat
         return (
-            chat.participants.filter(pk=user.pk).exists()
+            Chat.objects.filter(pk=chat.pk, participants=user).exists()
+            or ChatMembership.objects.filter(chat=chat, user=user).exists()
+        )
+    
+    if chat.type == "comments":
+        # Чаты-комментарии ВСЕГДА используют context-based доступ
+        if chat.context_object_id:
+            try:
+                # get_participants() вызовет resolver который учитывает
+                # права доступа к контекстному объекту
+                participants = chat.get_participants()
+                return participants.filter(pk=user.pk).exists()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"[user_can_access_chat] Failed to resolve for "
+                    f"comments chat {chat.id}: {e}"
+                )
+                return False
+        
+        # Fallback для старых чатов без контекста
+        from .models import Chat
+        return (
+            Chat.objects.filter(pk=chat.pk, participants=user).exists()
             or ChatMembership.objects.filter(chat=chat, user=user).exists()
         )
 

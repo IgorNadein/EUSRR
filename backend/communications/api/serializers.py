@@ -24,15 +24,17 @@ class ChatUserSettingsSerializer(serializers.ModelSerializer):
 class ChatMembershipSerializer(serializers.ModelSerializer):
     """Членство в чате"""
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    can_manage_members = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = ChatMembership
         fields = [
             'id', 'user', 'user_name', 'role', 
-            'can_send_messages', 'can_manage_members',
-            'joined_at'
+            'joined_at', 'invited_by', 'is_active', 'left_at',
+            'can_send_messages', 'can_add_members', 'can_remove_members',
+            'can_pin_messages', 'can_manage_members'
         ]
-        read_only_fields = ['joined_at']
+        read_only_fields = ['joined_at', 'left_at']
 
 
 class ChatListSerializer(serializers.ModelSerializer):
@@ -116,7 +118,7 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         required=False
     )
     participant_details = serializers.SerializerMethodField()
-    memberships = ChatMembershipSerializer(many=True, read_only=True, source='chatmembership_set')
+    memberships = ChatMembershipSerializer(many=True, read_only=True)
     user_settings = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     notifications_enabled = serializers.SerializerMethodField()
@@ -143,8 +145,15 @@ class ChatDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'created_by', 'context_type', 'context_app']
     
     def get_participant_details(self, obj):
-        """Детали участников"""
-        participants = obj.participants.all()[:20]
+        """Детали участников (свежие данные из БД)"""
+        # Используем прямой запрос в обход prefetch cache
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        participants = User.objects.filter(
+            chats=obj
+        ).distinct()[:20]
+        
         return [{
             'id': p.id,
             'name': p.get_full_name(),

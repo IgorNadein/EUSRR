@@ -355,7 +355,9 @@ export function AppShell({ children }: AppShellProps) {
   const { user, loading, logout } = useUser();
   const router = useRouter();
   const pathname = usePathname();
-  const isMessageDialogPage = pathname.startsWith('/messages/') && pathname !== '/messages';
+  const isMessageDialogPage = pathname.startsWith('/messages/') && 
+    pathname !== '/messages' && 
+    !pathname.includes('/settings');
 
   // Вычисляем данные пользователя один раз на уровне AppShell
   const userInitials = user
