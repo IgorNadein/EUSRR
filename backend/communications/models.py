@@ -132,7 +132,6 @@ class Chat(models.Model):
         blank=True,
         related_name="chats",
         verbose_name="Участники",
-        help_text="Используется только для личных чатов",
     )
     
     # ===== Universal context (GenericForeignKey) =====
@@ -286,14 +285,15 @@ class Chat(models.Model):
         """
         Возвращает QuerySet участников чата.
         
+        MIGRATION: Переписано для использования только ChatMembership
+        
         Использует callback из settings.COMMUNICATIONS_PARTICIPANT_RESOLVER
         для проектно-специфичной логики.
         
         Fallback логика:
-        - private: M2M participants
+        - private/group/channel/announcement: только активные ChatMembership
         - global: все активные пользователи
-        - announcement/channel с include_all_users: все активные
-        - иначе: ChatMembership + participants
+        - с include_all_users: все активные пользователи
         """
         # Попытка использовать callback из settings
         from django.conf import settings
@@ -314,33 +314,29 @@ class Chat(models.Model):
                 logger.warning(f"Failed to import participant resolver '{resolver_path}': {e}")
         
         # Fallback логика (универсальная, без бизнес-специфики)
-        if self.type == "private":
-            return self.participants.all()
-        
-        if self.type == "global":
+        if self.type == "global" or self.include_all_users:
             return User.objects.filter(is_active=True)
         
-        if self.type in ["announcement", "channel"] and self.include_all_users:
-            return User.objects.filter(is_active=True)
-        
-        # Для group/channel/announcement без флага - явные участники
+        # Для всех остальных типов - используем только активные memberships
         from communications.models import ChatMembership
         
-        membership_ids = ChatMembership.objects.filter(
-            chat=self
+        membership_user_ids = ChatMembership.objects.filter(
+            chat=self,
+            is_active=True
         ).values_list("user_id", flat=True)
         
-        return User.objects.filter(
-            Q(id__in=self.participants.values_list('id', flat=True)) |
-            Q(id__in=membership_ids)
-        ).distinct()
+        return User.objects.filter(id__in=membership_user_ids).distinct()
 
     def __str__(self):
         if self.type == "private":
-            # лениво формируем подпись, без лишних запросов
-            parts = list(self.participants.values_list("first_name", "last_name")[:3])
-            names = ", ".join(f"{ln} {fn}".strip() for fn, ln in parts) or "—"
-            more = self.participants.count() - len(parts)
+            # MIGRATION: используем memberships вместо participants
+            members = ChatMembership.objects.filter(
+                chat=self, 
+                is_active=True
+            ).select_related('user')[:3]
+            names = ", ".join(f"{m.user.last_name} {m.user.first_name}".strip() for m in members) or "—"
+            total_count = ChatMembership.objects.filter(chat=self, is_active=True).count()
+            more = total_count - len(members)
             if more > 0:
                 names += f" и ещё {more}"
             return f"Личный чат: {names}"

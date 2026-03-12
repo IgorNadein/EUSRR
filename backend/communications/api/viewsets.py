@@ -89,8 +89,9 @@ class ChatViewSet(viewsets.ModelViewSet):
         user = self.request.user
         from django.contrib.contenttypes.models import ContentType
 
+        # MIGRATION: Используем только memberships вместо participants
         queryset = Chat.objects.filter(
-            Q(participants=user)
+            Q(memberships__user=user, memberships__is_active=True)
             | Q(include_all_users=True)
             | Q(created_by=user)  # Создатель всегда видит свои чаты
         ).select_related(
@@ -131,17 +132,25 @@ class ChatViewSet(viewsets.ModelViewSet):
         # Устанавливаем создателя
         chat = serializer.save(created_by=request.user)
 
-        # Добавляем создателя в участники для всех типов кроме глобальных
+        # MIGRATION: Создаем membership для всех типов кроме глобальных (убрали participants.add)
         if chat.type != 'global':
-            chat.participants.add(request.user)
-            
             # Для чатов с управлением участниками создаем membership с ролью admin
             if chat.type in ['group', 'channel', 'announcement']:
                 ChatMembership.objects.create(
                     chat=chat,
                     user=request.user,
                     role='admin',
-                    invited_by=request.user
+                    invited_by=request.user,
+                    is_active=True
+                )
+            # Для других типов (private, direct) создаем обычного участника
+            else:
+                ChatMembership.objects.create(
+                    chat=chat,
+                    user=request.user,
+                    role='member',
+                    invited_by=request.user,
+                    is_active=True
                 )
         
         # Для глобальных чатов устанавливаем include_all_users=True
@@ -209,14 +218,21 @@ class ChatViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Удаляем пользователя из участников
-        chat.participants.remove(request.user)
-        
-        # Деактивируем membership если есть
-        ChatMembership.objects.filter(
+        # MIGRATION: Убрали participants.remove, только деактивируем membership
+        membership = ChatMembership.objects.filter(
             chat=chat,
             user=request.user
-        ).update(is_active=False)
+        ).first()
+        
+        if membership:
+            membership.is_active = False
+            membership.left_at = timezone.now()
+            membership.save(update_fields=['is_active', 'left_at'])
+        else:
+            return Response(
+                {'error': 'You are not a member of this chat'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         return Response({
             'ok': True,
@@ -252,25 +268,36 @@ class ChatViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Проверяем через прямой запрос (обход prefetch cache)
-        if Chat.objects.filter(pk=chat.pk, participants__pk=user_id).exists():
+        # MIGRATION: Проверяем через memberships вместо participants
+        if ChatMembership.objects.filter(
+            chat=chat,
+            user=user_to_add,
+            is_active=True
+        ).exists():
             return Response(
                 {'error': 'User is already a member'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        chat.participants.add(user_to_add)
-        
-        # Создаем membership для чатов с управлением участниками
+        # Создаем или восстанавливаем membership для чатов с управлением участниками
         if chat.type in ['group', 'channel', 'announcement']:
-            ChatMembership.objects.get_or_create(
+            membership, created = ChatMembership.objects.get_or_create(
                 chat=chat,
                 user=user_to_add,
                 defaults={
                     'role': 'member',
-                    'invited_by': request.user
+                    'invited_by': request.user,
+                    'is_active': True
                 }
             )
+            
+            # Если membership уже существовал (например, пользователь раньше покинул чат),
+            # восстанавливаем его активность
+            if not created and not membership.is_active:
+                membership.is_active = True
+                membership.left_at = None
+                membership.invited_by = request.user  # Обновляем кто пригласил повторно
+                membership.save()
         
         return Response({
             'ok': True,
@@ -313,14 +340,21 @@ class ChatViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Удаляем участника
-        chat.participants.remove(user_to_remove)
-        
-        # Деактивируем membership если есть
-        ChatMembership.objects.filter(
+        # MIGRATION: Убрали participants.remove, только деактивируем membership
+        membership = ChatMembership.objects.filter(
             chat=chat,
             user=user_to_remove
-        ).update(is_active=False)
+        ).first()
+        
+        if not membership:
+            return Response(
+                {'error': 'User is not a member'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        membership.is_active = False
+        membership.left_at = timezone.now()
+        membership.save(update_fields=['is_active', 'left_at'])
         
         return Response({
             'ok': True,
@@ -388,22 +422,35 @@ class ChatViewSet(viewsets.ModelViewSet):
             user=user_to_change,
             defaults={
                 'role': new_role,
-                'invited_by': request.user
+                'invited_by': request.user,
+                'is_active': True  # Явно устанавливаем is_active при создании
             }
         )
         
-        logger.warning(f"[change_role] membership found: created={created}, old_role={membership.role}, new_role={new_role}")
+        logger.warning(
+            f"[change_role] membership found: created={created}, "
+            f"user_id={user_to_change.id}, old_role={membership.role}, new_role={new_role}, "
+            f"is_active={membership.is_active}"
+        )
         
         if not created:
             # Обновляем существующий membership
             old_role = membership.role
+            old_is_active = membership.is_active
             membership.role = new_role
+            membership.is_active = True  # Убеждаемся что is_active = True
+            membership.left_at = None  # Сбрасываем left_at если был
             membership.set_permissions_for_role()
             membership.save()
             
             # Перезагружаем из БД чтобы убедиться что сохранилось
             membership.refresh_from_db()
-            logger.warning(f"[change_role] after save: old={old_role}, new={membership.role}, saved_correctly={membership.role == new_role}")
+            logger.warning(
+                f"[change_role] after save: user_id={user_to_change.id}, "
+                f"old_role={old_role}, new_role={membership.role}, "
+                f"old_is_active={old_is_active}, new_is_active={membership.is_active}, "
+                f"saved_correctly={membership.role == new_role and membership.is_active}"
+            )
         
         return Response({
             'ok': True,
@@ -823,10 +870,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         user = self.request.user
         from django.contrib.contenttypes.models import ContentType
 
-        # Чаты где пользователь состоит напрямую или через membership
+        # MIGRATION: Чаты где пользователь состоит через memberships (убрали participants)
         accessible_chats = Chat.objects.filter(
-            Q(participants=user)
-            | Q(memberships__user=user)
+            Q(memberships__user=user, memberships__is_active=True)
             | Q(include_all_users=True)
         ).distinct()
         

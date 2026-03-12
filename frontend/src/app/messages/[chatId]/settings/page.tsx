@@ -412,16 +412,48 @@ export default function ChatSettingsPage() {
   };
 
   const handleChangeRole = async (userId: number, newRole: 'admin' | 'moderator' | 'member' | 'guest') => {
-    if (!chatId) return;
+    if (!chatId || !chat) return;
     
     setActionLoading(`change-role-${userId}`);
     setRoleDropdownOpen(null);
     
     try {
-      await apiClient.changeChatMemberRole(chatId, userId, newRole);
+      const response = await apiClient.changeChatMemberRole(chatId, userId, newRole);
+      console.log('[handleChangeRole] API response:', response);
       
-      // Перезагружаем данные чата
+      // Оптимистичное обновление: сразу обновляем локальное состояние
+      setChat(prevChat => {
+        if (!prevChat) return prevChat;
+        
+        // Обновляем memberships
+        const updatedMemberships = prevChat.memberships?.map(m => 
+          m.user === userId ? { ...m, role: newRole } : m
+        ) || [];
+        
+        // Если membership не найден, добавляем его
+        if (!updatedMemberships.find(m => m.user === userId)) {
+          updatedMemberships.push({
+            id: 0, // временное значение
+            user: userId,
+            role: newRole,
+            joined_at: new Date().toISOString(),
+            invited_by: currentUserId || null,
+            is_active: true,
+            can_send_messages: true,
+            can_add_members: false,
+            can_remove_members: false,
+            can_pin_messages: false,
+          });
+        }
+        
+        console.log('[handleChangeRole] Updated memberships:', updatedMemberships);
+        return { ...prevChat, memberships: updatedMemberships };
+      });
+      
+      // Перезагружаем данные чата с сервера для синхронизации
       const refreshedChat = await apiClient.getChat(chatId);
+      console.log('[handleChangeRole] Refreshed chat from server:', refreshedChat);
+      console.log('[handleChangeRole] Refreshed memberships:', refreshedChat.memberships);
       setChat(refreshedChat);
     } catch (e) {
       console.error("Ошибка при изменении роли:", e);

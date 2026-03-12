@@ -140,7 +140,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('feed', '0005_alter_post_department'),
-        ('communications', '__latest__'),
+        ('communications', '0037_remove_department_type'),  # Зафиксировали конкретную версию
         ('contenttypes', '__latest__'),
     ]
 

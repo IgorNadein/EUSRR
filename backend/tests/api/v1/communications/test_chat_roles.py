@@ -314,114 +314,191 @@ class TestChangeRole:
     
     def test_owner_can_change_role_to_admin(self, owner_client, group_chat_with_roles, member_user):
         """Владелец может повысить участника до админа"""
-        url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
-        response = owner_client.post(url, {
+        # 1. Изменяем роль через API
+        change_role_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
+        response = owner_client.post(change_role_url, {
             'user_id': member_user.id,
             'role': 'admin'
         })
         
+        # 2. Проверяем успешный ответ
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data['ok'] is True
         assert data['membership']['role'] == 'admin'
         
-        # Проверяем что роль изменилась в БД
-        membership = ChatMembership.objects.get(chat=group_chat_with_roles, user=member_user)
-        assert membership.role == 'admin'
-        assert membership.can_send_messages is True
-        assert membership.can_add_members is True
-        assert membership.can_remove_members is True
-        assert membership.can_pin_messages is True
+        # 3. Получаем чат через API и проверяем что роль изменилась
+        chat_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/"
+        chat_response = owner_client.get(chat_url)
+        
+        assert chat_response.status_code == status.HTTP_200_OK
+        chat_data = chat_response.json()
+        
+        # 4. Находим участника в memberships и проверяем его роль и права
+        member_membership = next(
+            (m for m in chat_data['memberships'] if m['user'] == member_user.id),
+            None
+        )
+        
+        assert member_membership is not None, "Участник не найден в memberships"
+        assert member_membership['role'] == 'admin'
+        assert member_membership['can_send_messages'] is True
+        assert member_membership['can_add_members'] is True
+        assert member_membership['can_remove_members'] is True
+        assert member_membership['can_pin_messages'] is True
+        assert member_membership['can_manage_members'] is True
     
     def test_owner_can_change_role_to_moderator(self, owner_client, group_chat_with_roles, member_user):
         """Владелец может назначить участника модератором"""
-        url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
-        response = owner_client.post(url, {
+        # 1. Изменяем роль через API
+        change_role_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
+        response = owner_client.post(change_role_url, {
             'user_id': member_user.id,
             'role': 'moderator'
         })
         
+        # 2. Проверяем успешный ответ
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data['membership']['role'] == 'moderator'
         
-        # Проверяем права
-        membership = ChatMembership.objects.get(chat=group_chat_with_roles, user=member_user)
-        assert membership.role == 'moderator'
-        assert membership.can_send_messages is True
-        assert membership.can_pin_messages is True
-        assert membership.can_add_members is False
-        assert membership.can_remove_members is False
-    
-    def test_owner_can_demote_admin_to_member(self, owner_client, group_chat_with_roles, admin_user):
-        """Владелец может понизить админа до обычного участника"""
-        url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
-        response = owner_client.post(url, {
+        # 3. Получаем чат через API и проверяем что роль изменилась
+        chat_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/"
+        chat_response = owner_client.get(chat_url)
+        
+        assert chat_response.status_code == status.HTTP_200_OK
+        chat_data = chat_response.json()
+        
+        # 4. Проверяем роль и права через API
+        # 1. Изменяем роль через API
+        change_role_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
+        response = owner_client.post(change_role_url, {
             'user_id': admin_user.id,
             'role': 'member'
         })
         
+        # 2. Проверяем успешный ответ
         assert response.status_code == status.HTTP_200_OK
         
-        # Проверяем что права понизились
-        membership = ChatMembership.objects.get(chat=group_chat_with_roles, user=admin_user)
-        assert membership.role == 'member'
-        assert membership.can_send_messages is True
-        assert membership.can_add_members is False
-        assert membership.can_remove_members is False
-        assert membership.can_pin_messages is False
-    
-    def test_owner_can_change_role_to_guest(self, owner_client, group_chat_with_roles, member_user):
-        """Владелец может ограничить права участника до гостя"""
+        # 3. Получаем чат через API и проверяем понижение прав
+        chat_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/"
+        chat_response = owner_client.get(chat_url)
+        
+        assert chat_response.status_code == status.HTTP_200_OK
+        chat_data = chat_response.json()
+        
+        # 4. Проверяем что права понизились
+        admin_membership = next(
+            (m for m in chat_data['memberships'] if m['user'] == admin_user.id),
+            None
+        )
+        
+        assert admin_membership is not None
+        assert admin_membership['role'] == 'member'
+        assert admin_membership['can_send_messages'] is True
+        assert admin_membership['can_add_members'] is False
+        assert admin_membership['can_remove_members'] is False
+        assert admin_membership['can_pin_messages'] is False
+        assert admin_membership['can_manage_members']до обычного участника"""
         url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
         response = owner_client.post(url, {
+            'user_id': admin_user.id,
+        # 1. Изменяем роль через API
+        change_role_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
+        response = owner_client.post(change_role_url, {
             'user_id': member_user.id,
             'role': 'guest'
         })
         
+        # 2. Проверяем успешный ответ
         assert response.status_code == status.HTTP_200_OK
         
-        # Проверяем что участник теперь гость (только чтение)
-        membership = ChatMembership.objects.get(chat=group_chat_with_roles, user=member_user)
-        assert membership.role == 'guest'
-        assert membership.can_send_messages is False
-        assert membership.can_add_members is False
-        assert membership.can_remove_members is False
-        assert membership.can_pin_messages is False
+        # 3. Получаем чат через API и проверяем ограничение прав
+        chat_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/"
+        chat_response = owner_client.get(chat_url)
+        
+        assert chat_response.status_code == status.HTTP_200_OK
+        chat_data = chat_response.json()
+        
+        # 4. Проверяем что участник теперь гость (только чтение)
+        member_membership = next(
+            (m for m in chat_data['memberships'] if m['user'] == member_user.id),
+            None
+        )
+        
+        assert member_membership is not None
+        assert member_membership['role'] == 'guest'
+        assert member_membership['can_send_messages'] is False
+        assert member_membership['can_add_members'] is False
+        assert member_membership['can_remove_members'] is False
+        assert member_membership['can_pin_messages'] is False
+        assert member_membership['can_manage_members'] is False
     
     def test_admin_cannot_change_roles(self, admin_client, group_chat_with_roles, member_user):
         """Админ НЕ может менять роли (только владелец)"""
-        url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
-        response = admin_client.post(url, {
+        # 1. Пытаемся изменить роль через API
+        change_role_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
+        response = admin_client.post(change_role_url, {
             'user_id': member_user.id,
             'role': 'admin'
         })
         
+        # 2. Проверяем что доступ запрещен
         assert response.status_code == status.HTTP_403_FORBIDDEN
         
-        # Проверяем что роль не изменилась
-        membership = ChatMembership.objects.get(chat=group_chat_with_roles, user=member_user)
-        assert membership.role == 'member'
+        # 3. Получаем чат через API и проверяем что роль НЕ изменилась
+        chat_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/"
+        chat_response = admin_client.get(chat_url)
+        
+        assert chat_response.status_code == status.HTTP_200_OK
+        chat_data = chat_response.json()
+        
+        # 4. Проверяем что роль осталась 'member'
+        member_membership = next(
+            (m for m in chat_data['memberships'] if m['user'] == member_user.id),
+            None
+        )
+        
+        assert member_membership is not None
+        assert member_membership['role'] == 'member'
     
     def test_moderator_cannot_change_roles(self, moderator_client, group_chat_with_roles, member_user):
         """Модератор НЕ может менять роли"""
-        url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
-        response = moderator_client.post(url, {
+        # 1. Пытаемся изменить роль через API
+        change_role_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
+        response = moderator_client.post(change_role_url, {
             'user_id': member_user.id,
             'role': 'admin'
         })
         
+        # 2. Проверяем что доступ запрещен
         assert response.status_code == status.HTTP_403_FORBIDDEN
-    
-    def test_member_cannot_change_roles(self, member_client, group_chat_with_roles, guest_user):
-        """Обычный участник НЕ может менять роли"""
-        url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
-        response = member_client.post(url, {
+        
+        # 1. Пытаемся изменить роль через API
+        change_role_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/change-role/"
+        response = member_client.post(change_role_url, {
             'user_id': guest_user.id,
             'role': 'member'
         })
         
+        # 2. Проверяем что доступ запрещен
         assert response.status_code == status.HTTP_403_FORBIDDEN
+        
+        # 3. Получаем чат через API и проверяем что роль НЕ изменилась
+        chat_url = f"/api/v1/communications/chats/{group_chat_with_roles.id}/"
+        chat_response = member_client.get(chat_url)
+        
+        assert chat_response.status_code == status.HTTP_200_OK
+        chat_data = chat_response.json()
+        
+        # 4. Проверяем что роль осталась 'guest'
+        guest_membership = next(
+            (m for m in chat_data['memberships'] if m['user'] == guest_user.id),
+            None
+        )
+        
+        assert guest_membership is not None
+        assert guest_membership['role'] == 'guest'
     
     def test_cannot_change_owner_role(self, owner_client, group_chat_with_roles, owner):
         """Нельзя изменить роль владельца чата"""

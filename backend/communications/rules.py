@@ -34,17 +34,13 @@ def is_chat_member(user, chat):
     if chat.type == "global":
         return True
     
-    # Для личных чатов - только через participants
-    if chat.type == "private":
-        return Chat.objects.filter(pk=chat.pk, participants=user).exists()
-    
-    # Для групп, каналов и объявлений - participants ИЛИ ChatMembership
-    if chat.type in ("group", "channel", "announcement", "comments"):
-        in_participants = Chat.objects.filter(pk=chat.pk, participants=user).exists()
-        in_membership = ChatMembership.objects.filter(chat=chat, user=user, is_active=True).exists()
-        return in_participants or in_membership
-    
-    return False
+    # MIGRATION: Используем только ChatMembership для всех типов чатов
+    # Для любого типа чата проверяем активное membership
+    return ChatMembership.objects.filter(
+        chat=chat, 
+        user=user, 
+        is_active=True
+    ).exists()
 
 
 @rules.predicate
@@ -195,18 +191,16 @@ def has_send_messages_permission(user, chat):
             )
             return result
         except ChatMembership.DoesNotExist:
-            # Если нет membership, но пользователь в participants - разрешено
-            # (обратная совместимость)
-            result = chat.participants.filter(pk=user.pk).exists()
+            # MIGRATION: Убрали fallback на participants
+            # После миграции все участники должны быть в ChatMembership
             logger.warning(
-                f"[has_send_messages_permission] no membership, "
-                f"check participants: user={user.id}, chat={chat.id}, "
-                f"result={result}"
+                f"[has_send_messages_permission] no membership found: "
+                f"user={user.id}, chat={chat.id}, denying access"
             )
-            return result
+            return False
     
-    # Если нет memberships (старые чаты) - разрешено
-    return True
+    # Если нет memberships (не должно быть после миграции) - запрещено
+    return False
 
 
 @rules.predicate

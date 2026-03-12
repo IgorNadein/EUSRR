@@ -103,7 +103,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('requests_app', '0009_alter_request_type'),
-        ('communications', '__latest__'),
+        ('communications', '0037_remove_department_type'),  # Зафиксировали конкретную версию вместо __latest__
         ('contenttypes', '__latest__'),
     ]
 
