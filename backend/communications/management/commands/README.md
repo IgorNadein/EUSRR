@@ -103,6 +103,29 @@ cd backend
 .venv/bin/python manage.py check_chats --check 6
 ```
 
+#### Исправить все чаты с некорректными типами (заменить на group)
+
+```bash
+.venv/bin/python manage.py check_chats --fix
+```
+
+#### Исправить с указанием целевого типа
+
+```bash
+# Заменить все некорректные типы на "channel"
+.venv/bin/python manage.py check_chats --fix --target-type channel
+```
+
+#### Изменить тип конкретного чата
+
+```bash
+# Изменить тип чата с ID 6 на "group"
+.venv/bin/python manage.py check_chats --change-type 6 group
+
+# Изменить тип чата с ID 15 на "channel"
+.venv/bin/python manage.py check_chats --change-type 15 channel
+```
+
 #### Удалить все чаты с некорректными типами (с подтверждением)
 
 ```bash
@@ -134,9 +157,12 @@ cd backend
 
 - `--find` - Найти все чаты с некорректными типами
 - `--check CHAT_ID` - Проверить конкретный чат по ID
+- `--fix` - Исправить все чаты с некорректными типами (по умолчанию заменяет на group)
+- `--change-type CHAT_ID NEW_TYPE` - Изменить тип конкретного чата
+- `--target-type TYPE` - Целевой тип для опции --fix (по умолчанию: group)
 - `--cleanup` - Удалить все чаты с некорректными типами
 - `--delete CHAT_ID` - Удалить конкретный чат по ID
-- `--no-confirm` - Не запрашивать подтверждение при удалении
+- `--no-confirm` - Не запрашивать подтверждение при удалении/изменении
 
 ---
 
