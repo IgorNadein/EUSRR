@@ -97,6 +97,21 @@ cd backend
 .venv/bin/python manage.py check_chats --stats
 ```
 
+#### Проверить видимость чатов для конкретного пользователя
+
+```bash
+# Проверяет какие чаты увидит пользователь через API (эмулирует логику ChatViewSet)
+.venv/bin/python manage.py check_chats --check-visibility 10
+```
+
+#### Мигрировать участников из participants в ChatMembership
+
+```bash
+# КРИТИЧНО: Создает ChatMembership для всех участников из participants
+# Без этого чаты не будут видны в API!
+.venv/bin/python manage.py check_chats --migrate-memberships
+```
+
 #### Показать все личные чаты
 
 ```bash
@@ -184,6 +199,8 @@ cd backend
 ### Опции
 
 - `--stats` - Показать статистику чатов по типам
+- `--check-visibility USER_ID` - Проверить видимость чатов для конкретного пользователя (как в API)
+- `--migrate-memberships` - Создать ChatMembership для всех участников из participants
 - `--list-type TYPE` - Показать все чаты указанного типа (например: private, group)
 - `--export TYPE` - Экспортировать чаты указанного типа в JSON файл
 - `--output PATH` - Путь к файлу для экспорта (по умолчанию: chats_export.json)
