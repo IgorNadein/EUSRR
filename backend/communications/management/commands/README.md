@@ -103,6 +103,16 @@ cd backend
 .venv/bin/python manage.py check_chats --list-type private
 ```
 
+#### Экспортировать личные чаты в JSON файл
+
+```bash
+# По умолчанию сохранится в chats_export.json
+.venv/bin/python manage.py check_chats --export private
+
+# Указать свой путь к файлу
+.venv/bin/python manage.py check_chats --export private --output /tmp/private_chats.json
+```
+
 #### Показать все групповые чаты
 
 ```bash
@@ -175,6 +185,8 @@ cd backend
 
 - `--stats` - Показать статистику чатов по типам
 - `--list-type TYPE` - Показать все чаты указанного типа (например: private, group)
+- `--export TYPE` - Экспортировать чаты указанного типа в JSON файл
+- `--output PATH` - Путь к файлу для экспорта (по умолчанию: chats_export.json)
 - `--find` - Найти все чаты с некорректными типами
 - `--check CHAT_ID` - Проверить конкретный чат по ID
 - `--fix` - Исправить все чаты с некорректными типами (по умолчанию заменяет на group)
