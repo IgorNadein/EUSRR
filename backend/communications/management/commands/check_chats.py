@@ -70,6 +70,12 @@ class Command(BaseCommand):
             help='Показать все чаты указанного типа (например: private)',
         )
         parser.add_argument(
+            '--check-visibility',
+            type=int,
+            metavar='USER_ID',
+            help='Проверить видимость чатов для конкретного пользователя (как в API)',
+        )
+        parser.add_argument(
             '--export',
             type=str,
             metavar='TYPE',
@@ -97,6 +103,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if options['stats']:
             self.show_stats()
+        elif options['check_visibility']:
+            self.check_visibility(options['check_visibility'])
         elif options['export']:
             self.export_chats(options['export'], options['output'])
         elif options['list_type']:
@@ -119,7 +127,7 @@ class Command(BaseCommand):
         elif options['delete']:
             self.delete_chat(options['delete'], no_confirm=options['no_confirm'])
         else:
-            self.stdout.write(self.style.ERROR('Укажите действие: --stats, --export, --list-type, --find, --check, --fix, --change-type, --cleanup или --delete'))
+            self.stdout.write(self.style.ERROR('Укажите действие: --stats, --check-visibility, --export, --list-type, --find, --check, --fix, --change-type, --cleanup или --delete'))
             self.stdout.write('Используйте --help для справки')
 
     def show_stats(self):
@@ -161,6 +169,106 @@ class Command(BaseCommand):
             self.stdout.write(self.style.NOTICE('Для исправления используйте: python manage.py check_chats --fix'))
         else:
             self.stdout.write(self.style.SUCCESS(f'\n✅ Все {valid_count} чатов имеют корректные типы'))
+
+    def check_visibility(self, user_id):
+        """Проверяет видимость чатов для пользователя (эмулирует API логику)"""
+        from django.contrib.auth import get_user_model
+        from django.db.models import Q
+        from communications.models import ChatMembership
+        
+        User = get_user_model()
+        
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            raise CommandError(f'❌ Пользователь с ID {user_id} не найден')
+        
+        user_name = f"{getattr(user, 'last_name', '')} {getattr(user, 'first_name', '')}".strip()
+        self.stdout.write(self.style.SUCCESS(f'🔍 Проверка видимости чатов для пользователя:'))
+        self.stdout.write(f'   ID: {user.id}')
+        self.stdout.write(f'   Имя: {user_name or user.email}')
+        self.stdout.write(f'   Email: {user.email}\n')
+        
+        # Точная логика из ChatViewSet.get_queryset()
+        all_chats = Chat.objects.filter(
+            Q(memberships__user=user, memberships__is_active=True)
+            | Q(include_all_users=True)
+            | Q(created_by=user)
+        ).distinct().order_by('-created_at')
+        
+        # Отдельно чаты для list action (без comments)
+        list_chats = all_chats.exclude(type='comments')
+        
+        total_visible = all_chats.count()
+        list_visible = list_chats.count()
+        comments_hidden = total_visible - list_visible
+        
+        self.stdout.write(self.style.SUCCESS(f'📊 Итого:'))
+        self.stdout.write(f'   Всего доступных чатов: {total_visible}')
+        self.stdout.write(f'   Видимых в списке API: {list_visible}')
+        if comments_hidden > 0:
+            self.stdout.write(self.style.WARNING(f'   Скрыто (type=comments): {comments_hidden}'))
+        
+        # Группировка по типам
+        self.stdout.write(f'\n📋 Детали по типам:')
+        
+        for chat_type in ['private', 'group', 'channel', 'global', 'announcement', 'comments']:
+            type_chats = all_chats.filter(type=chat_type)
+            count = type_chats.count()
+            
+            if count == 0:
+                continue
+            
+            visible_in_list = 'да' if chat_type != 'comments' else 'нет (скрыт в list)'
+            type_label = {
+                'private': 'Личные',
+                'group': 'Групповые',
+                'channel': 'Каналы',
+                'announcement': 'Объявления',
+                'global': 'Глобальные',
+                'comments': 'Комментарии',
+            }.get(chat_type, chat_type)
+            
+            self.stdout.write(f'\n  {type_label}: {count} шт. (в списке: {visible_in_list})')
+            
+            # Проверяем причину видимости для каждого чата
+            for chat in type_chats[:5]:  # Показываем первые 5
+                reasons = []
+                
+                # Проверка membership
+                membership = ChatMembership.objects.filter(
+                    chat=chat,
+                    user=user,
+                    is_active=True
+                ).first()
+                
+                if membership:
+                    role_emoji = {'owner': '👑', 'admin': '🔴', 'moderator': '🟠', 'member': '🟢', 'guest': '⚪'}.get(membership.role, '❓')
+                    reasons.append(f"membership:{role_emoji}{membership.role}")
+                
+                if chat.include_all_users:
+                    reasons.append("include_all_users")
+                
+                if chat.created_by_id == user.id:
+                    reasons.append("created_by")
+                
+                reason_str = " | ".join(reasons) if reasons else "❌ ПРИЧИНА НЕ НАЙДЕНА!"
+                self.stdout.write(f'    • ID:{chat.id} {chat.name or "[без названия]"} → {reason_str}')
+            
+            if count > 5:
+                self.stdout.write(f'    ... и еще {count - 5} чатов')
+        
+        # Проверяем чаты, где user является участником, но is_active=False
+        inactive_memberships = ChatMembership.objects.filter(
+            user=user,
+            is_active=False
+        ).select_related('chat')
+        
+        if inactive_memberships.exists():
+            self.stdout.write(self.style.ERROR(f'\n⚠️  НЕАКТИВНЫЕ УЧАСТИЯ (is_active=False): {inactive_memberships.count()}'))
+            for membership in inactive_memberships[:10]:
+                chat = membership.chat
+                self.stdout.write(f'    • ID:{chat.id} {chat.name or "[без названия]"} (тип: {chat.type}, роль: {membership.role})')
 
     def export_chats(self, chat_type, output_file):
         """Экспортирует чаты указанного типа в JSON файл"""
