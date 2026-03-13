@@ -21,7 +21,7 @@ def cleanup_orphaned_attachments():
     
     orphaned = MessageAttachment.objects.filter(
         message__isnull=True,
-        created_at__lt=cutoff_time
+        uploaded_at__lt=cutoff_time
     )
     
     count = orphaned.count()
