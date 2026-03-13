@@ -131,12 +131,16 @@ export function useWebPush(): UseWebPushReturn {
         setIsLoading(true);
 
         try {
+            // Получаем текущую подписку для endpoint
+            const subscription = await getCurrentSubscription(swRegistration);
+            const endpoint = subscription?.endpoint;
+
             // Удаляем локальную подписку
             const success = await unsubscribeFromPush(swRegistration);
 
-            if (success) {
-                // Удаляем на сервере
-                await apiClient.unsubscribePush();
+            if (success && endpoint) {
+                // Удаляем на сервере только это конкретное устройство
+                await apiClient.unsubscribePush(endpoint);
 
                 setIsSubscribed(false);
                 toast.success('Подписка отменена');
