@@ -85,10 +85,10 @@ class EmailNotificationSender(BaseNotificationSender):
                 'actor': notification.actor,
                 'verb': notification.verb,
                 'description': notification.description,
-                'action_url': self._get_full_url(notification.action_url),
+                'action_url': self._get_full_url(notification.action_url, notification),
                 'action_text': 'Посмотреть',
                 'site_name': config.site_name(),
-                'site_url': self._get_site_url(),
+                'site_url': self._get_site_url(notification),
                 'verb_icon': self.VERB_ICONS.get(notification.verb, '🔔'),
             }
             
@@ -159,7 +159,7 @@ class EmailNotificationSender(BaseNotificationSender):
                 'total_count': len(notifications),
                 'verb_icons': self.VERB_ICONS,
                 'site_name': config.site_name(),
-                'site_url': self._get_site_url(),
+                'site_url': self._get_site_url(notifications[0] if notifications else None),
             }
             
             # Рендерим шаблоны
@@ -209,25 +209,56 @@ class EmailNotificationSender(BaseNotificationSender):
                 return f"{notif.description}\n\n{context.get('action_url', '')}"
             return ""
     
-    def _get_site_url(self) -> str:
-        """Получает базовый URL сайта из настроек."""
+    def _get_site_url(self, notification=None) -> str:
+        """
+        Получает базовый URL сайта.
+        
+        Приоритет:
+        1. notification.data['site_url'] - если передан при создании
+        2. settings.SITE_URL - статическая настройка
+        3. settings.ALLOWED_HOSTS[0] - автоопределение из разрешенных хостов
+        4. 'http://localhost:9000' - fallback для разработки
+        
+        Args:
+            notification: Объект Notification (опционально)
+            
+        Returns:
+            Базовый URL сайта (например, 'https://example.com')
+        """
+        # 1. Проверяем данные уведомления
+        if notification and hasattr(notification, 'data') and isinstance(notification.data, dict):
+            if 'site_url' in notification.data:
+                return notification.data['site_url']
+        
+        # 2. Проверяем settings.SITE_URL
         if hasattr(settings, 'SITE_URL'):
             return settings.SITE_URL
         
+        # 3. Автоопределение из ALLOWED_HOSTS
         if settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS[0] != '*':
             host = settings.ALLOWED_HOSTS[0]
             protocol = 'https' if getattr(settings, 'SECURE_SSL_REDIRECT', False) else 'http'
             return f"{protocol}://{host}"
         
+        # 4. Fallback для разработки
         return 'http://localhost:9000'
     
-    def _get_full_url(self, path: str) -> str:
-        """Преобразует относительный URL в абсолютный."""
+    def _get_full_url(self, path: str, notification=None) -> str:
+        """
+        Преобразует относительный URL в абсолютный.
+        
+        Args:
+            path: Относительный или абсолютный URL
+            notification: Объект Notification для получения site_url
+            
+        Returns:
+            Абсолютный URL
+        """
         if not path:
             return ''
         
         if path.startswith('http://') or path.startswith('https://'):
             return path
         
-        site_url = self._get_site_url()
+        site_url = self._get_site_url(notification)
         return f"{site_url}{path}"
