@@ -1,4 +1,5 @@
 import os
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -521,6 +522,10 @@ CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Мягкий лимит - 25 минут
 
 # Настройки для периодических задач (Celery Beat)
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# PID файлы для Celery (используем /tmp чтобы не требовать root прав)
+CELERY_BEAT_PIDFILE = os.path.join(tempfile.gettempdir(), 'celery-beat.pid')
+CELERYD_PIDFILE = os.path.join(tempfile.gettempdir(), 'celery-worker.pid')
 
 # Расписание периодических задач
 CELERY_BEAT_SCHEDULE = {
