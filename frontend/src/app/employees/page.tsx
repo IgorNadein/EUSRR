@@ -13,10 +13,11 @@ export default function EmployeesPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [showOnlyActive, setShowOnlyActive] = useState(false);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
 
-  const loadEmployees = async (pageToLoad: number, append: boolean) => {
+  const loadEmployees = async (pageToLoad: number, append: boolean, activeOnly: boolean) => {
     if (isFetchingRef.current) return;
 
     try {
@@ -28,7 +29,11 @@ export default function EmployeesPage() {
       }
       setError(null);
 
-      const response = await apiClient.getEmployees({ page: pageToLoad, limit: 20 });
+      const response = await apiClient.getEmployees({ 
+        page: pageToLoad, 
+        limit: 20,
+        ...(activeOnly && { is_active: true })
+      });
       const nextChunk = response.results || [];
 
       setEmployees((prev) => (append ? [...prev, ...nextChunk] : nextChunk));
@@ -45,8 +50,8 @@ export default function EmployeesPage() {
   };
 
   useEffect(() => {
-    loadEmployees(1, false);
-  }, []);
+    loadEmployees(1, false, showOnlyActive);
+  }, [showOnlyActive]);
 
   useEffect(() => {
     if (!hasMore || loading) return;
@@ -59,7 +64,7 @@ export default function EmployeesPage() {
         const first = entries[0];
         if (!first?.isIntersecting) return;
         if (isFetchingRef.current || loadingMore || !hasMore) return;
-        loadEmployees(page + 1, true);
+        loadEmployees(page + 1, true, showOnlyActive);
       },
       {
         root: null,
@@ -106,43 +111,50 @@ export default function EmployeesPage() {
 
   return (
     <AppShell>
+      <div className="mb-4 flex items-center gap-3">
+        <button
+          onClick={() => setShowOnlyActive(false)}
+          className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+            !showOnlyActive
+              ? 'bg-sky-400 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Все сотрудники
+        </button>
+        <button
+          onClick={() => setShowOnlyActive(true)}
+          className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+            showOnlyActive
+              ? 'bg-sky-400 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Только активные
+        </button>
+      </div>
+
       <div className="space-y-3">
         {sortedEmployees.map((employee) => {
           const fullName = `${employee.last_name} ${employee.first_name} ${employee.patronymic || ''}`.trim();
           const initials = `${employee.last_name?.[0] || ''}${employee.first_name?.[0] || ''}`;
           const position = employee.position?.name || 'Сотрудник';
-          const isOnline = employee.is_active;
-          const statusText = isOnline ? 'Активен' : 'Неактивен';
-          const dotColor = isOnline ? 'bg-green-500' : 'bg-gray-400';
-          const statusColor = isOnline ? 'text-green-600' : 'text-gray-500';
 
           return (
             <Link key={employee.id} href={`/users/${employee.id}`} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 transition hover:bg-gray-50">
-              <div className="relative h-12 w-12">
-                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
-                  {employee.avatar ? (
-                    <img src={employee.avatar} alt={fullName} className="h-full w-full object-cover" />
-                  ) : (
-                    initials
-                  )}
-                </div>
-                {isOnline ? (
-                  <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
-                ) : null}
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
+                {employee.avatar ? (
+                  <img src={employee.avatar} alt={fullName} className="h-full w-full object-cover" />
+                ) : (
+                  initials
+                )}
               </div>
               <div className="flex-1">
                 <p className="text-sm font-semibold text-gray-900">{fullName}</p>
                 <p className="text-xs text-gray-500">{position}</p>
-                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                  <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-                  <span className={statusColor}>{statusText}</span>
-                  {employee.email && (
-                    <>
-                      <span className="mx-1 text-gray-300">•</span>
-                      <span className="text-gray-500">{employee.email}</span>
-                    </>
-                  )}
-                </div>
+                {employee.email && (
+                  <p className="mt-1 text-xs text-gray-500">{employee.email}</p>
+                )}
               </div>
             </Link>
           );

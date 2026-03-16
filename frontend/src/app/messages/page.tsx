@@ -161,15 +161,6 @@ function getChatSortTimestamp(chat: Chat): number {
   return Number.isNaN(chatCreatedTs) ? 0 : chatCreatedTs;
 }
 
-function isChatOnline(chat: Chat, currentUserId?: number): boolean {
-  const chatKind = chat.chat_type || chat.type;
-  if (chatKind !== "direct" && chatKind !== "private") return false;
-  const otherParticipant = (chat.participants || [])
-    .filter((p): p is Exclude<typeof p, number> => typeof p === "object" && p !== null)
-    .find((p) => p.id !== currentUserId);
-  return Boolean(otherParticipant?.is_active);
-}
-
 export default function MessagesPage() {
   const { user } = useUser();
   const router = useRouter();
@@ -710,10 +701,6 @@ export default function MessagesPage() {
                       <span className="absolute -bottom-0.5 -left-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 ring-2 ring-white">
                         {getChatTypeIcon(chat)}
                       </span>
-                      {/* Онлайн-статус */}
-                      {isChatOnline(chat, user?.id) ? (
-                        <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
-                      ) : null}
                       {/* Счетчик непрочитанных */}
                       {(chat.unread_count ?? 0) > 0 ? (
                         <span className="absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-white">

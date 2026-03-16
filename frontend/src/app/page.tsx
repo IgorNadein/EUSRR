@@ -534,10 +534,6 @@ export default function Home() {
             const authorInitials = post.author
               ? `${post.author.last_name?.[0] || ''}${post.author.first_name?.[0] || ''}`
               : 'А';
-            const isAuthorOnline =
-              typeof post.author?.is_active === 'boolean'
-                ? post.author.is_active
-                : Boolean(post.author?.id && user?.id && post.author.id === user.id && user.is_active);
 
             const postText = (post.body || post.content || "").trim();
 
@@ -564,9 +560,6 @@ export default function Home() {
                           authorInitials
                         )}
                       </div>
-                      {isAuthorOnline ? (
-                        <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
-                      ) : null}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-900">{authorName}</p>
