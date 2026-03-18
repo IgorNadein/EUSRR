@@ -13,8 +13,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from employees.models import Employee, LdapSyncState
-from employees.ldap.infrastructure.connections import _ldap
-from employees.ldap.repositories.ldap_repository import modify_user_attrs, read_attrs
+from employees.ldap.orm_models import LdapUser
 
 logger = logging.getLogger(__name__)
 
@@ -92,82 +91,88 @@ class Command(BaseCommand):
         skipped_no_employee = 0
         errors = 0
 
-        with _ldap() as conn:
-            for state in sync_states:
-                dn = state.ldap_dn
-                pk = state.object_pk
+        for state in sync_states:
+            dn = state.ldap_dn
+            pk = state.object_pk
 
-                # Проверяем что Employee существует
-                try:
-                    employee = Employee.objects.get(pk=pk)
-                except Employee.DoesNotExist:
-                    if verbose:
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"  [SKIP] pk={pk}: Employee не найден в БД"
-                            )
+            # Проверяем что Employee существует
+            try:
+                employee = Employee.objects.get(pk=pk)
+            except Employee.DoesNotExist:
+                if verbose:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  [SKIP] pk={pk}: Employee не найден в БД"
                         )
-                    skipped_no_employee += 1
-                    continue
+                    )
+                skipped_no_employee += 1
+                continue
 
-                # Читаем текущее значение employeeNumber
+            # Читаем текущее значение employeeNumber через ORM
+            try:
+                ldap_user = LdapUser.objects.get(dn=dn)
+                current_value = ldap_user.employee_number or None
+            except LdapUser.DoesNotExist:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"  [ERROR] pk={pk}, DN={dn}: не найден в LDAP"
+                    )
+                )
+                errors += 1
+                continue
+            except Exception as e:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"  [ERROR] pk={pk}, DN={dn}: не удалось прочитать — {e}"
+                    )
+                )
+                errors += 1
+                continue
+
+            # Проверяем нужно ли обновлять
+            expected_value = str(pk)
+            
+            if current_value == expected_value:
+                if verbose > 1:
+                    self.stdout.write(
+                        f"  [OK] pk={pk}: уже установлено {employee_id_attr}={current_value}"
+                    )
+                skipped_already_set += 1
+                continue
+
+            if current_value and not force:
+                if verbose:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  [SKIP] pk={pk}: {employee_id_attr}={current_value} "
+                            f"(отличается от pk, используйте --force)"
+                        )
+                    )
+                skipped_already_set += 1
+                continue
+
+            # Записываем через ORM
+            action = "UPDATE" if current_value else "SET"
+            if verbose or dry_run:
+                email = employee.email or "(no email)"
+                self.stdout.write(
+                    f"  [{action}] pk={pk}, email={email}, DN={dn}: "
+                    f"{employee_id_attr}={current_value!r} -> {expected_value!r}"
+                )
+
+            if not dry_run:
                 try:
-                    current_attrs = read_attrs(conn, dn, [employee_id_attr])
-                    current_value = current_attrs.get(employee_id_attr)
+                    ldap_user.employee_number = expected_value
+                    ldap_user.save()
+                    updated += 1
                 except Exception as e:
                     self.stdout.write(
                         self.style.ERROR(
-                            f"  [ERROR] pk={pk}, DN={dn}: не удалось прочитать — {e}"
+                            f"  [ERROR] pk={pk}: не удалось записать — {e}"
                         )
                     )
                     errors += 1
-                    continue
-
-                # Проверяем нужно ли обновлять
-                expected_value = str(pk)
-                
-                if current_value == expected_value:
-                    if verbose > 1:
-                        self.stdout.write(
-                            f"  [OK] pk={pk}: уже установлено {employee_id_attr}={current_value}"
-                        )
-                    skipped_already_set += 1
-                    continue
-
-                if current_value and not force:
-                    if verbose:
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"  [SKIP] pk={pk}: {employee_id_attr}={current_value} "
-                                f"(отличается от pk, используйте --force)"
-                            )
-                        )
-                    skipped_already_set += 1
-                    continue
-
-                # Записываем
-                action = "UPDATE" if current_value else "SET"
-                if verbose or dry_run:
-                    email = employee.email or "(no email)"
-                    self.stdout.write(
-                        f"  [{action}] pk={pk}, email={email}, DN={dn}: "
-                        f"{employee_id_attr}={current_value!r} -> {expected_value!r}"
-                    )
-
-                if not dry_run:
-                    try:
-                        modify_user_attrs(
-                            conn, dn, {employee_id_attr: expected_value}, do_write=True
-                        )
-                        updated += 1
-                    except Exception as e:
-                        self.stdout.write(
-                            self.style.ERROR(
-                                f"  [ERROR] pk={pk}: не удалось записать — {e}"
-                            )
-                        )
-                        errors += 1
-                else:
+            else:
                     updated += 1
 
         # Итоги

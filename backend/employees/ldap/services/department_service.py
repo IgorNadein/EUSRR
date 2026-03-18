@@ -20,11 +20,10 @@ from ..errors import (
     DirectoryLdapError,
     DirectoryServiceError,
 )
-from ..utils.group_utils import sync_user_groups_by_cns
+from ..orm_models import LdapOrganizationalUnit
 from ..infrastructure.connections import _ldap
 from ..repositories.ldap_repository import (
     ensure_container_exists,
-    ldap_modify_or_ignore,
 )
 from ..utils.dn_utils import _move_to_department
 from ..utils.ldap_utils import group_type
@@ -1043,6 +1042,9 @@ class DepartmentService:
     ) -> str:
         """Переименовывает OU отдела и возвращает новый DN.
         
+        TODO(ldap-orm): modify_dn — ldap3 навсегда.
+        django-ldapdb не поддерживает переименование.
+        
         Args:
             conn: LDAP соединение.
             dept_dn: Текущий DN OU.
@@ -1065,6 +1067,9 @@ class DepartmentService:
         self, conn: Connection, dept_dn: str, head_dn: Optional[str]
     ) -> None:
         """Устанавливает/очищает managedBy у OU в AD (идемпотентно).
+
+        TODO(ldap-orm): Можно заменить на ORM (ou.managed_by = head_dn; save()),
+        но нужна проверка существования head_dn и обработка ADD/REPLACE/DELETE.
 
         Args:
             conn: LDAP соединение.
@@ -1129,35 +1134,32 @@ class DepartmentService:
     def _set_ou_description(
         self, conn: Connection, dept_dn: str, description: Optional[str]
     ) -> None:
-        """Ставит/очищает description у OU.
+        """Ставит/очищает description у OU (ORM).
         
         Args:
-            conn: LDAP соединение.
+            conn: LDAP соединение (не используется, ORM).
             dept_dn: DN OU отдела.
             description: Описание или None для удаления.
         """
-        changes = (
-            {"description": [(MODIFY_REPLACE, [description])]}
-            if description
-            else {"description": [(MODIFY_DELETE, [])]}
-        )
-        ldap_modify_or_ignore(conn, dept_dn, changes, {"noSuchAttribute"})
+        try:
+            ou = LdapOrganizationalUnit.objects.get(dn=dept_dn)
+            ou.description = description or ""
+            ou.save()
+        except LdapOrganizationalUnit.DoesNotExist:
+            pass
 
     def _delete_department_ou(self, conn: Connection, dept_dn: str) -> None:
-        """Удаляет OU (ignore noSuchObject).
+        """Удаляет OU (ORM, ignore DoesNotExist).
         
         Args:
-            conn: LDAP соединение.
+            conn: LDAP соединение (не используется, ORM).
             dept_dn: DN OU для удаления.
-            
-        Raises:
-            RuntimeError: Если удаление не удалось (кроме noSuchObject).
         """
-        ok = conn.delete(dept_dn)
-        if not ok and (conn.result or {}).get("description") not in {
-            "noSuchObject"
-        }:
-            raise RuntimeError(f"LDAP delete OU failed: {conn.result}")
+        try:
+            ou = LdapOrganizationalUnit.objects.get(dn=dept_dn)
+            ou.delete()
+        except LdapOrganizationalUnit.DoesNotExist:
+            pass
 
     def _evict_all_users_from_department_ou(
         self, conn: Connection, dept_dn: str

@@ -17,6 +17,7 @@ from employees.models import LdapSyncState
 from ldap3 import BASE, MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, SUBTREE, Connection
 
 from ..infrastructure.connections import _ldap
+from ..orm_models import LdapGroup
 from ..repositories.ldap_repository import ldap_modify_or_ignore
 from ..utils.text_utils import esc_filter, esc_rdn
 from ..utils.ldap_utils import get_guid_str, group_type
@@ -85,6 +86,9 @@ class GroupService:
     ) -> str:
         """Создаёт группу в LDAP под указанным контейнером.
 
+        TODO(ldap-orm): conn.add() + groupType — ldap3 навсегда.
+        LdapGroup не имеет поля groupType, нужно добавить в модель.
+
         Args:
             conn: Подключение LDAP.
             cn: Имя группы (CN).
@@ -126,7 +130,11 @@ class GroupService:
             raise RuntimeError(f"LDAP delete group failed: {conn.result}")
 
     def rename(self, conn: Connection, group_dn: str, new_cn: str) -> str:
-        """Переименовывает группу (modify_dn)."""
+        """Переименовывает группу (modify_dn).
+        
+        TODO(ldap-orm): modify_dn — ldap3 навсегда.
+        django-ldapdb не поддерживает переименование.
+        """
         new_rdn = f"CN={esc_rdn(new_cn)}"
         ok = conn.modify_dn(group_dn, new_rdn)
         if not ok:
@@ -261,6 +269,9 @@ class GroupService:
     ) -> int:
         """
         Тянет группы из AD под LDAP_GROUPS_BASE и гарантирует их наличие в Django Group.
+
+        TODO(ldap-orm): paged search — ldap3 навсегда.
+        Массовый импорт с throttling и кешированием.
         Возвращает количество созданных групп. Обновляет LdapSyncState(model='group').
         Троттлит запросы к AD не чаще, чем раз в throttle_seconds.
         """
@@ -336,9 +347,12 @@ class GroupService:
     def find_dn_wrapped(
         self, cn: str, bases: Optional[list[str]] = None
     ) -> Optional[str]:
-        """Ищет DN группы (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            return self.find_dn(conn, cn, bases=bases)
+        """Ищет DN группы по CN (ORM)."""
+        try:
+            group = LdapGroup.objects.get(cn=cn)
+            return group.dn
+        except LdapGroup.DoesNotExist:
+            return None
 
     def create_wrapped(
         self,
@@ -349,7 +363,10 @@ class GroupService:
         scope: str = "global",
         security_enabled: bool = True,
     ) -> str:
-        """Создает группу (открывает соединение автоматически)."""
+        """Создает группу (ldap3 — нужен groupType).
+        
+        TODO(ldap-orm): conn.add() + groupType остаётся ldap3.
+        """
         with _ldap() as conn:
             return self.create(
                 conn,
@@ -361,40 +378,79 @@ class GroupService:
             )
 
     def delete_wrapped(self, group_dn: str) -> None:
-        """Удаляет группу (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.delete(conn, group_dn)
+        """Удаляет группу (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+            group.delete()
+        except LdapGroup.DoesNotExist:
+            pass  # Уже удалена
 
     def rename_wrapped(self, group_dn: str, new_cn: str) -> str:
-        """Переименовывает группу (открывает соединение автоматически)."""
+        """Переименовывает группу (ldap3 — modify_dn).
+        
+        TODO(ldap-orm): modify_dn — ldap3 навсегда.
+        """
         with _ldap() as conn:
             return self.rename(conn, group_dn, new_cn)
 
     def set_description_wrapped(
         self, group_dn: str, description: Optional[str]
     ) -> None:
-        """Устанавливает описание группы (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.set_description(conn, group_dn, description)
+        """Устанавливает описание группы (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+            group.description = description or ""
+            group.save()
+        except LdapGroup.DoesNotExist:
+            pass
 
     def list_members_wrapped(self, group_dn: str) -> list[str]:
-        """Список участников группы (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            return self.list_members(conn, group_dn)
+        """Список участников группы (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+            return list(group.member or [])
+        except LdapGroup.DoesNotExist:
+            return []
 
     def add_members_wrapped(self, group_dn: str, member_dns: list[str]) -> None:
-        """Добавляет участников (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.add_members(conn, group_dn, member_dns)
+        """Добавляет участников (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            return
+        members = list(group.member or [])
+        changed = False
+        for dn in member_dns:
+            if dn not in members:
+                members.append(dn)
+                changed = True
+        if changed:
+            group.member = members
+            group.save()
 
     def remove_members_wrapped(self, group_dn: str, member_dns: list[str]) -> None:
-        """Удаляет участников (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.remove_members(conn, group_dn, member_dns)
+        """Удаляет участников (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            return
+        members = list(group.member or [])
+        changed = False
+        for dn in member_dns:
+            if dn in members:
+                members.remove(dn)
+                changed = True
+        if changed:
+            group.member = members
+            group.save()
 
     def replace_members_wrapped(
         self, group_dn: str, exact_member_dns: list[str]
     ) -> None:
-        """Заменяет участников (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.replace_members(conn, group_dn, exact_member_dns)
+        """Заменяет участников (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            return
+        group.member = exact_member_dns
+        group.save()

@@ -44,11 +44,7 @@
 
 # Текущие импорты (для обратной совместимости)
 from .directory_service import DirectoryService
-from .sync_service import (
-    import_departments,
-    import_users,
-    export_users,
-)
+from .services.sync_service import SyncService
 
 # Конфигурация
 from .config import SyncConfig, SyncMode, SyncScope, DISABLED_FLAG
@@ -70,9 +66,33 @@ from .domain.dtos import (
 
 # Утилиты работы с группами
 from .utils.group_utils import sync_user_groups_by_cns
+from .utils.group_utils_orm import sync_user_groups_by_cns_orm
+
+# ORM модели и сервисы
+from .orm_models import LdapUser, LdapGroup, LdapOrganizationalUnit
+from .orm_services import LdapOrmUserService, LdapOrmGroupService, LdapOrmDepartmentService
 
 # Подключения
 from .infrastructure.connections import _ldap
+
+
+# Обратная совместимость: обёртки над SyncService
+def import_departments(cfg=None):
+    """Обёртка для SyncService().import_departments(cfg)."""
+    svc = SyncService()
+    return svc.import_departments(cfg or SyncConfig())
+
+
+def import_users(cfg=None):
+    """Обёртка для SyncService().import_users(cfg)."""
+    svc = SyncService()
+    return svc.import_users(cfg or SyncConfig())
+
+
+def export_users(cfg=None):
+    """Обёртка для SyncService().export_users(cfg)."""
+    svc = SyncService()
+    return svc.export_users(cfg or SyncConfig())
 
 __all__ = [
     # Сервисы
@@ -100,6 +120,15 @@ __all__ = [
 
     # Утилиты
     "sync_user_groups_by_cns",
+    "sync_user_groups_by_cns_orm",
+
+    # ORM
+    "LdapUser",
+    "LdapGroup",
+    "LdapOrganizationalUnit",
+    "LdapOrmUserService",
+    "LdapOrmGroupService",
+    "LdapOrmDepartmentService",
 
     # Подключения
     "_ldap",

@@ -2282,7 +2282,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             - При отсутствии кэша - запрашивается из LDAP и сохраняется
             - force_refresh=true сбрасывает кэш и обновляет из LDAP
         """
-        from employees.ldap.repositories.ldap_repository import LdapRepository
+        from employees.ldap.orm_models import LdapUser
 
         emp = self.get_object()
         force_refresh = request.query_params.get('force_refresh', '').lower() == 'true'
@@ -2314,23 +2314,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Запрашиваем данные из LDAP
+        # Запрашиваем данные из LDAP через django-ldapdb ORM
         try:
-            conn = _conn()
-            ldap_repo = LdapRepository(conn)
-            attrs = ldap_repo.read_attrs(
-                ldap_sync.ldap_dn,
-                ["sAMAccountName"],
-            )
+            ldap_user = LdapUser.objects.get(dn=ldap_sync.ldap_dn)
 
-            if not attrs or not attrs.get("sAMAccountName"):
+            sam_account_name = ldap_user.sam_account_name
+            if not sam_account_name:
                 return Response(
                     {"detail": "Не удалось получить LDAP информацию"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
             # Кэшируем результат в username
-            sam_account_name = attrs.get("sAMAccountName")
             emp.username = sam_account_name
             emp.save(update_fields=["username"])
 

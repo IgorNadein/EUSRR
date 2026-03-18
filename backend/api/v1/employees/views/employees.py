@@ -235,18 +235,13 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
 
         # Записываем Django PK в LDAP employeeNumber для обратной связки
         try:
-            from employees.ldap.infrastructure.connections import _ldap
-            from employees.ldap.repositories.ldap_repository import \
-                modify_user_attrs
+            from employees.ldap.orm_models import LdapUser
 
+            ldap_user = LdapUser.objects.get(dn=dn)
             employee_id_attr = getattr(
                 settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
-            with _ldap() as conn:
-                modify_user_attrs(
-                    conn, dn,
-                    {employee_id_attr: str(instance.pk)},
-                    do_write=True
-                )
+            setattr(ldap_user, 'employee_number', str(instance.pk))
+            ldap_user.save()
         except Exception as e:
             logger.warning(f"Failed to set employeeNumber in LDAP: {e}")
 
@@ -532,7 +527,7 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="ldap-info")
     def ldap_info(self, request, pk=None):
         """GET /api/v1/employees/{id}/ldap-info/ — LDAP информация о сотруднике."""
-        from employees.ldap.repositories.ldap_repository import LdapRepository
+        from employees.ldap.orm_models import LdapUser
 
         emp = self.get_object()
         force_refresh = request.query_params.get(
@@ -564,20 +559,15 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
             )
 
         try:
-            conn = _conn()
-            ldap_repo = LdapRepository(conn)
-            attrs = ldap_repo.read_attrs(
-                ldap_sync.ldap_dn,
-                ["sAMAccountName"],
-            )
+            ldap_user = LdapUser.objects.get(dn=ldap_sync.ldap_dn)
 
-            if not attrs or not attrs.get("sAMAccountName"):
+            sam_account_name = ldap_user.sam_account_name
+            if not sam_account_name:
                 return Response(
                     {"detail": "Не удалось получить LDAP информацию"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            sam_account_name = attrs.get("sAMAccountName")
             emp.username = sam_account_name
             emp.save(update_fields=["username"])
 
@@ -589,6 +579,11 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
+        except LdapUser.DoesNotExist:
+            return Response(
+                {"detail": "Не удалось получить LDAP информацию"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         except Exception as e:
             logger.error(
                 f"Error fetching LDAP info for employee {emp.id}: {e}", exc_info=True

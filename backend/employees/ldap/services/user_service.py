@@ -20,20 +20,18 @@ from ..errors import (
     DirectoryLdapError,
     DirectoryServiceError,
 )
-from ..utils.group_utils import sync_user_groups_by_cns
+from ..orm_models import LdapUser
+from ..utils.group_utils_orm import sync_user_groups_by_cns_orm
 from ..infrastructure.connections import _ldap
 from ..repositories.ldap_repository import (
     ensure_container_exists,
     is_taken,
     ldap_modify_or_ignore,
-    modify_user_attrs,
-    read_attrs,
 )
 from ..utils.image_utils import normalize_avatar_to_jpeg
 from ..utils.ldap_utils import (
     build_logins_for_user,
     cn_candidates,
-    get_guid_str,
 )
 from ..utils.text_utils import esc_rdn
 
@@ -107,8 +105,9 @@ class UserService:
                         emp.set_unusable_password()
                         emp.save(update_fields=["password"])
 
-                    attrs = read_attrs(conn, dn, ["objectGUID"])
-                    guid = get_guid_str(attrs)
+                    # ORM: чтение objectGUID + запись employeeNumber
+                    ldap_user = LdapUser.objects.get(dn=dn)
+                    guid = str(ldap_user.object_guid) if ldap_user.object_guid else None
 
                     self._touch_state(
                         model="employee",
@@ -119,13 +118,9 @@ class UserService:
                         last_django_modify_ts=timezone.now(),
                     )
 
-                    # Записываем Django PK в LDAP employeeNumber для связки
-                    employee_id_attr = getattr(
-                        settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
-                    )
-                    modify_user_attrs(
-                        conn, dn, {employee_id_attr: str(emp.pk)}, do_write=True
-                    )
+                    # ORM: записываем Django PK в LDAP employeeNumber для связки
+                    ldap_user.employee_number = str(emp.pk)
+                    ldap_user.save()
 
                     # Временно импортируем для совместимости
                     # TODO: Убрать после полного рефакторинга
@@ -147,16 +142,15 @@ class UserService:
             # 3) Post-actions (best effort)
             try:
                 if dto.group_cns:
-                    sync_user_groups_by_cns(conn, dn, set(dto.group_cns), do_write=True)
+                    sync_user_groups_by_cns_orm(dn, set(dto.group_cns))
                 if dto.avatar_bytes:
-                    # Увеличен размер до 384px для максимального качества в LDAP
                     avatar = normalize_avatar_to_jpeg(
                         dto.avatar_bytes, size_px=384, max_kb=100
                     )
                     if avatar:
-                        modify_user_attrs(
-                            conn, dn, {"thumbnailPhoto": avatar}, do_write=True
-                        )
+                        ldap_user_av = LdapUser.objects.get(dn=dn)
+                        ldap_user_av.thumbnail_photo = avatar
+                        ldap_user_av.save()
             except Exception:
                 pass
 
@@ -359,28 +353,36 @@ class UserService:
         except DirectoryServiceError:
             dn = None
 
-        with _ldap() as conn:
-            if dn:
-                try:
-                    modify_user_attrs(conn, dn, {"userAccountControl": 0x0202})
-                except Exception as e:
-                    raise DirectoryLdapError(f"LDAP soft-disable failed: {e}") from e
-
+        # ORM: soft-disable (UAC = disabled + password expired)
+        if dn:
             try:
-                with transaction.atomic():
-                    emp_pk = emp.pk
-                    emp.delete()
-                    LdapSyncState.objects.filter(
-                        model="employee", object_pk=str(emp_pk)
-                    ).delete()
+                ldap_user = LdapUser.objects.get(dn=dn)
+                ldap_user.user_account_control = 0x0202
+                ldap_user.save()
+            except LdapUser.DoesNotExist:
+                pass  # Уже удалён из LDAP
             except Exception as e:
-                raise DirectoryDbError(str(e)) from e
+                raise DirectoryLdapError(f"LDAP soft-disable failed: {e}") from e
 
-            if dn:
-                try:
-                    self._hard_delete_user_in_ldap(conn, dn)
-                except Exception as e:
-                    raise DirectoryLdapError(f"LDAP hard delete failed: {e}") from e
+        try:
+            with transaction.atomic():
+                emp_pk = emp.pk
+                emp.delete()
+                LdapSyncState.objects.filter(
+                    model="employee", object_pk=str(emp_pk)
+                ).delete()
+        except Exception as e:
+            raise DirectoryDbError(str(e)) from e
+
+        # ORM: hard delete
+        if dn:
+            try:
+                ldap_user = LdapUser.objects.get(dn=dn)
+                ldap_user.delete()
+            except LdapUser.DoesNotExist:
+                pass  # Уже удалён из LDAP
+            except Exception as e:
+                raise DirectoryLdapError(f"LDAP hard delete failed: {e}") from e
 
     # ==================== DN ↔ ID Conversion Methods ==================== #
 
@@ -460,7 +462,12 @@ class UserService:
         return state
 
     def _set_password(self, conn: Connection, dn: str, new_password: str) -> None:
-        """Меняет пароль пользователя в AD (control)."""
+        """Меняет пароль пользователя в AD (control).
+        
+        TODO(ldap-orm): Невозможно заменить на ORM.
+        AD modify_password — extended operation, django-ldapdb не поддерживает.
+        Остаётся через ldap3 навсегда.
+        """
         ok = conn.extend.microsoft.modify_password(dn, new_password)
         if not ok:
             msg = conn.result or {}
@@ -470,7 +477,11 @@ class UserService:
             raise RuntimeError(f"LDAP set password failed: {msg}")
 
     def _enable_user(self, conn: Connection, dn: str) -> None:
-        """Включает учётку (UAC=512)."""
+        """Включает учётку (UAC=512).
+        
+        TODO(ldap-orm): Можно заменить на ORM (ldap_user.user_account_control = 512; save()).
+        Но используется в связке с _create_user_in_ldap → conn уже в контексте.
+        """
         ldap_modify_or_ignore(
             conn, dn, {"userAccountControl": [(MODIFY_REPLACE, [UAC_ENABLED])]}, set()
         )
@@ -478,7 +489,12 @@ class UserService:
     def _unique_logins(
         self, conn: Connection, dto: DirectoryUserDTO, upn_suffix: str
     ) -> tuple[str, str]:
-        """Генерирует уникальные sAMAccountName и UPN."""
+        """Генерирует уникальные sAMAccountName и UPN.
+        
+        TODO(ldap-orm): is_taken() использует ldap3 raw search с OR фильтром.
+        Можно заменить на LdapUser.objects.filter(sam_account_name=s).exists(),
+        но нужен фильтр по нескольким атрибутам одновременно.
+        """
         sam, upn = build_logins_for_user(
             first_name=dto.first_name,
             last_name=dto.last_name,
@@ -544,7 +560,11 @@ class UserService:
         return None
 
     def _create_user_in_ldap(self, conn: Connection, dto: DirectoryUserDTO) -> str:
-        """Создаёт объект user в LDAP (AD) и возвращает его DN."""
+        """Создаёт объект user в LDAP (AD) и возвращает его DN.
+        
+        TODO(ldap-orm): conn.add(), ensure_container_exists, cn_candidates — ldap3 навсегда.
+        django-ldapdb не поддерживает создание с перебором CN и проверкой контейнера.
+        """
         base_dn = (
             dto.department_dn
             or getattr(settings, "LDAP_USERS_BASE", None)
@@ -621,43 +641,49 @@ class UserService:
         if move_to_department_dn:
             dn = svc._move_to_department(conn, dn, move_to_department_dn)
 
+        # 3-5) ORM: UAC + Атрибуты + Аватар (batch через один save)
+        ldap_user = LdapUser.objects.get(dn=dn)
+        orm_dirty = False
+
         # 3) UAC
         if is_active_val is not None:
             uac_val = UAC_ENABLED if is_active_val else UAC_DISABLED
-            modify_user_attrs(conn, dn, {"userAccountControl": uac_val}, do_write=True)
+            ldap_user.user_account_control = uac_val
+            orm_dirty = True
 
         # 4) Прочие атрибуты
-        ldap_attrs_map = {
-            "first_name": "givenName",
+        phone_write = self._phone_write_attr()
+        orm_field_map = {
+            "first_name": "given_name",
             "last_name": "sn",
             "email": "mail",
-            "phone_number": self._phone_write_attr(),
-            "display_name": "displayName",
+            "phone_number": "mobile" if phone_write == "mobile" else "telephone_number",
+            "display_name": "display_name",
         }
-        attrs_to_update = {}
-        for model_key, ldap_attr in ldap_attrs_map.items():
+        for model_key, orm_field in orm_field_map.items():
             if model_key in model_changes:
                 val = model_changes[model_key]
-                if val or ldap_attr == "sn":
-                    attrs_to_update[ldap_attr] = val if val else "."
-        
-        if attrs_to_update:
-            modify_user_attrs(conn, dn, attrs_to_update, do_write=True)
+                if val or orm_field == "sn":
+                    setattr(ldap_user, orm_field, val if val else ".")
+                    orm_dirty = True
 
         # 5) Аватар
         avatar_saved = False
         if avatar_bytes:
-            # Увеличен размер до 384px для максимального качества в LDAP
             avatar = normalize_avatar_to_jpeg(
                 avatar_bytes, size_px=384, max_kb=100
             )
             if avatar:
-                modify_user_attrs(conn, dn, {"thumbnailPhoto": avatar}, do_write=True)
-                avatar_saved = True  # Флаг для сохранения в БД
+                ldap_user.thumbnail_photo = avatar
+                orm_dirty = True
+                avatar_saved = True
 
-        # 6) Группы
+        if orm_dirty:
+            ldap_user.save()
+
+        # 6) Группы (ORM)
         if group_cns is not None:
-            sync_user_groups_by_cns(conn, dn, set(group_cns), do_write=True)
+            sync_user_groups_by_cns_orm(dn, set(group_cns))
 
         # Возвращаем dn и флаг сохранения аватара
         return (dn, avatar_bytes if avatar_saved else None)
@@ -694,6 +720,10 @@ class UserService:
 
     def _move_user_to_base(self, conn: Connection, user_dn: str, base_dn: str) -> str:
         """Перемещает пользовательский объект в указанный контейнер.
+        
+        TODO(ldap-orm): Невозможно заменить на ORM.
+        modify_dn (move/rename) — не поддерживается django-ldapdb.
+        Остаётся через ldap3 навсегда.
         
         Args:
             conn: LDAP соединение.
