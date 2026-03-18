@@ -416,8 +416,8 @@ export default function ProfilePage() {
 						<div className="space-y-2">
 							{actions.map((a) => (
 								<div key={a.id} className="rounded-lg bg-gray-50 px-3 py-2">
-									<p className="text-sm font-medium text-gray-900">{a.action_type}</p>
-									{a.description ? <p className="text-xs text-gray-600">{a.description}</p> : null}
+									<p className="text-sm font-medium text-gray-900">{a.action_display || a.action}</p>
+									{a.comment ? <p className="text-xs text-gray-600">{a.comment}</p> : null}
 									<p className="mt-1 text-xs text-gray-500">{formatDate(a.date || a.created_at)}</p>
 								</div>
 							))}
