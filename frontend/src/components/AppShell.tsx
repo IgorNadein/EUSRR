@@ -189,9 +189,6 @@ function Header({ onOpenLeftNav, onOpenCalendar }: HeaderProps) {
                   userInitials
                 )}
               </div>
-              {user?.is_active ? (
-                <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
-              ) : null}
               {/* Меню пользователя */}
               {userMenuOpen && (
                 <div className="absolute right-0 top-12 z-[60] w-48 rounded-xl bg-white py-2 shadow-lg ring-1 ring-slate-100 animate-fade-in">
@@ -605,9 +602,6 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
                 <div className="min-w-0 flex-1 text-left">
                   <p className="text-sm font-semibold text-gray-900">{userName}</p>
-                  {user?.is_active && (
-                    <p className="text-xs text-sky-600">Онлайн</p>
-                  )}
                 </div>
                 <ChevronDown
                   size={20}

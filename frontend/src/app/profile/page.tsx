@@ -203,7 +203,6 @@ export default function ProfilePage() {
 								) : (
 									<div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-lg font-semibold text-white">{initials}</div>
 								)}
-								{user.is_active ? <span className="absolute -bottom-0.5 -right-0.5 z-20 h-3.5 w-3.5 rounded-full bg-sky-400 ring-2 ring-white" /> : null}
 							</div>
 							<input
 								ref={avatarInputRef}

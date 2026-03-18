@@ -246,12 +246,13 @@ class ApiClient {
     }
 
     // Сотрудники
-    async getEmployees(params?: { search?: string; department?: string; page?: number; limit?: number }): Promise<any> {
+    async getEmployees(params?: { search?: string; department?: string; page?: number; limit?: number; is_active?: boolean }): Promise<any> {
         const queryParams = new URLSearchParams();
         if (params?.search) queryParams.append('search', params.search);
         if (params?.department) queryParams.append('department', params.department);
         if (params?.page) queryParams.append('page', params.page.toString());
         if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.is_active !== undefined) queryParams.append('active', params.is_active.toString());
 
         const url = `/api/v1/employees/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
         return this.request(url);
@@ -259,6 +260,74 @@ class ApiClient {
 
     async getEmployee(id: number | string): Promise<any> {
         return this.request(`/api/v1/employees/${id}/`);
+    }
+
+    async updateEmployee(id: number | string, data: {
+        first_name?: string;
+        last_name?: string;
+        patronymic?: string;
+        email?: string;
+        phone_number?: string;
+        telegram?: string;
+        whatsapp?: string;
+        wechat?: string;
+        birth_date?: string;
+        gender?: string;
+        position_id?: number;
+    }): Promise<any> {
+        return this.request(`/api/v1/employees/${id}/`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async uploadEmployeeAvatar(id: number | string, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('avatar', file);
+        
+        return this.request(`/api/v1/employees/${id}/`, {
+            method: 'PATCH',
+            body: formData,
+        });
+    }
+
+    /**
+     * Создать кадровое событие (action) для сотрудника
+     */
+    async createEmployeeAction(data: {
+        employee: number;
+        action: string;
+        date: string;
+        comment?: string;
+    }): Promise<any> {
+        return this.request('/api/v1/employee-actions/', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    /**
+     * Обновить кадровое событие
+     */
+    async updateEmployeeAction(actionId: number, data: {
+        action?: string;
+        date?: string;
+        comment?: string;
+    }): Promise<any> {
+        return this.request(`/api/v1/employee-actions/${actionId}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    /**
+     * Удалить кадровое событие
+     */
+    async deleteEmployeeAction(actionId: number): Promise<any> {
+        return this.request(`/api/v1/employee-actions/${actionId}/`, {
+            method: 'DELETE',
+        });
     }
 
     // Отделы

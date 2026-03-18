@@ -42,6 +42,7 @@ class ChatListSerializer(serializers.ModelSerializer):
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     participant_names = serializers.SerializerMethodField()
+    member_ids = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     notifications_enabled = serializers.SerializerMethodField()
     last_read_message_id = serializers.SerializerMethodField()
@@ -59,7 +60,7 @@ class ChatListSerializer(serializers.ModelSerializer):
             # DEPRECATED: для обратной совместимости
             'is_main',
             # Messages & status
-            'last_message', 'unread_count', 'participant_names',
+            'last_message', 'unread_count', 'participant_names', 'member_ids',
             'is_pinned', 'notifications_enabled', 'last_read_message_id'
         ]
     
@@ -86,13 +87,17 @@ class ChatListSerializer(serializers.ModelSerializer):
         return None
     
     def get_participant_names(self, obj):
-        """Имена участников (для приватных чатов)
-        MIGRATION: Используем memberships вместо participants
-        """
+        """Имена участников (для приватных чатов)"""
         if obj.type == 'private':
             active_members = obj.memberships.filter(is_active=True).select_related('user')[:5]
             return [m.user.get_full_name() for m in active_members]
         return []
+
+    def get_member_ids(self, obj):
+        """ID участников (из prefetch, для поиска существующего чата)"""
+        return list(
+            obj.memberships.filter(is_active=True).values_list('user_id', flat=True)
+        )
     
     def get_is_pinned(self, obj):
         """Закреплен ли чат для текущего пользователя (из prefetch)"""

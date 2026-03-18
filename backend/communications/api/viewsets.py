@@ -89,7 +89,6 @@ class ChatViewSet(viewsets.ModelViewSet):
         user = self.request.user
         from django.contrib.contenttypes.models import ContentType
 
-        # MIGRATION: Используем только memberships вместо participants
         queryset = Chat.objects.filter(
             Q(memberships__user=user, memberships__is_active=True)
             | Q(include_all_users=True)
@@ -97,7 +96,6 @@ class ChatViewSet(viewsets.ModelViewSet):
         ).select_related(
             'created_by', 'context_content_type'
         ).prefetch_related(
-            'participants',
             # Prefetch ChatMembership с информацией о пользователе
             Prefetch(
                 'memberships',
@@ -132,31 +130,38 @@ class ChatViewSet(viewsets.ModelViewSet):
         # Устанавливаем создателя
         chat = serializer.save(created_by=request.user)
 
-        # MIGRATION: Создаем membership для всех типов кроме глобальных (убрали participants.add)
-        if chat.type != 'global':
-            # Для чатов с управлением участниками создаем membership с ролью admin
-            if chat.type in ['group', 'channel', 'announcement']:
-                ChatMembership.objects.create(
-                    chat=chat,
-                    user=request.user,
-                    role='admin',
-                    invited_by=request.user,
-                    is_active=True
-                )
-            # Для других типов (private, direct) создаем обычного участника
-            else:
-                ChatMembership.objects.create(
-                    chat=chat,
-                    user=request.user,
-                    role='member',
-                    invited_by=request.user,
-                    is_active=True
-                )
-        
-        # Для глобальных чатов устанавливаем include_all_users=True
         if chat.type == 'global':
             chat.include_all_users = True
             chat.save()
+        else:
+            role = 'admin' if chat.type in ['group', 'channel', 'announcement'] else 'member'
+            ChatMembership.objects.create(
+                chat=chat,
+                user=request.user,
+                role=role,
+                invited_by=request.user,
+                is_active=True
+            )
+
+            # Добавляем остальных участников из запроса
+            participant_ids = request.data.get('participants', [])
+            if participant_ids:
+                for user_id in participant_ids:
+                    if user_id == request.user.id:
+                        continue
+                    try:
+                        participant = User.objects.get(id=user_id)
+                        ChatMembership.objects.get_or_create(
+                            chat=chat,
+                            user=participant,
+                            defaults={
+                                'role': 'member',
+                                'invited_by': request.user,
+                                'is_active': True
+                            }
+                        )
+                    except User.DoesNotExist:
+                        logger.warning(f"User {user_id} not found when creating chat {chat.id}")
 
         headers = self.get_success_headers(serializer.data)
         return Response(

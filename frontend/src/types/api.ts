@@ -8,10 +8,14 @@ export interface Skill {
 export interface EmployeeAction {
   id: number;
   employee: number;
-  action_type: string;
-  description?: string;
+  action: string;
+  action_display?: string;
   date: string;
-  created_at: string;
+  date_display?: string;
+  comment?: string;
+  extra?: Record<string, any>;
+  history?: any;
+  created_at?: string;
 }
 
 export interface EmployeeDepartment {
@@ -33,11 +37,11 @@ export interface User {
   position?: Position;
   departments?: EmployeeDepartment[]; // массив отделов с ролями (было department)
   avatar?: string;
-  is_active: boolean;
+  is_active: boolean; // ВАЖНО: активный сотрудник (не уволен), НЕ онлайн статус!
   telegram?: string;
   whatsapp?: string;
   wechat?: string;
-  gender?: string;
+  gender?: string | number; // 1 - мужской, 2 - женский, 0 - не указан
   birth_date?: string;
   skills?: Skill[];
   actions?: EmployeeAction[];

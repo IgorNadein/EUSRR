@@ -1188,12 +1188,8 @@ export default function MessageDialogPage() {
                     )}
                   </div>
                   <Link href={`/messages/${chatId}/settings`} className="hover:opacity-80 transition">
-                    <div className="flex items-center gap-2">
+                    <div>
                       <p className="text-sm font-semibold text-gray-900">{getChatTitle(chat, user?.id)}</p>
-                      {/* Индикатор WebSocket соединения */}
-                      {isConnected && (
-                        <span className="inline-flex h-2 w-2 rounded-full bg-green-500" title="Real-time подключен"></span>
-                      )}
                     </div>
                     <p className="text-xs text-gray-500">{(chat.type || chat.chat_type) === "group" ? "Групповой чат" : "Диалог"}</p>
                   </Link>
@@ -1302,9 +1298,6 @@ export default function MessageDialogPage() {
                                       getMessageInitials(message)
                                     )}
                                   </div>
-                                  {message.author?.is_active ? (
-                                    <span className="absolute -bottom-0.5 -right-0.5 z-10 h-2.5 w-2.5 rounded-full bg-sky-400 ring-2 ring-white" />
-                                  ) : null}
                                 </div>
                               ) : null}
 

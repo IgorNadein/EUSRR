@@ -551,7 +551,6 @@ class ChatConsumerMixin:
         chat_ids = list(
             Chat.objects.filter(
                 Q(type="global")
-                | Q(type="private", participants=user)
                 | Q(id__in=membership_chat_ids)
                 | Q(include_all_users=True)
             ).values_list("id", flat=True).distinct()
@@ -582,21 +581,21 @@ class ChatConsumerMixin:
             return True
         
         if chat.type == "private":
-            return chat.participants.filter(pk=user.pk).exists()
-        
+            return ChatMembership.objects.filter(
+                chat=chat, user=user, is_active=True
+            ).exists()
+
         if chat.type == "group":
-            return (
-                chat.participants.filter(pk=user.pk).exists()
-                or ChatMembership.objects.filter(chat=chat, user=user).exists()
-            )
-        
+            return ChatMembership.objects.filter(
+                chat=chat, user=user, is_active=True
+            ).exists()
+
         if chat.type in ("channel", "announcement", "comments"):
             if chat.include_all_users:
                 return user.is_active
-            return (
-                chat.participants.filter(pk=user.pk).exists()
-                or ChatMembership.objects.filter(chat=chat, user=user).exists()
-            )
+            return ChatMembership.objects.filter(
+                chat=chat, user=user, is_active=True
+            ).exists()
         
         return False
     

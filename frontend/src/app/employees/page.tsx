@@ -4,15 +4,21 @@ import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { MessageCircle } from "lucide-react";
+import { useUser } from "@/contexts/UserContext";
 import type { User } from "@/types/api";
 
 export default function EmployeesPage() {
+  const router = useRouter();
+  const { user: currentUser } = useUser();
   const [employees, setEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [creatingChatFor, setCreatingChatFor] = useState<number | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
 
@@ -28,7 +34,11 @@ export default function EmployeesPage() {
       }
       setError(null);
 
-      const response = await apiClient.getEmployees({ page: pageToLoad, limit: 20 });
+      const response = await apiClient.getEmployees({ 
+        page: pageToLoad, 
+        limit: 20,
+        is_active: true
+      });
       const nextChunk = response.results || [];
 
       setEmployees((prev) => (append ? [...prev, ...nextChunk] : nextChunk));
@@ -47,6 +57,47 @@ export default function EmployeesPage() {
   useEffect(() => {
     loadEmployees(1, false);
   }, []);
+
+  // Создание чата с сотрудником
+  const handleStartChat = async (employee: User, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!currentUser || creatingChatFor === employee.id) return;
+    if (currentUser.id === employee.id) return; // Не создаем чат с собой
+    
+    setCreatingChatFor(employee.id);
+    try {
+      // Ищем существующий приватный чат с этим пользователем
+      const chatsResponse = await apiClient.getChats();
+      const allChats = chatsResponse.results || chatsResponse;
+      
+      const existingChat = allChats.find((chat: any) => {
+        if (chat.type !== 'private') return false;
+        
+        const memberIds: number[] = chat.member_ids || [];
+        return memberIds.length === 2 &&
+               memberIds.includes(currentUser.id) &&
+               memberIds.includes(employee.id);
+      });
+      
+      if (existingChat) {
+        router.push(`/messages/${existingChat.id}`);
+      } else {
+        const chat = await apiClient.createChat({
+          type: 'private',
+          name: 'Диалог',
+          participants: [employee.id]
+        });
+        router.push(`/messages/${chat.id}`);
+      }
+    } catch (err: any) {
+      console.error("Ошибка создания чата:", err);
+      alert("Не удалось открыть чат");
+    } finally {
+      setCreatingChatFor(null);
+    }
+  };
 
   useEffect(() => {
     if (!hasMore || loading) return;
@@ -111,14 +162,11 @@ export default function EmployeesPage() {
           const fullName = `${employee.last_name} ${employee.first_name} ${employee.patronymic || ''}`.trim();
           const initials = `${employee.last_name?.[0] || ''}${employee.first_name?.[0] || ''}`;
           const position = employee.position?.name || 'Сотрудник';
-          const isOnline = employee.is_active;
-          const statusText = isOnline ? 'Активен' : 'Неактивен';
-          const dotColor = isOnline ? 'bg-green-500' : 'bg-gray-400';
-          const statusColor = isOnline ? 'text-green-600' : 'text-gray-500';
+          const isCurrentUser = currentUser?.id === employee.id;
 
           return (
-            <Link key={employee.id} href={`/users/${employee.id}`} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100 transition hover:bg-gray-50">
-              <div className="relative h-12 w-12">
+            <div key={employee.id} className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+              <Link href={`/users/${employee.id}`} className="flex flex-1 items-center gap-4 transition hover:opacity-80">
                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-sky-400 text-sm font-semibold text-white">
                   {employee.avatar ? (
                     <img src={employee.avatar} alt={fullName} className="h-full w-full object-cover" />
@@ -126,25 +174,29 @@ export default function EmployeesPage() {
                     initials
                   )}
                 </div>
-                {isOnline ? (
-                  <span className="absolute -bottom-0.5 -right-0.5 z-10 h-3 w-3 rounded-full bg-sky-400 ring-2 ring-white" />
-                ) : null}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-gray-900">{fullName}</p>
-                <p className="text-xs text-gray-500">{position}</p>
-                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                  <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-                  <span className={statusColor}>{statusText}</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-900">{fullName}</p>
+                  <p className="text-xs text-gray-500">{position}</p>
                   {employee.email && (
-                    <>
-                      <span className="mx-1 text-gray-300">•</span>
-                      <span className="text-gray-500">{employee.email}</span>
-                    </>
+                    <p className="mt-1 text-xs text-gray-500">{employee.email}</p>
                   )}
                 </div>
-              </div>
-            </Link>
+              </Link>
+              {!isCurrentUser && (
+                <button
+                  onClick={(e) => handleStartChat(employee, e)}
+                  disabled={creatingChatFor === employee.id}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-sky-600 transition hover:bg-sky-200 disabled:opacity-50"
+                  title="Написать сообщение"
+                >
+                  {creatingChatFor === employee.id ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
+                  ) : (
+                    <MessageCircle size={18} />
+                  )}
+                </button>
+              )}
+            </div>
           );
         })}
 
