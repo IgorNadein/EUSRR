@@ -4,6 +4,7 @@ Management команда для миграции существующих за�
 Использование:
     python manage.py migrate_requests_to_actions [--dry-run]
 """
+from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -12,6 +13,13 @@ from requests_app.models import Request
 from requests_app.enums import RequestStatus
 from employees.models import EmployeeAction
 from employees.signals import IMMEDIATE_ACTION_MAPPING, SCHEDULED_ACTION_MAPPING
+
+
+# Маппинг для событий возврата из отпуска/больничного
+RETURN_ACTION_MAPPING = {
+    'vacation': 'returned_from_leave',
+    'sick_leave': 'returned_from_leave',
+}
 
 
 class Command(BaseCommand):
@@ -46,6 +54,7 @@ class Command(BaseCommand):
         
         created_count = 0
         skipped_count = 0
+        return_count = 0  # Счётчик событий возврата
         errors = []
         
         for request in approved_requests:
@@ -59,6 +68,9 @@ class Command(BaseCommand):
                 action=action_type
             ).exists()
             
+            # Флаг - нужно ли создавать основное событие
+            should_create_main = not existing
+            
             if existing:
                 skipped_count += 1
                 self.stdout.write(
@@ -67,10 +79,35 @@ class Command(BaseCommand):
                         f'EmployeeAction уже существует'
                     )
                 )
+            
+            # Проверяем нужно ли создать событие возврата
+            should_create_return = False
+            return_action = None
+            return_date = None
+            
+            if request.type in RETURN_ACTION_MAPPING and request.date_to:
+                return_action = RETURN_ACTION_MAPPING[request.type]
+                return_date = request.date_to + timedelta(days=1)
+                
+                # Проверяем что возврат ещё не создан
+                existing_return = EmployeeAction.objects.filter(
+                    extra__request_id=request.id,
+                    action=return_action
+                ).exists()
+                
+                should_create_return = not existing_return
+            
+            # Если нечего создавать - пропускаем
+            if not should_create_main and not should_create_return:
                 continue
             
-            # Определяем дату события
-            action_date = request.date_from or request.decided_at or request.created_at or timezone.now()
+            # Определяем дату события и нормализуем к datetime с timezone
+            raw_date = request.date_from or request.decided_at or request.created_at or timezone.now()
+            if isinstance(raw_date, datetime):
+                action_date = raw_date if timezone.is_aware(raw_date) else timezone.make_aware(raw_date)
+            else:
+                # Конвертируем date в datetime
+                action_date = timezone.make_aware(datetime.combine(raw_date, datetime.min.time()))
             
             # Формируем комментарий
             action_comment = f"Заявление #{request.id}"
@@ -86,37 +123,86 @@ class Command(BaseCommand):
             }
             
             if dry_run:
-                # action_date может быть date или datetime
-                date_str = action_date.date() if hasattr(action_date, 'date') else action_date
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f'  WOULD CREATE: Request #{request.id} ({request.type}) → '
-                        f'EmployeeAction ({action_type}) for {request.employee} '
-                        f'on {date_str}'
+                # Создаём основное событие
+                if should_create_main:
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f'  WOULD CREATE: Request #{request.id} ({request.type}) → '
+                            f'EmployeeAction ({action_type}) for {request.employee} '
+                            f'on {action_date.date()}'
+                        )
                     )
-                )
-                created_count += 1
+                    created_count += 1
+                
+                # Создаём событие возврата
+                if should_create_return:
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f'  WOULD CREATE RETURN: Request #{request.id} → '
+                            f'EmployeeAction ({return_action}) on {return_date}'
+                        )
+                    )
+                    return_count += 1
             else:
                 try:
                     with transaction.atomic():
-                        action = EmployeeAction.objects.create(
-                            employee=request.employee,
-                            action=action_type,
-                            date=action_date,
-                            comment=action_comment,
-                            extra=extra_data
-                        )
-                        
-                        # Применяем эффекты (деактивация, LDAP sync)
-                        self._apply_effects(action)
-                        
-                        created_count += 1
-                        self.stdout.write(
-                            self.style.SUCCESS(
-                                f'  ✓ Created: EmployeeAction #{action.id} ({action_type}) '
-                                f'from Request #{request.id} for {request.employee}'
+                        # Создаём основное событие
+                        if should_create_main:
+                            action = EmployeeAction.objects.create(
+                                employee=request.employee,
+                                action=action_type,
+                                date=action_date,
+                                comment=action_comment,
+                                extra=extra_data
                             )
-                        )
+                            
+                            # Применяем эффекты (деактивация, LDAP sync)
+                            self._apply_effects(action)
+                            
+                            created_count += 1
+                            self.stdout.write(
+                                self.style.SUCCESS(
+                                    f'  ✓ Created: EmployeeAction #{action.id} ({action_type}) '
+                                    f'from Request #{request.id} for {request.employee}'
+                                )
+                            )
+                        
+                        # Создаём событие возврата
+                        if should_create_return:
+                            return_comment = (
+                                f"Автоматически: окончание "
+                                f"{request.get_type_display().lower()} "
+                                f"(заявка #{request.id})"
+                            )
+                            
+                            # Конвертируем date в datetime с timezone
+                            return_datetime = timezone.make_aware(
+                                datetime.combine(return_date, datetime.min.time())
+                            )
+                            
+                            return_action_obj = EmployeeAction.objects.create(
+                                employee=request.employee,
+                                action=return_action,
+                                date=return_datetime,
+                                comment=return_comment,
+                                extra={
+                                    'request_id': request.id,
+                                    'auto_return': True,
+                                    'migrated': True,
+                                    'migration_date': timezone.now().isoformat()
+                                }
+                            )
+                            
+                            # Применяем эффекты для возврата
+                            self._apply_effects(return_action_obj)
+                            
+                            return_count += 1
+                            self.stdout.write(
+                                self.style.SUCCESS(
+                                    f'  ✓ Created RETURN: EmployeeAction #{return_action_obj.id} '
+                                    f'({return_action}) on {return_date}'
+                                )
+                            )
                 
                 except Exception as e:
                     errors.append((request.id, str(e)))
@@ -142,6 +228,14 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f'{verb} событий: {created_count}'
+                )
+            )
+        
+        if return_count:
+            verb = 'Будет создано' if dry_run else 'Создано'
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f'{verb} событий возврата: {return_count}'
                 )
             )
         
