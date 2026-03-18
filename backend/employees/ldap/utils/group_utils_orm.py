@@ -111,9 +111,21 @@ def sync_user_groups_by_cns_orm(
     return added, removed
 
 
-# _desired_group_cns_for_employee — чистая Django логика, нет ldap3
-# Реэкспортируем из оригинала
-from .group_utils import _desired_group_cns_for_employee
+def _desired_group_cns_for_employee(emp: "Employee") -> set[str]:
+    """Возвращает целевые CN групп для сотрудника из Django (Position/DeptRole/Direct)."""
+    cns: set[str] = set()
+    pos = getattr(emp, "position", None)
+    if pos is not None and hasattr(pos, "groups"):
+        cns |= {g.name for g in pos.groups.all()}
+    user_obj = getattr(emp, "user", None) or emp
+    if hasattr(user_obj, "groups"):
+        cns |= {g.name for g in user_obj.groups.all()}
+    dept_roles = getattr(emp, "department_roles", None)
+    if dept_roles is not None and hasattr(dept_roles, "all"):
+        for dr in dept_roles.all():
+            if hasattr(dr, "groups"):
+                cns |= {g.name for g in dr.groups.all()}
+    return cns
 
 
 __all__ = [
