@@ -10,8 +10,6 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
-from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
-from employees.ldap.errors import DirectoryDbError, DirectoryLdapError
 from employees.models import Position, Skill
 from employees.utils import _normalize_phone
 from rest_framework import status
@@ -22,7 +20,8 @@ from rest_framework.views import APIView
 
 from ..serializers import (EmailSerializer, EmailVerifySerializer,
                            RegisterSerializer)
-from ._helpers import Employee, _is_ldap_enabled
+from ._helpers import Employee
+from .mixins import LdapUserCreationMixin, _is_ldap_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +94,11 @@ class VerifyEmailAPIView(APIView):
         return Response({"ok": True, "user_id": user.id}, status=200)
 
 
-class RegisterAPIView(APIView):
-    """Регистрация: создаём учётку в LDAP (disabled) с паролем, в БД — set_unusable_password."""
+class RegisterAPIView(LdapUserCreationMixin, APIView):
+    """Регистрация: создаём учётку в LDAP (disabled) с паролем, в БД — set_unusable_password.
+    
+    Использует LdapUserCreationMixin для вынесения LDAP-специфичной логики.
+    """
 
     throttle_scope = "anon"
     permission_classes = [AllowAny]
@@ -188,40 +190,27 @@ class RegisterAPIView(APIView):
 
         if ldap_enabled:
             # Режим с LDAP: создаём disabled учётку в LDAP + пароль
-            svc = DirectoryService()
-            dto = DirectoryUserDTO(
+            emp, error_response = self.create_ldap_user(
                 first_name=v["first_name"],
                 last_name=v["last_name"],
                 email=email,
                 phone_e164=phone_norm,
-                department_dn=None,
-                group_cns=[],
-                initial_password=password,  # пароль идёт только в LDAP
+                password=password,
                 avatar_bytes=avatar_bytes,
-                is_active=False,  # disabled до верификации
+                is_active=False,  # disabled до верификации email
             )
-            try:
-                emp = svc.create_user(dto)
-            except DirectoryLdapError as e:
-                return Response(
-                    {"ok": False, "error": "ldap_error", "detail": str(e)}, status=502
-                )
-            except DirectoryDbError as e:
-                return Response(
-                    {"ok": False, "error": "db_error", "detail": str(e)}, status=500
-                )
+            if error_response:
+                return error_response
         else:
             # Режим без LDAP: создаём пользователя напрямую в БД
-            emp = Employee.objects.create(
+            emp = self.create_db_user(
                 first_name=v["first_name"],
                 last_name=v["last_name"],
                 email=email,
                 phone_number=phone_norm,
+                password=password,
                 is_active=False,  # не активен до верификации email
-                is_ldap_managed=False,
             )
-            # Устанавливаем пароль в БД
-            emp.set_password(password)
 
         # 2) Заполняем доп.поля БД
         if avatar_bytes:

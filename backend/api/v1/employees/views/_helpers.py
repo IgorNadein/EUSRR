@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from employees.utils import _detect_phone_field
@@ -17,14 +16,6 @@ logger = logging.getLogger(__name__)
 Employee = get_user_model()
 
 PHONE_FIELD = _detect_phone_field()
-
-
-def _is_ldap_enabled() -> bool:
-    """Проверяет, включена ли интеграция с LDAP.
-    
-    Используется только в RegisterAPIView для создания LDAP пользователей.
-    """
-    return getattr(settings, "LDAP_ENABLED", False)
 
 
 class HistoryActionMixin:
