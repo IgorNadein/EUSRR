@@ -1,4 +1,7 @@
-"""Django signals для автоматической синхронизации Department с LDAP."""
+"""Django signals для автоматической синхронизации Department с LDAP.
+
+Файл: employees/signals/ldap/department.py
+"""
 
 import logging
 

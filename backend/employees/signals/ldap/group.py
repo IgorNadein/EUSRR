@@ -1,4 +1,7 @@
-"""Django signals для автоматической синхронизации Group с LDAP."""
+"""Django signals для автоматической синхронизации Group с LDAP.
+
+Файл: employees/signals/ldap/group.py
+"""
 
 import logging
 

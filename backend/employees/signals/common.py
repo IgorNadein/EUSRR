@@ -1,4 +1,11 @@
-# users/signals.py
+# employees/signals/common.py
+"""Общие Django signals для приложения employees.
+
+Обработчики:
+- Создание кадровых событий (EmployeeAction)
+- Создание главных чатов отделов
+- Автоматизация из заявок (requests_app)
+"""
 
 import logging
 import os
@@ -10,9 +17,9 @@ from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
-from .constants import ACTION_HIRED
 
-from .models import Employee, EmployeeAction, Department
+from employees.constants import ACTION_HIRED
+from employees.models import Employee, EmployeeAction, Department
 
 logger = logging.getLogger(__name__)
 

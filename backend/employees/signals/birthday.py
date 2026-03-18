@@ -1,6 +1,8 @@
-"""
-Сигналы для автоматического управления событиями дней рождения в django-scheduler.
+"""Django signals для автоматической синхронизации дней рождений с django-scheduler.
+
 Использует Service Layer паттерн через django-service-objects.
+
+Файл: employees/signals/birthday.py
 """
 from __future__ import annotations
 
