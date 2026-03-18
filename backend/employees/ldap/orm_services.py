@@ -18,7 +18,9 @@ import logging
 from typing import Optional
 
 from django.conf import settings
+from django.utils import timezone
 
+from employees.models import LdapSyncState
 from .orm_models import LdapUser, LdapGroup, LdapOrganizationalUnit
 from .utils.text_utils import esc_rdn
 
@@ -99,6 +101,23 @@ class LdapOrmUserService:
         # Сохранение в LDAP
         user.save()
         
+        # Создание/обновление LdapSyncState для связи Employee ↔ LDAP
+        if employee_pk:
+            # Получаем objectGUID после создания (если доступен)
+            guid_str = str(user.object_guid) if hasattr(user, 'object_guid') and user.object_guid else None
+            
+            LdapSyncState.objects.update_or_create(
+                model='employee',
+                object_pk=str(employee_pk),
+                defaults={
+                    'ldap_dn': dn,
+                    'ldap_guid': guid_str,
+                    'last_django_modify_ts': timezone.now(),
+                    'last_sync_dir': 'django',
+                }
+            )
+            logger.info(f"Created LdapSyncState for Employee.pk={employee_pk}, DN={dn}")
+        
         logger.info(f"Created LDAP user: {dn} (sAMAccountName={sam_account_name})")
         
         return user
@@ -167,6 +186,20 @@ class LdapOrmUserService:
         
         if updated:
             user.save()
+            
+            # Обновление LdapSyncState (если есть employee_number)
+            if user.employee_number:
+                try:
+                    sync_state = LdapSyncState.objects.get(
+                        model='employee',
+                        object_pk=user.employee_number
+                    )
+                    sync_state.last_django_modify_ts = timezone.now()
+                    sync_state.last_sync_dir = 'django'
+                    sync_state.save(update_fields=['last_django_modify_ts', 'last_sync_dir', 'updated_at'])
+                except LdapSyncState.DoesNotExist:
+                    logger.warning(f"LdapSyncState not found for employee_pk={user.employee_number}")
+            
             logger.info(f"Updated LDAP user: {user_dn}")
         
         return user
@@ -193,7 +226,19 @@ class LdapOrmUserService:
             logger.info(f"Soft deleted (disabled) LDAP user: {user_dn}")
         else:
             # Hard delete - удаление из LDAP
+            employee_pk = user.employee_number if hasattr(user, 'employee_number') else None
+            
             user.delete()
+            
+            # Удаление LdapSyncState при полном удалении
+            if employee_pk:
+                deleted_count = LdapSyncState.objects.filter(
+                    model='employee',
+                    object_pk=employee_pk
+                ).delete()[0]
+                if deleted_count:
+                    logger.info(f"Deleted LdapSyncState for employee_pk={employee_pk}")
+            
             logger.info(f"Deleted LDAP user: {user_dn}")
 
     def get_user_by_dn(self, dn: str) -> Optional[LdapUser]:
@@ -204,10 +249,42 @@ class LdapOrmUserService:
             return None
 
     def get_user_by_employee_pk(self, employee_pk: int) -> Optional[LdapUser]:
-        """Получает пользователя из LDAP по Employee.pk."""
+        """
+        Получает пользователя из LDAP по Employee.pk.
+        
+        Сначала пытается найти через LdapSyncState (более надежно),
+        затем через employeeNumber атрибут в LDAP.
+        """
+        # Способ 1: через LdapSyncState (рекомендуется)
+        try:
+            sync_state = LdapSyncState.objects.get(
+                model='employee',
+                object_pk=str(employee_pk)
+            )
+            if sync_state.ldap_dn:
+                return self.get_user_by_dn(sync_state.ldap_dn)
+        except LdapSyncState.DoesNotExist:
+            pass
+        
+        # Способ 2: через employeeNumber в LDAP (fallback)
         try:
             return LdapUser.objects.get(employee_number=str(employee_pk))
         except LdapUser.DoesNotExist:
+            return None
+    
+    def get_user_dn_by_employee_pk(self, employee_pk: int) -> Optional[str]:
+        """
+        Получает DN пользователя в LDAP по Employee.pk через LdapSyncState.
+        
+        Это быстрый метод без запроса к LDAP серверу.
+        """
+        try:
+            sync_state = LdapSyncState.objects.get(
+                model='employee',
+                object_pk=str(employee_pk)
+            )
+            return sync_state.ldap_dn or None
+        except LdapSyncState.DoesNotExist:
             return None
 
 

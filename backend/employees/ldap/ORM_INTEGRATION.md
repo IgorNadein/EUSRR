@@ -11,6 +11,106 @@ GET запросы    → Employee (PostgreSQL)        - быстро ⚡
 POST/PUT/DELETE → LdapUser (django-ldapdb ORM) - просто ✨
 ```
 
+## Связь моделей
+
+### Архитектура связи
+
+```
+┌─────────────────────────┐
+│  Employee               │ (PostgreSQL, default database)
+│  - pk: 123              │
+│  - first_name: "John"   │
+│  - last_name: "Doe"     │
+│  - email: "jdoe@..."    │
+└─────────────────────────┘
+           ↓ связь через object_pk
+┌─────────────────────────┐
+│  LdapSyncState          │ (PostgreSQL, default database)
+│  - model: 'employee'    │ ← тип модели
+│  - object_pk: '123'     │ ← Employee.pk (строка)
+│  - ldap_dn: 'CN=John...'│ ← DN в LDAP
+│  - ldap_guid: '{UUID}'  │ ← objectGUID из AD
+│  - last_django_modify_ts│ ← метка времени
+│  - last_sync_dir        │ ← направление синхронизации
+└─────────────────────────┘
+           ↓ связь через ldap_dn
+┌─────────────────────────┐
+│  LdapUser               │ (LDAP server, ldap database)
+│  - dn: 'CN=John...'     │ ← Distinguished Name (первичный ключ)
+│  - cn: "John Doe"       │
+│  - sam_account_name: "jdoe"
+│  - employee_number: '123'│ ← Employee.pk (опционально, для быстрого поиска)
+│  - given_name: "John"   │
+│  - sn: "Doe"            │
+│  - mail: "jdoe@..."     │
+└─────────────────────────┘
+```
+
+### Роли моделей
+
+**Employee** (employees/models.py):
+- Основная модель сотрудника в PostgreSQL
+- Используется для всех GET запросов (быстро)
+- Хранит все данные для отображения в UI
+
+**LdapSyncState** (employees/models.py):
+- Промежуточная таблица маппинга
+- Связывает Employee.pk ↔ LDAP DN
+- Хранит метки времени для синхронизации
+- Позволяет отследить изменения
+
+**LdapUser** (employees/ldap/orm_models.py):
+- ORM модель для записи в LDAP через django-ldapdb
+- Используется ТОЛЬКО для POST/PUT/DELETE операций
+- Автоматически записывает изменения в Active Directory
+
+### Методы связи в ORM сервисах
+
+```python
+from employees.ldap.orm_services import LdapOrmUserService
+
+svc = LdapOrmUserService()
+
+# 1. Создание: автоматически создает LdapSyncState
+user = svc.create_user(
+    sam_account_name="jdoe",
+    first_name="John",
+    last_name="Doe",
+    email="jdoe@example.com",
+    employee_pk=123,  # ← связь с Employee
+)
+# Создает LdapSyncState(model='employee', object_pk='123', ldap_dn=user.dn)
+
+# 2. Получение DN по Employee.pk (быстро, без LDAP запроса)
+dn = svc.get_user_dn_by_employee_pk(employee_pk=123)
+# Читает из LdapSyncState.ldap_dn
+
+# 3. Получение LdapUser по Employee.pk
+ldap_user = svc.get_user_by_employee_pk(employee_pk=123)
+# Сначала ищет DN через LdapSyncState, затем делает LDAP запрос
+
+# 4. Обновление: автоматически обновляет LdapSyncState
+svc.update_user(dn, first_name="Johnny")
+# Обновляет LdapSyncState.last_django_modify_ts
+
+# 5. Удаление: автоматически удаляет LdapSyncState (при hard delete)
+svc.delete_user(dn, soft=False)
+# Удаляет LdapSyncState для этого employee_pk
+```
+
+### Почему нет ForeignKey?
+
+**LdapUser** и **Employee** находятся в **разных базах данных**:
+- Employee → PostgreSQL (database='default')
+- LdapUser → LDAP server (database='ldap')
+
+Django **не поддерживает ForeignKey между разными базами данных**.
+
+Поэтому используется:
+- `LdapSyncState.object_pk` (CharField) - хранит str(Employee.pk)
+- `LdapUser.employee_number` (CharField) - хранит str(Employee.pk) в LDAP
+- Связь **слабая** (через строки), но это **нормально** для multi-database setup
+
 ## Компоненты
 
 ### 1. LDAP ORM Модели
