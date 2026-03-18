@@ -8,6 +8,81 @@
 - Автоматическая валидация и типизация
 - Унифицированный API для CRUD операций
 - Меньше кода, больше удобства
+
+ВАЖНО: Ограничения django-ldapdb
+==================================
+
+django-ldapdb (версия 1.5.1) НЕ поддерживает следующие операции LDAP:
+
+1. ModifyDN (rename/move) — перемещение объектов между OU
+   - Для перемещения пользователей используется ldap3.Connection.modify_dn()
+   - См. utils.dn_utils._move_to_department()
+   - При переводе в отдел, увольнении — низкоуровневый ldap3
+
+2. Создание объектов с динамическим DN
+   - Создание пользователей: ldap3.Connection.add() с явным DN
+   - DN формируется на основе department_dn или LDAP_USERS_BASE
+   - См. services.user_service.UserService._create_user_in_ldap()
+
+3. Транзакционное создание с перебором CN (collision handling)
+   - При создании пользователя перебираются варианты CN до успеха
+   - См. services.user_service.UserService._try_add_with_cn_list()
+
+Что МОЖНО делать через ORM:
+- UPDATE: изменение атрибутов существующих объектов (.save())
+- READ: поиск объектов для последующего обновления (.objects.get(dn=...))
+- BATCH UPDATE: массовое обновление атрибутов (.save() в цикле)
+
+Архитектура использования:
+==========================
+
+CREATE пользователя:
+  1. ldap3.Connection.add(dn, object_classes, attrs)  # низкоуровневое создание
+  2. LdapUser.objects.get(dn=new_dn)                  # загрузка для проверки
+  
+UPDATE пользователя:
+  1. ldap_user = LdapUser.objects.get(dn=dn)          # загрузка через ORM
+  2. ldap_user.display_name = "New Name"              # изменение атрибутов
+  3. ldap_user.save()                                 # сохранение через ORM
+
+MOVE пользователя (перевод в отдел):
+  1. new_dn = conn.modify_dn(dn, new_superior=dept_dn)  # низкоуровневое перемещение
+  2. ldap_user = LdapUser.objects.get(dn=new_dn)        # загрузка по новому DN
+  3. ldap_user.save()                                   # обновление атрибутов
+
+DELETE пользователя:
+  1. conn.delete(dn)                                    # низкоуровневое удаление
+
+Структура DN в Active Directory:
+=================================
+
+Пользователи (зависит от статуса):
+  - Активные по отделам:
+    CN=Иванов Иван,OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
+  - Уволенные:
+    CN=Иванов Иван,OU=Dismissed,OU=company,DC=robotail,DC=local
+
+Группы (зависит от типа):
+  - Глобальные группы:
+    CN=Developers,OU=Groups,OU=company,DC=robotail,DC=local
+  - Роли отделов:
+    CN=ROLE_Manager,OU=Roles,OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
+
+Организационные единицы:
+  - Отделы:
+    OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
+  - Вспомогательные контейнеры:
+    OU=Roles,OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
+
+base_dn моделей:
+================
+
+base_dn в моделях используется ТОЛЬКО для SUBTREE поиска через .objects.filter()
+и НЕ определяет местоположение создаваемых/перемещаемых объектов.
+
+- LdapUser.base_dn = "OU=company,DC=..." — покрывает все отделы и Dismissed
+- LdapGroup.base_dn = "DC=..." — покрывает Groups и роли отделов
+- LdapOrganizationalUnit.base_dn = "DC=..." — покрывает все OU
 """
 
 import datetime as _dt
@@ -34,16 +109,38 @@ from ldapdb.models.fields import (
 
 
 def get_users_base():
-    """Получает base DN для пользователей из settings."""
-    return getattr(settings, 'LDAP_USERS_BASE', 
-                   getattr(settings, 'LDAP_USER_BASE', 
+    """Получает base DN для пользователей из settings.
+    
+    Возвращает корневой DN, который покрывает все возможные местоположения
+    пользователей для SUBTREE search:
+    - OU=Departments (активные сотрудники по отделам)
+    - OU=Dismissed (уволенные)
+    - Любые другие OU под OU=company
+    
+    Приоритет:
+    1. LDAP_USER_BASE или LDAP_USERS_BASE (если задан в settings)
+    2. Fallback: OU=company,DC=robotail,DC=local
+    """
+    return getattr(settings, 'LDAP_USER_BASE', 
+                   getattr(settings, 'LDAP_USERS_BASE', 
                           'OU=company,DC=robotail,DC=local'))
 
 
 def get_base_dn():
-    """Получает корневой base DN из settings."""
+    """Получает корневой base DN из settings.
+    
+    Используется для групп и OU. Должен покрывать:
+    - OU=Groups (глобальные группы)
+    - OU=Departments (отделы и их роли)
+    - Любые другие контейнеры
+    
+    Приоритет:
+    1. LDAP_BASE_DN (если задан)
+    2. Fallback: корневой DN домена (DC=robotail,DC=local)
+       или LDAP_USERS_BASE если нет LDAP_BASE_DN
+    """
     return getattr(settings, 'LDAP_BASE_DN',
-                   getattr(settings, 'LDAP_USER_BASE',
+                   getattr(settings, 'LDAP_USERS_BASE',
                           'DC=robotail,DC=local'))
 
 
@@ -52,9 +149,28 @@ class LdapUser(LdapModel):
     
     Использует objectClass: top, person, organizationalPerson, user.
     Только для WRITE операций (POST/PUT/DELETE).
+    
+    ВАЖНО О base_dn:
+    - base_dn используется только для SUBTREE поиска через .objects.filter()
+    - НЕ определяет местоположение создаваемых/перемещаемых объектов
+    - Реально пользователи находятся в разных OU:
+      • CN=User,OU=<Dept>,OU=Departments,OU=company,... (активные)
+      • CN=User,OU=Dismissed,OU=company,... (уволенные)
+    
+    Операции, НЕ поддерживаемые django-ldapdb ORM:
+    - CREATE: создание идёт через ldap3.Connection.add() с явным DN
+      (формируется на основе department_dn или LDAP_USERS_BASE)
+    - MOVE: перемещение между OU через ldap3.Connection.modify_dn()
+      (см. utils.dn_utils._move_to_department)
+    - DELETE: удаление через ldap3.Connection.delete() для контроля ошибок
+    
+    Модель используется для:
+    - UPDATE: изменение атрибутов существующих объектов через .save()
+    - READ: поиск через .objects.get(dn=...) для последующего обновления
     """
     
     # Базовая конфигурация
+    # base_dn покрывает все возможные местоположения пользователей для SUBTREE search
     base_dn = get_users_base()
     object_classes = ['top', 'person', 'organizationalPerson', 'user']
     
@@ -109,6 +225,21 @@ class LdapGroup(LdapModel):
     
     Использует objectClass: top, group.
     Только для WRITE операций (POST/PUT/DELETE).
+    
+    ВАЖНО О base_dn:
+    - base_dn используется только для SUBTREE поиска через .objects.filter()
+    - Группы могут находиться в разных OU:
+      • CN=Group,OU=Groups,DC=... (глобальные группы)
+      • CN=ROLE_*,OU=Roles,OU=<Dept>,OU=Departments,... (роли отделов)
+    
+    Операции через django-ldapdb:
+    - CREATE: создание через GroupService.create() (ldap3.Connection.add)
+    - UPDATE: изменение атрибутов через .save()
+    - RENAME: переименование через GroupService.rename() (ldap3.Connection.modify_dn)
+    - DELETE: удаление через ldap3.Connection.delete()
+    
+    При создании ролей отделов DN формируется как:
+    CN=ROLE_{name},OU=Roles,OU={dept},OU=Departments,...
     """
     
     # Базовая конфигурация
@@ -149,6 +280,20 @@ class LdapOrganizationalUnit(LdapModel):
     
     Использует objectClass: top, organizationalUnit.
     Только для WRITE операций (POST/PUT/DELETE).
+    
+    ВАЖНО О base_dn:
+    - base_dn используется только для SUBTREE поиска
+    - OU отделов располагаются под LDAP_DEPARTMENTS_BASE:
+      OU=<DeptName>,OU=Departments,OU=company,...
+    
+    Операции через django-ldapdb:
+    - CREATE: создание через .save() — работает с ORM
+    - UPDATE: изменение через .save() (например, managedBy)
+    - RENAME: переименование через modify_dn (не поддерживается ORM, используется ldap3)
+    - DELETE: удаление через ldap3.Connection.delete()
+    
+    При создании отдела DN формируется как:
+    OU={dept_name},{LDAP_DEPARTMENTS_BASE}
     """
     
     # Базовая конфигурация
