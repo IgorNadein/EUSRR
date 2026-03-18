@@ -130,6 +130,19 @@ else:
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 
+# LDAP database для django-ldapdb (используется только для WRITE операций)
+# Конфигурация берется из переменных окружения LDAP_URI, LDAP_BIND_DN и т.д.
+# которые определены ниже в разделе LDAP
+DATABASES["ldap"] = {
+    "ENGINE": "ldapdb.backends.ldap",
+    "NAME": os.getenv("LDAP_URI", "ldaps://dcii.robotail.local:636"),
+    "USER": os.getenv("LDAP_BIND_DN", ""),
+    "PASSWORD": os.getenv("LDAP_BIND_PASSWORD", ""),
+}
+
+# Database router для направления LDAP моделей в LDAP database
+DATABASE_ROUTERS = ["eusrr_backend.db_routers.LdapRouter"]
+
 # -----------------------------------------------------------------------------
 # АВТОРИЗАЦИЯ / ПАРОЛИ
 # -----------------------------------------------------------------------------

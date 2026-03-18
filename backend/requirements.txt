@@ -38,6 +38,7 @@ django-bootstrap5==25.1
 django-cors-headers==4.7.0
 django-extensions==4.1
 django-filter==25.1
+django-ldapdb==1.5.1
 django-phonenumber-field==8.1.0
 django-registration==5.2.1
 django-scheduler==0.12.0
