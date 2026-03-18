@@ -26,11 +26,17 @@ from .mixins import LdapUserCreationMixin, _is_ldap_enabled
 logger = logging.getLogger(__name__)
 
 
-class ResendEmailAPIView(APIView):
-    """POST /api/v1/auth/resend-email/  body: {"email": "..."}"""
-
+class AnonymousAPIView(APIView):
+    """Базовый класс для анонимных (публичных) API endpoints.
+    
+    Все auth-related views наследуются от этого класса для DRY.
+    """
     throttle_scope = "anon"
     permission_classes = [AllowAny]
+
+
+class ResendEmailAPIView(AnonymousAPIView):
+    """POST /api/v1/auth/resend-email/  body: {"email": "..."}"""
 
     def post(self, request):
         ser = EmailSerializer(data=request.data)
@@ -55,10 +61,7 @@ class ResendEmailAPIView(APIView):
         return Response({"ok": True}, status=200)
 
 
-class VerifyEmailAPIView(APIView):
-    throttle_scope = "anon"
-    permission_classes = [AllowAny]
-
+class VerifyEmailAPIView(AnonymousAPIView):
     def post(self, request):
         """Подтверждает email и активирует пользователя.
         
@@ -94,14 +97,11 @@ class VerifyEmailAPIView(APIView):
         return Response({"ok": True, "user_id": user.id}, status=200)
 
 
-class RegisterAPIView(LdapUserCreationMixin, APIView):
+class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
     """Регистрация: создаём учётку в LDAP (disabled) с паролем, в БД — set_unusable_password.
     
     Использует LdapUserCreationMixin для вынесения LDAP-специфичной логики.
     """
-
-    throttle_scope = "anon"
-    permission_classes = [AllowAny]
     parser_classes = (JSONParser, FormParser, MultiPartParser)
 
     @transaction.atomic
