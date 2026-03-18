@@ -1,11 +1,9 @@
 """Extended employees views for API v2."""
-from api.v1.employees.views import (
-    DepartmentRoleViewSet as V1DepartmentRoleViewSet,
-    EmployeeActionViewSet as V1EmployeeActionViewSet,
-    GroupViewSet as V1GroupViewSet,
-    PositionViewSet as V1PositionViewSet,
-    SkillViewSet as V1SkillViewSet,
-)
+from api.v1.employees.views.roles import DepartmentRoleViewSet as V1DepartmentRoleViewSet
+from api.v1.employees.views.actions import EmployeeActionViewSet as V1EmployeeActionViewSet
+from api.v1.employees.views.groups import GroupViewSet as V1GroupViewSet
+from api.v1.employees.views.positions import PositionViewSet as V1PositionViewSet
+from api.v1.employees.views.skills import SkillViewSet as V1SkillViewSet
 
 
 class PositionViewSet(V1PositionViewSet):
