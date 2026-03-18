@@ -30,7 +30,9 @@ class AnonymousAPIView(APIView):
     """Базовый класс для анонимных (публичных) API endpoints.
     
     Все auth-related views наследуются от этого класса для DRY.
+    Используется только JWT (без SessionAuthentication) → CSRF не требуется.
     """
+    authentication_classes = []  # Отключаем SessionAuthentication для публичных endpoints
     throttle_scope = "anon"
     permission_classes = [AllowAny]
 
@@ -110,20 +112,6 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
         logger.warning(f"[REGISTER] Received data: {request.data}")
         logger.warning(f"[REGISTER] Content-Type: {request.content_type}")
 
-        # 0) хотя бы один контакт
-        if not (
-            request.data.get("telegram")
-            or request.data.get("whatsapp")
-            or request.data.get("wechat")
-        ):
-            logger.warning("[REGISTER] No contact provided")
-            return Response(
-                {
-                    "detail": "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram"
-                },
-                status=400,
-            )
-
         ser = RegisterSerializer(data=request.data)
         if not ser.is_valid():
             logger.warning(f"[REGISTER] Validation errors: {ser.errors}")
@@ -135,7 +123,9 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
         phone_norm = _normalize_phone(
             v.get("phone_number") or request.data.get("phone")
         )
+        logger.warning(f"[REGISTER] Phone normalization: input={v.get('phone_number')}, normalized={phone_norm}")
         if not phone_norm:
+            logger.error(f"[REGISTER] Phone normalization FAILED for: {v.get('phone_number')}")
             return Response({"ok": False, "error": "invalid_phone"}, status=400)
 
         existing_phone = Employee.objects.filter(
@@ -161,8 +151,10 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
 
         user = Employee.objects.filter(email__iexact=email).first()
         if user:
+            logger.warning(f"[REGISTER] User exists: email={email}, verified={user.email_verified}")
             if user.email_verified:
                 # Email уже верифицирован - нельзя регистрироваться
+                logger.error(f"[REGISTER] Email already taken and verified: {email}")
                 return Response({"ok": False, "error": "email_taken"}, status=400)
             else:
                 # Есть неверифицированный пользователь - повторная отправка кода

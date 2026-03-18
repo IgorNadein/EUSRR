@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.conf import settings
@@ -36,6 +37,8 @@ from ..utils.text_utils import esc_rdn
 # Константы UAC (User Account Control)
 UAC_ENABLED = 512
 UAC_DISABLED = 514
+
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -103,9 +106,13 @@ class UserService:
                         emp.set_unusable_password()
                         emp.save(update_fields=["password"])
 
-                    # ORM: чтение objectGUID + запись employeeNumber
+                    # Чтение objectGUID + запись employeeNumber (AD)
                     ldap_user = LdapUser.objects.get(dn=dn)
                     guid = str(ldap_user.object_guid) if ldap_user.object_guid else None
+                    
+                    # Записываем Django PK в LDAP employeeNumber для связки
+                    ldap_user.employee_number = str(emp.pk)
+                    ldap_user.save()
 
                     self._touch_state(
                         model="employee",
@@ -115,10 +122,6 @@ class UserService:
                         sync_dir="ldap",
                         last_django_modify_ts=timezone.now(),
                     )
-
-                    # ORM: записываем Django PK в LDAP employeeNumber для связки
-                    ldap_user.employee_number = str(emp.pk)
-                    ldap_user.save()
 
                     # Временно импортируем для совместимости
                     # TODO: Убрать после полного рефакторинга
@@ -460,12 +463,7 @@ class UserService:
         return state
 
     def _set_password(self, conn: Connection, dn: str, new_password: str) -> None:
-        """Меняет пароль пользователя в AD (control).
-        
-        TODO(ldap-orm): Невозможно заменить на ORM.
-        AD modify_password — extended operation, django-ldapdb не поддерживает.
-        Остаётся через ldap3 навсегда.
-        """
+        """Меняет пароль пользователя через AD extended operation."""
         ok = conn.extend.microsoft.modify_password(dn, new_password)
         if not ok:
             msg = conn.result or {}
@@ -475,7 +473,7 @@ class UserService:
             raise RuntimeError(f"LDAP set password failed: {msg}")
 
     def _enable_user(self, conn: Connection, dn: str) -> None:
-        """Включает учётку (UAC=512) через ORM."""
+        """Включает учётку (UAC=512)."""
         ldap_user = LdapUser.objects.get(dn=dn)
         ldap_user.user_account_control = UAC_ENABLED
         ldap_user.save()
@@ -516,22 +514,23 @@ class UserService:
     def _build_user_attrs(
         self, dto: DirectoryUserDTO, sam: str, upn: str, cn_text: str
     ) -> Dict[str, Any]:
-        """Собирает атрибуты для создания user в AD, отбрасывая пустые значения."""
+        """Собирает атрибуты для создания AD user, отбрасывая пустые значения."""
         if not all(isinstance(x, str) for x in (sam, upn, cn_text)):
             raise TypeError("sam, upn и cn_text должны быть строками")
 
-        base_attrs: Dict[str, Any] = {
+        attrs: Dict[str, Any] = {
             "cn": cn_text,
+            "sAMAccountName": sam,
+            "userPrincipalName": upn,
+            "userAccountControl": UAC_DISABLED,
             "givenName": dto.first_name or None,
-            "sn": dto.last_name or ".",  # sn не может быть пустым
+            "sn": dto.last_name or ".",
             "displayName": cn_text or None,
             "mail": (dto.email or None),
             self._phone_write_attr(): (dto.phone_e164 or None),
-            "sAMAccountName": sam,
-            "userPrincipalName": upn,
-            "userAccountControl": UAC_DISABLED,  # disabled до верификации email
         }
-        return {k: v for k, v in base_attrs.items() if v not in (None, "", [])}
+
+        return {k: v for k, v in attrs.items() if v not in (None, "", [])}
 
     def _try_add_with_cn_list(
         self,
@@ -587,6 +586,7 @@ class UserService:
         cn_list = cn_candidates(pretty_cn, safe_cn)
 
         object_classes = ["top", "person", "organizationalPerson", "user"]
+        
         dn = self._try_add_with_cn_list(
             conn, base_dn, object_classes, dto, sam, upn, cn_list
         )

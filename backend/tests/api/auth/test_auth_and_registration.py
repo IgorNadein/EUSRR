@@ -43,6 +43,10 @@ def extract_code_from_last_email() -> str | None:
 
 
 def register_payload(**overrides):
+    # Минимальный валидный PNG 1x1 пиксель (прозрачный) в base64
+    tiny_png_base64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
     data = {
         "first_name": "Иван",
         "last_name": "Иванов",
@@ -50,7 +54,9 @@ def register_payload(**overrides):
         "email": "ivan@example.com",
         "password": "Str0ngPass!",
         "birth_date": "1990-01-01",
-        # достаточно любого из контактов:
+        "gender": 1,  # 1 - Мужской, 2 - Женский
+        "avatar": f"data:image/png;base64,{tiny_png_base64}",
+        # Контактные поля опциональны, но можно указать одно:
         "telegram": "@ivan",
         # опционально можно добавить другие поля модели
     }
@@ -125,17 +131,6 @@ def test_register_missing_required_field(api, missing_field):
     payload.pop(missing_field)
     resp = api.post(reverse("api:v1:register"), payload, format="json")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-
-
-def test_register_requires_at_least_one_contact(api):
-    payload = register_payload(telegram="", whatsapp="", wechat="")
-    resp = api.post(reverse("api:v1:register"), payload, format="json")
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert (
-        "WhatsApp" in resp.json().get("detail", "")
-        or "WeChat" in resp.json().get("detail", "")
-        or "Telegram" in resp.json().get("detail", "")
-    )
 
 
 def test_register_birth_date_must_be_valid_date(api):

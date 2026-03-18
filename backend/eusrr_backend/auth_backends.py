@@ -188,7 +188,7 @@ class LDAP3Backend(ModelBackend):
                 svc_conn = Connection(server, auto_bind=True, receive_timeout=30)
                 logger.debug("Service bind OK (anonymous/simple)")
 
-            # Базовый объектный фильтр (по умолчанию — пользователи AD)
+            # Базовый объектный фильтр AD
             base_object_filter = getattr(
                 settings,
                 "LDAP_OBJECT_FILTER",
@@ -234,6 +234,7 @@ class LDAP3Backend(ModelBackend):
                 ldap_filter = f"(&{base_object_filter}{id_filter})"
             logger.debug("FINAL LDAP search filter=%s", ldap_filter)
 
+            # AD атрибуты для поиска
             ok = svc_conn.search(
                 search_base=user_base,
                 search_filter=ldap_filter,
@@ -244,9 +245,11 @@ class LDAP3Backend(ModelBackend):
                     getattr(settings, "LDAP_ATTR_MAIL", "mail"),
                     "telephoneNumber",
                     "mobile",
+                    "sAMAccountName",
+                    "userPrincipalName",
                     "userAccountControl",
                     "objectGUID",
-                    "userPrincipalName",
+                    "displayName",
                 ],
                 size_limit=1,
             )
@@ -317,17 +320,6 @@ class LDAP3Backend(ModelBackend):
                 if phone_e164:
                     break
 
-        # --- AD disabled flag ---
-        if getattr(settings, "LDAP_RESPECT_AD_DISABLED", False):
-            uac_raw = get(entry, "userAccountControl")
-            try:
-                uac_int = int(str(uac_raw).strip())
-                if (uac_int & 0x0002) != 0:
-                    logger.info("AD says account is DISABLED -> auth denied")
-                    return None
-            except Exception as e:
-                logger.debug("UAC parse error: %s (ignored)", e)
-
         # --- Find or create local user ---
         user = None
         if email and _model_has_field(UserModel, "email"):
@@ -337,51 +329,14 @@ class LDAP3Backend(ModelBackend):
             logger.debug("Lookup local user by %s=%r", PHONE_FIELD, phone_e164)
             user = UserModel.objects.filter(**{PHONE_FIELD: phone_e164}).first()
 
-        if user and getattr(settings, "LDAP_RESPECT_IS_ACTIVE", True):
-            if not self.user_can_authenticate(user):
-                logger.info("user_can_authenticate=False -> auth denied")
-                return None
+        if user and not self.user_can_authenticate(user):
+            logger.info("user_can_authenticate=False -> auth denied")
+            return None
 
-        auto_create = bool(
-            getattr(settings, "LDAP_AUTO_CREATE", False)
-            or getattr(settings, "LDAP_REGISTRATION_CREATE", False)
-        )
-        logger.debug("auto_create=%s", auto_create)
-
-        if user is None and auto_create:
-            payload: dict[str, Any] = {}
-            if _model_has_field(UserModel, "email") and email:
-                payload["email"] = email
-            if PHONE_FIELD and phone_e164:
-                payload[PHONE_FIELD] = phone_e164
-            if _model_has_field(UserModel, "first_name"):
-                payload["first_name"] = first_name
-            if _model_has_field(UserModel, "last_name"):
-                payload["last_name"] = last_name
-
-            key_field = getattr(UserModel, "USERNAME_FIELD", "email")
-            key_ok = (key_field != "email") or bool(payload.get("email"))
-            phone_ok = (not PHONE_FIELD) or (PHONE_FIELD in payload)
-            logger.debug(
-                "Auto-create checks: key_field=%r key_ok=%s phone_ok=%s payload_keys=%s",
-                key_field,
-                key_ok,
-                phone_ok,
-                list(payload.keys()),
-            )
-
-            if key_ok and phone_ok:
-                user = UserModel.objects.create(**payload)
-                logger.info("Local user CREATED: id=%s", getattr(user, "id", None))
-                if self.user_can_authenticate(user) is False and hasattr(
-                    user, "is_active"
-                ):
-                    user.is_active = True
-                    user.save(update_fields=["is_active"])
-                    logger.debug("Local user activated (is_active=True)")
-            else:
-                logger.info("Auto-create refused (insufficient key data)")
-                return None
+        # Auto-create отключен для LDAP3Backend (создание через API)
+        if user is None:
+            logger.info("User not found in DB, auto-create disabled")
+            return None
 
         # --- Light profile sync ---
         if user:

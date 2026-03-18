@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from employees.models import LdapSyncState
+from employees.models import LdapSyncState, Position
 
 from ..models import Department, Employee
 from .domain.dtos import DirectoryUserDTO, DirectoryDepartmentDTO
@@ -26,10 +26,14 @@ class DirectoryService:
         from .services.department_service import DepartmentService
         from .services.user_service import UserService
         from .services.group_service import GroupService
+        from .services.position_service import PositionService
 
         self._user_service = UserService()
         self._group_service = GroupService(directory_service=self)
         self._department_service = DepartmentService(
+            group_service=self._group_service, user_service=self._user_service
+        )
+        self._position_service = PositionService(
             group_service=self._group_service, user_service=self._user_service
         )
 
@@ -237,3 +241,33 @@ class DirectoryService:
 
         with _ldap() as conn:
             self._group_service.replace_members(conn, group_dn, exact_member_dns)
+
+    # ======================== POSITIONS ======================== #
+
+    def position_reconcile(self, position: Position) -> str:
+        """Синхронизирует должность с LDAP.
+        
+        Приводит должность к консистентному состоянию:
+        1) Создаёт/обновляет POS-группу (CN=POS_<name>)
+        2) Вкладывает POS-группу в целевые группы (из position.groups)
+        3) Синхронизирует участников POS-группы (сотрудники с этой должностью)
+        
+        Args:
+            position: Должность для синхронизации
+            
+        Returns:
+            DN POS-группы должности
+            
+        Raises:
+            RuntimeError: Если LDAP_POSITIONS_BASE не настроен
+            ValueError: Если имя должности пустое
+        """
+        return self._position_service.reconcile_position(position)
+
+    def position_delete(self, position: Position) -> None:
+        """Удаляет POS-группу должности из LDAP.
+        
+        Args:
+            position: Должность с POS-группой для удаления
+        """
+        return self._position_service.delete_position_group(position)

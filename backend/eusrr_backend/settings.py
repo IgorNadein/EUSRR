@@ -67,10 +67,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "corsheaders.middleware.CorsMiddleware",  # CORS middleware должен быть перед CommonMiddleware
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",  # Нужен для Django Admin
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "reversion.middleware.RevisionMiddleware",  # django-reversion для версионирования
     "simple_history.middleware.HistoryRequestMiddleware",
@@ -135,9 +135,9 @@ else:
 # которые определены ниже в разделе LDAP
 DATABASES["ldap"] = {
     "ENGINE": "ldapdb.backends.ldap",
-    "NAME": os.getenv("LDAP_URI", "ldaps://dcii.robotail.local:636"),
-    "USER": os.getenv("LDAP_BIND_DN", ""),
-    "PASSWORD": os.getenv("LDAP_BIND_PASSWORD", ""),
+    "NAME": os.getenv("LDAP_URI", "ldap://localhost:389"),
+    "USER": os.getenv("LDAP_BIND_DN", "cn=admin,dc=eusrr,dc=local"),
+    "PASSWORD": os.getenv("LDAP_BIND_PASSWORD", "AdminPassword123!"),
 }
 
 # Database router для направления LDAP моделей в LDAP database
@@ -173,8 +173,6 @@ API_LOGIN_URL_NAME = "auth_front:login"
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
 LOGIN_URL = "auth_front:login"
 LOGIN_REDIRECT_URL = "/"
-REGISTRATION_AUTO_LOGIN = True
-PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
 
 PHONE_DEFAULT_REGION = os.getenv("PHONE_DEFAULT_REGION", "RU")
 PHONENUMBER_DEFAULT_REGION = "RU"
@@ -188,12 +186,12 @@ PHONENUMBER_DEFAULT_REGION = "RU"
 #   ['*'] - разрешены все IP
 #   ['192.168.1.0/24', '10.0.0.0/8'] - конкретные сети
 #   ['192.168.1.100', '192.168.1.101'] - конкретные IP
-REGISTRATION_ALLOWED_IPS = [
-    '127.0.0.0/8',      # localhost
-    '10.0.0.0/8',       # приватная сеть класса A
-    '172.16.0.0/12',    # приватная сеть класса B (172.16-31.x.x)
-    '172.11.0.0/16',    # ваша корпоративная сеть
-    '192.168.0.0/16',   # приватная сеть класса C
+REGISTRATION_ALLOWED_IPS = [ "*",
+    # '127.0.0.0/8',      # localhost
+    # '10.0.0.0/8',       # приватная сеть класса A
+    # '172.16.0.0/12',    # приватная сеть класса B (172.16-31.x.x)
+    # '172.11.0.0/16',    # ваша корпоративная сеть
+    # '192.168.0.0/16',   # приватная сеть класса C
 ]
 
 # Медиа файлы
@@ -249,21 +247,29 @@ LOGGING = {
 # -----------------------------------------------------------------------------
 # БЕЗОПАСНОСТЬ И ПРОКСИ
 # -----------------------------------------------------------------------------
+# CSRF защита (для Django Admin и form-based views)
 CSRF_TRUSTED_ORIGINS = _split_env_list(
     os.getenv("CSRF_TRUSTED_ORIGINS", "https://*.sytes.net")
 )
-
-# Настройки CSRF для AJAX запросов
-CSRF_COOKIE_HTTPONLY = False  # Позволяет JavaScript читать cookie
+CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_USE_SESSIONS = False
+# Примечание: API endpoints с JWT используют authentication_classes = []
+# что отключает SessionAuthentication и автоматически bypass CSRF
 
 # -----------------------------------------------------------------------------
 # EMAIL
 # -----------------------------------------------------------------------------
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"
-)
+# В DEBUG режиме используем console backend (выводит письма в терминал)
+# В production - SMTP
+if DEBUG:
+    EMAIL_BACKEND = os.getenv(
+        "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+    )
+else:
+    EMAIL_BACKEND = os.getenv(
+        "EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"
+    )
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "465"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
@@ -381,38 +387,31 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # -----------------------------------------------------------------------------
-# LDAP (двусторонний обмен + LWW)
+# LDAP / Active Directory
 # -----------------------------------------------------------------------------
 LDAP_ENABLED = os.getenv("LDAP_ENABLED", "true").lower() == "true"
 
 # Основное подключение
-LDAP_URI = os.getenv("LDAP_URI", "ldaps://dcii.robotail.local:636")
-LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")
-LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
+LDAP_URI = os.getenv("LDAP_URI", "ldap://localhost:389")
+LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "cn=admin,dc=eusrr,dc=local")
+LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "AdminPassword123!")
 
 # TLS/CA
 # путь к CA bundle/серту (если нужен)
 LDAP_CA_CERTS = os.getenv("LDAP_CA_CERTS", "")
-LDAP_TLS_REQUIRED = os.getenv("LDAP_TLS_REQUIRED", "true").lower() == "true"
 
 # Где искать пользователей
-LDAP_USER_BASE = os.getenv("LDAP_USER_BASE", "OU=company,DC=robotail,DC=local")
+LDAP_USER_BASE = os.getenv("LDAP_USER_BASE", "OU=Users,DC=eusrr,DC=local")
 # Где создавать новых пользователей (может отличаться от базы поиска)
 LDAP_USERS_BASE = os.getenv("LDAP_USERS_BASE", LDAP_USER_BASE)
 # Базовый DN для операций создания (если не указан department_dn)
 LDAP_BASE_DN = os.getenv("LDAP_BASE_DN", LDAP_USERS_BASE)
 # UPN-суффикс для создания пользователей (userPrincipalName) - домен БЕЗ @
-LDAP_UPN_SUFFIX = os.getenv("LDAP_USER_UPN_SUFFIX", "robotail.local")
+LDAP_UPN_SUFFIX = os.getenv("LDAP_UPN_SUFFIX", "eusrr.local")
 
 LDAP_USER_FILTER = os.getenv(
     "LDAP_USER_FILTER", "(&(objectCategory=person)(objectClass=user))"
 )
-# Для AD по умолчанию; для OpenLDAP можно обнулить в .env
-LDAP_ACTIVE_FILTER = os.getenv(
-    "LDAP_ACTIVE_FILTER",
-    "(!(userAccountControl:1.2.840.113556.1.4.803:=2))",  # битовый NOT DISABLED
-)
-
 
 LDAP_ATTR_MAIL = os.getenv("LDAP_ATTR_MAIL", "mail")
 LDAP_ATTR_GIVENNAME = os.getenv("LDAP_ATTR_GIVENNAME", "givenName")
@@ -424,22 +423,11 @@ LDAP_PHONE_ATTRS = tuple(
     _split_env_list(os.getenv("LDAP_PHONE_ATTRS", "mobile,telephoneNumber"))
 )
 
-LDAP_DEPT_ATTR = os.getenv("LDAP_DEPT_ATTR", "")  # например, departmentNumber
-LDAP_SYNC_GROUPS = os.getenv("LDAP_SYNC_GROUPS", "false").lower() == "true"
-LDAP_GROUP_ATTR = os.getenv("LDAP_GROUP_ATTR", "memberOf")
-# Пример: {"CN=HR,OU=Groups,DC=...,DC=...": "hr"}
-LDAP_GROUP_MAP = {}
-LDAP_GROUPS_EXCLUSIVE = os.getenv(
-    "LDAP_GROUPS_EXCLUSIVE", "false").lower() == "true"
-
 # WRITE-BACK
 LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
 LDAP_WRITE_DN = os.getenv("LDAP_WRITE_DN", LDAP_BIND_DN)
 LDAP_WRITE_PASSWORD = os.getenv("LDAP_WRITE_PASSWORD", LDAP_BIND_PASSWORD)
 LDAP_WRITE_TIMEOUT = int(os.getenv("LDAP_WRITE_TIMEOUT", "5"))
-
-# UPN суффикс для создания пользователей (домен БЕЗ @, например robotail.local)
-LDAP_UPN_SUFFIX = os.getenv("LDAP_USER_UPN_SUFFIX", "robotail.local")
 
 # Белый список: локальные поля -> LDAP-атрибуты
 LDAP_WRITE_ATTRS = {
@@ -447,55 +435,22 @@ LDAP_WRITE_ATTRS = {
     "last_name": LDAP_ATTR_SN,
     # фактическое имя локального телефонного поля подставляет код
     "phone": LDAP_ATTR_PHONE,
-    # "photo": "jpegPhoto",
 }
-
-# LWW (Last Writer Wins) — сравнение меток изменения
-# Для AD обычно whenChanged, для OpenLDAP — modifyTimestamp
-LDAP_ASSERT_ATTR_AD = "whenChanged"
-LDAP_ASSERT_ATTR_OL = "modifyTimestamp"
-LDAP_ASSERT_ATTR = os.getenv("LDAP_ASSERT_ATTR", LDAP_ASSERT_ATTR_AD)
-
-# Локальное поле «последнее изменение» (ваше поле модели, напр. updated_at)
-LOCAL_ASSERT_FIELD = os.getenv("LOCAL_ASSERT_FIELD", "updated_at")
-LDAP_CREATE_EXTRA_ATTRS = {
-    "sAMAccountName": "{username20}",
-    "userPrincipalName": "{upn}",
-    "givenName": "{first_name_or_dot}",
-    "sn": "{last_name_or_dot}",
-    "displayName": "{cn}",
-    "mail": "{email}",
-}
-LDAP_SYNC_MODE = os.getenv("LDAP_SYNC_MODE", "lww")  # lww|ldap|django
-LDAP_PURGE = os.getenv("LDAP_PURGE", "false").lower() == "true"
 
 LDAP_CONNECT_TIMEOUT = int(os.getenv("LDAP_CONNECT_TIMEOUT", "5"))
 LDAP_OPERATION_TIMEOUT = int(os.getenv("LDAP_OPERATION_TIMEOUT", "10"))
 
-
-LDAP_USERS_BASE = os.getenv("LDAP_USERS_BASE")
-LDAP_USER_BASE = os.getenv("LDAP_USER_BASE")
 LDAP_DEPARTMENTS_BASE = os.getenv(
-    "LDAP_DEPARTMENTS_BASE", "OU=Departments,OU=company,DC=robotail,DC=local"
+    "LDAP_DEPARTMENTS_BASE", "OU=Departments,DC=eusrr,DC=local"
 )
 LDAP_DISMISSED_BASE = os.getenv(
-    "LDAP_DISMISSED_BASE", "OU=Dismissed,OU=company,DC=robotail,DC=local"
+    "LDAP_DISMISSED_BASE", "OU=Dismissed,DC=eusrr,DC=local"
 )
-LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE")
-
-LDAP_AUTO_CREATE = os.getenv("LDAP_AUTO_CREATE", "False")
-
-LDAP_RESPECT_IS_ACTIVE = True
-LDAP_RESPECT_AD_DISABLED = True
-LDAP_REGISTRATION_CREATE = True
-LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE")
-
+LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE", "OU=Groups,DC=eusrr,DC=local")
+LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE", "OU=Positions,DC=eusrr,DC=local")
 
 BRAND_NAME = os.getenv("BRAND_NAME", "HiRo")
 BRAND_LOGO = "img/logo.png"
-
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "eusrr_bot")
 
 # Web Push Notifications (VAPID)
 # Ключи для авторизации push-уведомлений
@@ -631,9 +586,6 @@ THUMBNAIL_ALIASES = {
         'large': {'size': (800, 800), 'crop': False},
     },
 }
-
-# django-reversion настройки
-REVERSION_SAVE_EMPTY_REVISIONS = False  # Не сохранять пустые версии
 
 # CORS Configuration for Next.js frontend
 CORS_ALLOWED_ORIGINS = [

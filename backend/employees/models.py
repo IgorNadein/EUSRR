@@ -222,13 +222,8 @@ class Employee(AbstractUser):
             ("view_ldap_info", "Может просматривать LDAP информацию сотрудников"),
         ]
 
-    def clean(self):
-        super().clean()
-        if not (self.whatsapp or self.telegram or self.wechat):
-            raise ValidationError(
-                "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram",
-                code="contact_required",
-            )
+    # Контактные поля telegram/whatsapp/wechat опциональны
+    # Валидация "хотя бы одно поле" удалена
 
     def __str__(self):
         return f"{self.last_name} {self.first_name}"
@@ -606,7 +601,7 @@ class LdapSyncState(models.Model):
         model (str): Имя модели в Django ('employee','department','group','dept_role','position').
         object_pk (str): Первичный ключ объекта (строкой, чтобы покрыть UUID/INT).
         ldap_dn (str): Последний известный DN в LDAP.
-        ldap_guid (str | None): GUID из LDAP (objectGUID/entryUUID), если применимо.
+        ldap_guid (str | None): objectGUID из Active Directory.
         last_ldap_modify_ts (datetime | None): Последний modifyTimestamp/whenChanged из LDAP.
         last_django_modify_ts (datetime | None): Последний updated_at из Django на момент фиксации.
         last_sync_dir (str): 'ldap'|'django'|'auto' — направление последнего успешного синка.

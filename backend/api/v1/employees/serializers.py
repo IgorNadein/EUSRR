@@ -57,12 +57,15 @@ class RegisterSerializer(serializers.Serializer):
     avatar = Base64ImageField(required=True)
     patronymic = serializers.CharField(required=False, allow_blank=True, default="")
 
-    gender = serializers.ChoiceField(
+    gender = serializers.IntegerField(
         required=True,
-        choices=((1, "Мужской"), (2, "Женский")),
+        min_value=1,
+        max_value=2,
         error_messages={
             'required': 'Поле "Пол" обязательно для заполнения.',
-            'invalid_choice': 'Укажите пол: 1 - Мужской, 2 - Женский.'
+            'invalid': 'Укажите пол: 1 - Мужской, 2 - Женский.',
+            'min_value': 'Укажите пол: 1 - Мужской, 2 - Женский.',
+            'max_value': 'Укажите пол: 1 - Мужской, 2 - Женский.',
         }
     )
 
@@ -131,21 +134,10 @@ class RegisterSerializer(serializers.Serializer):
             Отвалидированные атрибуты.
 
         Raises:
-            serializers.ValidationError: Если нет контактов или телефон невалиден.
+            serializers.ValidationError: Если телефон невалиден.
         """
-        # контакты: нужен хотя бы один
-        if not (
-            (attrs.get("telegram") or "").strip()
-            or (attrs.get("whatsapp") or "").strip()
-            or (attrs.get("wechat") or "").strip()
-        ):
-            raise serializers.ValidationError(
-                {
-                    "non_field_errors": [
-                        "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram"
-                    ]
-                }
-            )
+        # Контактные поля telegram/whatsapp/wechat опциональны
+        # Валидация "хотя бы одно поле обязательно" удалена
 
         # alias "phone" → phone_number (если не задан)
         if not attrs.get("phone_number") and attrs.get("phone"):
