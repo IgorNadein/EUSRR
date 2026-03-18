@@ -11,8 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
-from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
-                                   DirectoryServiceError)
+from employees.ldap.errors import DirectoryDbError, DirectoryLdapError
 from employees.models import Position, Skill
 from employees.utils import _normalize_phone
 from rest_framework import status
@@ -63,9 +62,8 @@ class VerifyEmailAPIView(APIView):
 
     def post(self, request):
         """Подтверждает email и активирует пользователя.
-
-        В режиме с LDAP активирует запись в LDAP.
-        В режиме без LDAP просто активирует пользователя в БД.
+        
+        Активация синхронизируется в LDAP через сигналы.
         """
         ser = EmailVerifySerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -89,61 +87,10 @@ class VerifyEmailAPIView(APIView):
         if not user.verify_email(code):
             return Response({"ok": False, "error": "invalid_code"}, status=400)
 
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            # Режим с LDAP: активируем запись в LDAP
-            try:
-                from employees.models import LdapSyncState
-
-                svc = DirectoryService()
-
-                # Проверяем наличие LDAP-идентификаторов в LdapSyncState
-                sync_state = LdapSyncState.objects.filter(
-                    model="employee", object_pk=str(user.pk)
-                ).first()
-
-                has_ldap = sync_state and (
-                    sync_state.ldap_dn or sync_state.ldap_guid)
-
-                if has_ldap:
-                    # Запись существует - активируем через DirectoryService
-                    user = svc.update_user(user, {"is_active": True})
-                else:
-                    # LDAP запись не найдена - активируем только в БД
-                    logger.warning(
-                        f"User {email} has no LDAP sync state, activating in DB only"
-                    )
-                    user.is_active = True
-                    user.save(update_fields=["is_active"])
-
-                # Убеждаемся, что БД тоже активна
-                if not user.is_active:
-                    user.is_active = True
-                    user.save(update_fields=["is_active"])
-            except DirectoryLdapError as e:
-                # Если LDAP недоступен, всё равно активируем в БД
-                logger.warning(
-                    f"LDAP error during activation for {email}: {e}, activating in DB"
-                )
-                user.is_active = True
-                user.save(update_fields=["is_active"])
-            except DirectoryDbError as e:
-                return Response(
-                    {"ok": False, "error": "db_error", "detail": str(e)}, status=500
-                )
-            except DirectoryServiceError as e:
-                # При ошибке сервиса тоже активируем в БД
-                logger.warning(
-                    f"Service error during activation for {email}: {e}, activating in DB"
-                )
-                user.is_active = True
-                user.save(update_fields=["is_active"])
-        else:
-            # Режим без LDAP: просто активируем пользователя в БД
-            if not user.is_active:
-                user.is_active = True
-                user.save(update_fields=["is_active"])
+        # Активируем пользователя (сигнал sync_employee_to_ldap_on_save синхронизирует в LDAP)
+        user.is_active = True
+        user._ldap_changes = {"is_active": True}
+        user.save()
 
         return Response({"ok": True, "user_id": user.id}, status=200)
 
