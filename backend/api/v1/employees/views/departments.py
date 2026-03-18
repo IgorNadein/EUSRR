@@ -12,10 +12,6 @@ from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from employees.ldap.directory_service import (DirectoryDepartmentDTO,
-                                              DirectoryService)
-from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
-                                   DirectoryServiceError)
 from employees.models import (Department, DepartmentRole, DeptPerm,
                               EmployeeDepartment, RoleAssignment)
 from employees.utils import (_build_links_for_dept, _head_choices_for_dept,
@@ -31,7 +27,6 @@ from ..serializers import (AddMemberInput, DepartmentBriefSerializer,
                            DepartmentRoleSerializer, DepartmentSerializer,
                            EmployeeBriefSerializer, RemoveMemberInput,
                            SetHeadInput, SetMemberRoleInput)
-from ._helpers import _is_ldap_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -190,43 +185,20 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             if not ok:
                 return Response(errs, status=status.HTTP_400_BAD_REQUEST)
 
-        # LDAP → DB
-        ldap_enabled = _is_ldap_enabled()
-        if ldap_enabled:
-            svc = DirectoryService()
-            try:
-                instance = svc.set_head(instance, new_head)
-            except (
-                DirectoryLdapError,
-                DirectoryDbError,
-                DirectoryServiceError,
-            ) as e:
-                code = (
-                    status.HTTP_502_BAD_GATEWAY
-                    if isinstance(e, DirectoryLdapError)
-                    else (
-                        status.HTTP_400_BAD_REQUEST
-                        if isinstance(e, DirectoryServiceError)
-                        else status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-                )
-                return Response({"detail": str(e)}, status=code)
+        # Обновляем руководителя (сигналы синхронизируют с LDAP)
+        instance.head = new_head
+        if new_head:
+            instance.head_appointed_at = timezone.now()
         else:
-            instance.head = new_head
-            if new_head:
-                instance.head_appointed_at = timezone.now()
-            else:
-                instance.head_appointed_at = None
-            instance.save(update_fields=["head", "head_appointed_at"])
+            instance.head_appointed_at = None
+        instance.save(update_fields=["head", "head_appointed_at"])
 
         return instance
 
     def partial_update(self, request, *args, **kwargs) -> Response:
-        """Частичный апдейт отдела через сервисный слой (LDAP → DB)."""
+        """Частичный апдейт отдела."""
         instance = self.get_object()
         data: Dict[str, Any] = request.data
-        ldap_enabled = _is_ldap_enabled()
-        svc = DirectoryService() if ldap_enabled else None
 
         # --- HEAD ---
         if any(k in data for k in ("head", "head_id")):
@@ -264,22 +236,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 changes[k] = data.get(k)
 
         if changes:
-            if ldap_enabled:
-                try:
-                    instance = svc.update_department(instance, changes)
-                except DirectoryLdapError as e:
-                    return Response(
-                        {"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY
-                    )
-                except DirectoryDbError as e:
-                    return Response(
-                        {"detail": str(e)},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    )
-            else:
-                for k, v in changes.items():
-                    setattr(instance, k, v)
-                instance.save(update_fields=list(changes.keys()))
+            for k, v in changes.items():
+                setattr(instance, k, v)
+            instance.save(update_fields=list(changes.keys()))
 
         return Response(self.get_serializer(instance).data, status=status.HTTP_200_OK)
 
@@ -288,7 +247,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def set_head(self, request, pk: str | None = None) -> Response:
-        """Назначение/снятие руководителя отдела через сервисный слой (LDAP → DB)."""
+        """Назначение/снятие руководителя отдела."""
         dept = self.get_object()
 
         payload = SetHeadInput(data=request.data)
@@ -339,29 +298,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
         if link:
             # Сотрудник — член отдела: обновляем роль в линке
-            svc = DirectoryService() if _is_ldap_enabled() else None
-
-            if svc:
-                try:
-                    svc.set_member_role(dept, employee, role)
-                except (
-                    DirectoryLdapError,
-                    DirectoryDbError,
-                    DirectoryServiceError,
-                ) as e:
-                    return Response(
-                        {"detail": str(e)},
-                        status=(
-                            502
-                            if isinstance(e, DirectoryLdapError)
-                            else 400
-                            if isinstance(e, DirectoryServiceError)
-                            else 500
-                        ),
-                    )
-            else:
-                link.role = role
-                link.save(update_fields=["role"])
+            link.role = role
+            link.save(update_fields=["role"])
 
             # Также создаём/обновляем RoleAssignment для консистентности
             if role:
@@ -379,49 +317,16 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             via_assignment = True
 
             if role:
-                from employees.ldap.services.department_service import \
-                    DepartmentService
-                from employees.ldap.services.group_service import GroupService
-                from employees.ldap.services.user_service import UserService
-
-                if _is_ldap_enabled():
-                    try:
-                        group_service = GroupService()
-                        user_service = UserService(group_service)
-                        dept_service = DepartmentService(
-                            group_service, user_service)
-                        dept_service.assign_role(employee, role, request.user)
-                    except Exception as e:
-                        return Response({"detail": str(e)}, status=400)
-                else:
-                    RoleAssignment.objects.update_or_create(
-                        employee=employee,
-                        role=role,
-                        defaults={"is_active": True,
-                                  "assigned_by": request.user},
-                    )
+                RoleAssignment.objects.update_or_create(
+                    employee=employee,
+                    role=role,
+                    defaults={"is_active": True, "assigned_by": request.user},
+                )
             else:
-                from employees.ldap.services.department_service import \
-                    DepartmentService
-                from employees.ldap.services.group_service import GroupService
-                from employees.ldap.services.user_service import UserService
-
                 active_assignments = RoleAssignment.objects.filter(
                     employee_id=emp_id, role__department=dept, is_active=True
-                ).select_related("role")
-
-                if _is_ldap_enabled():
-                    try:
-                        group_service = GroupService()
-                        user_service = UserService(group_service)
-                        dept_service = DepartmentService(
-                            group_service, user_service)
-                        for assignment in active_assignments:
-                            dept_service.revoke_role(employee, assignment.role)
-                    except Exception as e:
-                        return Response({"detail": str(e)}, status=400)
-                else:
-                    active_assignments.update(is_active=False)
+                )
+                active_assignments.update(is_active=False)
 
         return Response(
             {
@@ -501,7 +406,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="add_member")
     @transaction.atomic
     def add_member(self, request, pk: int | None = None):
-        """Добавляет сотрудника в отдел: MOVE в OU → активирует линк (LDAP → DB)."""
+        """Добавляет сотрудника в отдел."""
         dept = self.get_object()
         payload = AddMemberInput(data=request.data)
         payload.is_valid(raise_exception=True)
@@ -511,63 +416,26 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         employee_model = Department._meta.get_field("head").remote_field.model
         employee = get_object_or_404(employee_model, id=emp_id)
 
-        ldap_enabled = _is_ldap_enabled()
+        link, created = EmployeeDepartment.objects.get_or_create(
+            employee_id=emp_id, department_id=dept.id, defaults={"is_active": True}
+        )
+        if not created and not link.is_active:
+            link.is_active = True
+            link.save(update_fields=["is_active"])
 
-        if ldap_enabled:
-            svc = DirectoryService()
-            try:
-                svc.add_member(dept, employee)
-                link = (
-                    EmployeeDepartment.objects.filter(
-                        employee_id=emp_id, department_id=dept.id
-                    )
-                    .only("role_id", "is_active")
-                    .first()
-                )
-
-                return Response(
-                    {
-                        "employee_id": emp_id,
-                        "is_active": True,
-                        "role_id": getattr(link, "role_id", None) if link else None,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
-                return Response(
-                    {"detail": str(e)},
-                    status=(
-                        status.HTTP_502_BAD_GATEWAY
-                        if isinstance(e, DirectoryLdapError)
-                        else (
-                            status.HTTP_400_BAD_REQUEST
-                            if isinstance(e, DirectoryServiceError)
-                            else status.HTTP_500_INTERNAL_SERVER_ERROR
-                        )
-                    ),
-                )
-        else:
-            link, created = EmployeeDepartment.objects.get_or_create(
-                employee_id=emp_id, department_id=dept.id, defaults={
-                    "is_active": True}
-            )
-            if not created and not link.is_active:
-                link.is_active = True
-                link.save(update_fields=["is_active"])
-
-            return Response(
-                {
-                    "employee_id": emp_id,
-                    "is_active": True,
-                    "role_id": link.role_id,
-                },
-                status=status.HTTP_200_OK,
-            )
+        return Response(
+            {
+                "employee_id": emp_id,
+                "is_active": True,
+                "role_id": link.role_id,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["post"], url_path="remove_member")
     @transaction.atomic
     def remove_member(self, request, pk: int | None = None):
-        """Удаляет члена отдела: MOVE в Users OU → удаляет линк (LDAP → DB)."""
+        """Удаляет члена отдела."""
         dept = self.get_object()
 
         payload = RemoveMemberInput(data=request.data)
@@ -582,43 +450,21 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            svc = DirectoryService()
-            try:
-                svc.remove_member(dept, employee)
-                return Response(
-                    {"employee_id": emp_id, "removed": True},
-                    status=status.HTTP_200_OK,
-                )
-            except (DirectoryLdapError, DirectoryDbError, DirectoryServiceError) as e:
-                return Response(
-                    {"detail": str(e)},
-                    status=(
-                        502
-                        if isinstance(e, DirectoryLdapError)
-                        else 400
-                        if isinstance(e, DirectoryServiceError)
-                        else 500
-                    ),
-                )
-        else:
-            try:
-                link = EmployeeDepartment.objects.get(
-                    employee_id=emp_id, department_id=dept.id
-                )
-                link.is_active = False
-                link.save(update_fields=["is_active"])
-                return Response(
-                    {"employee_id": emp_id, "removed": True},
-                    status=status.HTTP_200_OK,
-                )
-            except EmployeeDepartment.DoesNotExist:
-                return Response(
-                    {"detail": "Employee is not a member of this department."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
+        try:
+            link = EmployeeDepartment.objects.get(
+                employee_id=emp_id, department_id=dept.id
+            )
+            link.is_active = False
+            link.save(update_fields=["is_active"])
+            return Response(
+                {"employee_id": emp_id, "removed": True},
+                status=status.HTTP_200_OK,
+            )
+        except EmployeeDepartment.DoesNotExist:
+            return Response(
+                {"detail": "Employee is not a member of this department."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
     @action(detail=False, methods=["get"], url_path="my-departments")
     def my_departments(self, request) -> Response:
@@ -639,61 +485,26 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response(data)
 
     def create(self, request, *args, **kwargs):
-        """Создание отдела: сначала LDAP OU → затем запись Department."""
+        """Создание отдела."""
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         head = None
-        head_id = ser.validated_data.get(
-            "head") or ser.validated_data.get("head_id")
+        head_id = ser.validated_data.get("head") or ser.validated_data.get("head_id")
         if head_id:
-            employee_model = Department._meta.get_field(
-                "head").remote_field.model
+            employee_model = Department._meta.get_field("head").remote_field.model
             head = get_object_or_404(employee_model, id=head_id)
 
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            dto = DirectoryDepartmentDTO(
-                name=ser.validated_data["name"],
-                description=ser.validated_data.get("description", ""),
-                head=head,
-            )
-            svc = DirectoryService()
-            try:
-                dept = svc.create_department(dto)
-                return Response(
-                    self.get_serializer(
-                        dept).data, status=status.HTTP_201_CREATED
-                )
-            except DirectoryLdapError as e:
-                return Response({"detail": str(e)}, status=502)
-            except DirectoryDbError as e:
-                return Response({"detail": str(e)}, status=500)
-        else:
-            dept = Department.objects.create(
-                name=ser.validated_data["name"],
-                description=ser.validated_data.get("description", ""),
-                head=head,
-            )
-            return Response(
-                self.get_serializer(dept).data, status=status.HTTP_201_CREATED
-            )
+        dept = Department.objects.create(
+            name=ser.validated_data["name"],
+            description=ser.validated_data.get("description", ""),
+            head=head,
+        )
+        return Response(
+            self.get_serializer(dept).data, status=status.HTTP_201_CREATED
+        )
 
     def destroy(self, request, *args, **kwargs):
-        """Удаляет отдел: сначала в LDAP → затем из БД."""
+        """Удаляет отдел."""
         dept = self.get_object()
-
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            svc = DirectoryService()
-            try:
-                svc.delete_department(dept)
-                return Response(status=204)
-            except DirectoryLdapError as e:
-                return Response({"detail": str(e)}, status=502)
-            except DirectoryDbError as e:
-                return Response({"detail": str(e)}, status=500)
-        else:
-            dept.delete()
-            return Response(status=204)
+        dept.delete()
+        return Response(status=204)
