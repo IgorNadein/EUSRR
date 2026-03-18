@@ -6,7 +6,6 @@ import logging
 import traceback
 from typing import Any, Dict
 
-from django.db import transaction
 from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
                               Q, Subquery, Value, When)
 from django.db.models.functions import Coalesce
@@ -245,7 +244,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     # -------- actions --------
 
     @action(detail=True, methods=["post"])
-    @transaction.atomic
     def set_head(self, request, pk: str | None = None) -> Response:
         """Назначение/снятие руководителя отдела."""
         dept = self.get_object()
@@ -262,7 +260,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(result).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
-    @transaction.atomic
     def set_member_role(self, request, pk=None):
         """
         Назначает/снимает РОЛЬ сотруднику в контексте отдела.
@@ -404,7 +401,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response(payload, status=200)
 
     @action(detail=True, methods=["post"], url_path="add_member")
-    @transaction.atomic
     def add_member(self, request, pk: int | None = None):
         """Добавляет сотрудника в отдел."""
         dept = self.get_object()
@@ -433,7 +429,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["post"], url_path="remove_member")
-    @transaction.atomic
     def remove_member(self, request, pk: int | None = None):
         """Удаляет члена отдела."""
         dept = self.get_object()
