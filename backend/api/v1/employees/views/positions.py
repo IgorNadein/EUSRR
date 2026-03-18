@@ -1,9 +1,8 @@
-"""PositionViewSet — CRUD должностей с LDAP-синхронизацией групп."""
+"""PositionViewSet — CRUD должностей."""
 
 from __future__ import annotations
 
 from django.contrib.auth.models import Group, Permission
-from employees.ldap.directory_service import DirectoryService
 from employees.models import Position
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -12,7 +11,7 @@ from rest_framework.response import Response
 
 from ...permissions import AdminOrActionOrModelPerms
 from ..serializers import PositionSerializer
-from ._helpers import HistoryActionMixin, _is_ldap_enabled, _ldap_try
+from ._helpers import HistoryActionMixin
 
 
 class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
@@ -62,14 +61,12 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def set_groups(self, request, pk=None):
+        """Устанавливает группы для должности. Синхронизация LDAP требует реализации сигналов."""
         pos = self.get_object()
         qs, err = self._validate_groups_payload(request)
         if err:
             return err
         pos.groups.set(qs)
-        err2 = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
-        if err2:
-            return err2
         return Response(
             {
                 "ok": True,
@@ -79,14 +76,12 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def add_groups(self, request, pk=None):
+        """Добавляет группы к должности. Синхронизация LDAP требует реализации сигналов."""
         pos = self.get_object()
         qs, err = self._validate_groups_payload(request)
         if err:
             return err
         pos.groups.add(*qs)
-        err2 = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
-        if err2:
-            return err2
         return Response(
             {
                 "ok": True,
@@ -96,14 +91,12 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def remove_groups(self, request, pk=None):
+        """Удаляет группы у должности. Синхронизация LDAP требует реализации сигналов."""
         pos = self.get_object()
         qs, err = self._validate_groups_payload(request)
         if err:
             return err
         pos.groups.remove(*qs)
-        err2 = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
-        if err2:
-            return err2
         return Response(
             {
                 "ok": True,
@@ -132,15 +125,13 @@ class PositionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         return Response({"count": len(data), "results": data}, status=200)
 
     def perform_create(self, serializer):
-        pos = serializer.save()
-        err = _ldap_try(lambda: DirectoryService().reconcile_position(pos))
-        if err:
-            raise Exception(err.data["detail"])
+        """Создание должности. Синхронизация LDAP требует реализации сигналов."""
+        serializer.save()
 
     def perform_update(self, serializer):
-        pos = serializer.save()
-        _ldap_try(lambda: DirectoryService().reconcile_position(pos))
+        """Обновление должности. Синхронизация LDAP требует реализации сигналов."""
+        serializer.save()
 
     def perform_destroy(self, instance):
-        _ldap_try(lambda: DirectoryService().delete_position_group(instance))
+        """Удаление должности. Синхронизация LDAP требует реализации сигналов."""
         return super().perform_destroy(instance)
