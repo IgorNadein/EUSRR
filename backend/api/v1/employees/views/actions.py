@@ -82,7 +82,7 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
         
         Работает только с БД. LDAP синхронизация через сигналы:
         - sync_employee_to_ldap_on_save: активация/деактивация в LDAP
-        - sync_member (signals_department.py): удаление из отделов в LDAP
+        - sync_department_member_to_ldap: удаление из отделов в LDAP
         """
         emp = action_obj.employee
 
@@ -94,9 +94,12 @@ class EmployeeActionViewSet(HistoryActionMixin, viewsets.ModelViewSet):
                 emp.save(update_fields=["is_active"])
 
             # Деактивируем связи с отделами (сигналы синхронизируют в LDAP)
-            EmployeeDepartment.objects.filter(employee=emp, is_active=True).update(
-                is_active=False, date_to=timezone.now().date()
-            )
+            # ВАЖНО: используем save() для каждой записи, чтобы сработали сигналы
+            today = timezone.now().date()
+            for emp_dept in EmployeeDepartment.objects.filter(employee=emp, is_active=True):
+                emp_dept.is_active = False
+                emp_dept.date_to = today
+                emp_dept.save(update_fields=["is_active", "date_to"])
         else:
             # Любое иное событие делает сотрудника активным (сигнал синхронизирует в LDAP)
             if not emp.is_active:
