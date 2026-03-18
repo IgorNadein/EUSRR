@@ -24,7 +24,6 @@ from ..domain.dtos import (
     LdapPersonDTO,
     _entry_to_dto,
 )
-from ..repositories.ldap_repository import modify_user_attrs
 from ..utils.ldap_utils import _paged_search, get_attr_str
 from .user_service import UserService
 from .department_service import DepartmentService
@@ -374,22 +373,18 @@ class SyncService:
             # UPDATE
             for user, dto in to_update:
                 self._update_user_from_dto(user, dto)
-                # Записываем Django PK в LDAP employeeNumber если пусто
-                employee_id_attr = getattr(
-                    settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
-                )
+                # ORM: записываем Django PK в LDAP employeeNumber если пусто
                 if dto.dn and not cfg.dry_run:
                     try:
-                        from ..repositories.ldap_repository import read_attrs
-                        current = read_attrs(conn, dto.dn, [employee_id_attr])
-                        if not current.get(employee_id_attr):
-                            modify_user_attrs(
-                                conn, dto.dn, {employee_id_attr: str(user.pk)}, do_write=True
-                            )
+                        from ..orm_models import LdapUser
+                        ldap_user = LdapUser.objects.get(dn=dto.dn)
+                        if not ldap_user.employee_number:
+                            ldap_user.employee_number = str(user.pk)
+                            ldap_user.save()
                     except Exception as e:
                         logger.debug(
-                            "Could not write %s for %s: %s",
-                            employee_id_attr, dto.dn, e
+                            "Could not write employeeNumber for %s: %s",
+                            dto.dn, e
                         )
                 processed.append((user, dto))
                 updated += 1
@@ -400,19 +395,17 @@ class SyncService:
                 if not user:
                     skipped += 1
                     continue
-                # Записываем Django PK в LDAP employeeNumber
-                employee_id_attr = getattr(
-                    settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
-                )
+                # ORM: записываем Django PK в LDAP employeeNumber
                 if dto.dn and not cfg.dry_run:
                     try:
-                        modify_user_attrs(
-                            conn, dto.dn, {employee_id_attr: str(user.pk)}, do_write=True
-                        )
+                        from ..orm_models import LdapUser
+                        ldap_user = LdapUser.objects.get(dn=dto.dn)
+                        ldap_user.employee_number = str(user.pk)
+                        ldap_user.save()
                     except Exception as e:
                         logger.debug(
-                            "Could not write %s for %s: %s",
-                            employee_id_attr, dto.dn, e
+                            "Could not write employeeNumber for %s: %s",
+                            dto.dn, e
                         )
                 processed.append((user, dto))
                 created += 1
