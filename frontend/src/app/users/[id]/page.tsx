@@ -75,15 +75,25 @@ export default function UserDetailPage() {
     return `${person.last_name || ""} ${person.first_name || ""} ${person.patronymic || ""}`.trim() || "Пользователь";
   }, [person]);
 
-  // Последний статус сотрудника
+  // Последний статус сотрудника (только события которые уже наступили)
   const latestAction = useMemo(() => {
     if (!person?.actions || person.actions.length === 0) return null;
-    return person.actions.reduce((latest, action) => 
+    
+    const now = new Date();
+    // Фильтруем только события которые уже наступили
+    const pastActions = person.actions.filter(action => 
+      new Date(action.date) <= now
+    );
+    
+    if (pastActions.length === 0) return null;
+    
+    // Из них берём последнее
+    return pastActions.reduce((latest, action) => 
       new Date(action.date) > new Date(latest.date) ? action : latest
     );
   }, [person?.actions]);
 
-  // Отсортированная история событий (от новых к старым)
+  // Отсортированная история событий (от новых к старым, показываем все включая будущие)
   const sortedActions = useMemo(() => {
     if (!person?.actions || person.actions.length === 0) return [];
     return [...person.actions].sort((a, b) => 
@@ -681,77 +691,82 @@ export default function UserDetailPage() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {sortedActions.map((action, index) => (
-                    <div
-                      key={action.id}
-                      className="flex gap-3 border-l-2 pl-3 py-1"
-                      style={{
-                        borderColor: 
-                          action.action === 'on_leave' ? '#eab308' :
-                          action.action === 'on_maternity' ? '#a855f7' :
-                          action.action === 'transferred' ? '#3b82f6' :
-                          action.action === 'dismissed' ? '#ef4444' :
-                          '#22c55e'
-                      }}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                                action.action === 'on_leave' ? 'bg-yellow-100 text-yellow-700' :
-                                action.action === 'on_maternity' ? 'bg-purple-100 text-purple-700' :
-                                action.action === 'transferred' ? 'bg-blue-100 text-blue-700' :
-                                action.action === 'dismissed' ? 'bg-red-100 text-red-700' :
-                                'bg-green-100 text-green-700'
-                              }`}>
-                                {action.action_display || action.action}
-                              </span>
-                              {index === 0 && (
-                                <span className="text-xs text-gray-500">текущий</span>
+                  {sortedActions.map((action, index) => {
+                    // Проверяем является ли это событие текущим (последнее из наступивших)
+                    const isCurrent = latestAction?.id === action.id;
+                    
+                    return (
+                      <div
+                        key={action.id}
+                        className="flex gap-3 border-l-2 pl-3 py-1"
+                        style={{
+                          borderColor: 
+                            action.action === 'on_leave' ? '#eab308' :
+                            action.action === 'on_maternity' ? '#a855f7' :
+                            action.action === 'transferred' ? '#3b82f6' :
+                            action.action === 'dismissed' ? '#ef4444' :
+                            '#22c55e'
+                        }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  action.action === 'on_leave' ? 'bg-yellow-100 text-yellow-700' :
+                                  action.action === 'on_maternity' ? 'bg-purple-100 text-purple-700' :
+                                  action.action === 'transferred' ? 'bg-blue-100 text-blue-700' :
+                                  action.action === 'dismissed' ? 'bg-red-100 text-red-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {action.action_display || action.action}
+                                </span>
+                                {isCurrent && (
+                                  <span className="text-xs text-gray-500">текущий</span>
+                                )}
+                              </div>
+                              {action.comment && (
+                                <p className="mt-1 text-sm text-gray-600">{action.comment}</p>
                               )}
                             </div>
-                            {action.comment && (
-                              <p className="mt-1 text-sm text-gray-600">{action.comment}</p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <time className="flex-shrink-0 text-xs text-gray-500">
-                              {new Date(action.date).toLocaleDateString('ru-RU', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </time>
-                            {canManageActions && (
-                              <div className="flex gap-1">
-                                <button
-                                  onClick={() => handleEditAction(action)}
-                                  className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-sky-600 transition"
-                                  title="Редактировать"
-                                  disabled={actionLoading === `delete-${action.id}`}
-                                >
-                                  <Pencil size={14} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteAction(action.id)}
-                                  className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
-                                  title="Удалить"
-                                  disabled={actionLoading === `delete-${action.id}`}
-                                >
-                                  {actionLoading === `delete-${action.id}` ? (
-                                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
-                                  ) : (
-                                    <Trash2 size={14} />
-                                  )}
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-2">
+                              <time className="flex-shrink-0 text-xs text-gray-500">
+                                {new Date(action.date).toLocaleDateString('ru-RU', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </time>
+                              {canManageActions && (
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => handleEditAction(action)}
+                                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-sky-600 transition"
+                                    title="Редактировать"
+                                    disabled={actionLoading === `delete-${action.id}`}
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteAction(action.id)}
+                                    className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
+                                    title="Удалить"
+                                    disabled={actionLoading === `delete-${action.id}`}
+                                  >
+                                    {actionLoading === `delete-${action.id}` ? (
+                                      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                                    ) : (
+                                      <Trash2 size={14} />
+                                    )}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             )}
