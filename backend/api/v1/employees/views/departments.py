@@ -483,28 +483,3 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         user_qs = user_qs.order_by("name", "id")
         data = DepartmentBriefSerializer(user_qs, many=True).data
         return Response(data)
-
-    def create(self, request, *args, **kwargs):
-        """Создание отдела."""
-        ser = self.get_serializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        head = None
-        head_id = ser.validated_data.get("head") or ser.validated_data.get("head_id")
-        if head_id:
-            employee_model = Department._meta.get_field("head").remote_field.model
-            head = get_object_or_404(employee_model, id=head_id)
-
-        dept = Department.objects.create(
-            name=ser.validated_data["name"],
-            description=ser.validated_data.get("description", ""),
-            head=head,
-        )
-        return Response(
-            self.get_serializer(dept).data, status=status.HTTP_201_CREATED
-        )
-
-    def destroy(self, request, *args, **kwargs):
-        """Удаляет отдел."""
-        dept = self.get_object()
-        dept.delete()
-        return Response(status=204)
