@@ -80,7 +80,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         if self.action in {
             "members",
             "user_perms",
-            "ui_context",
             "list",
             "retrieve",
             "my_departments",
@@ -358,47 +357,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             ),
         }
         return Response(data, status=200)
-
-    @action(detail=True, methods=["get"], url_path="ui-context")
-    def ui_context(self, request, pk=None):
-        """GET /api/v1/departments/{id}/ui-context/ — BFF-агрегатор для страницы отдела."""
-        dept = self.get_object()
-        dept_data = self.get_serializer(dept).data
-
-        roles_qs = (
-            DepartmentRole.objects.filter(department_id=dept.id)
-            .prefetch_related("scoped_permissions")
-            .order_by("name", "id")
-        )
-        roles_data = DepartmentRoleSerializer(roles_qs, many=True).data
-
-        links = _build_links_for_dept(dept, EmployeeBriefSerializer)
-        perm_choices = _perm_choices_synced()
-        head_choices = _head_choices_for_dept(dept, EmployeeBriefSerializer)
-        user_perms = {
-            "is_head": (
-                request.user.id == dept.head_id
-                if getattr(request.user, "id", None)
-                else False
-            ),
-            "can_manage": has_dept_perm(request.user, dept.id, DeptPerm.MANAGE),
-            "can_change_head": has_dept_perm(
-                request.user, dept.id, DeptPerm.CHANGE_HEAD
-            ),
-            "can_assign_roles": has_dept_perm(
-                request.user, dept.id, DeptPerm.ASSIGN_ROLE
-            ),
-        }
-
-        payload = {
-            "dept": dept_data,
-            "roles": roles_data,
-            "links": links,
-            "head_choices": head_choices,
-            "dept_perm_choices": perm_choices,
-            "user_perms": user_perms,
-        }
-        return Response(payload, status=200)
 
     @action(detail=True, methods=["post"], url_path="add_member")
     def add_member(self, request, pk: int | None = None):
