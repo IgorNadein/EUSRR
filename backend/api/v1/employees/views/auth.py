@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 from ..serializers import (EmailSerializer, EmailVerifySerializer,
                            RegisterSerializer)
 from ._helpers import Employee
-from .mixins import LdapUserCreationMixin, _is_ldap_enabled
+from .mixins import LdapUserCreationMixin
 
 logger = logging.getLogger(__name__)
 
@@ -186,31 +186,18 @@ class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
                 avatar_bytes = None
                 avatar_name = None
 
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            # Режим с LDAP: создаём disabled учётку в LDAP + пароль
-            emp, error_response = self.create_ldap_user(
-                first_name=v["first_name"],
-                last_name=v["last_name"],
-                email=email,
-                phone_e164=phone_norm,
-                password=password,
-                avatar_bytes=avatar_bytes,
-                is_active=False,  # disabled до верификации email
-            )
-            if error_response:
-                return error_response
-        else:
-            # Режим без LDAP: создаём пользователя напрямую в БД
-            emp = self.create_db_user(
-                first_name=v["first_name"],
-                last_name=v["last_name"],
-                email=email,
-                phone_number=phone_norm,
-                password=password,
-                is_active=False,  # не активен до верификации email
-            )
+        # Создаём пользователя (миксин сам выберет LDAP или БД режим)
+        emp, error_response = self.create_user(
+            first_name=v["first_name"],
+            last_name=v["last_name"],
+            email=email,
+            phone=phone_norm,
+            password=password,
+            avatar_bytes=avatar_bytes,
+            is_active=False,  # не активен до верификации email
+        )
+        if error_response:
+            return error_response
 
         # 2) Заполняем доп.поля БД
         if avatar_bytes:

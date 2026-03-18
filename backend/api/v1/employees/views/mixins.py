@@ -28,9 +28,62 @@ class LdapUserCreationMixin:
     из основного метода регистрации.
     
     Методы:
+        create_user(): Создаёт пользователя (выбирает LDAP или БД автоматически)
         create_ldap_user(): Создаёт пользователя в LDAP через DirectoryService
         create_db_user(): Создаёт пользователя напрямую в БД (fallback без LDAP)
     """
+    
+    def create_user(
+        self,
+        *,
+        first_name: str,
+        last_name: str,
+        email: str,
+        phone: str,
+        password: str,
+        avatar_bytes: Optional[bytes] = None,
+        is_active: bool = False,
+    ) -> tuple[Optional['Employee'], Optional[Response]]:
+        """Создаёт пользователя - автоматически выбирает LDAP или БД режим.
+        
+        View не должен знать о режиме LDAP - вся логика инкапсулирована здесь.
+        
+        Args:
+            first_name: Имя
+            last_name: Фамилия
+            email: Email (нормализованный, lowercase)
+            phone: Телефон в E.164 формате
+            password: Пароль
+            avatar_bytes: Байты аватара (опционально)
+            is_active: False до верификации email
+            
+        Returns:
+            tuple[Employee | None, Response | None]:
+                - (Employee, None) при успехе
+                - (None, Response) при ошибке (Response для возврата клиенту)
+        """
+        if _is_ldap_enabled():
+            # Режим с LDAP: создаём disabled учётку в LDAP + пароль
+            return self.create_ldap_user(
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                phone_e164=phone,
+                password=password,
+                avatar_bytes=avatar_bytes,
+                is_active=is_active,
+            )
+        else:
+            # Режим без LDAP: создаём пользователя напрямую в БД
+            emp = self.create_db_user(
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                phone_number=phone,
+                password=password,
+                is_active=is_active,
+            )
+            return emp, None
     
     def create_ldap_user(
         self,
