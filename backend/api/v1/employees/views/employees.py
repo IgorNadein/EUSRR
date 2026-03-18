@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
 from employees.models import (Department, EmployeeAction, EmployeeDepartment,
-                              LdapSyncState, Position, RoleAssignment, Skill)
+                              Position, RoleAssignment, Skill)
 from employees.utils import _to_bool
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -35,12 +35,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     """
     /api/v1/employees/
 
+    CRUD для сотрудников + профиль текущего пользователя.
+
     Доступ:
       - GET list/retrieve          — только аутентифицированные пользователи.
       - POST (create)              — только staff/superuser.
       - PATCH/PUT/DELETE {id}      — staff/superuser ИЛИ пользователи с модельными правами.
       - GET/PATCH /employees/me/   — только аутентифицированные; PATCH правит профиль текущего пользователя.
-      - POST {id}/add_skill|remove_skill — требуется employees.manage_employee_skills.
 
     Поиск: last_name, first_name, patronymic, email, phone_number
 
@@ -53,23 +54,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                      "patronymic", "email", "phone_number"]
     ordering_fields = ["last_name", "first_name", "created_at", "id"]
     ordering = ["last_name", "first_name"]
-    required_perms_by_action = {
-        "add_skill": "employees.manage_employee_skills",
-        "remove_skill": "employees.manage_employee_skills",
-        "ldap_info": "employees.view_ldap_info",
-    }
 
     def get_permissions(self):
         if self.action == "create":
             return [IsAuthenticated(), AdminOrActionOrModelPerms()]
-        if self.action in {
-            "update",
-            "partial_update",
-            "destroy",
-            "add_skill",
-            "remove_skill",
-            "ldap_info",
-        }:
+        if self.action in {"update", "partial_update", "destroy"}:
             return [IsAuthenticated(), (IsSelfOrStaff | AdminOrActionOrModelPerms)()]
         return [IsAuthenticated()]
 
@@ -268,254 +257,12 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             data = self.get_serializer(instance, context=ctx).data
             return Response(data, status=200)
 
-        # PATCH — используем стандартный механизм (миксин управляет LDAP sync)
+        # PATCH — используем стандартный механизм
         serializer = self.get_serializer(
             instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data, status=200)
-
-    @action(detail=True, methods=["post"])
-    def add_skill(self, request, pk=None):
-        """body: { "skill_id": 3 } ИЛИ { "skill_name": "Python" }"""
-        emp = self.get_object()
-        sid = request.data.get("skill_id")
-        sname = (request.data.get("skill_name") or "").strip()
-
-        sk = None
-        if sid:
-            sk = Skill.objects.filter(pk=sid).first()
-        if not sk and sname:
-            sk = Skill.objects.filter(
-                name__iexact=sname
-            ).first() or Skill.objects.create(name=sname)
-        if not sk:
-            return Response({"detail": "Навык не найден/не указан"}, status=400)
-
-        emp.skills.add(sk)
-        return Response(
-            {"ok": True, "skill": {"id": sk.id, "name": sk.name}}, status=200
-        )
-
-    @action(detail=True, methods=["post"])
-    def remove_skill(self, request, pk=None):
-        """body: { "skill_id": 3 } ИЛИ { "skill_name": "Python" }"""
-        emp = self.get_object()
-        sid = request.data.get("skill_id")
-        sname = (request.data.get("skill_name") or "").strip()
-
-        sk = None
-        if sid:
-            sk = Skill.objects.filter(pk=sid).first()
-        if not sk and sname:
-            sk = Skill.objects.filter(name__iexact=sname).first()
-        if not sk:
-            return Response({"detail": "Навык не найден"}, status=404)
-
-        emp.skills.remove(sk)
-        return Response(
-            {"ok": True, "removed": {"id": sk.id, "name": sk.name}}, status=200
-        )
-
-    @action(detail=True, methods=["get"], url_path="ldap-info")
-    def ldap_info(self, request, pk=None):
-        """GET /api/v1/employees/{id}/ldap-info/ — LDAP информация о сотруднике."""
-        from employees.ldap.orm_models import LdapUser
-
-        emp = self.get_object()
-        force_refresh = request.query_params.get(
-            'force_refresh', '').lower() == 'true'
-
-        if not force_refresh and emp.username:
-            return Response(
-                {
-                    "sAMAccountName": emp.username,
-                    "cached": True,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        try:
-            ldap_sync = LdapSyncState.objects.get(
-                model='employee',
-                object_pk=str(emp.pk)
-            )
-            if not ldap_sync.ldap_dn:
-                return Response(
-                    {"detail": "У этого сотрудника нет связи с LDAP"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-        except LdapSyncState.DoesNotExist:
-            return Response(
-                {"detail": "У этого сотрудника нет связи с LDAP"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        try:
-            ldap_user = LdapUser.objects.get(dn=ldap_sync.ldap_dn)
-
-            sam_account_name = ldap_user.sam_account_name
-            if not sam_account_name:
-                return Response(
-                    {"detail": "Не удалось получить LDAP информацию"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            emp.username = sam_account_name
-            emp.save(update_fields=["username"])
-
-            return Response(
-                {
-                    "sAMAccountName": sam_account_name,
-                    "cached": False,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except LdapUser.DoesNotExist:
-            return Response(
-                {"detail": "Не удалось получить LDAP информацию"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        except Exception as e:
-            logger.error(
-                f"Error fetching LDAP info for employee {emp.id}: {e}", exc_info=True
-            )
-            return Response(
-                {"detail": f"Ошибка при запросе LDAP информации: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-    @action(detail=False, methods=["get"], url_path="export-excel")
-    def export_excel(self, request):
-        """GET /api/v1/employees/export-excel/ — экспорт в Excel."""
-        from datetime import datetime
-
-        from django.http import HttpResponse
-        from openpyxl import Workbook
-        from openpyxl.styles import Alignment, Font, PatternFill
-
-        queryset = self.filter_queryset(self.get_queryset())
-        queryset = (
-            queryset.select_related("position")
-            .prefetch_related(
-                "skills", "departments_links__department", "departments_links__role"
-            )
-            .order_by("last_name", "first_name")
-        )
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Сотрудники"
-
-        headers = [
-            "ID",
-            "Фамилия",
-            "Имя",
-            "Отчество",
-            "Email",
-            "Телефон",
-            "Должность",
-            "Отделы",
-            "Дата рождения",
-            "Дата регистрации",
-            "Активен",
-            "Email подтвержден",
-            "Навыки",
-            "Telegram",
-            "WhatsApp",
-            "WeChat",
-        ]
-
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(
-            start_color="4472C4", end_color="4472C4", fill_type="solid"
-        )
-        header_alignment = Alignment(
-            horizontal="center", vertical="center", wrap_text=True
-        )
-
-        for col_num, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col_num, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = header_alignment
-
-        for row_num, emp in enumerate(queryset, 2):
-            departments = emp.departments_links.filter(is_active=True)
-            dept_names = ", ".join(
-                [
-                    f"{d.department.name}" +
-                    (f" ({d.role.name})" if d.role else "")
-                    for d in departments
-                ]
-            )
-
-            skills = ", ".join([s.name for s in emp.skills.all()])
-
-            def safe_phone_str(phone_field):
-                """Безопасная конвертация PhoneNumber в строку"""
-                if not phone_field:
-                    return ""
-                try:
-                    from phonenumbers import PhoneNumberFormat, format_number
-
-                    return format_number(phone_field, PhoneNumberFormat.INTERNATIONAL)
-                except Exception:
-                    try:
-                        return str(phone_field)
-                    except Exception:
-                        return ""
-
-            phone_str = safe_phone_str(emp.phone_number)
-            whatsapp_str = safe_phone_str(emp.whatsapp)
-
-            row_data = [
-                emp.id,
-                emp.last_name or "",
-                emp.first_name or "",
-                emp.patronymic or "",
-                emp.email or "",
-                phone_str,
-                emp.position.name if emp.position else "",
-                dept_names,
-                emp.birth_date.strftime("%d.%m.%Y") if emp.birth_date else "",
-                emp.created_at.strftime(
-                    "%d.%m.%Y %H:%M") if emp.created_at else "",
-                "Да" if emp.is_active else "Нет",
-                "Да" if emp.email_verified else "Нет",
-                skills,
-                emp.telegram or "",
-                whatsapp_str,
-                emp.wechat or "",
-            ]
-
-            for col_num, value in enumerate(row_data, 1):
-                cell = ws.cell(row=row_num, column=col_num, value=value)
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
-
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except Exception:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            ws.column_dimensions[column].width = adjusted_width
-
-        ws.freeze_panes = "A2"
-
-        response = HttpResponse(
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        filename = f"employees_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-
-        wb.save(response)
-        return response
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
