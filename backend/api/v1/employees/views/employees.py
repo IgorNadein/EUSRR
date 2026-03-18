@@ -14,10 +14,6 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
-from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
-from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
-                                   DirectoryServiceError)
-from employees.ldap.infrastructure.connections import _conn
 from employees.models import (Department, EmployeeAction, EmployeeDepartment,
                               LdapSyncState, Position, RoleAssignment, Skill)
 from employees.utils import _to_bool
@@ -30,7 +26,7 @@ from rest_framework.response import Response
 from ...permissions import AdminOrActionOrModelPerms, IsSelfOrStaff
 from ..serializers import (EmployeeListSerializer, EmployeeSerializer,
                            SkillSerializer)
-from ._helpers import Employee, _is_ldap_enabled
+from ._helpers import Employee
 
 logger = logging.getLogger(__name__)
 
@@ -201,19 +197,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         return EmployeeSerializer
 
     def perform_create(self, serializer):
-        """Создание сотрудника через API.
+        """Создание сотрудника (административное, без пароля).
         
-        ПРИМЕЧАНИЕ: Создание LDAP пользователей происходит через RegisterAPIView.
-        Этот endpoint для административного создания Employee без LDAP синхронизации.
+        Создание LDAP пользователей с паролем - через RegisterAPIView.
         """
-        ldap_enabled = _is_ldap_enabled()
-
-        # Создаем пользователя в БД (без пароля - административное создание)
-        instance = serializer.save(is_ldap_managed=ldap_enabled)
-        if hasattr(instance, "set_unusable_password"):
-            instance._skip_ldap_sync = True  # Не синхронизировать через сигналы
-            instance.set_unusable_password()
-            instance.save(update_fields=["password"])
+        instance = serializer.save()
+        instance.set_unusable_password()
+        instance.save(update_fields=["password"])
 
         # Навыки
         skills_ids = self.request.data.get("skills_ids", [])
@@ -221,35 +211,30 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             instance.skills.set(skills_ids)
 
     def perform_update(self, serializer):
-        """Обновление сотрудника. LDAP синхронизация через сигналы."""
+        """Обновление сотрудника."""
         instance = serializer.instance
         old_email = instance.email
 
-        # Сохраняем изменения для LDAP синхронизации
-        if _is_ldap_enabled() and instance.is_ldap_managed:
-            instance._ldap_changes = dict(self.request.data)
-            if 'avatar' in self.request.FILES:
-                instance._ldap_avatar = self.request.FILES['avatar']
+        # Передаем данные для синхронизации с LDAP (через сигналы)
+        instance._ldap_changes = dict(self.request.data)
+        if 'avatar' in self.request.FILES:
+            instance._ldap_avatar = self.request.FILES['avatar']
 
-        # Стандартное сохранение (сигнал синхронизирует с LDAP)
         serializer.save()
 
         # Если email изменился - сбрасываем верификацию
         new_email = instance.email
         if new_email and new_email.lower() != old_email.lower():
-            instance._skip_ldap_sync = True
             instance.email_verified = False
             instance.email_activation_code = get_random_string(6, "0123456789")
-            instance.save(
-                update_fields=["email_verified", "email_activation_code"])
+            instance.save(update_fields=["email_verified", "email_activation_code"])
 
             try:
                 send_templated_mail(
                     subject="Подтверждение нового email",
                     to=[instance.email],
                     template_base="emails/registration_verify_code",
-                    context={"code": instance.email_activation_code,
-                             "user": instance},
+                    context={"code": instance.email_activation_code, "user": instance},
                 )
             except Exception:
                 pass
