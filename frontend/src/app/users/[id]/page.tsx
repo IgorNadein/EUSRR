@@ -357,6 +357,13 @@ export default function UserDetailPage() {
     currentUser.auth?.is_superuser
   );
 
+  // Проверка прав на просмотр истории кадровых событий
+  const canViewActions = currentUser && (
+    currentUser.auth?.is_staff || 
+    currentUser.auth?.is_superuser ||
+    currentUser.id === userId  // Сам пользователь может видеть свою историю
+  );
+
   // Список типов кадровых событий
   const actionTypes = [
     { value: 'hired', label: 'Принят' },
@@ -652,7 +659,7 @@ export default function UserDetailPage() {
             )}
 
             {/* История кадровых событий */}
-            {sortedActions.length > 0 && (
+            {canViewActions && sortedActions.length > 0 && (
               <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
