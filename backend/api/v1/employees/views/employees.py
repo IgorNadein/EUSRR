@@ -201,24 +201,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         return EmployeeSerializer
 
     def perform_create(self, serializer):
-        """Создание сотрудника. LDAP синхронизация через сигналы."""
-        password = self.request.data.get("password")
+        """Создание сотрудника через API.
+        
+        ПРИМЕЧАНИЕ: Создание LDAP пользователей происходит через RegisterAPIView.
+        Этот endpoint для административного создания Employee без LDAP синхронизации.
+        """
         ldap_enabled = _is_ldap_enabled()
 
-        # Создаем пользователя в БД
-        if ldap_enabled:
-            # LDAP-managed: unusable password в БД, реальный пароль пойдёт в LDAP через сигнал
-            instance = serializer.save(is_ldap_managed=True)
-            if hasattr(instance, "set_unusable_password"):
-                instance.set_unusable_password()
-                instance.save(update_fields=["password"])
-            # Сохраняем пароль во временном атрибуте для сигнала
-            instance._ldap_password = password
-            instance._ldap_avatar = self.request.FILES.get('avatar')
-        else:
-            # Standalone: пароль в БД
-            instance = serializer.save(is_ldap_managed=False)
-            instance.set_password(password)
+        # Создаем пользователя в БД (без пароля - административное создание)
+        instance = serializer.save(is_ldap_managed=ldap_enabled)
+        if hasattr(instance, "set_unusable_password"):
+            instance._skip_ldap_sync = True  # Не синхронизировать через сигналы
+            instance.set_unusable_password()
             instance.save(update_fields=["password"])
 
         # Навыки
@@ -231,18 +225,19 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         instance = serializer.instance
         old_email = instance.email
 
-        # Сохраняем данные для LDAP в временных атрибутах (для сигнала)
+        # Сохраняем изменения для LDAP синхронизации
         if _is_ldap_enabled() and instance.is_ldap_managed:
             instance._ldap_changes = dict(self.request.data)
             if 'avatar' in self.request.FILES:
                 instance._ldap_avatar = self.request.FILES['avatar']
 
-        # Стандартное сохранение (сигнал добавит LDAP sync)
+        # Стандартное сохранение (сигнал синхронизирует с LDAP)
         serializer.save()
 
         # Если email изменился - сбрасываем верификацию
         new_email = instance.email
         if new_email and new_email.lower() != old_email.lower():
+            instance._skip_ldap_sync = True
             instance.email_verified = False
             instance.email_activation_code = get_random_string(6, "0123456789")
             instance.save(

@@ -25,10 +25,12 @@ def _is_ldap_enabled():
 
 @receiver(post_save, sender='employees.Employee')
 def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
-    """Синхронизирует сотрудника с LDAP при создании/обновлении.
+    """Синхронизирует изменения Employee с существующим LDAP пользователем.
 
-    Срабатывает после Employee.save(). Использует временные атрибуты
-    _ldap_password, _ldap_avatar, _ldap_changes для передачи данных из ViewSet.
+    ВАЖНО: Создание LDAP пользователей происходит в RegisterAPIView.
+    Этот сигнал ТОЛЬКО синхронизирует изменения существующих пользователей.
+    
+    Использует временные атрибуты _ldap_changes, _ldap_avatar для передачи данных.
     """
     if not _is_ldap_enabled():
         return
@@ -36,68 +38,37 @@ def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
     if not instance.is_ldap_managed:
         return
 
-    # Игнорируем вспомогательные сохранения (например, set_unusable_password)
+    # Игнорируем вспомогательные сохранения и новые записи без LDAP
     if getattr(instance, '_skip_ldap_sync', False):
+        return
+
+    # Проверяем, существует ли пользователь в LDAP
+    sync_state = LdapSyncState.objects.filter(
+        model='employee',
+        object_pk=str(instance.pk)
+    ).first()
+
+    if not sync_state or not (sync_state.ldap_dn or sync_state.ldap_guid):
+        # Пользователь не существует в LDAP - пропускаем синхронизацию
+        # Создание LDAP пользователей - ответственность RegisterAPIView
+        logger.debug(f"Employee {instance.id} has no LDAP sync state, skipping sync")
         return
 
     try:
         svc = DirectoryService()
 
         if created:
-            # Создание в LDAP
-            password = getattr(instance, '_ldap_password', None)
-            avatar_file = getattr(instance, '_ldap_avatar', None)
-            avatar_bytes = None
-
-            if avatar_file and hasattr(avatar_file, 'read'):
-                try:
-                    if hasattr(avatar_file, 'seek'):
-                        avatar_file.seek(0)
-                    avatar_bytes = avatar_file.read()
-                except Exception:
-                    pass
-
-            dto = DirectoryUserDTO(
-                username=instance.username or None,
-                first_name=instance.first_name,
-                last_name=instance.last_name,
-                email=instance.email,
-                phone_e164=str(instance.phone_number) if instance.phone_number else '',
-                department_dn=None,  # Пока не передаем
-                group_cns=[],
-                initial_password=password or 'ChangeMe123!',  # Fallback пароль
-                avatar_bytes=avatar_bytes,
-                is_active=instance.is_active,
-            )
-
-            # Создаём пользователя в LDAP
-            emp = svc.create_user(dto)
-
-            # Получаем DN из sync state
-            sync_state = LdapSyncState.objects.filter(
-                model='employee',
-                object_pk=str(emp.pk)
-            ).first()
-
-            if sync_state and sync_state.ldap_dn:
-                # Записываем employeeNumber
-                try:
-                    from employees.ldap.orm_models import LdapUser
-                    ldap_user = LdapUser.objects.get(dn=sync_state.ldap_dn)
-                    ldap_user.employee_number = str(emp.pk)
-                    ldap_user.save()
-                except Exception as e:
-                    logger.warning(f"Failed to set employeeNumber: {e}")
-
-                # Назначаем должность если есть
-                if instance.position_id:
-                    try:
-                        svc.assign_position(instance, instance.position)
-                    except Exception as e:
-                        logger.warning(f"Failed to assign position in LDAP: {e}")
-
+            # Новая запись с существующим LDAP DN (импорт из LDAP)
+            # Синхронизируем employeeNumber
+            try:
+                from employees.ldap.orm_models import LdapUser
+                ldap_user = LdapUser.objects.get(dn=sync_state.ldap_dn)
+                ldap_user.employee_number = str(instance.pk)
+                ldap_user.save()
+            except Exception as e:
+                logger.warning(f"Failed to set employeeNumber: {e}")
         else:
-            # Обновление в LDAP
+            # Обновление существующего LDAP пользователя
             changes = getattr(instance, '_ldap_changes', {})
             if not changes:
                 # Если изменений нет - это вспомогательное save(), пропускаем
@@ -143,12 +114,12 @@ def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
         )
     finally:
         # Очищаем временные атрибуты
-        if hasattr(instance, '_ldap_password'):
-            delattr(instance, '_ldap_password')
         if hasattr(instance, '_ldap_avatar'):
             delattr(instance, '_ldap_avatar')
         if hasattr(instance, '_ldap_changes'):
             delattr(instance, '_ldap_changes')
+        if hasattr(instance, '_skip_ldap_sync'):
+            delattr(instance, '_skip_ldap_sync')
 
 
 @receiver(post_delete, sender='employees.Employee')
