@@ -55,16 +55,20 @@ def group_remove_member_orm(group_dn: str, member_dn: str) -> None:
 
 
 def resolve_group_dns_by_cn_orm(cns: set[str]) -> dict[str, str]:
-    """Ищет DN групп по их CN через ORM."""
+    """Ищет DN групп по их CN через ORM.
+    
+    Warning: Если есть несколько групп с одинаковым CN в разных OU,
+    вернёт первую найденную (может быть неправильной).
+    Рекомендуется использовать DN напрямую вместо CN.
+    """
     if not cns:
         return {}
     found: dict[str, str] = {}
     for cn in sorted(cns):
-        try:
-            group = LdapGroup.objects.get(cn=cn)
+        # .filter().first() вместо .get() т.к. cn больше не primary_key
+        group = LdapGroup.objects.filter(cn=cn).first()
+        if group:
             found[cn] = group.dn
-        except LdapGroup.DoesNotExist:
-            continue
     return found
 
 

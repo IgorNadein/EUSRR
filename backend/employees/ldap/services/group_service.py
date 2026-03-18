@@ -218,12 +218,16 @@ class GroupService:
     def find_dn(
         self, conn: Connection, cn: str, bases: Optional[List[str]] = None
     ) -> Optional[str]:
-        """Ищет DN группы по CN (ORM)."""
-        try:
-            group = LdapGroup.objects.get(cn=cn)
+        """Ищет DN группы по CN (ORM).
+        
+        Warning: Если есть несколько групп с одинаковым CN,
+        вернёт первую найденную.
+        """
+        # .filter().first() вместо .get() т.к. cn больше не primary_key
+        group = LdapGroup.objects.filter(cn=cn).first()
+        if group:
             return group.dn
-        except LdapGroup.DoesNotExist:
-            return None
+        return None
 
     def groups_with_member(self, conn: Connection, member_dn: str) -> Set[str]:
         """Находит все группы, в которых состоит DN (ORM через memberOf)."""
@@ -329,12 +333,16 @@ class GroupService:
     def find_dn_wrapped(
         self, cn: str, bases: Optional[list[str]] = None
     ) -> Optional[str]:
-        """Ищет DN группы по CN (ORM)."""
-        try:
-            group = LdapGroup.objects.get(cn=cn)
+        """Ищет DN группы по CN (ORM).
+        
+        Warning: Если есть несколько групп с одинаковым CN,
+        вернёт первую найденную.
+        """
+        # .filter().first() вместо .get() т.к. cn больше не primary_key
+        group = LdapGroup.objects.filter(cn=cn).first()
+        if group:
             return group.dn
-        except LdapGroup.DoesNotExist:
-            return None
+        return None
 
     def create_wrapped(
         self,

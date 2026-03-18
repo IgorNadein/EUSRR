@@ -175,8 +175,8 @@ class LdapUser(LdapModel):
     object_classes = ['top', 'person', 'organizationalPerson', 'user']
     
     # Основные атрибуты
-    cn = CharField(db_column='cn', primary_key=True)
-    distinguished_name = CharField(db_column='distinguishedName')
+    # dn наследуется от ldapdb.models.Model как primary_key (Distinguished Name)
+    cn = CharField(db_column='cn')
     
     # Идентификация
     object_guid = CharField(db_column='objectGUID')
@@ -247,8 +247,8 @@ class LdapGroup(LdapModel):
     object_classes = ['top', 'group']
     
     # Основные атрибуты
-    cn = CharField(db_column='cn', primary_key=True)
-    distinguished_name = CharField(db_column='distinguishedName')
+    # dn наследуется от ldapdb.models.Model как primary_key (Distinguished Name)
+    cn = CharField(db_column='cn')
     
     # Идентификация
     object_guid = CharField(db_column='objectGUID')
@@ -301,8 +301,8 @@ class LdapOrganizationalUnit(LdapModel):
     object_classes = ['top', 'organizationalUnit']
     
     # Основные атрибуты
-    ou = CharField(db_column='ou', primary_key=True)
-    distinguished_name = CharField(db_column='distinguishedName')
+    # dn наследуется от ldapdb.models.Model как primary_key (Distinguished Name)
+    ou = CharField(db_column='ou')
     
     # Идентификация
     object_guid = CharField(db_column='objectGUID')
