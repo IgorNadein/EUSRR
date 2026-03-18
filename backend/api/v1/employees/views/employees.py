@@ -6,7 +6,6 @@ import logging
 import traceback
 
 from common.emails import send_templated_mail
-from common.external_sync_mixin import ExternalSystemSyncMixin
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -36,7 +35,7 @@ from ._helpers import Employee, _is_ldap_enabled
 logger = logging.getLogger(__name__)
 
 
-class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
+class EmployeeViewSet(viewsets.ModelViewSet):
     """
     /api/v1/employees/
 
@@ -49,7 +48,7 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
 
     Поиск: last_name, first_name, patronymic, email, phone_number
 
-    Использует ExternalSystemSyncMixin для автоматической синхронизации с LDAP.
+    LDAP синхронизация происходит через Django сигналы (signals_ldap.py).
     """
 
     serializer_class = EmployeeSerializer
@@ -63,195 +62,6 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
         "remove_skill": "employees.manage_employee_skills",
         "ldap_info": "employees.view_ldap_info",
     }
-
-    # ExternalSystemSyncMixin configuration
-    external_sync_service = None  # Инициализируется в __init__ для каждого инстанса
-    external_sync_enabled = True  # Можно отключить через settings или для тестов
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Создаем DirectoryService для каждого инстанса ViewSet
-        if _is_ldap_enabled():
-            self.external_sync_service = DirectoryService()
-            self.external_sync_enabled = True
-        else:
-            self.external_sync_enabled = False
-
-    def get_external_sync_method(self, action):
-        """Маппинг ViewSet action -> метод DirectoryService."""
-        if not _is_ldap_enabled():
-            return None
-
-        return {
-            'create': 'create_user_in_ldap_only',
-            'update': 'update_user_in_ldap_only',
-            'partial_update': 'update_user_in_ldap_only',
-            'destroy': 'delete_user_in_ldap_only',
-        }.get(action)
-
-    def prepare_external_data(self, instance, action):
-        """Подготовка данных для передачи в LDAP сервис."""
-        if action == 'create':
-            # При создании передаем DTO с полными данными
-            password = self.request.data.get('password')
-            avatar_file = self.request.data.get('avatar')
-            avatar_bytes = None
-
-            if avatar_file and hasattr(avatar_file, 'read'):
-                try:
-                    if hasattr(avatar_file, 'seek'):
-                        avatar_file.seek(0)
-                    avatar_bytes = avatar_file.read()
-                except Exception:
-                    pass
-
-            dto = DirectoryUserDTO(
-                username=instance.username if instance.username else None,
-                first_name=instance.first_name,
-                last_name=instance.last_name,
-                email=instance.email,
-                phone_e164=str(
-                    instance.phone_number) if instance.phone_number else '',
-                department_dn=self.request.data.get('department_dn'),
-                group_cns=self.request.data.get('group_cns', []) or [],
-                initial_password=password,
-                avatar_bytes=avatar_bytes,
-                is_active=instance.is_active,
-            )
-            return {'dto': dto, 'password': password}
-
-        elif action in ['update', 'partial_update']:
-            # При обновлении передаем инстанс и изменения
-            changes = {}
-            request_data = dict(self.request.data)
-
-            # Поля которые идут в LDAP
-            ldap_fields = {'first_name', 'last_name', 'email',
-                           'phone_number', 'is_active', 'password'}
-            for field in ldap_fields:
-                if field in request_data:
-                    changes[field] = request_data[field]
-
-            # Аватар -> avatar_bytes
-            avatar_file = request_data.get('avatar')
-            if avatar_file and hasattr(avatar_file, 'read'):
-                try:
-                    if hasattr(avatar_file, 'seek'):
-                        avatar_file.seek(0)
-                    changes['avatar_bytes'] = avatar_file.read()
-                except Exception:
-                    pass
-
-            # Должность
-            if 'position' in request_data or 'position_id' in request_data:
-                changes['position'] = request_data.get(
-                    'position') or request_data.get('position_id')
-
-            # Отдел (для перемещения) - резолвим DN здесь в ViewSet
-            move_to_department_dn = None
-            if 'department' in request_data or 'department_id' in request_data:
-                dept_val = request_data.get(
-                    'department') or request_data.get('department_id')
-                if dept_val:
-                    # Если передан ID - получаем инстанс из БД
-                    if isinstance(dept_val, int):
-                        from employees.models import Department
-                        dept = Department.objects.filter(id=dept_val).first()
-                    else:
-                        dept = dept_val
-
-                    # Резолвим DN отдела
-                    if dept:
-                        try:
-                            from employees.ldap.services.department_service import \
-                                DepartmentService
-                            dept_svc = DepartmentService()
-                            move_to_department_dn = dept_svc._get_department_dn(
-                                dept)
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to resolve department DN: {e}")
-
-            # Группы - берем готовый список CN если передан
-            group_cns = request_data.get('group_cns')
-
-            return {
-                'instance': instance,
-                'changes': changes,
-                'move_to_department_dn': move_to_department_dn,
-                'group_cns': group_cns
-            }
-
-        elif action == 'destroy':
-            # При удалении передаем только инстанс
-            return {'instance': instance}
-
-        return {}
-
-    def handle_external_sync_error(self, error, instance, action):
-        """Обработка ошибок синхронизации с LDAP."""
-        logger.error(
-            f"LDAP sync failed for {action} on Employee {instance.id}: {error}",
-            exc_info=True
-        )
-
-        # Возвращаем понятную ошибку пользователю
-        if isinstance(error, (DirectoryLdapError, DirectoryServiceError)):
-            return Response(
-                {'detail': f'Ошибка синхронизации с LDAP: {str(error)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        # Для остальных ошибок - стандартная обработка
-        return Response(
-            {'detail': f'Ошибка внешней системы: {str(error)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-    def handle_external_sync_result(self, instance, result, action):
-        """Обработка успешного результата синхронизации с LDAP.
-
-        Вызывается миксином после успешной синхронизации.
-        """
-        if action != 'create' or not isinstance(result, dict):
-            return
-
-        dn = result.get('dn')
-        guid = result.get('guid')
-
-        if not dn:
-            return
-
-        # Сохраняем sync state
-        st, _ = LdapSyncState.objects.get_or_create(
-            model="employee", object_pk=str(instance.pk)
-        )
-        st.touch(
-            ldap_dn=dn,
-            ldap_guid=guid,
-            sync_dir="ldap",
-            last_django_modify_ts=timezone.now(),
-        )
-
-        # Записываем Django PK в LDAP employeeNumber для обратной связки
-        try:
-            from employees.ldap.orm_models import LdapUser
-
-            ldap_user = LdapUser.objects.get(dn=dn)
-            employee_id_attr = getattr(
-                settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
-            setattr(ldap_user, 'employee_number', str(instance.pk))
-            ldap_user.save()
-        except Exception as e:
-            logger.warning(f"Failed to set employeeNumber in LDAP: {e}")
-
-        # Назначаем должность если указана
-        if instance.position_id:
-            try:
-                svc = self.external_sync_service or DirectoryService()
-                svc.assign_position(instance, instance.position)
-            except Exception as e:
-                logger.warning(f"Failed to assign position in LDAP: {e}")
 
     def get_permissions(self):
         if self.action == "create":
@@ -391,40 +201,43 @@ class EmployeeViewSet(ExternalSystemSyncMixin, viewsets.ModelViewSet):
         return EmployeeSerializer
 
     def perform_create(self, serializer):
-        """Кастомная логика создания: unusable password для LDAP пользователей.
-
-        Миксин автоматически обернет в транзакцию и вызовет LDAP sync.
-        """
+        """Создание сотрудника. LDAP синхронизация через сигналы."""
         password = self.request.data.get("password")
         ldap_enabled = _is_ldap_enabled()
 
         # Создаем пользователя в БД
         if ldap_enabled:
-            # LDAP-managed пользователь с unusable password
+            # LDAP-managed: unusable password в БД, реальный пароль пойдёт в LDAP через сигнал
             instance = serializer.save(is_ldap_managed=True)
             if hasattr(instance, "set_unusable_password"):
                 instance.set_unusable_password()
                 instance.save(update_fields=["password"])
+            # Сохраняем пароль во временном атрибуте для сигнала
+            instance._ldap_password = password
+            instance._ldap_avatar = self.request.FILES.get('avatar')
         else:
-            # Обычный пользователь с паролем в БД
+            # Standalone: пароль в БД
             instance = serializer.save(is_ldap_managed=False)
             instance.set_password(password)
             instance.save(update_fields=["password"])
 
-        # Навыки (если есть)
+        # Навыки
         skills_ids = self.request.data.get("skills_ids", [])
         if skills_ids:
             instance.skills.set(skills_ids)
 
     def perform_update(self, serializer):
-        """Обработка изменения email для верификации.
-
-        Миксин автоматически обернет в транзакцию и вызовет LDAP sync.
-        """
+        """Обновление сотрудника. LDAP синхронизация через сигналы."""
         instance = serializer.instance
         old_email = instance.email
 
-        # Стандартное сохранение (миксин добавит LDAP sync)
+        # Сохраняем данные для LDAP в временных атрибутах (для сигнала)
+        if _is_ldap_enabled() and instance.is_ldap_managed:
+            instance._ldap_changes = dict(self.request.data)
+            if 'avatar' in self.request.FILES:
+                instance._ldap_avatar = self.request.FILES['avatar']
+
+        # Стандартное сохранение (сигнал добавит LDAP sync)
         serializer.save()
 
         # Если email изменился - сбрасываем верификацию
