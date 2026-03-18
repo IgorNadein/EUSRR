@@ -11,7 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from ldap3 import MODIFY_REPLACE, Connection
+from ldap3 import Connection
 
 from ...models import Employee, LdapSyncState, Position
 from ..domain.dtos import DirectoryUserDTO
@@ -25,8 +25,6 @@ from ..utils.group_utils_orm import sync_user_groups_by_cns_orm
 from ..infrastructure.connections import _ldap
 from ..repositories.ldap_repository import (
     ensure_container_exists,
-    is_taken,
-    ldap_modify_or_ignore,
 )
 from ..utils.image_utils import normalize_avatar_to_jpeg
 from ..utils.ldap_utils import (
@@ -477,35 +475,32 @@ class UserService:
             raise RuntimeError(f"LDAP set password failed: {msg}")
 
     def _enable_user(self, conn: Connection, dn: str) -> None:
-        """Включает учётку (UAC=512).
-        
-        TODO(ldap-orm): Можно заменить на ORM (ldap_user.user_account_control = 512; save()).
-        Но используется в связке с _create_user_in_ldap → conn уже в контексте.
-        """
-        ldap_modify_or_ignore(
-            conn, dn, {"userAccountControl": [(MODIFY_REPLACE, [UAC_ENABLED])]}, set()
-        )
+        """Включает учётку (UAC=512) через ORM."""
+        ldap_user = LdapUser.objects.get(dn=dn)
+        ldap_user.user_account_control = UAC_ENABLED
+        ldap_user.save()
 
     def _unique_logins(
         self, conn: Connection, dto: DirectoryUserDTO, upn_suffix: str
     ) -> tuple[str, str]:
-        """Генерирует уникальные sAMAccountName и UPN.
-        
-        TODO(ldap-orm): is_taken() использует ldap3 raw search с OR фильтром.
-        Можно заменить на LdapUser.objects.filter(sam_account_name=s).exists(),
-        но нужен фильтр по нескольким атрибутам одновременно.
-        """
+        """Генерирует уникальные sAMAccountName и UPN через ORM."""
         sam, upn = build_logins_for_user(
             first_name=dto.first_name,
             last_name=dto.last_name,
             email=dto.email,
             upn_suffix=upn_suffix,
-            is_taken_sam=lambda s: is_taken(conn, attributes={"sAMAccountName": s}),
-            is_taken_upn=lambda u: is_taken(conn, attributes={"userPrincipalName": u}),
+            is_taken_sam=lambda s: LdapUser.objects.filter(
+                sam_account_name=s
+            ).exists(),
+            is_taken_upn=lambda u: LdapUser.objects.filter(
+                user_principal_name=u
+            ).exists(),
             guid=getattr(dto, "ldap_guid", None),
         )
         if not sam or not upn:
-            raise ValueError("Не удалось сгенерировать уникальные sAMAccountName/UPN")
+            raise ValueError(
+                "Не удалось сгенерировать уникальные sAMAccountName/UPN"
+            )
         return sam, upn
 
     def _phone_write_attr(self) -> str:

@@ -123,34 +123,21 @@ class PositionService:
             position: Должность с POS-группой для удаления
         """
         from ..infrastructure.connections import _ldap
-        
+        from ..orm_models import LdapGroup
+
         with _ldap() as conn:
             dn = (position.ldap_group_dn or "").strip()
             if not dn:
                 return
-            # снять вложения
-            bases = [
-                b
-                for b in [
-                    getattr(settings, "LDAP_GROUPS_BASE", None),
-                    getattr(settings, "LDAP_BASE_DN", None),
-                ]
-                if b
-            ]
-            for base in bases:
-                ok = conn.search(
-                    search_base=base,
-                    search_filter=f"(&(objectClass=group)(member={esc_filter(dn)}))",
-                    search_scope=SUBTREE,
-                    attributes=["distinguishedName"],
-                )
-                if ok and conn.entries:
-                    for e in conn.entries:
-                        self._group_service.remove_members(conn, str(e.entry_dn), [dn])
-            # удалить саму POS-группу
+            # снять вложения через ORM (groups_with_member)
+            parent_groups = self._group_service.groups_with_member(conn, dn)
+            for parent_dn in parent_groups:
+                self._group_service.remove_members(conn, parent_dn, [dn])
+            # удалить саму POS-группу (ORM)
             try:
-                self._group_service.delete(conn, dn)
-            except Exception:
+                group = LdapGroup.objects.get(dn=dn)
+                group.delete()
+            except LdapGroup.DoesNotExist:
                 pass
 
     # ======================== PRIVATE HELPERS ======================== #
@@ -307,25 +294,8 @@ class PositionService:
             if dn:
                 desired_dns.add(dn)
 
-        # текущие группы, где POS уже состоит
-        current_dns: Set[str] = set()
-        search_bases = [
-            b
-            for b in [
-                getattr(settings, "LDAP_GROUPS_BASE", None),
-                getattr(settings, "LDAP_BASE_DN", None),
-            ]
-            if b
-        ]
-        for base in search_bases:
-            ok = conn.search(
-                search_base=base,
-                search_filter=f"(&(objectClass=group)(member={esc_filter(pos_dn)}))",
-                search_scope=SUBTREE,
-                attributes=["distinguishedName"],
-            )
-            if ok and conn.entries:
-                current_dns.update(str(e.entry_dn) for e in conn.entries)
+        # текущие группы, где POS уже состоит (ORM)
+        current_dns = self._group_service.groups_with_member(conn, pos_dn)
 
         # добавить недостающее
         for add_dn in desired_dns - current_dns:

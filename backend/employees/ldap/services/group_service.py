@@ -14,12 +14,11 @@ from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.utils import timezone
 from employees.models import LdapSyncState
-from ldap3 import BASE, MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, SUBTREE, Connection
+from ldap3 import SUBTREE, Connection
 
 from ..infrastructure.connections import _ldap
 from ..orm_models import LdapGroup
-from ..repositories.ldap_repository import ldap_modify_or_ignore
-from ..utils.text_utils import esc_filter, esc_rdn
+from ..utils.text_utils import esc_rdn
 from ..utils.ldap_utils import get_guid_str, group_type
 
 
@@ -145,119 +144,102 @@ class GroupService:
     def set_description(
         self, conn: Connection, group_dn: str, description: Optional[str]
     ) -> None:
-        """Ставит/очищает description."""
-        changes = (
-            {"description": [(MODIFY_REPLACE, [description])]}
-            if description
-            else {"description": [(MODIFY_DELETE, [])]}
-        )
-        ldap_modify_or_ignore(conn, group_dn, changes, {"noSuchAttribute"})
+        """Ставит/очищает description (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+            group.description = description or ""
+            group.save()
+        except LdapGroup.DoesNotExist:
+            pass
 
     # ======================== Member Management ======================== #
-
-    def _modify_members(
-        self, conn: Connection, group_dn: str, op: int, members: List[str]
-    ) -> None:
-        """Применяет операцию к членству группы (DRY-хелпер).
-
-        Args:
-            conn: Подключение LDAP.
-            group_dn: DN группы.
-            op: MODIFY_ADD | MODIFY_DELETE | MODIFY_REPLACE.
-            members: Список DN участников.
-
-        Raises:
-            RuntimeError: При ошибке modify вне допустимых кейсов.
-        """
-        if not members and op in (MODIFY_ADD, MODIFY_DELETE):
-            return
-        ignore = (
-            {"typeOrValueExists", "entryAlreadyExists"}
-            if op == MODIFY_ADD
-            else (
-                {"noSuchAttribute", "noSuchObject"}
-                if op == MODIFY_DELETE
-                else {"noSuchAttribute"}
-            )
-        )
-        ldap_modify_or_ignore(conn, group_dn, {"member": [(op, members or [])]}, ignore)
 
     def add_members(
         self, conn: Connection, group_dn: str, member_dns: List[str]
     ) -> None:
-        """Добавляет участников (member ADD)."""
-        self._modify_members(conn, group_dn, MODIFY_ADD, member_dns)
+        """Добавляет участников (ORM)."""
+        if not member_dns:
+            return
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            return
+        members = list(group.member or [])
+        changed = False
+        for dn in member_dns:
+            if dn not in members:
+                members.append(dn)
+                changed = True
+        if changed:
+            group.member = members
+            group.save()
 
     def remove_members(
         self, conn: Connection, group_dn: str, member_dns: List[str]
     ) -> None:
-        """Удаляет участников (member DELETE)."""
-        self._modify_members(conn, group_dn, MODIFY_DELETE, member_dns)
+        """Удаляет участников (ORM)."""
+        if not member_dns:
+            return
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            return
+        members = list(group.member or [])
+        changed = False
+        for dn in member_dns:
+            if dn in members:
+                members.remove(dn)
+                changed = True
+        if changed:
+            group.member = members
+            group.save()
 
     def replace_members(
         self, conn: Connection, group_dn: str, exact_member_dns: List[str]
     ) -> None:
-        """Полная замена состава группы."""
-        self._modify_members(conn, group_dn, MODIFY_REPLACE, exact_member_dns)
+        """Полная замена состава группы (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            return
+        group.member = exact_member_dns
+        group.save()
 
     def list_members(self, conn: Connection, group_dn: str) -> List[str]:
-        """Возвращает DN всех участников группы."""
-        ok = conn.search(
-            search_base=group_dn,
-            search_filter="(objectClass=group)",
-            search_scope=BASE,
-            attributes=["member"],
-        )
-        if not ok or not conn.entries:
+        """Возвращает DN всех участников группы (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+            return list(group.member or [])
+        except LdapGroup.DoesNotExist:
             return []
-        entry = conn.entries[0]
-        vals = getattr(getattr(entry, "member", None), "values", None)
-        return list(vals) if vals else []
 
     # ======================== Finding and Search ======================== #
 
     def find_dn(
         self, conn: Connection, cn: str, bases: Optional[List[str]] = None
     ) -> Optional[str]:
-        """Ищет DN группы по CN в заданных базах."""
-        bases = list(bases or [])
-        if not bases:
-            gb = getattr(settings, "LDAP_GROUPS_BASE", None)
-            if gb:
-                bases.append(gb)
-        for base in bases:
-            ok = conn.search(
-                search_base=base,
-                search_filter=f"(cn={esc_filter(cn)})",
-                search_scope=SUBTREE,
-                attributes=["distinguishedName"],
-            )
-            if ok and conn.entries:
-                return str(conn.entries[0].entry_dn)
-        return None
+        """Ищет DN группы по CN (ORM)."""
+        try:
+            group = LdapGroup.objects.get(cn=cn)
+            return group.dn
+        except LdapGroup.DoesNotExist:
+            return None
 
     def groups_with_member(self, conn: Connection, member_dn: str) -> Set[str]:
-        """Находит все группы, в которых состоит указанный DN.
-        
-        Args:
-            conn: Подключение LDAP.
-            member_dn: DN участника.
-            
-        Returns:
-            Множество DN групп.
-        """
-        base = getattr(settings, "LDAP_GROUPS_BASE", None) or getattr(
-            settings, "LDAP_BASE_DN", None
-        )
-        if not base:
+        """Находит все группы, в которых состоит DN (ORM через memberOf)."""
+        from ..orm_models import LdapUser
+        # Пробуем получить memberOf пользователя (быстрее чем поиск по всем группам)
+        try:
+            user = LdapUser.objects.get(dn=member_dn)
+            return set(user.member_of or [])
+        except LdapUser.DoesNotExist:
+            pass
+        # Fallback: может быть группа вложена в группу
+        try:
+            group = LdapGroup.objects.get(dn=member_dn)
+            return set(group.member_of or [])
+        except LdapGroup.DoesNotExist:
             return set()
-        
-        ok = conn.search(
-            search_base=base,
-            search_filter=f"(&(objectClass=group)(member={esc_filter(member_dn)}))",
-            search_scope=SUBTREE,
-            attributes=["distinguishedName"],
-        )
         if not ok:
             return set()
         return {str(e.entry_dn) for e in conn.entries}

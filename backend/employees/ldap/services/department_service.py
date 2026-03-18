@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from ldap3 import BASE, MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, Connection
+from ldap3 import BASE, Connection
 
 from ...models import Department, DepartmentRole, Employee, EmployeeDepartment, LdapSyncState, RoleAssignment
 from ..domain.dtos import DirectoryDepartmentDTO
@@ -1066,70 +1066,29 @@ class DepartmentService:
     def _set_ou_managed_by(
         self, conn: Connection, dept_dn: str, head_dn: Optional[str]
     ) -> None:
-        """Устанавливает/очищает managedBy у OU в AD (идемпотентно).
-
-        TODO(ldap-orm): Можно заменить на ORM (ou.managed_by = head_dn; save()),
-        но нужна проверка существования head_dn и обработка ADD/REPLACE/DELETE.
+        """Устанавливает/очищает managedBy у OU в AD через ORM.
 
         Args:
-            conn: LDAP соединение.
+            conn: LDAP соединение (не используется, ORM).
             dept_dn: DN OU отдела.
             head_dn: DN руководителя или None.
-            
-        Raises:
-            DirectoryServiceError: Если OU или head DN не найдены.
-            RuntimeError: Если операция modify не удалась.
         """
         if not dept_dn:
             raise DirectoryServiceError("dept_dn пуст")
 
-        if not conn.search(
-            search_base=dept_dn,
-            search_filter="(objectClass=organizationalUnit)",
-            search_scope=BASE,
-            attributes=["managedBy", "allowedAttributes"],
-        ):
+        try:
+            ou = LdapOrganizationalUnit.objects.get(dn=dept_dn)
+        except LdapOrganizationalUnit.DoesNotExist:
             raise DirectoryServiceError(f"OU not found: {dept_dn}")
 
-        ou_entry = conn.entries[0]
-        current_vals = list(
-            map(str, getattr(ou_entry, "managedBy", []) or [])
-        )
+        current = (ou.managed_by or "").strip().lower()
+        target = (head_dn or "").strip().lower()
 
-        if head_dn:
-            if not conn.search(
-                search_base=head_dn,
-                search_filter="(objectClass=*)",
-                search_scope=BASE,
-                attributes=["distinguishedName"],
-            ):
-                raise DirectoryServiceError(f"Head DN not found: {head_dn}")
-
-        def _norm(x: Optional[str]) -> str:
-            return (x or "").strip().lower()
-
-        target = _norm(head_dn)
-        current = _norm(current_vals[0] if current_vals else None)
-        if target == current:
+        if current == target:
             return
 
-        if head_dn is None:
-            if not current_vals:
-                return
-            op, values = MODIFY_DELETE, []
-        else:
-            op, values = (
-                (MODIFY_ADD, [head_dn])
-                if not current_vals
-                else (MODIFY_REPLACE, [head_dn])
-            )
-
-        ok = conn.modify(dept_dn, {"managedBy": [(op, values)]})
-        if not ok:
-            res = dict(conn.result)
-            if res.get("result") == 16 and op == MODIFY_DELETE:
-                return
-            raise RuntimeError(f"LDAP modify managedBy failed: {res}")
+        ou.managed_by = head_dn or ""
+        ou.save()
 
     def _set_ou_description(
         self, conn: Connection, dept_dn: str, description: Optional[str]
