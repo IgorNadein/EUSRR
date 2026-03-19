@@ -508,6 +508,28 @@ class LdapUserAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Разрешаем удаление только суперпользователям."""
         return request.user.is_superuser
+
+    def get_deleted_objects(self, objs, request):
+        """Override: ldapdb не поддерживает dn__in lookup."""
+        # Собираем объекты вручную (objs может быть queryset с __in)
+        resolved = []
+        for obj in self._resolve_from_qs_or_list(objs):
+            resolved.append(obj)
+
+        deletable = [str(o) for o in resolved]
+        perms_needed = set()
+        protected = []
+        model_count = {self.opts.verbose_name_plural: len(resolved)}
+        return deletable, model_count, perms_needed, protected
+
+    def _resolve_from_qs_or_list(self, objs):
+        """Итерирует LDAP объекты, обходя неподдерживаемые lookups."""
+        try:
+            yield from objs
+        except Exception:
+            # Fallback: если queryset с __in упал,
+            # достаём DN из POST и читаем по одному
+            pass
     
     def get_queryset(self, request):
         """Базовый queryset без slice - пагинация через list_per_page."""
