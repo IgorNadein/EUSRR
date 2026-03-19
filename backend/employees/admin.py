@@ -541,6 +541,7 @@ class EmployeeAdmin(DjangoUserAdmin):
         import logging
         from employees.ldap.services import UserService
         from employees.ldap.orm_models import LdapUser
+        from employees.ldap.utils.ldap_utils import get_ldap_str
         
         logger = logging.getLogger(__name__)
         
@@ -575,19 +576,22 @@ class EmployeeAdmin(DjangoUserAdmin):
                     try:
                         changes = {}
                         
-                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение given_name: LDAP='{ldap_user.given_name}' vs Django='{employee.first_name}'")
-                        if ldap_user.given_name != employee.first_name:
+                        ldap_first = get_ldap_str(ldap_user.given_name)
+                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение given_name: LDAP='{ldap_first}' vs Django='{employee.first_name}'")
+                        if ldap_first != employee.first_name:
                             changes['first_name'] = employee.first_name
                             
-                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение sn: LDAP='{ldap_user.sn}' vs Django='{employee.last_name}'")
-                        if ldap_user.sn != employee.last_name:
+                        ldap_last = get_ldap_str(ldap_user.sn)
+                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение sn: LDAP='{ldap_last}' vs Django='{employee.last_name}'")
+                        if ldap_last != employee.last_name:
                             changes['last_name'] = employee.last_name
                             
-                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение mail: LDAP='{ldap_user.mail}' vs Django='{employee.email}'")
-                        if ldap_user.mail != employee.email:
+                        ldap_email = get_ldap_str(ldap_user.mail)
+                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение mail: LDAP='{ldap_email}' vs Django='{employee.email}'")
+                        if ldap_email != employee.email:
                             changes['email'] = employee.email
                         
-                        ldap_phone = ldap_user.telephone_number or ldap_user.mobile
+                        ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
                         logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение phone: LDAP='{ldap_phone}' vs Django='{employee.phone_number}'")
                         if employee.phone_number and ldap_phone != employee.phone_number:
                             changes['phone_number'] = employee.phone_number
@@ -718,6 +722,7 @@ class EmployeeAdmin(DjangoUserAdmin):
         перезапишут данные в Django Employee.
         """
         from employees.ldap.orm_models import LdapUser
+        from employees.ldap.utils.ldap_utils import get_ldap_str
         
         success_count = 0
         error_count = 0
@@ -752,19 +757,22 @@ class EmployeeAdmin(DjangoUserAdmin):
                 # Обновляем Django из LDAP
                 updated_fields = []
                 
-                if ldap_user.given_name and ldap_user.given_name != employee.first_name:
-                    employee.first_name = ldap_user.given_name
+                ldap_first = get_ldap_str(ldap_user.given_name)
+                if ldap_first and ldap_first != employee.first_name:
+                    employee.first_name = ldap_first
                     updated_fields.append('first_name')
                 
-                if ldap_user.sn and ldap_user.sn != employee.last_name:
-                    employee.last_name = ldap_user.sn
+                ldap_last = get_ldap_str(ldap_user.sn)
+                if ldap_last and ldap_last != employee.last_name:
+                    employee.last_name = ldap_last
                     updated_fields.append('last_name')
                 
-                if ldap_user.mail and ldap_user.mail != employee.email:
-                    employee.email = ldap_user.mail
+                ldap_email = get_ldap_str(ldap_user.mail)
+                if ldap_email and ldap_email != employee.email:
+                    employee.email = ldap_email
                     updated_fields.append('email')
                 
-                ldap_phone = ldap_user.telephone_number or ldap_user.mobile
+                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
                 if ldap_phone and ldap_phone != employee.phone_number:
                     employee.phone_number = ldap_phone
                     updated_fields.append('phone_number')
@@ -816,6 +824,7 @@ class EmployeeAdmin(DjangoUserAdmin):
     def show_sync_diff(self, request, queryset):
         """Показывает различия между Django и LDAP для выбранных пользователей."""
         from employees.ldap.orm_models import LdapUser
+        from employees.ldap.utils.ldap_utils import get_ldap_str
         
         diffs = []
         no_ldap_count = 0
@@ -841,22 +850,25 @@ class EmployeeAdmin(DjangoUserAdmin):
                 user_diffs = []
                 
                 # Сравниваем поля
-                if ldap_user.given_name != employee.first_name:
+                ldap_first = get_ldap_str(ldap_user.given_name)
+                if ldap_first != employee.first_name:
                     user_diffs.append(
-                        f"Имя: Django='{employee.first_name}' vs LDAP='{ldap_user.given_name}'"
+                        f"Имя: Django='{employee.first_name}' vs LDAP='{ldap_first}'"
                     )
                 
-                if ldap_user.sn != employee.last_name:
+                ldap_last = get_ldap_str(ldap_user.sn)
+                if ldap_last != employee.last_name:
                     user_diffs.append(
-                        f"Фамилия: Django='{employee.last_name}' vs LDAP='{ldap_user.sn}'"
+                        f"Фамилия: Django='{employee.last_name}' vs LDAP='{ldap_last}'"
                     )
                 
-                if ldap_user.mail != employee.email:
+                ldap_email = get_ldap_str(ldap_user.mail)
+                if ldap_email != employee.email:
                     user_diffs.append(
-                        f"Email: Django='{employee.email}' vs LDAP='{ldap_user.mail}'"
+                        f"Email: Django='{employee.email}' vs LDAP='{ldap_email}'"
                     )
                 
-                ldap_phone = ldap_user.telephone_number or ldap_user.mobile
+                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
                 if employee.phone_number and ldap_phone and ldap_phone != employee.phone_number:
                     user_diffs.append(
                         f"Телефон: Django='{employee.phone_number}' vs LDAP='{ldap_phone}'"
