@@ -345,12 +345,30 @@ class LdapUserAdmin(admin.ModelAdmin):
         """
         success_count = 0
         error_count = 0
+        warnings = []
         
         ldap_users = self._resolve_ldap_users(request)
         for ldap_user in ldap_users:
             if not ldap_user.employee_number:
                 error_count += 1
+                warnings.append(
+                    f'⚠️ {ldap_user.cn}: отсутствует employeeNumber (связь с Django)'
+                )
                 continue
+            
+            # Проверка обязательных полей в LDAP
+            missing_fields = []
+            if not get_ldap_str(ldap_user.given_name):
+                missing_fields.append('givenName (имя)')
+            if not get_ldap_str(ldap_user.sn):
+                missing_fields.append('sn (фамилия)')
+            if not get_ldap_str(ldap_user.mail):
+                missing_fields.append('mail (email)')
+            
+            if missing_fields:
+                warnings.append(
+                    f'⚠️ {ldap_user.cn}: отсутствуют поля в LDAP: {", ".join(missing_fields)}'
+                )
             
             try:
                 emp = Employee.objects.get(pk=int(ldap_user.employee_number))
@@ -382,6 +400,16 @@ class LdapUserAdmin(admin.ModelAdmin):
                     level=messages.ERROR
                 )
         
+        if warnings:
+            for warning in warnings[:10]:  # Первые 10 предупреждений
+                self.message_user(request, warning, level=messages.WARNING)
+            if len(warnings) > 10:
+                self.message_user(
+                    request,
+                    f'...и ещё {len(warnings) - 10} предупреждений',
+                    level=messages.WARNING
+                )
+        
         if success_count:
             self.message_user(
                 request,
@@ -406,6 +434,7 @@ class LdapUserAdmin(admin.ModelAdmin):
         
         success_count = 0
         error_count = 0
+        warnings = []
         
         service = UserService()
         
@@ -413,10 +442,27 @@ class LdapUserAdmin(admin.ModelAdmin):
         for ldap_user in ldap_users:
             if not ldap_user.employee_number:
                 error_count += 1
+                warnings.append(
+                    f'⚠️ {ldap_user.cn}: отсутствует employeeNumber (связь с Django)'
+                )
                 continue
             
             try:
                 emp = Employee.objects.get(pk=int(ldap_user.employee_number))
+                
+                # Проверка обязательных полей в Django
+                missing_fields = []
+                if not emp.first_name or not emp.first_name.strip():
+                    missing_fields.append('first_name (имя)')
+                if not emp.last_name or not emp.last_name.strip():
+                    missing_fields.append('last_name (фамилия)')
+                if not emp.email or not emp.email.strip():
+                    missing_fields.append('email')
+                
+                if missing_fields:
+                    warnings.append(
+                        f'⚠️ Employee #{emp.pk}: отсутствуют поля: {", ".join(missing_fields)}'
+                    )
                 
                 # Обновляем LDAP из Django через сервис
                 changes = {
@@ -435,6 +481,16 @@ class LdapUserAdmin(admin.ModelAdmin):
                     request,
                     f'Ошибка синхронизации {ldap_user.cn}: {e}',
                     level=messages.ERROR
+                )
+        
+        if warnings:
+            for warning in warnings[:10]:  # Первые 10 предупреждений
+                self.message_user(request, warning, level=messages.WARNING)
+            if len(warnings) > 10:
+                self.message_user(
+                    request,
+                    f'...и ещё {len(warnings) - 10} предупреждений',
+                    level=messages.WARNING
                 )
         
         if success_count:
