@@ -19,7 +19,7 @@ from django.db import transaction
 from django.utils import timezone
 from ldap3 import Connection
 
-from ...models import Employee, LdapSyncState, Position
+from ...models import Employee, LdapSyncState
 from ..domain.dtos import DirectoryUserDTO
 from ..errors import (
     DirectoryDbError,
@@ -241,24 +241,10 @@ class UserService(BaseService):
             except Exception:
                 is_active_val = None
         
-        old_pos = getattr(emp, "position", None) if hasattr(emp, "position") else None
-        new_pos = None
-        pos_in_payload = False
-        if "position" in changes or "position_id" in changes:
-            pos_in_payload = True
-            val = changes.pop("position", changes.pop("position_id", None))
-            # Обработка пустой строки как None (снятие должности)
-            if val == "":
-                new_pos = None
-            elif isinstance(val, Position) or val is None:
-                new_pos = val
-            elif isinstance(val, int):
-                new_pos = Position.objects.filter(pk=val).first()
-            else:
-                try:
-                    new_pos = Position.objects.filter(pk=int(val)).first()
-                except Exception:
-                    new_pos = None
+        # Убираем position из changes — синхронизация должностей
+        # через LDAP группы пока отключена (TODO)
+        changes.pop("position", None)
+        changes.pop("position_id", None)
         
         with _ldap() as conn:
             ldap_changes = dict(changes)
@@ -310,13 +296,6 @@ class UserService(BaseService):
                             setattr(emp, k, v)
                             updated_fields.append(k)
 
-                    if pos_in_payload and hasattr(emp, "position"):
-                        old_id = getattr(emp, "position_id", None)
-                        new_id = new_pos.id if new_pos else None
-                        if old_id != new_id:
-                            emp.position = new_pos
-                            updated_fields.append("position")
-
                     if move_to_department_dn and hasattr(emp, "set_active_department"):
                         from .department_service import DepartmentService
                         dept_svc = DepartmentService()
@@ -339,45 +318,9 @@ class UserService(BaseService):
             except Exception as e:
                 raise DirectoryDbError(str(e)) from e
             
-            try:
-                if pos_in_payload and (old_pos != new_pos):
-                    # Используем PositionService для синхронизации должностей
-                    from .position_service import PositionService
-                    # TODO: DirectoryService был удален
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    
-                    pos_svc = PositionService()
-                    # dir_svc = DirectoryService()  # Removed
-                    
-                    if old_pos:
-                        old_dn = (old_pos.ldap_group_dn or "").strip()
-                        if not old_dn:
-                            # Используем PositionService для получения DN
-                            old_dn = pos_svc._ensure_position_group(conn, old_pos)
-                        if old_dn:
-                            # TODO: DirectoryService был удален
-                            # try:
-                            #     logger.info(
-                            #         f"Removing user {current_dn} "
-                            #         f"from position group {old_dn}"
-                            #     )
-                            #     dir_svc.remove_group_members(
-                            #         old_dn, [current_dn]
-                            #     )
-                            # except RuntimeError as e:
-                            #     ...
-                            pass
-
-                    if new_pos:
-                        # TODO: DirectoryService был удален
-                        # pos_dn = pos_svc._ensure_position_group(conn, new_pos)
-                        # dir_svc.add_group_members(pos_dn, [current_dn])
-                        pass
-            except Exception as e:
-                raise DirectoryLdapError(
-                    f"LDAP position membership sync failed: {e}"
-                ) from e
+            # TODO: Position group membership sync disabled
+            # Нужно реализовать через GroupService
+            # (DirectoryService был удалён)
 
             return emp
 
@@ -729,7 +672,7 @@ class UserService(BaseService):
             ldap_user.user_account_control = uac_val
             orm_dirty = True
 
-        # 4) Прочие атрибуты (displayName автообновится в save() модели)
+        # 4) Прочие атрибуты
         phone_write = self._phone_write_attr()
         orm_field_map = {
             "first_name": "given_name",
