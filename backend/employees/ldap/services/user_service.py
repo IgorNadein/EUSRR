@@ -47,6 +47,27 @@ from .user_mapper_service import UserMapperService
 logger = logging.getLogger(__name__)
 
 
+def _get_ldap_str(value: Any) -> str:
+    """Безопасно извлекает строковое значение из LDAP поля.
+    
+    LDAP поля могут возвращаться как:
+    - строка (str)
+    - список строк (list)
+    - None
+    
+    Args:
+        value: Значение LDAP поля
+        
+    Returns:
+        str: Первый элемент (если список) или само значение (если строка), или пустая строка
+    """
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return value[0] if value else ""
+    return str(value)
+
+
 class UserService(BaseService):
     """Сервис для управления пользователями в LDAP и Django.
     
@@ -758,10 +779,13 @@ class UserService(BaseService):
         if "first_name" in model_changes or "last_name" in model_changes:
             # Формируем новый cn из имени и фамилии
             parts = []
-            if ldap_user.given_name and ldap_user.given_name.strip():
-                parts.append(ldap_user.given_name.strip())
-            if ldap_user.sn and ldap_user.sn.strip() and ldap_user.sn != ".":
-                parts.append(ldap_user.sn.strip())
+            given_name_str = _get_ldap_str(ldap_user.given_name).strip()
+            sn_str = _get_ldap_str(ldap_user.sn).strip()
+            
+            if given_name_str:
+                parts.append(given_name_str)
+            if sn_str and sn_str != ".":
+                parts.append(sn_str)
             
             new_cn = " ".join(parts) if parts else ldap_user.sam_account_name
 
