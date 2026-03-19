@@ -109,11 +109,15 @@ if not hasattr(_dj_tz, 'utc'):
         """pytz-compatible UTC wrapper for django-ldapdb.
         
         Acts as a tzinfo subclass but delegates to datetime.timezone.utc
-        and provides the localize() method for pytz compatibility.
+        and provides pytz-compatible methods: localize() and normalize().
         """
         
         def localize(self, dt):
             """pytz-style localize method."""
+            return dt.replace(tzinfo=_dt.timezone.utc)
+        
+        def normalize(self, dt):
+            """pytz-style normalize method - same as localize for UTC."""
             return dt.replace(tzinfo=_dt.timezone.utc)
         
         def utcoffset(self, dt):
