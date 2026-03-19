@@ -32,7 +32,7 @@ from ..infrastructure.connections import _ldap
 from ..repositories.ldap_repository import (
     ensure_container_exists,
 )
-from ..utils.ldap_utils import cn_candidates
+from ..utils.ldap_utils import cn_candidates, get_ldap_str
 from ..utils.text_utils import esc_rdn
 from .base_service import BaseService
 from .constants import (
@@ -45,27 +45,6 @@ from .user_login_service import UserLoginService
 from .user_mapper_service import UserMapperService
 
 logger = logging.getLogger(__name__)
-
-
-def _get_ldap_str(value: Any) -> str:
-    """Безопасно извлекает строковое значение из LDAP поля.
-    
-    LDAP поля могут возвращаться как:
-    - строка (str)
-    - список строк (list)
-    - None
-    
-    Args:
-        value: Значение LDAP поля
-        
-    Returns:
-        str: Первый элемент (если список) или само значение (если строка), или пустая строка
-    """
-    if value is None:
-        return ""
-    if isinstance(value, list):
-        return value[0] if value else ""
-    return str(value)
 
 
 class UserService(BaseService):
@@ -779,8 +758,8 @@ class UserService(BaseService):
         if "first_name" in model_changes or "last_name" in model_changes:
             # Формируем новый cn из имени и фамилии
             parts = []
-            given_name_str = _get_ldap_str(ldap_user.given_name).strip()
-            sn_str = _get_ldap_str(ldap_user.sn).strip()
+            given_name_str = get_ldap_str(ldap_user.given_name).strip()
+            sn_str = get_ldap_str(ldap_user.sn).strip()
             
             if given_name_str:
                 parts.append(given_name_str)

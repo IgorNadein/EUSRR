@@ -13,6 +13,7 @@ from django.db.models import OuterRef, Exists
 
 from employees.models import Employee, LdapSyncState
 from .orm_models import LdapUser, LdapGroup, LdapOrganizationalUnit
+from .utils.ldap_utils import get_ldap_str
 
 
 class LdapSyncStateInline(admin.TabularInline):
@@ -335,10 +336,11 @@ class LdapUserAdmin(admin.ModelAdmin):
                 emp = Employee.objects.get(pk=int(ldap_user.employee_number))
                 
                 # Обновляем Django из LDAP
-                emp.first_name = ldap_user.given_name or emp.first_name
-                emp.last_name = ldap_user.sn or emp.last_name
-                emp.email = ldap_user.mail or emp.email
-                emp.phone_number = ldap_user.telephone_number or ldap_user.mobile or emp.phone_number
+                emp.first_name = get_ldap_str(ldap_user.given_name) or emp.first_name
+                emp.last_name = get_ldap_str(ldap_user.sn) or emp.last_name
+                emp.email = get_ldap_str(ldap_user.mail) or emp.email
+                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
+                emp.phone_number = ldap_phone or emp.phone_number
                 emp.save()
                 
                 # Обновляем LdapSyncState
@@ -444,16 +446,19 @@ class LdapUserAdmin(admin.ModelAdmin):
                 user_diffs = []
                 
                 # Сравниваем поля
-                if ldap_user.given_name != emp.first_name:
-                    user_diffs.append(f"Имя: LDAP='{ldap_user.given_name}' vs Django='{emp.first_name}'")
+                ldap_first = get_ldap_str(ldap_user.given_name)
+                if ldap_first != emp.first_name:
+                    user_diffs.append(f"Имя: LDAP='{ldap_first}' vs Django='{emp.first_name}'")
                 
-                if ldap_user.sn != emp.last_name:
-                    user_diffs.append(f"Фамилия: LDAP='{ldap_user.sn}' vs Django='{emp.last_name}'")
+                ldap_last = get_ldap_str(ldap_user.sn)
+                if ldap_last != emp.last_name:
+                    user_diffs.append(f"Фамилия: LDAP='{ldap_last}' vs Django='{emp.last_name}'")
                 
-                if ldap_user.mail != emp.email:
-                    user_diffs.append(f"Email: LDAP='{ldap_user.mail}' vs Django='{emp.email}'")
+                ldap_email = get_ldap_str(ldap_user.mail)
+                if ldap_email != emp.email:
+                    user_diffs.append(f"Email: LDAP='{ldap_email}' vs Django='{emp.email}'")
                 
-                ldap_phone = ldap_user.telephone_number or ldap_user.mobile
+                ldap_phone = get_ldap_str(ldap_user.telephone_number or ldap_user.mobile)
                 if ldap_phone and ldap_phone != emp.phone_number:
                     user_diffs.append(f"Телефон: LDAP='{ldap_phone}' vs Django='{emp.phone_number}'")
                 
