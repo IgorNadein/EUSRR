@@ -39,6 +39,24 @@ class ModifyDnMixin:
         super().__init__(*args, **kwargs)
         # Сохраняем оригинальный base_dn для отслеживания изменений
         self._original_base_dn = getattr(self, 'base_dn', None)
+        # Сохраняем оригинальное значение RDN-атрибута (cn/ou)
+        self._original_rdn_value = self._get_rdn_value()
+    
+    def _get_rdn_value(self):
+        """Возвращает текущее значение RDN-атрибута (cn или ou)."""
+        rdn_attrs = getattr(self, 'rdn_attributes', [])
+        for field in self._meta.fields:
+            if field.db_column and field.db_column in rdn_attrs:
+                return getattr(self, field.name, None)
+        return None
+    
+    def _set_rdn_value(self, value):
+        """Устанавливает значение RDN-атрибута."""
+        rdn_attrs = getattr(self, 'rdn_attributes', [])
+        for field in self._meta.fields:
+            if field.db_column and field.db_column in rdn_attrs:
+                setattr(self, field.name, value)
+                return
     
     def build_rdn(self):
         """Build RDN — исправление бага ldapdb 1.5.1.
@@ -64,85 +82,107 @@ class ModifyDnMixin:
         raise Exception("Could not build Distinguished Name")
     
     def save(self, *args, **kwargs):
-        """Переопределённый save с поддержкой modify_dn при изменении base_dn.
+        """Переопределённый save с поддержкой modify_dn.
         
-        Логика:
-        1. Проверяем, изменился ли base_dn
-        2. Если да - выполняем LDAP modify_dn для перемещения объекта
-        3. Обновляем _saved_dn для корректной работы стандартного save()
-        4. Вызываем родительский save() для обновления атрибутов
+        Обрабатывает два случая:
+        1. Изменение base_dn → перемещение между OU (modify_dn с newsuperior)
+        2. Изменение RDN-атрибута (cn/ou) → переименование (modify_dn)
         
-        Args:
-            *args: Позиционные аргументы для Model.save()
-            **kwargs: Именованные аргументы для Model.save()
-            
-        Raises:
-            RuntimeError: Если modify_dn операция не удалась
+        AD запрещает менять RDN-атрибут через modify_s, только через rename.
+        Поэтому: откатываем RDN к старому значению → save() → rename.
         """
-        # Проверяем, нужно ли перемещение
+        from .infrastructure.connections import _ldap
+        
+        is_existing = (
+            hasattr(self, '_saved_dn') and self._saved_dn
+        )
+        
+        # --- 1) Перемещение между OU (base_dn изменился) ---
         current_base_dn = getattr(self, 'base_dn', None)
         needs_move = (
-            hasattr(self, '_saved_dn') and  # Объект уже существует в LDAP
-            self._saved_dn and  # DN не пустой
-            self._original_base_dn and  # Был оригинальный base_dn
-            current_base_dn and  # Есть новый base_dn
-            current_base_dn != self._original_base_dn  # И он изменился
+            is_existing and
+            self._original_base_dn and
+            current_base_dn and
+            current_base_dn != self._original_base_dn
         )
         
         if needs_move:
-            # Выполняем перемещение через низкоуровневый modify_dn
-            from .infrastructure.connections import _ldap
-            
             old_dn = self._saved_dn
             new_rdn = self.build_rdn()
             new_superior = current_base_dn
             new_dn = f"{new_rdn},{new_superior}"
             
-            logger.debug(
-                f"ModifyDnMixin: Moving LDAP object\n"
-                f"  Old DN: {old_dn}\n"
-                f"  New RDN: {new_rdn}\n"
-                f"  New superior: {new_superior}\n"
-                f"  New DN: {new_dn}"
-            )
-            
             with _ldap() as conn:
-                # LDAP modify_dn операция с newsuperior
                 success = conn.modify_dn(
-                    old_dn,
-                    new_rdn,
-                    new_superior=new_superior
+                    old_dn, new_rdn,
+                    new_superior=new_superior,
                 )
-                
                 if not success:
-                    error_msg = f"Failed to move LDAP object: {conn.result}"
-                    logger.error(f"ModifyDnMixin: {error_msg}")
-                    raise RuntimeError(error_msg)
-                
-                logger.info(
-                    f"ModifyDnMixin: Successfully moved {old_dn} → {new_dn}"
-                )
+                    raise RuntimeError(
+                        f"Failed to move LDAP object: {conn.result}"
+                    )
+                logger.info(f"ModifyDnMixin: Moved {old_dn} → {new_dn}")
             
-            # Обновляем _saved_dn для корректной работы последующего save()
-            # Это важно, чтобы стандартный _save_table() знал новый DN
             self._saved_dn = new_dn
             self.dn = new_dn
-            
-            # Обновляем _original_base_dn для следующих операций
             self._original_base_dn = current_base_dn
         
-        # Вызываем родительский save() для обновления атрибутов
-        return super().save(*args, **kwargs)
+        # --- 2) RDN-атрибут (cn/ou) изменился ---
+        new_rdn_value = self._get_rdn_value()
+        old_rdn_value = getattr(self, '_original_rdn_value', None)
+        needs_rename = (
+            is_existing and
+            old_rdn_value and
+            new_rdn_value and
+            new_rdn_value != old_rdn_value
+        )
+        
+        if needs_rename:
+            # Откатываем RDN к старому значению перед save(),
+            # иначе ldapdb включит cn в modlist → AD отклонит
+            self._set_rdn_value(old_rdn_value)
+        
+        # --- 3) Стандартный save (атрибуты, кроме RDN) ---
+        result = super().save(*args, **kwargs)
+        
+        # --- 4) Выполняем rename если RDN изменился ---
+        if needs_rename:
+            from .utils.text_utils import esc_rdn
+            rdn_attrs = getattr(self, 'rdn_attributes', ['cn'])
+            rdn_attr_name = rdn_attrs[0]  # 'cn' или 'ou'
+            new_rdn = f"{rdn_attr_name.upper()}={esc_rdn(new_rdn_value)}"
+            
+            old_dn = self.dn
+            dn_parts = old_dn.split(",", 1)
+            container_dn = dn_parts[1] if len(dn_parts) == 2 else ""
+            
+            with _ldap() as conn:
+                success = conn.modify_dn(old_dn, new_rdn)
+                if success:
+                    new_dn = f"{new_rdn},{container_dn}"
+                    self.dn = new_dn
+                    self._saved_dn = new_dn
+                    self._set_rdn_value(new_rdn_value)
+                    self._original_rdn_value = new_rdn_value
+                    logger.info(
+                        f"ModifyDnMixin: Renamed {old_dn} → {new_dn}"
+                    )
+                else:
+                    logger.warning(
+                        f"ModifyDnMixin: Failed to rename "
+                        f"{old_dn} → {new_rdn}: {conn.result}"
+                    )
+                    # Восстанавливаем новое значение в объекте
+                    self._set_rdn_value(new_rdn_value)
+        
+        return result
     
     @classmethod
     def from_db(cls, db, field_names, values):
-        """Переопределяем from_db для сохранения оригинального base_dn при загрузке.
-        
-        Этот метод вызывается Django ORM при загрузке объекта из БД (или LDAP).
-        """
+        """Переопределяем from_db для сохранения оригинальных значений при загрузке."""
         instance = super().from_db(db, field_names, values)
-        # Сохраняем base_dn при загрузке из LDAP
         instance._original_base_dn = getattr(instance, 'base_dn', None)
+        instance._original_rdn_value = instance._get_rdn_value()
         return instance
 
 
