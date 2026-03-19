@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 class UserService(BaseService):
     """Сервис для управления пользователями в LDAP и Django.
-    
+
     Координирует работу подсервисов:
     - UserPasswordService — пароли
     - UserLoginService — генерация логинов
@@ -64,7 +64,7 @@ class UserService(BaseService):
     ):
         """
         Инициализация сервиса.
-        
+
         Args:
             ldap_repository: Репозиторий для работы с LDAP (optional)
             employee_repository: Репозиторий для работы с Employee (optional)
@@ -74,7 +74,7 @@ class UserService(BaseService):
         self.ldap_repository = ldap_repository
         self.employee_repository = employee_repository
         self.sync_state_repository = sync_state_repository
-        
+
         # Подсервисы
         self._password_service = UserPasswordService()
         self._login_service = UserLoginService()
@@ -137,7 +137,7 @@ class UserService(BaseService):
                             is_active=dto.is_active,
                             is_ldap_managed=True,
                         )
-                    
+
                     if hasattr(emp, "set_unusable_password"):
                         emp.set_unusable_password()
                         emp._skip_ldap_sync = True
@@ -171,7 +171,7 @@ class UserService(BaseService):
                     #     ).first()
                     #     if dept:
                     #         emp.set_active_department(dept)
-                    
+
                     self._log_operation(
                         "create",
                         model="employee",
@@ -240,12 +240,12 @@ class UserService(BaseService):
                 is_active_val = bool(changes.get("is_active"))
             except Exception:
                 is_active_val = None
-        
-        # Убираем position из changes — синхронизация должностей
-        # через LDAP группы пока отключена (TODO)
-        changes.pop("position", None)
-        changes.pop("position_id", None)
-        
+
+        # Извлекаем position из changes — обработаем отдельно
+        new_position = changes.pop("position", None)
+        new_position_id = changes.pop("position_id", None)
+        old_position = emp.position
+
         with _ldap() as conn:
             ldap_changes = dict(changes)
             try:
@@ -296,6 +296,20 @@ class UserService(BaseService):
                             setattr(emp, k, v)
                             updated_fields.append(k)
 
+                    # Обновляем position в DB
+                    if new_position_id is not None:
+                        if emp.position_id != new_position_id:
+                            emp.position_id = new_position_id
+                            updated_fields.append("position_id")
+                    elif new_position is not None:
+                        pid = (
+                            new_position.pk
+                            if new_position else None
+                        )
+                        if emp.position_id != pid:
+                            emp.position_id = pid
+                            updated_fields.append("position_id")
+
                     if move_to_department_dn and hasattr(emp, "set_active_department"):
                         from .department_service import DepartmentService
                         dept_svc = DepartmentService()
@@ -317,10 +331,12 @@ class UserService(BaseService):
                         emp.save(update_fields=list(set(updated_fields)))
             except Exception as e:
                 raise DirectoryDbError(str(e)) from e
-            
-            # TODO: Position group membership sync disabled
-            # Нужно реализовать через GroupService
-            # (DirectoryService был удалён)
+
+            # Position group membership sync (best-effort)
+            self._sync_position_groups(
+                emp, old_position,
+                new_position, new_position_id,
+            )
 
             return emp
 
@@ -526,9 +542,57 @@ class UserService(BaseService):
                 return dn_try
         return None
 
+    def _sync_position_groups(
+        self,
+        emp: Employee,
+        old_position,
+        new_position,
+        new_position_id,
+    ) -> None:
+        """Синхронизирует членство в POS-группах при смене должности.
+
+        Best-effort: ошибки логируются, но не прерывают
+        обновление пользователя.
+        """
+        from ...models import Position
+        from .position_service import PositionService
+        from .group_service import GroupService
+
+        # Определяем новую должность
+        if new_position is None and new_position_id is not None:
+            try:
+                new_position = Position.objects.get(
+                    pk=new_position_id,
+                )
+            except Position.DoesNotExist:
+                new_position = None
+
+        if new_position is None and new_position_id is None:
+            # position не передавался в changes
+            return
+
+        if old_position == new_position:
+            return
+
+        try:
+            pos_svc = PositionService(
+                group_service=GroupService(),
+                user_service=self,
+            )
+            if old_position and old_position.ldap_group_dn:
+                pos_svc.unassign_position(emp, old_position)
+            if new_position and new_position.ldap_group_dn:
+                pos_svc.assign_position(emp, new_position)
+        except Exception:
+            logger.warning(
+                "Position group sync failed for "
+                f"employee #{emp.pk}",
+                exc_info=True,
+            )
+
     def _create_user_in_ldap(self, conn: Connection, dto: DirectoryUserDTO) -> str:
         """Создаёт объект user в LDAP (AD) и возвращает его DN.
-        
+
         NOTE: Используется low-level ldap3 (conn.add) из-за необходимости:
         - Перебора вариантов CN при коллизиях имён
         - Проверки/создания контейнера (ensure_container_exists)
@@ -561,7 +625,7 @@ class UserService(BaseService):
         cn_list = cn_candidates(pretty_cn, safe_cn)
 
         object_classes = self._mapper_service.get_object_classes_for_user()
-        
+
         dn = self._try_add_with_cn_list(
             conn, base_dn, object_classes, dto, sam, upn, cn_list
         )
@@ -595,10 +659,10 @@ class UserService(BaseService):
         emp_pk: Optional[int] = None,  # Employee PK для поиска по employeeNumber
     ) -> str:
         """Применяет LDAP-изменения к существующему пользователю и возвращает (возможный новый) DN.
-        
+
         NOTE: Этот метод слишком большой (~150 строк) и должен быть рефакторен в будущем.
         Сейчас просто перенесём как есть для совместимости.
-        
+
         Args:
             conn: LDAP соединение
             current_dn: Текущий DN пользователя (может быть устаревшим)
@@ -608,7 +672,7 @@ class UserService(BaseService):
             emp_pk: PK Employee для поиска по employeeNumber если DN устарел
         """
         # TODO: DirectoryService был удален, требуется рефакторинг
-        
+
         if not isinstance(current_dn, str) or not current_dn.strip():
             raise TypeError("current_dn должен быть непустой строкой")
         if not isinstance(model_changes, dict):
@@ -623,10 +687,8 @@ class UserService(BaseService):
         if new_password:
             self._set_password(conn, dn, new_password)
 
-        # 2) Перемещение
-        # TODO: DirectoryService был удален, требуется рефакторинг
-        # if move_to_department_dn:
-        #     dn = svc._move_to_department(conn, dn, move_to_department_dn)
+        # 2) Перемещение между OU — обработается в ORM save(),
+        #    см. шаг 3-5 ниже (ldap_user.base_dn = ...)
 
         # 3-5) ORM: UAC + Атрибуты + Аватар (batch через один save)
         try:
@@ -659,8 +721,14 @@ class UserService(BaseService):
                     f"User not found at DN={dn}. DN in database doesn't match LDAP. "
                     "Please run LDAP sync to fix sync state."
                 )
-        
+
         orm_dirty = False
+
+        # 2) Перемещение между OU через ORM
+        # ModifyDnMixin.save() автоматически выполнит modify_dn
+        if move_to_department_dn:
+            ldap_user.base_dn = move_to_department_dn
+            orm_dirty = True
 
         # 3) UAC
         if is_active_val is not None:
@@ -685,33 +753,33 @@ class UserService(BaseService):
             ),
             "display_name": "display_name",
         }
-        
+
         # Запоминаем старый cn для проверки изменения
         old_cn = ldap_user.cn
-        
+
         for model_key, orm_field in orm_field_map.items():
             if model_key in model_changes:
                 val = model_changes[model_key]
                 if val or orm_field == "sn":
                     setattr(ldap_user, orm_field, val if val else ".")
                     orm_dirty = True
-        
+
         # Вычисляем новый cn если изменились имя/фамилия
         new_cn = None
         if "first_name" in model_changes or "last_name" in model_changes:
             parts = []
             given_name_str = get_ldap_str(ldap_user.given_name).strip()
             sn_str = get_ldap_str(ldap_user.sn).strip()
-            
+
             if given_name_str:
                 parts.append(given_name_str)
             if sn_str and sn_str != ".":
                 parts.append(sn_str)
-            
+
             new_cn = " ".join(parts) if parts else get_ldap_str(
                 ldap_user.sam_account_name
             )
-            
+
             if new_cn != old_cn:
                 # Устанавливаем cn и displayName —
                 # ModifyDnMixin.save() автоматически обработает
@@ -747,50 +815,50 @@ class UserService(BaseService):
 
     def _get_employee_dn(self, employee: Employee) -> str:
         """Возвращает DN сотрудника из LdapSyncState или модели.
-        
+
         Args:
             employee: Экземпляр Employee.
-            
+
         Returns:
             str: Полный DN пользователя в LDAP.
-            
+
         Raises:
             DirectoryServiceError: Если DN не найден.
         """
         # Сначала проверяем LdapSyncState
         dn = (
             LdapSyncState.objects.filter(
-                model="employee", 
+                model="employee",
                 object_pk=str(employee.pk)
             )
             .values_list("ldap_dn", flat=True)
             .first()
         )
-        
+
         # Если не найден в LdapSyncState, проверяем поле модели
         if not dn and hasattr(employee, 'ldap_dn'):
             dn = employee.ldap_dn
-        
+
         if not dn:
             raise DirectoryServiceError("Employee has no ldap_dn")
         return dn
 
     def _move_user_to_base(self, conn: Connection, user_dn: str, base_dn: str) -> str:
         """Перемещает пользовательский объект в указанный контейнер.
-        
+
         NOTE: Используется low-level ldap3 для атомарного move-only
         (без обновления атрибутов). ModifyDnMixin решает ту же задачу
         через ORM (user.base_dn = ...; user.save()), но совмещает
         move с обновлением атрибутов.
-        
+
         Args:
             conn: LDAP соединение.
             user_dn: Текущий DN пользователя.
             base_dn: DN целевого контейнера.
-            
+
         Returns:
             str: Новый DN пользователя после перемещения.
-            
+
         Raises:
             RuntimeError: Если операция перемещения не удалась.
         """
