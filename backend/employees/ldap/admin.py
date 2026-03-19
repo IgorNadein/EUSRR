@@ -131,6 +131,22 @@ class LdapUserAdmin(admin.ModelAdmin):
     # Пагинация (LDAP может быть медленным)
     list_per_page = 100
     
+    def _resolve_ldap_users(self, request):
+        """Получает выбранные LDAP объекты по DN из POST данных.
+        
+        ldapdb не поддерживает dn__in lookup, поэтому
+        получаем каждый объект по DN отдельно.
+        """
+        selected_dns = request.POST.getlist('_selected_action')
+        users = []
+        for dn in selected_dns:
+            try:
+                user = LdapUser.objects.get(dn=dn)
+                users.append(user)
+            except LdapUser.DoesNotExist:
+                pass
+        return users
+    
     # Кастомные поля для отображения
     
     def cn_display(self, obj):
@@ -309,7 +325,8 @@ class LdapUserAdmin(admin.ModelAdmin):
         success_count = 0
         error_count = 0
         
-        for ldap_user in queryset:
+        ldap_users = self._resolve_ldap_users(request)
+        for ldap_user in ldap_users:
             if not ldap_user.employee_number:
                 error_count += 1
                 continue
@@ -370,7 +387,8 @@ class LdapUserAdmin(admin.ModelAdmin):
         
         service = UserService()
         
-        for ldap_user in queryset:
+        ldap_users = self._resolve_ldap_users(request)
+        for ldap_user in ldap_users:
             if not ldap_user.employee_number:
                 error_count += 1
                 continue
@@ -415,7 +433,8 @@ class LdapUserAdmin(admin.ModelAdmin):
         """Показывает различия между LDAP и Django для выбранных пользователей."""
         diffs = []
         
-        for ldap_user in queryset:
+        ldap_users = self._resolve_ldap_users(request)
+        for ldap_user in ldap_users:
             if not ldap_user.employee_number:
                 continue
             
