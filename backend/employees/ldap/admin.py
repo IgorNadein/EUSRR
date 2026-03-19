@@ -6,6 +6,8 @@
 - Синхронизации при рассинхроне (выбор источника истины)
 """
 
+import base64
+
 from django.contrib import admin, messages
 from django.utils.html import format_html
 from django.urls import reverse
@@ -72,6 +74,7 @@ class LdapUserAdmin(admin.ModelAdmin):
         'dn_display',
         'member_of_display',
         'sync_info',
+        'thumbnail_photo_display',
     )
     
     fieldsets = (
@@ -107,7 +110,7 @@ class LdapUserAdmin(admin.ModelAdmin):
         ('🖼️ Дополнительно', {
             'classes': ('collapse',),
             'fields': (
-                'thumbnail_photo',
+                'thumbnail_photo_display',
             )
         }),
         ('👥 Членство в группах', {
@@ -263,6 +266,22 @@ class LdapUserAdmin(admin.ModelAdmin):
             return format_html('<span style="color: #00cc00;">✅ Активна</span>')
     account_status.short_description = 'Статус'
     
+    def thumbnail_photo_display(self, obj):
+        """Превью аватара из LDAP thumbnailPhoto."""
+        data = obj.thumbnail_photo
+        if not data or not isinstance(data, (bytes, bytearray)):
+            return format_html(
+                '<em style="color:#999;">Нет фото</em>'
+            )
+        b64 = base64.b64encode(data).decode('ascii')
+        return format_html(
+            '<img src="data:image/jpeg;base64,{}" '
+            'style="max-width:150px;max-height:150px;'
+            'border-radius:8px;" />',
+            b64,
+        )
+    thumbnail_photo_display.short_description = 'Фото'
+
     def sync_info(self, obj):
         """Подробная информация о синхронизации."""
         if not obj.employee_number:
