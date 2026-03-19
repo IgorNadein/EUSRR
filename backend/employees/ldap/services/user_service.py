@@ -143,12 +143,14 @@ class UserService(BaseService):
                         emp._skip_ldap_sync = True
                         emp.save(update_fields=["password"])
 
-                    # Запись employeeNumber в LDAP для связки
-                    ldap_user = LdapUser.objects.get(dn=dn)
+                    # Запись employeeNumber в LDAP для связки через прямую модификацию
+                    # Используем ldap3 напрямую, т.к. ORM .save() пытается перестроить DN
+                    from ldap3 import MODIFY_REPLACE
+                    conn.modify(
+                        dn,
+                        {'employeeNumber': [(MODIFY_REPLACE, [str(emp.pk)])]}
+                    )
                     guid = None
-
-                    ldap_user.employee_number = str(emp.pk)
-                    ldap_user.save()
 
                     self._touch_state(
                         model="employee",
