@@ -778,7 +778,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                     object_pk=str(employee.pk),
                     defaults={
                         'ldap_dn': ldap_user.dn,
-                        'ldap_guid': str(ldap_user.object_guid) if hasattr(ldap_user, 'object_guid') else None,
+                        'ldap_guid': None,  # objectGUID удален из модели
                         'last_sync_dir': 'ldap',
                     }
                 )

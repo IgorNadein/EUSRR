@@ -207,7 +207,7 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     cn = CharField(db_column='cn')
     
     # Идентификация
-    object_guid = CharField(db_column='objectGUID')
+    # objectGUID исключен из-за проблем с декодированием бинарных данных
     sam_account_name = CharField(db_column='sAMAccountName')
     user_principal_name = CharField(db_column='userPrincipalName')
     
@@ -288,7 +288,7 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     cn = CharField(db_column='cn')
     
     # Идентификация
-    object_guid = CharField(db_column='objectGUID')
+    # objectGUID исключен из-за проблем с декодированием бинарных данных
     sam_account_name = CharField(db_column='sAMAccountName')
     
     # Описание
@@ -350,7 +350,7 @@ class LdapOrganizationalUnit(ModifyDnMixin, LdapModel):
     ou = CharField(db_column='ou')
     
     # Идентификация
-    object_guid = CharField(db_column='objectGUID')
+    # objectGUID исключен из-за проблем с декодированием бинарных данных
     
     # Описание
     description = CharField(db_column='description', blank=True)
