@@ -22,16 +22,22 @@ from ..errors import (
 )
 from ..orm_models import LdapOrganizationalUnit
 from ..infrastructure.connections import _ldap
-from ..repositories.ldap_repository import (
-    ensure_container_exists,
-)
+from ..repositories.ldap_repository import LdapRepository
 from ..utils.dn_utils import _move_to_department
 from ..utils.ldap_utils import group_type
 from ..utils.text_utils import esc_filter, esc_rdn
+from .base_service import BaseService
+from .constants import SyncDirection
 
 
-class DepartmentService:
-    """Сервис для управления отделами в LDAP и Django."""
+class DepartmentService(BaseService):
+    """Сервис для управления отделами в LDAP и Django.
+    
+    Рефакторенная версия с улучшениями:
+    - Наследуется от BaseService (логирование, _touch_state)
+    - Использует константы вместо магических строк
+    - Логирует все критические операции
+    """
 
     def __init__(self, group_service=None, user_service=None):
         """Инициализация сервиса.
@@ -40,6 +46,7 @@ class DepartmentService:
             group_service: Сервис для работы с группами (Dependency Injection)
             user_service: Сервис для работы с пользователями (Dependency Injection)
         """
+        super().__init__()
         self._group_service = group_service
         self._user_service = user_service
 
@@ -76,7 +83,6 @@ class DepartmentService:
                         head_dn = None
                 self._set_ou_managed_by(conn, dept_dn, head_dn)
                 group_dn = self._group_service.create(
-                    conn,
                     cn=dto.name,
                     parent_dn=dept_dn,
                     description=f"{dto.name} department members",
@@ -100,12 +106,19 @@ class DepartmentService:
                         object_pk=dept.pk,
                         ldap_dn=dept_dn,
                         last_django_modify_ts=timezone.now(),
-                        sync_dir="django",
+                        sync_dir=SyncDirection.DJANGO,
+                    )
+                    self._log_operation(
+                        "create",
+                        model="department",
+                        object_id=dept.pk,
+                        dn=dept_dn,
+                        success=True,
                     )
             except Exception as e:
                 try:
                     if group_dn:
-                        self._group_service.delete(conn, group_dn)
+                        self._group_service.delete(group_dn)
                     if dept_dn:
                         self._delete_department_ou(conn, dept_dn)
                 finally:
@@ -182,7 +195,7 @@ class DepartmentService:
                             if ok and conn.entries:
                                 try:
                                     new_group_dn = self._group_service.rename(
-                                        conn, group_dn, new_cn=changes["name"]
+                                        group_dn, new_cn=changes["name"]
                                     )
                                 except Exception:
                                     desc = (
@@ -190,7 +203,7 @@ class DepartmentService:
                                     ).get("description", "")
                                     if desc == "entryAlreadyExists":
                                         maybe = self._group_service.find_dn(
-                                            conn, changes["name"], bases=[new_dn]
+                                            changes["name"], bases=[new_dn]
                                         )
                                         if maybe:
                                             new_group_dn = maybe
@@ -205,7 +218,7 @@ class DepartmentService:
                             try:
                                 dep_cn = f"DEP_{changes['name']}"
                                 new_group_dn = self._group_service.rename(
-                                    conn, ensured_dn, new_cn=dep_cn
+                                    ensured_dn, new_cn=dep_cn
                                 )
                             except Exception:
                                 desc = (
@@ -213,7 +226,7 @@ class DepartmentService:
                                 ).get("description", "")
                                 if desc == "entryAlreadyExists":
                                     maybe = self._group_service.find_dn(
-                                        conn, dep_cn, bases=[new_dn]
+                                        dep_cn, bases=[new_dn]
                                     )
                                     if maybe:
                                         new_group_dn = maybe
@@ -291,7 +304,7 @@ class DepartmentService:
 
             try:
                 if dept.ldap_group_dn:
-                    self._group_service.delete(conn, dept.ldap_group_dn)
+                    self._group_service.delete(dept.ldap_group_dn)
             except Exception:
                 pass
 
@@ -307,10 +320,19 @@ class DepartmentService:
             try:
                 with transaction.atomic():
                     pk = dept.pk
+                    dept_name = dept.name
                     dept.delete()
                     LdapSyncState.objects.filter(
                         model="department", object_pk=str(pk)
                     ).delete()
+                    self._log_operation(
+                        "delete",
+                        model="department",
+                        object_id=pk,
+                        dn=dept_dn,
+                        success=True,
+                        extra={"name": dept_name},
+                    )
             except Exception as e:
                 raise DirectoryDbError(str(e)) from e
 
@@ -349,7 +371,7 @@ class DepartmentService:
                         object_pk=dept.pk,
                         ldap_dn=ensured_dn,
                         last_django_modify_ts=timezone.now(),
-                        sync_dir="auto",
+                        sync_dir=SyncDirection.AUTO,
                     )
                 dept_dn = ensured_dn
             except Exception as e:
@@ -365,7 +387,7 @@ class DepartmentService:
                         model="employee",
                         object_pk=employee.pk,
                         ldap_dn=new_emp_dn,
-                        sync_dir="ldap",
+                        sync_dir=SyncDirection.LDAP,
                     )
                     emp_dn = new_emp_dn
                 except Exception as e:
@@ -379,7 +401,7 @@ class DepartmentService:
                     raise RuntimeError(
                         "_ensure_department_group returned empty DN"
                     )
-                self._group_service.add_members(conn, group_dn, [emp_dn])
+                self._group_service.add_members(group_dn, [emp_dn])
             except Exception as e:
                 raise DirectoryLdapError(
                     f"LDAP add to department group failed: {e}"
@@ -430,7 +452,7 @@ class DepartmentService:
                         attributes=["distinguishedName"],
                     )
                     if ok and conn.entries:
-                        self._group_service.remove_members(conn, grp_dn, [emp_dn])
+                        self._group_service.remove_members(grp_dn, [emp_dn])
             except Exception:
                 pass
 
@@ -443,7 +465,7 @@ class DepartmentService:
                     raise DirectoryLdapError(str(e)) from e
                 
                 try:
-                    ensure_container_exists(conn, target_base)
+                    LdapRepository(conn).ensure_container_exists(target_base)
                     new_dn = self._user_service._move_user_to_base(
                         conn, emp_dn, target_base
                     )
@@ -451,7 +473,7 @@ class DepartmentService:
                         model="employee",
                         object_pk=employee.id,
                         ldap_dn=new_dn,
-                        sync_dir="ldap",
+                        sync_dir=SyncDirection.LDAP,
                     )
                 except Exception as e:
                     target_name = "Dismissed OU" if not employee.is_active else "Users OU"
@@ -496,7 +518,7 @@ class DepartmentService:
                         object_pk=dept.pk,
                         ldap_dn=ensured_dn,
                         last_django_modify_ts=timezone.now(),
-                        sync_dir="auto",
+                        sync_dir=SyncDirection.AUTO,
                     )
                 dept_dn = ensured_dn
             except Exception as e:
@@ -591,7 +613,7 @@ class DepartmentService:
             except Exception as e:
                 # Откатываем группу в LDAP
                 try:
-                    self._group_service.delete(conn, group_dn)
+                    self._group_service.delete(group_dn)
                 except Exception:
                     pass
                 raise DirectoryDbError(str(e)) from e
@@ -618,51 +640,49 @@ class DepartmentService:
         """
         new_name = changes.get("name")
         
-        with _ldap() as conn:
-            # Если меняется имя — переименовываем группу в LDAP
-            if new_name and new_name != role.name:
-                if role.ldap_group_dn:
-                    try:
-                        new_role_name = self._sanitize_name(new_name)
-                        new_cn = f"ROLE_{new_role_name}"
-                        new_dn = self._group_service.rename(
-                            conn, role.ldap_group_dn, new_cn=new_cn
-                        )
-                        role.ldap_group_dn = new_dn
-                    except Exception as e:
-                        raise DirectoryLdapError(
-                            f"LDAP rename role group failed: {e}"
-                        ) from e
-                else:
-                    # Группы нет — создаём
+        # Если меняется имя — переименовываем группу в LDAP
+        if new_name and new_name != role.name:
+            if role.ldap_group_dn:
+                try:
+                    new_role_name = self._sanitize_name(new_name)
+                    new_cn = f"ROLE_{new_role_name}"
+                    new_dn = self._group_service.rename(
+                        role.ldap_group_dn, new_cn=new_cn
+                    )
+                    role.ldap_group_dn = new_dn
+                except Exception as e:
+                    raise DirectoryLdapError(
+                        f"LDAP rename role group failed: {e}"
+                    ) from e
+            else:
+                # Группы нет — создаём
+                role.name = new_name
+                self._ensure_role_group(role)
+        
+        # Обновляем БД
+        try:
+            with transaction.atomic():
+                if new_name:
                     role.name = new_name
-                    self._ensure_role_group(role)
-            
-            # Обновляем БД
-            try:
-                with transaction.atomic():
-                    if new_name:
-                        role.name = new_name
-                    role.save()
-                    
-                    # Обновляем права
-                    perms = changes.get("scoped_permissions")
-                    codes = changes.get("scoped_permission_codes")
-                    
-                    if perms is not None:
-                        role.scoped_permissions.set(perms)
-                    elif codes is not None:
-                        from employees.models import DepartmentPermission
-                        qs = DepartmentPermission.objects.filter(code__in=codes)
-                        role.scoped_permissions.set(list(qs))
-            except Exception as e:
-                raise DirectoryDbError(str(e)) from e
-            
-            return role
+                role.save()
+                
+                # Обновляем права
+                perms = changes.get("scoped_permissions")
+                codes = changes.get("scoped_permission_codes")
+                
+                if perms is not None:
+                    role.scoped_permissions.set(perms)
+                elif codes is not None:
+                    from employees.models import DepartmentPermission
+                    qs = DepartmentPermission.objects.filter(code__in=codes)
+                    role.scoped_permissions.set(list(qs))
+        except Exception as e:
+            raise DirectoryDbError(str(e)) from e
+        
+        return role
 
     def delete_role(self, role: DepartmentRole) -> None:
-        """Удаляет роль: сначала группу из LDAP, затем запись из БД.
-        
+        """
         Args:
             role: Роль для удаления.
             
@@ -672,13 +692,12 @@ class DepartmentService:
         """
         # 1. Удаляем группу из LDAP
         if role.ldap_group_dn:
-            with _ldap() as conn:
-                try:
-                    self._group_service.delete(conn, role.ldap_group_dn)
-                except Exception as e:
-                    raise DirectoryLdapError(
-                        f"LDAP delete role group failed: {e}"
-                    ) from e
+            try:
+                self._group_service.delete(role.ldap_group_dn)
+            except Exception as e:
+                raise DirectoryLdapError(
+                    f"LDAP delete role group failed: {e}"
+                ) from e
         
         # 2. Удаляем запись из БД
         try:
@@ -826,9 +845,9 @@ class DepartmentService:
         
         with _ldap() as conn:
             if add:
-                self._group_service.add_members(conn, role.ldap_group_dn, [user_dn])
+                self._group_service.add_members(role.ldap_group_dn, [user_dn])
             else:
-                self._group_service.remove_members(conn, role.ldap_group_dn, [user_dn])
+                self._group_service.remove_members(role.ldap_group_dn, [user_dn])
 
     def _ensure_role_group(self, role: DepartmentRole) -> str:
         """Гарантирует наличие группы роли ROLE_<Name> в OU отдела.
@@ -916,7 +935,7 @@ class DepartmentService:
         new_cn = f"ROLE_{new_role_name}"
         
         with _ldap() as conn:
-            new_dn = self._group_service.rename(conn, role.ldap_group_dn, new_cn=new_cn)
+            new_dn = self._group_service.rename(role.ldap_group_dn, new_cn=new_cn)
         
         DepartmentRole.objects.filter(pk=role.pk).update(ldap_group_dn=new_dn)
         role.ldap_group_dn = new_dn
@@ -933,7 +952,7 @@ class DepartmentService:
         
         with _ldap() as conn:
             try:
-                self._group_service.delete(conn, role.ldap_group_dn)
+                self._group_service.delete(role.ldap_group_dn)
             except Exception:
                 pass  # Best effort
         
@@ -1161,7 +1180,7 @@ class DepartmentService:
                             model="employee",
                             object_pk=emp_pk,
                             ldap_dn=new_dn,
-                            sync_dir="ldap",
+                            sync_dir=SyncDirection.LDAP,
                         )
                 except Exception:
                     pass
@@ -1294,7 +1313,7 @@ class DepartmentService:
             ).values_list("employee_id", flat=True)
         )
         if not active_emp_ids:
-            self._group_service.replace_members(conn, group_dn, [])
+            self._group_service.replace_members(group_dn, [])
             return group_dn
 
         dn_map = dict(
@@ -1305,7 +1324,7 @@ class DepartmentService:
         )
         member_dns = [dn for dn in dn_map.values() if dn]
 
-        self._group_service.replace_members(conn, group_dn, member_dns)
+        self._group_service.replace_members(group_dn, member_dns)
         return group_dn
 
     # ==================== Utility Methods ==================== #
@@ -1363,37 +1382,10 @@ class DepartmentService:
             st.touch(
                 ldap_dn=new_st_dn,
                 last_django_modify_ts=now,
-                sync_dir="auto",
+                sync_dir=SyncDirection.AUTO,
             )
             updated_count += 1
         return 0, updated_count
-
-    def _touch_state(
-        self,
-        *,
-        model: str,
-        object_pk: int,
-        ldap_dn: Optional[str] = None,
-        last_django_modify_ts: Optional[Any] = None,
-        sync_dir: Optional[str] = None,
-    ) -> None:
-        """Обновляет или создаёт запись в LdapSyncState.
-        
-        Args:
-            model: Название модели ('employee', 'department').
-            object_pk: PK объекта.
-            ldap_dn: DN в LDAP (если нужно обновить).
-            last_django_modify_ts: Временная метка последнего изменения из Django.
-            sync_dir: Направление синхронизации ('django', 'ldap', 'auto').
-        """
-        state, _ = LdapSyncState.objects.get_or_create(
-            model=model, object_pk=str(object_pk)
-        )
-        state.touch(
-            ldap_dn=ldap_dn,
-            last_django_modify_ts=last_django_modify_ts,
-            sync_dir=sync_dir,
-        )
 
 
 __all__ = ["DepartmentService"]

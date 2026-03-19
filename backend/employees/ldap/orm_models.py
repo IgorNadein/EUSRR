@@ -179,7 +179,9 @@ class LdapUser(LdapModel):
     cn = CharField(db_column='cn')
     
     # Идентификация
-    object_guid = CharField(db_column='objectGUID')
+    # object_guid закомментирован - это binary поле (16 байт) которое не может быть декодировано как UTF-8
+    # GUID читается через ldap3 напрямую в utils/ldap_utils.py:get_guid_str()
+    # object_guid = CharField(db_column='objectGUID')
     sam_account_name = CharField(db_column='sAMAccountName')
     user_principal_name = CharField(db_column='userPrincipalName')
     
@@ -206,12 +208,51 @@ class LdapUser(LdapModel):
     # Членство в группах
     member_of = ListField(db_column='memberOf', blank=True)
     
-    # Временные метки
-    when_created = DateTimeField(db_column='whenCreated')
-    when_changed = DateTimeField(db_column='whenChanged')
+    # Временные метки - закомментированы из-за бага django-ldapdb с timezone в Python 3.13
+    # когда_created = DateTimeField(db_column='whenCreated')
+    # when_changed = DateTimeField(db_column='whenChanged')
     
     class Meta:
         managed = False  # Django не управляет схемой LDAP
+    
+    def build_rdn(self):
+        """Строит Relative Distinguished Name для пользователя.
+        
+        В AD пользователи идентифицируются по CN (Common Name).
+        RDN формата: CN=имя_пользователя
+        """
+        if not self.cn:
+            raise ValueError("Cannot build RDN: cn attribute is required")
+        return f"cn={self.cn}"
+    
+    def save(self, *args, **kwargs):
+        """Переопределённый save для автоматической синхронизации зависимых полей.
+        
+        Автоматически обновляет:
+        - displayName = "givenName sn" (из имени и фамилии)
+        
+        ВАЖНО: cn (Common Name) НЕ обновляется автоматически, так как это часть RDN.
+        Изменение cn требует modify_dn операции, которая выполняется в UserService._update_user_in_ldap.
+        """
+        # Автосинхронизация displayName при изменении имени/фамилии
+        if self.given_name or self.sn:
+            # Формируем displayName из имени и фамилии
+            parts = []
+            if self.given_name and self.given_name.strip():
+                parts.append(self.given_name.strip())
+            if self.sn and self.sn.strip() and self.sn != ".":
+                parts.append(self.sn.strip())
+            
+            new_display = " ".join(parts) if parts else None
+            
+            # Обновляем displayName если он изменился
+            if new_display and new_display != self.display_name:
+                self.display_name = new_display
+            
+            # cn НЕ обновляем здесь - это делается в UserService через modify_dn
+        
+        # Вызываем родительский save
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.display_name} ({self.sam_account_name})"
@@ -251,7 +292,7 @@ class LdapGroup(LdapModel):
     cn = CharField(db_column='cn')
     
     # Идентификация
-    object_guid = CharField(db_column='objectGUID')
+    # object_guid = CharField(db_column='objectGUID')  # binary поле (16 байт UUID), не может быть CharField
     sam_account_name = CharField(db_column='sAMAccountName')
     
     # Описание
@@ -262,11 +303,21 @@ class LdapGroup(LdapModel):
     member_of = ListField(db_column='memberOf', blank=True)
     
     # Временные метки
-    when_created = DateTimeField(db_column='whenCreated')
-    when_changed = DateTimeField(db_column='whenChanged')
+    # when_created = DateTimeField(db_column='whenCreated')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
+    # when_changed = DateTimeField(db_column='whenChanged')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
     
     class Meta:
         managed = False
+    
+    def build_rdn(self):
+        """Строит Relative Distinguished Name для группы.
+        
+        В AD группы идентифицируются по CN (Common Name).
+        RDN формата: CN=имя_группы
+        """
+        if not self.cn:
+            raise ValueError("Cannot build RDN: cn attribute is required")
+        return f"cn={self.cn}"
     
     def __str__(self):
         return f"Group: {self.cn}"
@@ -305,7 +356,7 @@ class LdapOrganizationalUnit(LdapModel):
     ou = CharField(db_column='ou')
     
     # Идентификация
-    object_guid = CharField(db_column='objectGUID')
+    # object_guid = CharField(db_column='objectGUID')  # binary поле (16 байт UUID), не может быть CharField
     
     # Описание
     description = CharField(db_column='description', blank=True)
@@ -314,11 +365,21 @@ class LdapOrganizationalUnit(LdapModel):
     managed_by = CharField(db_column='managedBy', blank=True)
     
     # Временные метки
-    when_created = DateTimeField(db_column='whenCreated')
-    when_changed = DateTimeField(db_column='whenChanged')
+    # when_created = DateTimeField(db_column='whenCreated')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
+    # when_changed = DateTimeField(db_column='whenChanged')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
     
     class Meta:
         managed = False
+    
+    def build_rdn(self):
+        """Строит Relative Distinguished Name для Organizational Unit.
+        
+        В AD OU идентифицируются по атрибуту OU.
+        RDN формата: OU=имя_подразделения
+        """
+        if not self.ou:
+            raise ValueError("Cannot build RDN: ou attribute is required")
+        return f"ou={self.ou}"
     
     def __str__(self):
         return f"OU: {self.ou}"

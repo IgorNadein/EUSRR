@@ -140,6 +140,10 @@ DATABASES["ldap"] = {
     "PASSWORD": os.getenv("LDAP_BIND_PASSWORD", "AdminPassword123!"),
 }
 
+# Отключение проверки SSL сертификата для LDAP (для разработки)
+import ldap
+ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+
 # Database router для направления LDAP моделей в LDAP database
 DATABASE_ROUTERS = ["eusrr_backend.db_routers.LdapRouter"]
 
@@ -513,6 +517,10 @@ CELERY_BEAT_SCHEDULE = {
     'cleanup-orphaned-attachments': {
         'task': 'communications.tasks.cleanup_orphaned_attachments',
         'schedule': 3600.0,  # Каждый час
+    },
+    'process-ldap-sync-queue': {
+        'task': 'employees.tasks.process_ldap_queue',
+        'schedule': 60.0,  # Каждую минуту проверяем очередь LDAP retry
     },
 }
 

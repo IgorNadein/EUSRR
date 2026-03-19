@@ -9,9 +9,11 @@ from django.conf import settings
 from django.db.models.signals import post_delete, post_save, m2m_changed
 from django.dispatch import receiver
 
-from employees.ldap.directory_service import DirectoryService, DirectoryDepartmentDTO
+from employees.ldap import DepartmentService
+from employees.ldap.domain.dtos import DirectoryDepartmentDTO
 from employees.ldap.errors import DirectoryDbError, DirectoryLdapError, DirectoryServiceError
 from employees.models import LdapSyncState
+from employees.signals.ldap._queue import _enqueue
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ def sync_department_to_ldap_on_save(sender, instance, created, **kwargs):
         return
 
     try:
-        svc = DirectoryService()
+        svc = DepartmentService()
 
         if created:
             # Создание OU в LDAP
@@ -76,6 +78,10 @@ def sync_department_to_ldap_on_save(sender, instance, created, **kwargs):
                     f"LDAP OU creation failed for Department {instance.id}: {e}",
                     exc_info=True
                 )
+                _enqueue("department_save", "department", instance.pk, {
+                    "object_pk": str(instance.pk),
+                    "created": True,
+                })
         else:
             # Обновление OU в LDAP
             # Проверяем что изменилось
@@ -111,6 +117,11 @@ def sync_department_to_ldap_on_save(sender, instance, created, **kwargs):
                         f"LDAP OU update failed for Department {instance.id}: {e}",
                         exc_info=True
                     )
+                    _enqueue("department_save", "department", instance.pk, {
+                        "object_pk": str(instance.pk),
+                        "created": False,
+                        "changes": changes,
+                    })
 
     except Exception as e:
         logger.error(
@@ -126,7 +137,7 @@ def sync_department_to_ldap_on_delete(sender, instance, **kwargs):
         return
 
     try:
-        svc = DirectoryService()
+        svc = DepartmentService()
         svc.delete_department(instance)
         logger.info(f"Deleted Department {instance.id} from LDAP")
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
@@ -134,6 +145,9 @@ def sync_department_to_ldap_on_delete(sender, instance, **kwargs):
             f"LDAP OU delete failed for Department {instance.id}: {e}",
             exc_info=True
         )
+        _enqueue("department_delete", "department", instance.pk, {
+            "object_pk": str(instance.pk),
+        })
     except Exception as e:
         logger.error(
             f"Unexpected error in LDAP delete for Department {instance.id}: {e}",
@@ -175,3 +189,9 @@ def sync_department_member_to_ldap(sender, instance, created, **kwargs):
             f"LDAP member sync failed for EmployeeDepartment {instance.id}: {e}",
             exc_info=True
         )
+        _enqueue("department_member", "employee_department", instance.pk, {
+            "employee_pk": str(instance.employee_id),
+            "department_pk": str(instance.department_id),
+            "is_active": instance.is_active,
+            "role": str(instance.role) if instance.role else None,
+        })

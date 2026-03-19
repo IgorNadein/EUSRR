@@ -133,25 +133,25 @@ def mock_ldap_repository():
 
 
 @pytest.fixture
-def mock_employee_repository():
-    """Mock EmployeeRepository."""
-    repo = Mock()
-    repo.load_users_index = Mock(return_value=({}, {}))
-    repo.find_user_for_dto = Mock(return_value=None)
-    repo.bind_user_department = Mock(return_value=True)
-    repo.cleanup_absent_users = Mock(return_value=0)
-    return repo
+def mock_employee_repo_functions():
+    """Mock функций employee_repository."""
+    ns = Mock()
+    ns.load_users_index = Mock(return_value=({}, {}))
+    ns.find_user_for_dto = Mock(return_value=None)
+    ns.bind_user_department = Mock(return_value=None)
+    ns.get_stale_employee_ids = Mock(return_value=[])
+    return ns
 
 
 @pytest.fixture
-def mock_sync_state_repository():
-    """Mock SyncStateRepository."""
-    repo = Mock()
-    repo.get_or_create = Mock()
-    repo.touch = Mock()
-    repo.get_employees_with_dn = Mock(return_value=Employee.objects.none())
-    repo.delete_for_employee = Mock()
-    return repo
+def mock_sync_state_repo_functions():
+    """Mock функций sync_state_repository."""
+    ns = Mock()
+    ns.get_or_create = Mock()
+    ns.touch = Mock()
+    ns.get_employees_with_dn = Mock(return_value=Employee.objects.none())
+    ns.delete_for_employee = Mock()
+    return ns
 
 
 # ==================== Mock Services ====================

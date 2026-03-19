@@ -4,7 +4,7 @@ import logging
 
 from django.conf import settings
 
-from employees.ldap.directory_service import DirectoryService
+from employees.ldap import UserService
 from employees.ldap.errors import DirectoryDbError, DirectoryLdapError, DirectoryServiceError
 from employees.models import LdapSyncState
 
@@ -67,7 +67,7 @@ class LdapPasswordMixin:
             return False, "no_ldap_user"
             
         try:
-            svc = DirectoryService()
+            svc = UserService()
             svc.update_user(
                 emp=employee_instance,
                 changes={'password': new_password},

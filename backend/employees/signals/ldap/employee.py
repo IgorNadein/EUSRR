@@ -8,15 +8,15 @@ import logging
 from django.conf import settings
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
-from django.utils import timezone
 
-from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
+from employees.ldap import UserService
 from employees.ldap.errors import (
     DirectoryDbError,
     DirectoryLdapError,
     DirectoryServiceError,
 )
 from employees.models import LdapSyncState
+from employees.signals.ldap._queue import _enqueue
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +57,37 @@ def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
         logger.debug(f"Employee {instance.id} has no LDAP sync state, skipping sync")
         return
 
+    # Собираем данные до try-блока (avatar — file-like, конвертируем заранее)
+    ldap_changes = {}
+    if not created:
+        changes = getattr(instance, '_ldap_changes', {})
+        if not changes:
+            return
+
+        avatar_file = getattr(instance, '_ldap_avatar', None)
+        if avatar_file and hasattr(avatar_file, 'read'):
+            try:
+                if hasattr(avatar_file, 'seek'):
+                    avatar_file.seek(0)
+                changes['avatar_bytes'] = avatar_file.read()
+            except Exception:
+                pass
+
+        for field in ['first_name', 'last_name', 'email', 'phone_number', 'is_active', 'password']:
+            if field in changes:
+                ldap_changes[field] = changes[field]
+
+        if 'avatar_bytes' in changes:
+            ldap_changes['avatar_bytes'] = changes['avatar_bytes']
+
+        if not ldap_changes:
+            return
+
     try:
-        svc = DirectoryService()
+        svc = UserService()
 
         if created:
             # Новая запись с существующим LDAP DN (импорт из LDAP)
-            # Синхронизируем employeeNumber
             try:
                 from employees.ldap.orm_models import LdapUser
                 ldap_user = LdapUser.objects.get(dn=sync_state.ldap_dn)
@@ -71,37 +96,12 @@ def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
             except Exception as e:
                 logger.warning(f"Failed to set employeeNumber: {e}")
         else:
-            # Обновление существующего LDAP пользователя
-            changes = getattr(instance, '_ldap_changes', {})
-            if not changes:
-                # Если изменений нет - это вспомогательное save(), пропускаем
-                return
-
-            avatar_file = getattr(instance, '_ldap_avatar', None)
-            if avatar_file and hasattr(avatar_file, 'read'):
-                try:
-                    if hasattr(avatar_file, 'seek'):
-                        avatar_file.seek(0)
-                    changes['avatar_bytes'] = avatar_file.read()
-                except Exception:
-                    pass
-
-            # Минимальный набор изменений для LDAP
-            ldap_changes = {}
-            for field in ['first_name', 'last_name', 'email', 'phone_number', 'is_active', 'password']:
-                if field in changes:
-                    ldap_changes[field] = changes[field]
-
-            if 'avatar_bytes' in changes:
-                ldap_changes['avatar_bytes'] = changes['avatar_bytes']
-
-            if ldap_changes:
-                svc.update_user(
-                    emp=instance,
-                    changes=ldap_changes,
-                    group_cns=None,
-                    move_to_department_dn=None,
-                )
+            svc.update_user(
+                emp=instance,
+                changes=ldap_changes,
+                group_cns=None,
+                move_to_department_dn=None,
+            )
 
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
         logger.error(
@@ -109,7 +109,15 @@ def sync_employee_to_ldap_on_save(sender, instance, created, **kwargs):
             f"(created={created}): {e}",
             exc_info=True
         )
-        # Не прерываем операцию - БД уже сохранена
+        # Ставим в очередь для повторной попытки
+        serializable_changes = {
+            k: v for k, v in ldap_changes.items() if k != 'avatar_bytes'
+        } if ldap_changes else {}
+        _enqueue("employee_save", "employee", instance.pk, {
+            "object_pk": str(instance.pk),
+            "created": created,
+            "changes": serializable_changes,
+        })
     except Exception as e:
         logger.error(
             f"Unexpected error in LDAP sync for Employee {instance.id}: {e}",
@@ -135,7 +143,7 @@ def sync_employee_to_ldap_on_delete(sender, instance, **kwargs):
         return
 
     try:
-        svc = DirectoryService()
+        svc = UserService()
         svc.delete_user(instance)
         logger.info(f"Deleted Employee {instance.id} from LDAP")
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
@@ -143,7 +151,9 @@ def sync_employee_to_ldap_on_delete(sender, instance, **kwargs):
             f"LDAP delete failed for Employee {instance.id}: {e}",
             exc_info=True
         )
-        # Не прерываем - запись из БД уже удалена
+        _enqueue("employee_delete", "employee", instance.pk, {
+            "object_pk": str(instance.pk),
+        })
     except Exception as e:
         logger.error(
             f"Unexpected error in LDAP delete for Employee {instance.id}: {e}",

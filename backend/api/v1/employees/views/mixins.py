@@ -6,7 +6,8 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from django.conf import settings
-from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
+from employees.ldap import UserService
+from employees.ldap.domain.dtos import DirectoryUserDTO
 from employees.ldap.errors import DirectoryDbError, DirectoryLdapError
 from rest_framework.response import Response
 
@@ -112,7 +113,7 @@ class LdapUserCreationMixin:
                 - (Employee, None) при успехе
                 - (None, Response) при ошибке (Response для возврата клиенту)
         """
-        svc = DirectoryService()
+        svc = UserService()
         dto = DirectoryUserDTO(
             first_name=first_name,
             last_name=last_name,
@@ -213,9 +214,9 @@ class LdapPasswordMixin:
             employee.save(update_fields=['password'])
             return True, None
         
-        # LDAP пользователь - обновляем через DirectoryService
+        # LDAP пользователь - обновляем через UserService
         try:
-            svc = DirectoryService()
+            svc = UserService()
             svc.update_user(
                 emp=employee,
                 changes={'password': new_password},

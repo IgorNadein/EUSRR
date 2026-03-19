@@ -680,3 +680,89 @@ class LdapSyncState(models.Model):
                 "updated_at",
             ]
         )
+
+
+class LdapSyncQueue(models.Model):
+    """Очередь отложенных LDAP-операций для retry при сбоях соединения.
+
+    Когда сигнал не может записать данные в LDAP (сервер недоступен, таймаут и т.д.),
+    операция сохраняется в эту очередь и повторяется через Celery.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает"
+        IN_PROGRESS = "in_progress", "Выполняется"
+        COMPLETED = "completed", "Завершено"
+        FAILED = "failed", "Ошибка (исчерпаны попытки)"
+
+    # Тип операции
+    operation = models.CharField(
+        max_length=64,
+        db_index=True,
+        help_text="Имя операции (employee_save, department_delete, group_m2m и т.д.)",
+    )
+
+    # Модель и объект
+    model_name = models.CharField(max_length=32, db_index=True)
+    object_pk = models.CharField(max_length=64, db_index=True)
+
+    # Сериализованные аргументы операции (JSON)
+    payload = models.JSONField(
+        default=dict,
+        help_text="JSON с аргументами для повтора операции",
+    )
+
+    # Статус
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+
+    # Retry
+    attempts = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=5)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_error = models.TextField(blank=True, default="")
+
+    # Время
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Очередь LDAP синхронизации"
+        verbose_name_plural = "Очередь LDAP синхронизации"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(
+                fields=["status", "next_retry_at"],
+                name="ldap_queue_retry_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"[{self.status}] {self.operation} {self.model_name}:{self.object_pk}"
+
+    def schedule_retry(self, error: str):
+        """Планирует следующую попытку с экспоненциальным backoff."""
+        self.attempts += 1
+        self.last_error = str(error)[:2000]
+
+        if self.attempts >= self.max_attempts:
+            self.status = self.Status.FAILED
+        else:
+            self.status = self.Status.PENDING
+            # Exponential backoff: 30s, 2m, 8m, 32m, ...
+            from datetime import timedelta
+            delay = timedelta(seconds=30 * (4 ** self.attempts))
+            self.next_retry_at = timezone.now() + delay
+
+        self.save(update_fields=[
+            "attempts", "last_error", "status", "next_retry_at", "updated_at",
+        ])
+
+    def mark_completed(self):
+        """Отмечает операцию как успешно выполненную."""
+        self.status = self.Status.COMPLETED
+        self.save(update_fields=["status", "updated_at"])

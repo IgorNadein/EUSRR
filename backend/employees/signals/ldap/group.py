@@ -10,13 +10,14 @@ from django.contrib.auth.models import Group
 from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
 
-from employees.ldap.directory_service import DirectoryService
+from employees.ldap import GroupService
 from employees.ldap.errors import (
     DirectoryDbError,
     DirectoryLdapError,
     DirectoryServiceError,
 )
 from employees.models import LdapSyncState
+from employees.signals.ldap._queue import _enqueue
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
         return
 
     try:
-        svc = DirectoryService()
+        svc = GroupService()
 
         if created:
             # Создание новой LDAP группы
@@ -68,7 +69,7 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
             security_enabled = getattr(instance, '_ldap_security_enabled', True)
 
             try:
-                svc.group_create(
+                svc.create(
                     cn=instance.name,
                     parent_dn=parent_dn,
                     description=description,
@@ -78,7 +79,14 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
                 logger.info(f"Created LDAP group: {instance.name}")
             except Exception as e:
                 logger.error(f"Failed to create LDAP group {instance.name}: {e}", exc_info=True)
-                # Не прерываем - группа уже создана в БД
+                _enqueue("group_save", "group", instance.pk, {
+                    "object_pk": str(instance.pk),
+                    "created": True,
+                    "parent_dn": parent_dn,
+                    "description": description,
+                    "scope": scope,
+                    "security_enabled": security_enabled,
+                })
         else:
             # Обновление существующей группы
             dn = _resolve_group_dn(instance)
@@ -90,7 +98,7 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
             old_name = getattr(instance, '_ldap_old_name', None)
             if old_name and old_name != instance.name:
                 try:
-                    new_dn = svc.group_rename(dn, instance.name)
+                    new_dn = svc.rename(dn, instance.name)
                     # Обновляем DN в LdapSyncState
                     sync_state = LdapSyncState.objects.filter(
                         model="group", object_pk=str(instance.pk)
@@ -102,15 +110,27 @@ def sync_group_to_ldap_on_save(sender, instance, created, **kwargs):
                     logger.info(f"Renamed LDAP group from {old_name} to {instance.name}")
                 except Exception as e:
                     logger.error(f"Failed to rename LDAP group {old_name}: {e}", exc_info=True)
+                    _enqueue("group_save", "group", instance.pk, {
+                        "object_pk": str(instance.pk),
+                        "created": False,
+                        "old_name": old_name,
+                        "dn": dn,
+                    })
 
             # Проверяем, было ли изменение описания
             new_description = getattr(instance, '_ldap_description', '__NO_CHANGE__')
             if new_description != '__NO_CHANGE__':
                 try:
-                    svc.group_set_description(dn, new_description or None)
+                    svc.set_description(dn, new_description or None)
                     logger.info(f"Updated description for LDAP group {instance.name}")
                 except Exception as e:
                     logger.error(f"Failed to set description for LDAP group {instance.name}: {e}", exc_info=True)
+                    _enqueue("group_save", "group", instance.pk, {
+                        "object_pk": str(instance.pk),
+                        "created": False,
+                        "description": new_description,
+                        "dn": dn,
+                    })
 
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
         logger.error(
@@ -142,14 +162,17 @@ def sync_group_to_ldap_on_delete(sender, instance, **kwargs):
             logger.debug(f"Group {instance.id} has no LDAP DN, skipping delete")
             return
 
-        svc = DirectoryService()
-        svc.group_delete(dn)
+        svc = GroupService()
+        svc.delete(dn)
         logger.info(f"Deleted LDAP group: {instance.name}")
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
         logger.error(
             f"LDAP delete failed for Group {instance.id}: {e}",
             exc_info=True
         )
+        _enqueue("group_delete", "group", instance.pk, {
+            "dn": dn,
+        })
     except Exception as e:
         logger.error(
             f"Unexpected error in LDAP delete for Group {instance.id}: {e}",
@@ -178,7 +201,7 @@ def sync_group_members_to_ldap(sender, instance, action, pk_set, **kwargs):
             logger.debug(f"Group {instance.id} has no LDAP DN, skipping member sync")
             return
 
-        svc = DirectoryService()
+        svc = GroupService()
 
         if action == 'post_add' and pk_set:
             # Добавление участников
@@ -197,10 +220,13 @@ def sync_group_members_to_ldap(sender, instance, action, pk_set, **kwargs):
 
             if member_dns:
                 try:
-                    svc.group_add_members(dn, member_dns)
+                    svc.add_members(dn, member_dns)
                     logger.info(f"Added {len(member_dns)} members to LDAP group {instance.name}")
                 except Exception as e:
                     logger.error(f"Failed to add members to LDAP group {instance.name}: {e}", exc_info=True)
+                    _enqueue("group_members", "group", instance.pk, {
+                        "dn": dn, "action": "add", "member_dns": member_dns,
+                    })
 
         elif action == 'post_remove' and pk_set:
             # Удаление участников
@@ -219,18 +245,24 @@ def sync_group_members_to_ldap(sender, instance, action, pk_set, **kwargs):
 
             if member_dns:
                 try:
-                    svc.group_remove_members(dn, member_dns)
+                    svc.remove_members(dn, member_dns)
                     logger.info(f"Removed {len(member_dns)} members from LDAP group {instance.name}")
                 except Exception as e:
                     logger.error(f"Failed to remove members from LDAP group {instance.name}: {e}", exc_info=True)
+                    _enqueue("group_members", "group", instance.pk, {
+                        "dn": dn, "action": "remove", "member_dns": member_dns,
+                    })
 
         elif action == 'post_clear':
             # Очистка всех участников
             try:
-                svc.group_replace_members(dn, [])
+                svc.replace_members(dn, [])
                 logger.info(f"Cleared all members from LDAP group {instance.name}")
             except Exception as e:
                 logger.error(f"Failed to clear members from LDAP group {instance.name}: {e}", exc_info=True)
+                _enqueue("group_members", "group", instance.pk, {
+                    "dn": dn, "action": "clear", "member_dns": [],
+                })
 
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
         logger.error(

@@ -1,8 +1,13 @@
 """Сервис синхронизации данных между Django и LDAP.
 
 Этот модуль предоставляет высокоуровневый API для двусторонней синхронизации:
-- Import: LDAP → Django (пользователи, отделы)
-- Export: Django → LDAP (обновление профилей, групп, перемещение между отделами)
+- Import: LDAP -> Django (пользователи, отделы)
+- Export: Django -> LDAP (обновление профилей, групп, перемещение)
+
+Рефакторенная версия:
+- Наследуется от BaseService
+- Использует константы
+- Логирует операции синхронизации
 """
 
 from __future__ import annotations
@@ -25,6 +30,8 @@ from ..domain.dtos import (
     _entry_to_dto,
 )
 from ..utils.ldap_utils import _paged_search, get_attr_str
+from .base_service import BaseService
+from .constants import SyncDirection, LdapFilter
 from .user_service import UserService
 from .department_service import DepartmentService
 from .group_service import GroupService
@@ -32,7 +39,7 @@ from .group_service import GroupService
 logger = logging.getLogger(__name__)
 
 
-class SyncService:
+class SyncService(BaseService):
     """Сервис синхронизации данных между Django и LDAP.
     
     Координирует работу UserService, DepartmentService и GroupService
@@ -52,6 +59,7 @@ class SyncService:
             department_service: Сервис для работы с отделами.
             group_service: Сервис для работы с группами.
         """
+        super().__init__()
         self._user_service = user_service or UserService()
         self._department_service = department_service or DepartmentService()
         self._group_service = group_service or GroupService()
@@ -169,7 +177,7 @@ class SyncService:
                     ldap_dn=dn,
                     last_ldap_modify_ts=None,
                     last_django_modify_ts=timezone.now(),
-                    sync_dir="ldap",
+                    sync_dir=SyncDirection.LDAP,
                 )
 
             # Удаляем отделы, которых нет в LDAP
@@ -345,21 +353,21 @@ class SyncService:
 
             # Индексируем существующих пользователей
             from ..repositories.employee_repository import (
-                _load_existing_users_index,
-                _find_user_for_dto,
-                _bind_user_department,
-                _cleanup_absent_users,
+                load_users_index,
+                find_user_for_dto,
+                bind_user_department,
+                get_stale_employee_ids,
             )
-            from ..repositories.sync_state_repository import _touch_sync_state
+            from ..repositories.sync_state_repository import touch as touch_sync_state
             
-            by_guid, by_email = _load_existing_users_index(dtos)
+            by_guid, by_email = load_users_index(dtos)
             
             # Разделяем на create/update
             to_create: List[LdapPersonDTO] = []
             to_update: List[Tuple[Employee, LdapPersonDTO]] = []
 
             for dto in dtos:
-                existing = _find_user_for_dto(
+                existing = find_user_for_dto(
                     dto, by_guid=by_guid, by_email=by_email
                 )
                 if existing:
@@ -424,25 +432,122 @@ class SyncService:
 
             # Привязываем к отделам и сохраняем sync state
             for user, dto in processed:
-                _bind_user_department(user, dto.dn)
-                _touch_sync_state(
+                bind_user_department(user, dto.dn)
+                touch_sync_state(
                     user,
                     dn=dto.dn,
                     guid=dto.guid,
                     last_ldap_modify_ts=dto.when_changed,
-                    sync_dir="ldap",
+                    sync_dir=SyncDirection.LDAP,
                     dry_run=cfg.dry_run,
                 )
 
             # Очищаем отсутствующих
-            deleted = _cleanup_absent_users(
+            deleted = self._cleanup_absent_users(
                 seen_guids=seen_guids,
                 seen_dns=seen_dns,
                 dry_run=cfg.dry_run,
                 show_changes=cfg.show_changes,
+                get_stale_ids=get_stale_employee_ids,
             )
 
         return created, updated, deleted
+
+    # ==================== CLEANUP ====================
+
+    @staticmethod
+    def _cleanup_absent_users(
+        *,
+        seen_guids: Set[str],
+        seen_dns: Set[str],
+        dry_run: bool,
+        show_changes: bool = False,
+        get_stale_ids,
+    ) -> int:
+        """Обрабатывает сотрудников, отсутствующих в LDAP (зеркальный режим).
+
+        Удаляет или деактивирует сотрудников, которых больше нет в LDAP.
+        Сотрудники с утверждёнными/отклонёнными заявками деактивируются,
+        остальные удаляются.
+
+        Args:
+            seen_guids: Множество GUID, найденных в LDAP.
+            seen_dns: Множество DN, найденных в LDAP.
+            dry_run: Если True, только подсчёт без изменений.
+            show_changes: Показывать детали изменений.
+            get_stale_ids: Callable для получения PK «устаревших» сотрудников.
+
+        Returns:
+            Количество удалённых пользователей.
+        """
+        from requests_app.enums import RequestStatus
+        from requests_app.models import Request
+
+        emp_ids = get_stale_ids(seen_guids=seen_guids, seen_dns=seen_dns)
+        stale_qs = Employee.objects.filter(pk__in=emp_ids, is_ldap_managed=True)
+
+        blocked_ids_qs = (
+            Request.objects.filter(
+                approver__in=stale_qs.values("pk"),
+                status__in=[RequestStatus.APPROVED, RequestStatus.REJECTED],
+            )
+            .values_list("approver_id", flat=True)
+            .distinct()
+        )
+        blocked_qs = stale_qs.filter(pk__in=blocked_ids_qs)
+        to_delete_qs = stale_qs.exclude(pk__in=blocked_ids_qs)
+
+        if show_changes:
+            for e in to_delete_qs.values_list("email", flat=True):
+                verb = "будет удалён" if dry_run else "удалён"
+                logger.info("[CHG] - User: %s (%s)", e, verb)
+            for e in blocked_qs.values_list("email", flat=True):
+                verb = "будет деактивирован" if dry_run else "деактивирован"
+                logger.info(
+                    "[CHG] ! User: %s (%s; есть утверждённые/отклонённые заявки)",
+                    e, verb,
+                )
+
+        blocked_count = blocked_qs.count()
+        to_delete_count = to_delete_qs.count()
+
+        logger.info(
+            "[LDAP] Отсутствуют в каталоге: всего=%d, "
+            "к удалению=%d, к деактивации=%d "
+            "(из-за заявлений APPROVED/REJECTED)",
+            stale_qs.count(), to_delete_count, blocked_count,
+        )
+
+        if dry_run:
+            return to_delete_count
+
+        if blocked_count:
+            EmployeeDepartment.objects.filter(
+                employee__in=blocked_qs.values("pk"), is_active=True
+            ).update(is_active=False)
+            Department.objects.filter(
+                head__in=blocked_qs.values("pk")
+            ).update(head=None)
+            blocked_qs.update(is_active=False, is_ldap_managed=False)
+            LdapSyncState.objects.filter(
+                model="employee",
+                object_pk__in=blocked_qs.values_list("pk", flat=True),
+            ).delete()
+
+        if to_delete_count:
+            EmployeeDepartment.objects.filter(
+                employee__in=to_delete_qs.values("pk")
+            ).delete()
+            Department.objects.filter(
+                head__in=to_delete_qs.values("pk")
+            ).update(head=None)
+            del_ids = list(to_delete_qs.values_list("pk", flat=True))
+            to_delete_qs.delete()
+            LdapSyncState.objects.filter(
+                model="employee", object_pk__in=del_ids
+            ).delete()
+
+        return to_delete_count
 
     # ==================== EXPORT: USERS ====================
 

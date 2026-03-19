@@ -1,29 +1,37 @@
 """Слой репозиториев модуля LDAP.
 
-Содержит классы для работы с данными (LDAP и Django ORM).
+Содержит классы и функции для работы с данными (LDAP и Django ORM).
 """
 
-from .ldap_repository import LdapRepository, read_attrs, is_taken, modify_user_attrs, ensure_container_exists, ldap_modify_or_ignore
-from .sync_state_repository import SyncStateRepository, _touch_sync_state
-from .employee_repository import EmployeeRepository, _load_existing_users_index, _find_user_for_dto, _bind_user_department, _cleanup_absent_users
+from .ldap_repository import LdapRepository
+from .sync_state_repository import (
+    get_or_create,
+    get_state,
+    touch,
+    get_employees_with_dn,
+    delete_for_employee,
+    bulk_delete_for_employees,
+)
+from .employee_repository import (
+    load_users_index,
+    find_user_for_dto,
+    bind_user_department,
+    get_stale_employee_ids,
+)
 
 __all__ = [
-    # Классы репозиториев
+    # LDAP
     "LdapRepository",
-    "SyncStateRepository",
-    "EmployeeRepository",
-    
-    # Обратная совместимость - функции из helpers.py
-    "read_attrs",
-    "is_taken",
-    "modify_user_attrs",
-    "ensure_container_exists",
-    "ldap_modify_or_ignore",
-    
-    # Обратная совместимость - функции из repo_db.py
-    "_load_existing_users_index",
-    "_find_user_for_dto",
-    "_bind_user_department",
-    "_cleanup_absent_users",
-    "_touch_sync_state",
+    # Sync state
+    "get_or_create",
+    "get_state",
+    "touch",
+    "get_employees_with_dn",
+    "delete_for_employee",
+    "bulk_delete_for_employees",
+    # Employee
+    "load_users_index",
+    "find_user_for_dto",
+    "bind_user_department",
+    "get_stale_employee_ids",
 ]

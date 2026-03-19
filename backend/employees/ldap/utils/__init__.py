@@ -37,6 +37,9 @@ from .image_utils import normalize_avatar_to_jpeg
 # Утилиты групп (ORM)
 from .group_utils_orm import sync_user_groups_by_cns_orm
 
+# Телефон
+from .phone_utils import normalize_phone
+
 __all__ = [
     # Текстовые
     "translit_to_ascii",
@@ -65,4 +68,6 @@ __all__ = [
     "normalize_avatar_to_jpeg",
     # Группы (ORM)
     "sync_user_groups_by_cns_orm",
+    # Телефон
+    "normalize_phone",
 ]

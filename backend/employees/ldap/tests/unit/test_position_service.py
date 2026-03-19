@@ -267,9 +267,9 @@ class TestPositionServiceHelpers:
         # Arrange
         service = PositionService(mock_group_service, mock_user_service)
         
-        # Mock ensure_container_exists в месте использования
+        # Mock LdapRepository в месте использования
         with patch(
-            'employees.ldap.services.position_service.ensure_container_exists'  # noqa: E501
+            'employees.ldap.services.position_service.LdapRepository'  # noqa: E501
         ):
             # Act
             result = service._ensure_positions_base(mock_ldap_connection)
@@ -299,9 +299,9 @@ class TestPositionServiceHelpers:
         # Mock: группа уже существует
         mock_group_service.find_dn.return_value = expected_dn
         
-        # Mock ensure_container_exists в месте использования
+        # Mock LdapRepository в месте использования
         with patch(
-            'employees.ldap.services.position_service.ensure_container_exists'  # noqa: E501
+            'employees.ldap.services.position_service.LdapRepository'  # noqa: E501
         ):
             # Act
             dn = service._ensure_position_group(
@@ -339,9 +339,9 @@ class TestPositionServiceHelpers:
         # Mock: успешное создание группы
         mock_ldap_connection.add.return_value = True
         
-        # Mock ensure_container_exists в месте использования
+        # Mock LdapRepository в месте использования
         with patch(
-            'employees.ldap.services.position_service.ensure_container_exists'  # noqa: E501
+            'employees.ldap.services.position_service.LdapRepository'  # noqa: E501
         ):
             # Act
             dn = service._ensure_position_group(

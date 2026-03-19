@@ -8,6 +8,9 @@ from .dtos import (
     DirectoryDepartmentDTO,
     LdapPersonDTO,
     _entry_to_dto,
+    _extract_ldap_attrs,
+    _resolve_email,
+    _resolve_name,
 )
 
 __all__ = [
@@ -15,4 +18,7 @@ __all__ = [
     "DirectoryDepartmentDTO",
     "LdapPersonDTO",
     "_entry_to_dto",
+    "_extract_ldap_attrs",
+    "_resolve_email",
+    "_resolve_name",
 ]

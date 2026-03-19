@@ -10,13 +10,14 @@ from django.conf import settings
 from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
 
-from employees.ldap.directory_service import DirectoryService
+from employees.ldap import PositionService
 from employees.ldap.errors import (
     DirectoryDbError,
     DirectoryLdapError,
     DirectoryServiceError,
 )
 from employees.models import Position
+from employees.signals.ldap._queue import _enqueue
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +43,11 @@ def sync_position_to_ldap_on_save(sender, instance, created, **kwargs):
         return
 
     try:
-        svc = DirectoryService()
+        svc = PositionService()
         
         # reconcile_position гарантирует наличие POS-группы и обновляет её при необходимости
         # Также синхронизирует вложенность в целевые группы и участников
-        svc.position_reconcile(instance)
+        svc.reconcile_position(instance)
         
         logger.info(
             f"Synced position '{instance.name}' to LDAP (created={created})"
@@ -56,6 +57,9 @@ def sync_position_to_ldap_on_save(sender, instance, created, **kwargs):
             f"LDAP sync failed for Position {instance.id} (created={created}): {e}",
             exc_info=True
         )
+        _enqueue("position_save", "position", instance.pk, {
+            "object_pk": str(instance.pk),
+        })
     except Exception as e:
         logger.error(
             f"Unexpected error in LDAP sync for Position {instance.id}: {e}",
@@ -70,14 +74,18 @@ def sync_position_to_ldap_on_delete(sender, instance, **kwargs):
         return
 
     try:
-        svc = DirectoryService()
-        svc.position_delete(instance)
+        svc = PositionService()
+        svc.delete_position_group(instance)
         logger.info(f"Deleted LDAP POS-group for position '{instance.name}'")
     except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
         logger.error(
             f"LDAP delete failed for Position {instance.id}: {e}",
             exc_info=True
         )
+        _enqueue("position_delete", "position", instance.pk, {
+            "object_pk": str(instance.pk),
+            "name": instance.name,
+        })
     except Exception as e:
         logger.error(
             f"Unexpected error in LDAP delete for Position {instance.id}: {e}",
@@ -106,11 +114,11 @@ def sync_position_groups_to_ldap(sender, instance, action, **kwargs):
         return
 
     try:
-        svc = DirectoryService()
+        svc = PositionService()
         
         # reconcile_position обновит вложенность POS-группы в целевые AD-группы
         # на основе текущего состояния Position.groups
-        svc.position_reconcile(instance)
+        svc.reconcile_position(instance)
         
         logger.info(
             f"Synced position '{instance.name}' groups to LDAP (action={action})"
@@ -120,6 +128,9 @@ def sync_position_groups_to_ldap(sender, instance, action, **kwargs):
             f"LDAP groups sync failed for Position {instance.id} (action={action}): {e}",
             exc_info=True
         )
+        _enqueue("position_save", "position", instance.pk, {
+            "object_pk": str(instance.pk),
+        })
     except Exception as e:
         logger.error(
             f"Unexpected error in LDAP groups sync for Position {instance.id}: {e}",

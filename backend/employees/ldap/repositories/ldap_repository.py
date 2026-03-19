@@ -214,64 +214,6 @@ class LdapRepository:
         raise RuntimeError(f"LDAP modify failed: {self.conn.result}")
 
 
-# Функции для обратной совместимости (делегируют к репозиторию)
-def read_attrs(
-    conn: Connection, dn: str, attrs: List[str]
-) -> Dict[str, Optional[str]]:
-    """Обратная совместимость. Использует LdapRepository."""
-    repo = LdapRepository(conn)
-    return repo.read_attrs(dn, attrs)
-
-
-def is_taken(
-    conn: Connection,
-    *,
-    attributes: Mapping[str, Optional[str]],
-    object_classes: Sequence[str] = ("user",),
-    object_category: str = "person",
-    base_dn: Optional[str] = None,
-) -> bool:
-    """Обратная совместимость. Использует LdapRepository."""
-    repo = LdapRepository(conn)
-    return repo.is_taken(
-        attributes=attributes,
-        object_classes=object_classes,
-        object_category=object_category,
-        base_dn=base_dn,
-    )
-
-
-def modify_user_attrs(
-    conn: Connection, user_dn: str, attrs: dict[str, object], *, do_write: bool
-) -> None:
-    """Обратная совместимость. Использует LdapRepository."""
-    repo = LdapRepository(conn)
-    return repo.modify_attrs(user_dn, attrs, do_write=do_write)
-
-
-def ensure_container_exists(conn: Connection, base_dn: str) -> None:
-    """Обратная совместимость. Использует LdapRepository."""
-    repo = LdapRepository(conn)
-    return repo.ensure_container_exists(base_dn)
-
-
-def ldap_modify_or_ignore(
-    conn: Connection,
-    dn: str,
-    changes: Dict[str, Any],
-    ignore_descriptions: Set[str] | None = None,
-) -> None:
-    """Обратная совместимость. Использует LdapRepository."""
-    repo = LdapRepository(conn)
-    return repo.modify_or_ignore(dn, changes, ignore_descriptions)
-
-
 __all__ = [
     "LdapRepository",
-    # Функции обратной совместимости
-    "read_attrs",
-    "is_taken",
-    "modify_user_attrs",
-    "ensure_container_exists",
-    "ldap_modify_or_ignore",
 ]

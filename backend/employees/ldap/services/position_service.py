@@ -3,6 +3,11 @@
 
 Обрабатывает создание, обновление, удаление POS-групп (агрегаторных групп должностей),
 управление участниками (сотрудники с должностью), вложение POS-групп в целевые группы.
+
+Рефакторенная версия с улучшениями:
+- Наследуется от BaseService (логирование, _touch_state)
+- Использует константы вместо магических строк
+- Логирует все критические операции
 """
 
 from typing import Optional, Set
@@ -14,12 +19,13 @@ from ldap3 import BASE, SUBTREE, Connection
 from employees.models import Employee, Position, LdapSyncState
 
 from ..errors import DirectoryServiceError
-from ..repositories.ldap_repository import ensure_container_exists
+from ..repositories.ldap_repository import LdapRepository
 from ..utils.text_utils import esc_filter, esc_rdn
 from ..utils.ldap_utils import group_type
+from .base_service import BaseService
 
 
-class PositionService:
+class PositionService(BaseService):
     """
     Сервис для работы с должностями (Position) в Active Directory.
     
@@ -42,6 +48,7 @@ class PositionService:
             group_service: Сервис для работы с группами (для управления членством)
             user_service: Сервис для работы с пользователями (для получения DN)
         """
+        super().__init__()
         self._group_service = group_service
         self._user_service = user_service
 
@@ -88,7 +95,15 @@ class PositionService:
         emp_dn = self._user_service._get_employee_dn(employee)
         with _ldap() as conn:
             pos_dn = self._ensure_position_group(conn, position)
-            self._group_service.add_members(conn, pos_dn, [emp_dn])
+            self._group_service.add_members(pos_dn, [emp_dn])
+            self._log_operation(
+                "assign_position",
+                model="position",
+                object_id=position.id,
+                dn=pos_dn,
+                success=True,
+                extra={"employee_id": employee.id, "employee_dn": emp_dn},
+            )
             # вложения можно обновлять best-effort, не обязательно каждый раз
             try:
                 self._reconcile_position_nesting(conn, position)
@@ -113,7 +128,15 @@ class PositionService:
             return
         with _ldap() as conn:
             pos_dn = self._ensure_position_group(conn, position)
-            self._group_service.remove_members(conn, pos_dn, [emp_dn])
+            self._group_service.remove_members(pos_dn, [emp_dn])
+            self._log_operation(
+                "unassign_position",
+                model="position",
+                object_id=position.id,
+                dn=pos_dn,
+                success=True,
+                extra={"employee_id": employee.id, "employee_dn": emp_dn},
+            )
 
     def delete_position_group(self, position: Position) -> None:
         """
@@ -130,15 +153,22 @@ class PositionService:
             if not dn:
                 return
             # снять вложения через ORM (groups_with_member)
-            parent_groups = self._group_service.groups_with_member(conn, dn)
+            parent_groups = self._group_service.groups_with_member(dn)
             for parent_dn in parent_groups:
-                self._group_service.remove_members(conn, parent_dn, [dn])
+                self._group_service.remove_members(parent_dn, [dn])
             # удалить саму POS-группу (ORM)
             try:
                 group = LdapGroup.objects.get(dn=dn)
                 group.delete()
+                self._log_operation(
+                    "delete_position_group",
+                    model="position",
+                    object_id=position.id,
+                    dn=dn,
+                    success=True,
+                )
             except LdapGroup.DoesNotExist:
-                pass
+                self._logger.warning(f"POS group already deleted: {dn}")
 
     # ======================== PRIVATE HELPERS ======================== #
 
@@ -171,7 +201,7 @@ class PositionService:
             RuntimeError: Если создание контейнера не удалось
         """
         base = self._positions_base()
-        ensure_container_exists(conn, base)
+        LdapRepository(conn).ensure_container_exists(base)
         return base
 
     def _ensure_position_group(self, conn: Connection, pos: Position) -> str:
@@ -196,7 +226,7 @@ class PositionService:
             ValueError: Если имя должности пустое
             RuntimeError: Если операция LDAP не удалась
         """
-        ensure_container_exists(conn, self._positions_base())
+        LdapRepository(conn).ensure_container_exists(self._positions_base())
         name = (pos.name or "").strip()
         if not name:
             raise ValueError("Position.name is empty")
@@ -284,7 +314,6 @@ class PositionService:
         desired_dns: Set[str] = set()
         for g in position.groups.all():
             dn = self._group_service.find_dn(
-                conn,
                 g.name,
                 bases=[
                     getattr(settings, "LDAP_GROUPS_BASE", None)
@@ -295,15 +324,15 @@ class PositionService:
                 desired_dns.add(dn)
 
         # текущие группы, где POS уже состоит (ORM)
-        current_dns = self._group_service.groups_with_member(conn, pos_dn)
+        current_dns = self._group_service.groups_with_member(pos_dn)
 
         # добавить недостающее
         for add_dn in desired_dns - current_dns:
-            self._group_service.add_members(conn, add_dn, [pos_dn])
+            self._group_service.add_members(add_dn, [pos_dn])
 
         # снять лишнее
         for rem_dn in current_dns - desired_dns:
-            self._group_service.remove_members(conn, rem_dn, [pos_dn])
+            self._group_service.remove_members(rem_dn, [pos_dn])
 
         return pos_dn
 
@@ -330,18 +359,18 @@ class PositionService:
         # 2) вложение POS_* в target-группы
         expected_container_dns: Set[str] = set()
         for g in pos.groups.all():
-            dn = self._group_service.find_dn(conn, g.name)  # ищем по CN группы
+            dn = self._group_service.find_dn(g.name)  # ищем по CN группы
             if dn:
                 expected_container_dns.add(dn)
 
-        current_container_dns = self._group_service.groups_with_member(conn, pos_dn)
+        current_container_dns = self._group_service.groups_with_member(pos_dn)
         to_add = expected_container_dns - current_container_dns
         to_del = current_container_dns - expected_container_dns
 
         for dn in to_add:
-            self._group_service.add_members(conn, dn, [pos_dn])
+            self._group_service.add_members(dn, [pos_dn])
         for dn in to_del:
-            self._group_service.remove_members(conn, dn, [pos_dn])
+            self._group_service.remove_members(dn, [pos_dn])
 
         # 3) участники POS_* = сотрудники с этой позицией
         emp_ids = list(
@@ -355,5 +384,5 @@ class PositionService:
             ).values_list("object_pk", "ldap_dn")
         )
         member_dns = [dn for dn in dn_map.values() if dn]
-        self._group_service.replace_members(conn, pos_dn, member_dns)
+        self._group_service.replace_members(pos_dn, member_dns)
         return pos_dn

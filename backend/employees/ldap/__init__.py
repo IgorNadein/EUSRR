@@ -42,8 +42,11 @@
         )
 """
 
-# Текущие импорты (для обратной совместимости)
-from .directory_service import DirectoryService
+# Сервисы (прямой доступ)
+from .services.user_service import UserService
+from .services.group_service import GroupService
+from .services.department_service import DepartmentService
+from .services.position_service import PositionService
 from .services.sync_service import SyncService
 
 # Конфигурация
@@ -53,6 +56,7 @@ from .config import SyncConfig, SyncMode, SyncScope, DISABLED_FLAG
 from .errors import (
     DirectoryServiceError,
     DirectoryLdapError,
+    DirectoryConnectionError,
     DirectoryDbError,
     DirectoryGroupError,
 )
@@ -71,7 +75,7 @@ from .utils.group_utils_orm import sync_user_groups_by_cns_orm
 from .orm_models import LdapUser, LdapGroup, LdapOrganizationalUnit
 
 # Подключения
-from .infrastructure.connections import _ldap
+from .infrastructure.connections import LdapConfig, _ldap
 
 
 def export_users(cfg=None):
@@ -81,9 +85,11 @@ def export_users(cfg=None):
 
 __all__ = [
     # Сервисы
-    "DirectoryService",
-    "import_departments",
-    "import_users",
+    "UserService",
+    "GroupService",
+    "DepartmentService",
+    "PositionService",
+    "SyncService",
     "export_users",
 
     # Конфигурация
@@ -95,6 +101,7 @@ __all__ = [
     # Ошибки
     "DirectoryServiceError",
     "DirectoryLdapError",
+    "DirectoryConnectionError",
     "DirectoryDbError",
     "DirectoryGroupError",
 
@@ -104,17 +111,14 @@ __all__ = [
     "LdapPersonDTO",
 
     # Утилиты
-    "sync_user_groups_by_cns",
     "sync_user_groups_by_cns_orm",
 
     # ORM
     "LdapUser",
     "LdapGroup",
     "LdapOrganizationalUnit",
-    "LdapOrmUserService",
-    "LdapOrmGroupService",
-    "LdapOrmDepartmentService",
 
     # Подключения
+    "LdapConfig",
     "_ldap",
 ]
