@@ -768,10 +768,11 @@ class UserService(BaseService):
             
             new_cn = " ".join(parts) if parts else get_ldap_str(ldap_user.sam_account_name)
             
-            # Устанавливаем новый cn в объект ДО save()
-            # чтобы LdapUser.save() автоматически обновил displayName
+            # НЕ ставим cn до save() — AD запрещает modify CN через modify_s,
+            # только через rename (modify_dn).
+            # Вместо этого ставим displayName вручную.
             if new_cn != old_cn:
-                ldap_user.cn = new_cn
+                ldap_user.display_name = new_cn
                 orm_dirty = True
 
         # 5) Аватар
@@ -784,10 +785,9 @@ class UserService(BaseService):
                 avatar_saved = True
 
         if orm_dirty:
-            # save() автоматически синхронизирует displayName с cn (см. LdapUser.save())
             ldap_user.save()
         
-        # Переименование DN если cn изменился
+        # Переименование DN если cn изменился (через modify_dn, не modify_s)
         if new_cn and new_cn != old_cn:
             # Извлекаем текущий контейнер (всё после первой запятой)
             parts = dn.split(",", 1)
