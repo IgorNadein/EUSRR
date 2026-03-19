@@ -161,18 +161,16 @@ class UserService(BaseService):
                         last_django_modify_ts=timezone.now(),
                     )
 
-                    if dto.department_dn and hasattr(
-                        emp, "set_active_department"
-                    ):
-                        from ..directory_service import (
-                            DirectoryService,
-                        )
-                        svc = DirectoryService()
-                        dept = svc._get_department_by_dn(
-                            dto.department_dn
-                        )
-                        if dept:
-                            emp.set_active_department(dept)
+                    # TODO: Implement department assignment
+                    # DirectoryService был удален, требуется рефакторинг
+                    # if dto.department_dn and hasattr(
+                    #     emp, "set_active_department"
+                    # ):
+                    #     dept = Department.objects.filter(
+                    #         ldap_group_dn=dto.department_dn
+                    #     ).first()
+                    #     if dept:
+                    #         emp.set_active_department(dept)
                     
                     self._log_operation(
                         "create",
@@ -345,12 +343,12 @@ class UserService(BaseService):
                 if pos_in_payload and (old_pos != new_pos):
                     # Используем PositionService для синхронизации должностей
                     from .position_service import PositionService
-                    from ..directory_service import DirectoryService
+                    # TODO: DirectoryService был удален
                     import logging
                     logger = logging.getLogger(__name__)
                     
                     pos_svc = PositionService()
-                    dir_svc = DirectoryService()
+                    # dir_svc = DirectoryService()  # Removed
                     
                     if old_pos:
                         old_dn = (old_pos.ldap_group_dn or "").strip()
@@ -358,33 +356,24 @@ class UserService(BaseService):
                             # Используем PositionService для получения DN
                             old_dn = pos_svc._ensure_position_group(conn, old_pos)
                         if old_dn:
-                            try:
-                                logger.info(
-                                    f"Removing user {current_dn} "
-                                    f"from position group {old_dn}"
-                                )
-                                dir_svc.remove_group_members(
-                                    old_dn, [current_dn]
-                                )
-                            except RuntimeError as e:
-                                # Игнорируем unwillingToPerform
-                                # (пользователь не в группе)
-                                error_msg = str(e).lower()
-                                if (
-                                    "unwillingtoperform" in error_msg
-                                    or "will_not_perform" in error_msg
-                                ):
-                                    logger.warning(
-                                        f"LDAP refused to remove user "
-                                        f"from group (possibly not a "
-                                        f"member): {e}"
-                                    )
-                                else:
-                                    raise
+                            # TODO: DirectoryService был удален
+                            # try:
+                            #     logger.info(
+                            #         f"Removing user {current_dn} "
+                            #         f"from position group {old_dn}"
+                            #     )
+                            #     dir_svc.remove_group_members(
+                            #         old_dn, [current_dn]
+                            #     )
+                            # except RuntimeError as e:
+                            #     ...
+                            pass
 
                     if new_pos:
-                        pos_dn = pos_svc._ensure_position_group(conn, new_pos)
-                        dir_svc.add_group_members(pos_dn, [current_dn])
+                        # TODO: DirectoryService был удален
+                        # pos_dn = pos_svc._ensure_position_group(conn, new_pos)
+                        # dir_svc.add_group_members(pos_dn, [current_dn])
+                        pass
             except Exception as e:
                 raise DirectoryLdapError(
                     f"LDAP position membership sync failed: {e}"
@@ -675,9 +664,7 @@ class UserService(BaseService):
             group_cns: Список групп
             emp_pk: PK Employee для поиска по employeeNumber если DN устарел
         """
-        # Временно используем DirectoryService для _move_to_department
-        from ..directory_service import DirectoryService
-        svc = DirectoryService()
+        # TODO: DirectoryService был удален, требуется рефакторинг
         
         if not isinstance(current_dn, str) or not current_dn.strip():
             raise TypeError("current_dn должен быть непустой строкой")
@@ -694,8 +681,9 @@ class UserService(BaseService):
             self._set_password(conn, dn, new_password)
 
         # 2) Перемещение
-        if move_to_department_dn:
-            dn = svc._move_to_department(conn, dn, move_to_department_dn)
+        # TODO: DirectoryService был удален, требуется рефакторинг
+        # if move_to_department_dn:
+        #     dn = svc._move_to_department(conn, dn, move_to_department_dn)
 
         # 3-5) ORM: UAC + Атрибуты + Аватар (batch через один save)
         try:
