@@ -175,6 +175,7 @@ next-env.d.ts
 
 # Docker
 docker-compose.yml
+init-samba.sh
 Договор ООО.xls
 ooo.html
 
