@@ -69,16 +69,23 @@ class TestGroupServiceDelete:
         mock_ldap_connection,
         mock_ldap_repository
     ):
-        """Тест удаления группы."""
+        """Тест удаления группы через ORM."""
         # Arrange
         service = GroupService()
         group_dn = "CN=Test Group,OU=Groups,DC=example,DC=com"
         
-        # Act
-        service.delete(group_dn)
+        mock_group = Mock()
+        with patch(
+            'employees.ldap.services.group_service.LdapGroup'
+        ) as MockLdapGroup:
+            MockLdapGroup.objects.get.return_value = mock_group
+            
+            # Act
+            service.delete(group_dn)
         
         # Assert
-        mock_ldap_connection.delete.assert_called_once_with(group_dn)
+        MockLdapGroup.objects.get.assert_called_once_with(dn=group_dn)
+        mock_group.delete.assert_called_once()
 
 
 class TestGroupServiceModify:

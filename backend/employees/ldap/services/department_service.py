@@ -1063,8 +1063,9 @@ class DepartmentService(BaseService):
     ) -> str:
         """Переименовывает OU отдела и возвращает новый DN.
         
-        TODO(ldap-orm): modify_dn — ldap3 навсегда.
-        django-ldapdb не поддерживает переименование.
+        NOTE: Используется low-level ldap3 для rename RDN (OU=OldName → OU=NewName).
+        ModifyDnMixin покрывает move (смену superior), но НЕ rename RDN.
+        Rename OU — это изменение атрибута ou, что django-ldapdb не поддерживает.
         
         Args:
             conn: LDAP соединение.

@@ -9,49 +9,62 @@
 - Унифицированный API для CRUD операций
 - Меньше кода, больше удобства
 
-ВАЖНО: Ограничения django-ldapdb
-==================================
+ВАЖНО: Миксины расширяют django-ldapdb
+=======================================
 
-django-ldapdb (версия 1.5.1) НЕ поддерживает следующие операции LDAP:
+django-ldapdb (версия 1.5.1) изначально НЕ поддерживает некоторые операции,
+но мы добавили их через кастомные миксины:
 
-1. ModifyDN (rename/move) — перемещение объектов между OU
-   - Для перемещения пользователей используется ldap3.Connection.modify_dn()
-   - См. utils.dn_utils._move_to_department()
-   - При переводе в отдел, увольнении — низкоуровневый ldap3
+✅ ModifyDN (rename/move) — перемещение объектов между OU
+   - РЕШЕНО: ModifyDnMixin автоматически выполняет modify_dn при изменении base_dn
+   - Использование: user.base_dn = new_dn; user.save()
+   - См. employees.ldap.mixins.ModifyDnMixin
 
-2. Создание объектов с динамическим DN
+✅ Автоматическое управление LdapSyncState
+   - РЕШЕНО: LdapSyncStateMixin автоматически создает/обновляет/удаляет sync state
+   - Работает на save() и delete()
+   - См. employees.ldap.mixins.LdapSyncStateMixin
+
+Что требует низкоуровневого ldap3:
+
+1. Создание объектов с динамическим DN
    - Создание пользователей: ldap3.Connection.add() с явным DN
    - DN формируется на основе department_dn или LDAP_USERS_BASE
    - См. services.user_service.UserService._create_user_in_ldap()
 
-3. Транзакционное создание с перебором CN (collision handling)
+2. Транзакционное создание с перебором CN (collision handling)
    - При создании пользователя перебираются варианты CN до успеха
    - См. services.user_service.UserService._try_add_with_cn_list()
 
-Что МОЖНО делать через ORM:
-- UPDATE: изменение атрибутов существующих объектов (.save())
-- READ: поиск объектов для последующего обновления (.objects.get(dn=...))
+Что МОЖНО делать через ORM с миксинами:
+- CREATE: через сервисы (UserService.create_user)
+- READ: поиск объектов (.objects.get(dn=...))
+- UPDATE: изменение атрибутов (.save())
+- MOVE: изменение base_dn + save() — автоматический modify_dn! 🎉
+- DELETE: .delete() — автоматическое удаление sync state
 - BATCH UPDATE: массовое обновление атрибутов (.save() в цикле)
 
-Архитектура использования:
-==========================
+Архитектура использования (с миксинами):
+========================================
 
 CREATE пользователя:
-  1. ldap3.Connection.add(dn, object_classes, attrs)  # низкоуровневое создание
-  2. LdapUser.objects.get(dn=new_dn)                  # загрузка для проверки
+  from employees.ldap.services import UserService
+  service = UserService()
+  employee = service.create_user(employee)  # создание + LdapSyncState
   
 UPDATE пользователя:
-  1. ldap_user = LdapUser.objects.get(dn=dn)          # загрузка через ORM
-  2. ldap_user.display_name = "New Name"              # изменение атрибутов
-  3. ldap_user.save()                                 # сохранение через ORM
+  ldap_user = LdapUser.objects.get(dn=dn)
+  ldap_user.display_name = "New Name"
+  ldap_user.save()  # автообновление LdapSyncState через миксин
 
-MOVE пользователя (перевод в отдел):
-  1. new_dn = conn.modify_dn(dn, new_superior=dept_dn)  # низкоуровневое перемещение
-  2. ldap_user = LdapUser.objects.get(dn=new_dn)        # загрузка по новому DN
-  3. ldap_user.save()                                   # обновление атрибутов
+MOVE пользователя (перевод в отдел) — НОВОЕ С МИКСИНОМ:
+  ldap_user = LdapUser.objects.get(dn=old_dn)
+  ldap_user.base_dn = "OU=NewDept,OU=Departments,DC=..."
+  ldap_user.save()  # ModifyDnMixin автоматически выполнит modify_dn!
 
 DELETE пользователя:
-  1. conn.delete(dn)                                    # низкоуровневое удаление
+  ldap_user = LdapUser.objects.get(dn=dn)
+  ldap_user.delete()  # автоудаление LdapSyncState через миксин
 
 Структура DN в Active Directory:
 =================================
@@ -185,6 +198,10 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     base_dn = get_users_base()
     object_classes = ['top', 'person', 'organizationalPerson', 'user']
     
+    # RDN атрибут для построения Distinguished Name
+    # Пример: cn=Ivan Ivanov → dn=CN=Ivan Ivanov,OU=...,DC=...
+    rdn_attributes = ['cn']
+    
     # Основные атрибуты
     # dn наследуется от ldapdb.models.Model как primary_key (Distinguished Name)
     cn = CharField(db_column='cn')
@@ -248,10 +265,11 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     - При изменении base_dn ModifyDnMixin автоматически выполнит modify_dn!
     
     Операции через django-ldapdb:
-    - CREATE: создание через GroupService.create() (ldap3.Connection.add)
+    - CREATE: создание через GroupService.create() (ORM)
     - UPDATE: изменение атрибутов через .save()
     - MOVE: group.base_dn = new_dn; group.save() (автоматический modify_dn!)
-    - DELETE: удаление через ldap3.Connection.delete()
+    - RENAME: переименование через GroupService.rename() (low-level ldap3)
+    - DELETE: удаление через .delete() (ORM)
     
     При создании ролей отделов DN формируется как:
     CN=ROLE_{name},OU=Roles,OU={dept},OU=Departments,...
@@ -260,6 +278,10 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     # Базовая конфигурация
     base_dn = get_base_dn()
     object_classes = ['top', 'group']
+    
+    # RDN атрибут для построения Distinguished Name
+    # Пример: cn=Developers → dn=CN=Developers,OU=Groups,DC=...
+    rdn_attributes = ['cn']
     
     # Основные атрибуты
     # dn наследуется от ldapdb.models.Model как primary_key (Distinguished Name)

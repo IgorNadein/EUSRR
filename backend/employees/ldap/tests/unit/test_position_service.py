@@ -206,7 +206,7 @@ class TestPositionServiceDelete:
         # Mock ORM LdapGroup.objects.get().delete()
         mock_group = Mock()
         with patch(
-            'employees.ldap.services.position_service.LdapGroup'
+            'employees.ldap.orm_models.LdapGroup'
         ) as MockLdapGroup:
             MockLdapGroup.objects.get.return_value = mock_group
             
@@ -233,7 +233,7 @@ class TestPositionServiceDelete:
         sample_position.ldap_group_dn = ""
         
         with patch(
-            'employees.ldap.services.position_service.LdapGroup'
+            'employees.ldap.orm_models.LdapGroup'
         ) as MockLdapGroup:
             # Act
             service.delete_position_group(sample_position)
@@ -278,7 +278,7 @@ class TestPositionServiceHelpers:
         
         # Mock LdapRepository в месте использования
         with patch(
-            'employees.ldap.services.position_service.LdapRepository'  # noqa: E501
+            'employees.ldap.services.position_service.ensure_container_exists'
         ):
             # Act
             result = service._ensure_positions_base(mock_ldap_connection)
@@ -316,7 +316,7 @@ class TestPositionServiceHelpers:
         
         # Mock LdapRepository
         with patch(
-            'employees.ldap.services.position_service.LdapRepository'
+            'employees.ldap.services.position_service.ensure_container_exists'
         ):
             # Act
             dn = service._ensure_position_group(
@@ -350,20 +350,18 @@ class TestPositionServiceHelpers:
         mock_ldap_connection.search.return_value = False
         mock_ldap_connection.entries = []
         
-        # Mock LdapRepository + LdapGroup ORM
+        # Mock ensure_container_exists + conn.add (low-level create)
+        mock_ldap_connection.add.return_value = True
         with patch(
-            'employees.ldap.services.position_service.LdapRepository'
+            'employees.ldap.services.position_service.ensure_container_exists'
         ):
-            with patch(
-                'employees.ldap.services.position_service.LdapGroup'
-            ) as MockLdapGroup:
-                # Act
-                dn = service._ensure_position_group(
-                    mock_ldap_connection,
-                    sample_position
-                )
-                
-                # Assert
-                assert expected_name in dn
-                # Проверяем, что LdapGroup.objects.create был вызван
-                MockLdapGroup.objects.create.assert_called_once()
+            # Act
+            dn = service._ensure_position_group(
+                mock_ldap_connection,
+                sample_position
+            )
+            
+            # Assert
+            assert expected_name in dn
+            # Проверяем, что conn.add был вызван (low-level создание)
+            mock_ldap_connection.add.assert_called_once()

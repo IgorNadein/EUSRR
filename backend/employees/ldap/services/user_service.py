@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import ldap
 import logging
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -577,8 +576,10 @@ class UserService(BaseService):
     def _create_user_in_ldap(self, conn: Connection, dto: DirectoryUserDTO) -> str:
         """Создаёт объект user в LDAP (AD) и возвращает его DN.
         
-        TODO(ldap-orm): conn.add(), ensure_container_exists, cn_candidates — ldap3 навсегда.
-        django-ldapdb не поддерживает создание с перебором CN и проверкой контейнера.
+        NOTE: Используется low-level ldap3 (conn.add) из-за необходимости:
+        - Перебора вариантов CN при коллизиях имён
+        - Проверки/создания контейнера (ensure_container_exists)
+        django-ldapdb ORM не поддерживает эти сценарии.
         """
         base_dn = (
             dto.department_dn
@@ -678,7 +679,7 @@ class UserService(BaseService):
         # 3-5) ORM: UAC + Атрибуты + Аватар (batch через один save)
         try:
             ldap_user = LdapUser.objects.get(dn=dn)
-        except ldap.NO_SUCH_OBJECT:
+        except LdapUser.DoesNotExist:
             # DN неверный - пытаемся найти пользователя по employeeNumber
             if emp_pk:
                 logger.warning(
@@ -827,9 +828,10 @@ class UserService(BaseService):
     def _move_user_to_base(self, conn: Connection, user_dn: str, base_dn: str) -> str:
         """Перемещает пользовательский объект в указанный контейнер.
         
-        TODO(ldap-orm): Невозможно заменить на ORM.
-        modify_dn (move/rename) — не поддерживается django-ldapdb.
-        Остаётся через ldap3 навсегда.
+        NOTE: Используется low-level ldap3 для атомарного move-only
+        (без обновления атрибутов). ModifyDnMixin решает ту же задачу
+        через ORM (user.base_dn = ...; user.save()), но совмещает
+        move с обновлением атрибутов.
         
         Args:
             conn: LDAP соединение.

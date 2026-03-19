@@ -214,6 +214,21 @@ class LdapRepository:
         raise RuntimeError(f"LDAP modify failed: {self.conn.result}")
 
 
+def ensure_container_exists(conn: Connection, base_dn: str) -> None:
+    """Standalone-обёртка: проверяет что контейнер (OU) существует.
+    
+    Args:
+        conn: LDAP соединение.
+        base_dn: Distinguished Name контейнера.
+        
+    Raises:
+        TypeError: Если base_dn неверного типа.
+        RuntimeError: Если контейнер не найден.
+    """
+    LdapRepository(conn).ensure_container_exists(base_dn)
+
+
 __all__ = [
     "LdapRepository",
+    "ensure_container_exists",
 ]

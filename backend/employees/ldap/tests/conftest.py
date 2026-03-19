@@ -83,11 +83,20 @@ def sample_department(db):
 
 @pytest.fixture
 def sample_position(db):
-    """Создает тестовую должность."""
-    return Position.objects.create(
-        name="Разработчик",
-        description="Backend разработчик"
-    )
+    """Создает тестовую должность (без LDAP синхронизации)."""
+    from employees.signals.ldap.position import sync_position_to_ldap_on_save
+    from django.db.models.signals import post_save
+    
+    # Отключаем LDAP синхронизацию при создании Position
+    post_save.disconnect(sync_position_to_ldap_on_save, sender=Position)
+    try:
+        pos = Position.objects.create(
+            name="Разработчик",
+            description="Backend разработчик"
+        )
+    finally:
+        post_save.connect(sync_position_to_ldap_on_save, sender=Position)
+    return pos
 
 
 @pytest.fixture

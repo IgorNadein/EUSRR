@@ -98,8 +98,6 @@ class GroupService(BaseService):
             scope: Тип группы.
             security_enabled: Флаг безопасности.
         """
-        import ldap as _ldap_module
-        
         base = parent_dn or getattr(settings, "LDAP_GROUPS_BASE", None)
         if not base:
             raise RuntimeError(
@@ -116,17 +114,19 @@ class GroupService(BaseService):
                 description=description or "",
             )
             self._log_operation("create", model="group", dn=dn, success=True)
-        except _ldap_module.ALREADY_EXISTS:
-            self._logger.info(f"Group already exists: {dn}")
         except Exception as e:
-            self._log_operation(
-                "create",
-                model="group",
-                dn=dn,
-                success=False,
-                error=e,
-            )
-            raise RuntimeError(f"LDAP add group failed: {e}") from e
+            err_str = str(e).lower()
+            if "already exists" in err_str or "entryalreadyexists" in err_str:
+                self._logger.info(f"Group already exists: {dn}")
+            else:
+                self._log_operation(
+                    "create",
+                    model="group",
+                    dn=dn,
+                    success=False,
+                    error=e,
+                )
+                raise RuntimeError(f"LDAP add group failed: {e}") from e
         
         return dn
 
