@@ -116,14 +116,28 @@ class UserService(BaseService):
             # 2) DB + sync-state
             try:
                 with transaction.atomic():
-                    emp = Employee.objects.create(
-                        first_name=dto.first_name,
-                        last_name=dto.last_name,
-                        email=dto.email,
-                        phone_number=dto.phone_e164,
-                        is_active=dto.is_active,
-                        is_ldap_managed=True,
-                    )
+                    # Проверяем, существует ли уже пользователь с таким email
+                    emp = Employee.objects.filter(email=dto.email).first()
+                    if emp:
+                        # Обновляем существующего пользователя
+                        emp.first_name = dto.first_name
+                        emp.last_name = dto.last_name
+                        emp.phone_number = dto.phone_e164
+                        emp.is_active = dto.is_active
+                        emp.is_ldap_managed = True
+                        emp._skip_ldap_sync = True
+                        emp.save()
+                    else:
+                        # Создаем нового пользователя
+                        emp = Employee.objects.create(
+                            first_name=dto.first_name,
+                            last_name=dto.last_name,
+                            email=dto.email,
+                            phone_number=dto.phone_e164,
+                            is_active=dto.is_active,
+                            is_ldap_managed=True,
+                        )
+                    
                     if hasattr(emp, "set_unusable_password"):
                         emp.set_unusable_password()
                         emp._skip_ldap_sync = True
