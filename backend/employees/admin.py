@@ -538,8 +538,11 @@ class EmployeeAdmin(DjangoUserAdmin):
         Django считается источником истины - данные из БД будут
         записаны в Active Directory (создание или обновление).
         """
+        import logging
         from employees.ldap.services import UserService
         from employees.ldap.orm_models import LdapUser
+        
+        logger = logging.getLogger(__name__)
         
         success_count = 0
         created_count = 0
@@ -549,46 +552,70 @@ class EmployeeAdmin(DjangoUserAdmin):
         service = UserService()
         
         for employee in queryset:
+            logger.info(f"[sync_from_django_to_ldap] Начинаем обработку employee ID={employee.pk}, email={employee.email}")
             try:
                 # Ищем существующего LDAP пользователя
                 ldap_user = None
+                logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: is_ldap_managed={employee.is_ldap_managed}")
+                
                 if employee.is_ldap_managed:
                     # Пробуем найти по employee_number
+                    logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: поиск в LDAP по employee_number={employee.pk}")
                     ldap_user = LdapUser.objects.filter(
                         employee_number=str(employee.pk)
                     ).first()
+                    if ldap_user:
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: найден LDAP user с DN={ldap_user.dn}")
+                    else:
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: не найден по employee_number")
                 
                 if ldap_user:
                     # ОБНОВЛЕНИЕ существующего LDAP пользователя
+                    logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: LDAP пользователь существует, начинаем проверку изменений")
                     try:
                         changes = {}
+                        
+                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение given_name: LDAP='{ldap_user.given_name}' vs Django='{employee.first_name}'")
                         if ldap_user.given_name != employee.first_name:
                             changes['first_name'] = employee.first_name
+                            
+                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение sn: LDAP='{ldap_user.sn}' vs Django='{employee.last_name}'")
                         if ldap_user.sn != employee.last_name:
                             changes['last_name'] = employee.last_name
+                            
+                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение mail: LDAP='{ldap_user.mail}' vs Django='{employee.email}'")
                         if ldap_user.mail != employee.email:
                             changes['email'] = employee.email
                         
                         ldap_phone = ldap_user.telephone_number or ldap_user.mobile
+                        logger.debug(f"[sync_from_django_to_ldap] Employee {employee.pk}: сравнение phone: LDAP='{ldap_phone}' vs Django='{employee.phone_number}'")
                         if employee.phone_number and ldap_phone != employee.phone_number:
                             changes['phone_number'] = employee.phone_number
                         
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: обнаружено изменений: {len(changes)} -> {list(changes.keys())}")
+                        
                         if changes:
+                            logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: вызов service.update_user с изменениями: {changes}")
                             service.update_user(employee, changes)
+                            logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: успешно обновлен в LDAP")
                             updated_count += 1
                             
                             # Обновляем sync state
+                            logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: обновление LdapSyncState")
                             LdapSyncState.objects.update_or_create(
                                 model='employee',
                                 object_pk=str(employee.pk),
                                 defaults={
                                     'ldap_dn': ldap_user.dn,
-                                    'last_sync_dir': 'django_to_ldap',
+                                    'last_sync_dir': 'django',
                                 }
                             )
+                            logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: LdapSyncState обновлен")
                         else:
+                            logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: изменений не обнаружено, уже синхронизирован")
                             success_count += 1  # Уже синхронизирован
                     except Exception as e:
+                        logger.exception(f"[sync_from_django_to_ldap] Employee {employee.pk}: ошибка обновления в LDAP")
                         error_count += 1
                         self.message_user(
                             request,
@@ -597,20 +624,42 @@ class EmployeeAdmin(DjangoUserAdmin):
                         )
                 else:
                     # СОЗДАНИЕ нового LDAP пользователя
+                    logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: LDAP пользователь не найден, создаем новый")
                     try:
                         # Генерируем временный пароль
                         import secrets
+                        from employees.ldap.domain.dtos import DirectoryUserDTO
+                        from employees.ldap.utils.phone_utils import normalize_phone
+                        
                         temp_password = secrets.token_urlsafe(16)
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: временный пароль сгенерирован")
+                        
+                        phone_e164 = None
+                        if employee.phone_number:
+                            phone_e164 = normalize_phone(employee.phone_number)
+                            logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: телефон нормализован: {phone_e164}")
+                        
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: создание DirectoryUserDTO")
+                        dto = DirectoryUserDTO(
+                            first_name=employee.first_name,
+                            last_name=employee.last_name,
+                            email=employee.email,
+                            phone_e164=phone_e164,
+                            department_dn=None,
+                            group_cns=[],
+                            initial_password=temp_password,
+                        )
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: DTO создан: {dto}")
                         
                         # Создаем через сервис
-                        ldap_user = service.create_user(
-                            employee=employee,
-                            password=temp_password,
-                        )
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: вызов service.create_user(dto)")
+                        service.create_user(dto)
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: LDAP пользователь успешно создан")
                         
                         created_count += 1
                         employee.is_ldap_managed = True
                         employee.save(update_fields=['is_ldap_managed'])
+                        logger.info(f"[sync_from_django_to_ldap] Employee {employee.pk}: is_ldap_managed установлен в True")
                         
                         self.message_user(
                             request,
@@ -619,6 +668,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                             level=messages.SUCCESS
                         )
                     except Exception as e:
+                        logger.exception(f"[sync_from_django_to_ldap] Employee {employee.pk}: ошибка создания в LDAP")
                         error_count += 1
                         self.message_user(
                             request,
@@ -626,6 +676,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                             level=messages.ERROR
                         )
             except Exception as e:
+                logger.exception(f"[sync_from_django_to_ldap] Employee {employee.pk}: необработанное исключение на верхнем уровне")
                 error_count += 1
                 self.message_user(
                     request,
@@ -728,7 +779,7 @@ class EmployeeAdmin(DjangoUserAdmin):
                     defaults={
                         'ldap_dn': ldap_user.dn,
                         'ldap_guid': str(ldap_user.object_guid) if hasattr(ldap_user, 'object_guid') else None,
-                        'last_sync_dir': 'ldap_to_django',
+                        'last_sync_dir': 'ldap',
                     }
                 )
                 

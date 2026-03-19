@@ -604,7 +604,7 @@ class LdapSyncState(models.Model):
         ldap_guid (str | None): objectGUID из Active Directory.
         last_ldap_modify_ts (datetime | None): Последний modifyTimestamp/whenChanged из LDAP.
         last_django_modify_ts (datetime | None): Последний updated_at из Django на момент фиксации.
-        last_sync_dir (str): 'ldap'|'django'|'auto' — направление последнего успешного синка.
+        last_sync_dir (str): 'ldap'|'django'|'auto'|'manual' — направление последнего успешного синка.
         data_hash (str | None): Хэш значимых полей (опционально) для ускоренной детекции изменений.
         updated_at (datetime): Время обновления записи состояния.
 
@@ -648,14 +648,14 @@ class LdapSyncState(models.Model):
             ldap_guid (str | None): Новый GUID.
             last_ldap_modify_ts: Новый штамп LDAP (UTC).
             last_django_modify_ts: Новый штамп Django (UTC).
-            sync_dir (str | None): Направление ('ldap'|'django'|'auto').
+            sync_dir (str | None): Направление ('ldap'|'django'|'auto'|'manual').
             data_hash (str | None): Хэш полезных данных.
 
         Raises:
             ValueError: Если sync_dir не из допустимого набора.
         """
-        if sync_dir and sync_dir not in ("ldap", "django", "auto"):
-            raise ValueError("sync_dir должен быть 'ldap'|'django'|'auto'")
+        if sync_dir and sync_dir not in ("ldap", "django", "auto", "manual"):
+            raise ValueError("sync_dir должен быть 'ldap'|'django'|'auto'|'manual'")
         if ldap_dn is not None:
             self.ldap_dn = ldap_dn
         if ldap_guid is not None:

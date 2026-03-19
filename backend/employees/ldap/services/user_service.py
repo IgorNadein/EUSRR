@@ -516,10 +516,15 @@ class UserService(BaseService):
         self._password_service.set_password(conn, dn, new_password)
 
     def _enable_user(self, conn: Connection, dn: str) -> None:
-        """Включает учётку (UAC=ENABLED)."""
-        ldap_user = LdapUser.objects.get(dn=dn)
-        ldap_user.user_account_control = UserAccountControl.ENABLED
-        ldap_user.save()
+        """Включает учётку (UAC=ENABLED) через низкоуровневую модификацию."""
+        from ldap3 import MODIFY_REPLACE
+        conn.modify(dn, {
+            'userAccountControl': [(MODIFY_REPLACE, [str(UserAccountControl.ENABLED)])]
+        })
+        if not conn.result['result'] == 0:
+            raise DirectoryLdapError(
+                f"Failed to enable user {dn}: {conn.result['description']}"
+            )
 
     def _unique_logins(
         self,

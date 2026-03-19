@@ -212,11 +212,11 @@ class LdapUserAdmin(admin.ModelAdmin):
                 object_pk=obj.employee_number
             )
             
-            if sync_state.last_sync_dir == 'django_to_ldap':
+            if sync_state.last_sync_dir == 'django':
                 icon = '⬆️'
                 color = '#0066cc'
                 text = 'Django → LDAP'
-            elif sync_state.last_sync_dir == 'ldap_to_django':
+            elif sync_state.last_sync_dir == 'ldap':
                 icon = '⬇️'
                 color = '#00cc66'
                 text = 'LDAP → Django'
@@ -306,8 +306,6 @@ class LdapUserAdmin(admin.ModelAdmin):
         LDAP считается источником истины - данные из Active Directory
         перезапишут данные в Django Employee.
         """
-        from employees.ldap.services import UserService
-        
         success_count = 0
         error_count = 0
         
@@ -332,7 +330,7 @@ class LdapUserAdmin(admin.ModelAdmin):
                     object_pk=str(emp.pk),
                     defaults={
                         'ldap_dn': ldap_user.dn,
-                        'last_sync_dir': 'ldap_to_django',
+                        'last_sync_dir': 'ldap',
                     }
                 )
                 

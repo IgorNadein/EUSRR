@@ -32,7 +32,7 @@
 - Копирует данные из Active Directory в Django Employee
 - Используется когда LDAP содержит актуальные данные
 - Обновляет: first_name, last_name, email, phone_number
-- Устанавливает `last_sync_dir = 'ldap_to_django'`
+- Устанавливает `last_sync_dir = 'ldap'`
 
 #### 🔄 **Django → LDAP** (Django как источник истины)
 ```
@@ -41,7 +41,7 @@
 - Копирует данные из Django Employee в Active Directory
 - Используется когда БД содержит актуальные данные
 - Вызывает `UserService.update_user()` (с полной бизнес-логикой)
-- Устанавливает `last_sync_dir = 'django_to_ldap'`
+- Устанавливает `last_sync_dir = 'django'`
 
 #### 🔍 **Показать различия**
 ```
