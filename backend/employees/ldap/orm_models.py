@@ -105,10 +105,29 @@ from django.utils import timezone as _dj_tz
 
 # Compatibility: django-ldapdb 1.5.1 uses timezone.utc removed in Django 5.x
 if not hasattr(_dj_tz, 'utc'):
-    class _UtcCompat:
-        """pytz-compatible UTC stub for django-ldapdb."""
+    class _UtcCompat(_dt.tzinfo):
+        """pytz-compatible UTC wrapper for django-ldapdb.
+        
+        Acts as a tzinfo subclass but delegates to datetime.timezone.utc
+        and provides the localize() method for pytz compatibility.
+        """
+        
         def localize(self, dt):
+            """pytz-style localize method."""
             return dt.replace(tzinfo=_dt.timezone.utc)
+        
+        def utcoffset(self, dt):
+            return _dt.timedelta(0)
+        
+        def tzname(self, dt):
+            return "UTC"
+        
+        def dst(self, dt):
+            return _dt.timedelta(0)
+        
+        def __repr__(self):
+            return "UTC"
+    
     _dj_tz.utc = _UtcCompat()
 
 from ldapdb.models import Model as LdapModel
