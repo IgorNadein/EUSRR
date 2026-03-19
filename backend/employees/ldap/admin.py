@@ -127,6 +127,7 @@ class LdapUserAdmin(admin.ModelAdmin):
     )
     
     actions = [
+        'delete_selected_ldap',
         'sync_from_ldap_to_django',
         'sync_from_django_to_ldap',
         'show_sync_diff',
@@ -509,27 +510,62 @@ class LdapUserAdmin(admin.ModelAdmin):
         """Разрешаем удаление только суперпользователям."""
         return request.user.is_superuser
 
-    def get_deleted_objects(self, objs, request):
-        """Override: ldapdb не поддерживает dn__in lookup."""
-        # Собираем объекты вручную (objs может быть queryset с __in)
-        resolved = []
-        for obj in self._resolve_from_qs_or_list(objs):
-            resolved.append(obj)
+    def get_action_choices(self, request, default_choices=admin.ModelAdmin.action_form):
+        """Убираем стандартный delete_selected (ldapdb не поддерживает dn__in)."""
+        choices = super().get_action_choices(request, default_choices)
+        return [
+            c for c in choices
+            if not (isinstance(c[0], str) and c[0] == 'delete_selected')
+        ]
 
-        deletable = [str(o) for o in resolved]
-        perms_needed = set()
-        protected = []
-        model_count = {self.opts.verbose_name_plural: len(resolved)}
-        return deletable, model_count, perms_needed, protected
+    @admin.action(description='🗑️ Удалить выбранных пользователей из LDAP')
+    def delete_selected_ldap(self, request, queryset):
+        """Кастомное удаление — обходит dn__in, читает DN из POST."""
+        users = self._resolve_ldap_users(request)
+        if not users:
+            self.message_user(
+                request, 'Не удалось найти выбранных пользователей.',
+                level=messages.WARNING,
+            )
+            return
 
-    def _resolve_from_qs_or_list(self, objs):
-        """Итерирует LDAP объекты, обходя неподдерживаемые lookups."""
-        try:
-            yield from objs
-        except Exception:
-            # Fallback: если queryset с __in упал,
-            # достаём DN из POST и читаем по одному
-            pass
+        if request.POST.get('post') != 'yes':
+            # Показываем confirmation page
+            from django.template.response import TemplateResponse
+            context = {
+                **self.admin_site.each_context(request),
+                'title': 'Подтверждение удаления',
+                'objects_name': 'LDAP пользователей',
+                'deletable_objects': [str(u) for u in users],
+                'queryset': users,
+                'opts': self.model._meta,
+                'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+                'media': self.media,
+            }
+            request.current_app = self.admin_site.name
+            return TemplateResponse(
+                request,
+                'admin/ldap_delete_confirmation.html',
+                context,
+            )
+
+        deleted = 0
+        for user in users:
+            try:
+                user.delete()
+                deleted += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f'Ошибка удаления {user.cn}: {e}',
+                    level=messages.ERROR,
+                )
+        if deleted:
+            self.message_user(
+                request,
+                f'Удалено: {deleted} пользователей из LDAP.',
+                level=messages.SUCCESS,
+            )
     
     def get_queryset(self, request):
         """Базовый queryset без slice - пагинация через list_per_page."""
