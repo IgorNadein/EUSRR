@@ -88,7 +88,18 @@ class GroupService(BaseService):
         scope: str = "global",
         security_enabled: bool = True,
     ) -> str:
-        """Внутренний метод создания группы (для использования с существующим conn)."""
+        """Внутренний метод создания группы через ORM.
+        
+        Args:
+            conn: LDAP соединение (сохраняется в сигнатуре для обратной совместимости).
+            cn: Имя группы.
+            parent_dn: Контейнер.
+            description: Описание.
+            scope: Тип группы.
+            security_enabled: Флаг безопасности.
+        """
+        import ldap as _ldap_module
+        
         base = parent_dn or getattr(settings, "LDAP_GROUPS_BASE", None)
         if not base:
             raise RuntimeError(
@@ -96,61 +107,41 @@ class GroupService(BaseService):
             )
 
         dn = f"CN={esc_rdn(cn)},{base}"
-        
-        # Используем константы вместо magic numbers
-        attrs = {
-            LdapAttribute.CN: cn,
-            LdapAttribute.SAM_ACCOUNT_NAME: cn,
-            LdapAttribute.GROUP_TYPE: group_type_value(scope, security_enabled),
-        }
-        
-        if description:
-            attrs[LdapAttribute.DESCRIPTION] = description
 
-        ok = conn.add(dn, [LdapObjectClass.TOP, LdapObjectClass.GROUP], attrs)
-        
-        if not ok:
-            error_desc = (conn.result or {}).get("description", "")
-            if error_desc != LdapErrorCode.ENTRY_ALREADY_EXISTS:
-                self._log_operation(
-                    "create",
-                    model="group",
-                    dn=dn,
-                    success=False,
-                    error=RuntimeError(f"LDAP add group failed: {conn.result}"),
-                )
-                raise RuntimeError(f"LDAP add group failed: {conn.result}")
-            else:
-                self._logger.info(f"Group already exists: {dn}")
-        else:
+        try:
+            LdapGroup.objects.create(
+                dn=dn,
+                cn=cn,
+                sam_account_name=cn,
+                description=description or "",
+            )
             self._log_operation("create", model="group", dn=dn, success=True)
+        except _ldap_module.ALREADY_EXISTS:
+            self._logger.info(f"Group already exists: {dn}")
+        except Exception as e:
+            self._log_operation(
+                "create",
+                model="group",
+                dn=dn,
+                success=False,
+                error=e,
+            )
+            raise RuntimeError(f"LDAP add group failed: {e}") from e
         
         return dn
 
     def delete(self, group_dn: str) -> None:
-        """Удаляет группу по DN (игнорирует noSuchObject)."""
-        with _ldap() as conn:
-            self._delete_internal(conn, group_dn)
+        """Удаляет группу по DN через ORM (игнорирует DoesNotExist)."""
+        self._delete_internal(group_dn)
 
-    def _delete_internal(self, conn: Connection, group_dn: str) -> None:
-        """Внутренний метод удаления группы."""
-        ok = conn.delete(group_dn)
-        
-        if not ok:
-            error_desc = (conn.result or {}).get("description", "")
-            if error_desc not in {LdapErrorCode.NO_SUCH_OBJECT}:
-                self._log_operation(
-                    "delete",
-                    model="group",
-                    dn=group_dn,
-                    success=False,
-                    error=RuntimeError(f"LDAP delete group failed: {conn.result}"),
-                )
-                raise RuntimeError(f"LDAP delete group failed: {conn.result}")
-            else:
-                self._logger.info(f"Group already deleted or not found: {group_dn}")
-        else:
+    def _delete_internal(self, group_dn: str) -> None:
+        """Внутренний метод удаления группы через ORM."""
+        try:
+            ldap_group = LdapGroup.objects.get(dn=group_dn)
+            ldap_group.delete()
             self._log_operation("delete", model="group", dn=group_dn, success=True)
+        except LdapGroup.DoesNotExist:
+            self._logger.info(f"Group already deleted or not found: {group_dn}")
 
     def rename(self, group_dn: str, new_cn: str) -> str:
         """Переименовывает группу (modify_dn)."""
@@ -439,8 +430,8 @@ class GroupService(BaseService):
         )
 
     def _delete_with_conn(self, conn: Connection, group_dn: str) -> None:
-        """Удаляет группу с существующим соединением (для внутреннего использования)."""
-        self._delete_internal(conn, group_dn)
+        """Удаляет группу (для совместимости с Legacy API, conn игнорируется)."""
+        self._delete_internal(group_dn)
 
     def _rename_with_conn(self, conn: Connection, group_dn: str, new_cn: str) -> str:
         """Переименовывает группу с существующим соединением."""

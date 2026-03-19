@@ -47,7 +47,13 @@ class EmailOrPhoneBackend(ModelBackend):
 
     def authenticate(self, request, username=None, password=None, **kwargs):
         login = username or kwargs.get("email") or kwargs.get("phone")
+        logger.debug(
+            "EmailOrPhoneBackend.authenticate: login=%s, password_provided=%s",
+            bool(login), bool(password)
+        )
+        
         if not login or not password:
+            logger.debug("EmailOrPhoneBackend: missing credentials")
             return None
 
         user: Optional[Employee] = None
@@ -55,6 +61,7 @@ class EmailOrPhoneBackend(ModelBackend):
         # 1) Email
         if _looks_like_email(login):
             user = Employee.objects.filter(email__iexact=login).first()
+            logger.debug("EmailOrPhoneBackend: email lookup=%s, found=%s", login, bool(user))
         else:
             # 2) Phone
             if PHONE_FIELD:
@@ -66,16 +73,34 @@ class EmailOrPhoneBackend(ModelBackend):
                 if not user:
                     raw = str(login).strip()
                     user = Employee.objects.filter(**{PHONE_FIELD: raw}).first()
+                logger.debug("EmailOrPhoneBackend: phone lookup, found=%s", bool(user))
 
         if not user:
+            logger.debug("EmailOrPhoneBackend: user not found")
             return None
+
+        logger.debug(
+            "EmailOrPhoneBackend: found user id=%s email=%s is_active=%s has_usable_password=%s",
+            user.id, user.email, user.is_active, user.has_usable_password()
+        )
 
         # допускаем логин только активных (email подтверждён → is_active=True)
         if not user.is_active:
+            logger.debug("EmailOrPhoneBackend: user not active")
             return None
 
-        if user.check_password(password):
+        password_valid = user.check_password(password)
+        logger.debug("EmailOrPhoneBackend: password_valid=%s", password_valid)
+        
+        if password_valid:
+            logger.info("EmailOrPhoneBackend: AUTH SUCCESS for %s", user.email)
             return user
+        
+        logger.warning(
+            "EmailOrPhoneBackend: password check FAILED for user=%s (id=%s). "
+            "Password hash starts with: %s...",
+            user.email, user.id, user.password[:20] if user.password else "NO_PASSWORD"
+        )
         return None
 
 
@@ -469,11 +494,29 @@ class SuperuserOnlyBackend(ModelBackend):
         Raises:
             Ничего не выбрасывает наружу — при неуспехе возвращает None.
         """
+        logger.debug(
+            "SuperuserOnlyBackend.authenticate: username=%s, password_provided=%s",
+            bool(username), bool(password)
+        )
+        
         user = super().authenticate(
             request, username=username, password=password, **kwargs
         )
-        if user and getattr(user, "is_superuser", False):
-            return user
+        
+        logger.debug("SuperuserOnlyBackend: parent auth returned user=%s", bool(user))
+        
+        if user:
+            is_super = getattr(user, "is_superuser", False)
+            logger.debug(
+                "SuperuserOnlyBackend: user=%s, is_superuser=%s",
+                getattr(user, "email", "?"), is_super
+            )
+            if is_super:
+                logger.info("SuperuserOnlyBackend: AUTH SUCCESS for superuser %s", user.email)
+                return user
+            else:
+                logger.debug("SuperuserOnlyBackend: user is not superuser, rejecting")
+        
         return None
 
 

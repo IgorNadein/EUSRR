@@ -30,7 +30,9 @@ from ..errors import (
 from ..orm_models import LdapUser
 from ..utils.group_utils_orm import sync_user_groups_by_cns_orm
 from ..infrastructure.connections import _ldap
-from ..repositories.ldap_repository import LdapRepository
+from ..repositories.ldap_repository import (
+    ensure_container_exists,
+)
 from ..utils.ldap_utils import cn_candidates
 from ..utils.text_utils import esc_rdn
 from .base_service import BaseService
@@ -147,9 +149,11 @@ class UserService(BaseService):
                     if dto.department_dn and hasattr(
                         emp, "set_active_department"
                     ):
-                        from .department_service import DepartmentService
-                        dept_svc = DepartmentService()
-                        dept = dept_svc._get_department_by_dn(
+                        from ..directory_service import (
+                            DirectoryService,
+                        )
+                        svc = DirectoryService()
+                        dept = svc._get_department_by_dn(
                             dto.department_dn
                         )
                         if dept:
@@ -324,32 +328,38 @@ class UserService(BaseService):
             
             try:
                 if pos_in_payload and (old_pos != new_pos):
+                    # Используем PositionService для синхронизации должностей
                     from .position_service import PositionService
-                    from .group_service import GroupService
+                    from ..directory_service import DirectoryService
+                    import logging
+                    logger = logging.getLogger(__name__)
                     
                     pos_svc = PositionService()
-                    group_svc = GroupService()
+                    dir_svc = DirectoryService()
                     
                     if old_pos:
                         old_dn = (old_pos.ldap_group_dn or "").strip()
                         if not old_dn:
+                            # Используем PositionService для получения DN
                             old_dn = pos_svc._ensure_position_group(conn, old_pos)
                         if old_dn:
                             try:
-                                self._logger.info(
+                                logger.info(
                                     f"Removing user {current_dn} "
                                     f"from position group {old_dn}"
                                 )
-                                group_svc.remove_members(
+                                dir_svc.remove_group_members(
                                     old_dn, [current_dn]
                                 )
                             except RuntimeError as e:
+                                # Игнорируем unwillingToPerform
+                                # (пользователь не в группе)
                                 error_msg = str(e).lower()
                                 if (
                                     "unwillingtoperform" in error_msg
                                     or "will_not_perform" in error_msg
                                 ):
-                                    self._logger.warning(
+                                    logger.warning(
                                         f"LDAP refused to remove user "
                                         f"from group (possibly not a "
                                         f"member): {e}"
@@ -359,7 +369,7 @@ class UserService(BaseService):
 
                     if new_pos:
                         pos_dn = pos_svc._ensure_position_group(conn, new_pos)
-                        group_svc.add_members(pos_dn, [current_dn])
+                        dir_svc.add_group_members(pos_dn, [current_dn])
             except Exception as e:
                 raise DirectoryLdapError(
                     f"LDAP position membership sync failed: {e}"
@@ -579,7 +589,7 @@ class UserService(BaseService):
             raise RuntimeError(
                 "Не задан контейнер для создания пользователя (department_dn / LDAP_USERS_BASE / LDAP_BASE_DN)."
             )
-        LdapRepository(conn).ensure_container_exists(base_dn)
+        ensure_container_exists(conn, base_dn)
 
         upn_suffix = getattr(settings, "LDAP_UPN_SUFFIX", "") or (
             dto.email.split("@", 1)[1] if dto.email and "@" in dto.email else ""
@@ -643,7 +653,9 @@ class UserService(BaseService):
             group_cns: Список групп
             emp_pk: PK Employee для поиска по employeeNumber если DN устарел
         """
-        from ..utils.dn_utils import _move_to_department
+        # Временно используем DirectoryService для _move_to_department
+        from ..directory_service import DirectoryService
+        svc = DirectoryService()
         
         if not isinstance(current_dn, str) or not current_dn.strip():
             raise TypeError("current_dn должен быть непустой строкой")
@@ -661,7 +673,7 @@ class UserService(BaseService):
 
         # 2) Перемещение
         if move_to_department_dn:
-            dn = _move_to_department(conn, dn, move_to_department_dn)
+            dn = svc._move_to_department(conn, dn, move_to_department_dn)
 
         # 3-5) ORM: UAC + Атрибуты + Аватар (batch через один save)
         try:

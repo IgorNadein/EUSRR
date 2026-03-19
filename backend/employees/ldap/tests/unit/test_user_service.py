@@ -405,19 +405,22 @@ class TestUserServiceHelpers:
         old_dn = 'CN=Test,OU=OldBase,DC=example,DC=com'
         new_base = 'OU=NewBase,DC=example,DC=com'
         
-        # Mock modify_dn
-        mock_ldap_connection.modify_dn.return_value = True
-        
-        # Act
-        new_dn = service._move_user_to_base(
-            mock_ldap_connection,
-            old_dn,
-            new_base
-        )
+        # Mock ORM LdapUser.objects.get
+        mock_user = Mock()
+        mock_user.dn = f'CN=Test,{new_base}'
+        with patch(
+            'employees.ldap.services.user_service.LdapUser'
+        ) as MockLdapUser:
+            MockLdapUser.objects.get.return_value = mock_user
+            
+            # Act
+            new_dn = service._move_user_to_base(old_dn, new_base)
         
         # Assert
-        assert 'OU=NewBase' in new_dn
-        assert mock_ldap_connection.modify_dn.called
+        assert new_dn == f'CN=Test,{new_base}'
+        MockLdapUser.objects.get.assert_called_once_with(dn=old_dn)
+        assert mock_user.base_dn == new_base
+        mock_user.save.assert_called_once()
 
 
 class TestUserServiceSync:

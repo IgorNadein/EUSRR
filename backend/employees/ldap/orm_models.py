@@ -107,6 +107,9 @@ from ldapdb.models.fields import (
     ListField,
 )
 
+# Миксины для расширения функциональности LDAP моделей
+from .mixins import ModifyDnMixin, LdapSyncStateMixin
+
 
 def get_users_base():
     """Получает base DN для пользователей из settings.
@@ -144,11 +147,15 @@ def get_base_dn():
                           'DC=robotail,DC=local'))
 
 
-class LdapUser(LdapModel):
+class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     """LDAP модель для пользователя Active Directory.
     
     Использует objectClass: top, person, organizationalPerson, user.
     Только для WRITE операций (POST/PUT/DELETE).
+    
+    Миксины:
+    - LdapSyncStateMixin: автоматически обновляет LdapSyncState при save/delete
+    - ModifyDnMixin: поддержка перемещения между OU через base_dn изменение
     
     ВАЖНО О base_dn:
     - base_dn используется только для SUBTREE поиска через .objects.filter()
@@ -156,18 +163,22 @@ class LdapUser(LdapModel):
     - Реально пользователи находятся в разных OU:
       • CN=User,OU=<Dept>,OU=Departments,OU=company,... (активные)
       • CN=User,OU=Dismissed,OU=company,... (уволенные)
+    - При изменении base_dn ModifyDnMixin автоматически выполнит modify_dn!
     
-    Операции, НЕ поддерживаемые django-ldapdb ORM:
-    - CREATE: создание идёт через ldap3.Connection.add() с явным DN
-      (формируется на основе department_dn или LDAP_USERS_BASE)
-    - MOVE: перемещение между OU через ldap3.Connection.modify_dn()
-      (см. utils.dn_utils._move_to_department)
-    - DELETE: удаление через ldap3.Connection.delete() для контроля ошибок
+    Операции через ORM:
+    - CREATE: используйте UserService.create_user() (создание + sync state)
+    - UPDATE: изменение атрибутов через .save() (автообновление sync state)
+    - MOVE: user.base_dn = new_dn; user.save() (автоматический modify_dn!)
+    - DELETE: .delete() (автоматическое удаление sync state)
     
     Модель используется для:
     - UPDATE: изменение атрибутов существующих объектов через .save()
     - READ: поиск через .objects.get(dn=...) для последующего обновления
     """
+    
+    # Конфигурация LdapSyncStateMixin
+    _sync_model_name = 'employee'
+    _sync_pk_field = 'employee_number'
     
     # Базовая конфигурация
     # base_dn покрывает все возможные местоположения пользователей для SUBTREE search
@@ -179,9 +190,7 @@ class LdapUser(LdapModel):
     cn = CharField(db_column='cn')
     
     # Идентификация
-    # object_guid закомментирован - это binary поле (16 байт) которое не может быть декодировано как UTF-8
-    # GUID читается через ldap3 напрямую в utils/ldap_utils.py:get_guid_str()
-    # object_guid = CharField(db_column='objectGUID')
+    object_guid = CharField(db_column='objectGUID')
     sam_account_name = CharField(db_column='sAMAccountName')
     user_principal_name = CharField(db_column='userPrincipalName')
     
@@ -208,51 +217,12 @@ class LdapUser(LdapModel):
     # Членство в группах
     member_of = ListField(db_column='memberOf', blank=True)
     
-    # Временные метки - закомментированы из-за бага django-ldapdb с timezone в Python 3.13
-    # когда_created = DateTimeField(db_column='whenCreated')
-    # when_changed = DateTimeField(db_column='whenChanged')
+    # Временные метки
+    when_created = DateTimeField(db_column='whenCreated')
+    when_changed = DateTimeField(db_column='whenChanged')
     
     class Meta:
         managed = False  # Django не управляет схемой LDAP
-    
-    def build_rdn(self):
-        """Строит Relative Distinguished Name для пользователя.
-        
-        В AD пользователи идентифицируются по CN (Common Name).
-        RDN формата: CN=имя_пользователя
-        """
-        if not self.cn:
-            raise ValueError("Cannot build RDN: cn attribute is required")
-        return f"cn={self.cn}"
-    
-    def save(self, *args, **kwargs):
-        """Переопределённый save для автоматической синхронизации зависимых полей.
-        
-        Автоматически обновляет:
-        - displayName = "givenName sn" (из имени и фамилии)
-        
-        ВАЖНО: cn (Common Name) НЕ обновляется автоматически, так как это часть RDN.
-        Изменение cn требует modify_dn операции, которая выполняется в UserService._update_user_in_ldap.
-        """
-        # Автосинхронизация displayName при изменении имени/фамилии
-        if self.given_name or self.sn:
-            # Формируем displayName из имени и фамилии
-            parts = []
-            if self.given_name and self.given_name.strip():
-                parts.append(self.given_name.strip())
-            if self.sn and self.sn.strip() and self.sn != ".":
-                parts.append(self.sn.strip())
-            
-            new_display = " ".join(parts) if parts else None
-            
-            # Обновляем displayName если он изменился
-            if new_display and new_display != self.display_name:
-                self.display_name = new_display
-            
-            # cn НЕ обновляем здесь - это делается в UserService через modify_dn
-        
-        # Вызываем родительский save
-        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.display_name} ({self.sam_account_name})"
@@ -261,22 +231,26 @@ class LdapUser(LdapModel):
         return f"<LdapUser: {self.sam_account_name}>"
 
 
-class LdapGroup(LdapModel):
+class LdapGroup(ModifyDnMixin, LdapModel):
     """LDAP модель для группы Active Directory.
     
     Использует objectClass: top, group.
     Только для WRITE операций (POST/PUT/DELETE).
+    
+    Миксины:
+    - ModifyDnMixin: поддержка перемещения между OU через base_dn изменение
     
     ВАЖНО О base_dn:
     - base_dn используется только для SUBTREE поиска через .objects.filter()
     - Группы могут находиться в разных OU:
       • CN=Group,OU=Groups,DC=... (глобальные группы)
       • CN=ROLE_*,OU=Roles,OU=<Dept>,OU=Departments,... (роли отделов)
+    - При изменении base_dn ModifyDnMixin автоматически выполнит modify_dn!
     
     Операции через django-ldapdb:
     - CREATE: создание через GroupService.create() (ldap3.Connection.add)
     - UPDATE: изменение атрибутов через .save()
-    - RENAME: переименование через GroupService.rename() (ldap3.Connection.modify_dn)
+    - MOVE: group.base_dn = new_dn; group.save() (автоматический modify_dn!)
     - DELETE: удаление через ldap3.Connection.delete()
     
     При создании ролей отделов DN формируется как:
@@ -292,7 +266,7 @@ class LdapGroup(LdapModel):
     cn = CharField(db_column='cn')
     
     # Идентификация
-    # object_guid = CharField(db_column='objectGUID')  # binary поле (16 байт UUID), не может быть CharField
+    object_guid = CharField(db_column='objectGUID')
     sam_account_name = CharField(db_column='sAMAccountName')
     
     # Описание
@@ -303,21 +277,11 @@ class LdapGroup(LdapModel):
     member_of = ListField(db_column='memberOf', blank=True)
     
     # Временные метки
-    # when_created = DateTimeField(db_column='whenCreated')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
-    # when_changed = DateTimeField(db_column='whenChanged')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
+    when_created = DateTimeField(db_column='whenCreated')
+    when_changed = DateTimeField(db_column='whenChanged')
     
     class Meta:
         managed = False
-    
-    def build_rdn(self):
-        """Строит Relative Distinguished Name для группы.
-        
-        В AD группы идентифицируются по CN (Common Name).
-        RDN формата: CN=имя_группы
-        """
-        if not self.cn:
-            raise ValueError("Cannot build RDN: cn attribute is required")
-        return f"cn={self.cn}"
     
     def __str__(self):
         return f"Group: {self.cn}"
@@ -326,21 +290,25 @@ class LdapGroup(LdapModel):
         return f"<LdapGroup: {self.cn}>"
 
 
-class LdapOrganizationalUnit(LdapModel):
+class LdapOrganizationalUnit(ModifyDnMixin, LdapModel):
     """LDAP модель для Organizational Unit (отдел).
     
     Использует objectClass: top, organizationalUnit.
     Только для WRITE операций (POST/PUT/DELETE).
     
+    Миксины:
+    - ModifyDnMixin: поддержка перемещения между контейнерами через base_dn
+    
     ВАЖНО О base_dn:
     - base_dn используется только для SUBTREE поиска
     - OU отделов располагаются под LDAP_DEPARTMENTS_BASE:
       OU=<DeptName>,OU=Departments,OU=company,...
+    - При изменении base_dn ModifyDnMixin автоматически выполнит modify_dn!
     
     Операции через django-ldapdb:
     - CREATE: создание через .save() — работает с ORM
     - UPDATE: изменение через .save() (например, managedBy)
-    - RENAME: переименование через modify_dn (не поддерживается ORM, используется ldap3)
+    - MOVE: ou.base_dn = new_dn; ou.save() (автоматический modify_dn!)
     - DELETE: удаление через ldap3.Connection.delete()
     
     При создании отдела DN формируется как:
@@ -351,12 +319,16 @@ class LdapOrganizationalUnit(LdapModel):
     base_dn = get_base_dn()
     object_classes = ['top', 'organizationalUnit']
     
+    # RDN атрибут для построения Distinguished Name
+    # Пример: ou=IT → dn=OU=IT,OU=Departments,DC=...
+    rdn_attributes = ['ou']
+    
     # Основные атрибуты
     # dn наследуется от ldapdb.models.Model как primary_key (Distinguished Name)
     ou = CharField(db_column='ou')
     
     # Идентификация
-    # object_guid = CharField(db_column='objectGUID')  # binary поле (16 байт UUID), не может быть CharField
+    object_guid = CharField(db_column='objectGUID')
     
     # Описание
     description = CharField(db_column='description', blank=True)
@@ -365,21 +337,11 @@ class LdapOrganizationalUnit(LdapModel):
     managed_by = CharField(db_column='managedBy', blank=True)
     
     # Временные метки
-    # when_created = DateTimeField(db_column='whenCreated')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
-    # when_changed = DateTimeField(db_column='whenChanged')  # баг django-ldapdb с Python 3.13: tzinfo TypeError
+    when_created = DateTimeField(db_column='whenCreated')
+    when_changed = DateTimeField(db_column='whenChanged')
     
     class Meta:
         managed = False
-    
-    def build_rdn(self):
-        """Строит Relative Distinguished Name для Organizational Unit.
-        
-        В AD OU идентифицируются по атрибуту OU.
-        RDN формата: OU=имя_подразделения
-        """
-        if not self.ou:
-            raise ValueError("Cannot build RDN: ou attribute is required")
-        return f"ou={self.ou}"
     
     def __str__(self):
         return f"OU: {self.ou}"

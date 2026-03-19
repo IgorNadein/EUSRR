@@ -22,7 +22,9 @@ from ..errors import (
 )
 from ..orm_models import LdapOrganizationalUnit
 from ..infrastructure.connections import _ldap
-from ..repositories.ldap_repository import LdapRepository
+from ..repositories.ldap_repository import (
+    ensure_container_exists,
+)
 from ..utils.dn_utils import _move_to_department
 from ..utils.ldap_utils import group_type
 from ..utils.text_utils import esc_filter, esc_rdn
@@ -465,7 +467,7 @@ class DepartmentService(BaseService):
                     raise DirectoryLdapError(str(e)) from e
                 
                 try:
-                    LdapRepository(conn).ensure_container_exists(target_base)
+                    ensure_container_exists(conn, target_base)
                     new_dn = self._user_service._move_user_to_base(
                         conn, emp_dn, target_base
                     )

@@ -77,10 +77,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
-    "eusrr_backend.middleware.AuthRequiredMiddleware",
-    "eusrr_backend.middleware.EmailVerificationMiddleware",
-    # IP ограничение для регистрации
-    "eusrr_backend.middleware.RegistrationIPRestrictionMiddleware",
+    "eusrr_backend.middleware.AuthRequiredMiddleware",  # Защита от неавторизованных
     "eusrr_backend.middleware.CacheControlMiddleware",  # Cache-Control headers
 ]
 
@@ -171,12 +168,12 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "employees.Employee"
 
-API_LOGIN_URL_NAME = "auth_front:login"
+# Аутентификация (используется Django Admin)
+LOGIN_URL = "/admin/login/"
+LOGIN_REDIRECT_URL = "/admin/"
 # Внутренний URL для API клиента (для запросов view -> API внутри сервера)
 # Используем локальный адрес для избежания проблем с SSL
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:9000/api")
-LOGIN_URL = "auth_front:login"
-LOGIN_REDIRECT_URL = "/"
 
 PHONE_DEFAULT_REGION = os.getenv("PHONE_DEFAULT_REGION", "RU")
 PHONENUMBER_DEFAULT_REGION = "RU"
@@ -243,6 +240,8 @@ LOGGING = {
         "employees": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "common": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django.contrib.auth": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "eusrr_backend.auth_backends": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
         # полезно видеть ошибки и отладку ldap3
         "ldap3": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },

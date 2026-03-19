@@ -19,7 +19,7 @@ from ldap3 import BASE, SUBTREE, Connection
 from employees.models import Employee, Position, LdapSyncState
 
 from ..errors import DirectoryServiceError
-from ..repositories.ldap_repository import LdapRepository
+from ..repositories.ldap_repository import ensure_container_exists
 from ..utils.text_utils import esc_filter, esc_rdn
 from ..utils.ldap_utils import group_type
 from .base_service import BaseService
@@ -201,7 +201,7 @@ class PositionService(BaseService):
             RuntimeError: Если создание контейнера не удалось
         """
         base = self._positions_base()
-        LdapRepository(conn).ensure_container_exists(base)
+        ensure_container_exists(conn, base)
         return base
 
     def _ensure_position_group(self, conn: Connection, pos: Position) -> str:
@@ -226,7 +226,7 @@ class PositionService(BaseService):
             ValueError: Если имя должности пустое
             RuntimeError: Если операция LDAP не удалась
         """
-        LdapRepository(conn).ensure_container_exists(self._positions_base())
+        ensure_container_exists(conn, self._positions_base())
         name = (pos.name or "").strip()
         if not name:
             raise ValueError("Position.name is empty")

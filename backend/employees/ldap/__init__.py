@@ -77,6 +77,9 @@ from .orm_models import LdapUser, LdapGroup, LdapOrganizationalUnit
 # Подключения
 from .infrastructure.connections import LdapConfig, _ldap
 
+# Админка (автоматическая регистрация)
+from . import admin
+
 
 def export_users(cfg=None):
     """Обёртка для SyncService().export_users(cfg)."""

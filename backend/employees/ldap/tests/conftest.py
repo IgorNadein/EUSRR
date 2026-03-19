@@ -36,11 +36,27 @@ def mock_ldap_connection():
 
 @pytest.fixture
 def mock_ldap_context(mock_ldap_connection):
-    """Mock контекстного менеджера _ldap()."""
-    with patch('employees.ldap.infrastructure.connections._ldap') as mock:
-        mock.return_value.__enter__.return_value = mock_ldap_connection
-        mock.return_value.__exit__.return_value = None
-        yield mock
+    """Mock контекстного менеджера _ldap() во всех сервисах."""
+    targets = [
+        'employees.ldap.infrastructure.connections._ldap',
+        'employees.ldap.services.group_service._ldap',
+        'employees.ldap.services.department_service._ldap',
+        'employees.ldap.services.user_service._ldap',
+        'employees.ldap.services.position_service._ldap',
+    ]
+    patches = []
+    for target in targets:
+        try:
+            p = patch(target)
+            mock = p.start()
+            mock.return_value.__enter__.return_value = mock_ldap_connection
+            mock.return_value.__exit__.return_value = None
+            patches.append(p)
+        except (AttributeError, ModuleNotFoundError):
+            pass
+    yield patches[0] if patches else None
+    for p in patches:
+        p.stop()
 
 
 # ==================== Django Models Fixtures ====================
