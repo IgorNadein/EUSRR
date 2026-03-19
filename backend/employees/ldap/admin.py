@@ -510,8 +510,11 @@ class LdapUserAdmin(admin.ModelAdmin):
         """Разрешаем удаление только суперпользователям."""
         return request.user.is_superuser
 
-    def get_action_choices(self, request, default_choices=admin.ModelAdmin.action_form):
+    def get_action_choices(self, request, default_choices=None):
         """Убираем стандартный delete_selected (ldapdb не поддерживает dn__in)."""
+        if default_choices is None:
+            from django.db import models
+            default_choices = models.BLANK_CHOICE_DASH
         choices = super().get_action_choices(request, default_choices)
         return [
             c for c in choices
