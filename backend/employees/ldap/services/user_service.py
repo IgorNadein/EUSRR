@@ -753,7 +753,7 @@ class UserService(BaseService):
                     setattr(ldap_user, orm_field, val if val else ".")
                     orm_dirty = True
         
-        # Вычисляем новый cn если изменились имя/фамилия (НЕ устанавливаем в объект!)
+        # Вычисляем новый cn если изменились имя/фамилия
         new_cn = None
         if "first_name" in model_changes or "last_name" in model_changes:
             # Формируем новый cn из имени и фамилии
@@ -766,7 +766,13 @@ class UserService(BaseService):
             if sn_str and sn_str != ".":
                 parts.append(sn_str)
             
-            new_cn = " ".join(parts) if parts else ldap_user.sam_account_name
+            new_cn = " ".join(parts) if parts else get_ldap_str(ldap_user.sam_account_name)
+            
+            # Устанавливаем новый cn в объект ДО save()
+            # чтобы LdapUser.save() автоматически обновил displayName
+            if new_cn != old_cn:
+                ldap_user.cn = new_cn
+                orm_dirty = True
 
         # 5) Аватар
         avatar_saved = False
@@ -778,7 +784,7 @@ class UserService(BaseService):
                 avatar_saved = True
 
         if orm_dirty:
-            # save() автоматически синхронизирует displayName (см. LdapUser.save())
+            # save() автоматически синхронизирует displayName с cn (см. LdapUser.save())
             ldap_user.save()
         
         # Переименование DN если cn изменился
@@ -789,16 +795,20 @@ class UserService(BaseService):
                 container_dn = parts[1]
                 new_rdn = f"CN={esc_rdn(new_cn)}"  # новый RDN с экранированием спецсимволов
                 
-                # modify_dn для переименования (остаёмся в том же контейнере)
+                # modify_dn для переименования DN (атрибуты уже обновлены через save)
                 ok = conn.modify_dn(dn, new_rdn)
                 if ok:
                     dn = f"{new_rdn},{container_dn}"
-                    # Обновляем cn в объекте ПОСЛЕ успешного переименования
-                    ldap_user.cn = new_cn
+                    # Обновляем _saved_dn для корректности последующих операций
+                    ldap_user._saved_dn = dn
+                    ldap_user.dn = dn
                 else:
-                    # Если переименование не удалось, логируем но продолжаем
-                    # (атрибуты уже обновлены, только DN остался старым)
-                    pass
+                    # Если переименование не удалось, откатываем cn к старому значению
+                    # (атрибуты уже обновлены с новым cn, но DN остался старым - несоответствие!)
+                    logger.warning(
+                        f"Failed to rename DN from {dn} to {new_rdn},{container_dn}. "
+                        f"User attributes updated but DN unchanged."
+                    )
 
         # 6) Группы (ORM)
         if group_cns is not None:

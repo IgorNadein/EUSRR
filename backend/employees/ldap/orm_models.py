@@ -264,6 +264,21 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     class Meta:
         managed = False  # Django не управляет схемой LDAP
     
+    def save(self, *args, **kwargs):
+        """Переопределяем save для автосинхронизации displayName с cn.
+        
+        Active Directory обычно синхронизирует displayName с cn,
+        но при обновлении атрибутов через ldapdb это нужно делать вручную.
+        """
+        # Синхронизируем displayName с cn если cn установлен
+        if self.cn and not self.display_name:
+            self.display_name = self.cn
+        elif self.cn and self.display_name != self.cn:
+            # Если cn изменился, обновляем displayName
+            self.display_name = self.cn
+        
+        return super().save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.display_name} ({self.sam_account_name})"
     
