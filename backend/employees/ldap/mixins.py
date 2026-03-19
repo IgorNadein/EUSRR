@@ -40,6 +40,29 @@ class ModifyDnMixin:
         # Сохраняем оригинальный base_dn для отслеживания изменений
         self._original_base_dn = getattr(self, 'base_dn', None)
     
+    def build_rdn(self):
+        """Build RDN — исправление бага ldapdb 1.5.1.
+        
+        ldapdb's build_rdn() проверяет field.primary_key AND field.db_column,
+        но поле 'dn' имеет primary_key=True и db_column=None,
+        а 'cn'/'ou' — наоборот. Ни одно поле не подходит → всегда Exception.
+        
+        Исправление: для существующих объектов извлекаем RDN из текущего DN,
+        для новых — строим из rdn_attributes.
+        """
+        # Существующий объект — извлекаем RDN из DN (сохраняет регистр CN/OU)
+        if self.dn and ',' in self.dn:
+            return self.dn.split(',', 1)[0]
+        
+        # Новый объект — строим из rdn_attributes
+        rdn_attrs = getattr(self, 'rdn_attributes', [])
+        for field in self._meta.fields:
+            if field.db_column and field.db_column in rdn_attrs:
+                value = getattr(self, field.name)
+                if value:
+                    return "%s=%s" % (field.db_column, value)
+        raise Exception("Could not build Distinguished Name")
+    
     def save(self, *args, **kwargs):
         """Переопределённый save с поддержкой modify_dn при изменении base_dn.
         
