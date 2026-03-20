@@ -72,7 +72,12 @@ from .domain.dtos import (
 from .utils.group_utils_orm import sync_user_groups_by_cns_orm
 
 # ORM модели
-from .orm_models import LdapUser, LdapGroup, LdapOrganizationalUnit
+from .orm_models import (
+    LdapUser,
+    LdapGroup,
+    LdapOrganizationalUnitGroup,
+    LdapOrganizationalUnit,
+)
 
 # Подключения
 from .infrastructure.connections import LdapConfig, _ldap
@@ -119,6 +124,7 @@ __all__ = [
     # ORM
     "LdapUser",
     "LdapGroup",
+    "LdapOrganizationalUnitGroup",
     "LdapOrganizationalUnit",
 
     # Подключения

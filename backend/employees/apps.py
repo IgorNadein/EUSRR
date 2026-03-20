@@ -31,12 +31,17 @@ class EmployeesConfig(AppConfig):
             def safe_results_iter(self, results=None, tuple_expected=False,
                                   chunked_fetch=False, chunk_size=None):
                 """Обёртка над оригинальным results_iter с безопасным attname."""
+                import ldap as ldap_lib
                 try:
                     yield from original_results_iter(
                         self, results=results, tuple_expected=tuple_expected,
                         chunked_fetch=chunked_fetch,
                         **({"chunk_size": chunk_size} if chunk_size is not None else {}),
                     )
+                except ldap_lib.NO_SUCH_OBJECT:
+                    # DN не существует — возвращаем пустой результат
+                    # (django-ldapdb бросает ldap.NO_SUCH_OBJECT вместо DoesNotExist)
+                    return
                 except AttributeError as exc:
                     if "attname" not in str(exc):
                         raise

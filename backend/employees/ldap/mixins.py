@@ -107,25 +107,7 @@ class ModifyDnMixin:
         )
         
         if needs_move:
-            old_dn = self._saved_dn
-            new_rdn = self.build_rdn()
-            new_superior = current_base_dn
-            new_dn = f"{new_rdn},{new_superior}"
-            
-            with _ldap() as conn:
-                success = conn.modify_dn(
-                    old_dn, new_rdn,
-                    new_superior=new_superior,
-                )
-                if not success:
-                    raise RuntimeError(
-                        f"Failed to move LDAP object: {conn.result}"
-                    )
-                logger.info(f"ModifyDnMixin: Moved {old_dn} → {new_dn}")
-            
-            self._saved_dn = new_dn
-            self.dn = new_dn
-            self._original_base_dn = current_base_dn
+            self.move_to(current_base_dn)
         
         # --- 2) RDN-атрибут (cn/ou) изменился ---
         new_rdn_value = self._get_rdn_value()
@@ -177,6 +159,44 @@ class ModifyDnMixin:
         
         return result
     
+    def move_to(self, new_base_dn):
+        """Переместить объект в другую OU без обновления атрибутов.
+
+        Выполняет LDAP modify_dn с newsuperior. НЕ вызывает super().save(),
+        поэтому не пытается записать системные атрибуты (whenChanged и др.),
+        которые AD обновляет автоматически при перемещении.
+
+        Args:
+            new_base_dn: Новый base DN (целевая OU).
+                Пример: "OU=Dismissed,OU=company,DC=robotail,DC=local"
+
+        Raises:
+            RuntimeError: Если modify_dn не удался.
+            ValueError: Если объект ещё не сохранён в LDAP.
+        """
+        from .infrastructure.connections import _ldap
+
+        if not hasattr(self, '_saved_dn') or not self._saved_dn:
+            raise ValueError("Cannot move an object that hasn't been saved to LDAP yet")
+
+        old_dn = self._saved_dn
+        new_rdn = self.build_rdn()
+        new_dn = f"{new_rdn},{new_base_dn}"
+
+        with _ldap() as conn:
+            success = conn.modify_dn(
+                old_dn, new_rdn,
+                new_superior=new_base_dn,
+            )
+            if not success:
+                raise RuntimeError(conn.result)
+            logger.info(f"ModifyDnMixin.move_to: {old_dn} → {new_dn}")
+
+        self._saved_dn = new_dn
+        self.dn = new_dn
+        self.base_dn = new_base_dn
+        self._original_base_dn = new_base_dn
+
     @classmethod
     def from_db(cls, db, field_names, values):
         """Переопределяем from_db для сохранения оригинальных значений при загрузке."""

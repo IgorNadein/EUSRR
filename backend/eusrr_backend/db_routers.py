@@ -20,6 +20,7 @@ class LdapRouter:
         'ldapuser',
         'ldapgroup',
         'ldaporganizationalunit',
+        'ldaporganizationalunitgroup',
     }
 
     def db_for_read(self, model, **hints):

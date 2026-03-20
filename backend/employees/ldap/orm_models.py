@@ -80,8 +80,10 @@ DELETE пользователя:
 Группы (зависит от типа):
   - Глобальные группы:
     CN=Developers,OU=Groups,OU=company,DC=robotail,DC=local
+  - Группы OU (внутри OU):
+    CN=DEP_IT,OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
   - Роли отделов:
-    CN=ROLE_Manager,OU=Roles,OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
+    CN=ROLE_Manager,OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
 
 Организационные единицы:
   - Отделы:
@@ -98,7 +100,7 @@ base_dn используется ТОЛЬКО для SUBTREE поиска
 
 - LdapUser.base_dn = "OU=company,DC=..." — покрывает все отделы и Dismissed
 - LdapGroup.base_dn = "DC=..." — покрывает Groups и роли отделов
-- LdapOrganizationalUnit.base_dn = "DC=..." — покрывает все OU
+- LdapOrganizationalUnit.base_dn = "OU=Departments,..." — покрывает OU отделов
 """
 
 import datetime as _dt
@@ -173,9 +175,9 @@ def get_users_base():
 def get_base_dn():
     """Получает корневой base DN из settings.
 
-    Используется для групп и OU. Должен покрывать:
+    Используется для групп. Должен покрывать:
     - OU=Groups (глобальные группы)
-    - OU=Departments (отделы и их роли)
+    - OU=Departments (роли отделов)
     - Любые другие контейнеры
 
     Приоритет:
@@ -187,6 +189,22 @@ def get_base_dn():
         settings, 'LDAP_BASE_DN',
         getattr(settings, 'LDAP_USERS_BASE',
                 'DC=robotail,DC=local'),
+    )
+
+
+def get_departments_base():
+    """Получает base DN для отделов (OU) из settings.
+
+    Отделы располагаются в фиксированном контейнере:
+      OU=<DeptName>,OU=Departments,OU=company,DC=robotail,DC=local
+
+    Приоритет:
+    1. LDAP_DEPARTMENTS_BASE (если задан)
+    2. Fallback: OU=Departments,DC=robotail,DC=local
+    """
+    return getattr(
+        settings, 'LDAP_DEPARTMENTS_BASE',
+        'OU=Departments,DC=robotail,DC=local',
     )
 
 
@@ -291,7 +309,8 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     - base_dn используется только для SUBTREE поиска через .objects.filter()
     - Группы могут находиться в разных OU:
       • CN=Group,OU=Groups,DC=... (глобальные группы)
-      • CN=ROLE_*,OU=Roles,OU=<Dept>,OU=Departments,... (роли отделов)
+      • CN=DEP_*,OU=<Dept>,OU=Departments,... (группы отделов)
+      • CN=ROLE_*,OU=<Dept>,OU=Departments,... (роли отделов)
     - При изменении base_dn ModifyDnMixin автоматически выполнит modify_dn!
 
     Операции через django-ldapdb:
@@ -301,8 +320,10 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     - RENAME: переименование через GroupService.rename() (low-level ldap3)
     - DELETE: удаление через .delete() (ORM)
 
-    При создании ролей отделов DN формируется как:
-    CN=ROLE_{name},OU=Roles,OU={dept},OU=Departments,...
+    Типы групп в LDAP:
+    - Глобальные группы: CN=<Name>,OU=Groups,...
+    - Группы отделов: CN=DEP_<DeptName>,OU=<DeptName>,OU=Departments,...
+    - Роли отделов: CN=ROLE_{name},OU={dept},OU=Departments,...
     """
 
     # Базовая конфигурация
@@ -342,6 +363,159 @@ class LdapGroup(ModifyDnMixin, LdapModel):
         return f"<LdapGroup: {self.cn}>"
 
 
+class LdapOrganizationalUnitGroup(ModifyDnMixin, LdapModel):
+    """LDAP модель группы организационной единицы (DEP_*).
+
+    Каждая OU в LDAP имеет агрегаторную группу,
+    содержащую всех активных сотрудников этой OU:
+      CN=DEP_IT,OU=IT,OU=Departments,OU=company,DC=robotail,DC=local
+
+    Миксины:
+    - ModifyDnMixin: перемещение при переименовании OU
+
+    ВАЖНО О base_dn:
+    - base_dn = LDAP_DEPARTMENTS_BASE — SUBTREE поиск найдёт
+      все DEP_* группы внутри всех OU
+    - objectClass фильтрация: ищет только group (не OU)
+
+    Операции:
+    - READ: .objects.filter(cn__startswith='DEP_')
+    - UPDATE: изменение description/member через .save()
+    - MOVE: group.base_dn = new_ou_dn; group.save()
+    - DELETE: .delete()
+    - CREATE: ensure() на LdapOrganizationalUnit (low-level ldap3)
+
+    Управление членством:
+    - add_member(user_dn) → добавить пользователя
+    - remove_member(user_dn) → удалить пользователя
+    - sync_members(user_dns) → привести к точному списку
+    - list_members() → текущий список DN участников
+    """
+
+    # Базовая конфигурация: ищем группы внутри OU отделов
+    base_dn = get_departments_base()
+    object_classes = ['top', 'group']
+
+    rdn_attributes = ['cn']
+
+    # Основные атрибуты
+    cn = CharField(db_column='cn')
+    sam_account_name = CharField(db_column='sAMAccountName')
+    description = CharField(db_column='description', blank=True)
+
+    # Члены группы
+    member = ListField(db_column='member', blank=True)
+    member_of = ListField(db_column='memberOf', blank=True)
+
+    # Временные метки
+    when_created = DateTimeField(db_column='whenCreated')
+    when_changed = DateTimeField(db_column='whenChanged')
+
+    class Meta:
+        managed = False
+
+    def __str__(self):
+        return f"OUGroup: {self.cn}"
+
+    def __repr__(self):
+        return f"<LdapOrganizationalUnitGroup: {self.cn}>"
+
+    # ==================== Membership Methods ==================== #
+
+    def list_members(self) -> list[str]:
+        """Возвращает список DN участников группы."""
+        return list(self.member or [])
+
+    def add_member(self, member_dn: str) -> None:
+        """Добавляет участника в группу отдела.
+
+        Args:
+            member_dn: DN пользователя.
+
+        Raises:
+            RuntimeError: Если операция не удалась.
+        """
+        current = self.member or []
+        if member_dn in current:
+            return
+
+        from .infrastructure.connections import _ldap
+        from ldap3 import MODIFY_ADD
+
+        with _ldap() as conn:
+            ok = conn.modify(
+                self.dn,
+                {"member": [(MODIFY_ADD, [member_dn])]}
+            )
+            if not ok:
+                result_str = str(conn.result)
+                if "attributeOrValueExists" not in result_str:
+                    raise RuntimeError(
+                        f"add_member failed: {conn.result}"
+                    )
+
+    def remove_member(self, member_dn: str) -> None:
+        """Удаляет участника из группы отдела.
+
+        Args:
+            member_dn: DN пользователя.
+
+        Raises:
+            RuntimeError: Если операция не удалась.
+        """
+        from .infrastructure.connections import _ldap
+        from ldap3 import MODIFY_DELETE
+
+        with _ldap() as conn:
+            ok = conn.modify(
+                self.dn,
+                {"member": [(MODIFY_DELETE, [member_dn])]}
+            )
+            if not ok:
+                result_str = str(conn.result)
+                if "noSuchAttribute" not in result_str:
+                    raise RuntimeError(
+                        f"remove_member failed: {conn.result}"
+                    )
+
+    def sync_members(self, desired_dns: list[str]) -> dict:
+        """Синхронизирует состав группы к точному списку.
+
+        Добавляет недостающих, удаляет лишних.
+
+        Args:
+            desired_dns: Целевой список DN участников.
+
+        Returns:
+            dict: {'added': int, 'removed': int}
+        """
+        current = set(self.member or [])
+        desired = set(desired_dns)
+
+        to_add = desired - current
+        to_remove = current - desired
+
+        from .infrastructure.connections import _ldap
+        from ldap3 import MODIFY_ADD, MODIFY_DELETE
+
+        with _ldap() as conn:
+            if to_remove:
+                conn.modify(
+                    self.dn,
+                    {"member": [(MODIFY_DELETE, list(to_remove))]}
+                )
+            if to_add:
+                conn.modify(
+                    self.dn,
+                    {"member": [(MODIFY_ADD, list(to_add))]}
+                )
+
+        return {
+            'added': len(to_add),
+            'removed': len(to_remove),
+        }
+
+
 class LdapOrganizationalUnit(ModifyDnMixin, LdapModel):
     """LDAP модель для Organizational Unit (отдел).
 
@@ -363,12 +537,21 @@ class LdapOrganizationalUnit(ModifyDnMixin, LdapModel):
     - MOVE: ou.base_dn = new_dn; ou.save() (автоматический modify_dn!)
     - DELETE: удаление через ldap3.Connection.delete()
 
-    При создании отдела DN формируется как:
-    OU={dept_name},{LDAP_DEPARTMENTS_BASE}
+    Структура отдела в LDAP:
+    OU=<DeptName>,OU=Departments,...  ← LdapOrganizationalUnit
+      ├─ CN=DEP_<DeptName>            ← LdapOrganizationalUnitGroup (все члены)
+      ├─ CN=ROLE_Manager              ← LdapGroup (роль)
+      └─ CN=User1, CN=User2, ...      ← LdapUser (пользователи)
+
+    Методы работы с группой OU (DEP_*):
+    - get_department_group_dn() → DN группы OU
+    - get_department_group() → LdapOrganizationalUnitGroup или None
+    - ensure_department_group() →
+      создаёт/возвращает LdapOrganizationalUnitGroup
     """
 
     # Базовая конфигурация
-    base_dn = get_base_dn()
+    base_dn = get_departments_base()
     object_classes = ['top', 'organizationalUnit']
 
     # RDN атрибут для построения Distinguished Name
@@ -401,9 +584,78 @@ class LdapOrganizationalUnit(ModifyDnMixin, LdapModel):
     def __repr__(self):
         return f"<LdapOrganizationalUnit: {self.ou}>"
 
+    # ==================== Department Group Methods ==================== #
+
+    def get_department_group_dn(self) -> str:
+        """Возвращает ожидаемый DN группы отдела DEP_*.
+
+        Группа отдела находится внутри OU отдела:
+        CN=DEP_<DeptName>,OU=<DeptName>,OU=Departments,...
+
+        Returns:
+            str: DN группы отдела.
+        """
+        return f"CN=DEP_{self.ou},{self.dn}"
+
+    def get_department_group(self):
+        """Возвращает группу OU (DEP_*), если существует.
+
+        Returns:
+            LdapOrganizationalUnitGroup | None
+        """
+        try:
+            return LdapOrganizationalUnitGroup.objects.get(
+                dn=self.get_department_group_dn()
+            )
+        except LdapOrganizationalUnitGroup.DoesNotExist:
+            return None
+
+    def ensure_department_group(self):
+        """Создаёт или возвращает группу OU (DEP_*).
+
+        Если группа существует — возвращает её.
+        Если нет — создаёт через low-level ldap3.
+
+        Returns:
+            LdapOrganizationalUnitGroup: Группа OU.
+
+        Raises:
+            RuntimeError: Если создание группы не удалось.
+        """
+        group = self.get_department_group()
+        if group:
+            return group
+
+        from .infrastructure.connections import _ldap
+        from .utils.ldap_utils import group_type
+        from .utils.text_utils import esc_rdn
+
+        cn = f"DEP_{self.ou}"
+        group_dn = f"CN={esc_rdn(cn)},{self.dn}"
+
+        with _ldap() as conn:
+            attrs = {
+                "sAMAccountName": cn[:20],
+                "description": f"{self.ou} department members",
+                "groupType": group_type(
+                    "global", security_enabled=True
+                ),
+            }
+            ok = conn.add(group_dn, ["top", "group"], attrs)
+            if not ok:
+                res = str(conn.result)
+                if "entryAlreadyExists" not in res:
+                    raise RuntimeError(
+                        f"Failed to create dept group: "
+                        f"{conn.result}"
+                    )
+
+        return LdapOrganizationalUnitGroup.objects.get(dn=group_dn)
+
 
 __all__ = [
     'LdapUser',
     'LdapGroup',
+    'LdapOrganizationalUnitGroup',
     'LdapOrganizationalUnit',
 ]
