@@ -902,7 +902,10 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         Если передан параметр quantity > 1, создаётся несколько единиц
         с автоматически сгенерированными инвентарными номерами.
         """
-        quantity = int(request.data.get('quantity', 1))
+        try:
+            quantity = int(request.data.get('quantity', 1))
+        except (ValueError, TypeError):
+            quantity = 1
         quantity = max(1, min(quantity, 100))  # Ограничение от 1 до 100
         
         if quantity == 1:

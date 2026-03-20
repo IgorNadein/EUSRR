@@ -37,8 +37,14 @@ def get_notifications(request):
         - unread_only: только непрочитанные (true/false)
         - search: поиск по описанию
     """
-    page = int(request.GET.get('page', 1))
-    page_size = int(request.GET.get('page_size', 20))
+    try:
+        page = int(request.GET.get('page', 1))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        page_size = int(request.GET.get('page_size', 20))
+    except (ValueError, TypeError):
+        page_size = 20
     verb = request.GET.get('verb')
     unread_only = request.GET.get('unread_only', 'false').lower() == 'true'
     search = request.GET.get('search', '').strip()
