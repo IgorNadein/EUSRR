@@ -25,7 +25,10 @@ class LdapPasswordMixin:
         class ChangePasswordAPIView(LdapPasswordMixin, APIView):
             def post(self, request):
                 user = request.user
-                new_password = request.data['new_password']
+                # Безопасный доступ:
+                new_password = request.data.get('new_password')
+                if not new_password:
+                    return Response({'error': 'Password required'}, 400)
                 
                 # Меняем пароль в БД
                 user.set_password(new_password)
