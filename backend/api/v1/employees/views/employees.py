@@ -205,9 +205,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         old_email = instance.email
 
         # Передаем данные для синхронизации с LDAP (через сигналы)
-        # request.data — это QueryDict, dict() конвертирует значения в списки.
-        # Используем .dict() чтобы получить одиночные значения.
-        instance._ldap_changes = self.request.data.dict()
+        # DRF request.data может быть dict (JSON) или QueryDict (form data)
+        data = self.request.data
+        instance._ldap_changes = (
+            data.dict() if hasattr(data, 'dict') else dict(data)
+        )
         if 'avatar' in self.request.FILES:
             instance._ldap_avatar = self.request.FILES['avatar']
 
