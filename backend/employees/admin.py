@@ -2,7 +2,7 @@
 
 from django import forms
 from django.contrib import admin, messages
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin, GroupAdmin as DefaultGroupAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField, AdminPasswordChangeForm
 from django.contrib.auth.models import Group, Permission
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
@@ -1595,3 +1595,97 @@ class LdapSyncStateAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Разрешаем удаление для очистки."""
         return True
+
+
+# =========================
+#   Кастомный GroupAdmin с LDAP синхронизацией
+# =========================
+
+admin.site.unregister(Group)
+
+
+@admin.register(Group)
+class GroupAdmin(DefaultGroupAdmin):
+    """Расширенный GroupAdmin с кнопками синхронизации LDAP."""
+
+    list_display = ('name', 'ldap_dn_display')
+    actions = ['sync_groups_from_ldap', 'sync_groups_to_ldap']
+
+    def ldap_dn_display(self, obj):
+        sync = LdapSyncState.objects.filter(
+            model='group', object_pk=str(obj.pk),
+        ).first()
+        return sync.ldap_dn if sync else '—'
+    ldap_dn_display.short_description = 'LDAP DN'
+
+    # ---------- LDAP → Django ----------
+    def sync_groups_from_ldap(self, request, queryset):
+        """Синхронизирует ВСЕ группы из OU=Groups в Django Group."""
+        from employees.ldap.services.group_service import GroupService
+
+        svc = GroupService()
+        try:
+            created = svc.sync_catalog(throttle_seconds=0)
+            self.message_user(
+                request,
+                f'LDAP → Django: создано {created} новых Django Group',
+                level=messages.SUCCESS,
+            )
+        except Exception as e:
+            self.message_user(
+                request,
+                f'Ошибка синхронизации: {e}',
+                level=messages.ERROR,
+            )
+    sync_groups_from_ldap.short_description = '⬇️ LDAP → Django (создать Django Group)'
+
+    # ---------- Django → LDAP ----------
+    def sync_groups_to_ldap(self, request, queryset):
+        """Создаёт в LDAP группы, которых там ещё нет (с реальной проверкой LDAP)."""
+        from employees.ldap.orm_models import LdapGroup
+        from employees.ldap.services.group_service import GroupService
+
+        svc = GroupService()
+        created = 0
+        already = 0
+        for dg in queryset:
+            # Реальная проверка наличия группы в LDAP
+            exists_in_ldap = LdapGroup.objects.filter(cn=dg.name).exists()
+            if exists_in_ldap:
+                ldap_grp = LdapGroup.objects.filter(cn=dg.name).first()
+                # Обновляем/создаём LdapSyncState на случай рассинхрона
+                LdapSyncState.objects.update_or_create(
+                    model='group',
+                    object_pk=str(dg.pk),
+                    defaults={
+                        'ldap_dn': ldap_grp.dn,
+                        'last_sync_dir': 'ldap',
+                    },
+                )
+                already += 1
+                continue
+
+            try:
+                dn = svc.create(cn=dg.name)
+                LdapSyncState.objects.update_or_create(
+                    model='group',
+                    object_pk=str(dg.pk),
+                    defaults={
+                        'ldap_dn': dn,
+                        'last_sync_dir': 'django',
+                    },
+                )
+                created += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f'⚠️ {dg.name}: {e}',
+                    level=messages.WARNING,
+                )
+
+        self.message_user(
+            request,
+            f'Django → LDAP: создано {created}, уже существовало {already}',
+            level=messages.SUCCESS,
+        )
+    sync_groups_to_ldap.short_description = '⬆️ Django → LDAP (создать LDAP Group)'

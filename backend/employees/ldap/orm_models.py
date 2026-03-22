@@ -99,7 +99,7 @@ base_dn используется ТОЛЬКО для SUBTREE поиска
 и НЕ определяет местоположение создаваемых/перемещаемых объектов.
 
 - LdapUser.base_dn = "OU=company,DC=..." — покрывает все отделы и Dismissed
-- LdapGroup.base_dn = "DC=..." — покрывает Groups и роли отделов
+- LdapGroup.base_dn = "OU=Groups,..." — покрывает только глобальные группы
 - LdapOrganizationalUnit.base_dn = "OU=Departments,..." — покрывает OU отделов
 """
 
@@ -175,20 +175,32 @@ def get_users_base():
 def get_base_dn():
     """Получает корневой base DN из settings.
 
-    Используется для групп. Должен покрывать:
-    - OU=Groups (глобальные группы)
-    - OU=Departments (роли отделов)
-    - Любые другие контейнеры
+    Используется для операций, которым нужен охват всего домена.
 
     Приоритет:
     1. LDAP_BASE_DN (если задан)
-    2. Fallback: корневой DN домена (DC=robotail,DC=local)
-       или LDAP_USERS_BASE если нет LDAP_BASE_DN
+    2. Fallback: LDAP_USERS_BASE или DC=robotail,DC=local
     """
     return getattr(
         settings, 'LDAP_BASE_DN',
         getattr(settings, 'LDAP_USERS_BASE',
                 'DC=robotail,DC=local'),
+    )
+
+
+def get_groups_base():
+    """Получает base DN для глобальных групп из settings.
+
+    Глобальные группы располагаются в:
+      CN=<GroupName>,OU=Groups,OU=company,DC=robotail,DC=local
+
+    Приоритет:
+    1. LDAP_GROUPS_BASE (если задан)
+    2. Fallback: OU=Groups,DC=robotail,DC=local
+    """
+    return getattr(
+        settings, 'LDAP_GROUPS_BASE',
+        'OU=Groups,DC=robotail,DC=local',
     )
 
 
@@ -297,7 +309,7 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
 
 
 class LdapGroup(ModifyDnMixin, LdapModel):
-    """LDAP модель для группы Active Directory.
+    """LDAP модель для глобальных групп Active Directory.
 
     Использует objectClass: top, group.
     Только для WRITE операций (POST/PUT/DELETE).
@@ -306,11 +318,9 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     - ModifyDnMixin: поддержка перемещения между OU через base_dn изменение
 
     ВАЖНО О base_dn:
-    - base_dn используется только для SUBTREE поиска через .objects.filter()
-    - Группы могут находиться в разных OU:
-      • CN=Group,OU=Groups,DC=... (глобальные группы)
-      • CN=DEP_*,OU=<Dept>,OU=Departments,... (группы отделов)
-      • CN=ROLE_*,OU=<Dept>,OU=Departments,... (роли отделов)
+    - base_dn = LDAP_GROUPS_BASE — сканирует ТОЛЬКО OU=Groups
+    - Для групп отделов (DEP_*): используйте LdapOrganizationalUnitGroup
+    - Для должностей (POS_*): используйте PositionService
     - При изменении base_dn ModifyDnMixin автоматически выполнит modify_dn!
 
     Операции через django-ldapdb:
@@ -320,14 +330,15 @@ class LdapGroup(ModifyDnMixin, LdapModel):
     - RENAME: переименование через GroupService.rename() (low-level ldap3)
     - DELETE: удаление через .delete() (ORM)
 
-    Типы групп в LDAP:
-    - Глобальные группы: CN=<Name>,OU=Groups,...
-    - Группы отделов: CN=DEP_<DeptName>,OU=<DeptName>,OU=Departments,...
-    - Роли отделов: CN=ROLE_{name},OU={dept},OU=Departments,...
+    Расположение групп по типам:
+    - Глобальные:  CN=<Name>,OU=Groups,...           ← эта модель
+    - Отделы:      CN=DEP_*,OU=<Dept>,OU=Departments ← LdapOrganizationalUnitGroup
+    - Должности:   CN=POS_*,OU=Positions,...          ← PositionService
+    - Роли:        CN=ROLE_*,OU=<Dept>,OU=Departments ← через GroupService
     """
 
-    # Базовая конфигурация
-    base_dn = get_base_dn()
+    # Базовая конфигурация: только OU=Groups
+    base_dn = get_groups_base()
     object_classes = ['top', 'group']
 
     # RDN атрибут для построения Distinguished Name

@@ -1280,6 +1280,11 @@ class LdapOrganizationalUnitGroupAdmin(admin.ModelAdmin):
 
     list_per_page = 100
 
+    actions = [
+        'show_members_info',
+        'sync_members_from_django',
+    ]
+
     def has_add_permission(self, request):
         """Группы создаются автоматически через OU."""
         return False
@@ -1287,6 +1292,81 @@ class LdapOrganizationalUnitGroupAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Удаление через LDAP OU admin."""
         return False
+
+    def _resolve_ou_groups(self, request):
+        """Получает выбранные OU группы по DN из POST данных."""
+        selected_dns = request.POST.getlist('_selected_action')
+        groups = []
+        for dn in selected_dns:
+            try:
+                group = LdapOrganizationalUnitGroup.objects.get(dn=dn)
+                groups.append(group)
+            except LdapOrganizationalUnitGroup.DoesNotExist:
+                pass
+        return groups
+
+    # --- Actions ---
+
+    def show_members_info(self, request, queryset):
+        """Показывает информацию об участниках."""
+        groups = self._resolve_ou_groups(request)
+        for group in groups:
+            members = group.member or []
+            self.message_user(
+                request,
+                f'👥 {group.cn}: {len(members)} участников',
+                level=messages.INFO,
+            )
+    show_members_info.short_description = '📋 Показать состав'
+
+    def sync_members_from_django(self, request, queryset):
+        """Синхронизирует участников из Django EmployeeDepartment."""
+        groups = self._resolve_ou_groups(request)
+        if not groups:
+            self.message_user(
+                request, 'Не удалось найти выбранные группы.',
+                level=messages.WARNING,
+            )
+            return
+
+        from employees.models import EmployeeDepartment, Department
+
+        for group in groups:
+            cn = get_ldap_str(group.cn) or ''
+            if not cn.startswith('DEP_'):
+                continue
+            dept_name = cn[4:]
+            try:
+                dept = Department.objects.get(name=dept_name)
+            except Department.DoesNotExist:
+                self.message_user(
+                    request,
+                    f'⚠️ {cn}: Django Department "{dept_name}" не найден',
+                    level=messages.WARNING,
+                )
+                continue
+
+            active_links = EmployeeDepartment.objects.filter(
+                department=dept, is_active=True,
+            ).select_related('employee')
+
+            member_dns = []
+            for link in active_links:
+                emp_sync = LdapSyncState.objects.filter(
+                    model='employee',
+                    object_pk=str(link.employee_id),
+                ).first()
+                if emp_sync and emp_sync.ldap_dn:
+                    member_dns.append(emp_sync.ldap_dn)
+
+            result = group.sync_members(member_dns)
+            self.message_user(
+                request,
+                f'👥 {cn}: +{result["added"]}/−{result["removed"]} '
+                f'(всего: {len(member_dns)})',
+                level=messages.SUCCESS,
+            )
+    sync_members_from_django.short_description = '🔄 Синхронизировать участников из Django'
 
     def _find_django_department(self, ou_group):
         """Находит Department по имени группы DEP_*."""
@@ -1586,6 +1666,13 @@ class LdapGroupAdmin(admin.ModelAdmin):
 
     list_per_page = 100
 
+    actions = [
+        'show_group_info',
+        'sync_groups_from_ldap',
+        'sync_groups_to_ldap',
+        'delete_selected_ldap',
+    ]
+
     def has_add_permission(self, request):
         """Группы создаются через GroupService или автоматически."""
         return False
@@ -1593,6 +1680,161 @@ class LdapGroupAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Удаление через LDAP services."""
         return False
+
+    def _resolve_ldap_groups(self, request):
+        """Получает выбранные LDAP группы по DN из POST данных."""
+        selected_dns = request.POST.getlist('_selected_action')
+        groups = []
+        for dn in selected_dns:
+            try:
+                group = LdapGroup.objects.get(dn=dn)
+                groups.append(group)
+            except LdapGroup.DoesNotExist:
+                pass
+        return groups
+
+    # --- Actions ---
+
+    def show_group_info(self, request, queryset):
+        """Показывает информацию о выбранных группах."""
+        groups = self._resolve_ldap_groups(request)
+        if not groups:
+            self.message_user(
+                request, 'Не удалось найти выбранные группы.',
+                level=messages.WARNING,
+            )
+            return
+        for group in groups:
+            members = group.member or []
+            member_of = group.member_of or []
+            self.message_user(
+                request,
+                f'👥 {group.cn}: {len(members)} участников, '
+                f'входит в {len(member_of)} групп | DN: {group.dn}',
+                level=messages.INFO,
+            )
+    show_group_info.short_description = '📋 Показать информацию'
+
+    def delete_selected_ldap(self, request, queryset):
+        """Удаляет выбранные LDAP группы."""
+        groups = self._resolve_ldap_groups(request)
+        if not groups:
+            self.message_user(
+                request, 'Не удалось найти выбранные группы.',
+                level=messages.WARNING,
+            )
+            return
+
+        deleted = 0
+        for group in groups:
+            try:
+                group.delete()
+                deleted += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f'Ошибка удаления {group.cn}: {e}',
+                    level=messages.ERROR,
+                )
+        if deleted:
+            self.message_user(
+                request,
+                f'Удалено: {deleted} групп из LDAP.',
+                level=messages.SUCCESS,
+            )
+    delete_selected_ldap.short_description = '🗑️ Удалить из LDAP'
+
+    def sync_groups_from_ldap(self, request, queryset):
+        """Синхронизирует ВСЕ группы из OU=Groups в Django Group."""
+        from employees.ldap.services.group_service import GroupService
+
+        svc = GroupService()
+        try:
+            created = svc.sync_catalog(throttle_seconds=0)
+            self.message_user(
+                request,
+                f'🔄 LDAP → Django: создано {created} новых Django Group',
+                level=messages.SUCCESS,
+            )
+        except Exception as e:
+            self.message_user(
+                request,
+                f'Ошибка синхронизации: {e}',
+                level=messages.ERROR,
+            )
+    sync_groups_from_ldap.short_description = '⬇️ LDAP → Django (создать Django Group)'
+
+    def sync_groups_to_ldap(self, request, queryset):
+        """Синхронизирует Django Groups → LDAP (создаёт отсутствующие, проверяя LDAP)."""
+        from django.contrib.auth.models import Group as DjangoGroup
+        from employees.ldap.services.group_service import GroupService
+
+        svc = GroupService()
+        groups = self._resolve_ldap_groups(request)
+
+        if not groups:
+            # Если ничего не выбрано — синхронизируем все Django Groups
+            django_groups = DjangoGroup.objects.all()
+            created = 0
+            already = 0
+            for dg in django_groups:
+                # Реальная проверка наличия в LDAP
+                exists_in_ldap = LdapGroup.objects.filter(cn=dg.name).exists()
+                if exists_in_ldap:
+                    ldap_grp = LdapGroup.objects.filter(cn=dg.name).first()
+                    LdapSyncState.objects.update_or_create(
+                        model='group',
+                        object_pk=str(dg.pk),
+                        defaults={
+                            'ldap_dn': ldap_grp.dn,
+                            'last_sync_dir': 'ldap',
+                        },
+                    )
+                    already += 1
+                    continue
+
+                try:
+                    dn = svc.create(cn=dg.name)
+                    LdapSyncState.objects.update_or_create(
+                        model='group',
+                        object_pk=str(dg.pk),
+                        defaults={
+                            'ldap_dn': dn,
+                            'last_sync_dir': 'django',
+                        },
+                    )
+                    created += 1
+                except Exception as e:
+                    self.message_user(
+                        request,
+                        f'⚠️ {dg.name}: {e}',
+                        level=messages.WARNING,
+                    )
+
+            self.message_user(
+                request,
+                f'🔄 Django → LDAP: создано {created}, уже существовало {already}',
+                level=messages.SUCCESS,
+            )
+        else:
+            # Показываем info о выбранных LDAP-группах
+            for group in groups:
+                sync = LdapSyncState.objects.filter(
+                    model='group', ldap_dn=group.dn,
+                ).first()
+                if sync:
+                    self.message_user(
+                        request,
+                        f'✅ {group.cn}: связана с Django Group pk={sync.object_pk}',
+                        level=messages.INFO,
+                    )
+                else:
+                    self.message_user(
+                        request,
+                        f'⚠️ {group.cn}: нет связи с Django Group',
+                        level=messages.WARNING,
+                    )
+    sync_groups_to_ldap.short_description = '⬆️ Django → LDAP (создать LDAP Group)'
 
     # --- Кастомные поля для отображения ---
 
