@@ -284,6 +284,14 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
     # Управление учетной записью
     user_account_control = IntegerField(db_column='userAccountControl')
 
+    # Пароль (write-only атрибут AD)
+    # ВАЖНО: unicodePwd - специальный атрибут Active Directory
+    # - Write-only: можно записать, но нельзя прочитать
+    # - Требует SSL/TLS соединения
+    # - Требует специальной кодировки: UTF-16-LE с кавычками
+    # - Используйте метод set_password() вместо прямой записи
+    unicode_pwd = CharField(db_column='unicodePwd', blank=True)
+
     # Дополнительная информация
     description = CharField(db_column='description', blank=True)
     thumbnail_photo = ImageField(db_column='thumbnailPhoto', blank=True)
@@ -306,6 +314,57 @@ class LdapUser(LdapSyncStateMixin, ModifyDnMixin, LdapModel):
 
     def __repr__(self):
         return f"<LdapUser: {self.sam_account_name}>"
+
+    def set_password(self, new_password: str) -> None:
+        """Устанавливает новый пароль для пользователя через AD extended operation.
+
+        Использует Microsoft-специфичное расширение modify_password для корректной
+        работы с политиками паролей AD. Это более надежный способ, чем прямая
+        запись в unicodePwd.
+
+        Args:
+            new_password: Новый пароль (plaintext)
+
+        Raises:
+            ValueError: Если пароль пустой или не соответствует политике
+            DirectoryLdapError: Если операция не удалась
+
+        Example:
+            >>> ldap_user = LdapUser.objects.get(dn='CN=...')
+            >>> ldap_user.set_password('NewSecurePass123!')
+            >>> # Пароль изменён в AD, НЕ требуется .save()
+        """
+        from .infrastructure.connections import _ldap
+        from .services.user_password_service import UserPasswordService
+
+        service = UserPasswordService()
+        with _ldap() as conn:
+            service.set_password(conn, self.dn, new_password)
+
+    def change_password(self, old_password: str, new_password: str) -> None:
+        """Меняет пароль пользователя (требует знания старого пароля).
+
+        Используется для самостоятельной смены пароля пользователем.
+
+        Args:
+            old_password: Текущий пароль
+            new_password: Новый пароль
+
+        Raises:
+            ValueError: Если новый пароль не соответствует политике
+            DirectoryLdapError: Если старый пароль неверен или операция не удалась
+
+        Example:
+            >>> ldap_user = LdapUser.objects.get(dn='CN=...')
+            >>> ldap_user.change_password('OldPass123', 'NewSecurePass123!')
+            >>> # Пароль изменён в AD, НЕ требуется .save()
+        """
+        from .infrastructure.connections import _ldap
+        from .services.user_password_service import UserPasswordService
+
+        service = UserPasswordService()
+        with _ldap() as conn:
+            service.change_password(conn, self.dn, old_password, new_password)
 
 
 class LdapGroup(ModifyDnMixin, LdapModel):

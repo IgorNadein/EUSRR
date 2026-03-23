@@ -55,10 +55,16 @@ class LdapUserAdmin(admin.ModelAdmin):
     """
     
     def get_urls(self):
-        """Переопределяем URLs для корректной работы с DN как PK."""
-        urls = super().get_urls()
-        # Django автоматически добавит наши URL patterns с правильным кодированием
-        return urls
+        """Добавляем URL для смены пароля конкретного пользователя."""
+        from django.urls import re_path
+        urls = [
+            re_path(
+                r'^(.+)/password/$',
+                self.admin_site.admin_view(self.user_change_password),
+                name='ldapuser_password_change',
+            ),
+        ]
+        return urls + super().get_urls()
     
     list_display = (
         'cn_display',
@@ -87,6 +93,7 @@ class LdapUserAdmin(admin.ModelAdmin):
         'member_of_display',
         'sync_info',
         'thumbnail_photo_display',
+        'password_change_link',
     )
     
     fieldsets = (
@@ -117,6 +124,7 @@ class LdapUserAdmin(admin.ModelAdmin):
             'fields': (
                 'user_account_control',
                 'description',
+                'password_change_link',
             )
         }),
         ('🖼️ Дополнительно', {
@@ -143,6 +151,7 @@ class LdapUserAdmin(admin.ModelAdmin):
         'sync_from_ldap_to_django',
         'sync_from_django_to_ldap',
         'show_sync_diff',
+        'change_password_action',
     ]
     
     # Пагинация (LDAP может быть медленным)
@@ -346,6 +355,41 @@ class LdapUserAdmin(admin.ModelAdmin):
             )
     sync_info.short_description = 'Информация о синхронизации'
     
+    def password_change_link(self, obj):
+        """Ссылка на форму смены пароля (как в стандартной Django admin)."""
+        if not obj.dn:
+            return '-'
+        
+        # Кодируем DN для URL
+        from urllib.parse import quote
+        dn_encoded = quote(obj.dn, safe='')
+        
+        change_password_url = reverse(
+            'admin:ldapuser_password_change',
+            args=[dn_encoded],
+        )
+        
+        return format_html(
+            '<div style="margin: 10px 0;">'
+            '<a href="{}" class="button" style="'
+            'display: inline-block; '
+            'padding: 10px 20px; '
+            'background: #417690; '
+            'color: white; '
+            'text-decoration: none; '
+            'border-radius: 4px; '
+            'font-weight: bold;'
+            '">'
+            '🔑 Изменить пароль'
+            '</a>'
+            '</div>'
+            '<p style="color: #666; margin-top: 10px;">'
+            'Пароль будет изменён в LDAP и автоматически синхронизирован с Django БД.'
+            '</p>',
+            change_password_url
+        )
+    password_change_link.short_description = 'Управление паролем'
+    
     # Actions для синхронизации
     
     @admin.action(description='🔄 Синхронизировать LDAP → Django (LDAP как источник истины)')
@@ -518,6 +562,144 @@ class LdapUserAdmin(admin.ModelAdmin):
                 level=messages.WARNING
             )
     
+    @admin.action(description='🔑 Изменить пароль выбранных пользователей')
+    def change_password_action(self, request, queryset):
+        """Изменяет пароль выбранных LDAP пользователей.
+        
+        Показывает форму для ввода нового пароля и применяет его
+        к выбранным пользователям через AD extended operation.
+        """
+        ldap_users = self._resolve_ldap_users(request)
+        
+        if not ldap_users:
+            self.message_user(
+                request,
+                '❌ Не удалось найти выбранных пользователей',
+                level=messages.ERROR
+            )
+            return
+        
+        # Если форма не отправлена - показываем её
+        if 'new_password' not in request.POST:
+            from django import forms
+            from django.template.response import TemplateResponse
+            
+            class PasswordForm(forms.Form):
+                new_password = forms.CharField(
+                    label='Новый пароль',
+                    widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+                    min_length=7,
+                    help_text='Минимум 7 символов, должен соответствовать политике AD'
+                )
+                confirm_password = forms.CharField(
+                    label='Подтверждение пароля',
+                    widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+                )
+                
+                def clean(self):
+                    cleaned = super().clean()
+                    pwd1 = cleaned.get('new_password')
+                    pwd2 = cleaned.get('confirm_password')
+                    if pwd1 and pwd2 and pwd1 != pwd2:
+                        raise forms.ValidationError('Пароли не совпадают')
+                    return cleaned
+            
+            form = PasswordForm()
+            
+            context = {
+                **self.admin_site.each_context(request),
+                'title': 'Изменение пароля LDAP пользователей',
+                'form': form,
+                'users': ldap_users,
+                'users_count': len(ldap_users),
+                'action_name': 'change_password_action',
+                'opts': self.model._meta,
+                'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+                'media': self.media,
+            }
+            request.current_app = self.admin_site.name
+            
+            # Используем кастомный шаблон для смены пароля
+            return TemplateResponse(
+                request,
+                'admin/ldap_change_password.html',
+                context,
+            )
+        
+        # Форма отправлена - обрабатываем
+        new_password = request.POST.get('new_password', '').strip()
+        confirm_password = request.POST.get('confirm_password', '').strip()
+        
+        if not new_password:
+            self.message_user(
+                request,
+                '❌ Пароль не может быть пустым',
+                level=messages.ERROR
+            )
+            return
+        
+        if new_password != confirm_password:
+            self.message_user(
+                request,
+                '❌ Пароли не совпадают',
+                level=messages.ERROR
+            )
+            return
+        
+        if len(new_password) < 7:
+            self.message_user(
+                request,
+                '❌ Пароль должен содержать минимум 7 символов',
+                level=messages.ERROR
+            )
+            return
+        
+        # Применяем пароль ко всем выбранным пользователям
+        success_count = 0
+        error_count = 0
+        
+        for ldap_user in ldap_users:
+            try:
+                ldap_user.set_password(new_password)
+                success_count += 1
+                
+                # Обновляем Django Employee если есть связь
+                if ldap_user.employee_number:
+                    try:
+                        emp = Employee.objects.get(pk=int(ldap_user.employee_number))
+                        emp.set_password(new_password)
+                        emp.save(update_fields=['password'])
+                    except (Employee.DoesNotExist, ValueError):
+                        pass  # Не критично
+                        
+            except ValueError as e:
+                error_count += 1
+                self.message_user(
+                    request,
+                    f'⚠️ {ldap_user.cn}: {e}',
+                    level=messages.WARNING
+                )
+            except Exception as e:
+                error_count += 1
+                self.message_user(
+                    request,
+                    f'❌ {ldap_user.cn}: ошибка - {e}',
+                    level=messages.ERROR
+                )
+        
+        if success_count:
+            self.message_user(
+                request,
+                f'✅ Пароль успешно изменён для {success_count} пользователей',
+                level=messages.SUCCESS
+            )
+        if error_count:
+            self.message_user(
+                request,
+                f'❌ Ошибок: {error_count}',
+                level=messages.WARNING
+            )
+    
     @admin.action(description='🔍 Показать различия LDAP ↔ Django')
     def show_sync_diff(self, request, queryset):
         """Показывает различия между LDAP и Django для выбранных пользователей."""
@@ -567,6 +749,100 @@ class LdapUserAdmin(admin.ModelAdmin):
                 "Различий не найдено. Все выбранные пользователи синхронизированы.",
                 level=messages.SUCCESS
             )
+    
+    # Страница смены пароля для конкретного пользователя
+    
+    def user_change_password(self, request, dn_encoded):
+        """Форма смены пароля для конкретного LDAP пользователя."""
+        from django import forms
+        from django.template.response import TemplateResponse
+        from django.http import HttpResponseRedirect
+        from urllib.parse import unquote
+        
+        # Декодируем DN
+        dn = unquote(dn_encoded)
+        
+        # Находим пользователя
+        try:
+            user = LdapUser.objects.get(dn=dn)
+        except LdapUser.DoesNotExist:
+            self.message_user(
+                request,
+                '❌ Пользователь не найден',
+                level=messages.ERROR
+            )
+            return HttpResponseRedirect('../../')  # Возврат на список
+        
+        # Форма для смены пароля
+        class PasswordChangeForm(forms.Form):
+            password1 = forms.CharField(
+                label='Новый пароль',
+                widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+                min_length=7,
+                help_text='Минимум 7 символов, должен соответствовать политике AD'
+            )
+            password2 = forms.CharField(
+                label='Подтверждение пароля',
+                widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+            )
+            
+            def clean(self):
+                cleaned = super().clean()
+                pwd1 = cleaned.get('password1')
+                pwd2 = cleaned.get('password2')
+                if pwd1 and pwd2 and pwd1 != pwd2:
+                    raise forms.ValidationError('Пароли не совпадают')
+                return cleaned
+        
+        if request.method == 'POST':
+            form = PasswordChangeForm(request.POST)
+            if form.is_valid():
+                new_password = form.cleaned_data['password1']
+                
+                try:
+                    # Меняем пароль в LDAP
+                    user.set_password(new_password)
+                    
+                    # Синхронизируем с Django Employee
+                    if user.employee_number:
+                        try:
+                            emp = Employee.objects.get(pk=int(user.employee_number))
+                            emp.set_password(new_password)
+                            emp.save(update_fields=['password'])
+                        except (Employee.DoesNotExist, ValueError):
+                            pass  # Не критично
+                    
+                    self.message_user(
+                        request,
+                        f'✅ Пароль успешно изменён для {user.cn}',
+                        level=messages.SUCCESS
+                    )
+                    
+                    # Перенаправляем на список пользователей (избегаем проблем с кодировкой DN)
+                    return HttpResponseRedirect('../../')
+                    
+                except ValueError as e:
+                    form.add_error(None, f'Ошибка валидации: {e}')
+                except Exception as e:
+                    form.add_error(None, f'Ошибка LDAP: {e}')
+        else:
+            form = PasswordChangeForm()
+        
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'Изменение пароля: {user.cn}',
+            'form': form,
+            'user': user,
+            'opts': self.model._meta,
+            'original': user,
+            'media': self.media,
+        }
+        
+        return TemplateResponse(
+            request,
+            'admin/ldap_user_password_change.html',
+            context,
+        )
     
     # Переопределение разрешений (опционально - можно разрешить редактирование)
     
@@ -806,7 +1082,7 @@ class LdapOrganizationalUnitAdmin(admin.ModelAdmin):
             ldap_user = LdapUser.objects.get(dn=mb)
             # Правильный URL pattern для LDAP моделей
             url = reverse(
-                'admin:ldap_ldapuser_change', args=[quote(ldap_user.dn, safe='')],
+                'admin:employees_ldapuser_change', args=[quote(ldap_user.dn, safe='')],
             )
             return format_html(
                 '<a href="{}">👤 {} ({})</a><br>'
@@ -1954,7 +2230,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
                 try:
                     ldap_user = LdapUser.objects.get(dn=member_dn)
                     url = reverse(
-                        'admin:ldap_ldapuser_change',
+                        'admin:employees_ldapuser_change',
                         args=[quote(ldap_user.dn, safe='')],
                     )
                     html += format_html(
@@ -1968,7 +2244,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
                     try:
                         ldap_group = LdapGroup.objects.get(dn=member_dn)
                         url = reverse(
-                            'admin:ldap_ldapgroup_change',
+                            'admin:employees_ldapgroup_change',
                             args=[quote(ldap_group.dn, safe='')],
                         )
                         html += format_html(
@@ -2013,7 +2289,7 @@ class LdapGroupAdmin(admin.ModelAdmin):
             try:
                 parent_group = LdapGroup.objects.get(dn=group_dn)
                 url = reverse(
-                    'admin:ldap_ldapgroup_change',
+                    'admin:employees_ldapgroup_change',
                     args=[quote(parent_group.dn, safe='')],
                 )
                 html += format_html(
