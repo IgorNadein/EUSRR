@@ -1704,82 +1704,49 @@ class ApiClient {
         return this.request(url);
     }
 
-    async createEquipment(data: any): Promise<any> {
-        const formData = new FormData();
-
-        Object.keys(data).forEach((key) => {
-            if (key === 'attachment' && data[key] instanceof File) {
-                formData.append('attachment', data[key]);
-            } else if (Array.isArray(data[key])) {
-                data[key].forEach((val: any) => {
-                    formData.append(key, String(val));
-                });
-            } else if (data[key] !== null && data[key] !== undefined) {
-                formData.append(key, String(data[key]));
-            }
-        });
-
-        const token = this.getToken();
-        const headers: Record<string, string> = {};
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const response = await fetch('/api/v1/procurement/equipment/', {
-            method: 'POST',
-            headers,
-            body: formData,
-        });
-
-        if (!response.ok) {
-            let detail = `${response.status} ${response.statusText}`;
-            try {
-                const body = await response.json();
-                detail = JSON.stringify(body);
-            } catch {}
-            throw new Error(detail);
-        }
-
-        return response.json();
+    async getEquipmentDetail(equipmentId: number): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/`);
     }
 
-    async updateEquipment(equipmentId: number, data: any): Promise<any> {
-        const formData = new FormData();
-
-        Object.keys(data).forEach((key) => {
-            if (key === 'attachment' && data[key] instanceof File) {
-                formData.append('attachment', data[key]);
-            } else if (Array.isArray(data[key])) {
-                data[key].forEach((val: any) => {
-                    formData.append(key, String(val));
-                });
-            } else if (data[key] !== null && data[key] !== undefined) {
-                formData.append(key, String(data[key]));
-            }
-        });
-
-        const token = this.getToken();
-        const headers: Record<string, string> = {};
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
+    async getMyEquipment(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
         }
+        const url = `/api/v1/procurement/equipment/my_equipment/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
 
-        const response = await fetch(`/api/v1/procurement/equipment/${equipmentId}/`, {
+    async getWarrantyExpiringEquipment(): Promise<any> {
+        return this.request('/api/v1/procurement/equipment/warranty_expiring/');
+    }
+
+    async generateEquipmentInventoryNumber(): Promise<{ inventory_number: string }> {
+        return this.request('/api/v1/procurement/equipment/generate-inventory-number/');
+    }
+
+    async getEquipmentCreateOptions(): Promise<any> {
+        return this.request('/api/v1/procurement/equipment/create-options/');
+    }
+
+    async createEquipment(data: Record<string, any>): Promise<any> {
+        return this.request('/api/v1/procurement/equipment/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateEquipment(equipmentId: number, data: Record<string, any>): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/`, {
             method: 'PATCH',
-            headers,
-            body: formData,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
         });
-
-        if (!response.ok) {
-            let detail = `${response.status} ${response.statusText}`;
-            try {
-                const body = await response.json();
-                detail = JSON.stringify(body);
-            } catch {}
-            throw new Error(detail);
-        }
-
-        return response.json();
     }
 
     async deleteEquipment(equipmentId: number): Promise<void> {
@@ -1788,22 +1755,70 @@ class ApiClient {
         });
     }
 
-    async approveEquipment(equipmentId: number): Promise<any> {
-        return this.request(`/api/v1/procurement/equipment/${equipmentId}/approve/`, {
+    async transferEquipment(equipmentId: number, data: { to_department?: number | null; to_person?: number | null; reason?: string }): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/transfer/`, {
             method: 'POST',
+            body: JSON.stringify(data),
         });
     }
 
-    async rejectEquipment(equipmentId: number): Promise<any> {
-        return this.request(`/api/v1/procurement/equipment/${equipmentId}/reject/`, {
+    async writeOffEquipment(equipmentId: number, reason: string): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/write_off/`, {
             method: 'POST',
+            body: JSON.stringify({ reason }),
         });
     }
 
-    async cancelEquipment(equipmentId: number): Promise<any> {
-        return this.request(`/api/v1/procurement/equipment/${equipmentId}/cancel/`, {
+    async addEquipmentMaintenance(equipmentId: number, data: { type: string; description?: string; cost?: string | number; date?: string }): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/add_maintenance/`, {
             method: 'POST',
+            body: JSON.stringify(data),
         });
+    }
+
+    async getEquipmentTransferHistory(equipmentId: number): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment/${equipmentId}/transfer_history/`);
+    }
+
+    async getMaintenanceRecords(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/maintenance/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async getEquipmentCategoryTree(): Promise<any> {
+        return this.request('/api/v1/procurement/equipment-categories/tree/');
+    }
+
+    async getEquipmentCategoryChildren(categoryId: number): Promise<any> {
+        return this.request(`/api/v1/procurement/equipment-categories/${categoryId}/children/`);
+    }
+
+    async getEquipmentQrCodeBlobUrl(equipmentId: number): Promise<string> {
+        const headers: Record<string, string> = {};
+        const token = this.getToken();
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`/api/v1/procurement/equipment/${equipmentId}/qr_code/`, {
+            method: 'GET',
+            headers,
+        });
+
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
     }
 
     async getEquipmentComments(equipmentId: number): Promise<any> {

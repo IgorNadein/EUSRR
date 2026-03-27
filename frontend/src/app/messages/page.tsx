@@ -417,6 +417,17 @@ export default function MessagesPage() {
         </div>
       ) : (
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Сообщения</p>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
+            >
+              <Plus size={14} /> Создать чат
+            </button>
+          </div>
+
           {/* Поиск и кнопка фильтров */}
           <div className="mb-4 flex gap-2">
             <div className="relative flex-1">
@@ -428,14 +439,6 @@ export default function MessagesPage() {
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center justify-center rounded-lg border border-sky-200 bg-sky-500 p-2.5 text-white transition hover:bg-sky-600"
-              title="Создать чат"
-            >
-              <Plus size={16} />
-            </button>
             <button
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}

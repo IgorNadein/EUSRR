@@ -15,7 +15,7 @@ import {
   Tags,
   LayoutGrid,
   CheckSquare,
-  SlidersHorizontal,
+  Filter,
   CheckCircle,
   AlertCircle,
   Calendar,
@@ -107,7 +107,7 @@ export default function DocumentsPage() {
       console.log("📁 Загрузка документов с параметрами:", params);
       const response = await apiClient.getDocuments(params);
       console.log("📄 Получено документов:", response.results?.length || 0);
-      setDocuments(response.results || []);
+      setDocuments(response.results || response || []);
     } catch (err) {
       console.error("Ошибка загрузки документов:", err);
       setError("Не удалось загрузить документы");
@@ -226,91 +226,295 @@ export default function DocumentsPage() {
     return selectedFolder.path.split(' / ');
   }, [selectedFolder]);
 
+  const activeFilterCount = selectedTags.length + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
+
   return (
     <AppShell>
       <div className="space-y-4">
         {/* Top Bar */}
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            {/* Left Section: Navigation */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              {/* Folder Filter */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowFolderDropdown(!showFolderDropdown)}
-                  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition ${
-                    selectedFolderId
-                      ? "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
-                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <FolderOpen size={16} />
-                  <span className="max-w-[200px] truncate">
-                    {selectedFolder ? selectedFolder.name : "Все папки"}
-                  </span>
-                  {selectedFolderId && (
-                    <span
-                      onClick={(e) => {
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Документы</p>
+            <button
+              onClick={() => setShowUploadForm(true)}
+              className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
+            >
+              <Plus size={14} /> Загрузить документ
+            </button>
+          </div>
+
+          <div className="mb-4 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск по документам"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`relative inline-flex items-center justify-center rounded-lg border p-2.5 transition ${
+                showFilters || activeFilterCount > 0
+                  ? 'border-sky-400 bg-sky-50 text-sky-600'
+                  : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+              }`}
+              title="Фильтры"
+            >
+              <Filter size={16} />
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowFolderDropdown(!showFolderDropdown)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  selectedFolderId
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <FolderOpen size={14} />
+                <span className="max-w-[220px] truncate">
+                  {selectedFolder ? selectedFolder.name : 'Все папки'}
+                </span>
+                {selectedFolderId ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedFolderId(null);
+                    }}
+                    className={`rounded-full p-0.5 ${selectedFolderId ? 'hover:bg-sky-500' : 'hover:bg-gray-300'}`}
+                    title="Сбросить фильтр"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
                         e.stopPropagation();
                         setSelectedFolderId(null);
-                      }}
-                      className="rounded p-0.5 hover:bg-sky-200 cursor-pointer"
-                      title="Сбросить фильтр"
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSelectedFolderId(null);
-                        }
-                      }}
-                    >
-                      <X size={14} />
-                    </span>
-                  )}
-                </button>
-                {showFolderDropdown && (
-                  <div className="absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg">
-                    <div className="border-b border-gray-100 p-2">
-                      <button
-                        onClick={() => {
-                          setShowCreateFolder(true);
-                          setShowFolderDropdown(false);
-                        }}
-                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sky-600 transition hover:bg-sky-50"
-                      >
-                        <Plus size={16} />
-                        Создать папку
-                      </button>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto p-2">
-                      <FolderTree
-                        folders={folders}
-                        selectedFolderId={selectedFolderId}
-                        onSelectFolder={(id) => {
-                          console.log("🗂️ Выбрана папка:", id);
-                          setSelectedFolderId(id);
-                          setShowFolderDropdown(false);
-                        }}
-                      />
-                    </div>
-                  </div>
+                      }
+                    }}
+                  >
+                    <X size={12} />
+                  </span>
+                ) : (
+                  <ChevronDown size={12} className="opacity-70" />
                 )}
-              </div>
-            </div>
-
-            {/* Right Section: Actions */}
-            <div className="flex shrink-0">
-              <button
-                onClick={() => setShowUploadForm(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
-              >
-                <Plus size={16} />
-                Загрузить
               </button>
+              {showFolderDropdown && (
+                <div className="absolute left-0 top-full z-10 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg">
+                  <div className="border-b border-gray-100 p-2">
+                    <button
+                      onClick={() => {
+                        setShowCreateFolder(true);
+                        setShowFolderDropdown(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sky-600 transition hover:bg-sky-50"
+                    >
+                      <Plus size={16} />
+                      Создать папку
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto p-2">
+                    <FolderTree
+                      folders={folders}
+                      selectedFolderId={selectedFolderId}
+                      onSelectFolder={(id) => {
+                        console.log("🗂️ Выбрана папка:", id);
+                        setSelectedFolderId(id);
+                        setShowFolderDropdown(false);
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Active Filters Tags */}
+          {(selectedTags.length > 0 || dateFrom || dateTo) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {selectedTags.map(tagId => {
+                const tag = availableTags.find(t => t.id === tagId);
+                return tag ? (
+                  <span
+                    key={tagId}
+                    className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-xs text-sky-700"
+                  >
+                    <Tags size={12} />
+                    {tag.name}
+                    <button
+                      onClick={() => setSelectedTags(prev => prev.filter(id => id !== tagId))}
+                      className="hover:text-sky-900"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ) : null;
+              })}
+              {dateFrom && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
+                  <Calendar size={12} />
+                  С: {new Date(dateFrom).toLocaleDateString('ru')}
+                  <button
+                    onClick={() => setDateFrom('')}
+                    className="hover:text-purple-900"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {dateTo && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
+                  <Calendar size={12} />
+                  До: {new Date(dateTo).toLocaleDateString('ru')}
+                  <button
+                    onClick={() => setDateTo('')}
+                    className="hover:text-purple-900"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setSelectedTags([]);
+                  setDateFrom('');
+                  setDateTo('');
+                }}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200"
+              >
+                Сбросить все
+              </button>
+            </div>
+          )}
+
+          {/* Filters Panel */}
+          {showFilters && (
+            <div className="mb-3 flex flex-col gap-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              {/* Tags Filter */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">Теги</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowTagManagement(true)}
+                    className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    Управление
+                  </button>
+                </div>
+                {availableTags.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                    {availableTags.map(tag => (
+                      <label
+                        key={tag.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm transition hover:border-sky-300 hover:bg-sky-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTags.includes(tag.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTags(prev => [...prev, tag.id]);
+                            } else {
+                              setSelectedTags(prev => prev.filter(id => id !== tag.id));
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
+                        />
+                        <span className="truncate">{tag.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm italic text-gray-500">Нет доступных тегов</p>
+                )}
+              </div>
+
+              {/* Date Range */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Дата создания (с)
+                  </label>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Дата создания (до)
+                  </label>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  />
+                </div>
+              </div>
+
+              {/* Sorting */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Сортировать по
+                  </label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as "date" | "title")}
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  >
+                    <option value="date">Дата создания</option>
+                    <option value="title">Название</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Порядок
+                  </label>
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  >
+                    <option value="desc">По убыванию</option>
+                    <option value="asc">По возрастанию</option>
+                  </select>
+                </div>
+              </div>
+
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTags([]);
+                    setDateFrom('');
+                    setDateTo('');
+                  }}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                >
+                  Очистить фильтры
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Main Content */}
@@ -326,199 +530,6 @@ export default function DocumentsPage() {
             </div>
           ) : (
             <>
-              {/* Search & Filters */}
-                  <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                    {/* Search Bar */}
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Search
-                          size={16}
-                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        />
-                        <input
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          placeholder="Поиск по документам"
-                          className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                        />
-                      </div>
-                      <button
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition ${
-                          showFilters || selectedTags.length > 0 || dateFrom || dateTo
-                            ? 'border-sky-500 bg-sky-50 text-sky-700'
-                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                        }`}
-                        title="Фильтры"
-                      >
-                        <SlidersHorizontal size={16} />
-                        {(selectedTags.length > 0 || dateFrom || dateTo) && (
-                          <span className="rounded-full bg-sky-600 px-1.5 py-0.5 text-xs text-white">
-                            {selectedTags.length + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)}
-                          </span>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Active Filters Tags */}
-                    {(selectedTags.length > 0 || dateFrom || dateTo) && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {selectedTags.map(tagId => {
-                          const tag = availableTags.find(t => t.id === tagId);
-                          return tag ? (
-                            <span
-                              key={tagId}
-                              className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-xs text-sky-700"
-                            >
-                              <Tags size={12} />
-                              {tag.name}
-                              <button
-                                onClick={() => setSelectedTags(prev => prev.filter(id => id !== tagId))}
-                                className="hover:text-sky-900"
-                              >
-                                <X size={12} />
-                              </button>
-                            </span>
-                          ) : null;
-                        })}
-                        {dateFrom && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
-                            <Calendar size={12} />
-                            С: {new Date(dateFrom).toLocaleDateString('ru')}
-                            <button
-                              onClick={() => setDateFrom('')}
-                              className="hover:text-purple-900"
-                            >
-                              <X size={12} />
-                            </button>
-                          </span>
-                        )}
-                        {dateTo && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700">
-                            <Calendar size={12} />
-                            До: {new Date(dateTo).toLocaleDateString('ru')}
-                            <button
-                              onClick={() => setDateTo('')}
-                              className="hover:text-purple-900"
-                            >
-                              <X size={12} />
-                            </button>
-                          </span>
-                        )}
-                        <button
-                          onClick={() => {
-                            setSelectedTags([]);
-                            setDateFrom('');
-                            setDateTo('');
-                          }}
-                          className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200"
-                        >
-                          Сбросить все
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Filters Panel */}
-                    {showFilters && (
-                      <div className="mt-4 space-y-4 border-t pt-4">
-                        {/* Tags Filter */}
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="text-sm font-medium text-gray-700">Теги</label>
-                            <button
-                              onClick={() => setShowTagManagement(true)}
-                              className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
-                            >
-                              Управление
-                            </button>
-                          </div>
-                          {availableTags.length > 0 ? (
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                              {availableTags.map(tag => (
-                                <label
-                                  key={tag.id}
-                                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm transition hover:border-sky-300 hover:bg-sky-50"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedTags.includes(tag.id)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setSelectedTags(prev => [...prev, tag.id]);
-                                      } else {
-                                        setSelectedTags(prev => prev.filter(id => id !== tag.id));
-                                      }
-                                    }}
-                                    className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-2 focus:ring-sky-100"
-                                  />
-                                  <span className="truncate">{tag.name}</span>
-                                </label>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-gray-500 italic">Нет доступных тегов</p>
-                          )}
-                        </div>
-
-                        {/* Date Range */}
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">
-                              Дата создания (с)
-                            </label>
-                            <input
-                              type="date"
-                              value={dateFrom}
-                              onChange={(e) => setDateFrom(e.target.value)}
-                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">
-                              Дата создания (до)
-                            </label>
-                            <input
-                              type="date"
-                              value={dateTo}
-                              onChange={(e) => setDateTo(e.target.value)}
-                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Sorting */}
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">
-                              Сортировать по
-                            </label>
-                            <select
-                              value={sortBy}
-                              onChange={(e) => setSortBy(e.target.value as "date" | "title")}
-                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                            >
-                              <option value="date">Дата создания</option>
-                              <option value="title">Название</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">
-                              Порядок
-                            </label>
-                            <select
-                              value={sortOrder}
-                              onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
-                              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
-                            >
-                              <option value="desc">По убыванию</option>
-                              <option value="asc">По возрастанию</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                </div>
-
                 {/* Bulk Actions Toolbar */}
                 {selection.selectedIds.length > 0 && (
                   <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
@@ -918,16 +929,6 @@ export default function DocumentsPage() {
         </form>
       </Modal>
 
-      {/* Acknowledgements Report Modal */}
-      {showAcknowledgementsReport && (
-        <DocumentAcknowledgementsReport
-          documentId={showAcknowledgementsReport.documentId}
-          documentTitle={showAcknowledgementsReport.documentTitle}
-          onClose={() => setShowAcknowledgementsReport(null)}
-        />
-      )}
-
-      {/* Tag Management Modal */}
       <TagManagementModal
         isOpen={showTagManagement}
         onClose={() => setShowTagManagement(false)}
