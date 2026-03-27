@@ -362,6 +362,7 @@ class EquipmentListSerializer(serializers.ModelSerializer):
         read_only=True
     )
     is_under_warranty = serializers.BooleanField(read_only=True)
+    comments_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Equipment
@@ -369,6 +370,7 @@ class EquipmentListSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'inventory_number',
+            'serial_number',
             'category',
             'category_name',
             'category_icon',
@@ -378,19 +380,27 @@ class EquipmentListSerializer(serializers.ModelSerializer):
             'department_name',
             'responsible_person',
             'responsible_name',
+            'location',
             'purchase_date',
             'purchase_cost',
+            'notes',
             'is_under_warranty',
+            'comments_count',
+            'created_at',
+            'updated_at',
         ]
         read_only_fields = [
             'id',
-            'inventory_number',  # Генерируется автоматически
+            'inventory_number',
             'category_name',
             'category_icon',
             'department_name',
             'responsible_name',
             'status_display',
             'is_under_warranty',
+            'comments_count',
+            'created_at',
+            'updated_at',
         ]
 
     def create(self, validated_data):

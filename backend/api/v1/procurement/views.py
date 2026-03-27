@@ -24,6 +24,8 @@ from procurement.models import (
     ProcurementRequest,
     Supplier,
 )
+from communications import comments_helpers
+from communications.models import Message
 from procurement.services import QRCodeGenerator
 from .permissions import (
     CanApproveProcurementRequest,
@@ -875,15 +877,43 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    filterset_fields = ['status', 'category', 'department']
+    filterset_fields = {
+        'status': ['exact'],
+        'category': ['exact'],
+        'department': ['exact'],
+        'responsible_person': ['exact'],
+        'purchase_date': ['gte', 'lte'],
+    }
     search_fields = [
         'name',
         'inventory_number',
         'serial_number',
         'location',
     ]
-    ordering_fields = ['purchase_date', 'name']
-    ordering = ['-purchase_date']
+    ordering_fields = ['purchase_date', 'name', 'created_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        """Annotate comments_count."""
+        from django.contrib.contenttypes.models import ContentType
+        from django.db.models import Count, Subquery, OuterRef, IntegerField
+        from communications.models import Chat
+
+        ct = ContentType.objects.get_for_model(Equipment)
+        qs = super().get_queryset()
+
+        comments_sub = (
+            Chat.objects.filter(
+                type='comments',
+                context_content_type=ct,
+                context_object_id=OuterRef('pk'),
+            )
+            .annotate(msg_count=Count('messages', filter=Q(messages__is_deleted=False)))
+            .values('msg_count')[:1]
+        )
+        return qs.annotate(
+            comments_count=Subquery(comments_sub, output_field=IntegerField(default=0))
+        )
 
     def get_serializer_class(self):
         """Выбрать сериализатор."""
@@ -1239,6 +1269,86 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         ]
 
         return Response(data)
+
+    @action(detail=True, methods=['get', 'post'])
+    def comments(self, request, pk=None):
+        """Список/создание комментариев для оборудования."""
+        from api.v1.employees.serializers.employee import (
+            EmployeeBriefSerializer,
+        )
+
+        equipment = self.get_object()
+
+        if request.method in ('GET', 'HEAD'):
+            messages = comments_helpers.get_comments(equipment)
+            comments_data = []
+            for msg in messages:
+                author_ser = EmployeeBriefSerializer(msg.author)
+                comments_data.append({
+                    'id': msg.id,
+                    'equipment': equipment.id,
+                    'author': author_ser.data,
+                    'text': msg.content,
+                    'created_at': msg.created_at,
+                })
+            return Response(comments_data)
+
+        text = request.data.get('text', '').strip()
+        if not text:
+            return Response(
+                {'text': ['Это поле не может быть пустым.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = comments_helpers.create_comment(
+            obj=equipment,
+            author=request.user,
+            content=text,
+        )
+        author_ser = EmployeeBriefSerializer(message.author)
+        return Response(
+            {
+                'id': message.id,
+                'equipment': equipment.id,
+                'author': author_ser.data,
+                'text': message.content,
+                'created_at': message.created_at,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=['delete'],
+        url_path='comments/(?P<comment_id>[^/.]+)',
+    )
+    def delete_comment(self, request, pk=None, comment_id=None):
+        """Удаление комментария к оборудованию."""
+        equipment = self.get_object()
+        chat = comments_helpers.get_or_create_comments_chat(equipment)
+        if isinstance(chat, tuple):
+            chat = chat[0]
+
+        try:
+            message = Message.objects.get(id=comment_id, chat=chat)
+        except Message.DoesNotExist:
+            return Response(
+                {'detail': 'Комментарий не найден'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not (request.user.is_staff or message.author == request.user):
+            return Response(
+                {'detail': 'Нет прав на удаление'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        comments_helpers.delete_comment(
+            message=message,
+            deleted_by=request.user,
+            soft_delete=True,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MaintenanceRecordViewSet(viewsets.ModelViewSet):
