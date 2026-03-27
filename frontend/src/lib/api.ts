@@ -629,6 +629,8 @@ class ApiClient {
         view?: string;
         addressed_to_me?: string;
         employee_id?: string | number;
+        created_from?: string;
+        created_to?: string;
         date_from?: string;
         date_to?: string;
         [key: string]: any;
@@ -642,6 +644,8 @@ class ApiClient {
         if (params?.view) queryParams.append('view', params.view);
         if (params?.addressed_to_me) queryParams.append('addressed_to_me', params.addressed_to_me);
         if (params?.employee_id) queryParams.append('employee_id', params.employee_id.toString());
+        if (params?.created_from) queryParams.append('created_from', params.created_from);
+        if (params?.created_to) queryParams.append('created_to', params.created_to);
         if (params?.date_from) queryParams.append('date_from', params.date_from);
         if (params?.date_to) queryParams.append('date_to', params.date_to);
 

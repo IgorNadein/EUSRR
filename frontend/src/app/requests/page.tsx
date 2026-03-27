@@ -109,8 +109,10 @@ export default function RequestsPage() {
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
-  const [dateFromFilter, setDateFromFilter] = useState("");
-  const [dateToFilter, setDateToFilter] = useState("");
+  const [createdFromFilter, setCreatedFromFilter] = useState("");
+  const [createdToFilter, setCreatedToFilter] = useState("");
+  const [periodFromFilter, setPeriodFromFilter] = useState("");
+  const [periodToFilter, setPeriodToFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string } | null>(null);
 
@@ -162,8 +164,10 @@ export default function RequestsPage() {
     if (typeFilter) params.type = typeFilter;
     if (statusFilter) params.status = statusFilter;
     if (employeeFilter) params.employee_id = employeeFilter;
-    if (dateFromFilter) params.date_from = dateFromFilter;
-    if (dateToFilter) params.date_to = dateToFilter;
+    if (createdFromFilter) params.created_from = createdFromFilter;
+    if (createdToFilter) params.created_to = createdToFilter;
+    if (periodFromFilter) params.date_from = periodFromFilter;
+    if (periodToFilter) params.date_to = periodToFilter;
     return params;
   };
 
@@ -184,7 +188,7 @@ export default function RequestsPage() {
     }
 
     loadRequests();
-  }, [view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter]);
+  }, [view, typeFilter, statusFilter, employeeFilter, createdFromFilter, createdToFilter, periodFromFilter, periodToFilter]);
 
   useEffect(() => {
     async function loadAllPages<T extends { id: number }>(fetcher: (params: any) => Promise<any>): Promise<T[]> {
@@ -331,7 +335,7 @@ export default function RequestsPage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [nextPage, loadingMore, view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter]);
+  }, [nextPage, loadingMore, view, typeFilter, statusFilter, employeeFilter, createdFromFilter, createdToFilter, periodFromFilter, periodToFilter]);
 
   const handleApprove = async (id: number) => {
     try {
@@ -593,9 +597,9 @@ export default function RequestsPage() {
               }`}
             >
               <Filter size={16} />
-              {(view || typeFilter || statusFilter || employeeFilter || dateFromFilter || dateToFilter) && (
+              {(view || typeFilter || statusFilter || employeeFilter || createdFromFilter || createdToFilter || periodFromFilter || periodToFilter) && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
-                  {[view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter].filter(Boolean).length}
+                  {[view, typeFilter, statusFilter, employeeFilter, createdFromFilter, createdToFilter, periodFromFilter, periodToFilter].filter(Boolean).length}
                 </span>
               )}
             </button>
@@ -636,10 +640,47 @@ export default function RequestsPage() {
                 ))}
               </select>
 
-              <input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800" />
-              <input type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600 px-1">Дата создания заявления</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={createdFromFilter}
+                    onChange={(e) => setCreatedFromFilter(e.target.value)}
+                    placeholder="от"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                  <input
+                    type="date"
+                    value={createdToFilter}
+                    onChange={(e) => setCreatedToFilter(e.target.value)}
+                    placeholder="до"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                </div>
+              </div>
 
-              {(view || typeFilter || statusFilter || employeeFilter || dateFromFilter || dateToFilter) && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600 px-1">Период заявления</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={periodFromFilter}
+                    onChange={(e) => setPeriodFromFilter(e.target.value)}
+                    placeholder="от"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                  <input
+                    type="date"
+                    value={periodToFilter}
+                    onChange={(e) => setPeriodToFilter(e.target.value)}
+                    placeholder="до"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                </div>
+              </div>
+
+              {(view || typeFilter || statusFilter || employeeFilter || createdFromFilter || createdToFilter || periodFromFilter || periodToFilter) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -647,8 +688,10 @@ export default function RequestsPage() {
                     setTypeFilter("");
                     setStatusFilter("");
                     setEmployeeFilter("");
-                    setDateFromFilter("");
-                    setDateToFilter("");
+                    setCreatedFromFilter("");
+                    setCreatedToFilter("");
+                    setPeriodFromFilter("");
+                    setPeriodToFilter("");
                   }}
                   className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
                 >
