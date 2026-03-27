@@ -19,15 +19,15 @@ from employees.ldap.domain.dtos import DirectoryUserDTO, DirectoryDepartmentDTO
 @pytest.fixture
 def all_services(
     mock_ldap_repository,
-    mock_employee_repository,
-    mock_sync_state_repository
+    mock_employee_repo_functions,
+    mock_sync_state_repo_functions
 ):
     """Создает все сервисы для интеграционных тестов."""
     group_service = GroupService(mock_ldap_repository)
     user_service = UserService(
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions
     )
     department_service = DepartmentService(
         group_service,

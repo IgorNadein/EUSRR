@@ -4,12 +4,8 @@ from typing import Literal
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from employees.ldap.sync_service import (
-    SyncConfig,
-    export_users,
-    import_departments,
-    import_users,
-)
+from employees.ldap.config import SyncConfig
+from employees.ldap.services.sync_service import SyncService
 
 
 class Command(BaseCommand):
@@ -77,13 +73,14 @@ class Command(BaseCommand):
         if mode == "ldap":
 
             total_changes = 0
+            svc = SyncService()
 
             # Отделы
             if scope in ("all", "departments"):
                 self.stdout.write(
                     self.style.NOTICE("[LDAP] Импорт отделов и managedBy...")
                 )
-                created_d, updated_d, deleted_d = import_departments(cfg=cfg)
+                created_d, updated_d, deleted_d = svc.import_departments(cfg)
                 total_changes += created_d + updated_d + deleted_d
                 deleted_label = "к удалению" if cfg.dry_run else "удалено"
                 self.stdout.write(
@@ -95,7 +92,7 @@ class Command(BaseCommand):
             # Пользователи
             if scope in ("all", "users"):
                 self.stdout.write(self.style.NOTICE("[LDAP] Импорт пользователей..."))
-                created_u, updated_u, deleted_u = import_users(cfg=cfg)
+                created_u, updated_u, deleted_u = svc.import_users(cfg)
                 total_changes += created_u + updated_u + deleted_u
                 deleted_label = "к удалению" if cfg.dry_run else "удалено"
                 self.stdout.write(
@@ -115,8 +112,9 @@ class Command(BaseCommand):
                     "[DJANGO] Write-back пользователей (логины, MOVE, avatar, группы)..."
                 )
             )
-            logins_set, moved, avatars_set, groups_added, groups_removed = export_users(
-                cfg=cfg
+            svc = SyncService()
+            logins_set, moved, avatars_set, groups_added, groups_removed = svc.export_users(
+                cfg
             )
             self.stdout.write(
                 self.style.SUCCESS(

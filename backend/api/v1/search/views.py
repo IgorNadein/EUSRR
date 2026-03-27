@@ -294,7 +294,10 @@ def search_api_view(request: DRFRequest) -> Response:
     """
     raw_q = request.query_params.get("q", "") or ""
     query = escape(raw_q.strip())
-    limit = int(request.query_params.get("limit", 10))
+    try:
+        limit = int(request.query_params.get("limit", 10))
+    except (ValueError, TypeError):
+        limit = 10
     
     if not query:
         return Response(

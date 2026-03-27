@@ -200,20 +200,28 @@ class TestPositionServiceDelete:
         pos_dn = f'CN=POS_{sample_position.id},OU=Positions,DC=example,DC=com'
         sample_position.ldap_group_dn = pos_dn
         
-        # Mock поиск групп с этим участником
-        mock_ldap_connection.search.return_value = False
-        mock_ldap_connection.entries = []
+        # Mock: нет родительских групп
+        mock_group_service.groups_with_member.return_value = []
         
-        # Act
-        service.delete_position_group(sample_position)
+        # Mock ORM LdapGroup.objects.get().delete()
+        mock_group = Mock()
+        with patch(
+            'employees.ldap.orm_models.LdapGroup'
+        ) as MockLdapGroup:
+            MockLdapGroup.objects.get.return_value = mock_group
+            
+            # Act
+            service.delete_position_group(sample_position)
         
         # Assert
-        # Проверяем, что delete вызван (внутри используется _ldap())
-        assert mock_group_service.delete.called
+        MockLdapGroup.objects.get.assert_called_once_with(dn=pos_dn)
+        mock_group.delete.assert_called_once()
     
     @pytest.mark.django_db
     def test_delete_nonexistent_position_group(
         self,
+        mock_ldap_context,
+        mock_ldap_connection,
         mock_group_service,
         mock_user_service,
         sample_position
@@ -221,16 +229,17 @@ class TestPositionServiceDelete:
         """Тест удаления несуществующей группы должности."""
         # Arrange
         service = PositionService(mock_group_service, mock_user_service)
+        # ldap_group_dn пустой — сервис должен выйти раньше
+        sample_position.ldap_group_dn = ""
         
-        # Mock: группа не найдена
-        mock_group_service.find_dn.return_value = None
-        
-        # Act
-        service.delete_position_group(sample_position)
-        
-        # Assert
-        # Не должно быть попытки удаления
-        assert not mock_group_service.delete.called
+        with patch(
+            'employees.ldap.orm_models.LdapGroup'
+        ) as MockLdapGroup:
+            # Act
+            service.delete_position_group(sample_position)
+            
+            # Assert — не должно быть попытки удаления
+            assert not MockLdapGroup.objects.get.called
 
 
 class TestPositionServiceHelpers:
@@ -267,9 +276,9 @@ class TestPositionServiceHelpers:
         # Arrange
         service = PositionService(mock_group_service, mock_user_service)
         
-        # Mock ensure_container_exists в месте использования
+        # Mock LdapRepository в месте использования
         with patch(
-            'employees.ldap.services.position_service.ensure_container_exists'  # noqa: E501
+            'employees.ldap.services.position_service.ensure_container_exists'
         ):
             # Act
             result = service._ensure_positions_base(mock_ldap_connection)
@@ -296,12 +305,18 @@ class TestPositionServiceHelpers:
             f'{settings.LDAP_POSITIONS_BASE}'
         )
         
-        # Mock: группа уже существует
-        mock_group_service.find_dn.return_value = expected_dn
+        # Mock: saved_dn существует и найден в LDAP
+        sample_position.ldap_group_dn = expected_dn
         
-        # Mock ensure_container_exists в месте использования
+        # conn.search возвращает True (saved_dn найден)
+        mock_entry = Mock()
+        mock_entry.entry_dn = expected_dn
+        mock_ldap_connection.search.return_value = True
+        mock_ldap_connection.entries = [mock_entry]
+        
+        # Mock LdapRepository
         with patch(
-            'employees.ldap.services.position_service.ensure_container_exists'  # noqa: E501
+            'employees.ldap.services.position_service.ensure_container_exists'
         ):
             # Act
             dn = service._ensure_position_group(
@@ -311,8 +326,7 @@ class TestPositionServiceHelpers:
             
             # Assert
             assert expected_name in dn
-            # Не должно быть создания новой группы
-            assert not mock_group_service.create.called
+            assert dn == expected_dn
     
     @pytest.mark.django_db
     def test_ensure_position_group_create(
@@ -336,12 +350,10 @@ class TestPositionServiceHelpers:
         mock_ldap_connection.search.return_value = False
         mock_ldap_connection.entries = []
         
-        # Mock: успешное создание группы
+        # Mock ensure_container_exists + conn.add (low-level create)
         mock_ldap_connection.add.return_value = True
-        
-        # Mock ensure_container_exists в месте использования
         with patch(
-            'employees.ldap.services.position_service.ensure_container_exists'  # noqa: E501
+            'employees.ldap.services.position_service.ensure_container_exists'
         ):
             # Act
             dn = service._ensure_position_group(
@@ -351,5 +363,5 @@ class TestPositionServiceHelpers:
             
             # Assert
             assert expected_name in dn
-            # Проверяем, что add был вызван
-            assert mock_ldap_connection.add.called
+            # Проверяем, что conn.add был вызван (low-level создание)
+            mock_ldap_connection.add.assert_called_once()

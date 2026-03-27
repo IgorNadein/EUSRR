@@ -1,8 +1,13 @@
 """Сервис синхронизации данных между Django и LDAP.
 
 Этот модуль предоставляет высокоуровневый API для двусторонней синхронизации:
-- Import: LDAP → Django (пользователи, отделы)
-- Export: Django → LDAP (обновление профилей, групп, перемещение между отделами)
+- Import: LDAP -> Django (пользователи, отделы)
+- Export: Django -> LDAP (обновление профилей, групп, перемещение)
+
+Рефакторенная версия:
+- Наследуется от BaseService
+- Использует константы
+- Логирует операции синхронизации
 """
 
 from __future__ import annotations
@@ -24,8 +29,9 @@ from ..domain.dtos import (
     LdapPersonDTO,
     _entry_to_dto,
 )
-from ..repositories.ldap_repository import modify_user_attrs
 from ..utils.ldap_utils import _paged_search, get_attr_str
+from .base_service import BaseService
+from .constants import SyncDirection, LdapFilter
 from .user_service import UserService
 from .department_service import DepartmentService
 from .group_service import GroupService
@@ -33,7 +39,7 @@ from .group_service import GroupService
 logger = logging.getLogger(__name__)
 
 
-class SyncService:
+class SyncService(BaseService):
     """Сервис синхронизации данных между Django и LDAP.
     
     Координирует работу UserService, DepartmentService и GroupService
@@ -53,6 +59,7 @@ class SyncService:
             department_service: Сервис для работы с отделами.
             group_service: Сервис для работы с группами.
         """
+        super().__init__()
         self._user_service = user_service or UserService()
         self._department_service = department_service or DepartmentService()
         self._group_service = group_service or GroupService()
@@ -170,7 +177,7 @@ class SyncService:
                     ldap_dn=dn,
                     last_ldap_modify_ts=None,
                     last_django_modify_ts=timezone.now(),
-                    sync_dir="ldap",
+                    sync_dir=SyncDirection.LDAP,
                 )
 
             # Удаляем отделы, которых нет в LDAP
@@ -374,22 +381,18 @@ class SyncService:
             # UPDATE
             for user, dto in to_update:
                 self._update_user_from_dto(user, dto)
-                # Записываем Django PK в LDAP employeeNumber если пусто
-                employee_id_attr = getattr(
-                    settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
-                )
+                # ORM: записываем Django PK в LDAP employeeNumber если пусто
                 if dto.dn and not cfg.dry_run:
                     try:
-                        from ..repositories.ldap_repository import read_attrs
-                        current = read_attrs(conn, dto.dn, [employee_id_attr])
-                        if not current.get(employee_id_attr):
-                            modify_user_attrs(
-                                conn, dto.dn, {employee_id_attr: str(user.pk)}, do_write=True
-                            )
+                        from ..orm_models import LdapUser
+                        ldap_user = LdapUser.objects.get(dn=dto.dn)
+                        if not ldap_user.employee_number:
+                            ldap_user.employee_number = str(user.pk)
+                            ldap_user.save()
                     except Exception as e:
                         logger.debug(
-                            "Could not write %s for %s: %s",
-                            employee_id_attr, dto.dn, e
+                            "Could not write employeeNumber for %s: %s",
+                            dto.dn, e
                         )
                 processed.append((user, dto))
                 updated += 1
@@ -400,19 +403,17 @@ class SyncService:
                 if not user:
                     skipped += 1
                     continue
-                # Записываем Django PK в LDAP employeeNumber
-                employee_id_attr = getattr(
-                    settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
-                )
+                # ORM: записываем Django PK в LDAP employeeNumber
                 if dto.dn and not cfg.dry_run:
                     try:
-                        modify_user_attrs(
-                            conn, dto.dn, {employee_id_attr: str(user.pk)}, do_write=True
-                        )
+                        from ..orm_models import LdapUser
+                        ldap_user = LdapUser.objects.get(dn=dto.dn)
+                        ldap_user.employee_number = str(user.pk)
+                        ldap_user.save()
                     except Exception as e:
                         logger.debug(
-                            "Could not write %s for %s: %s",
-                            employee_id_attr, dto.dn, e
+                            "Could not write employeeNumber for %s: %s",
+                            dto.dn, e
                         )
                 processed.append((user, dto))
                 created += 1
@@ -437,7 +438,7 @@ class SyncService:
                     dn=dto.dn,
                     guid=dto.guid,
                     last_ldap_modify_ts=dto.when_changed,
-                    sync_dir="ldap",
+                    sync_dir=SyncDirection.LDAP,
                     dry_run=cfg.dry_run,
                 )
 

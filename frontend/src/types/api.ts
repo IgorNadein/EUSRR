@@ -541,10 +541,15 @@ export interface RegisterData {
   password: string;
   first_name: string;
   last_name: string;
-  patronymic?: string; // было middle_name
+  birth_date: string; // YYYY-MM-DD
+  gender: 1 | 2; // 1 - мужской, 2 - женский
+  avatar: string; // base64 image
+  patronymic?: string;
   telegram?: string;
   whatsapp?: string;
   wechat?: string;
+  position?: number;
+  skills?: number[];
 }
 
 // Search types (django-watson)

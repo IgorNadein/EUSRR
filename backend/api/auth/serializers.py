@@ -36,6 +36,13 @@ class PhoneOrEmailTokenObtainPairSerializer(TokenObtainPairSerializer):
             except Employee.DoesNotExist:
                 pass  # базовая валидация ниже вернёт 401
 
+        # Проверяем что есть email (после подстановки из телефона или напрямую)
+        if not attrs.get(self.username_field):
+            raise AuthenticationFailed(
+                "Email or phone number required",
+                code="no_credentials"
+            )
+
         data = super().validate(attrs)
 
         # не выдаём токены, если email не подтверждён/аккаунт не активен

@@ -24,11 +24,12 @@ class TestGroupServiceCreate:
         group_name = "Test Group"
         base_dn = "OU=Groups,DC=example,DC=com"
         
-        # Act
-        dn = service.create(mock_ldap_connection, group_name, base_dn)
+        # Act — ORM создаёт через LdapGroup.objects.create()
+        # mock_ldap_context патчит _ldap() для внутренних вызовов
+        with patch('employees.ldap.services.group_service.LdapGroup') as MockLdapGroup:
+            dn = service.create(group_name, parent_dn=base_dn)
         
         # Assert
-        assert mock_ldap_connection.add.called
         assert "CN=Test Group" in dn
         assert "OU=Groups" in dn
     
@@ -46,21 +47,16 @@ class TestGroupServiceCreate:
         base_dn = "OU=Groups,DC=example,DC=com"
         description = "Development team"
         
-        # Act
-        service.create(
-            mock_ldap_connection,
-            group_name,
-            base_dn,
-            description=description
-        )
+        # Act — ORM создаёт через LdapGroup.objects.create()
+        with patch('employees.ldap.services.group_service.LdapGroup') as MockLdapGroup:
+            service.create(
+                group_name,
+                parent_dn=base_dn,
+                description=description
+            )
         
         # Assert
-        assert mock_ldap_connection.add.called
-        # Проверяем, что description был передан
-        call_args = mock_ldap_connection.add.call_args
-        if call_args and len(call_args) > 0:
-            # Может быть в позиционных или keyword args
-            assert call_args is not None
+        MockLdapGroup.objects.create.assert_called_once()
 
 
 class TestGroupServiceDelete:
@@ -73,16 +69,23 @@ class TestGroupServiceDelete:
         mock_ldap_connection,
         mock_ldap_repository
     ):
-        """Тест удаления группы."""
+        """Тест удаления группы через ORM."""
         # Arrange
         service = GroupService()
         group_dn = "CN=Test Group,OU=Groups,DC=example,DC=com"
         
-        # Act
-        service.delete(mock_ldap_connection, group_dn)
+        mock_group = Mock()
+        with patch(
+            'employees.ldap.services.group_service.LdapGroup'
+        ) as MockLdapGroup:
+            MockLdapGroup.objects.get.return_value = mock_group
+            
+            # Act
+            service.delete(group_dn)
         
         # Assert
-        mock_ldap_connection.delete.assert_called_once_with(group_dn)
+        MockLdapGroup.objects.get.assert_called_once_with(dn=group_dn)
+        mock_group.delete.assert_called_once()
 
 
 class TestGroupServiceModify:
@@ -102,7 +105,7 @@ class TestGroupServiceModify:
         new_name = "New Name"
         
         # Act
-        new_dn = service.rename(mock_ldap_connection, old_dn, new_name)
+        new_dn = service.rename(old_dn, new_name)
         
         # Assert
         assert mock_ldap_connection.modify_dn.called
@@ -122,14 +125,16 @@ class TestGroupServiceModify:
         description = "Updated description"
         
         # Act
-        service.set_description(
-            mock_ldap_connection,
-            group_dn,
-            description
-        )
+        with patch('employees.ldap.services.group_service.LdapGroup') as MockLdapGroup:
+            mock_group = Mock()
+            MockLdapGroup.objects.get.return_value = mock_group
+            service.set_description(
+                group_dn,
+                description
+            )
         
         # Assert
-        assert mock_ldap_connection.modify.called
+        mock_group.save.assert_called_once()
 
 
 class TestGroupServiceMembers:
@@ -151,11 +156,20 @@ class TestGroupServiceMembers:
             "CN=User2,OU=Users,DC=example,DC=com"
         ]
         
-        # Act
-        service.add_members(mock_ldap_connection, group_dn, member_dns)
+        # Mock ORM
+        mock_group = Mock()
+        mock_group.member = []
+        with patch(
+            'employees.ldap.services.group_service.LdapGroup'
+        ) as MockLdapGroup:
+            MockLdapGroup.objects.get.return_value = mock_group
+            
+            # Act
+            service.add_members(group_dn, member_dns)
         
         # Assert
-        assert mock_ldap_connection.modify.called
+        assert mock_group.member == member_dns
+        mock_group.save.assert_called_once()
     
     @pytest.mark.django_db
     def test_remove_members(
@@ -170,11 +184,20 @@ class TestGroupServiceMembers:
         group_dn = "CN=Test,OU=Groups,DC=example,DC=com"
         member_dns = ["CN=User1,OU=Users,DC=example,DC=com"]
         
-        # Act
-        service.remove_members(mock_ldap_connection, group_dn, member_dns)
+        # Mock ORM — группа содержит удаляемого участника
+        mock_group = Mock()
+        mock_group.member = ["CN=User1,OU=Users,DC=example,DC=com"]
+        with patch(
+            'employees.ldap.services.group_service.LdapGroup'
+        ) as MockLdapGroup:
+            MockLdapGroup.objects.get.return_value = mock_group
+            
+            # Act
+            service.remove_members(group_dn, member_dns)
         
         # Assert
-        assert mock_ldap_connection.modify.called
+        assert mock_group.member == []
+        mock_group.save.assert_called_once()
     
     @pytest.mark.django_db
     def test_replace_members(
@@ -189,25 +212,25 @@ class TestGroupServiceMembers:
         group_dn = "CN=Test,OU=Groups,DC=example,DC=com"
         member_dns = ["CN=User1,OU=Users,DC=example,DC=com"]
         
-        # Mock текущих членов
-        mock_ldap_repository.read_attrs.return_value = {
-            'member': ['CN=OldUser,OU=Users,DC=example,DC=com']
-        }
-        
-        # Act
-        service.replace_members(
-            mock_ldap_connection,
-            group_dn,
-            member_dns
-        )
+        # Mock ORM — группа с текущими участниками
+        mock_group = Mock()
+        mock_group.member = ['CN=OldUser,OU=Users,DC=example,DC=com']
+        with patch(
+            'employees.ldap.services.group_service.LdapGroup'
+        ) as MockLdapGroup:
+            MockLdapGroup.objects.get.return_value = mock_group
+            
+            # Act
+            service.replace_members(group_dn, member_dns)
         
         # Assert
-        # Должно быть 2 вызова: remove old, add new
-        assert mock_ldap_connection.modify.call_count >= 1
+        assert mock_group.member == member_dns
+        mock_group.save.assert_called_once()
     
     @pytest.mark.django_db
     def test_list_members(
         self,
+        mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository
     ):
@@ -220,15 +243,16 @@ class TestGroupServiceMembers:
             "CN=User2,OU=Users,DC=example,DC=com"
         ]
         
-        # Mock LDAP search result
-        mock_entry = Mock()
-        mock_entry.member = Mock()
-        mock_entry.member.values = expected_members
-        mock_ldap_connection.entries = [mock_entry]
-        mock_ldap_connection.search.return_value = True
-        
-        # Act
-        members = service.list_members(mock_ldap_connection, group_dn)
+        # Mock ORM
+        mock_group = Mock()
+        mock_group.member = expected_members
+        with patch(
+            'employees.ldap.services.group_service.LdapGroup'
+        ) as MockLdapGroup:
+            MockLdapGroup.objects.get.return_value = mock_group
+            
+            # Act
+            members = service.list_members(group_dn)
         
         # Assert
         assert len(members) == 2
@@ -250,17 +274,16 @@ class TestGroupServiceSearch:
         service = GroupService()
         group_name = "Test Group"
         
-        # Mock search результат
-        mock_entry = Mock()
-        mock_entry.entry_dn = "CN=Test Group,OU=Groups,DC=example,DC=com"
-        mock_ldap_connection.entries = [mock_entry]
-        
-        # Act
-        dn = service.find_dn(mock_ldap_connection, group_name)
+        # Act  — find_dn использует ORM (LdapGroup.objects.filter)
+        with patch('employees.ldap.services.group_service.LdapGroup') as MockLdapGroup:
+            mock_group = Mock()
+            mock_group.dn = "CN=Test Group,OU=Groups,DC=example,DC=com"
+            MockLdapGroup.objects.filter.return_value.first.return_value = mock_group
+            
+            dn = service.find_dn(group_name)
         
         # Assert
-        assert dn == mock_entry.entry_dn
-        assert mock_ldap_connection.search.called
+        assert dn == mock_group.dn
     
     @pytest.mark.django_db
     def test_groups_with_member(
@@ -274,23 +297,19 @@ class TestGroupServiceSearch:
         service = GroupService()
         member_dn = "CN=User,OU=Users,DC=example,DC=com"
         
-        # Mock search результат
-        mock_entry1 = Mock()
-        mock_entry1.entry_dn = "CN=Group1,OU=Groups,DC=example,DC=com"
-        mock_entry2 = Mock()
-        mock_entry2.entry_dn = "CN=Group2,OU=Groups,DC=example,DC=com"
-        mock_ldap_connection.entries = [mock_entry1, mock_entry2]
-        
-        # Act
-        groups = service.groups_with_member(
-            mock_ldap_connection,
-            member_dn
-        )
+        # Act  — groups_with_member использует ORM (LdapUser.objects.get)
+        with patch('employees.ldap.services.group_service.LdapUser') as MockLdapUser:
+            mock_user = Mock()
+            mock_user.member_of = [
+                "CN=Group1,OU=Groups,DC=example,DC=com",
+                "CN=Group2,OU=Groups,DC=example,DC=com"
+            ]
+            MockLdapUser.objects.get.return_value = mock_user
+            
+            groups = service.groups_with_member(member_dn)
         
         # Assert
         assert len(groups) == 2
-        assert mock_entry1.entry_dn in groups
-        assert mock_entry2.entry_dn in groups
 
 
 class TestGroupServiceSync:

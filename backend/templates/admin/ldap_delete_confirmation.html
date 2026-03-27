@@ -1,0 +1,24 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<form method="post">{% csrf_token %}
+  <div>
+    <p>{% trans "Are you sure you want to delete the selected" %} {{ objects_name }}?</p>
+    <ul>
+    {% for obj in deletable_objects %}
+      <li>{{ obj }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% for user in queryset %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ user.dn }}" />
+  {% endfor %}
+  <input type="hidden" name="action" value="delete_selected_ldap" />
+  <input type="hidden" name="post" value="yes" />
+  <input type="submit" value="{% trans 'Yes, I&apos;m sure' %}" />
+  <a href="." class="button cancel-link">{% trans "No, take me back" %}</a>
+</form>
+{% endblock %}
