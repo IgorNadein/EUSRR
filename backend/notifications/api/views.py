@@ -37,8 +37,14 @@ def get_notifications(request):
         - unread_only: только непрочитанные (true/false)
         - search: поиск по описанию
     """
-    page = int(request.GET.get('page', 1))
-    page_size = int(request.GET.get('page_size', 20))
+    try:
+        page = int(request.GET.get('page', 1))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        page_size = int(request.GET.get('page_size', 20))
+    except (ValueError, TypeError):
+        page_size = 20
     verb = request.GET.get('verb')
     unread_only = request.GET.get('unread_only', 'false').lower() == 'true'
     search = request.GET.get('search', '').strip()
@@ -341,36 +347,36 @@ def channel_preferences(request):
     elif request.method == 'PUT':
         # Обновляем настройки
         if 'web_enabled' in request.data:
-            prefs.web_enabled = request.data['web_enabled']
+            prefs.web_enabled = request.data.get('web_enabled')
         
         if 'email_enabled' in request.data:
-            prefs.email_enabled = request.data['email_enabled']
+            prefs.email_enabled = request.data.get('email_enabled')
         
         if 'email_frequency' in request.data:
-            frequency = request.data['email_frequency']
+            frequency = request.data.get('email_frequency')
             if frequency in ['instant', 'daily', 'weekly', 'disabled']:
                 prefs.email_frequency = frequency
         
         if 'push_enabled' in request.data:
-            prefs.push_enabled = request.data['push_enabled']
+            prefs.push_enabled = request.data.get('push_enabled')
         
         if 'dnd_enabled' in request.data:
-            prefs.dnd_enabled = request.data['dnd_enabled']
+            prefs.dnd_enabled = request.data.get('dnd_enabled')
         
         if 'dnd_start_time' in request.data:
             from datetime import datetime
-            time_str = request.data['dnd_start_time']
+            time_str = request.data.get('dnd_start_time')
             if time_str:
                 prefs.dnd_start_time = datetime.strptime(time_str, '%H:%M').time()
         
         if 'dnd_end_time' in request.data:
             from datetime import datetime
-            time_str = request.data['dnd_end_time']
+            time_str = request.data.get('dnd_end_time')
             if time_str:
                 prefs.dnd_end_time = datetime.strptime(time_str, '%H:%M').time()
         
         if 'disabled_verbs' in request.data:
-            prefs.disabled_verbs = request.data['disabled_verbs']
+            prefs.disabled_verbs = request.data.get('disabled_verbs')
         
         prefs.save()
         

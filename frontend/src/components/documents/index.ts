@@ -9,6 +9,4 @@ export { DocumentMetadataEditor } from "./DocumentMetadataEditor";
 export { default as DocumentThumbnail } from "./DocumentThumbnail";
 export * from "./comments";
 export * from "./tags";
-export * from "./types";
-export * from "./versions";
 export * from "./related";

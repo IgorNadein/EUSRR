@@ -10,9 +10,6 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
-from employees.ldap.directory_service import DirectoryService, DirectoryUserDTO
-from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
-                                   DirectoryServiceError)
 from employees.models import Position, Skill
 from employees.utils import _normalize_phone
 from rest_framework import status
@@ -23,16 +20,25 @@ from rest_framework.views import APIView
 
 from ..serializers import (EmailSerializer, EmailVerifySerializer,
                            RegisterSerializer)
-from ._helpers import Employee, _is_ldap_enabled
+from ._helpers import Employee
+from .mixins import LdapUserCreationMixin
 
 logger = logging.getLogger(__name__)
 
 
-class ResendEmailAPIView(APIView):
-    """POST /api/v1/auth/resend-email/  body: {"email": "..."}"""
-
+class AnonymousAPIView(APIView):
+    """Базовый класс для анонимных (публичных) API endpoints.
+    
+    Все auth-related views наследуются от этого класса для DRY.
+    Используется только JWT (без SessionAuthentication) → CSRF не требуется.
+    """
+    authentication_classes = []  # Отключаем SessionAuthentication для публичных endpoints
     throttle_scope = "anon"
     permission_classes = [AllowAny]
+
+
+class ResendEmailAPIView(AnonymousAPIView):
+    """POST /api/v1/auth/resend-email/  body: {"email": "..."}"""
 
     def post(self, request):
         ser = EmailSerializer(data=request.data)
@@ -57,15 +63,11 @@ class ResendEmailAPIView(APIView):
         return Response({"ok": True}, status=200)
 
 
-class VerifyEmailAPIView(APIView):
-    throttle_scope = "anon"
-    permission_classes = [AllowAny]
-
+class VerifyEmailAPIView(AnonymousAPIView):
     def post(self, request):
         """Подтверждает email и активирует пользователя.
-
-        В режиме с LDAP активирует запись в LDAP.
-        В режиме без LDAP просто активирует пользователя в БД.
+        
+        Активация синхронизируется в LDAP через сигналы.
         """
         ser = EmailVerifySerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -89,70 +91,19 @@ class VerifyEmailAPIView(APIView):
         if not user.verify_email(code):
             return Response({"ok": False, "error": "invalid_code"}, status=400)
 
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            # Режим с LDAP: активируем запись в LDAP
-            try:
-                from employees.models import LdapSyncState
-
-                svc = DirectoryService()
-
-                # Проверяем наличие LDAP-идентификаторов в LdapSyncState
-                sync_state = LdapSyncState.objects.filter(
-                    model="employee", object_pk=str(user.pk)
-                ).first()
-
-                has_ldap = sync_state and (
-                    sync_state.ldap_dn or sync_state.ldap_guid)
-
-                if has_ldap:
-                    # Запись существует - активируем через DirectoryService
-                    user = svc.update_user(user, {"is_active": True})
-                else:
-                    # LDAP запись не найдена - активируем только в БД
-                    logger.warning(
-                        f"User {email} has no LDAP sync state, activating in DB only"
-                    )
-                    user.is_active = True
-                    user.save(update_fields=["is_active"])
-
-                # Убеждаемся, что БД тоже активна
-                if not user.is_active:
-                    user.is_active = True
-                    user.save(update_fields=["is_active"])
-            except DirectoryLdapError as e:
-                # Если LDAP недоступен, всё равно активируем в БД
-                logger.warning(
-                    f"LDAP error during activation for {email}: {e}, activating in DB"
-                )
-                user.is_active = True
-                user.save(update_fields=["is_active"])
-            except DirectoryDbError as e:
-                return Response(
-                    {"ok": False, "error": "db_error", "detail": str(e)}, status=500
-                )
-            except DirectoryServiceError as e:
-                # При ошибке сервиса тоже активируем в БД
-                logger.warning(
-                    f"Service error during activation for {email}: {e}, activating in DB"
-                )
-                user.is_active = True
-                user.save(update_fields=["is_active"])
-        else:
-            # Режим без LDAP: просто активируем пользователя в БД
-            if not user.is_active:
-                user.is_active = True
-                user.save(update_fields=["is_active"])
+        # Активируем пользователя (сигнал sync_employee_to_ldap_on_save синхронизирует в LDAP)
+        user.is_active = True
+        user._ldap_changes = {"is_active": True}
+        user.save()
 
         return Response({"ok": True, "user_id": user.id}, status=200)
 
 
-class RegisterAPIView(APIView):
-    """Регистрация: создаём учётку в LDAP (disabled) с паролем, в БД — set_unusable_password."""
-
-    throttle_scope = "anon"
-    permission_classes = [AllowAny]
+class RegisterAPIView(LdapUserCreationMixin, AnonymousAPIView):
+    """Регистрация: создаём учётку в LDAP (disabled) с паролем, в БД — set_unusable_password.
+    
+    Использует LdapUserCreationMixin для вынесения LDAP-специфичной логики.
+    """
     parser_classes = (JSONParser, FormParser, MultiPartParser)
 
     @transaction.atomic
@@ -160,20 +111,6 @@ class RegisterAPIView(APIView):
         # Логируем входящие данные для диагностики
         logger.warning(f"[REGISTER] Received data: {request.data}")
         logger.warning(f"[REGISTER] Content-Type: {request.content_type}")
-
-        # 0) хотя бы один контакт
-        if not (
-            request.data.get("telegram")
-            or request.data.get("whatsapp")
-            or request.data.get("wechat")
-        ):
-            logger.warning("[REGISTER] No contact provided")
-            return Response(
-                {
-                    "detail": "Заполните хотя бы одно из полей: WhatsApp, WeChat или Telegram"
-                },
-                status=400,
-            )
 
         ser = RegisterSerializer(data=request.data)
         if not ser.is_valid():
@@ -186,7 +123,9 @@ class RegisterAPIView(APIView):
         phone_norm = _normalize_phone(
             v.get("phone_number") or request.data.get("phone")
         )
+        logger.warning(f"[REGISTER] Phone normalization: input={v.get('phone_number')}, normalized={phone_norm}")
         if not phone_norm:
+            logger.error(f"[REGISTER] Phone normalization FAILED for: {v.get('phone_number')}")
             return Response({"ok": False, "error": "invalid_phone"}, status=400)
 
         existing_phone = Employee.objects.filter(
@@ -212,8 +151,10 @@ class RegisterAPIView(APIView):
 
         user = Employee.objects.filter(email__iexact=email).first()
         if user:
+            logger.warning(f"[REGISTER] User exists: email={email}, verified={user.email_verified}")
             if user.email_verified:
                 # Email уже верифицирован - нельзя регистрироваться
+                logger.error(f"[REGISTER] Email already taken and verified: {email}")
                 return Response({"ok": False, "error": "email_taken"}, status=400)
             else:
                 # Есть неверифицированный пользователь - повторная отправка кода
@@ -237,44 +178,18 @@ class RegisterAPIView(APIView):
                 avatar_bytes = None
                 avatar_name = None
 
-        ldap_enabled = _is_ldap_enabled()
-
-        if ldap_enabled:
-            # Режим с LDAP: создаём disabled учётку в LDAP + пароль
-            svc = DirectoryService()
-            dto = DirectoryUserDTO(
-                first_name=v["first_name"],
-                last_name=v["last_name"],
-                email=email,
-                phone_e164=phone_norm,
-                department_dn=None,
-                group_cns=[],
-                initial_password=password,  # пароль идёт только в LDAP
-                avatar_bytes=avatar_bytes,
-                is_active=False,  # disabled до верификации
-            )
-            try:
-                emp = svc.create_user(dto)
-            except DirectoryLdapError as e:
-                return Response(
-                    {"ok": False, "error": "ldap_error", "detail": str(e)}, status=502
-                )
-            except DirectoryDbError as e:
-                return Response(
-                    {"ok": False, "error": "db_error", "detail": str(e)}, status=500
-                )
-        else:
-            # Режим без LDAP: создаём пользователя напрямую в БД
-            emp = Employee.objects.create(
-                first_name=v["first_name"],
-                last_name=v["last_name"],
-                email=email,
-                phone_number=phone_norm,
-                is_active=False,  # не активен до верификации email
-                is_ldap_managed=False,
-            )
-            # Устанавливаем пароль в БД
-            emp.set_password(password)
+        # Создаём пользователя (миксин сам выберет LDAP или БД режим)
+        emp, error_response = self.create_user(
+            first_name=v["first_name"],
+            last_name=v["last_name"],
+            email=email,
+            phone=phone_norm,
+            password=password,
+            avatar_bytes=avatar_bytes,
+            is_active=False,  # не активен до верификации email
+        )
+        if error_response:
+            return error_response
 
         # 2) Заполняем доп.поля БД
         if avatar_bytes:

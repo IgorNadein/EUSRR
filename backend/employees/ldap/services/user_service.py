@@ -2,48 +2,59 @@
 
 Этот модуль содержит бизнес-логику для CRUD операций с пользователями,
 включая синхронизацию между Active Directory и Django ORM.
+
+Рефакторенная версия с улучшениями:
+- Наследуется от BaseService (логирование, _touch_state)
+- Делегирует работу подсервисам (Password, Login, Mapper)
+- Использует константы из constants.py
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from ldap3 import MODIFY_REPLACE, Connection
+from ldap3 import Connection
 
-from ...models import Employee, LdapSyncState, Position
+from ...models import Employee, LdapSyncState
 from ..domain.dtos import DirectoryUserDTO
 from ..errors import (
     DirectoryDbError,
     DirectoryLdapError,
     DirectoryServiceError,
 )
-from ..utils.group_utils import sync_user_groups_by_cns
+from ..orm_models import LdapUser
+from ..utils.group_utils_orm import sync_user_groups_by_cns_orm
 from ..infrastructure.connections import _ldap
 from ..repositories.ldap_repository import (
     ensure_container_exists,
-    is_taken,
-    ldap_modify_or_ignore,
-    modify_user_attrs,
-    read_attrs,
 )
-from ..utils.image_utils import normalize_avatar_to_jpeg
-from ..utils.ldap_utils import (
-    build_logins_for_user,
-    cn_candidates,
-    get_guid_str,
-)
+from ..utils.ldap_utils import cn_candidates, get_ldap_str
 from ..utils.text_utils import esc_rdn
+from .base_service import BaseService
+from .constants import (
+    UserAccountControl,
+    LdapErrorCode,
+    SyncDirection,
+)
+from .user_password_service import UserPasswordService
+from .user_login_service import UserLoginService
+from .user_mapper_service import UserMapperService
 
-# Константы UAC (User Account Control)
-UAC_ENABLED = 512
-UAC_DISABLED = 514
+logger = logging.getLogger(__name__)
 
 
-class UserService:
-    """Сервис для управления пользователями в LDAP и Django."""
+class UserService(BaseService):
+    """Сервис для управления пользователями в LDAP и Django.
+
+    Координирует работу подсервисов:
+    - UserPasswordService — пароли
+    - UserLoginService — генерация логинов
+    - UserMapperService — маппинг атрибутов
+    """
 
     def __init__(
         self,
@@ -53,15 +64,21 @@ class UserService:
     ):
         """
         Инициализация сервиса.
-        
+
         Args:
             ldap_repository: Репозиторий для работы с LDAP (optional)
             employee_repository: Репозиторий для работы с Employee (optional)
             sync_state_repository: Репозиторий для LdapSyncState (optional)
         """
+        super().__init__()
         self.ldap_repository = ldap_repository
         self.employee_repository = employee_repository
         self.sync_state_repository = sync_state_repository
+
+        # Подсервисы
+        self._password_service = UserPasswordService()
+        self._login_service = UserLoginService()
+        self._mapper_service = UserMapperService()
 
     def create_user(self, dto: DirectoryUserDTO) -> Employee:
         """Создаёт учётку в LDAP и запись в БД (DN/связь — только в LdapSyncState).
@@ -86,57 +103,83 @@ class UserService:
             try:
                 # 1) LDAP
                 dn = self._create_user_in_ldap(conn, dto)
-                self._set_password(conn, dn, dto.initial_password)
+                self._password_service.set_password(
+                    conn, dn, dto.initial_password
+                )
                 if dto.is_active:
                     self._enable_user(conn, dn)
             except Exception as e:
-                raise DirectoryLdapError(f"LDAP create failed: {e}") from e
+                raise DirectoryLdapError(
+                    f"LDAP create failed: {e}"
+                ) from e
 
             # 2) DB + sync-state
             try:
                 with transaction.atomic():
-                    emp = Employee.objects.create(
-                        first_name=dto.first_name,
-                        last_name=dto.last_name,
-                        email=dto.email,
-                        phone_number=dto.phone_e164,
-                        is_active=dto.is_active,
-                        is_ldap_managed=True,
-                    )
+                    # Проверяем, существует ли уже пользователь с таким email
+                    emp = Employee.objects.filter(email=dto.email).first()
+                    if emp:
+                        # Обновляем существующего пользователя
+                        emp.first_name = dto.first_name
+                        emp.last_name = dto.last_name
+                        emp.phone_number = dto.phone_e164
+                        emp.is_active = dto.is_active
+                        emp.is_ldap_managed = True
+                        emp._skip_ldap_sync = True
+                        emp.save()
+                    else:
+                        # Создаем нового пользователя
+                        emp = Employee.objects.create(
+                            first_name=dto.first_name,
+                            last_name=dto.last_name,
+                            email=dto.email,
+                            phone_number=dto.phone_e164,
+                            is_active=dto.is_active,
+                            is_ldap_managed=True,
+                        )
+
                     if hasattr(emp, "set_unusable_password"):
                         emp.set_unusable_password()
+                        emp._skip_ldap_sync = True
                         emp.save(update_fields=["password"])
 
-                    attrs = read_attrs(conn, dn, ["objectGUID"])
-                    guid = get_guid_str(attrs)
+                    # Запись employeeNumber в LDAP для связки через прямую модификацию
+                    # Используем ldap3 напрямую, т.к. ORM .save() пытается перестроить DN
+                    from ldap3 import MODIFY_REPLACE
+                    conn.modify(
+                        dn,
+                        {'employeeNumber': [(MODIFY_REPLACE, [str(emp.pk)])]}
+                    )
+                    guid = None
 
                     self._touch_state(
                         model="employee",
                         object_pk=emp.pk,
                         ldap_dn=dn,
                         ldap_guid=guid,
-                        sync_dir="ldap",
+                        sync_dir=SyncDirection.LDAP,
                         last_django_modify_ts=timezone.now(),
                     )
 
-                    # Записываем Django PK в LDAP employeeNumber для связки
-                    employee_id_attr = getattr(
-                        settings, "LDAP_EMPLOYEE_ID_ATTR", "employeeNumber"
-                    )
-                    modify_user_attrs(
-                        conn, dn, {employee_id_attr: str(emp.pk)}, do_write=True
-                    )
+                    # TODO: Implement department assignment
+                    # DirectoryService был удален, требуется рефакторинг
+                    # if dto.department_dn and hasattr(
+                    #     emp, "set_active_department"
+                    # ):
+                    #     dept = Department.objects.filter(
+                    #         ldap_group_dn=dto.department_dn
+                    #     ).first()
+                    #     if dept:
+                    #         emp.set_active_department(dept)
 
-                    # Временно импортируем для совместимости
-                    # TODO: Убрать после полного рефакторинга
-                    if dto.department_dn and hasattr(emp, "set_active_department"):
-                        from ..directory_service import DirectoryService
-                        svc = DirectoryService()
-                        dept = svc._get_department_by_dn(dto.department_dn)
-                        if dept:
-                            emp.set_active_department(dept)
+                    self._log_operation(
+                        "create",
+                        model="employee",
+                        object_id=emp.pk,
+                        dn=dn,
+                        success=True,
+                    )
             except Exception as e:
-                # компенсируем LDAP при падении БД
                 try:
                     if dn:
                         self._hard_delete_user_in_ldap(conn, dn)
@@ -147,18 +190,22 @@ class UserService:
             # 3) Post-actions (best effort)
             try:
                 if dto.group_cns:
-                    sync_user_groups_by_cns(conn, dn, set(dto.group_cns), do_write=True)
+                    sync_user_groups_by_cns_orm(
+                        dn, set(dto.group_cns)
+                    )
                 if dto.avatar_bytes:
-                    # Увеличен размер до 384px для максимального качества в LDAP
-                    avatar = normalize_avatar_to_jpeg(
-                        dto.avatar_bytes, size_px=384, max_kb=100
+                    avatar = self._mapper_service.process_avatar(
+                        dto.avatar_bytes
                     )
                     if avatar:
-                        modify_user_attrs(
-                            conn, dn, {"thumbnailPhoto": avatar}, do_write=True
-                        )
+                        ldap_user_av = LdapUser.objects.get(dn=dn)
+                        ldap_user_av.thumbnail_photo = avatar
+                        ldap_user_av.save()
             except Exception:
-                pass
+                self._logger.warning(
+                    f"Post-actions failed for user {dn}",
+                    exc_info=True,
+                )
 
             return emp
 
@@ -193,26 +240,12 @@ class UserService:
                 is_active_val = bool(changes.get("is_active"))
             except Exception:
                 is_active_val = None
-        
-        old_pos = getattr(emp, "position", None) if hasattr(emp, "position") else None
-        new_pos = None
-        pos_in_payload = False
-        if "position" in changes or "position_id" in changes:
-            pos_in_payload = True
-            val = changes.pop("position", changes.pop("position_id", None))
-            # Обработка пустой строки как None (снятие должности)
-            if val == "":
-                new_pos = None
-            elif isinstance(val, Position) or val is None:
-                new_pos = val
-            elif isinstance(val, int):
-                new_pos = Position.objects.filter(pk=val).first()
-            else:
-                try:
-                    new_pos = Position.objects.filter(pk=int(val)).first()
-                except Exception:
-                    new_pos = None
-        
+
+        # Извлекаем position из changes — обработаем отдельно
+        new_position = changes.pop("position", None)
+        new_position_id = changes.pop("position_id", None)
+        old_position = emp.position
+
         with _ldap() as conn:
             ldap_changes = dict(changes)
             try:
@@ -222,6 +255,7 @@ class UserService:
                     model_changes=ldap_changes,
                     move_to_department_dn=move_to_department_dn,
                     group_cns=group_cns,
+                    emp_pk=emp.pk,  # Передаём PK для поиска по employeeNumber
                 )
                 # Распаковываем результат (dn, avatar_bytes или None)
                 if isinstance(result, tuple):
@@ -241,7 +275,7 @@ class UserService:
                             model="employee",
                             object_pk=emp.pk,
                             ldap_dn=new_dn,
-                            sync_dir="ldap",
+                            sync_dir=SyncDirection.LDAP,
                             last_django_modify_ts=timezone.now(),
                         )
                         current_dn = new_dn
@@ -262,12 +296,19 @@ class UserService:
                             setattr(emp, k, v)
                             updated_fields.append(k)
 
-                    if pos_in_payload and hasattr(emp, "position"):
-                        old_id = getattr(emp, "position_id", None)
-                        new_id = new_pos.id if new_pos else None
-                        if old_id != new_id:
-                            emp.position = new_pos
-                            updated_fields.append("position")
+                    # Обновляем position в DB
+                    if new_position_id is not None:
+                        if emp.position_id != new_position_id:
+                            emp.position_id = new_position_id
+                            updated_fields.append("position_id")
+                    elif new_position is not None:
+                        pid = (
+                            new_position.pk
+                            if new_position else None
+                        )
+                        if emp.position_id != pid:
+                            emp.position_id = pid
+                            updated_fields.append("position_id")
 
                     if move_to_department_dn and hasattr(emp, "set_active_department"):
                         from .department_service import DepartmentService
@@ -285,73 +326,28 @@ class UserService:
                             updated_fields.append("avatar")
 
                     if updated_fields:
+                        # Устанавливаем флаг чтобы не запустить LDAP sync повторно
+                        emp._skip_ldap_sync = True
                         emp.save(update_fields=list(set(updated_fields)))
             except Exception as e:
                 raise DirectoryDbError(str(e)) from e
-            
-            try:
-                if pos_in_payload and (old_pos != new_pos):
-                    # Используем PositionService для синхронизации должностей
-                    from .position_service import PositionService
-                    from ..directory_service import DirectoryService
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    
-                    pos_svc = PositionService()
-                    dir_svc = DirectoryService()
-                    
-                    if old_pos:
-                        old_dn = (old_pos.ldap_group_dn or "").strip()
-                        if not old_dn:
-                            maybe = dir_svc.find_group_dn(
-                                conn,
-                                f"POS_{old_pos.name}",
-                                bases=[dir_svc._positions_base()],
-                            )
-                            old_dn = maybe or ""
-                        if old_dn:
-                            try:
-                                logger.info(
-                                    f"Removing user {current_dn} "
-                                    f"from position group {old_dn}"
-                                )
-                                dir_svc.remove_group_members(
-                                    conn, old_dn, [current_dn]
-                                )
-                            except RuntimeError as e:
-                                # Игнорируем unwillingToPerform
-                                # (пользователь не в группе)
-                                error_msg = str(e).lower()
-                                if (
-                                    "unwillingtoperform" in error_msg
-                                    or "will_not_perform" in error_msg
-                                ):
-                                    logger.warning(
-                                        f"LDAP refused to remove user "
-                                        f"from group (possibly not a "
-                                        f"member): {e}"
-                                    )
-                                else:
-                                    raise
 
-                    if new_pos:
-                        pos_dn = pos_svc._ensure_position_group(conn, new_pos)
-                        dir_svc.add_group_members(conn, pos_dn, [current_dn])
-            except Exception as e:
-                raise DirectoryLdapError(
-                    f"LDAP position membership sync failed: {e}"
-                ) from e
+            # Position group membership sync (best-effort)
+            self._sync_position_groups(
+                emp, old_position,
+                new_position, new_position_id,
+            )
 
             return emp
 
     def delete_user(self, emp: Employee) -> None:
-        """Удаляет пользователя: LDAP soft-disable → DB delete → LDAP hard delete.
+        """Удаляет пользователя: LDAP soft-disable -> DB delete -> LDAP hard delete.
 
         Args:
             emp (Employee): Удаляемый сотрудник.
 
         Raises:
-            DirectoryLdapError: Ошибка при soft-disable/hard-delete в LDAP.
+            DirectoryLdapError: Ошибка при soft-disable/hard-delete.
             DirectoryDbError: Ошибка при удалении записи в БД.
         """
         try:
@@ -359,28 +355,65 @@ class UserService:
         except DirectoryServiceError:
             dn = None
 
-        with _ldap() as conn:
-            if dn:
-                try:
-                    modify_user_attrs(conn, dn, {"userAccountControl": 0x0202})
-                except Exception as e:
-                    raise DirectoryLdapError(f"LDAP soft-disable failed: {e}") from e
-
+        # ORM: soft-disable (UAC = disabled + password expired)
+        if dn:
             try:
-                with transaction.atomic():
-                    emp_pk = emp.pk
-                    emp.delete()
-                    LdapSyncState.objects.filter(
-                        model="employee", object_pk=str(emp_pk)
-                    ).delete()
+                ldap_user = LdapUser.objects.get(dn=dn)
+                ldap_user.user_account_control = (
+                    UserAccountControl.DISABLED_PASSWORD_EXPIRED
+                )
+                ldap_user.save()
+                self._log_operation(
+                    "soft_disable",
+                    model="employee",
+                    object_id=emp.pk,
+                    dn=dn,
+                    success=True,
+                )
+            except LdapUser.DoesNotExist:
+                self._logger.warning(
+                    f"User already deleted from LDAP: {dn}"
+                )
             except Exception as e:
-                raise DirectoryDbError(str(e)) from e
+                raise DirectoryLdapError(
+                    f"LDAP soft-disable failed: {e}"
+                ) from e
 
-            if dn:
-                try:
-                    self._hard_delete_user_in_ldap(conn, dn)
-                except Exception as e:
-                    raise DirectoryLdapError(f"LDAP hard delete failed: {e}") from e
+        try:
+            with transaction.atomic():
+                emp_pk = emp.pk
+                emp.delete()
+                LdapSyncState.objects.filter(
+                    model="employee", object_pk=str(emp_pk)
+                ).delete()
+                self._log_operation(
+                    "delete",
+                    model="employee",
+                    object_id=emp_pk,
+                    dn=dn,
+                    success=True,
+                )
+        except Exception as e:
+            raise DirectoryDbError(str(e)) from e
+
+        # ORM: hard delete
+        if dn:
+            try:
+                ldap_user = LdapUser.objects.get(dn=dn)
+                ldap_user.delete()
+                self._log_operation(
+                    "hard_delete",
+                    model="employee",
+                    object_id=emp_pk,
+                    dn=dn,
+                    success=True,
+                )
+            except LdapUser.DoesNotExist:
+                self._logger.info(f"User already deleted from LDAP: {dn}")
+            except Exception as e:
+                raise DirectoryLdapError(
+                    f"LDAP hard delete failed: {e}"
+                ) from e
 
     # ==================== DN ↔ ID Conversion Methods ==================== #
 
@@ -440,87 +473,53 @@ class UserService:
 
     # ==================== Private Helper Methods ==================== #
 
-    def _touch_state(
-        self, *, model: str, object_pk: str | int, **touch_kwargs: Any
-    ) -> LdapSyncState:
-        """Унифицированная запись в LdapSyncState.touch(...).
-
-        Args:
-            model (str): Имя модели в sync-state (например, 'employee').
-            object_pk (Union[str,int]): PK объекта в БД.
-            **touch_kwargs: Параметры, передаваемые в touch(...).
-
-        Returns:
-            LdapSyncState: Обновлённая/созданная запись.
-        """
-        state, _ = LdapSyncState.objects.get_or_create(
-            model=model, object_pk=str(object_pk)
-        )
-        state.touch(**touch_kwargs)
-        return state
-
-    def _set_password(self, conn: Connection, dn: str, new_password: str) -> None:
-        """Меняет пароль пользователя в AD (control)."""
-        ok = conn.extend.microsoft.modify_password(dn, new_password)
-        if not ok:
-            msg = conn.result or {}
-            raw = (msg.get("message") or "").upper()
-            if "0000052D" in raw:
-                raise RuntimeError("Пароль не соответствует политике сложности AD")
-            raise RuntimeError(f"LDAP set password failed: {msg}")
+    def _set_password(
+        self, conn: Connection, dn: str, new_password: str
+    ) -> None:
+        """Делегирует в UserPasswordService."""
+        self._password_service.set_password(conn, dn, new_password)
 
     def _enable_user(self, conn: Connection, dn: str) -> None:
-        """Включает учётку (UAC=512)."""
-        ldap_modify_or_ignore(
-            conn, dn, {"userAccountControl": [(MODIFY_REPLACE, [UAC_ENABLED])]}, set()
-        )
+        """Включает учётку (UAC=ENABLED) через низкоуровневую модификацию."""
+        from ldap3 import MODIFY_REPLACE
+        conn.modify(dn, {
+            'userAccountControl': [(MODIFY_REPLACE, [str(UserAccountControl.ENABLED)])]
+        })
+        if not conn.result['result'] == 0:
+            raise DirectoryLdapError(
+                f"Failed to enable user {dn}: {conn.result['description']}"
+            )
 
     def _unique_logins(
-        self, conn: Connection, dto: DirectoryUserDTO, upn_suffix: str
+        self,
+        conn: Connection,
+        dto: DirectoryUserDTO,
+        upn_suffix: str,
     ) -> tuple[str, str]:
-        """Генерирует уникальные sAMAccountName и UPN."""
-        sam, upn = build_logins_for_user(
+        """Делегирует в UserLoginService."""
+        return self._login_service.generate_unique_logins(
             first_name=dto.first_name,
             last_name=dto.last_name,
             email=dto.email,
             upn_suffix=upn_suffix,
-            is_taken_sam=lambda s: is_taken(conn, attributes={"sAMAccountName": s}),
-            is_taken_upn=lambda u: is_taken(conn, attributes={"userPrincipalName": u}),
-            guid=getattr(dto, "ldap_guid", None),
+            ldap_guid=getattr(dto, "ldap_guid", None),
         )
-        if not sam or not upn:
-            raise ValueError("Не удалось сгенерировать уникальные sAMAccountName/UPN")
-        return sam, upn
 
     def _phone_write_attr(self) -> str:
-        """Возвращает имя телефонного атрибута для записи."""
-        write_attr = getattr(settings, "LDAP_WRITE_PHONE_ATTR", None)
-        if write_attr:
-            return write_attr
-        candidates = getattr(
-            settings, "LDAP_PHONE_ATTRS", ("mobile", "telephoneNumber")
-        )
-        return candidates[0] if candidates else "telephoneNumber"
+        """Делегирует в UserMapperService."""
+        return self._mapper_service._get_phone_write_attribute()
 
     def _build_user_attrs(
-        self, dto: DirectoryUserDTO, sam: str, upn: str, cn_text: str
+        self,
+        dto: DirectoryUserDTO,
+        sam: str,
+        upn: str,
+        cn_text: str,
     ) -> Dict[str, Any]:
-        """Собирает атрибуты для создания user в AD, отбрасывая пустые значения."""
-        if not all(isinstance(x, str) for x in (sam, upn, cn_text)):
-            raise TypeError("sam, upn и cn_text должны быть строками")
-
-        base_attrs: Dict[str, Any] = {
-            "cn": cn_text,
-            "givenName": dto.first_name or None,
-            "sn": dto.last_name or ".",  # sn не может быть пустым
-            "displayName": cn_text or None,
-            "mail": (dto.email or None),
-            self._phone_write_attr(): (dto.phone_e164 or None),
-            "sAMAccountName": sam,
-            "userPrincipalName": upn,
-            "userAccountControl": UAC_DISABLED,  # disabled до верификации email
-        }
-        return {k: v for k, v in base_attrs.items() if v not in (None, "", [])}
+        """Делегирует в UserMapperService."""
+        return self._mapper_service.build_creation_attributes(
+            dto, sam, upn, cn_text
+        )
 
     def _try_add_with_cn_list(
         self,
@@ -543,8 +542,62 @@ class UserService:
                 return dn_try
         return None
 
+    def _sync_position_groups(
+        self,
+        emp: Employee,
+        old_position,
+        new_position,
+        new_position_id,
+    ) -> None:
+        """Синхронизирует членство в POS-группах при смене должности.
+
+        Best-effort: ошибки логируются, но не прерывают
+        обновление пользователя.
+        """
+        from ...models import Position
+        from .position_service import PositionService
+        from .group_service import GroupService
+
+        # Определяем новую должность
+        if new_position is None and new_position_id is not None:
+            try:
+                new_position = Position.objects.get(
+                    pk=new_position_id,
+                )
+            except Position.DoesNotExist:
+                new_position = None
+
+        if new_position is None and new_position_id is None:
+            # position не передавался в changes
+            return
+
+        if old_position == new_position:
+            return
+
+        try:
+            pos_svc = PositionService(
+                group_service=GroupService(),
+                user_service=self,
+            )
+            if old_position and old_position.ldap_group_dn:
+                pos_svc.unassign_position(emp, old_position)
+            if new_position and new_position.ldap_group_dn:
+                pos_svc.assign_position(emp, new_position)
+        except Exception:
+            logger.warning(
+                "Position group sync failed for "
+                f"employee #{emp.pk}",
+                exc_info=True,
+            )
+
     def _create_user_in_ldap(self, conn: Connection, dto: DirectoryUserDTO) -> str:
-        """Создаёт объект user в LDAP (AD) и возвращает его DN."""
+        """Создаёт объект user в LDAP (AD) и возвращает его DN.
+
+        NOTE: Используется low-level ldap3 (conn.add) из-за необходимости:
+        - Перебора вариантов CN при коллизиях имён
+        - Проверки/создания контейнера (ensure_container_exists)
+        django-ldapdb ORM не поддерживает эти сценарии.
+        """
         base_dn = (
             dto.department_dn
             or getattr(settings, "LDAP_USERS_BASE", None)
@@ -571,7 +624,8 @@ class UserService:
         safe_cn = sam
         cn_list = cn_candidates(pretty_cn, safe_cn)
 
-        object_classes = ["top", "person", "organizationalPerson", "user"]
+        object_classes = self._mapper_service.get_object_classes_for_user()
+
         dn = self._try_add_with_cn_list(
             conn, base_dn, object_classes, dto, sam, upn, cn_list
         )
@@ -579,11 +633,20 @@ class UserService:
             return dn
         raise RuntimeError(f"LDAP add user failed: {conn.result}")
 
-    def _hard_delete_user_in_ldap(self, conn: Connection, dn: str) -> None:
+    def _hard_delete_user_in_ldap(
+        self, conn: Connection, dn: str
+    ) -> None:
         """Безусловное удаление user (ignore noSuchObject)."""
         ok = conn.delete(dn)
-        if not ok and (conn.result or {}).get("description") not in {"noSuchObject"}:
-            raise RuntimeError(f"LDAP delete failed for {dn}: {conn.result}")
+        if not ok:
+            desc = (conn.result or {}).get("description", "")
+            if desc not in {LdapErrorCode.NO_SUCH_OBJECT}:
+                raise RuntimeError(
+                    f"LDAP delete failed for {dn}: {conn.result}"
+                )
+            self._logger.info(
+                f"User already deleted from LDAP: {dn}"
+            )
 
     def _update_user_in_ldap(
         self,
@@ -593,16 +656,23 @@ class UserService:
         *,
         move_to_department_dn: Optional[str] = None,
         group_cns: Optional[Iterable[str]] = None,
+        emp_pk: Optional[int] = None,  # Employee PK для поиска по employeeNumber
     ) -> str:
         """Применяет LDAP-изменения к существующему пользователю и возвращает (возможный новый) DN.
-        
+
         NOTE: Этот метод слишком большой (~150 строк) и должен быть рефакторен в будущем.
         Сейчас просто перенесём как есть для совместимости.
+
+        Args:
+            conn: LDAP соединение
+            current_dn: Текущий DN пользователя (может быть устаревшим)
+            model_changes: Изменения полей
+            move_to_department_dn: DN для перемещения
+            group_cns: Список групп
+            emp_pk: PK Employee для поиска по employeeNumber если DN устарел
         """
-        # Временно используем DirectoryService для _move_to_department
-        from ..directory_service import DirectoryService
-        svc = DirectoryService()
-        
+        # TODO: DirectoryService был удален, требуется рефакторинг
+
         if not isinstance(current_dn, str) or not current_dn.strip():
             raise TypeError("current_dn должен быть непустой строкой")
         if not isinstance(model_changes, dict):
@@ -617,92 +687,178 @@ class UserService:
         if new_password:
             self._set_password(conn, dn, new_password)
 
-        # 2) Перемещение
+        # 2) Перемещение между OU — обработается в ORM save(),
+        #    см. шаг 3-5 ниже (ldap_user.base_dn = ...)
+
+        # 3-5) ORM: UAC + Атрибуты + Аватар (batch через один save)
+        try:
+            ldap_user = LdapUser.objects.get(dn=dn)
+        except LdapUser.DoesNotExist:
+            # DN неверный - пытаемся найти пользователя по employeeNumber
+            if emp_pk:
+                logger.warning(
+                    f"User not found at DN={dn}, searching by employeeNumber={emp_pk}"
+                )
+                try:
+                    # Поиск через filter с employeeNumber
+                    users = LdapUser.objects.filter(employee_number=str(emp_pk))
+                    if users:
+                        ldap_user = users[0]
+                        dn = ldap_user.dn  # Обновляем DN на реальный
+                        logger.info(f"User found at corrected DN={dn}")
+                    else:
+                        raise DirectoryLdapError(
+                            f"User not found by employeeNumber={emp_pk}. "
+                            "User may have been deleted from LDAP."
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to find user by employeeNumber: {e}")
+                    raise DirectoryLdapError(
+                        f"User not found at DN={dn} and search by employeeNumber failed"
+                    ) from e
+            else:
+                raise DirectoryLdapError(
+                    f"User not found at DN={dn}. DN in database doesn't match LDAP. "
+                    "Please run LDAP sync to fix sync state."
+                )
+
+        orm_dirty = False
+
+        # 2) Перемещение между OU через ORM
+        # ModifyDnMixin.save() автоматически выполнит modify_dn
         if move_to_department_dn:
-            dn = svc._move_to_department(conn, dn, move_to_department_dn)
+            ldap_user.base_dn = move_to_department_dn
+            orm_dirty = True
 
         # 3) UAC
         if is_active_val is not None:
-            uac_val = UAC_ENABLED if is_active_val else UAC_DISABLED
-            modify_user_attrs(conn, dn, {"userAccountControl": uac_val}, do_write=True)
+            uac_val = (
+                UserAccountControl.ENABLED
+                if is_active_val
+                else UserAccountControl.DISABLED
+            )
+            ldap_user.user_account_control = uac_val
+            orm_dirty = True
 
         # 4) Прочие атрибуты
-        ldap_attrs_map = {
-            "first_name": "givenName",
+        phone_write = self._phone_write_attr()
+        orm_field_map = {
+            "first_name": "given_name",
             "last_name": "sn",
             "email": "mail",
-            "phone_number": self._phone_write_attr(),
-            "display_name": "displayName",
+            "phone_number": (
+                "mobile"
+                if phone_write == "mobile"
+                else "telephone_number"
+            ),
+            "display_name": "display_name",
         }
-        attrs_to_update = {}
-        for model_key, ldap_attr in ldap_attrs_map.items():
+
+        # Запоминаем старый cn для проверки изменения
+        old_cn = ldap_user.cn
+
+        for model_key, orm_field in orm_field_map.items():
             if model_key in model_changes:
                 val = model_changes[model_key]
-                if val or ldap_attr == "sn":
-                    attrs_to_update[ldap_attr] = val if val else "."
-        
-        if attrs_to_update:
-            modify_user_attrs(conn, dn, attrs_to_update, do_write=True)
+                if val or orm_field == "sn":
+                    setattr(ldap_user, orm_field, val if val else ".")
+                    orm_dirty = True
+
+        # Вычисляем новый cn если изменились имя/фамилия
+        new_cn = None
+        if "first_name" in model_changes or "last_name" in model_changes:
+            parts = []
+            given_name_str = get_ldap_str(ldap_user.given_name).strip()
+            sn_str = get_ldap_str(ldap_user.sn).strip()
+
+            if given_name_str:
+                parts.append(given_name_str)
+            if sn_str and sn_str != ".":
+                parts.append(sn_str)
+
+            new_cn = " ".join(parts) if parts else get_ldap_str(
+                ldap_user.sam_account_name
+            )
+
+            if new_cn != old_cn:
+                # Устанавливаем cn и displayName —
+                # ModifyDnMixin.save() автоматически обработает
+                # rename CN через modify_dn (не modify_s)
+                ldap_user.cn = new_cn
+                ldap_user.display_name = new_cn
+                orm_dirty = True
 
         # 5) Аватар
         avatar_saved = False
         if avatar_bytes:
-            # Увеличен размер до 384px для максимального качества в LDAP
-            avatar = normalize_avatar_to_jpeg(
-                avatar_bytes, size_px=384, max_kb=100
-            )
+            avatar = self._mapper_service.process_avatar(avatar_bytes)
             if avatar:
-                modify_user_attrs(conn, dn, {"thumbnailPhoto": avatar}, do_write=True)
-                avatar_saved = True  # Флаг для сохранения в БД
+                ldap_user.thumbnail_photo = avatar
+                orm_dirty = True
+                avatar_saved = True
 
-        # 6) Группы
+        if orm_dirty:
+            # ModifyDnMixin.save() автоматически:
+            # 1) Откатит cn к старому значению
+            # 2) Сохранит остальные атрибуты через modify_s
+            # 3) Переименует DN через modify_dn
+            ldap_user.save()
+            # Обновляем dn после возможного rename
+            dn = ldap_user.dn
+
+        # 6) Группы (ORM)
         if group_cns is not None:
-            sync_user_groups_by_cns(conn, dn, set(group_cns), do_write=True)
+            sync_user_groups_by_cns_orm(dn, set(group_cns))
 
         # Возвращаем dn и флаг сохранения аватара
         return (dn, avatar_bytes if avatar_saved else None)
 
     def _get_employee_dn(self, employee: Employee) -> str:
         """Возвращает DN сотрудника из LdapSyncState или модели.
-        
+
         Args:
             employee: Экземпляр Employee.
-            
+
         Returns:
             str: Полный DN пользователя в LDAP.
-            
+
         Raises:
             DirectoryServiceError: Если DN не найден.
         """
         # Сначала проверяем LdapSyncState
         dn = (
             LdapSyncState.objects.filter(
-                model="employee", 
+                model="employee",
                 object_pk=str(employee.pk)
             )
             .values_list("ldap_dn", flat=True)
             .first()
         )
-        
+
         # Если не найден в LdapSyncState, проверяем поле модели
         if not dn and hasattr(employee, 'ldap_dn'):
             dn = employee.ldap_dn
-        
+
         if not dn:
             raise DirectoryServiceError("Employee has no ldap_dn")
         return dn
 
     def _move_user_to_base(self, conn: Connection, user_dn: str, base_dn: str) -> str:
         """Перемещает пользовательский объект в указанный контейнер.
-        
+
+        NOTE: Используется low-level ldap3 для атомарного move-only
+        (без обновления атрибутов). ModifyDnMixin решает ту же задачу
+        через ORM (user.base_dn = ...; user.save()), но совмещает
+        move с обновлением атрибутов.
+
         Args:
             conn: LDAP соединение.
             user_dn: Текущий DN пользователя.
             base_dn: DN целевого контейнера.
-            
+
         Returns:
             str: Новый DN пользователя после перемещения.
-            
+
         Raises:
             RuntimeError: Если операция перемещения не удалась.
         """

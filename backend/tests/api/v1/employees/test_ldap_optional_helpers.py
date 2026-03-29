@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock
 from rest_framework.response import Response
 
-from api.v1.employees.views import _is_ldap_enabled, _ldap_try
+from api.v1.employees.views._helpers import _is_ldap_enabled, _ldap_try
 from employees.ldap.errors import (
     DirectoryLdapError,
     DirectoryServiceError,

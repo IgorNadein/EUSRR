@@ -230,10 +230,12 @@ class RequestViewSet(viewsets.ModelViewSet):
 
             qs = qs.filter(scope).distinct()
 
-        # Применяем фильтры type/status/employee_id/date_from/date_to для всех пользователей
+        # Применяем фильтры type/status/employee_id/created_from/created_to/date_from/date_to для всех пользователей
         t = (params.get("type") or "").strip()
         s = (params.get("status") or "").strip()
         employee_id = (params.get("employee_id") or "").strip()
+        created_from = (params.get("created_from") or "").strip()
+        created_to = (params.get("created_to") or "").strip()
         date_from = (params.get("date_from") or "").strip()
         date_to = (params.get("date_to") or "").strip()
         
@@ -243,12 +245,20 @@ class RequestViewSet(viewsets.ModelViewSet):
             qs = qs.filter(status=s)
         if employee_id and employee_id.isdigit():
             qs = qs.filter(employee_id=int(employee_id))
+        
+        # Фильтры по дате создания заявления
+        if created_from:
+            qs = qs.filter(created_at__date__gte=created_from)
+        if created_to:
+            qs = qs.filter(created_at__date__lte=created_to)
+        
+        # Фильтры по периоду заявления (date_from/date_to в самой заявке)
         if date_from:
-            # Фильтр по дате создания (created_at >= указанной даты)
-            qs = qs.filter(created_at__date__gte=date_from)
+            # Заявки, у которых период не закончился до указанной даты
+            qs = qs.filter(Q(date_to__isnull=True) | Q(date_to__gte=date_from))
         if date_to:
-            # Фильтр по дате создания (created_at <= указанной даты)
-            qs = qs.filter(created_at__date__lte=date_to)
+            # Заявки, у которых период не начался после указанной даты
+            qs = qs.filter(Q(date_from__isnull=True) | Q(date_from__lte=date_to))
 
         # Аннотируем счётчик комментариев через communications.Chat
         from communications.models import Chat, Message

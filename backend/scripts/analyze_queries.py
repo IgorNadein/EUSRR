@@ -24,15 +24,14 @@ from django.test import RequestFactory
 from django.contrib.auth.models import AnonymousUser
 
 # Import views after Django setup
-from api.v1.employees.views import (
-    EmployeeViewSet,
-    EmployeeActionViewSet,
-    DepartmentViewSet,
-    DepartmentRoleViewSet,
-    GroupViewSet,
-    SkillViewSet,
-    PositionViewSet,
-)
+from api.v1.employees.views._helpers import _is_ldap_enabled, _ldap_try
+from api.v1.employees.views.employees import EmployeeViewSet
+from api.v1.employees.views.actions import EmployeeActionViewSet
+from api.v1.employees.views.departments import DepartmentViewSet
+from api.v1.employees.views.roles import DepartmentRoleViewSet
+from api.v1.employees.views.groups import GroupViewSet
+from api.v1.employees.views.skills import SkillViewSet
+from api.v1.employees.views.positions import PositionViewSet
 from employees.models import Employee, Department, Skill, Position, Group
 
 

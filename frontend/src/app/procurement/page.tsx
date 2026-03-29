@@ -3,22 +3,21 @@
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
-import { canManageRequests } from "@/lib/permissions";
+import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
+import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
 import type {
   ProcurementRequest,
-  ProcurementItem,
   User,
   Department,
   UrgencyLevel,
-  ProcurementStatus,
 } from "@/types/api";
 import {
-  AlertTriangle,
+  ArrowUpDown,
   Check,
   ChevronDown,
-  ChevronUp,
   CircleDot,
   ClipboardCheck,
   Filter,
@@ -59,12 +58,30 @@ const urgencyMeta: Record<string, { label: string; cls: string }> = {
   critical: { label: "Критическая", cls: "text-rose-600" },
 };
 
-type ScopeTab = "all" | "mine" | "pending_approvals" | "available";
+const orderingOptions = [
+  { value: "-created_at", label: "Сначала новые" },
+  { value: "created_at", label: "Сначала старые" },
+  { value: "title", label: "По названию" },
+  { value: "urgency", label: "По срочности ↑" },
+  { value: "-urgency", label: "По срочности ↓" },
+];
+
+type ScopeTab = "all" | "mine" | "department" | "pending_approvals" | "my_work" | "available";
 const scopeTabs: { value: ScopeTab; label: string }[] = [
   { value: "all",               label: "Все" },
   { value: "mine",              label: "Мои" },
+  { value: "department",        label: "Мой отдел" },
   { value: "pending_approvals", label: "На согласование" },
+  { value: "my_work",           label: "В работе у меня" },
   { value: "available",         label: "Доступные" },
+];
+
+const periodOptions = [
+  { value: "", label: "Любой период" },
+  { value: "today", label: "Сегодня" },
+  { value: "week", label: "7 дней" },
+  { value: "month", label: "30 дней" },
+  { value: "quarter", label: "90 дней" },
 ];
 
 function fmt(d?: string | null) {
@@ -113,6 +130,8 @@ const emptyForm: FormState = {
   items: [{ ...emptyItem }],
 };
 
+type ProcurementSection = "requests" | "stats" | "suppliers";
+
 /* ══════════════════════════════════════════════════════
    Main page component
    ══════════════════════════════════════════════════════ */
@@ -120,6 +139,7 @@ const emptyForm: FormState = {
 export default function ProcurementPage() {
   const { user } = useUser();
   const canManage = canManageRequests(user);
+  const canSupplierManage = canManageSupplier(user);
 
   /* ── data ── */
   const [requests, setRequests] = useState<ProcurementRequest[]>([]);
@@ -140,7 +160,10 @@ export default function ProcurementPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
+  const [periodFilter, setPeriodFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [ordering, setOrdering] = useState("-created_at");
+  const [activeSection, setActiveSection] = useState<ProcurementSection>("requests");
 
   /* ── form modal ── */
   const [createOpen, setCreateOpen] = useState(false);
@@ -153,15 +176,23 @@ export default function ProcurementPage() {
 
   /* ══════════ helpers ══════════ */
 
-  const displayUserName = (person?: User | null) => {
-    if (!person) return "—";
-    const full = `${person.last_name || ""} ${person.first_name || ""}`.trim();
-    return full || (person as any)?.full_name || person.email || "Пользователь";
+  const resolveUserId = (person?: User | number | null) => {
+    if (!person) return null;
+    return typeof person === "number" ? person : person.id;
   };
 
-  const userLink = (person?: User | null) => {
-    if (!person?.id) return "";
-    return user?.id && person.id === user.id ? "/profile" : `/users/${person.id}`;
+  const displayUserName = (person?: User | number | null, fallbackName?: string | null, fallbackEmail?: string | null) => {
+    if (fallbackName) return fallbackName;
+    if (!person) return fallbackEmail || "—";
+    if (typeof person === "number") return fallbackEmail || `Пользователь #${person}`;
+    const full = `${person.last_name || ""} ${person.first_name || ""}`.trim();
+    return full || (person as any)?.full_name || person.email || fallbackEmail || "Пользователь";
+  };
+
+  const userLink = (person?: User | number | null) => {
+    const personId = resolveUserId(person);
+    if (!personId) return "";
+    return user?.id && personId === user.id ? "/profile" : `/users/${personId}`;
   };
 
   const extractNextPage = (nextUrl?: string | null): number | null => {
@@ -180,18 +211,23 @@ export default function ProcurementPage() {
     return d?.name || "—";
   };
 
+  const getRequestAmount = (req: ProcurementRequest) => req.total_cost ?? req.total_estimated_cost;
+
   /* ══════════ data loading ══════════ */
 
   const buildParams = useCallback((page: number): Record<string, string | number> => {
     const p: Record<string, string | number> = { page };
     if (scope === "mine") p.scope = "mine";
+    else if (scope === "department") p.scope = "department";
+    else if (scope === "my_work") p.scope = "my_work";
     else if (scope === "available") p.scope = "available";
     if (statusFilter) p.status = statusFilter;
     if (urgencyFilter) p.urgency = urgencyFilter;
     if (departmentFilter) p.department = departmentFilter;
+    if (periodFilter) p.period = periodFilter;
     if (searchQuery.trim()) p.search = searchQuery.trim();
     return p;
-  }, [scope, statusFilter, urgencyFilter, departmentFilter, searchQuery]);
+  }, [scope, statusFilter, urgencyFilter, departmentFilter, periodFilter, searchQuery]);
 
   const loadPage1 = useCallback(async () => {
     try {
@@ -279,9 +315,29 @@ export default function ProcurementPage() {
   /* ══════════ client-side filter ══════════ */
 
   const filteredRequests = useMemo(() => {
-    // already filtered server-side, but search may be local too
-    return [...requests].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [requests]);
+    const urgencyRank: Record<string, number> = {
+      low: 1,
+      medium: 2,
+      high: 3,
+      critical: 4,
+    };
+
+    return [...requests].sort((a, b) => {
+      switch (ordering) {
+        case "created_at":
+          return (new Date(a.created_at).getTime() || 0) - (new Date(b.created_at).getTime() || 0);
+        case "title":
+          return String(a.title || "").localeCompare(String(b.title || ""), "ru", { sensitivity: "base" });
+        case "urgency":
+          return (urgencyRank[a.urgency || "medium"] || 0) - (urgencyRank[b.urgency || "medium"] || 0);
+        case "-urgency":
+          return (urgencyRank[b.urgency || "medium"] || 0) - (urgencyRank[a.urgency || "medium"] || 0);
+        case "-created_at":
+        default:
+          return (new Date(b.created_at).getTime() || 0) - (new Date(a.created_at).getTime() || 0);
+      }
+    });
+  }, [ordering, requests]);
 
   /* ══════════ form ══════════ */
 
@@ -419,11 +475,23 @@ export default function ProcurementPage() {
   };
 
   const handleSubmit  = (id: number) => doAction(`submit-${id}`,  () => apiClient.submitProcurementRequest(id),  id, "Заявка отправлена на согласование.");
-  const handleApprove = (id: number) => doAction(`approve-${id}`, () => apiClient.approveProcurementRequest(id), id, "Заявка одобрена.");
-  const handleReject  = (id: number) => doAction(`reject-${id}`,  () => apiClient.rejectProcurementRequest(id),  id, "Заявка отклонена.");
+  const handleApprove = (id: number) => {
+    const comment = window.prompt("Комментарий к одобрению (необязательно)", "");
+    if (comment === null) return;
+    return doAction(`approve-${id}`, () => apiClient.approveProcurementRequest(id, comment), id, "Заявка одобрена.");
+  };
+  const handleReject  = (id: number) => {
+    const comment = window.prompt("Комментарий к отклонению", "");
+    if (comment === null) return;
+    return doAction(`reject-${id}`, () => apiClient.rejectProcurementRequest(id, comment), id, "Заявка отклонена.");
+  };
   const handleStart   = (id: number) => doAction(`start-${id}`,   () => apiClient.startWorkProcurementRequest(id), id, "Вы взяли заявку в работу.");
   const handleComplete= (id: number) => doAction(`complete-${id}`,() => apiClient.completeProcurementRequest(id), id, "Заявка завершена.");
-  const handleCancel  = (id: number) => doAction(`cancel-${id}`,  () => apiClient.cancelProcurementRequest(id),  id, "Заявка отменена.");
+  const handleCancel  = (id: number) => {
+    const reason = window.prompt("Причина отмены", "");
+    if (reason === null) return;
+    return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
+  };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Удалить эту заявку? Доступно только для черновиков.")) return;
@@ -497,7 +565,7 @@ export default function ProcurementPage() {
     );
   };
 
-  const activeFilterCount = [statusFilter, urgencyFilter, departmentFilter].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, urgencyFilter, departmentFilter, periodFilter].filter(Boolean).length;
   const isFinal = (s?: string) => ["completed", "rejected", "cancelled"].includes(String(s || "").toLowerCase());
 
   /* ══════════════════════════════════════════════════════
@@ -519,30 +587,39 @@ export default function ProcurementPage() {
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
           {/* ── header ── */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Закупки</p>
-            <button type="button" onClick={openCreate} className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-600">
-              <Plus size={14} /> Новая заявка
-            </button>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Закупки</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setActiveSection("requests")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "requests" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                  Заявки
+                </button>
+                <button type="button" onClick={() => setActiveSection("stats")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "stats" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                  Статистика
+                </button>
+                <button type="button" onClick={() => setActiveSection("suppliers")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "suppliers" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                  Поставщики
+                </button>
+              </div>
+            </div>
+            {activeSection === "requests" && (
+              <button type="button" onClick={openCreate} className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600">
+                <Plus size={14} /> Создать заявку
+              </button>
+            )}
           </div>
 
           {/* ── alerts ── */}
           {actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
           {actionSuccess && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{actionSuccess}</p>}
 
-          {/* ── scope tabs ── */}
-          <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
-            {scopeTabs.map((tab) => (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setScope(tab.value)}
-                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${scope === tab.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {activeSection === "stats" && <ProcurementStatsPanel />}
 
+          {activeSection === "suppliers" && (
+            <ProcurementSuppliersPanel canManage={canSupplierManage} />
+          )}
+
+          {activeSection === "requests" && (
+            <>
           {/* ── search + filter ── */}
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
@@ -566,6 +643,38 @@ export default function ProcurementPage() {
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">{activeFilterCount}</span>
               )}
             </button>
+            <div className="relative w-[148px] shrink-0">
+              <ArrowUpDown size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <select
+                value={ordering}
+                onChange={(e) => setOrdering(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-8 text-xs font-medium text-gray-700 transition hover:bg-gray-100 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                aria-label="Сортировка списка закупок"
+              >
+                {orderingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+
+          {/* ── scope tabs ── */}
+          <div className="mb-4 flex flex-wrap gap-2">
+            {scopeTabs.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setScope(tab.value)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  scope === tab.value
+                    ? "bg-sky-600 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {/* ── filters panel ── */}
@@ -583,8 +692,11 @@ export default function ProcurementPage() {
                 <option value="">Все отделы</option>
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
+              <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                {periodOptions.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
+              </select>
               {activeFilterCount > 0 && (
-                <button type="button" onClick={() => { setStatusFilter(""); setUrgencyFilter(""); setDepartmentFilter(""); }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition">
+                <button type="button" onClick={() => { setStatusFilter(""); setUrgencyFilter(""); setDepartmentFilter(""); setPeriodFilter(""); }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition">
                   Очистить фильтры
                 </button>
               )}
@@ -602,78 +714,185 @@ export default function ProcurementPage() {
               const st = String(req.status || "").toLowerCase();
               const sMeta = statusMeta[st] ?? defaultStatusMeta;
               const urg = urgencyMeta[req.urgency] ?? urgencyMeta.medium;
-              const isAuthor = Boolean(req.requestor?.id && user?.id && req.requestor.id === user.id);
-              const isExecutor = Boolean(req.executor?.id && user?.id && req.executor.id === user.id);
+              const isAuthor = Boolean(resolveUserId(req.requestor) && user?.id && resolveUserId(req.requestor) === user.id);
+              const isExecutor = Boolean(resolveUserId(req.executor) && user?.id && resolveUserId(req.executor) === user.id);
               const isDraft = st === "draft";
               const isPending = st === "pending";
               const isApproved = st === "approved";
               const isInProgress = st === "in_progress";
               const expanded = expandedIds.has(req.id);
               const detail = detailsCache[req.id];
+              const resolvedDetail = detail || req;
+              const requestorName = displayUserName(req.requestor, req.requestor_name, req.requestor_email);
+              const executorName = req.executor || req.executor_name ? displayUserName(req.executor, req.executor_name || undefined) : "";
+              const requestorLink = userLink(req.requestor);
+              const executorLink = userLink(req.executor);
+              const itemsCount = resolvedDetail.items?.length ?? 0;
+              const approvalsCount = resolvedDetail.approvals?.length ?? 0;
 
               return (
-                <article key={req.id} className="rounded-xl border border-gray-100 bg-white transition hover:shadow-sm">
-                  {/* ── card head ── */}
-                  <button type="button" onClick={() => toggleExpand(req.id)} className="flex w-full items-start gap-3 p-4 text-left">
-                    <div className="flex-1 min-w-0">
-                      {/* Title + status */}
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 truncate text-sm font-semibold text-gray-900">{req.title || "Без названия"}</p>
-                        <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs ring-1 ${sMeta.cls}`}>{sMeta.label}</span>
-                      </div>
+                <article key={req.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-gray-300">
+                  <div className="px-4 py-3 xl:hidden">
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(req.id)}
+                        aria-label={expanded ? "Свернуть детали" : "Развернуть детали"}
+                        className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100"
+                      >
+                        <ChevronDown size={15} className={`transition ${expanded ? "rotate-180" : ""}`} />
+                      </button>
 
-                      {/* Meta line */}
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                        <span>{getDeptName(req)}</span>
-                        <span className="text-gray-300">·</span>
-                        <span className={urg.cls}>{urg.label} срочность</span>
-                        <span className="text-gray-300">·</span>
-                        <span>{fmt(req.created_at)}</span>
-                        {req.total_estimated_cost && (
-                          <>
-                            <span className="text-gray-300">·</span>
-                            <span className="font-medium text-gray-700">{money(req.total_estimated_cost)}</span>
-                          </>
-                        )}
-                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`h-2 w-2 shrink-0 rounded-full ${st === "completed" ? "bg-teal-500" : st === "approved" ? "bg-emerald-500" : st === "pending" ? "bg-amber-500" : st === "in_progress" ? "bg-sky-500" : st === "rejected" ? "bg-rose-500" : "bg-slate-400"}`} />
+                              <h3 className="truncate text-sm font-semibold text-gray-900">{req.title || "Без названия"}</h3>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                              <span className="font-medium text-gray-700">{getDeptName(req)}</span>
+                              <span>{fmt(req.created_at)}</span>
+                              {getRequestAmount(req) && <span className="font-medium text-gray-700">{money(getRequestAmount(req))}</span>}
+                            </div>
+                          </div>
 
-                      {/* Requestor */}
-                      <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                        <span>Заявитель:</span>
-                        {(() => {
-                          const link = userLink(req.requestor);
-                          const name = displayUserName(req.requestor);
-                          return link
-                            ? <Link href={link} onClick={(e) => e.stopPropagation()} className="font-medium text-sky-700 hover:underline">{name}</Link>
-                            : <span className="font-medium text-gray-700">{name}</span>;
-                        })()}
-                        {req.executor && (
-                          <>
-                            <span className="ml-2">Исполнитель:</span>
-                            {(() => {
-                              const link = userLink(req.executor);
-                              const name = displayUserName(req.executor);
-                              return link
-                                ? <Link href={link} onClick={(e) => e.stopPropagation()} className="font-medium text-sky-700 hover:underline">{name}</Link>
-                                : <span className="font-medium text-gray-700">{name}</span>;
-                            })()}
-                          </>
-                        )}
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ${sMeta.cls}`}>{sMeta.label}</span>
+                            <span className={`text-[11px] font-medium ${urg.cls}`}>{urg.label} срочность</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-xs text-gray-500 sm:grid-cols-2">
+                          <div className="min-w-0">
+                            <span className="text-gray-400">Заявитель:</span>{" "}
+                            {requestorLink
+                              ? <Link href={requestorLink} className="font-medium text-sky-700 hover:text-sky-800">{requestorName}</Link>
+                              : <span className="font-medium text-gray-700">{requestorName}</span>}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-gray-400">Исполнитель:</span>{" "}
+                            {req.executor ? (
+                              executorLink
+                                ? <Link href={executorLink} className="font-medium text-sky-700 hover:text-sky-800">{executorName}</Link>
+                                : <span className="font-medium text-gray-700">{executorName}</span>
+                            ) : (
+                              <span className="text-gray-400">не назначен</span>
+                            )}
+                          </div>
+                          {(itemsCount > 0 || approvalsCount > 0) && (
+                            <div className="col-span-2 flex flex-wrap items-center gap-2 pt-0.5">
+                              {itemsCount > 0 && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200">
+                                  <Package size={11} /> {itemsCount} поз.
+                                </span>
+                              )}
+                              {approvalsCount > 0 && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 ring-1 ring-gray-200">
+                                  <Check size={11} /> {approvalsCount} соглас.
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <ChevronDown size={16} className={`mt-1 shrink-0 text-gray-400 transition ${expanded ? "rotate-180" : ""}`} />
-                  </button>
+                  </div>
 
-                  {/* ── expanded detail ── */}
+                  <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 px-4 py-3 xl:grid xl:items-center">
+                    <div className="min-w-0">
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpand(req.id)}
+                          aria-label={expanded ? "Свернуть детали" : "Развернуть детали"}
+                          className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100"
+                        >
+                          <ChevronDown size={15} className={`transition ${expanded ? "rotate-180" : ""}`} />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${st === "completed" ? "bg-teal-500" : st === "approved" ? "bg-emerald-500" : st === "pending" ? "bg-amber-500" : st === "in_progress" ? "bg-sky-500" : st === "rejected" ? "bg-rose-500" : "bg-slate-400"}`} />
+                            <h3 className="truncate text-sm font-semibold text-gray-900">{req.title || "Без названия"}</h3>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                            <span className="font-medium text-gray-700">{getDeptName(req)}</span>
+                            <span>{fmt(req.created_at)}</span>
+                            {itemsCount > 0 && <span>{itemsCount} поз.</span>}
+                            {approvalsCount > 0 && <span>{approvalsCount} соглас.</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 text-sm">
+                      <p className="text-xs text-gray-400">Заявитель</p>
+                      {requestorLink
+                        ? <Link href={requestorLink} className="truncate font-medium text-sky-700 hover:text-sky-800">{requestorName}</Link>
+                        : <p className="truncate font-medium text-gray-700">{requestorName}</p>}
+                      <p className="mt-1 text-xs text-gray-400">Исполнитель</p>
+                      {req.executor ? (
+                        executorLink
+                          ? <Link href={executorLink} className="truncate font-medium text-sky-700 hover:text-sky-800">{executorName}</Link>
+                          : <p className="truncate font-medium text-gray-700">{executorName}</p>
+                      ) : (
+                        <p className="truncate text-sm text-gray-400">Не назначен</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${sMeta.cls}`}>{sMeta.label}</span>
+                      </div>
+                      <p className={`mt-2 text-sm font-medium ${urg.cls}`}>{urg.label} срочность</p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">{money(getRequestAmount(req))}</p>
+                      <p className="mt-1 text-xs text-gray-500">Создано {fmt(req.created_at) || "—"}</p>
+                    </div>
+
+                    <div className="flex items-center justify-end lg:justify-self-end">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(req.id)}
+                        aria-label={expanded ? "Свернуть детали" : "Развернуть детали"}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-50"
+                      >
+                        <ChevronDown size={16} className={`transition ${expanded ? "rotate-180" : ""}`} />
+                      </button>
+                    </div>
+                  </div>
+
                   {expanded && (
-                    <div className="border-t border-gray-100 px-4 pb-4 pt-3">
-                      {/* Description */}
-                      <p className="mb-3 text-sm text-gray-700 whitespace-pre-line">{(detail || req).description || "—"}</p>
+                    <div className="border-t border-gray-100 bg-gray-50/70 px-4 py-4">
+                      <div className="mb-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-gray-100">
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Описание</p>
+                        <p className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-700">{resolvedDetail.description || "—"}</p>
+                        <div className="mt-3 grid gap-2 text-xs text-gray-500 sm:grid-cols-3">
+                          <div className="rounded-lg bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-gray-400">Отправлена</p>
+                            <p className="mt-1 font-medium text-gray-700">{fmt(resolvedDetail.submitted_at) || "—"}</p>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-gray-400">Взята в работу</p>
+                            <p className="mt-1 font-medium text-gray-700">{fmt(resolvedDetail.started_at) || "—"}</p>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-gray-400">Завершена</p>
+                            <p className="mt-1 font-medium text-gray-700">{fmt(resolvedDetail.completed_at) || "—"}</p>
+                          </div>
+                        </div>
+                        {resolvedDetail.actual_cost ? (
+                          <div className="mt-3 inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                            Фактическая сумма: {money(resolvedDetail.actual_cost)}
+                          </div>
+                        ) : null}
+                      </div>
 
-                      {/* Items table */}
                       {detail?.items && detail.items.length > 0 && (
-                        <div className="mb-3">
-                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Позиции</p>
+                        <div className="mb-3 rounded-xl border border-gray-200 bg-white p-3">
+                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Позиции</p>
                           <div className="overflow-x-auto rounded-lg border border-gray-200">
                             <table className="w-full text-xs">
                               <thead className="bg-gray-50 text-gray-500">
@@ -690,8 +909,8 @@ export default function ProcurementPage() {
                                   <tr key={idx} className="text-gray-700">
                                     <td className="px-3 py-2">
                                       <p className="font-medium">{it.name}</p>
-                                      {it.description && <p className="text-gray-500 mt-0.5">{it.description}</p>}
-                                      {it.supplier_info && <p className="text-gray-400 mt-0.5">Поставщик: {it.supplier_info}</p>}
+                                      {it.description && <p className="mt-0.5 text-gray-500">{it.description}</p>}
+                                      {it.supplier_info && <p className="mt-0.5 text-gray-400">Поставщик: {it.supplier_info}</p>}
                                     </td>
                                     <td className="px-3 py-2 text-right">{it.quantity}</td>
                                     <td className="px-3 py-2">{it.unit}</td>
@@ -705,10 +924,9 @@ export default function ProcurementPage() {
                         </div>
                       )}
 
-                      {/* Approvals */}
                       {detail?.approvals && detail.approvals.length > 0 && (
-                        <div className="mb-3">
-                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Согласования</p>
+                        <div className="mb-3 rounded-xl border border-gray-200 bg-white p-3">
+                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Согласования</p>
                           <div className="flex flex-col gap-1.5">
                             {detail.approvals.map((a) => {
                               const aSt = String(a.status).toLowerCase();
@@ -716,8 +934,8 @@ export default function ProcurementPage() {
                               return (
                                 <div key={a.id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-xs">
                                   {icon}
-                                  <span className="font-medium text-gray-700">{displayUserName(a.approver)}</span>
-                                  <span className="text-gray-400">({a.role === "department_head" ? "Руководитель" : a.role === "finance_manager" ? "Финансист" : "Директор"})</span>
+                                  <span className="font-medium text-gray-700">{displayUserName(a.approver, a.approver_name)}</span>
+                                  <span className="text-gray-400">({a.step_label || `Этап ${a.priority}`})</span>
                                   {a.comment && <span className="ml-auto italic text-gray-500">«{a.comment}»</span>}
                                 </div>
                               );
@@ -726,29 +944,24 @@ export default function ProcurementPage() {
                         </div>
                       )}
 
-                      {/* Workflow action buttons */}
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {/* Draft → Submit */}
                         {isDraft && isAuthor && (
                           <button type="button" onClick={() => handleSubmit(req.id)} disabled={busyKey === `submit-${req.id}`}
                             className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-60">
                             <Send size={13} /> На согласование
                           </button>
                         )}
-                        {/* Draft → Edit */}
                         {isDraft && isAuthor && (
                           <button type="button" onClick={() => openEdit(req)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
                             <Pencil size={13} /> Редактировать
                           </button>
                         )}
-                        {/* Draft → Delete */}
                         {isDraft && (isAuthor || canManage) && (
                           <button type="button" onClick={() => handleDelete(req.id)} disabled={busyKey === `delete-${req.id}`}
                             className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-100 disabled:opacity-60">
                             <Trash2 size={13} /> Удалить
                           </button>
                         )}
-                        {/* Pending → Approve / Reject (for approvers; simplified) */}
                         {isPending && !isAuthor && (
                           <>
                             <button type="button" onClick={() => handleApprove(req.id)} disabled={busyKey === `approve-${req.id}`}
@@ -761,21 +974,18 @@ export default function ProcurementPage() {
                             </button>
                           </>
                         )}
-                        {/* Approved → Start work */}
                         {isApproved && !req.executor && (
                           <button type="button" onClick={() => handleStart(req.id)} disabled={busyKey === `start-${req.id}`}
                             className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-60">
                             <Play size={13} /> Взять в работу
                           </button>
                         )}
-                        {/* In progress → Complete */}
                         {isInProgress && isExecutor && (
                           <button type="button" onClick={() => handleComplete(req.id)} disabled={busyKey === `complete-${req.id}`}
                             className="inline-flex items-center gap-1 rounded-lg bg-teal-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-60">
                             <ClipboardCheck size={13} /> Завершить
                           </button>
                         )}
-                        {/* Cancel (author, not final) */}
                         {isAuthor && !isFinal(st) && st !== "draft" && (
                           <button type="button" onClick={() => handleCancel(req.id)} disabled={busyKey === `cancel-${req.id}`}
                             className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60">
@@ -797,6 +1007,8 @@ export default function ProcurementPage() {
                 {loadingMore ? "Загружаем..." : "Загрузить ещё"}
               </button>
             </div>
+          )}
+            </>
           )}
         </section>
       )}

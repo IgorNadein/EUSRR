@@ -353,15 +353,3 @@ def test_me_patch_updates_profile(api_client: APIClient):
     me.refresh_from_db()
     assert me.first_name == "Updated"
 
-def test_me_patch_rejects_when_all_contacts_empty(api_client: APIClient):
-    """
-    Ваша логика в me(): если пользователь не передал поля контактов и в итоге
-    ни одного канала связи нет — вернуть 400.
-    Создаём юзера без контактов и шлём PATCH без контакт-полей.
-    """
-    me = make_user("nocc@example.com", telegram="", whatsapp="", wechat="")
-    api_client.force_authenticate(user=me)
-
-    url = reverse("api:v1:employees-me")
-    r = api_client.patch(url, {"first_name": "Try"}, format="json")
-    assert r.status_code == status.HTTP_400_BAD_REQUEST

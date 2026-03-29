@@ -1,92 +1,62 @@
-"""Сервис для управления группами Active Directory.
+"""Рефакторенный сервис для управления группами Active Directory.
 
-Этот модуль содержит бизнес-логику для операций с группами AD,
-включая создание, удаление, переименование и управление членством.
+Улучшения:
+- Наследуется от BaseService (общая логика _touch_state, логирование)
+- Использует константы из constants.py
+- Унифицированный API (без дублирования _wrapped методов)
+- Добавлено логирование критических операций
+- Упрощённый интерфейс (сервис сам управляет LDAP соединением)
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import List, Optional, Set
 
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.utils import timezone
-from employees.models import LdapSyncState
-from ldap3 import BASE, MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, SUBTREE, Connection
+from ldap3 import SUBTREE, Connection
 
+from .base_service import BaseService
+from .constants import (
+    LdapFilter,
+    LdapAttribute,
+    LdapErrorCode,
+    LdapObjectClass,
+    group_type_value,
+)
 from ..infrastructure.connections import _ldap
-from ..repositories.ldap_repository import ldap_modify_or_ignore
-from ..utils.text_utils import esc_filter, esc_rdn
-from ..utils.ldap_utils import get_guid_str, group_type
+from ..orm_models import LdapGroup, LdapUser
+from ..utils.text_utils import esc_rdn, esc_filter
+from ..utils.ldap_utils import get_guid_str
 
 
-class GroupService:
-    """Сервис для управления группами Active Directory."""
-
-    def __init__(self, directory_service=None):
-        """Инициализирует GroupService.
-        
-        Args:
-            directory_service: Опциональная ссылка на DirectoryService для _touch_state
-        """
-        self._directory_service = directory_service
-
-    def _touch_state(
-        self,
-        *,
-        model: str,
-        object_pk: int | str,
-        ldap_dn: Optional[str] = None,
-        ldap_guid: Optional[str] = None,
-        last_django_modify_ts: Optional[Any] = None,
-        sync_dir: Optional[str] = None,
-    ) -> None:
-        """Обновляет запись LdapSyncState для модели.
-        
-        Делегирует в DirectoryService, если доступен, иначе работает напрямую.
-        """
-        if self._directory_service:
-            self._directory_service._touch_state(
-                model=model,
-                object_pk=object_pk,
-                ldap_dn=ldap_dn,
-                ldap_guid=ldap_guid,
-                last_django_modify_ts=last_django_modify_ts,
-                sync_dir=sync_dir,
-            )
-        else:
-            # Fallback - прямая работа с LdapSyncState
-            state, created = LdapSyncState.objects.get_or_create(
-                model=model, object_pk=str(object_pk)
-            )
-            if ldap_dn is not None:
-                state.ldap_dn = ldap_dn
-            if ldap_guid is not None:
-                state.ldap_guid = ldap_guid
-            if last_django_modify_ts is not None:
-                state.last_django_modify_ts = last_django_modify_ts
-            if sync_dir is not None:
-                state.sync_dir = sync_dir
-            state.save()
+class GroupService(BaseService):
+    """Сервис для управления группами Active Directory.
+    
+    Рефакторенная версия с улучшенной архитектурой:
+    - Использует BaseService для общей логики
+    - Константы вместо магических чисел
+    - Логирование всех операций
+    - Упрощённый API
+    """
 
     # ======================== Core CRUD Operations ======================== #
 
     def create(
         self,
-        conn: Connection,
         cn: str,
-        parent_dn: Optional[str] = None,
         *,
+        parent_dn: Optional[str] = None,
         description: Optional[str] = None,
         scope: str = "global",
         security_enabled: bool = True,
     ) -> str:
-        """Создаёт группу в LDAP под указанным контейнером.
+        """Создаёт группу в LDAP под указанным контейнером (с управлением соединением).
 
         Args:
-            conn: Подключение LDAP.
             cn: Имя группы (CN).
             parent_dn: Контейнер для группы; если None — settings.LDAP_GROUPS_BASE.
             description: Описание.
@@ -99,6 +69,35 @@ class GroupService:
         Raises:
             RuntimeError: Если базовый контейнер не задан или операция add завершилась ошибкой.
         """
+        with _ldap() as conn:
+            return self._create_internal(
+                conn, cn,
+                parent_dn=parent_dn,
+                description=description,
+                scope=scope,
+                security_enabled=security_enabled,
+            )
+
+    def _create_internal(
+        self,
+        conn: Connection,
+        cn: str,
+        *,
+        parent_dn: Optional[str] = None,
+        description: Optional[str] = None,
+        scope: str = "global",
+        security_enabled: bool = True,
+    ) -> str:
+        """Внутренний метод создания группы через ORM.
+        
+        Args:
+            conn: LDAP соединение (сохраняется в сигнатуре для обратной совместимости).
+            cn: Имя группы.
+            parent_dn: Контейнер.
+            description: Описание.
+            scope: Тип группы.
+            security_enabled: Флаг безопасности.
+        """
         base = parent_dn or getattr(settings, "LDAP_GROUPS_BASE", None)
         if not base:
             raise RuntimeError(
@@ -106,163 +105,233 @@ class GroupService:
             )
 
         dn = f"CN={esc_rdn(cn)},{base}"
-        attrs: Dict[str, Any] = {
-            "cn": cn,
-            "sAMAccountName": cn,
-            "groupType": group_type(scope, security_enabled),
-        }
-        if description:
-            attrs["description"] = description
 
-        ok = conn.add(dn, ["top", "group"], attrs)
-        if not ok and (conn.result or {}).get("description") != "entryAlreadyExists":
-            raise RuntimeError(f"LDAP add group failed: {conn.result}")
+        try:
+            LdapGroup.objects.create(
+                dn=dn,
+                cn=cn,
+                sam_account_name=cn,
+                description=description or "",
+            )
+            self._log_operation("create", model="group", dn=dn, success=True)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "already exists" in err_str or "entryalreadyexists" in err_str:
+                self._logger.info(f"Group already exists: {dn}")
+            else:
+                self._log_operation(
+                    "create",
+                    model="group",
+                    dn=dn,
+                    success=False,
+                    error=e,
+                )
+                raise RuntimeError(f"LDAP add group failed: {e}") from e
+        
         return dn
 
-    def delete(self, conn: Connection, group_dn: str) -> None:
-        """Удаляет группу по DN (игнорирует noSuchObject)."""
-        ok = conn.delete(group_dn)
-        if not ok and (conn.result or {}).get("description") not in {"noSuchObject"}:
-            raise RuntimeError(f"LDAP delete group failed: {conn.result}")
+    def delete(self, group_dn: str) -> None:
+        """Удаляет группу по DN через ORM (игнорирует DoesNotExist)."""
+        self._delete_internal(group_dn)
 
-    def rename(self, conn: Connection, group_dn: str, new_cn: str) -> str:
+    def _delete_internal(self, group_dn: str) -> None:
+        """Внутренний метод удаления группы через ORM."""
+        try:
+            ldap_group = LdapGroup.objects.get(dn=group_dn)
+            ldap_group.delete()
+            self._log_operation("delete", model="group", dn=group_dn, success=True)
+        except LdapGroup.DoesNotExist:
+            self._logger.info(f"Group already deleted or not found: {group_dn}")
+
+    def rename(self, group_dn: str, new_cn: str) -> str:
         """Переименовывает группу (modify_dn)."""
+        with _ldap() as conn:
+            return self._rename_internal(conn, group_dn, new_cn)
+
+    def _rename_internal(self, conn: Connection, group_dn: str, new_cn: str) -> str:
+        """Внутренний метод переименования группы."""
         new_rdn = f"CN={esc_rdn(new_cn)}"
         ok = conn.modify_dn(group_dn, new_rdn)
+        
         if not ok:
+            self._log_operation(
+                "rename",
+                model="group",
+                dn=group_dn,
+                success=False,
+                error=RuntimeError(f"LDAP rename group failed: {conn.result}"),
+                extra={"new_cn": new_cn},
+            )
             raise RuntimeError(f"LDAP rename group failed: {conn.result}")
+        
         base = ",".join(group_dn.split(",")[1:])
-        return f"{new_rdn},{base}"
-
-    def set_description(
-        self, conn: Connection, group_dn: str, description: Optional[str]
-    ) -> None:
-        """Ставит/очищает description."""
-        changes = (
-            {"description": [(MODIFY_REPLACE, [description])]}
-            if description
-            else {"description": [(MODIFY_DELETE, [])]}
+        new_dn = f"{new_rdn},{base}"
+        
+        self._log_operation(
+            "rename",
+            model="group",
+            dn=group_dn,
+            success=True,
+            extra={"new_dn": new_dn},
         )
-        ldap_modify_or_ignore(conn, group_dn, changes, {"noSuchAttribute"})
+        
+        return new_dn
+
+    def set_description(self, group_dn: str, description: Optional[str]) -> None:
+        """Устанавливает или очищает description группы (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+            group.description = description or ""
+            group.save()
+            self._log_operation(
+                "set_description",
+                model="group",
+                dn=group_dn,
+                success=True,
+            )
+        except LdapGroup.DoesNotExist:
+            self._logger.warning(f"Group not found for set_description: {group_dn}")
 
     # ======================== Member Management ======================== #
 
-    def _modify_members(
-        self, conn: Connection, group_dn: str, op: int, members: List[str]
-    ) -> None:
-        """Применяет операцию к членству группы (DRY-хелпер).
-
-        Args:
-            conn: Подключение LDAP.
-            group_dn: DN группы.
-            op: MODIFY_ADD | MODIFY_DELETE | MODIFY_REPLACE.
-            members: Список DN участников.
-
-        Raises:
-            RuntimeError: При ошибке modify вне допустимых кейсов.
-        """
-        if not members and op in (MODIFY_ADD, MODIFY_DELETE):
+    def add_members(self, group_dn: str, member_dns: List[str]) -> None:
+        """Добавляет участников в группу (ORM)."""
+        if not member_dns:
             return
-        ignore = (
-            {"typeOrValueExists", "entryAlreadyExists"}
-            if op == MODIFY_ADD
-            else (
-                {"noSuchAttribute", "noSuchObject"}
-                if op == MODIFY_DELETE
-                else {"noSuchAttribute"}
+        
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            self._logger.warning(f"Group not found: {group_dn}")
+            return
+        
+        members = list(group.member or [])
+        changed = False
+        added_count = 0
+        
+        for dn in member_dns:
+            if dn not in members:
+                members.append(dn)
+                changed = True
+                added_count += 1
+        
+        if changed:
+            group.member = members
+            group.save()
+            self._log_operation(
+                "add_members",
+                model="group",
+                dn=group_dn,
+                success=True,
+                extra={"added": added_count, "total": len(members)},
             )
+
+    def remove_members(self, group_dn: str, member_dns: List[str]) -> None:
+        """Удаляет участников из группы (ORM)."""
+        if not member_dns:
+            return
+        
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            self._logger.warning(f"Group not found: {group_dn}")
+            return
+        
+        members = list(group.member or [])
+        changed = False
+        removed_count = 0
+        
+        for dn in member_dns:
+            if dn in members:
+                members.remove(dn)
+                changed = True
+                removed_count += 1
+        
+        if changed:
+            group.member = members
+            group.save()
+            self._log_operation(
+                "remove_members",
+                model="group",
+                dn=group_dn,
+                success=True,
+                extra={"removed": removed_count, "total": len(members)},
+            )
+
+    def replace_members(self, group_dn: str, exact_member_dns: List[str]) -> None:
+        """Полная замена состава группы (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+        except LdapGroup.DoesNotExist:
+            self._logger.warning(f"Group not found: {group_dn}")
+            return
+        
+        old_count = len(group.member or [])
+        group.member = exact_member_dns
+        group.save()
+        
+        self._log_operation(
+            "replace_members",
+            model="group",
+            dn=group_dn,
+            success=True,
+            extra={"old_count": old_count, "new_count": len(exact_member_dns)},
         )
-        ldap_modify_or_ignore(conn, group_dn, {"member": [(op, members or [])]}, ignore)
 
-    def add_members(
-        self, conn: Connection, group_dn: str, member_dns: List[str]
-    ) -> None:
-        """Добавляет участников (member ADD)."""
-        self._modify_members(conn, group_dn, MODIFY_ADD, member_dns)
-
-    def remove_members(
-        self, conn: Connection, group_dn: str, member_dns: List[str]
-    ) -> None:
-        """Удаляет участников (member DELETE)."""
-        self._modify_members(conn, group_dn, MODIFY_DELETE, member_dns)
-
-    def replace_members(
-        self, conn: Connection, group_dn: str, exact_member_dns: List[str]
-    ) -> None:
-        """Полная замена состава группы."""
-        self._modify_members(conn, group_dn, MODIFY_REPLACE, exact_member_dns)
-
-    def list_members(self, conn: Connection, group_dn: str) -> List[str]:
-        """Возвращает DN всех участников группы."""
-        ok = conn.search(
-            search_base=group_dn,
-            search_filter="(objectClass=group)",
-            search_scope=BASE,
-            attributes=["member"],
-        )
-        if not ok or not conn.entries:
+    def list_members(self, group_dn: str) -> List[str]:
+        """Возвращает DN всех участников группы (ORM)."""
+        try:
+            group = LdapGroup.objects.get(dn=group_dn)
+            return list(group.member or [])
+        except LdapGroup.DoesNotExist:
             return []
-        entry = conn.entries[0]
-        vals = getattr(getattr(entry, "member", None), "values", None)
-        return list(vals) if vals else []
 
     # ======================== Finding and Search ======================== #
 
     def find_dn(
-        self, conn: Connection, cn: str, bases: Optional[List[str]] = None
+        self, cn: str, bases: Optional[List[str]] = None
     ) -> Optional[str]:
-        """Ищет DN группы по CN в заданных базах."""
-        bases = list(bases or [])
-        if not bases:
-            gb = getattr(settings, "LDAP_GROUPS_BASE", None)
-            if gb:
-                bases.append(gb)
-        for base in bases:
-            ok = conn.search(
-                search_base=base,
-                search_filter=f"(cn={esc_filter(cn)})",
-                search_scope=SUBTREE,
-                attributes=["distinguishedName"],
-            )
-            if ok and conn.entries:
-                return str(conn.entries[0].entry_dn)
-        return None
-
-    def groups_with_member(self, conn: Connection, member_dn: str) -> Set[str]:
-        """Находит все группы, в которых состоит указанный DN.
+        """Ищет DN группы по CN (ORM).
         
-        Args:
-            conn: Подключение LDAP.
-            member_dn: DN участника.
-            
-        Returns:
-            Множество DN групп.
+        Warning: Если есть несколько групп с одинаковым CN,
+        вернёт первую найденную.
         """
-        base = getattr(settings, "LDAP_GROUPS_BASE", None) or getattr(
-            settings, "LDAP_BASE_DN", None
-        )
-        if not base:
-            return set()
+        group = LdapGroup.objects.filter(cn=cn).first()
+        return group.dn if group else None
+
+    def groups_with_member(self, member_dn: str) -> Set[str]:
+        """Находит все группы, в которых состоит DN (ORM через memberOf)."""
+        # Пробуем получить memberOf пользователя
+        try:
+            user = LdapUser.objects.get(dn=member_dn)
+            return set(user.member_of or [])
+        except LdapUser.DoesNotExist:
+            pass
         
-        ok = conn.search(
-            search_base=base,
-            search_filter=f"(&(objectClass=group)(member={esc_filter(member_dn)}))",
-            search_scope=SUBTREE,
-            attributes=["distinguishedName"],
-        )
-        if not ok:
+        # Fallback: может быть группа вложена в группу
+        try:
+            group = LdapGroup.objects.get(dn=member_dn)
+            return set(group.member_of or [])
+        except LdapGroup.DoesNotExist:
             return set()
-        return {str(e.entry_dn) for e in conn.entries}
 
     # ======================== Catalog Synchronization ======================== #
 
     def sync_catalog(
         self, *, throttle_seconds: int = 60, delete_absent: bool = False
     ) -> int:
-        """
+        """Синхронизирует группы из AD в Django Group.
+
         Тянет группы из AD под LDAP_GROUPS_BASE и гарантирует их наличие в Django Group.
         Возвращает количество созданных групп. Обновляет LdapSyncState(model='group').
         Троттлит запросы к AD не чаще, чем раз в throttle_seconds.
+        
+        Args:
+            throttle_seconds: Минимальный интервал между синхронизациями
+            delete_absent: Удалять ли группы, отсутствующие в AD
+            
+        Returns:
+            Количество созданных групп
         """
         base = getattr(settings, "LDAP_GROUPS_BASE", None) or getattr(
             settings, "LDAP_BASE_DN", None
@@ -270,12 +339,15 @@ class GroupService:
         if not base:
             return 0
 
-        # простая защита от шторминга
+        # Простая защита от шторминга
         now = int(time.time())
         last = cache.get("ad_groups_sync_last_ts") or 0
         if throttle_seconds and now - last < throttle_seconds:
+            self._logger.debug("Sync throttled, skipping")
             return 0
+        
         if not cache.add("ad_groups_sync_lock", "1", timeout=throttle_seconds or 30):
+            self._logger.debug("Sync already in progress, skipping")
             return 0
 
         created = 0
@@ -283,24 +355,25 @@ class GroupService:
             with _ldap() as conn:
                 ok = conn.search(
                     search_base=base,
-                    search_filter="(objectClass=group)",
+                    search_filter=LdapFilter.ALL_GROUPS,
                     search_scope=SUBTREE,
-                    attributes=["cn", "objectGUID"],
+                    attributes=[LdapAttribute.CN, LdapAttribute.OBJECT_GUID],
                 )
+                
                 if not ok:
                     return 0
 
                 # AD → {name_lower: (CN, DN, GUID)}
                 ad_index = {}
                 for e in conn.entries:
-                    cn = str(getattr(e, "cn", "")) or ""
+                    cn = str(getattr(e, LdapAttribute.CN, "")) or ""
                     if not cn:
                         continue
                     dn = str(e.entry_dn)
-                    guid = get_guid_str({"objectGUID": getattr(e, "objectGUID", None)})
+                    guid = get_guid_str({LdapAttribute.OBJECT_GUID: getattr(e, LdapAttribute.OBJECT_GUID, None)})
                     ad_index[cn.lower()] = (cn, dn, guid)
 
-                # существующие группы в Django (без дублей по регистру)
+                # Существующие группы в Django
                 existing = {g.name.lower(): g for g in Group.objects.all()}
 
                 for key, (cn, dn, guid) in ad_index.items():
@@ -309,7 +382,9 @@ class GroupService:
                         g = Group.objects.create(name=cn)
                         created += 1
                         existing[key] = g
-                    # фиксируем DN/GUID в sync-state
+                        self._logger.info(f"Created Django group: {cn}")
+                    
+                    # Фиксируем DN/GUID в sync-state
                     self._touch_state(
                         model="group",
                         object_pk=g.pk,
@@ -320,81 +395,77 @@ class GroupService:
                     )
 
                 if delete_absent:
-                    # по умолчанию НЕ удаляем отсутствующие в AD
                     for key, g in list(existing.items()):
                         if key not in ad_index:
-                            # например, можно только пометить/залогировать
-                            pass
+                            self._logger.info(f"Group absent in AD: {g.name}")
+                            # Можно удалить или только пометить
 
                 cache.set("ad_groups_sync_last_ts", now, timeout=24 * 3600)
+                self._logger.info(f"Group catalog sync completed: {created} created")
                 return created
         finally:
             cache.delete("ad_groups_sync_lock")
 
-    # ======================== Public API with Connection Management ======================== #
+    # ======================== Low-Level Methods for Internal Use ======================== #
 
-    def find_dn_wrapped(
-        self, cn: str, bases: Optional[list[str]] = None
-    ) -> Optional[str]:
-        """Ищет DN группы (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            return self.find_dn(conn, cn, bases=bases)
-
-    def create_wrapped(
+    def _create_with_conn(
         self,
-        *,
+        conn: Connection,
         cn: str,
         parent_dn: Optional[str] = None,
         description: Optional[str] = None,
         scope: str = "global",
         security_enabled: bool = True,
     ) -> str:
-        """Создает группу (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            return self.create(
-                conn,
-                cn,
-                parent_dn,
-                description=description,
-                scope=scope,
-                security_enabled=security_enabled,
-            )
+        """Создаёт группу с существующим соединением (для внутреннего использования).
+        
+        Используется другими сервисами, которые уже управляют conn.
+        """
+        return self._create_internal(
+            conn, cn,
+            parent_dn=parent_dn,
+            description=description,
+            scope=scope,
+            security_enabled=security_enabled,
+        )
 
-    def delete_wrapped(self, group_dn: str) -> None:
-        """Удаляет группу (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.delete(conn, group_dn)
+    def _delete_with_conn(self, conn: Connection, group_dn: str) -> None:
+        """Удаляет группу (для совместимости с Legacy API, conn игнорируется)."""
+        self._delete_internal(group_dn)
 
-    def rename_wrapped(self, group_dn: str, new_cn: str) -> str:
-        """Переименовывает группу (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            return self.rename(conn, group_dn, new_cn)
+    def _rename_with_conn(self, conn: Connection, group_dn: str, new_cn: str) -> str:
+        """Переименовывает группу с существующим соединением."""
+        return self._rename_internal(conn, group_dn, new_cn)
 
-    def set_description_wrapped(
-        self, group_dn: str, description: Optional[str]
+    def _add_members_with_conn(
+        self, conn: Connection, group_dn: str, member_dns: List[str]
     ) -> None:
-        """Устанавливает описание группы (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.set_description(conn, group_dn, description)
+        """Добавляет участников с существующим соединением (просто вызывает ORM)."""
+        self.add_members(group_dn, member_dns)
 
-    def list_members_wrapped(self, group_dn: str) -> list[str]:
-        """Список участников группы (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            return self.list_members(conn, group_dn)
-
-    def add_members_wrapped(self, group_dn: str, member_dns: list[str]) -> None:
-        """Добавляет участников (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.add_members(conn, group_dn, member_dns)
-
-    def remove_members_wrapped(self, group_dn: str, member_dns: list[str]) -> None:
-        """Удаляет участников (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.remove_members(conn, group_dn, member_dns)
-
-    def replace_members_wrapped(
-        self, group_dn: str, exact_member_dns: list[str]
+    def _remove_members_with_conn(
+        self, conn: Connection, group_dn: str, member_dns: List[str]
     ) -> None:
-        """Заменяет участников (открывает соединение автоматически)."""
-        with _ldap() as conn:
-            self.replace_members(conn, group_dn, exact_member_dns)
+        """Удаляет участников с существующим соединением (просто вызывает ORM)."""
+        self.remove_members(group_dn, member_dns)
+
+    def _replace_members_with_conn(
+        self, conn: Connection, group_dn: str, exact_member_dns: List[str]
+    ) -> None:
+        """Заменяет участников с существующим соединением (просто вызывает ORM)."""
+        self.replace_members(group_dn, exact_member_dns)
+
+    def _find_dn_with_conn(
+        self, conn: Connection, cn: str, bases: Optional[List[str]] = None
+    ) -> Optional[str]:
+        """Ищет DN с существующим соединением (просто вызывает ORM)."""
+        return self.find_dn(cn, bases)
+
+    def _groups_with_member_with_conn(
+        self, conn: Connection, member_dn: str
+    ) -> Set[str]:
+        """Находит группы с участником с существующим соединением."""
+        return self.groups_with_member(member_dn)
+
+
+__all__ = ["GroupService"]

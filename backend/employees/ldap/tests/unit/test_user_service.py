@@ -19,16 +19,16 @@ class TestUserServiceCreate:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_user_dto
     ):
         """Тест успешного создания пользователя."""
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
         # Mock _create_user_in_ldap чтобы вернуть DN
@@ -57,15 +57,15 @@ class TestUserServiceCreate:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions
     ):
         """Тест генерации уникального sAMAccountName."""
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
         # Создаём mock DTO
@@ -102,8 +102,8 @@ class TestUserServiceCreate:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_user_dto,
         sample_django_group
     ):
@@ -111,8 +111,8 @@ class TestUserServiceCreate:
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         sample_user_dto.groups = ["Developers"]
         
@@ -144,8 +144,8 @@ class TestUserServiceUpdate:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee,
         sample_user_dto
     ):
@@ -153,11 +153,11 @@ class TestUserServiceUpdate:
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
-        mock_sync_state_repository.get_or_create.return_value = (
+        mock_sync_state_repo_functions.get_or_create.return_value = (
             Mock(ldap_dn='CN=Test,OU=Users,DC=example,DC=com'),
             False
         )
@@ -179,8 +179,8 @@ class TestUserServiceUpdate:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee,
         sample_user_dto
     ):
@@ -188,11 +188,11 @@ class TestUserServiceUpdate:
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
-        mock_sync_state_repository.get_or_create.return_value = (
+        mock_sync_state_repo_functions.get_or_create.return_value = (
             Mock(ldap_dn='CN=Test,OU=Users,DC=example,DC=com'),
             False
         )
@@ -212,8 +212,8 @@ class TestUserServiceUpdate:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee,
         sample_user_dto,
         sample_department
@@ -222,11 +222,11 @@ class TestUserServiceUpdate:
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
-        mock_sync_state_repository.get_or_create.return_value = (
+        mock_sync_state_repo_functions.get_or_create.return_value = (
             Mock(ldap_dn='CN=Test,OU=Users,DC=example,DC=com'),
             False
         )
@@ -252,19 +252,19 @@ class TestUserServiceDelete:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee
     ):
         """Тест удаления пользователя (soft-disable + delete)."""
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
-        mock_sync_state_repository.get_or_create.return_value = (
+        mock_sync_state_repo_functions.get_or_create.return_value = (
             Mock(ldap_dn='CN=Test,OU=Users,DC=example,DC=com'),
             False
         )
@@ -293,20 +293,20 @@ class TestUserServiceDelete:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee
     ):
         """Тест удаления без DN (пропускаем soft-disable)."""
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
         # Mock: DN не найден
-        mock_sync_state_repository.get_or_create.return_value = (
+        mock_sync_state_repo_functions.get_or_create.return_value = (
             Mock(ldap_dn=None),
             False
         )
@@ -331,8 +331,8 @@ class TestUserServiceHelpers:
     def test_employee_ids_to_dns(
         self,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee,
         sample_ldap_sync_state
     ):
@@ -340,11 +340,11 @@ class TestUserServiceHelpers:
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
-        mock_sync_state_repository.get_employees_with_dn.return_value = [
+        mock_sync_state_repo_functions.get_employees_with_dn.return_value = [
             (sample_employee.id, sample_ldap_sync_state.ldap_dn)
         ]
         
@@ -359,8 +359,8 @@ class TestUserServiceHelpers:
     def test_get_employee_dn(
         self,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee,
         sample_ldap_sync_state
     ):
@@ -368,11 +368,11 @@ class TestUserServiceHelpers:
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
-        mock_sync_state_repository.get_or_create.return_value = (
+        mock_sync_state_repo_functions.get_or_create.return_value = (
             sample_ldap_sync_state,
             False
         )
@@ -389,8 +389,8 @@ class TestUserServiceHelpers:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         sample_employee,
         sample_ldap_sync_state
     ):
@@ -398,26 +398,24 @@ class TestUserServiceHelpers:
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
         old_dn = 'CN=Test,OU=OldBase,DC=example,DC=com'
         new_base = 'OU=NewBase,DC=example,DC=com'
         
-        # Mock modify_dn
+        # Mock conn.modify_dn для low-level перемещения
         mock_ldap_connection.modify_dn.return_value = True
         
         # Act
-        new_dn = service._move_user_to_base(
-            mock_ldap_connection,
-            old_dn,
-            new_base
-        )
+        new_dn = service._move_user_to_base(mock_ldap_connection, old_dn, new_base)
         
         # Assert
-        assert 'OU=NewBase' in new_dn
-        assert mock_ldap_connection.modify_dn.called
+        assert new_dn == f'CN=Test,{new_base}'
+        mock_ldap_connection.modify_dn.assert_called_once_with(
+            old_dn, 'CN=Test', new_superior=new_base
+        )
 
 
 class TestUserServiceSync:
@@ -430,22 +428,22 @@ class TestUserServiceSync:
         mock_ldap_context,
         mock_ldap_connection,
         mock_ldap_repository,
-        mock_employee_repository,
-        mock_sync_state_repository,
+        mock_employee_repo_functions,
+        mock_sync_state_repo_functions,
         mock_ldap_entry
     ):
         """Тест синхронизации пользователей из AD."""
         # Arrange
         service = UserService(
             mock_ldap_repository,
-            mock_employee_repository,
-            mock_sync_state_repository
+            mock_employee_repo_functions,
+            mock_sync_state_repo_functions
         )
         
         # Mock search результат
         mock_ldap_connection.entries = [mock_ldap_entry]
-        mock_employee_repository.load_users_index.return_value = ({}, {})
-        mock_employee_repository.find_user_for_dto.return_value = None
+        mock_employee_repo_functions.load_users_index.return_value = ({}, {})
+        mock_employee_repo_functions.find_user_for_dto.return_value = None
         
         with patch('employees.models.Employee.objects.create') as mock_create:
             mock_employee = Mock(spec=Employee)

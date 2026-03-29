@@ -47,7 +47,13 @@ class EmailOrPhoneBackend(ModelBackend):
 
     def authenticate(self, request, username=None, password=None, **kwargs):
         login = username or kwargs.get("email") or kwargs.get("phone")
+        logger.debug(
+            "EmailOrPhoneBackend.authenticate: login=%s, password_provided=%s",
+            bool(login), bool(password)
+        )
+        
         if not login or not password:
+            logger.debug("EmailOrPhoneBackend: missing credentials")
             return None
 
         user: Optional[Employee] = None
@@ -55,6 +61,7 @@ class EmailOrPhoneBackend(ModelBackend):
         # 1) Email
         if _looks_like_email(login):
             user = Employee.objects.filter(email__iexact=login).first()
+            logger.debug("EmailOrPhoneBackend: email lookup=%s, found=%s", login, bool(user))
         else:
             # 2) Phone
             if PHONE_FIELD:
@@ -66,16 +73,34 @@ class EmailOrPhoneBackend(ModelBackend):
                 if not user:
                     raw = str(login).strip()
                     user = Employee.objects.filter(**{PHONE_FIELD: raw}).first()
+                logger.debug("EmailOrPhoneBackend: phone lookup, found=%s", bool(user))
 
         if not user:
+            logger.debug("EmailOrPhoneBackend: user not found")
             return None
+
+        logger.debug(
+            "EmailOrPhoneBackend: found user id=%s email=%s is_active=%s has_usable_password=%s",
+            user.id, user.email, user.is_active, user.has_usable_password()
+        )
 
         # допускаем логин только активных (email подтверждён → is_active=True)
         if not user.is_active:
+            logger.debug("EmailOrPhoneBackend: user not active")
             return None
 
-        if user.check_password(password):
+        password_valid = user.check_password(password)
+        logger.debug("EmailOrPhoneBackend: password_valid=%s", password_valid)
+        
+        if password_valid:
+            logger.info("EmailOrPhoneBackend: AUTH SUCCESS for %s", user.email)
             return user
+        
+        logger.warning(
+            "EmailOrPhoneBackend: password check FAILED for user=%s (id=%s). "
+            "Password hash starts with: %s...",
+            user.email, user.id, user.password[:20] if user.password else "NO_PASSWORD"
+        )
         return None
 
 
@@ -188,7 +213,7 @@ class LDAP3Backend(ModelBackend):
                 svc_conn = Connection(server, auto_bind=True, receive_timeout=30)
                 logger.debug("Service bind OK (anonymous/simple)")
 
-            # Базовый объектный фильтр (по умолчанию — пользователи AD)
+            # Базовый объектный фильтр AD
             base_object_filter = getattr(
                 settings,
                 "LDAP_OBJECT_FILTER",
@@ -234,6 +259,7 @@ class LDAP3Backend(ModelBackend):
                 ldap_filter = f"(&{base_object_filter}{id_filter})"
             logger.debug("FINAL LDAP search filter=%s", ldap_filter)
 
+            # AD атрибуты для поиска
             ok = svc_conn.search(
                 search_base=user_base,
                 search_filter=ldap_filter,
@@ -244,9 +270,11 @@ class LDAP3Backend(ModelBackend):
                     getattr(settings, "LDAP_ATTR_MAIL", "mail"),
                     "telephoneNumber",
                     "mobile",
+                    "sAMAccountName",
+                    "userPrincipalName",
                     "userAccountControl",
                     "objectGUID",
-                    "userPrincipalName",
+                    "displayName",
                 ],
                 size_limit=1,
             )
@@ -317,17 +345,6 @@ class LDAP3Backend(ModelBackend):
                 if phone_e164:
                     break
 
-        # --- AD disabled flag ---
-        if getattr(settings, "LDAP_RESPECT_AD_DISABLED", False):
-            uac_raw = get(entry, "userAccountControl")
-            try:
-                uac_int = int(str(uac_raw).strip())
-                if (uac_int & 0x0002) != 0:
-                    logger.info("AD says account is DISABLED -> auth denied")
-                    return None
-            except Exception as e:
-                logger.debug("UAC parse error: %s (ignored)", e)
-
         # --- Find or create local user ---
         user = None
         if email and _model_has_field(UserModel, "email"):
@@ -337,51 +354,14 @@ class LDAP3Backend(ModelBackend):
             logger.debug("Lookup local user by %s=%r", PHONE_FIELD, phone_e164)
             user = UserModel.objects.filter(**{PHONE_FIELD: phone_e164}).first()
 
-        if user and getattr(settings, "LDAP_RESPECT_IS_ACTIVE", True):
-            if not self.user_can_authenticate(user):
-                logger.info("user_can_authenticate=False -> auth denied")
-                return None
+        if user and not self.user_can_authenticate(user):
+            logger.info("user_can_authenticate=False -> auth denied")
+            return None
 
-        auto_create = bool(
-            getattr(settings, "LDAP_AUTO_CREATE", False)
-            or getattr(settings, "LDAP_REGISTRATION_CREATE", False)
-        )
-        logger.debug("auto_create=%s", auto_create)
-
-        if user is None and auto_create:
-            payload: dict[str, Any] = {}
-            if _model_has_field(UserModel, "email") and email:
-                payload["email"] = email
-            if PHONE_FIELD and phone_e164:
-                payload[PHONE_FIELD] = phone_e164
-            if _model_has_field(UserModel, "first_name"):
-                payload["first_name"] = first_name
-            if _model_has_field(UserModel, "last_name"):
-                payload["last_name"] = last_name
-
-            key_field = getattr(UserModel, "USERNAME_FIELD", "email")
-            key_ok = (key_field != "email") or bool(payload.get("email"))
-            phone_ok = (not PHONE_FIELD) or (PHONE_FIELD in payload)
-            logger.debug(
-                "Auto-create checks: key_field=%r key_ok=%s phone_ok=%s payload_keys=%s",
-                key_field,
-                key_ok,
-                phone_ok,
-                list(payload.keys()),
-            )
-
-            if key_ok and phone_ok:
-                user = UserModel.objects.create(**payload)
-                logger.info("Local user CREATED: id=%s", getattr(user, "id", None))
-                if self.user_can_authenticate(user) is False and hasattr(
-                    user, "is_active"
-                ):
-                    user.is_active = True
-                    user.save(update_fields=["is_active"])
-                    logger.debug("Local user activated (is_active=True)")
-            else:
-                logger.info("Auto-create refused (insufficient key data)")
-                return None
+        # Auto-create отключен для LDAP3Backend (создание через API)
+        if user is None:
+            logger.info("User not found in DB, auto-create disabled")
+            return None
 
         # --- Light profile sync ---
         if user:
@@ -514,11 +494,29 @@ class SuperuserOnlyBackend(ModelBackend):
         Raises:
             Ничего не выбрасывает наружу — при неуспехе возвращает None.
         """
+        logger.debug(
+            "SuperuserOnlyBackend.authenticate: username=%s, password_provided=%s",
+            bool(username), bool(password)
+        )
+        
         user = super().authenticate(
             request, username=username, password=password, **kwargs
         )
-        if user and getattr(user, "is_superuser", False):
-            return user
+        
+        logger.debug("SuperuserOnlyBackend: parent auth returned user=%s", bool(user))
+        
+        if user:
+            is_super = getattr(user, "is_superuser", False)
+            logger.debug(
+                "SuperuserOnlyBackend: user=%s, is_superuser=%s",
+                getattr(user, "email", "?"), is_super
+            )
+            if is_super:
+                logger.info("SuperuserOnlyBackend: AUTH SUCCESS for superuser %s", user.email)
+                return user
+            else:
+                logger.debug("SuperuserOnlyBackend: user is not superuser, rejecting")
+        
         return None
 
 

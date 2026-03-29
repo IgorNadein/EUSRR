@@ -25,6 +25,28 @@ def _first(val: Any) -> Any:
     return val
 
 
+def get_ldap_str(value: Any) -> str:
+    """Безопасно извлекает строковое значение из LDAP поля.
+    
+    LDAP поля могут возвращаться как:
+    - строка (str)
+    - список строк (list)
+    - None
+    
+    Args:
+        value: Значение LDAP поля
+        
+    Returns:
+        str: Первый элемент (если список) или само значение (если строка),
+             или пустая строка
+    """
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return value[0] if value else ""
+    return str(value)
+
+
 def _uac_is_active(uac_value: Any) -> bool:
     """Определяет активность учётной записи по userAccountControl.
 

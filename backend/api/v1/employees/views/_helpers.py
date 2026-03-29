@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from employees.ldap.errors import (DirectoryDbError, DirectoryLdapError,
-                                   DirectoryServiceError)
 from employees.utils import _detect_phone_field
-from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,28 +16,6 @@ logger = logging.getLogger(__name__)
 Employee = get_user_model()
 
 PHONE_FIELD = _detect_phone_field()
-
-
-def _is_ldap_enabled() -> bool:
-    """Проверяет, включена ли интеграция с LDAP."""
-    return getattr(settings, "LDAP_ENABLED", False)
-
-
-def _ldap_try(fn):
-    """Выполняет функцию, которая работает с LDAP, и обрабатывает ошибки.
-
-    Если LDAP отключен, функция не выполняется и возвращается None.
-    """
-    if not _is_ldap_enabled():
-        return None
-
-    try:
-        fn()
-        return None
-    except (DirectoryLdapError, DirectoryServiceError, DirectoryDbError) as e:
-        return Response(
-            {"detail": f"LDAP sync failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY
-        )
 
 
 class HistoryActionMixin:

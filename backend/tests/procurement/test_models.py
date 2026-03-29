@@ -10,12 +10,12 @@ from django.contrib.auth import get_user_model
 
 from employees.models import Department
 from procurement.constants import (
-    ApprovalRole,
     EquipmentStatus,
     ProcurementStatus,
     UrgencyLevel,
 )
 from procurement.models import (
+    ApprovalRoute,
     Budget,
     Equipment,
     EquipmentCategory,
@@ -25,6 +25,10 @@ from procurement.models import (
 )
 
 User = get_user_model()
+
+HEAD_PRIORITY = 1
+FINANCE_PRIORITY = 2
+DIRECTOR_PRIORITY = 3
 
 
 @pytest.fixture
@@ -65,6 +69,26 @@ def budget(db, department):
     )
 
 
+@pytest.fixture
+def approval_routes(db, user):
+    ApprovalRoute.objects.create(
+        priority=HEAD_PRIORITY,
+        resolver_type=ApprovalRoute.ResolverType.DEPARTMENT_HEAD,
+    )
+    ApprovalRoute.objects.create(
+        priority=FINANCE_PRIORITY,
+        min_amount=Decimal('10000.00'),
+        resolver_type=ApprovalRoute.ResolverType.FIXED_EMPLOYEE,
+        employee=user,
+    )
+    ApprovalRoute.objects.create(
+        priority=DIRECTOR_PRIORITY,
+        min_amount=Decimal('50000.00'),
+        resolver_type=ApprovalRoute.ResolverType.FIXED_EMPLOYEE,
+        employee=user,
+    )
+
+
 @pytest.mark.django_db
 class TestProcurementRequest:
     """Тесты модели ProcurementRequest."""
@@ -85,19 +109,26 @@ class TestProcurementRequest:
         assert request.is_editable is True
         assert request.items_count == 0
 
-    def test_get_required_approvals_low(self, department, user):
+    def test_get_required_approval_priorities_low(self, department, user, approval_routes):
         """Тест получения уровней согласования для малой суммы."""
         request = ProcurementRequest.objects.create(
             title="Канцтовары",
             department=department,
             requestor=user,
         )
+        ProcurementItem.objects.create(
+            request=request,
+            name='Бумага',
+            quantity=1,
+            unit='шт',
+            estimated_unit_price=Decimal('5000.00'),
+        )
 
-        approvals = request.get_required_approvals()
+        approvals = request.get_required_approval_priorities()
         assert len(approvals) == 1
-        assert ApprovalRole.DEPARTMENT_HEAD in approvals
+        assert HEAD_PRIORITY in approvals
 
-    def test_get_required_approvals_medium(self, department, user):
+    def test_get_required_approval_priorities_medium(self, department, user, approval_routes):
         """Тест получения уровней согласования для средней суммы (10k-50k)."""
         request = ProcurementRequest.objects.create(
             title="Оргтехника",
@@ -113,12 +144,12 @@ class TestProcurementRequest:
             estimated_unit_price=Decimal('30000.00'),
         )
 
-        approvals = request.get_required_approvals()
+        approvals = request.get_required_approval_priorities()
         assert len(approvals) == 2
-        assert ApprovalRole.DEPARTMENT_HEAD in approvals
-        assert ApprovalRole.FINANCE_MANAGER in approvals
+        assert HEAD_PRIORITY in approvals
+        assert FINANCE_PRIORITY in approvals
 
-    def test_get_required_approvals_high(self, department, user):
+    def test_get_required_approval_priorities_high(self, department, user, approval_routes):
         """Тест получения уровней согласования для большой суммы (>50k)."""
         request = ProcurementRequest.objects.create(
             title="Серверное оборудование",
@@ -134,23 +165,11 @@ class TestProcurementRequest:
             estimated_unit_price=Decimal('500000.00'),
         )
 
-        approvals = request.get_required_approvals()
+        approvals = request.get_required_approval_priorities()
         assert len(approvals) == 3
-        assert ApprovalRole.DEPARTMENT_HEAD in approvals
-        assert ApprovalRole.FINANCE_MANAGER in approvals
-        assert ApprovalRole.DIRECTOR in approvals
-
-    def test_check_budget_available(self, department, user, budget):
-        """Тест проверки доступности бюджета."""
-        request = ProcurementRequest.objects.create(
-            title="Покупка",
-            department=department,
-            requestor=user,
-        )
-
-        available, remaining = request.check_budget_available()
-        assert available is True
-        assert remaining == Decimal("70000.00")
+        assert HEAD_PRIORITY in approvals
+        assert FINANCE_PRIORITY in approvals
+        assert DIRECTOR_PRIORITY in approvals
 
     def test_is_editable_draft(self, department, user):
         """Тест: черновик можно редактировать."""

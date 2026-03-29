@@ -542,7 +542,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         before_id = request.query_params.get('before_id')
         after_ts = request.query_params.get('after')
         after_id = request.query_params.get('after_id')
-        limit = min(int(request.query_params.get('limit', 50)), 100)
+        try:
+            limit = min(int(request.query_params.get('limit', 50)), 100)
+        except (ValueError, TypeError):
+            limit = 50
 
         queryset = chat.messages.filter(is_deleted=False).select_related(
             'author', 'reply_to', 'reply_to__author', 'poll'
@@ -623,12 +626,21 @@ class ChatViewSet(viewsets.ModelViewSet):
         around_id = request.query_params.get('around_id')
 
         # Асимметричные лимиты (24 + 10 = 34 сообщения )
-        before_limit = int(request.query_params.get('before_limit', 24))
-        after_limit = int(request.query_params.get('after_limit', 10))
+        try:
+            before_limit = int(request.query_params.get('before_limit', 24))
+        except (ValueError, TypeError):
+            before_limit = 24
+        try:
+            after_limit = int(request.query_params.get('after_limit', 10))
+        except (ValueError, TypeError):
+            after_limit = 10
 
         # Для обратной совместимости с limit параметром
         if 'limit' in request.query_params and 'before_limit' not in request.query_params:
-            total_limit = min(int(request.query_params.get('limit', 30)), 100)
+            try:
+                total_limit = min(int(request.query_params.get('limit', 30)), 100)
+            except (ValueError, TypeError):
+                total_limit = 30
             before_limit = int(total_limit * 0.8)  # 80% на контекст
             after_limit = total_limit - before_limit  # 20% на новые
 

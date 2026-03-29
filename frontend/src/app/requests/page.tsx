@@ -7,7 +7,10 @@ import { canManageRequests, canProcessRequests } from "@/lib/permissions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Request, RequestComment, User, Department } from "@/types/api";
-import { Ban, Check, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X } from "lucide-react";
+import { ArrowUpDown, Ban, Check, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X, Zap } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const SwipeApprovalMode = dynamic(() => import("@/components/requests/SwipeApprovalMode"), { ssr: false });
 
 type RequestFormState = {
   type: string;
@@ -75,6 +78,14 @@ const requestTypeLabels: Record<string, string> = {
   other: "Другое",
 };
 
+const orderingOptions = [
+  { value: "-created_at", label: "Сначала новые" },
+  { value: "created_at", label: "Сначала старые" },
+  { value: "title", label: "По названию" },
+  { value: "date_from", label: "По периоду ↑" },
+  { value: "-date_from", label: "По периоду ↓" },
+];
+
 const defaultStatusMeta = {
   label: "Неизвестный статус",
   className: "bg-gray-50 text-gray-700 ring-gray-200",
@@ -97,6 +108,7 @@ export default function RequestsPage() {
   const [employees, setEmployees] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [commentsMap, setCommentsMap] = useState<Record<number, RequestComment[]>>({});
+  const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
   const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
 
@@ -109,10 +121,14 @@ export default function RequestsPage() {
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
-  const [dateFromFilter, setDateFromFilter] = useState("");
-  const [dateToFilter, setDateToFilter] = useState("");
+  const [createdFromFilter, setCreatedFromFilter] = useState("");
+  const [createdToFilter, setCreatedToFilter] = useState("");
+  const [periodFromFilter, setPeriodFromFilter] = useState("");
+  const [periodToFilter, setPeriodToFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [ordering, setOrdering] = useState("-created_at");
   const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string } | null>(null);
+  const [swipeMode, setSwipeMode] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -162,8 +178,10 @@ export default function RequestsPage() {
     if (typeFilter) params.type = typeFilter;
     if (statusFilter) params.status = statusFilter;
     if (employeeFilter) params.employee_id = employeeFilter;
-    if (dateFromFilter) params.date_from = dateFromFilter;
-    if (dateToFilter) params.date_to = dateToFilter;
+    if (createdFromFilter) params.created_from = createdFromFilter;
+    if (createdToFilter) params.created_to = createdToFilter;
+    if (periodFromFilter) params.date_from = periodFromFilter;
+    if (periodToFilter) params.date_to = periodToFilter;
     return params;
   };
 
@@ -184,7 +202,7 @@ export default function RequestsPage() {
     }
 
     loadRequests();
-  }, [view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter]);
+  }, [view, typeFilter, statusFilter, employeeFilter, createdFromFilter, createdToFilter, periodFromFilter, periodToFilter]);
 
   useEffect(() => {
     async function loadAllPages<T extends { id: number }>(fetcher: (params: any) => Promise<any>): Promise<T[]> {
@@ -219,9 +237,22 @@ export default function RequestsPage() {
   const filteredRequests = useMemo(() => {
     const q = search.trim().toLowerCase();
     const sorted = [...requests].sort((a, b) => {
-      const aTime = new Date(a.created_at).getTime() || 0;
-      const bTime = new Date(b.created_at).getTime() || 0;
-      return bTime - aTime;
+      switch (ordering) {
+        case "created_at":
+          return (new Date(a.created_at).getTime() || 0) - (new Date(b.created_at).getTime() || 0);
+        case "title": {
+          const leftTitle = String(a.display_title || a.title || "").trim();
+          const rightTitle = String(b.display_title || b.title || "").trim();
+          return leftTitle.localeCompare(rightTitle, "ru", { sensitivity: "base" });
+        }
+        case "date_from":
+          return (new Date(a.date_from || 0).getTime() || 0) - (new Date(b.date_from || 0).getTime() || 0);
+        case "-date_from":
+          return (new Date(b.date_from || 0).getTime() || 0) - (new Date(a.date_from || 0).getTime() || 0);
+        case "-created_at":
+        default:
+          return (new Date(b.created_at).getTime() || 0) - (new Date(a.created_at).getTime() || 0);
+      }
     });
 
     if (!q) return sorted;
@@ -233,7 +264,7 @@ export default function RequestsPage() {
       const author = displayUserName(item.employee || item.created_by).toLowerCase();
       return title.includes(q) || description.includes(q) || type.includes(q) || author.includes(q);
     });
-  }, [requests, search]);
+  }, [ordering, requests, search]);
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -331,7 +362,7 @@ export default function RequestsPage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [nextPage, loadingMore, view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter]);
+  }, [nextPage, loadingMore, view, typeFilter, statusFilter, employeeFilter, createdFromFilter, createdToFilter, periodFromFilter, periodToFilter]);
 
   const handleApprove = async (id: number) => {
     try {
@@ -396,6 +427,10 @@ export default function RequestsPage() {
         setCommentsMap((prev) => ({ ...prev, [requestId]: [] }));
       }
     }
+  };
+
+  const toggleRow = (requestId: number) => {
+    setExpandedRows((prev) => ({ ...prev, [requestId]: !prev[requestId] }));
   };
 
   const handleAddComment = async (requestId: number) => {
@@ -552,8 +587,36 @@ export default function RequestsPage() {
         </div>
       ) : (
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+          {swipeMode && (canManage || canProcess) ? (
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap size={14} className="text-amber-500" />
+                  <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Быстрый разбор</p>
+                </div>
+                <button type="button" onClick={() => setSwipeMode(false)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200">
+                  Обычный режим
+                </button>
+              </div>
+              {actionError ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p> : null}
+              <SwipeApprovalMode
+                requests={requests}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onClose={() => setSwipeMode(false)}
+              />
+            </div>
+          ) : (
+          <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Заявления</p>
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Заявления</p>
+              {(canManage || canProcess) && (
+                <button type="button" onClick={() => setSwipeMode(true)} className="group flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-600 ring-1 ring-amber-100 transition hover:bg-amber-100" title="Тестовый режим быстрого разбора заявлений">
+                  <Zap size={11} className="transition group-hover:text-amber-700" /> Быстрый разбор
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -593,12 +656,26 @@ export default function RequestsPage() {
               }`}
             >
               <Filter size={16} />
-              {(view || typeFilter || statusFilter || employeeFilter || dateFromFilter || dateToFilter) && (
+              {(view || typeFilter || statusFilter || employeeFilter || createdFromFilter || createdToFilter || periodFromFilter || periodToFilter) && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
-                  {[view, typeFilter, statusFilter, employeeFilter, dateFromFilter, dateToFilter].filter(Boolean).length}
+                  {[view, typeFilter, statusFilter, employeeFilter, createdFromFilter, createdToFilter, periodFromFilter, periodToFilter].filter(Boolean).length}
                 </span>
               )}
             </button>
+            <div className="relative w-[148px] shrink-0">
+              <ArrowUpDown size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <select
+                value={ordering}
+                onChange={(e) => setOrdering(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-8 text-xs font-medium text-gray-700 transition hover:bg-gray-100 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                aria-label="Сортировка списка заявлений"
+              >
+                {orderingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
           </div>
 
           {filtersOpen && (
@@ -636,10 +713,47 @@ export default function RequestsPage() {
                 ))}
               </select>
 
-              <input type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800" />
-              <input type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600 px-1">Дата создания заявления</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={createdFromFilter}
+                    onChange={(e) => setCreatedFromFilter(e.target.value)}
+                    placeholder="от"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                  <input
+                    type="date"
+                    value={createdToFilter}
+                    onChange={(e) => setCreatedToFilter(e.target.value)}
+                    placeholder="до"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                </div>
+              </div>
 
-              {(view || typeFilter || statusFilter || employeeFilter || dateFromFilter || dateToFilter) && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600 px-1">Период заявления</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={periodFromFilter}
+                    onChange={(e) => setPeriodFromFilter(e.target.value)}
+                    placeholder="от"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                  <input
+                    type="date"
+                    value={periodToFilter}
+                    onChange={(e) => setPeriodToFilter(e.target.value)}
+                    placeholder="до"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                </div>
+              </div>
+
+              {(view || typeFilter || statusFilter || employeeFilter || createdFromFilter || createdToFilter || periodFromFilter || periodToFilter) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -647,8 +761,10 @@ export default function RequestsPage() {
                     setTypeFilter("");
                     setStatusFilter("");
                     setEmployeeFilter("");
-                    setDateFromFilter("");
-                    setDateToFilter("");
+                    setCreatedFromFilter("");
+                    setCreatedToFilter("");
+                    setPeriodFromFilter("");
+                    setPeriodToFilter("");
                   }}
                   className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
                 >
@@ -670,10 +786,12 @@ export default function RequestsPage() {
                 const authorName = displayUserName(requestAuthor);
                 const approverName = displayUserName(item.approver || item.assigned_to);
                 const statusKey = String(item.status || "").toLowerCase();
+                const requestTypeKey = String(item.type || item.request_type || "").toLowerCase();
                 const status = statusMeta[statusKey] ?? defaultStatusMeta;
                 const authorLink = userProfileLink(requestAuthor);
                 const approverLink = userProfileLink(item.approver || item.assigned_to);
-                const requestTypeLabel = requestTypeLabels[String(item.type || item.request_type || "")] || String(item.type || item.request_type || "Другое");
+                const requestTypeLabel = requestTypeLabels[requestTypeKey] || String(item.type || item.request_type || "Другое");
+                const requestTitle = item.display_title || item.title || "Без заголовка";
                 const canProcessThis = Boolean(
                   statusKey === "pending" &&
                     requestAuthor?.id &&
@@ -685,258 +803,313 @@ export default function RequestsPage() {
                 const canEditThis = isAuthor && !isFinal(statusKey);
                 const canCancelThis = isAuthor && !isFinal(statusKey);
                 const canDeleteThis = (isAuthor && !isFinal(statusKey)) || canManage;
+                const rowOpen = Boolean(expandedRows[item.id]);
                 const comments = commentsMap[item.id] || [];
                 const commentsOpen = Boolean(expandedComments[item.id]);
                 const departmentLabels = (item.departments || [])
                   .map((id) => departmentNameMap.get(Number(id)) || `Отдел #${id}`)
                   .join(", ");
+                const recipients = item.recipients || [];
+                const ccUsers = item.cc_users || [];
+                const visibleRecipients = recipients.slice(0, 2);
+                const visibleCcUsers = ccUsers.slice(0, 2);
+                const hiddenRecipientsCount = Math.max(0, recipients.length - visibleRecipients.length);
+                const hiddenCcCount = Math.max(0, ccUsers.length - visibleCcUsers.length);
+                const summaryText = item.comment || item.description;
 
                 return (
-                  <article key={item.id} className="rounded-xl border border-gray-100 bg-white p-4 transition hover:bg-gray-50">
-                    <div className="mb-2 flex items-center gap-2">
-                      {authorLink ? (
-                        <Link href={authorLink} className="flex items-center gap-2 group">
-                          {requestAuthor?.avatar ? (
-                            <img src={requestAuthor.avatar} alt={authorName} className="h-8 w-8 rounded-full object-cover ring-1 ring-gray-200" />
-                          ) : (
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
-                              {(requestAuthor?.first_name?.[0] || requestAuthor?.last_name?.[0] || "?").toUpperCase()}
-                            </span>
-                          )}
-                          <span className="text-sm font-medium text-gray-800 group-hover:text-sky-700">{authorName}</span>
-                        </Link>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500 ring-1 ring-gray-200">
-                            ?
-                          </span>
-                          <span className="text-sm font-medium text-gray-800">{authorName}</span>
-                        </div>
-                      )}
-                    </div>
+                  <article key={item.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-gray-300">
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleRow(item.id)}
+                          aria-label={rowOpen ? "Свернуть детали" : "Развернуть детали"}
+                          className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100"
+                        >
+                          <ChevronDown size={15} className={`transition ${rowOpen ? "rotate-180" : ""}`} />
+                        </button>
 
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900">{item.display_title || item.title || "Без заголовка"}</p>
-                        <p className="mt-1 text-xs text-gray-500">Тип: {requestTypeLabel}</p>
-                      </div>
-
-                      <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs ring-1 ${status.className}`}>
-                        {status.label}
-                      </span>
-                    </div>
-
-                    {(item.comment || item.description) ? (
-                      <p className="mt-3 text-sm text-gray-700">{item.comment || item.description}</p>
-                    ) : null}
-
-                    <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                      <span>Решающий:</span>
-                      {(() => {
-                        const approver = item.approver || item.assigned_to;
-                        const aLink = userProfileLink(approver);
-                        const aName = displayUserName(approver);
-                        if (!approver) return <span className="text-gray-400">—</span>;
-                        const avatarEl = approver.avatar ? (
-                          <img src={approver.avatar} alt={aName} className="h-6 w-6 rounded-full object-cover ring-1 ring-gray-200" />
-                        ) : (
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
-                            {(approver.first_name?.[0] || approver.last_name?.[0] || "?").toUpperCase()}
-                          </span>
-                        );
-                        return aLink ? (
-                          <Link href={aLink} className="flex items-center gap-1.5 group">
-                            {avatarEl}
-                            <span className="font-medium text-gray-800 group-hover:text-sky-700">{aName}</span>
-                          </Link>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            {avatarEl}
-                            <span className="font-medium text-gray-800">{aName}</span>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="mt-3 flex flex-col gap-1.5 text-xs text-gray-500">
-                      <div className="flex items-center gap-1.5">
-                        <span>Получатели:</span>
-                        {(item.recipients && item.recipients.length > 0) ? item.recipients.map((r) => {
-                          const rLink = userProfileLink(r);
-                          const rName = displayUserName(r);
-                          const avatarEl = r.avatar ? (
-                            <img src={r.avatar} alt={rName} className="h-6 w-6 rounded-full object-cover ring-1 ring-gray-200" />
-                          ) : (
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
-                              {(r.first_name?.[0] || r.last_name?.[0] || "?").toUpperCase()}
-                            </span>
-                          );
-                          return (
-                            <span key={r.id} className="inline-flex flex-1 items-center justify-between">
-                              <span className="inline-flex items-center gap-1">
-                                {rLink ? (
-                                  <Link href={rLink} className="flex items-center gap-1 group" title={rName}>
-                                    {avatarEl}
-                                    <span className="font-medium text-gray-800 group-hover:text-sky-700">{rName}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-2 flex items-center gap-2">
+                                {authorLink ? (
+                                  <Link href={authorLink} className="group flex min-w-0 items-center gap-2">
+                                    {requestAuthor?.avatar ? (
+                                      <img src={requestAuthor.avatar} alt={authorName} className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-gray-200" />
+                                    ) : (
+                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
+                                        {(requestAuthor?.first_name?.[0] || requestAuthor?.last_name?.[0] || "?").toUpperCase()}
+                                      </span>
+                                    )}
+                                    <span className="truncate text-sm font-medium text-gray-800 group-hover:text-sky-700">{authorName}</span>
                                   </Link>
                                 ) : (
-                                  <span className="flex items-center gap-1" title={rName}>
-                                    {avatarEl}
-                                    <span className="font-medium text-gray-800">{rName}</span>
-                                  </span>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500 ring-1 ring-gray-200">
+                                      ?
+                                    </span>
+                                    <span className="truncate text-sm font-medium text-gray-800">{authorName}</span>
+                                  </div>
                                 )}
-                              </span>
-                              
-                            </span>
-                          );
-                        }) : <span className="text-gray-400">{item.recipient_count ?? 0}</span>}
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span>В копии:</span>
-                        {(item.cc_users && item.cc_users.length > 0) ? item.cc_users.map((c) => {
-                          const cLink = userProfileLink(c);
-                          const cName = displayUserName(c);
-                          const avatarEl = c.avatar ? (
-                            <img src={c.avatar} alt={cName} className="h-6 w-6 rounded-full object-cover ring-1 ring-gray-200" />
-                          ) : (
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
-                              {(c.first_name?.[0] || c.last_name?.[0] || "?").toUpperCase()}
-                            </span>
-                          );
-                          return cLink ? (
-                            <Link key={c.id} href={cLink} className="flex items-center gap-1 group" title={cName}>
-                              {avatarEl}
-                              <span className="font-medium text-gray-800 group-hover:text-sky-700">{cName}</span>
-                            </Link>
-                          ) : (
-                            <div key={c.id} className="flex items-center gap-1" title={cName}>
-                              {avatarEl}
-                              <span className="font-medium text-gray-800">{cName}</span>
+                              </div>
+
+                              <h3 className="truncate text-sm font-semibold text-gray-900">
+                                <span className="text-gray-600">{requestTypeLabel}:</span>{" "}
+                                <span className="text-gray-900">{requestTitle}</span>
+                              </h3>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                                <span>Период: {item.date_from ? formatDate(item.date_from) : "—"}{item.date_to ? ` — ${formatDate(item.date_to)}` : ""}</span>
+                              </div>
                             </div>
-                          );
-                        }) : <span className="text-gray-400">—</span>}
-                      </div>
-                      <p>Период: {item.date_from ? formatDate(item.date_from) : "—"}{item.date_to ? ` — ${formatDate(item.date_to)}` : ""}</p>
-                      <p>Создано: {formatDate(item.created_at)}</p>
-                      <p>Обновлено: {formatDate(item.updated_at)}</p>
-                      {departmentLabels ? <p>Отделы: {departmentLabels}</p> : null}
 
-                      {(item.attachment || item.attachment_url) && (
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const url = item.attachment_url || item.attachment || "";
-                              const name = decodeURIComponent(url.split("/").pop() || "Вложение");
-                              setAttachmentPreview({ url, name });
-                            }}
-                            className="inline-flex items-center gap-1.5 min-w-0 max-w-full text-sky-700 hover:text-sky-800"
-                          >
-                            <Paperclip size={13} className="shrink-0" />
-                            <span className="truncate font-medium underline decoration-sky-300 underline-offset-2">
-                              {(() => {
-                                const url = item.attachment_url || item.attachment || "";
-                                return decodeURIComponent(url.split("/").pop() || "Вложение");
-                              })()}
-                            </span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                            <div className="shrink-0 text-right">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs ring-1 ${status.className}`}>
+                                {status.label}
+                              </span>
+                            </div>
+                          </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {canCancelThis ? (
-                        <button type="button" title="Отменить" onClick={() => handleCancel(item.id)} disabled={busyKey === `cancel-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-60">
-                          <Ban size={15} />
-                        </button>
-                      ) : null}
+                          {summaryText ? (
+                            <p className="mt-3 text-sm text-gray-700">{summaryText}</p>
+                          ) : null}
 
-                      <button
-                        type="button"
-                        title={`Комментарии (${item.comments_count ?? comments.length})`}
-                        onClick={() => toggleComments(item.id)}
-                        className="relative inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50"
-                      >
-                        <MessageSquare size={15} />
-                        {(item.comments_count ?? comments.length) > 0 && (
-                          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
-                            {item.comments_count ?? comments.length}
-                          </span>
-                        )}
-                      </button>
+                          <div className={`${summaryText ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
+                            {canCancelThis ? (
+                              <button type="button" title="Отменить" onClick={() => handleCancel(item.id)} disabled={busyKey === `cancel-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-60">
+                                <Ban size={15} />
+                              </button>
+                            ) : null}
 
-                      {canEditThis ? (
-                        <button type="button" title="Редактировать" onClick={() => openEdit(item)} className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50">
-                          <Pencil size={15} />
-                        </button>
-                      ) : null}
-
-                      {canDeleteThis ? (
-                        <button type="button" title="Удалить" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 disabled:opacity-60">
-                          <Trash2 size={15} />
-                        </button>
-                      ) : null}
-
-                      {canProcessThis && (
-                                <span className="inline-flex items-center gap-10 ml-auto">
-                                  <button type="button" title={`Одобрить`} onClick={() => handleApprove(item.id)} disabled={busyKey === `approve-${item.id}`} className="text-emerald-500 hover:text-emerald-600 disabled:opacity-60">
-                                    <ThumbsUp size={30} />
-                                  </button>
-                                  <button type="button" title={`Отклонить`} onClick={() => handleReject(item.id)} disabled={busyKey === `reject-${item.id}`} className="text-rose-500 hover:text-rose-600 disabled:opacity-60">
-                                    <ThumbsDown size={30} />
-                                  </button>
+                            <button
+                              type="button"
+                              title={`Комментарии (${item.comments_count ?? comments.length})`}
+                              onClick={() => toggleComments(item.id)}
+                              className="relative inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50"
+                            >
+                              <MessageSquare size={15} />
+                              {(item.comments_count ?? comments.length) > 0 && (
+                                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white">
+                                  {item.comments_count ?? comments.length}
                                 </span>
                               )}
+                            </button>
 
-                    </div>
-                    
+                            {canEditThis ? (
+                              <button type="button" title="Редактировать" onClick={() => openEdit(item)} className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50">
+                                <Pencil size={15} />
+                              </button>
+                            ) : null}
 
-                    {commentsOpen ? (
-                      <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        <div className="space-y-2">
-                          {(commentsMap[item.id] || []).length === 0 ? (
-                            <p className="text-xs text-gray-500">Комментариев пока нет</p>
-                          ) : (
-                            (commentsMap[item.id] || []).map((c) => {
-                              const canDeleteComment = Boolean(c.author?.id && (user?.id === c.author.id || auth?.is_staff || auth?.is_superuser));
-                              return (
-                                <div key={c.id} className="rounded-lg bg-white px-3 py-2 text-xs text-gray-700 ring-1 ring-gray-100">
-                                  <div className="mb-1 flex items-center justify-between gap-2">
-                                    <span className="font-medium">{displayUserName(c.author)}</span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-gray-500">{formatDate(c.created_at)}</span>
-                                      {canDeleteComment ? (
-                                        <button type="button" onClick={() => handleDeleteComment(item.id, c.id)} className="text-rose-600 hover:text-rose-700">
-                                          удалить
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                  <p>{c.text}</p>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
+                            {canDeleteThis ? (
+                              <button type="button" title="Удалить" onClick={() => handleDelete(item.id)} disabled={busyKey === `delete-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-1.5 text-rose-600 hover:bg-rose-100 disabled:opacity-60">
+                                <Trash2 size={15} />
+                              </button>
+                            ) : null}
 
-                        <div className="mt-2 flex items-center gap-2">
-                          <input
-                            value={commentDrafts[item.id] || ""}
-                            onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                            placeholder="Добавить комментарий"
-                            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddComment(item.id)}
-                            disabled={busyKey === `comment-${item.id}`}
-                            className="rounded-lg bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-60"
-                          >
-                            Отправить
-                          </button>
+                            {canProcessThis && (
+                              <span className="ml-auto inline-flex items-center gap-2">
+                                <button type="button" title="Одобрить" onClick={() => handleApprove(item.id)} disabled={busyKey === `approve-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-600 hover:bg-emerald-100 disabled:opacity-60">
+                                  <ThumbsUp size={18} />
+                                </button>
+                                <button type="button" title="Отклонить" onClick={() => handleReject(item.id)} disabled={busyKey === `reject-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-600 hover:bg-rose-100 disabled:opacity-60">
+                                  <ThumbsDown size={18} />
+                                </button>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    ) : null}
+
+                      {(rowOpen || commentsOpen) ? (
+                        <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+                            {rowOpen ? (
+                              <div className="space-y-3 text-xs text-gray-500">
+                                <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+                                  <div className="min-w-0">
+                                    <span className="text-gray-400">Решающий:</span>{" "}
+                                    {(() => {
+                                      const approver = item.approver || item.assigned_to;
+                                      const aLink = userProfileLink(approver);
+                                      const aName = displayUserName(approver);
+                                      if (!approver) return <span className="text-gray-400">—</span>;
+                                      return aLink ? (
+                                        <Link href={aLink} className="font-medium text-sky-700 hover:text-sky-800">{aName}</Link>
+                                      ) : (
+                                        <span className="font-medium text-gray-700">{aName}</span>
+                                      );
+                                    })()}
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400">Создано:</span>{" "}
+                                    <span className="font-medium text-gray-700">{formatDate(item.created_at) || "—"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400">Обновлено:</span>{" "}
+                                    <span className="font-medium text-gray-700">{formatDate(item.updated_at) || "—"}</span>
+                                  </div>
+                                  {departmentLabels ? (
+                                    <div className="sm:col-span-2">
+                                      <span className="text-gray-400">Отделы:</span>{" "}
+                                      <span className="font-medium text-gray-700">{departmentLabels}</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap items-start gap-2">
+                                    <span className="pt-1 text-gray-400">Получатели:</span>
+                                    <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                                      {visibleRecipients.length > 0 ? visibleRecipients.map((recipient) => {
+                                        const recipientLink = userProfileLink(recipient);
+                                        const recipientName = displayUserName(recipient);
+                                        const chipContent = (
+                                          <>
+                                            {recipient.avatar ? (
+                                              <img src={recipient.avatar} alt={recipientName} className="h-5 w-5 shrink-0 rounded-full object-cover ring-1 ring-gray-200" />
+                                            ) : (
+                                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                                                {(recipient.first_name?.[0] || recipient.last_name?.[0] || "?").toUpperCase()}
+                                              </span>
+                                            )}
+                                            <span className="max-w-[140px] truncate">{recipientName}</span>
+                                          </>
+                                        );
+
+                                        return recipientLink ? (
+                                          <Link key={recipient.id} href={recipientLink} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 font-medium text-gray-700 ring-1 ring-gray-200 hover:bg-gray-200">
+                                            {chipContent}
+                                          </Link>
+                                        ) : (
+                                          <span key={recipient.id} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 font-medium text-gray-700 ring-1 ring-gray-200">
+                                            {chipContent}
+                                          </span>
+                                        );
+                                      }) : (
+                                        <span className="pt-1 text-gray-400">{item.recipient_count ?? 0}</span>
+                                      )}
+                                      {hiddenRecipientsCount > 0 && (
+                                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 font-medium text-gray-600 ring-1 ring-gray-200">
+                                          +{hiddenRecipientsCount}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-start gap-2">
+                                    <span className="pt-1 text-gray-400">В копии:</span>
+                                    <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                                      {visibleCcUsers.length > 0 ? visibleCcUsers.map((ccUser) => {
+                                        const ccLink = userProfileLink(ccUser);
+                                        const ccName = displayUserName(ccUser);
+                                        const chipContent = (
+                                          <>
+                                            {ccUser.avatar ? (
+                                              <img src={ccUser.avatar} alt={ccName} className="h-5 w-5 shrink-0 rounded-full object-cover ring-1 ring-gray-200" />
+                                            ) : (
+                                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                                                {(ccUser.first_name?.[0] || ccUser.last_name?.[0] || "?").toUpperCase()}
+                                              </span>
+                                            )}
+                                            <span className="max-w-[140px] truncate">{ccName}</span>
+                                          </>
+                                        );
+
+                                        return ccLink ? (
+                                          <Link key={ccUser.id} href={ccLink} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 font-medium text-gray-700 ring-1 ring-gray-200 hover:bg-gray-200">
+                                            {chipContent}
+                                          </Link>
+                                        ) : (
+                                          <span key={ccUser.id} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 font-medium text-gray-700 ring-1 ring-gray-200">
+                                            {chipContent}
+                                          </span>
+                                        );
+                                      }) : (
+                                        <span className="pt-1 text-gray-400">—</span>
+                                      )}
+                                      {hiddenCcCount > 0 && (
+                                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 font-medium text-gray-600 ring-1 ring-gray-200">
+                                          +{hiddenCcCount}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {(item.attachment || item.attachment_url) && (
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const url = item.attachment_url || item.attachment || "";
+                                          const name = decodeURIComponent(url.split("/").pop() || "Вложение");
+                                          setAttachmentPreview({ url, name });
+                                        }}
+                                        className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100"
+                                      >
+                                        <Paperclip size={13} className="shrink-0" />
+                                        <span className="truncate font-medium">
+                                          {(() => {
+                                            const url = item.attachment_url || item.attachment || "";
+                                            return decodeURIComponent(url.split("/").pop() || "Вложение");
+                                          })()}
+                                        </span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {commentsOpen ? (
+                              <div className={rowOpen ? "mt-3 rounded-lg border border-gray-200 bg-white p-3" : "rounded-lg border border-gray-200 bg-white p-3"}>
+                                <div className="space-y-2">
+                                  {comments.length === 0 ? (
+                                    <p className="text-xs text-gray-500">Комментариев пока нет</p>
+                                  ) : (
+                                    comments.map((c) => {
+                                      const canDeleteComment = Boolean(c.author?.id && (user?.id === c.author.id || auth?.is_staff || auth?.is_superuser));
+                                      return (
+                                        <div key={c.id} className="rounded-lg bg-white px-3 py-2 text-xs text-gray-700 ring-1 ring-gray-100">
+                                          <div className="mb-1 flex items-center justify-between gap-2">
+                                            <span className="font-medium">{displayUserName(c.author)}</span>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-gray-500">{formatDate(c.created_at)}</span>
+                                              {canDeleteComment ? (
+                                                <button type="button" onClick={() => handleDeleteComment(item.id, c.id)} className="text-rose-600 hover:text-rose-700">
+                                                  удалить
+                                                </button>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                          <p>{c.text}</p>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+                                </div>
+
+                                <div className="mt-2 flex items-center gap-2">
+                                  <input
+                                    value={commentDrafts[item.id] || ""}
+                                    onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                    placeholder="Добавить комментарий"
+                                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddComment(item.id)}
+                                    disabled={busyKey === `comment-${item.id}`}
+                                    className="rounded-lg bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-60"
+                                  >
+                                    Отправить
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   </article>
                 );
               })
@@ -953,6 +1126,8 @@ export default function RequestsPage() {
                 </div>
               )}
             </div>
+          )}
+          </>
           )}
         </section>
       )}

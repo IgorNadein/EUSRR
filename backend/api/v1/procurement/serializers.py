@@ -4,9 +4,9 @@
 
 from rest_framework import serializers
 
+from procurement.constants import get_default_approval_step_name
 from procurement.models import (
     Approval,
-    Budget,
     Equipment,
     EquipmentCategory,
     MaintenanceRecord,
@@ -65,14 +65,14 @@ class ApprovalSerializer(serializers.ModelSerializer):
         source='approver.get_full_name',
         read_only=True
     )
-    role_display = serializers.CharField(
-        source='get_role_display',
-        read_only=True
-    )
     status_display = serializers.CharField(
         source='get_status_display',
         read_only=True
     )
+    step_label = serializers.SerializerMethodField()
+
+    def get_step_label(self, obj):
+        return obj.step_name or get_default_approval_step_name(obj.priority)
 
     class Meta:
         model = Approval
@@ -81,8 +81,9 @@ class ApprovalSerializer(serializers.ModelSerializer):
             'request',
             'approver',
             'approver_name',
-            'role',
-            'role_display',
+            'priority',
+            'step_name',
+            'step_label',
             'status',
             'status_display',
             'comment',
@@ -94,7 +95,8 @@ class ApprovalSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'approver_name',
-            'role_display',
+            'step_name',
+            'step_label',
             'status_display',
         ]
 
@@ -212,12 +214,11 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
     )
     items = ProcurementItemSerializer(many=True, read_only=True)
     approvals = ApprovalSerializer(many=True, read_only=True)
-    required_approvals = serializers.ListField(
-        source='get_required_approvals',
+    required_approval_priorities = serializers.ListField(
+        source='get_required_approval_priorities',
         read_only=True
     )
     is_editable = serializers.BooleanField(read_only=True)
-    budget_available = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementRequest
@@ -240,9 +241,8 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             'actual_cost',
             'items',
             'approvals',
-            'required_approvals',
+            'required_approval_priorities',
             'is_editable',
-            'budget_available',
             'created_at',
             'updated_at',
             'submitted_at',
@@ -257,18 +257,9 @@ class ProcurementRequestDetailSerializer(serializers.ModelSerializer):
             'started_at',
             'completed_at',
             'is_editable',
-            'budget_available',
             'total_cost',
             'executor_name',
         ]
-
-    def get_budget_available(self, obj):
-        """Получить информацию о доступности бюджета."""
-        available, remaining = obj.check_budget_available()
-        return {
-            'available': available,
-            'remaining': float(remaining),
-        }
 
 
 class ProcurementRequestCreateSerializer(serializers.ModelSerializer):
@@ -362,6 +353,7 @@ class EquipmentListSerializer(serializers.ModelSerializer):
         read_only=True
     )
     is_under_warranty = serializers.BooleanField(read_only=True)
+    comments_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Equipment
@@ -369,6 +361,7 @@ class EquipmentListSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'inventory_number',
+            'serial_number',
             'category',
             'category_name',
             'category_icon',
@@ -378,19 +371,27 @@ class EquipmentListSerializer(serializers.ModelSerializer):
             'department_name',
             'responsible_person',
             'responsible_name',
+            'location',
             'purchase_date',
             'purchase_cost',
+            'notes',
             'is_under_warranty',
+            'comments_count',
+            'created_at',
+            'updated_at',
         ]
         read_only_fields = [
             'id',
-            'inventory_number',  # Генерируется автоматически
+            'inventory_number',
             'category_name',
             'category_icon',
             'department_name',
             'responsible_name',
             'status_display',
             'is_under_warranty',
+            'comments_count',
+            'created_at',
+            'updated_at',
         ]
 
     def create(self, validated_data):
@@ -720,94 +721,6 @@ class MaintenanceRecordSerializer(serializers.ModelSerializer):
             'equipment_inventory',
             'performed_by_name',
             'type_display',
-        ]
-
-
-class BudgetSerializer(serializers.ModelSerializer):
-    """Сериализатор для бюджетов."""
-
-    department_name = serializers.CharField(
-        source='department.name',
-        read_only=True
-    )
-    remaining_amount = serializers.DecimalField(
-        max_digits=14,
-        decimal_places=2,
-        read_only=True
-    )
-    reserved_amount = serializers.DecimalField(
-        max_digits=14,
-        decimal_places=2,
-        read_only=True
-    )
-    available_amount = serializers.DecimalField(
-        max_digits=14,
-        decimal_places=2,
-        read_only=True
-    )
-    utilization_percentage = serializers.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        read_only=True
-    )
-    quarter_display = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Budget
-        fields = [
-            'id',
-            'department',
-            'department_name',
-            'year',
-            'quarter',
-            'quarter_display',
-            'allocated_amount',
-            'spent_amount',
-            'remaining_amount',
-            'reserved_amount',
-            'available_amount',
-            'utilization_percentage',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = [
-            'id',
-            'created_at',
-            'updated_at',
-            'remaining_amount',
-            'reserved_amount',
-            'available_amount',
-            'utilization_percentage',
-        ]
-
-    def get_quarter_display(self, obj):
-        """Отображение квартала."""
-        return f"Q{obj.quarter} {obj.year}"
-
-
-class BudgetDetailSerializer(BudgetSerializer):
-    """Расширенный сериализатор для my_department с pending заявками."""
-
-    pending_requests = serializers.SerializerMethodField()
-
-    class Meta(BudgetSerializer.Meta):
-        fields = BudgetSerializer.Meta.fields + ['pending_requests']
-
-    def get_pending_requests(self, obj):
-        """Получить список pending заявок этого бюджета."""
-        pending = obj.department.procurement_requests.filter(
-            status='pending',
-            created_at__year=obj.year,
-            created_at__month__in=obj._quarter_months()
-        )[:10]
-        return [
-            {
-                'id': req.id,
-                'title': req.title,
-                'total_cost': str(req.total_cost),
-                'status': req.status
-            }
-            for req in pending
         ]
 
 

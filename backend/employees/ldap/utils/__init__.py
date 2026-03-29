@@ -34,11 +34,11 @@ from .dn_utils import (
 # Утилиты изображений
 from .image_utils import normalize_avatar_to_jpeg
 
-# Утилиты групп
-from .group_utils import (
-    _desired_group_cns_for_employee,
-    sync_user_groups_by_cns,
-)
+# Утилиты групп (ORM)
+from .group_utils_orm import sync_user_groups_by_cns_orm
+
+# Телефон
+from .phone_utils import normalize_phone
 
 __all__ = [
     # Текстовые
@@ -66,7 +66,8 @@ __all__ = [
     "_move_to_department",
     # Изображения
     "normalize_avatar_to_jpeg",
-    # Группы
-    "_desired_group_cns_for_employee",
-    "sync_user_groups_by_cns",
+    # Группы (ORM)
+    "sync_user_groups_by_cns_orm",
+    # Телефон
+    "normalize_phone",
 ]

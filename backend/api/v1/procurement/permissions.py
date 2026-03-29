@@ -7,6 +7,7 @@ from rest_framework import permissions
 from api.v1.permissions import has_dept_perm
 from employees.constants import DeptPerm
 from employees.models import Department, EmployeeDepartment
+from procurement.services import ProcurementApprovalResolver
 
 
 class IsDepartmentHead(permissions.BasePermission):
@@ -22,20 +23,6 @@ class IsDepartmentHead(permissions.BasePermission):
         # Проверяем, является ли пользователь руководителем
         # какого-либо отдела
         return request.user.led_departments.exists()
-
-
-class IsFinanceManager(permissions.BasePermission):
-    """Проверка, что пользователь - финансовый менеджер."""
-
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-
-        if request.user.is_superuser or request.user.is_staff:
-            return True
-
-        # Проверяем наличие права на управление бюджетами
-        return request.user.has_perm('procurement.change_budget')
 
 
 class IsDirector(permissions.BasePermission):
@@ -106,30 +93,7 @@ class CanApproveProcurementRequest(permissions.BasePermission):
         if request.user.is_superuser:
             return True
 
-        # Получаем требуемые роли для согласования
-        required_roles = obj.get_required_approvals()
-
-        # Проверяем, имеет ли пользователь одну из требуемых ролей
-        from procurement.constants import ApprovalRole
-
-        if ApprovalRole.DEPARTMENT_HEAD in required_roles:
-            # Руководитель отдела заявителя
-            if obj.department.head == request.user:
-                return True
-
-        if ApprovalRole.FINANCE_MANAGER in required_roles:
-            # Финансовый менеджер
-            if request.user.has_perm('procurement.change_budget'):
-                return True
-
-        if ApprovalRole.DIRECTOR in required_roles:
-            # Директор
-            if request.user.has_perm(
-                'procurement.approve_procurementrequest'
-            ):
-                return True
-
-        return False
+        return ProcurementApprovalResolver.user_can_approve(request.user, obj)
 
 
 class CanManageProcurementRequest(permissions.BasePermission):
@@ -461,27 +425,6 @@ class CanManageEquipment(permissions.BasePermission):
                 return True
 
         return False
-
-
-class CanManageBudget(permissions.BasePermission):
-    """Проверка права на управление бюджетами."""
-
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-
-        # Чтение доступно руководителям отделов
-        if request.method in permissions.SAFE_METHODS:
-            return (
-                request.user.is_staff or
-                request.user.headed_departments.exists()
-            )
-
-        # Создание/изменение - только финансовые менеджеры
-        return (
-            request.user.is_staff or
-            request.user.has_perm('procurement.change_budget')
-        )
 
 
 class CanManageSupplier(permissions.BasePermission):

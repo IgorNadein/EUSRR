@@ -268,31 +268,37 @@ export interface RequestComment {
 export interface EquipmentCategory {
   id: number;
   name: string;
+  parent?: number | null;
   description?: string;
+  icon?: string;
+  full_path?: string;
+  children_count?: number;
+  created_at?: string;
+  children?: EquipmentCategory[];
 }
 
 export interface Equipment {
   id: number;
   name: string;
-  description?: string;
-  category: number | EquipmentCategory;
+  inventory_number?: string;
+  serial_number?: string;
+  category: number;
   category_name?: string;
+  category_icon?: string;
   department: number;
   department_name?: string;
-  serial_number?: string;
-  inventory_number?: string;
   status?: string;
-  condition?: string;
+  status_display?: string;
+  responsible_person?: number | null;
+  responsible_name?: string;
+  location?: string;
   purchase_date: string;
   purchase_cost: string | number;
-  assigned_to?: User | number | null;
-  assigned_to_details?: User;
-  location?: string;
+  warranty_until?: string | null;
   notes?: string;
-  image?: string | null;
-  attachment?: string | null;
-  attachment_url?: string | null;
-  created_by?: User;
+  is_under_warranty?: boolean;
+  comments_count?: number;
+  maintenance_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -305,11 +311,45 @@ export interface EquipmentComment {
   created_at: string;
 }
 
+export interface EquipmentCreateOptions {
+  allowed_departments: Array<Pick<Department, 'id' | 'name'>>;
+  can_choose_department: boolean;
+  can_choose_responsible: boolean;
+  default_responsible: { id: number; name: string } | null;
+  permission_level: 'full' | 'dept_head' | 'scoped' | null;
+}
+
+export interface EquipmentTransferHistoryEntry {
+  id: number;
+  from_department: string | null;
+  to_department: string | null;
+  from_person: string | null;
+  to_person: string | null;
+  reason?: string;
+  created_by?: string | null;
+  date: string;
+}
+
+export interface MaintenanceRecord {
+  id: number;
+  equipment: number;
+  equipment_name?: string;
+  equipment_inventory?: string;
+  date: string;
+  type: string;
+  type_display?: string;
+  description?: string;
+  cost?: string | number | null;
+  performed_by?: number;
+  performed_by_name?: string;
+  next_maintenance_date?: string | null;
+  created_at: string;
+}
+
 // Procurement Request types
 export type ProcurementStatus = 'draft' | 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
-export type ApprovalRole = 'department_head' | 'finance_manager' | 'director';
 
 export interface ProcurementItem {
   id: number;
@@ -327,10 +367,13 @@ export interface ProcurementItem {
 export interface ProcurementApproval {
   id: number;
   request: number;
-  approver: User;
-  role: ApprovalRole;
+  approver: User | number;
+  approver_name?: string;
+  priority: number;
   status: ApprovalStatus;
   comment?: string;
+  step_label?: string;
+  status_display?: string;
   decided_at?: string | null;
   created_at: string;
 }
@@ -342,19 +385,62 @@ export interface ProcurementRequest {
   department: number;
   department_name?: string;
   department_details?: Department;
-  requestor: User;
-  executor?: User | null;
+  requestor: User | number;
+  requestor_name?: string;
+  requestor_email?: string;
+  executor?: User | number | null;
+  executor_name?: string | null;
   status: ProcurementStatus;
+  status_display?: string;
   urgency: UrgencyLevel;
+  urgency_display?: string;
   items?: ProcurementItem[];
   approvals?: ProcurementApproval[];
-  required_approvals?: ApprovalRole[];
+  required_approval_priorities?: number[];
   actual_cost?: string | number | null;
   is_editable?: boolean;
-  budget_available?: boolean;
+  total_cost?: string | number;
   total_estimated_cost?: string | number;
   created_at: string;
   updated_at: string;
+  submitted_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface ProcurementSupplier {
+  id: number;
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  website?: string;
+  inn?: string;
+  rating?: string | number | null;
+  is_active: boolean;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProcurementOverviewStats {
+  total_requests: number;
+  pending_requests: number;
+  approved_this_month: number;
+  completed_this_month: number;
+  total_spent_this_year: string | number;
+  by_status: Record<string, number>;
+  by_urgency: Record<string, number>;
+}
+
+export interface ProcurementDepartmentStats {
+  department_id: number;
+  department_name: string;
+  total_requests: number;
+  completed_requests: number;
+  pending_requests: number;
+  total_spent: string | number;
 }
 
 // Communications types
@@ -541,10 +627,15 @@ export interface RegisterData {
   password: string;
   first_name: string;
   last_name: string;
-  patronymic?: string; // было middle_name
+  birth_date: string; // YYYY-MM-DD
+  gender: 1 | 2; // 1 - мужской, 2 - женский
+  avatar: string; // base64 image
+  patronymic?: string;
   telegram?: string;
   whatsapp?: string;
   wechat?: string;
+  position?: number;
+  skills?: number[];
 }
 
 // Search types (django-watson)

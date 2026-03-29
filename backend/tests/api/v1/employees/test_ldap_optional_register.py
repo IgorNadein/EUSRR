@@ -27,13 +27,19 @@ def api_client():
 @pytest.fixture
 def test_user_data():
     """Базовые данные для регистрации"""
+    # Минимальный валидный PNG 1x1 пиксель (прозрачный) в base64
+    tiny_png_base64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
     return {
         "email": f"test{next(_phone_seq)}@example.com",
         "first_name": "Test",
         "last_name": "User",
         "phone_number": _unique_phone(),
         "password": "SecurePass123!",
-        "whatsapp": _unique_phone(),
+        "gender": 1,  # Обязательное поле: 1 - Мужской
+        "avatar": f"data:image/png;base64,{tiny_png_base64}",  # Обязательное поле
+        "whatsapp": _unique_phone(),  # Контактные поля опциональны, но можно указать
         "birth_date": "1990-01-01",
     }
 

@@ -42,13 +42,12 @@
         )
 """
 
-# Текущие импорты (для обратной совместимости)
-from .directory_service import DirectoryService
-from .sync_service import (
-    import_departments,
-    import_users,
-    export_users,
-)
+# Сервисы (прямой доступ)
+from .services.user_service import UserService
+from .services.group_service import GroupService
+from .services.department_service import DepartmentService
+from .services.position_service import PositionService
+from .services.sync_service import SyncService
 
 # Конфигурация
 from .config import SyncConfig, SyncMode, SyncScope, DISABLED_FLAG
@@ -57,6 +56,7 @@ from .config import SyncConfig, SyncMode, SyncScope, DISABLED_FLAG
 from .errors import (
     DirectoryServiceError,
     DirectoryLdapError,
+    DirectoryConnectionError,
     DirectoryDbError,
     DirectoryGroupError,
 )
@@ -69,16 +69,35 @@ from .domain.dtos import (
 )
 
 # Утилиты работы с группами
-from .utils.group_utils import sync_user_groups_by_cns
+from .utils.group_utils_orm import sync_user_groups_by_cns_orm
+
+# ORM модели
+from .orm_models import (
+    LdapUser,
+    LdapGroup,
+    LdapOrganizationalUnitGroup,
+    LdapOrganizationalUnit,
+)
 
 # Подключения
-from .infrastructure.connections import _ldap
+from .infrastructure.connections import LdapConfig, _ldap
+
+# Админка (автоматическая регистрация)
+from . import admin
+
+
+def export_users(cfg=None):
+    """Обёртка для SyncService().export_users(cfg)."""
+    svc = SyncService()
+    return svc.export_users(cfg or SyncConfig())
 
 __all__ = [
     # Сервисы
-    "DirectoryService",
-    "import_departments",
-    "import_users",
+    "UserService",
+    "GroupService",
+    "DepartmentService",
+    "PositionService",
+    "SyncService",
     "export_users",
 
     # Конфигурация
@@ -90,6 +109,7 @@ __all__ = [
     # Ошибки
     "DirectoryServiceError",
     "DirectoryLdapError",
+    "DirectoryConnectionError",
     "DirectoryDbError",
     "DirectoryGroupError",
 
@@ -99,8 +119,15 @@ __all__ = [
     "LdapPersonDTO",
 
     # Утилиты
-    "sync_user_groups_by_cns",
+    "sync_user_groups_by_cns_orm",
+
+    # ORM
+    "LdapUser",
+    "LdapGroup",
+    "LdapOrganizationalUnitGroup",
+    "LdapOrganizationalUnit",
 
     # Подключения
+    "LdapConfig",
     "_ldap",
 ]

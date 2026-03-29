@@ -11,6 +11,11 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
+from procurement.constants import (
+    ApprovalStatus,
+    get_default_approval_step_name,
+)
+
 
 class InventoryNumberGenerator:
     """Генератор инвентарных номеров."""
@@ -142,6 +147,87 @@ class QRCodeGenerator:
         Возвращает путь к файлу QR-кода.
         """
         return os.path.join(cls.QR_CODE_DIR, f'{inventory_number}.png')
+
+
+class ProcurementApprovalResolver:
+    """Определяет согласующих для заявки на закупку.
+
+    Состав этапов и их порядок берутся из таблицы ApprovalRoute.
+    Для этапа типа department_head согласующий определяется через Department.head.
+    """
+
+    @classmethod
+    def resolve_approval_step(cls, procurement_request, route):
+        from .models import ApprovalRoute
+
+        if route is None:
+            return None
+
+        if not isinstance(route, ApprovalRoute):
+            route = ApprovalRoute.objects.select_related('employee').filter(
+                priority=route,
+            ).first()
+            if route is None:
+                return None
+
+        step_name = route.name or get_default_approval_step_name(
+            route.priority,
+            resolver_type=route.resolver_type,
+        )
+
+        if route.resolver_type == ApprovalRoute.ResolverType.DEPARTMENT_HEAD:
+            head = procurement_request.department.head
+            if head and head.is_active:
+                return route.priority, head, step_name
+            return None
+
+        if route.employee and route.employee.is_active:
+            return route.priority, route.employee, step_name
+        return None
+
+    @classmethod
+    def resolve_approver(cls, procurement_request, priority: int):
+        step = cls.resolve_approval_step(procurement_request, priority)
+        if step is None:
+            return None
+        return step[1]
+
+    @classmethod
+    def resolve_required_approvers(cls, procurement_request):
+        resolved, missing = [], []
+        for route in procurement_request.get_required_approval_routes():
+            step = cls.resolve_approval_step(procurement_request, route)
+            if step:
+                resolved.append(step)
+            else:
+                missing.append(route.priority)
+        resolved.sort(key=lambda item: item[0])
+        return resolved, missing
+
+    @classmethod
+    def get_available_approval(cls, user, procurement_request):
+        if not user or not user.is_authenticated:
+            return None
+
+        pending = procurement_request.approvals.filter(
+            status=ApprovalStatus.PENDING,
+        ).order_by('priority', 'created_at', 'id')
+        first_pending = pending.first()
+        if first_pending is None:
+            return None
+
+        return pending.filter(
+            approver=user,
+            priority=first_pending.priority,
+        ).first()
+
+    @classmethod
+    def user_can_approve(cls, user, procurement_request) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        return cls.get_available_approval(user, procurement_request) is not None
 
 
 class EquipmentService:

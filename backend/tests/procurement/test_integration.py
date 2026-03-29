@@ -14,7 +14,7 @@ from notifications.models import (
     NotificationCategory,
     NotificationType,
 )
-from procurement.constants import ApprovalRole, ApprovalStatus, ProcurementStatus
+from procurement.constants import ApprovalStatus, ProcurementStatus
 from procurement.models import (
     Approval,
     Budget,
@@ -160,7 +160,7 @@ class TestProcurementSignals:
         Approval.objects.create(
             request=request,
             approver=department_with_head.head,
-            role=ApprovalRole.DEPARTMENT_HEAD,
+            priority=10,
         )
 
         # Отправляем на согласование
@@ -241,7 +241,7 @@ class TestApprovalNotifications:
         approval = Approval.objects.create(
             request=request,
             approver=department_with_head.head,
-            role=ApprovalRole.DEPARTMENT_HEAD,
+            priority=10,
             status=ApprovalStatus.PENDING,
         )
 
@@ -273,7 +273,7 @@ class TestApprovalNotifications:
         approval = Approval.objects.create(
             request=request,
             approver=department_with_head.head,
-            role=ApprovalRole.DEPARTMENT_HEAD,
+            priority=10,
             status=ApprovalStatus.PENDING,
         )
 
