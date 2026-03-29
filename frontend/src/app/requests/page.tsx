@@ -7,7 +7,10 @@ import { canManageRequests, canProcessRequests } from "@/lib/permissions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Request, RequestComment, User, Department } from "@/types/api";
-import { ArrowUpDown, Ban, Check, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X } from "lucide-react";
+import { ArrowUpDown, Ban, Check, ChevronDown, FileSignature, Filter, MessageSquare, Paperclip, Pencil, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X, Zap } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const SwipeApprovalMode = dynamic(() => import("@/components/requests/SwipeApprovalMode"), { ssr: false });
 
 type RequestFormState = {
   type: string;
@@ -125,6 +128,7 @@ export default function RequestsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [ordering, setOrdering] = useState("-created_at");
   const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string } | null>(null);
+  const [swipeMode, setSwipeMode] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -583,8 +587,36 @@ export default function RequestsPage() {
         </div>
       ) : (
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
+          {swipeMode && (canManage || canProcess) ? (
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap size={14} className="text-amber-500" />
+                  <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Быстрый разбор</p>
+                </div>
+                <button type="button" onClick={() => setSwipeMode(false)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200">
+                  Обычный режим
+                </button>
+              </div>
+              {actionError ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p> : null}
+              <SwipeApprovalMode
+                requests={requests}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onClose={() => setSwipeMode(false)}
+              />
+            </div>
+          ) : (
+          <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Заявления</p>
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Заявления</p>
+              {(canManage || canProcess) && (
+                <button type="button" onClick={() => setSwipeMode(true)} className="group flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-600 ring-1 ring-amber-100 transition hover:bg-amber-100" title="Тестовый режим быстрого разбора заявлений">
+                  <Zap size={11} className="transition group-hover:text-amber-700" /> Быстрый разбор
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -754,10 +786,12 @@ export default function RequestsPage() {
                 const authorName = displayUserName(requestAuthor);
                 const approverName = displayUserName(item.approver || item.assigned_to);
                 const statusKey = String(item.status || "").toLowerCase();
+                const requestTypeKey = String(item.type || item.request_type || "").toLowerCase();
                 const status = statusMeta[statusKey] ?? defaultStatusMeta;
                 const authorLink = userProfileLink(requestAuthor);
                 const approverLink = userProfileLink(item.approver || item.assigned_to);
-                const requestTypeLabel = requestTypeLabels[String(item.type || item.request_type || "")] || String(item.type || item.request_type || "Другое");
+                const requestTypeLabel = requestTypeLabels[requestTypeKey] || String(item.type || item.request_type || "Другое");
+                const requestTitle = item.display_title || item.title || "Без заголовка";
                 const canProcessThis = Boolean(
                   statusKey === "pending" &&
                     requestAuthor?.id &&
@@ -821,23 +855,27 @@ export default function RequestsPage() {
                                 )}
                               </div>
 
-                              <h3 className="truncate text-sm font-semibold text-gray-900">{item.display_title || item.title || "Без заголовка"}</h3>
+                              <h3 className="truncate text-sm font-semibold text-gray-900">
+                                <span className="text-gray-600">{requestTypeLabel}:</span>{" "}
+                                <span className="text-gray-900">{requestTitle}</span>
+                              </h3>
                               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                                <span>Тип: {requestTypeLabel}</span>
                                 <span>Период: {item.date_from ? formatDate(item.date_from) : "—"}{item.date_to ? ` — ${formatDate(item.date_to)}` : ""}</span>
                               </div>
                             </div>
 
-                            <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs ring-1 ${status.className}`}>
-                              {status.label}
-                            </span>
+                            <div className="shrink-0 text-right">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs ring-1 ${status.className}`}>
+                                {status.label}
+                              </span>
+                            </div>
                           </div>
 
                           {summaryText ? (
                             <p className="mt-3 text-sm text-gray-700">{summaryText}</p>
                           ) : null}
 
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          <div className={`${summaryText ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
                             {canCancelThis ? (
                               <button type="button" title="Отменить" onClick={() => handleCancel(item.id)} disabled={busyKey === `cancel-${item.id}`} className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-60">
                                 <Ban size={15} />
@@ -1088,6 +1126,8 @@ export default function RequestsPage() {
                 </div>
               )}
             </div>
+          )}
+          </>
           )}
         </section>
       )}

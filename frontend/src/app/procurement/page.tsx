@@ -3,23 +3,21 @@
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
 import { useUser } from "@/contexts/UserContext";
-import { canManageRequests } from "@/lib/permissions";
+import { canManageRequests, canManageSupplier } from "@/lib/permissions";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import ProcurementStatsPanel from "@/components/procurement/ProcurementStatsPanel";
+import ProcurementSuppliersPanel from "@/components/procurement/ProcurementSuppliersPanel";
 import type {
   ProcurementRequest,
-  ProcurementItem,
   User,
   Department,
   UrgencyLevel,
-  ProcurementStatus,
 } from "@/types/api";
 import {
-  AlertTriangle,
   ArrowUpDown,
   Check,
   ChevronDown,
-  ChevronUp,
   CircleDot,
   ClipboardCheck,
   Filter,
@@ -68,12 +66,22 @@ const orderingOptions = [
   { value: "-urgency", label: "По срочности ↓" },
 ];
 
-type ScopeTab = "all" | "mine" | "pending_approvals" | "available";
+type ScopeTab = "all" | "mine" | "department" | "pending_approvals" | "my_work" | "available";
 const scopeTabs: { value: ScopeTab; label: string }[] = [
   { value: "all",               label: "Все" },
   { value: "mine",              label: "Мои" },
+  { value: "department",        label: "Мой отдел" },
   { value: "pending_approvals", label: "На согласование" },
+  { value: "my_work",           label: "В работе у меня" },
   { value: "available",         label: "Доступные" },
+];
+
+const periodOptions = [
+  { value: "", label: "Любой период" },
+  { value: "today", label: "Сегодня" },
+  { value: "week", label: "7 дней" },
+  { value: "month", label: "30 дней" },
+  { value: "quarter", label: "90 дней" },
 ];
 
 function fmt(d?: string | null) {
@@ -122,6 +130,8 @@ const emptyForm: FormState = {
   items: [{ ...emptyItem }],
 };
 
+type ProcurementSection = "requests" | "stats" | "suppliers";
+
 /* ══════════════════════════════════════════════════════
    Main page component
    ══════════════════════════════════════════════════════ */
@@ -129,6 +139,7 @@ const emptyForm: FormState = {
 export default function ProcurementPage() {
   const { user } = useUser();
   const canManage = canManageRequests(user);
+  const canSupplierManage = canManageSupplier(user);
 
   /* ── data ── */
   const [requests, setRequests] = useState<ProcurementRequest[]>([]);
@@ -149,8 +160,10 @@ export default function ProcurementPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
+  const [periodFilter, setPeriodFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [ordering, setOrdering] = useState("-created_at");
+  const [activeSection, setActiveSection] = useState<ProcurementSection>("requests");
 
   /* ── form modal ── */
   const [createOpen, setCreateOpen] = useState(false);
@@ -163,15 +176,23 @@ export default function ProcurementPage() {
 
   /* ══════════ helpers ══════════ */
 
-  const displayUserName = (person?: User | null) => {
-    if (!person) return "—";
-    const full = `${person.last_name || ""} ${person.first_name || ""}`.trim();
-    return full || (person as any)?.full_name || person.email || "Пользователь";
+  const resolveUserId = (person?: User | number | null) => {
+    if (!person) return null;
+    return typeof person === "number" ? person : person.id;
   };
 
-  const userLink = (person?: User | null) => {
-    if (!person?.id) return "";
-    return user?.id && person.id === user.id ? "/profile" : `/users/${person.id}`;
+  const displayUserName = (person?: User | number | null, fallbackName?: string | null, fallbackEmail?: string | null) => {
+    if (fallbackName) return fallbackName;
+    if (!person) return fallbackEmail || "—";
+    if (typeof person === "number") return fallbackEmail || `Пользователь #${person}`;
+    const full = `${person.last_name || ""} ${person.first_name || ""}`.trim();
+    return full || (person as any)?.full_name || person.email || fallbackEmail || "Пользователь";
+  };
+
+  const userLink = (person?: User | number | null) => {
+    const personId = resolveUserId(person);
+    if (!personId) return "";
+    return user?.id && personId === user.id ? "/profile" : `/users/${personId}`;
   };
 
   const extractNextPage = (nextUrl?: string | null): number | null => {
@@ -190,18 +211,23 @@ export default function ProcurementPage() {
     return d?.name || "—";
   };
 
+  const getRequestAmount = (req: ProcurementRequest) => req.total_cost ?? req.total_estimated_cost;
+
   /* ══════════ data loading ══════════ */
 
   const buildParams = useCallback((page: number): Record<string, string | number> => {
     const p: Record<string, string | number> = { page };
     if (scope === "mine") p.scope = "mine";
+    else if (scope === "department") p.scope = "department";
+    else if (scope === "my_work") p.scope = "my_work";
     else if (scope === "available") p.scope = "available";
     if (statusFilter) p.status = statusFilter;
     if (urgencyFilter) p.urgency = urgencyFilter;
     if (departmentFilter) p.department = departmentFilter;
+    if (periodFilter) p.period = periodFilter;
     if (searchQuery.trim()) p.search = searchQuery.trim();
     return p;
-  }, [scope, statusFilter, urgencyFilter, departmentFilter, searchQuery]);
+  }, [scope, statusFilter, urgencyFilter, departmentFilter, periodFilter, searchQuery]);
 
   const loadPage1 = useCallback(async () => {
     try {
@@ -449,11 +475,23 @@ export default function ProcurementPage() {
   };
 
   const handleSubmit  = (id: number) => doAction(`submit-${id}`,  () => apiClient.submitProcurementRequest(id),  id, "Заявка отправлена на согласование.");
-  const handleApprove = (id: number) => doAction(`approve-${id}`, () => apiClient.approveProcurementRequest(id), id, "Заявка одобрена.");
-  const handleReject  = (id: number) => doAction(`reject-${id}`,  () => apiClient.rejectProcurementRequest(id),  id, "Заявка отклонена.");
+  const handleApprove = (id: number) => {
+    const comment = window.prompt("Комментарий к одобрению (необязательно)", "");
+    if (comment === null) return;
+    return doAction(`approve-${id}`, () => apiClient.approveProcurementRequest(id, comment), id, "Заявка одобрена.");
+  };
+  const handleReject  = (id: number) => {
+    const comment = window.prompt("Комментарий к отклонению", "");
+    if (comment === null) return;
+    return doAction(`reject-${id}`, () => apiClient.rejectProcurementRequest(id, comment), id, "Заявка отклонена.");
+  };
   const handleStart   = (id: number) => doAction(`start-${id}`,   () => apiClient.startWorkProcurementRequest(id), id, "Вы взяли заявку в работу.");
   const handleComplete= (id: number) => doAction(`complete-${id}`,() => apiClient.completeProcurementRequest(id), id, "Заявка завершена.");
-  const handleCancel  = (id: number) => doAction(`cancel-${id}`,  () => apiClient.cancelProcurementRequest(id),  id, "Заявка отменена.");
+  const handleCancel  = (id: number) => {
+    const reason = window.prompt("Причина отмены", "");
+    if (reason === null) return;
+    return doAction(`cancel-${id}`, () => apiClient.cancelProcurementRequest(id, reason), id, "Заявка отменена.");
+  };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Удалить эту заявку? Доступно только для черновиков.")) return;
@@ -527,7 +565,7 @@ export default function ProcurementPage() {
     );
   };
 
-  const activeFilterCount = [statusFilter, urgencyFilter, departmentFilter].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, urgencyFilter, departmentFilter, periodFilter].filter(Boolean).length;
   const isFinal = (s?: string) => ["completed", "rejected", "cancelled"].includes(String(s || "").toLowerCase());
 
   /* ══════════════════════════════════════════════════════
@@ -549,16 +587,39 @@ export default function ProcurementPage() {
         <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100">
           {/* ── header ── */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Закупки</p>
-            <button type="button" onClick={openCreate} className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600">
-              <Plus size={14} /> Создать заявку
-            </button>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">Закупки</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setActiveSection("requests")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "requests" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                  Заявки
+                </button>
+                <button type="button" onClick={() => setActiveSection("stats")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "stats" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                  Статистика
+                </button>
+                <button type="button" onClick={() => setActiveSection("suppliers")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${activeSection === "suppliers" ? "bg-sky-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                  Поставщики
+                </button>
+              </div>
+            </div>
+            {activeSection === "requests" && (
+              <button type="button" onClick={openCreate} className="inline-flex items-center gap-1 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600">
+                <Plus size={14} /> Создать заявку
+              </button>
+            )}
           </div>
 
           {/* ── alerts ── */}
           {actionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
           {actionSuccess && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{actionSuccess}</p>}
 
+          {activeSection === "stats" && <ProcurementStatsPanel />}
+
+          {activeSection === "suppliers" && (
+            <ProcurementSuppliersPanel canManage={canSupplierManage} />
+          )}
+
+          {activeSection === "requests" && (
+            <>
           {/* ── search + filter ── */}
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
@@ -631,8 +692,11 @@ export default function ProcurementPage() {
                 <option value="">Все отделы</option>
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
+              <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                {periodOptions.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
+              </select>
               {activeFilterCount > 0 && (
-                <button type="button" onClick={() => { setStatusFilter(""); setUrgencyFilter(""); setDepartmentFilter(""); }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition">
+                <button type="button" onClick={() => { setStatusFilter(""); setUrgencyFilter(""); setDepartmentFilter(""); setPeriodFilter(""); }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition">
                   Очистить фильтры
                 </button>
               )}
@@ -650,8 +714,8 @@ export default function ProcurementPage() {
               const st = String(req.status || "").toLowerCase();
               const sMeta = statusMeta[st] ?? defaultStatusMeta;
               const urg = urgencyMeta[req.urgency] ?? urgencyMeta.medium;
-              const isAuthor = Boolean(req.requestor?.id && user?.id && req.requestor.id === user.id);
-              const isExecutor = Boolean(req.executor?.id && user?.id && req.executor.id === user.id);
+              const isAuthor = Boolean(resolveUserId(req.requestor) && user?.id && resolveUserId(req.requestor) === user.id);
+              const isExecutor = Boolean(resolveUserId(req.executor) && user?.id && resolveUserId(req.executor) === user.id);
               const isDraft = st === "draft";
               const isPending = st === "pending";
               const isApproved = st === "approved";
@@ -659,12 +723,12 @@ export default function ProcurementPage() {
               const expanded = expandedIds.has(req.id);
               const detail = detailsCache[req.id];
               const resolvedDetail = detail || req;
-              const requestorName = displayUserName(req.requestor);
-              const executorName = req.executor ? displayUserName(req.executor) : "";
+              const requestorName = displayUserName(req.requestor, req.requestor_name, req.requestor_email);
+              const executorName = req.executor || req.executor_name ? displayUserName(req.executor, req.executor_name || undefined) : "";
               const requestorLink = userLink(req.requestor);
               const executorLink = userLink(req.executor);
-              const itemsCount = detail?.items?.length ?? 0;
-              const approvalsCount = detail?.approvals?.length ?? 0;
+              const itemsCount = resolvedDetail.items?.length ?? 0;
+              const approvalsCount = resolvedDetail.approvals?.length ?? 0;
 
               return (
                 <article key={req.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-gray-300">
@@ -689,7 +753,7 @@ export default function ProcurementPage() {
                             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                               <span className="font-medium text-gray-700">{getDeptName(req)}</span>
                               <span>{fmt(req.created_at)}</span>
-                              {req.total_estimated_cost && <span className="font-medium text-gray-700">{money(req.total_estimated_cost)}</span>}
+                              {getRequestAmount(req) && <span className="font-medium text-gray-700">{money(getRequestAmount(req))}</span>}
                             </div>
                           </div>
 
@@ -784,7 +848,7 @@ export default function ProcurementPage() {
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-gray-700">{money(req.total_estimated_cost)}</p>
+                      <p className="text-sm font-medium text-gray-700">{money(getRequestAmount(req))}</p>
                       <p className="mt-1 text-xs text-gray-500">Создано {fmt(req.created_at) || "—"}</p>
                     </div>
 
@@ -805,6 +869,25 @@ export default function ProcurementPage() {
                       <div className="mb-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-gray-100">
                         <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Описание</p>
                         <p className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-700">{resolvedDetail.description || "—"}</p>
+                        <div className="mt-3 grid gap-2 text-xs text-gray-500 sm:grid-cols-3">
+                          <div className="rounded-lg bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-gray-400">Отправлена</p>
+                            <p className="mt-1 font-medium text-gray-700">{fmt(resolvedDetail.submitted_at) || "—"}</p>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-gray-400">Взята в работу</p>
+                            <p className="mt-1 font-medium text-gray-700">{fmt(resolvedDetail.started_at) || "—"}</p>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-gray-400">Завершена</p>
+                            <p className="mt-1 font-medium text-gray-700">{fmt(resolvedDetail.completed_at) || "—"}</p>
+                          </div>
+                        </div>
+                        {resolvedDetail.actual_cost ? (
+                          <div className="mt-3 inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                            Фактическая сумма: {money(resolvedDetail.actual_cost)}
+                          </div>
+                        ) : null}
                       </div>
 
                       {detail?.items && detail.items.length > 0 && (
@@ -851,8 +934,8 @@ export default function ProcurementPage() {
                               return (
                                 <div key={a.id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-xs">
                                   {icon}
-                                  <span className="font-medium text-gray-700">{displayUserName(a.approver)}</span>
-                                  <span className="text-gray-400">({a.role === "department_head" ? "Руководитель" : a.role === "finance_manager" ? "Финансист" : "Директор"})</span>
+                                  <span className="font-medium text-gray-700">{displayUserName(a.approver, a.approver_name)}</span>
+                                  <span className="text-gray-400">({a.step_label || `Этап ${a.priority}`})</span>
                                   {a.comment && <span className="ml-auto italic text-gray-500">«{a.comment}»</span>}
                                 </div>
                               );
@@ -924,6 +1007,8 @@ export default function ProcurementPage() {
                 {loadingMore ? "Загружаем..." : "Загрузить ещё"}
               </button>
             </div>
+          )}
+            </>
           )}
         </section>
       )}

@@ -129,3 +129,30 @@ export function canManageEquipment(user?: User | null): boolean {
 
     return false;
 }
+
+export function canManageSupplier(user?: User | null): boolean {
+    if (!user) return false;
+
+    const auth = user.auth;
+    if (!auth) return false;
+
+    if (auth.is_staff || auth.is_superuser) {
+        return true;
+    }
+
+    const perms = auth.permissions || [];
+    if (
+        perms.includes("procurement.add_supplier") ||
+        perms.includes("procurement.change_supplier") ||
+        perms.includes("procurement.delete_supplier")
+    ) {
+        return true;
+    }
+
+    const procPerms = auth.permissions_by_app?.["procurement"] || [];
+    return (
+        procPerms.includes("add_supplier") ||
+        procPerms.includes("change_supplier") ||
+        procPerms.includes("delete_supplier")
+    );
+}

@@ -5,7 +5,6 @@ URL конфигурация для API модуля закупок.
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    BudgetViewSet,
     EquipmentCategoryViewSet,
     EquipmentViewSet,
     MaintenanceRecordViewSet,
@@ -42,11 +41,6 @@ router.register(
     r'maintenance',
     MaintenanceRecordViewSet,
     basename='maintenancerecord'
-)
-router.register(
-    r'budgets',
-    BudgetViewSet,
-    basename='budget'
 )
 router.register(
     r'suppliers',

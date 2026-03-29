@@ -11,13 +11,13 @@ from rest_framework.test import APIClient
 
 from employees.models import Department, Employee, EmployeeDepartment
 from procurement.constants import (
-    ApprovalRole,
     ApprovalStatus,
     ProcurementStatus,
     UrgencyLevel,
 )
 from procurement.models import (
     Approval,
+    ApprovalRoute,
     Budget,
     ProcurementItem,
     ProcurementRequest,
@@ -25,6 +25,10 @@ from procurement.models import (
 
 
 pytestmark = pytest.mark.django_db
+
+HEAD_PRIORITY = 1
+FINANCE_PRIORITY = 2
+DIRECTOR_PRIORITY = 3
 
 
 @pytest.fixture
@@ -51,6 +55,8 @@ def user(db, department):
         phone_number="+79991111111",
         first_name="Иван",
         last_name="Иванов",
+        is_active=True,
+        email_verified=True,
         send_activation_email=False,
     )
     # Связываем с отделом
@@ -71,6 +77,8 @@ def department_head(db, department):
         phone_number="+79992222222",
         first_name="Петр",
         last_name="Петров",
+        is_active=True,
+        email_verified=True,
         send_activation_email=False,
     )
     # Назначаем руководителем отдела (автоматически создаст EmployeeDepartment)
@@ -89,6 +97,8 @@ def staff_user(db):
         first_name="Админ",
         last_name="Админов",
         is_staff=True,
+        is_active=True,
+        email_verified=True,
         send_activation_email=False,
     )
 
@@ -387,6 +397,39 @@ class TestProcurementRequestUpdate:
 class TestProcurementRequestWorkflow:
     """Тесты workflow действий с заявками."""
 
+    @pytest.fixture(autouse=True)
+    def approval_authorities(self, department_head, user):
+        director = Employee.objects.create_user(
+            email='director@example.com',
+            password='testpass123',
+            phone_number='+79995555555',
+            first_name='Сергей',
+            last_name='Сергеев',
+            is_staff=True,
+            is_superuser=True,
+            is_active=True,
+            email_verified=True,
+            send_activation_email=False,
+        )
+        ApprovalRoute.objects.create(
+            priority=HEAD_PRIORITY,
+            resolver_type=ApprovalRoute.ResolverType.DEPARTMENT_HEAD,
+        )
+        ApprovalRoute.objects.create(
+            priority=FINANCE_PRIORITY,
+            min_amount=Decimal('10000.00'),
+            name='Финансовый контроль',
+            resolver_type=ApprovalRoute.ResolverType.FIXED_EMPLOYEE,
+            employee=user,
+        )
+        ApprovalRoute.objects.create(
+            priority=DIRECTOR_PRIORITY,
+            min_amount=Decimal('50000.00'),
+            name='Финальное одобрение',
+            resolver_type=ApprovalRoute.ResolverType.FIXED_EMPLOYEE,
+            employee=director,
+        )
+
     def test_submit_request(
         self, api_client, user, procurement_request, procurement_item, budget
     ):
@@ -404,6 +447,33 @@ class TestProcurementRequestWorkflow:
         procurement_request.refresh_from_db()
         assert procurement_request.status == ProcurementStatus.PENDING
         assert procurement_request.submitted_at is not None
+        assert list(
+            procurement_request.approvals.order_by('priority').values_list('priority', flat=True)
+        ) == [1, 2, 3]
+        assert list(
+            procurement_request.approvals.order_by('priority').values_list('step_name', flat=True)
+        ) == [
+            'Руководитель отдела',
+            'Финансовый контроль',
+            'Финальное одобрение',
+        ]
+
+    def test_submit_returns_manual_step_name(
+        self, api_client, user, procurement_request, procurement_item, budget
+    ):
+        """Ручное название этапа сохраняется в согласовании и отдаётся в API."""
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        approvals = sorted(response.data['approvals'], key=lambda item: item['priority'])
+        assert approvals[1]['step_name'] == 'Финансовый контроль'
+        assert approvals[1]['step_label'] == 'Финансовый контроль'
 
     def test_submit_without_items_fails(
         self, api_client, user, procurement_request
@@ -432,7 +502,7 @@ class TestProcurementRequestWorkflow:
         Approval.objects.create(
             request=procurement_request,
             approver=department_head,
-            role=ApprovalRole.DEPARTMENT_HEAD,
+            priority=HEAD_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
         
@@ -445,6 +515,36 @@ class TestProcurementRequestWorkflow:
         response = api_client.post(url, {'comment': 'Одобрено'})
         assert response.status_code == status.HTTP_200_OK
 
+    def test_finance_cannot_approve_before_head(
+        self, api_client, user, department_head, procurement_request,
+        procurement_item, budget
+    ):
+        """Финансовый этап недоступен, пока не завершён предыдущий."""
+        procurement_request.status = ProcurementStatus.PENDING
+        procurement_request.save()
+
+        Approval.objects.create(
+            request=procurement_request,
+            approver=department_head,
+            priority=HEAD_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+        Approval.objects.create(
+            request=procurement_request,
+            approver=user,
+            priority=FINANCE_PRIORITY,
+            status=ApprovalStatus.PENDING,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': procurement_request.id}
+        )
+
+        response = api_client.post(url, {'comment': 'Рано'})
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
     def test_reject_request(
         self, api_client, department_head, procurement_request,
         procurement_item
@@ -456,7 +556,7 @@ class TestProcurementRequestWorkflow:
         Approval.objects.create(
             request=procurement_request,
             approver=department_head,
-            role=ApprovalRole.DEPARTMENT_HEAD,
+            priority=HEAD_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
         

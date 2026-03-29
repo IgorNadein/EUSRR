@@ -1983,6 +1983,57 @@ class ApiClient {
             method: 'DELETE',
         });
     }
+
+    // ==================== Поставщики закупок ====================
+
+    async getProcurementSuppliers(params?: Record<string, string | number>): Promise<any> {
+        const queryParams = new URLSearchParams();
+        if (params) {
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    queryParams.append(key, String(value));
+                }
+            });
+        }
+        const url = `/api/v1/procurement/suppliers/${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        return this.request(url);
+    }
+
+    async createProcurementSupplier(data: any): Promise<any> {
+        return this.request('/api/v1/procurement/suppliers/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async updateProcurementSupplier(id: number, data: any): Promise<any> {
+        return this.request(`/api/v1/procurement/suppliers/${id}/`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteProcurementSupplier(id: number): Promise<void> {
+        await this.request(`/api/v1/procurement/suppliers/${id}/`, {
+            method: 'DELETE',
+        });
+    }
+
+    async getTopRatedProcurementSuppliers(): Promise<any> {
+        return this.request('/api/v1/procurement/suppliers/top_rated/');
+    }
+
+    // ==================== Статистика закупок ====================
+
+    async getProcurementOverviewStats(): Promise<any> {
+        return this.request('/api/v1/procurement/stats/overview/');
+    }
+
+    async getProcurementDepartmentStats(): Promise<any> {
+        return this.request('/api/v1/procurement/stats/by-department/');
+    }
 }
 
 export const apiClient = new ApiClient();

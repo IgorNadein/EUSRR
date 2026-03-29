@@ -350,7 +350,6 @@ export interface MaintenanceRecord {
 export type ProcurementStatus = 'draft' | 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
-export type ApprovalRole = 'department_head' | 'finance_manager' | 'director';
 
 export interface ProcurementItem {
   id: number;
@@ -368,10 +367,13 @@ export interface ProcurementItem {
 export interface ProcurementApproval {
   id: number;
   request: number;
-  approver: User;
-  role: ApprovalRole;
+  approver: User | number;
+  approver_name?: string;
+  priority: number;
   status: ApprovalStatus;
   comment?: string;
+  step_label?: string;
+  status_display?: string;
   decided_at?: string | null;
   created_at: string;
 }
@@ -383,19 +385,62 @@ export interface ProcurementRequest {
   department: number;
   department_name?: string;
   department_details?: Department;
-  requestor: User;
-  executor?: User | null;
+  requestor: User | number;
+  requestor_name?: string;
+  requestor_email?: string;
+  executor?: User | number | null;
+  executor_name?: string | null;
   status: ProcurementStatus;
+  status_display?: string;
   urgency: UrgencyLevel;
+  urgency_display?: string;
   items?: ProcurementItem[];
   approvals?: ProcurementApproval[];
-  required_approvals?: ApprovalRole[];
+  required_approval_priorities?: number[];
   actual_cost?: string | number | null;
   is_editable?: boolean;
-  budget_available?: boolean;
+  total_cost?: string | number;
   total_estimated_cost?: string | number;
   created_at: string;
   updated_at: string;
+  submitted_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface ProcurementSupplier {
+  id: number;
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  website?: string;
+  inn?: string;
+  rating?: string | number | null;
+  is_active: boolean;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProcurementOverviewStats {
+  total_requests: number;
+  pending_requests: number;
+  approved_this_month: number;
+  completed_this_month: number;
+  total_spent_this_year: string | number;
+  by_status: Record<string, number>;
+  by_urgency: Record<string, number>;
+}
+
+export interface ProcurementDepartmentStats {
+  department_id: number;
+  department_name: string;
+  total_requests: number;
+  completed_requests: number;
+  pending_requests: number;
+  total_spent: string | number;
 }
 
 // Communications types
