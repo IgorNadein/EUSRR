@@ -5,6 +5,7 @@ from django.utils.html import format_html
 
 from .models import (
     Approval,
+    ApprovalRoute,
     Budget,
     Equipment,
     EquipmentCategory,
@@ -159,6 +160,15 @@ class ProcurementItemAdmin(admin.ModelAdmin):
     readonly_fields = ["created_at", "total_price"]
 
 
+@admin.register(ApprovalRoute)
+class ApprovalRouteAdmin(admin.ModelAdmin):
+    """Маршруты согласования закупок."""
+
+    list_display = ["priority", "min_amount", "name", "resolver_type", "employee"]
+    ordering = ["priority"]
+    autocomplete_fields = ["employee"]
+
+
 @admin.register(Approval)
 class ApprovalAdmin(admin.ModelAdmin):
     """Админка для согласований."""
@@ -167,11 +177,12 @@ class ApprovalAdmin(admin.ModelAdmin):
         "id",
         "request",
         "approver",
-        "role",
+        "priority",
+        "step_name",
         "status_badge",
         "created_at",
     ]
-    list_filter = ["status", "role", "created_at"]
+    list_filter = ["status", "priority", "created_at"]
     search_fields = [
         "request__title",
         "approver__username",

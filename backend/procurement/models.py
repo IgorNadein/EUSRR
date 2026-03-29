@@ -16,6 +16,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Sum
@@ -23,14 +24,12 @@ from django.utils import timezone
 from employees.models import Department
 
 from .constants import (
-    APPROVAL_THRESHOLD_HIGH,
-    APPROVAL_THRESHOLD_LOW,
-    ApprovalRole,
     ApprovalStatus,
     EquipmentStatus,
     MaintenanceType,
     ProcurementStatus,
     UrgencyLevel,
+    get_default_approval_step_name,
 )
 
 User = get_user_model()
@@ -132,50 +131,15 @@ class ProcurementRequest(models.Model):
     def __str__(self):
         return f"#{self.pk} {self.title}"
     
-    def get_required_approvals(self):
-        """Возвращает список необходимых ролей для согласования.
-        
-        Логика:
-        - < 10,000₽: только руководитель отдела
-        - 10,000 - 100,000₽: руководитель + финансовый менеджер
-        - > 100,000₽: руководитель + финансы + директор
-        """
-        cost = self.total_cost
-        
-        if cost < APPROVAL_THRESHOLD_LOW:
-            return [ApprovalRole.DEPARTMENT_HEAD]
-        elif cost < APPROVAL_THRESHOLD_HIGH:
-            return [
-                ApprovalRole.DEPARTMENT_HEAD,
-                ApprovalRole.FINANCE_MANAGER
-            ]
-        else:
-            return [
-                ApprovalRole.DEPARTMENT_HEAD,
-                ApprovalRole.FINANCE_MANAGER,
-                ApprovalRole.DIRECTOR
-            ]
-    
-    def check_budget_available(self):
-        """Проверяет наличие бюджета в отделе.
-        
-        Returns:
-            tuple: (bool, Decimal) - (доступно ли, остаток бюджета)
-        """
-        # Определяем текущий квартал
-        now = timezone.now()
-        quarter = (now.month - 1) // 3 + 1
-        
-        try:
-            budget = Budget.objects.get(
-                department=self.department,
-                year=now.year,
-                quarter=quarter
-            )
-            remaining = budget.remaining_amount
-            return (remaining >= self.total_cost, remaining)
-        except Budget.DoesNotExist:
-            return (False, Decimal('0'))
+    def get_required_approval_priorities(self):
+        """Возвращает приоритеты обязательных этапов из таблицы маршрутов."""
+        return list(
+            self.get_required_approval_routes().values_list('priority', flat=True)
+        )
+
+    def get_required_approval_routes(self):
+        """Возвращает queryset обязательных этапов из таблицы маршрутов."""
+        return ApprovalRoute.get_applicable_routes(self.total_cost)
     
     @property
     def total_cost(self):
@@ -265,6 +229,74 @@ class ProcurementItem(models.Model):
         return self.estimated_unit_price * self.quantity
 
 
+class ApprovalRoute(models.Model):
+    """Правило получения согласующего для этапа с заданным приоритетом."""
+
+    class ResolverType(models.TextChoices):
+        DEPARTMENT_HEAD = 'department_head', 'Руководитель отдела'
+        FIXED_EMPLOYEE = 'fixed_employee', 'Конкретный сотрудник'
+
+    priority = models.PositiveSmallIntegerField(
+        'Приоритет',
+        unique=True,
+        db_index=True,
+        help_text='Чем меньше число, тем раньше этап в цепочке согласования.',
+    )
+    min_amount = models.DecimalField(
+        'Минимальная сумма заявки',
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text='Пусто = этап обязателен для любой суммы. Иначе этап включается при сумме не меньше указанной.',
+    )
+    name = models.CharField(
+        'Название этапа',
+        max_length=150,
+        blank=True,
+        help_text='Необязательно. Если заполнено, будет показано в интерфейсе.',
+    )
+    resolver_type = models.CharField(
+        'Тип резолва',
+        max_length=20,
+        choices=ResolverType.choices,
+        default=ResolverType.FIXED_EMPLOYEE,
+    )
+    employee = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='approval_routes',
+        verbose_name='Согласующий',
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = 'Маршрут согласования'
+        verbose_name_plural = 'Маршруты согласования'
+        ordering = ['priority', 'id']
+
+    @classmethod
+    def get_applicable_routes(cls, total_cost):
+        return cls.objects.filter(
+            models.Q(min_amount__isnull=True) | models.Q(min_amount__lte=total_cost)
+        ).order_by('priority', 'id')
+
+    def __str__(self):
+        threshold = '' if self.min_amount is None else f' от {self.min_amount}'
+        if self.resolver_type == self.ResolverType.DEPARTMENT_HEAD:
+            return f"Этап {self.priority}{threshold} → руководитель отдела"
+        return f"Этап {self.priority}{threshold} → {self.employee}"
+
+    def clean(self):
+        super().clean()
+        if self.resolver_type == self.ResolverType.FIXED_EMPLOYEE and not self.employee_id:
+            raise ValidationError({'employee': 'Для статического этапа укажите сотрудника.'})
+        if self.resolver_type == self.ResolverType.DEPARTMENT_HEAD and self.employee_id:
+            raise ValidationError({'employee': 'Для этапа руководителя отдела сотрудник не указывается.'})
+
+
 class Approval(models.Model):
     """Запись о согласовании заявки."""
     
@@ -280,11 +312,14 @@ class Approval(models.Model):
         related_name='procurement_approvals',
         verbose_name='Согласующий'
     )
-    role = models.CharField(
-        'Роль',
-        max_length=20,
-        choices=ApprovalRole.choices,
-        help_text='Роль согласующего в процессе'
+    priority = models.PositiveSmallIntegerField(
+        'Приоритет',
+        db_index=True,
+    )
+    step_name = models.CharField(
+        'Название этапа',
+        max_length=150,
+        blank=True,
     )
     status = models.CharField(
         'Статус',
@@ -302,14 +337,27 @@ class Approval(models.Model):
     class Meta:
         verbose_name = 'Согласование'
         verbose_name_plural = 'Согласования'
-        ordering = ['created_at']
-        unique_together = [('request', 'role')]
+        ordering = ['priority', 'created_at', 'id']
+        unique_together = [('request', 'priority')]
     
     def __str__(self):
-        return (
-            f"{self.get_role_display()} - "
-            f"{self.get_status_display()}"
-        )
+        return f"Этап {self.priority} - {self.get_status_display()}"
+
+    def save(self, *args, **kwargs):
+        if not self.step_name:
+            route = ApprovalRoute.objects.filter(priority=self.priority).only(
+                'name',
+                'resolver_type',
+            ).first()
+            if route and route.name:
+                self.step_name = route.name
+            else:
+                resolver_type = route.resolver_type if route else None
+                self.step_name = get_default_approval_step_name(
+                    self.priority,
+                    resolver_type=resolver_type,
+                )
+        super().save(*args, **kwargs)
 
 
 class EquipmentCategory(models.Model):

@@ -1,8 +1,4 @@
-"""
-ViewSets для API модуля закупок.
-"""
-
-from decimal import Decimal
+"""ViewSets для API модуля закупок."""
 
 from django.db.models import Q
 from django.utils import timezone
@@ -15,7 +11,6 @@ from employees.models import Department
 from procurement.constants import ApprovalStatus, ProcurementStatus, EquipmentStatus
 from procurement.models import (
     Approval,
-    Budget,
     Equipment,
     EquipmentCategory,
     EquipmentTransferLog,
@@ -26,17 +21,14 @@ from procurement.models import (
 )
 from communications import comments_helpers
 from communications.models import Message
-from procurement.services import QRCodeGenerator
+from procurement.services import ProcurementApprovalResolver, QRCodeGenerator
 from .permissions import (
     CanApproveProcurementRequest,
-    CanManageBudget,
     CanManageEquipment,
     CanManageProcurementRequest,
     CanManageSupplier,
 )
 from .serializers import (
-    BudgetSerializer,
-    BudgetDetailSerializer,
     EquipmentCategorySerializer,
     EquipmentDetailSerializer,
     EquipmentListSerializer,
@@ -47,7 +39,6 @@ from .serializers import (
     ProcurementRequestListSerializer,
     SupplierSerializer,
 )
-from notifications.signals import notify
 
 
 class ProcurementRequestViewSet(viewsets.ModelViewSet):
@@ -148,65 +139,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
 
         return queryset.distinct()
 
-    def _check_budget_alert(self, procurement_request):
-        """Проверяет бюджет и отправляет алерт если низкий остаток."""
-        department = procurement_request.department
-        now = timezone.now()
-        quarter = (now.month - 1) // 3 + 1
-        
-        try:
-            budget = Budget.objects.get(
-                department=department,
-                year=now.year,
-                quarter=quarter
-            )
-        except Budget.DoesNotExist:
-            return  # Нет бюджета - не отправляем алерт
-        
-        # Пороговые значения для алертов
-        LOW_BUDGET_THRESHOLD = Decimal('0.20')  # 20% остатка
-        CRITICAL_BUDGET_THRESHOLD = Decimal('0.10')  # 10% остатка
-        
-        utilization = budget.utilization_percentage / 100
-        remaining_ratio = 1 - utilization
-        
-        # Получаем руководителя отдела
-        dept_head = department.head
-        if not dept_head:
-            return
-        
-        if remaining_ratio <= CRITICAL_BUDGET_THRESHOLD:
-            # Критический уровень - менее 10%
-            notify.send(
-                sender=None,
-                recipient=dept_head,
-                verb='budget_critical',
-                description=(
-                    f'Бюджет отдела "{department.name}" почти исчерпан! '
-                    f'Остаток: {budget.remaining_amount}₽ '
-                    f'({remaining_ratio*100:.1f}%)'
-                ),
-                action_url='/procurement',
-                data={'title': '⚠️ Критически низкий бюджет!'},
-            )
-        elif remaining_ratio <= LOW_BUDGET_THRESHOLD:
-            # Низкий уровень - менее 20%
-            notify.send(
-                sender=None,
-                recipient=dept_head,
-                verb='budget_low',
-                description=(
-                    f'Бюджет отдела "{department.name}" снижается. '
-                    f'Остаток: {budget.remaining_amount}₽ '
-                    f'({remaining_ratio*100:.1f}%)'
-                ),
-                action_url='/procurement',
-                data={'title': 'Низкий остаток бюджета'},
-            )
-
     @action(detail=True, methods=['post'])
     def submit(self, request, pk=None):
         """Отправить заявку на согласование."""
+        from django.db import transaction
+
         procurement_request = self.get_object()
 
         # Проверки
@@ -228,57 +165,51 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Проверка бюджета
-        available, remaining = procurement_request.check_budget_available()
-        if not available:
+        required_priorities = (
+            procurement_request.get_required_approval_priorities()
+        )
+        if not required_priorities:
             return Response(
                 {
-                    'error': 'Недостаточно бюджета',
-                    'remaining': float(remaining),
-                    'required': float(procurement_request.total_cost),
+                    'error': (
+                        'Для этой суммы заявки не настроены '
+                        'маршруты согласования'
+                    )
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Меняем статус
-        procurement_request.status = ProcurementStatus.PENDING
-        procurement_request.save()
+        resolved_approvals, missing_priorities = (
+            ProcurementApprovalResolver.resolve_required_approvers(
+                procurement_request
+            )
+        )
+        if missing_priorities:
+            return Response(
+                {
+                    'error': 'Не настроены согласующие для обязательных этапов',
+                    'missing_priorities': missing_priorities,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        # Создаем записи согласований
-        required_approvals = procurement_request.get_required_approvals()
-        from procurement.constants import ApprovalRole
+        with transaction.atomic():
+            procurement_request.status = ProcurementStatus.PENDING
+            procurement_request.submitted_at = timezone.now()
+            procurement_request.save(
+                update_fields=['status', 'submitted_at', 'updated_at']
+            )
 
-        created_approvals = []
-        for role in required_approvals:
-            # Определяем согласующего
-            approver = None
-            if role == ApprovalRole.DEPARTMENT_HEAD:
-                approver = procurement_request.department.head
-            elif role == ApprovalRole.FINANCE_MANAGER:
-                # Найдем первого пользователя с правом на бюджеты
-                from employees.models import Employee
-                from django.db.models import Q
-                approver = Employee.objects.filter(
-                    is_active=True
-                ).filter(
-                    Q(groups__permissions__codename='change_budget') |
-                    Q(user_permissions__codename='change_budget')
-                ).distinct().first()
-            elif role == ApprovalRole.DIRECTOR:
-                # Найдем директора (суперпользователя)
-                from employees.models import Employee
-                approver = Employee.objects.filter(
-                    is_superuser=True
-                ).first()
-
-            if approver:
-                approval = Approval.objects.create(
+            for priority, approver, step_name in resolved_approvals:
+                Approval.objects.create(
                     request=procurement_request,
                     approver=approver,
-                    role=role,
+                    priority=priority,
+                    step_name=step_name,
                     status=ApprovalStatus.PENDING
                 )
-                created_approvals.append(approval)
+
+            procurement_request.refresh_from_db()
 
         # Уведомления согласующим отправит сигнал post_save(Approval, created=True)
 
@@ -294,10 +225,10 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         self.check_object_permissions(request, procurement_request)
 
         # Находим согласование текущего пользователя
-        approval = procurement_request.approvals.filter(
-            approver=request.user,
-            status=ApprovalStatus.PENDING
-        ).first()
+        approval = ProcurementApprovalResolver.get_available_approval(
+            request.user,
+            procurement_request,
+        )
 
         if not approval:
             return Response(
@@ -321,8 +252,7 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
             procurement_request.status = ProcurementStatus.APPROVED
             procurement_request.save()
 
-            # Проверяем бюджет и отправляем алерт если низкий
-            self._check_budget_alert(procurement_request)
+        procurement_request.refresh_from_db()
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -336,10 +266,10 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         self.check_object_permissions(request, procurement_request)
 
         # Находим согласование текущего пользователя
-        approval = procurement_request.approvals.filter(
-            approver=request.user,
-            status=ApprovalStatus.PENDING
-        ).first()
+        approval = ProcurementApprovalResolver.get_available_approval(
+            request.user,
+            procurement_request,
+        )
 
         if not approval:
             return Response(
@@ -355,6 +285,8 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         # Меняем статус заявки; сигнал post_save(ProcurementRequest) уведомит requestor'а
         procurement_request.status = ProcurementStatus.REJECTED
         procurement_request.save()
+
+        procurement_request.refresh_from_db()
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
@@ -374,10 +306,16 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
     def pending_approvals(self, request):
         """Получить заявки, ожидающие согласования текущим польз."""
         # Находим заявки где есть pending approval для текущего юзера
-        queryset = self.get_queryset().filter(
+        base_queryset = self.get_queryset().filter(
             approvals__approver=request.user,
             approvals__status=ApprovalStatus.PENDING
-        )
+        ).distinct()
+        available_ids = [
+            request_obj.id
+            for request_obj in base_queryset
+            if ProcurementApprovalResolver.user_can_approve(request.user, request_obj)
+        ]
+        queryset = base_queryset.filter(id__in=available_ids)
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -479,51 +417,11 @@ class ProcurementRequestViewSet(viewsets.ModelViewSet):
         procurement_request.status = ProcurementStatus.COMPLETED
         procurement_request.completed_at = timezone.now()
         procurement_request.save()
-
-        # Списываем бюджет отдела
-        self._deduct_budget(procurement_request)
         # Сигнал post_save(ProcurementRequest) с COMPLETED отправит уведомления
         # requestor'у и согласующим
 
         serializer = self.get_serializer(procurement_request)
         return Response(serializer.data)
-
-    def _deduct_budget(self, procurement_request):
-        """Списывает сумму заявки из бюджета отдела."""
-        department = procurement_request.department
-        now = timezone.now()
-        quarter = (now.month - 1) // 3 + 1
-        
-        # Используем фактическую сумму если есть, иначе общую стоимость позиций
-        amount = (
-            procurement_request.actual_cost or
-            procurement_request.total_cost
-        )
-        if not amount or amount <= 0:
-            return  # Нечего списывать
-        
-        try:
-            budget = Budget.objects.get(
-                department=department,
-                year=now.year,
-                quarter=quarter
-            )
-        except Budget.DoesNotExist:
-            # Нет бюджета - создаём с нулём, чтобы зафиксировать траты
-            budget = Budget.objects.create(
-                department=department,
-                year=now.year,
-                quarter=quarter,
-                allocated_amount=Decimal('0'),
-                spent_amount=Decimal('0')
-            )
-        
-        # Увеличиваем потраченную сумму
-        budget.spent_amount = (budget.spent_amount or Decimal('0')) + amount
-        budget.save()
-        
-        # Проверяем и отправляем алерт если бюджет низкий
-        self._check_budget_alert(procurement_request)
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
@@ -1371,95 +1269,6 @@ class MaintenanceRecordViewSet(viewsets.ModelViewSet):
         serializer.save(performed_by=self.request.user)
 
 
-class BudgetViewSet(viewsets.ModelViewSet):
-    """ViewSet для бюджетов."""
-
-    queryset = Budget.objects.select_related('department')
-    serializer_class = BudgetSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['department', 'year', 'quarter']
-    ordering_fields = ['year', 'quarter']
-    ordering = ['-year', '-quarter']
-
-    def get_permissions(self):
-        """Права доступа."""
-        if self.action == 'my_department':
-            # my_department доступен любому авторизованному пользователю
-            permission_classes = [permissions.IsAuthenticated]
-        else:
-            permission_classes = [CanManageBudget]
-        return [permission() for permission in permission_classes]
-
-    def get_queryset(self):
-        """Фильтровать бюджеты."""
-        queryset = super().get_queryset()
-        user = self.request.user
-
-        if user.is_superuser or user.is_staff:
-            return queryset
-
-        # Руководители видят бюджеты своих отделов
-        if user.headed_departments.exists():
-            return queryset.filter(
-                department__in=user.headed_departments.all()
-            )
-
-        return queryset.none()
-
-    @action(detail=False, methods=['get'])
-    def current_quarter(self, request):
-        """Получить бюджеты текущего квартала."""
-        from django.utils import timezone
-        now = timezone.now()
-        quarter = (now.month - 1) // 3 + 1
-
-        queryset = self.get_queryset().filter(
-            year=now.year,
-            quarter=quarter
-        )
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=['get'], url_path='my-department')
-    def my_department(self, request):
-        """Получить бюджет текущего квартала для отдела пользователя."""
-        from django.utils import timezone
-        
-        user = request.user
-        now = timezone.now()
-        quarter = (now.month - 1) // 3 + 1
-        
-        # Получаем отдел пользователя
-        user_departments = user.departments.all()
-        if not user_departments.exists():
-            return Response(
-                {'detail': 'Вы не состоите ни в одном отделе.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Берём первый отдел (основной)
-        department = user_departments.first()
-        
-        try:
-            budget = Budget.objects.get(
-                department=department,
-                year=now.year,
-                quarter=quarter
-            )
-        except Budget.DoesNotExist:
-            msg = (
-                f'Бюджет для {department.name} '
-                f'на Q{quarter} {now.year} не найден.'
-            )
-            return Response(
-                {'detail': msg},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        serializer = BudgetDetailSerializer(budget)
-        return Response(serializer.data)
-
-
 class SupplierViewSet(viewsets.ModelViewSet):
     """ViewSet для поставщиков."""
 
@@ -1584,26 +1393,11 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
             spent = requests.filter(
                 status=ProcurementStatus.COMPLETED
             ).aggregate(total=Sum('actual_cost'))['total'] or 0
-            
-            # Получаем текущий бюджет
-            from django.utils import timezone
-            now = timezone.now()
-            quarter = (now.month - 1) // 3 + 1
-            try:
-                budget = Budget.objects.get(
-                    department=dept,
-                    year=now.year,
-                    quarter=quarter
-                )
-                utilization = float(budget.utilization_percentage)
-            except Budget.DoesNotExist:
-                utilization = 0.0
 
             result.append({
                 'department': {'id': dept.id, 'name': dept.name},
                 'total_requests': total,
                 'total_spent': str(spent),
-                'budget_utilization': utilization,
             })
 
         return Response(result)

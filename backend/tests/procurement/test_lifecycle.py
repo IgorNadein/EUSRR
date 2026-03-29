@@ -134,7 +134,7 @@ class TestRequestLifecycle:
         Approval.objects.create(
             request=request,
             approver=self.dept_head,
-            role='department_head',
+            priority=10,
             status=ApprovalStatus.APPROVED,
         )
 
@@ -189,7 +189,7 @@ class TestRequestLifecycle:
         Approval.objects.create(
             request=request,
             approver=self.dept_head,
-            role='department_head',
+            priority=10,
             status=ApprovalStatus.APPROVED,
         )
 
@@ -258,7 +258,7 @@ class TestRequestLifecycle:
         Approval.objects.create(
             request=request,
             approver=self.dept_head,
-            role='department_head',
+            priority=10,
             status=ApprovalStatus.PENDING,
         )
 

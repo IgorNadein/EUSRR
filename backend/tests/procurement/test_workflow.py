@@ -4,9 +4,9 @@
 
 import pytest
 from django.contrib.auth.models import Permission
+from django.urls import reverse
 from rest_framework import status
 
-from notifications.models import NotificationCategory, NotificationType
 from procurement.constants import (
     ApprovalStatus,
     ProcurementStatus,
@@ -14,10 +14,15 @@ from procurement.constants import (
 )
 from procurement.models import (
     Approval,
+    ApprovalRoute,
     Budget,
     ProcurementItem,
     ProcurementRequest,
 )
+
+HEAD_PRIORITY = 1
+FINANCE_PRIORITY = 2
+DIRECTOR_PRIORITY = 3
 
 
 @pytest.mark.django_db
@@ -29,43 +34,6 @@ class TestProcurementWorkflow:
         self, api_client, department_factory, user_factory, link_factory
     ):
         """Подготовка данных для тестов."""
-        # Создаем категорию и типы уведомлений для закупок
-        category, _ = NotificationCategory.objects.get_or_create(
-            code='procurement',
-            defaults={
-                'name': 'Закупки',
-                'icon': 'bi-cart',
-                'color': 'success',
-                'order': 10,
-            }
-        )
-
-        # Создаем типы уведомлений
-        notification_types = [
-            'procurement_new_request',
-            'procurement_pending_approval',
-            'procurement_approved',
-            'procurement_rejected',
-            'procurement_completed',
-            'procurement_stage_approved',
-        ]
-
-        for type_code in notification_types:
-            NotificationType.objects.get_or_create(
-                code=type_code,
-                defaults={
-                    'category': category,
-                    'name': type_code.replace('_', ' ').title(),
-                    'description': f'Уведомление {type_code}',
-                    'priority': 'normal',
-                    'default_channels': {
-                        'web': True,
-                        'email': False,
-                        'telegram': False
-                    },
-                }
-            )
-
         # Создаем отдел
         self.department = department_factory(name="IT отдел")
 
@@ -101,6 +69,23 @@ class TestProcurementWorkflow:
             superuser=True,
         )
 
+        ApprovalRoute.objects.create(
+            priority=HEAD_PRIORITY,
+            resolver_type=ApprovalRoute.ResolverType.DEPARTMENT_HEAD,
+        )
+        ApprovalRoute.objects.create(
+            priority=FINANCE_PRIORITY,
+            min_amount=10000,
+            resolver_type=ApprovalRoute.ResolverType.FIXED_EMPLOYEE,
+            employee=self.finance,
+        )
+        ApprovalRoute.objects.create(
+            priority=DIRECTOR_PRIORITY,
+            min_amount=50000,
+            resolver_type=ApprovalRoute.ResolverType.FIXED_EMPLOYEE,
+            employee=self.director,
+        )
+
         # Создаем бюджет
         Budget.objects.create(
             department=self.department,
@@ -132,7 +117,7 @@ class TestProcurementWorkflow:
         }
 
         response = self.client.post(
-            '/api/procurement/requests/',
+            reverse('api:v1:procurement:procurementrequest-list'),
             data,
             format='json'
         )
@@ -170,10 +155,12 @@ class TestProcurementWorkflow:
         )
 
         self.client.force_authenticate(user=self.requestor)
-
-        response = self.client.post(
-            f'/api/procurement/requests/{request.id}/submit/'
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': request.id},
         )
+
+        response = self.client.post(submit_url)
 
         if response.status_code != status.HTTP_200_OK:
             print(f"Error response: {response.data}")
@@ -199,20 +186,24 @@ class TestProcurementWorkflow:
         )
 
         self.client.force_authenticate(user=self.requestor)
-
-        response = self.client.post(
-            f'/api/procurement/requests/{request.id}/submit/'
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': request.id},
         )
+
+        response = self.client.post(submit_url)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'позиц' in response.data['error'].lower()
 
-    def test_cannot_submit_without_budget(self):
-        """Тест: нельзя отправить заявку если нет бюджета."""
-        # Создаем заявку на сумму больше бюджета
+    def test_submit_fails_when_required_authority_missing(self):
+        """Тест: нельзя отправить заявку без настроенного обязательного согласующего."""
+        self.director.is_active = False
+        self.director.save(update_fields=['is_active'])
+
         request = ProcurementRequest.objects.create(
             title='Дорогая заявка',
-            description='Превышает бюджет',
+            description='Нет директора для согласования',
             department=self.department,
             requestor=self.requestor,
             status=ProcurementStatus.DRAFT,
@@ -227,13 +218,16 @@ class TestProcurementWorkflow:
         )
 
         self.client.force_authenticate(user=self.requestor)
-
-        response = self.client.post(
-            f'/api/procurement/requests/{request.id}/submit/'
+        submit_url = reverse(
+            'api:v1:procurement:procurementrequest-submit',
+            kwargs={'pk': request.id},
         )
 
+        response = self.client.post(submit_url)
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'бюджет' in response.data['error'].lower()
+        assert 'согласующ' in response.data['error'].lower()
+        assert DIRECTOR_PRIORITY in response.data['missing_priorities']
 
     def test_approve_by_department_head(self):
         """Тест одобрения заявки руководителем отдела."""
@@ -258,14 +252,18 @@ class TestProcurementWorkflow:
         Approval.objects.create(
             request=request,
             approver=self.dept_head,
-            role='department_head',
+            priority=HEAD_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
 
         self.client.force_authenticate(user=self.dept_head)
+        approve_url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': request.id},
+        )
 
         response = self.client.post(
-            f'/api/procurement/requests/{request.id}/approve/',
+            approve_url,
             {'comment': 'Одобряю'},
         )
 
@@ -294,14 +292,18 @@ class TestProcurementWorkflow:
         Approval.objects.create(
             request=request,
             approver=self.dept_head,
-            role='department_head',
+            priority=HEAD_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
 
         self.client.force_authenticate(user=self.dept_head)
+        reject_url = reverse(
+            'api:v1:procurement:procurementrequest-reject',
+            kwargs={'pk': request.id},
+        )
 
         response = self.client.post(
-            f'/api/procurement/requests/{request.id}/reject/',
+            reject_url,
             {'comment': 'Не обоснована необходимость'},
         )
 
@@ -339,20 +341,24 @@ class TestProcurementWorkflow:
         Approval.objects.create(
             request=request,
             approver=self.dept_head,
-            role='department_head',
+            priority=HEAD_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
         Approval.objects.create(
             request=request,
             approver=self.finance,
-            role='finance_manager',
+            priority=FINANCE_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
 
         # 1. Одобряет руководитель отдела
         self.client.force_authenticate(user=self.dept_head)
+        approve_url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': request.id},
+        )
         response = self.client.post(
-            f'/api/procurement/requests/{request.id}/approve/',
+            approve_url,
             {'comment': 'От отдела одобряю'},
         )
         assert response.status_code == status.HTTP_200_OK
@@ -364,7 +370,7 @@ class TestProcurementWorkflow:
         # 2. Одобряет финансовый менеджер
         self.client.force_authenticate(user=self.finance)
         response = self.client.post(
-            f'/api/procurement/requests/{request.id}/approve/',
+            approve_url,
             {'comment': 'От финансов одобряю'},
         )
         print(f"DEBUG 2: Response status: {response.status_code}")
@@ -390,16 +396,18 @@ class TestProcurementWorkflow:
         Approval.objects.create(
             request=request,
             approver=self.dept_head,
-            role='department_head',
+            priority=HEAD_PRIORITY,
             status=ApprovalStatus.PENDING,
         )
 
         # Пытаемся одобрить от лица другого пользователя
         self.client.force_authenticate(user=self.finance)
-
-        response = self.client.post(
-            f'/api/procurement/requests/{request.id}/approve/'
+        approve_url = reverse(
+            'api:v1:procurement:procurementrequest-approve',
+            kwargs={'pk': request.id},
         )
+
+        response = self.client.post(approve_url)
 
         # Должна быть ошибка - 404 или 403/400
         # 404 если заявка не в queryset, 403/400 если нет прав
@@ -423,9 +431,13 @@ class TestProcurementWorkflow:
         assert request.is_editable is False
 
         self.client.force_authenticate(user=self.requestor)
+        detail_url = reverse(
+            'api:v1:procurement:procurementrequest-detail',
+            kwargs={'pk': request.id},
+        )
 
         response = self.client.patch(
-            f'/api/procurement/requests/{request.id}/',
+            detail_url,
             {'title': 'Новое название'},
         )
 
