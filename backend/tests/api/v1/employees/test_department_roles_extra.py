@@ -19,15 +19,12 @@ User = get_user_model()
 # Helpers
 # =========================
 
-@pytest.fixture
 def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
-    """Fixture для создания пользователей."""
     extra = {
         "phone_number": _unique_phone(),
         "is_staff": staff,
         "send_activation_email": False,
     }
-    # добавим verified если поле есть
     try:
         User._meta.get_field("verified")
         extra["verified"] = verified

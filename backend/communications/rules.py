@@ -34,13 +34,11 @@ def is_chat_member(user, chat):
     if chat.type == "global":
         return True
     
-    # MIGRATION: Используем только ChatMembership для всех типов чатов
-    # Для любого типа чата проверяем активное membership
     return ChatMembership.objects.filter(
         chat=chat, 
         user=user, 
         is_active=True
-    ).exists()
+    ).exists() or chat.participants.filter(pk=user.pk).exists()
 
 
 @rules.predicate
@@ -191,8 +189,12 @@ def has_send_messages_permission(user, chat):
             )
             return result
         except ChatMembership.DoesNotExist:
-            # MIGRATION: Убрали fallback на participants
-            # После миграции все участники должны быть в ChatMembership
+            if chat.participants.filter(pk=user.pk).exists():
+                logger.warning(
+                    f"[has_send_messages_permission] fallback participant access: "
+                    f"user={user.id}, chat={chat.id}"
+                )
+                return True
             logger.warning(
                 f"[has_send_messages_permission] no membership found: "
                 f"user={user.id}, chat={chat.id}, denying access"
@@ -223,7 +225,7 @@ def is_message_author(user, message):
     if message is None:
         return False
     
-    return message.author == user or message.sender == user
+    return message.author == user or getattr(message, 'sender', None) == user
 
 
 @rules.predicate

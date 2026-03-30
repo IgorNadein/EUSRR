@@ -7,6 +7,7 @@ from rest_framework import serializers
 from procurement.constants import get_default_approval_step_name
 from procurement.models import (
     Approval,
+    Budget,
     Equipment,
     EquipmentCategory,
     MaintenanceRecord,
@@ -328,6 +329,54 @@ class EquipmentCategorySerializer(serializers.ModelSerializer):
         return obj.children.count()
 
 
+class BudgetSerializer(serializers.ModelSerializer):
+    """Сериализатор бюджета отдела."""
+
+    department_name = serializers.CharField(
+        source='department.name',
+        read_only=True
+    )
+    remaining_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        read_only=True
+    )
+    reserved_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        read_only=True
+    )
+    available_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        read_only=True
+    )
+    utilization_percentage = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        read_only=True
+    )
+
+    class Meta:
+        model = Budget
+        fields = [
+            'id',
+            'department',
+            'department_name',
+            'year',
+            'quarter',
+            'allocated_amount',
+            'spent_amount',
+            'remaining_amount',
+            'reserved_amount',
+            'available_amount',
+            'utilization_percentage',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = fields
+
+
 class EquipmentListSerializer(serializers.ModelSerializer):
     """Сериализатор для списка оборудования."""
 
@@ -496,8 +545,6 @@ class EquipmentListSerializer(serializers.ModelSerializer):
         - dept_head (начальник): только свой отдел, выбор ответственного из отдела
         - scoped (скоуп-право): только свой отдел, ответственный = начальник
         """
-        from employees.models import EmployeeDepartment
-
         request = self.context.get('request')
         user = request.user if request else None
 

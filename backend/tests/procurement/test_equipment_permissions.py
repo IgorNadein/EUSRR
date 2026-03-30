@@ -303,7 +303,7 @@ class TestEquipmentCreateAccess:
         """Неаутентифицированный пользователь не может создавать."""
         data = valid_equipment_data(category, dept_it)
         response = api_client.post(equipment_create_url(), data, format="json")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_admin_can_create(self, api_client, admin_user, category, dept_it):
         """Админ может создавать оборудование."""
@@ -769,7 +769,7 @@ class TestEquipmentViewAccess:
         """Неаутентифицированный не может просматривать."""
         equipment = make_equipment("Laptop", dept_it, category, dept_head)
         response = api_client.get(equipment_detail_url(equipment.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_any_authenticated_can_view_list(
         self, api_client, dept_member, category, dept_it, dept_head

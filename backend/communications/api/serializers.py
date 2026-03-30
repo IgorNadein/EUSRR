@@ -1,6 +1,7 @@
 """
 Serializers for Communications API
 """
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from ..models import (
@@ -128,6 +129,13 @@ class ChatDetailSerializer(serializers.ModelSerializer):
     is_pinned = serializers.SerializerMethodField()
     notifications_enabled = serializers.SerializerMethodField()
     last_read_message_id = serializers.SerializerMethodField()
+    context_content_type = serializers.PrimaryKeyRelatedField(
+        queryset=ContentType.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    include_all_employees = serializers.BooleanField(write_only=True, required=False)
     
     # NEW: context info
     context_type = serializers.CharField(source='context_content_type.model', read_only=True, allow_null=True)
@@ -139,7 +147,8 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             'id', 'type', 'name', 'description', 'avatar',
             'created_by', 'created_at',
             # NEW: universal fields
-            'context_object_id', 'context_type', 'context_app', 'flags', 'extra_data', 'include_all_users',
+            'context_content_type', 'context_object_id', 'context_type', 'context_app', 'flags', 'extra_data',
+            'include_all_users', 'include_all_employees',
             # DEPRECATED: для обратной совместимости (не удалять до полной миграции клиента)
             'is_main',
             # MIGRATION: Убрали 'participants', используем только memberships
@@ -148,6 +157,18 @@ class ChatDetailSerializer(serializers.ModelSerializer):
             'notifications_enabled', 'last_read_message_id'
         ]
         read_only_fields = ['created_at', 'created_by', 'context_type', 'context_app']
+
+    def create(self, validated_data):
+        include_all_employees = validated_data.pop('include_all_employees', None)
+        if include_all_employees is not None:
+            validated_data['include_all_users'] = include_all_employees
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        include_all_employees = validated_data.pop('include_all_employees', None)
+        if include_all_employees is not None:
+            validated_data['include_all_users'] = include_all_employees
+        return super().update(instance, validated_data)
     
     def get_participant_details(self, obj):
         """Детали участников

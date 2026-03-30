@@ -130,7 +130,7 @@ class TestCalendarPermissions:
         )
         
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['user_info']['id'] == user2.id
+        assert response.data['user']['id'] == user2.id
         assert response.data['distinction'] == 'viewer'
         
         # Теперь user2 должен видеть календарь
@@ -249,7 +249,7 @@ class TestCalendarPermissions:
         assert len(response.data) == 3  # owner + 2 участника
         
         # Проверяем роли
-        roles = {p['user_info']['id']: p['distinction'] for p in response.data}
+        roles = {p['user']['id']: p['distinction'] for p in response.data}
         assert roles[user1.id] == 'owner'
         assert roles[user2.id] == 'editor'
         assert roles[user3.id] == 'viewer'

@@ -16,9 +16,7 @@ User = get_user_model()
 # В этом проекте User == Employee (кастомная модель)
 Employee = User
 
-@pytest.fixture
 def make_user(email: str, is_staff: bool = False) -> User:
-    """Создаёт пользователя (Employee)."""
     return User.objects.create_user(
         email=email,
         password="pwd12345",

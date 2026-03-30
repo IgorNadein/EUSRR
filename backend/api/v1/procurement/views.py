@@ -11,6 +11,7 @@ from employees.models import Department
 from procurement.constants import ApprovalStatus, ProcurementStatus, EquipmentStatus
 from procurement.models import (
     Approval,
+    Budget,
     Equipment,
     EquipmentCategory,
     EquipmentTransferLog,
@@ -25,10 +26,12 @@ from procurement.services import ProcurementApprovalResolver, QRCodeGenerator
 from .permissions import (
     CanApproveProcurementRequest,
     CanManageEquipment,
+    CanManageEquipmentCategory,
     CanManageProcurementRequest,
     CanManageSupplier,
 )
 from .serializers import (
+    BudgetSerializer,
     EquipmentCategorySerializer,
     EquipmentDetailSerializer,
     EquipmentListSerializer,
@@ -746,6 +749,10 @@ class EquipmentCategoryViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering = ['name']
 
+    def get_permissions(self):
+        """Чтение доступно всем сотрудникам, изменение только уполномоченным."""
+        return [CanManageEquipmentCategory()]
+
     @action(detail=True, methods=['get'])
     def children(self, request, pk=None):
         """Получить подкатегории."""
@@ -1019,6 +1026,7 @@ class EquipmentViewSet(viewsets.ModelViewSet):
 
         to_department_id = request.data.get('to_department')
         to_person_id = request.data.get('to_person')
+        to_location = request.data.get('to_location')
         reason = request.data.get('reason', '')
 
         if not to_department_id and not to_person_id:
@@ -1058,6 +1066,9 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         else:
             to_person = from_person
 
+        if to_location:
+            equipment.location = to_location
+
         equipment.save()
 
         # Создаём лог перевода
@@ -1067,6 +1078,7 @@ class EquipmentViewSet(viewsets.ModelViewSet):
             to_department=to_department,
             from_person=from_person,
             to_person=to_person,
+            to_location=to_location or '',
             reason=reason,
             created_by=request.user
         )
@@ -1401,3 +1413,68 @@ class ProcurementStatsViewSet(viewsets.ViewSet):
             })
 
         return Response(result)
+
+
+class BudgetViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet для просмотра бюджетов отдела."""
+
+    queryset = Budget.objects.select_related('department')
+    serializer_class = BudgetSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['department', 'year', 'quarter']
+    ordering = ['-year', '-quarter', 'department__name']
+
+    def get_permissions(self):
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+
+        if user.is_superuser or user.is_staff:
+            return queryset
+
+        headed_departments = user.headed_departments.all()
+        if headed_departments.exists():
+            return queryset.filter(department__in=headed_departments)
+
+        if self.action == 'my_department':
+            return queryset
+
+        return queryset.none()
+
+    def list(self, request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.is_staff or user.headed_departments.exists()):
+            return Response(
+                {'detail': 'Нет доступа к бюджетам отделов.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='my-department')
+    def my_department(self, request):
+        """Бюджет текущего отдела пользователя на текущий квартал."""
+        user_departments = request.user.departments.all()
+        department = user_departments.first()
+        if department is None:
+            return Response(
+                {'detail': 'Пользователь не состоит ни в одном отделе.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        now = timezone.now()
+        quarter = (now.month - 1) // 3 + 1
+        budget = self.get_queryset().filter(
+            department=department,
+            year=now.year,
+            quarter=quarter,
+        ).first()
+        if budget is None:
+            return Response(
+                {'detail': 'Бюджет на текущий квартал не найден.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = self.get_serializer(budget)
+        return Response(serializer.data)

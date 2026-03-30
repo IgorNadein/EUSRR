@@ -91,6 +91,8 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         queryset = Chat.objects.filter(
             Q(memberships__user=user, memberships__is_active=True)
+            | Q(participants=user)
+            | Q(participants=user)
             | Q(include_all_users=True)
             | Q(created_by=user)  # Создатель всегда видит свои чаты
         ).select_related(
@@ -135,6 +137,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             chat.save()
         else:
             role = 'admin' if chat.type in ['group', 'channel', 'announcement'] else 'member'
+            chat.participants.add(request.user)
             ChatMembership.objects.create(
                 chat=chat,
                 user=request.user,
@@ -151,6 +154,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                         continue
                     try:
                         participant = User.objects.get(id=user_id)
+                        chat.participants.add(participant)
                         ChatMembership.objects.get_or_create(
                             chat=chat,
                             user=participant,
@@ -233,6 +237,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             membership.is_active = False
             membership.left_at = timezone.now()
             membership.save(update_fields=['is_active', 'left_at'])
+            chat.participants.remove(request.user)
         else:
             return Response(
                 {'error': 'You are not a member of this chat'},
@@ -303,6 +308,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 membership.left_at = None
                 membership.invited_by = request.user  # Обновляем кто пригласил повторно
                 membership.save()
+            chat.participants.add(user_to_add)
         
         return Response({
             'ok': True,
@@ -360,6 +366,7 @@ class ChatViewSet(viewsets.ModelViewSet):
         membership.is_active = False
         membership.left_at = timezone.now()
         membership.save(update_fields=['is_active', 'left_at'])
+        chat.participants.remove(user_to_remove)
         
         return Response({
             'ok': True,
@@ -781,6 +788,20 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         # Основная логика: поддерживаем message_id
         message_id = request.data.get('message_id')
+        upto_ts = request.data.get('upto_ts')
+
+        if not message_id and not upto_ts:
+            last_msg = chat.messages.filter(is_deleted=False).order_by('-created_at').first()
+            if not last_msg:
+                return Response({'ok': True, 'last_read_message_id': None})
+
+            self._auto_mark_read(chat, request.user, [last_msg])
+            return Response({
+                'ok': True,
+                'last_read_message_id': last_msg.id,
+                'deprecated': True,
+                'message': 'message_id was not provided, latest message was marked as read.'
+            })
 
         if message_id:
             try:
@@ -803,7 +824,6 @@ class ChatViewSet(viewsets.ModelViewSet):
                 )
 
         # Fallback: если передан upto_ts (старая логика)
-        upto_ts = request.data.get('upto_ts')
         if upto_ts:
             try:
                 ts_value = float(upto_ts)
@@ -890,6 +910,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         # MIGRATION: Чаты где пользователь состоит через memberships (убрали participants)
         accessible_chats = Chat.objects.filter(
             Q(memberships__user=user, memberships__is_active=True)
+            | Q(participants=user)
             | Q(include_all_users=True)
         ).distinct()
         
@@ -936,6 +957,16 @@ class MessageViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        reply_to_message = None
+        if reply_to_id:
+            try:
+                reply_to_message = chat.messages.get(pk=int(reply_to_id), is_deleted=False)
+            except (Message.DoesNotExist, ValueError):
+                return Response(
+                    {'error': 'Reply target not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
         # Получаем файлы
         files = []
         for key in request.FILES:
@@ -955,7 +986,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 chat=chat,
                 author=request.user,
                 content=content,
-                reply_to_id=reply_to_id if reply_to_id else None,
+                reply_to=reply_to_message,
                 has_attachments=len(files) > 0
             )
 

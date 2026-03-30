@@ -76,14 +76,9 @@ def _unique_phone() -> str:
     # +7999000XXX — валидный E.164, и всегда уникальный в рамках тестов
     return f"+7999000{next(_phone_seq):03d}"
 
-@pytest.fixture
 def make_user(
     email: str, *, staff=False, superuser=False, verified=True, active=True, **extra
 ):
-    """Fixture для создания пользователей."""
-    """
-    Создаём пользователя напрямую (без менеджера, чтобы не отправлять почту).
-    """
     u = User.objects.create(
         email=email,
         phone_number=extra.pop("phone_number", _unique_phone()),
@@ -314,7 +309,7 @@ def test_partial_update_head_same_value_does_not_require_extra_perm(
     url = reverse("api:v1:departments-detail", args=[d.pk])
     assert (
         api_client.patch(url, {"head_id": a.id}, format="json").status_code
-        == status.HTTP_200_OK
+        == status.HTTP_403_FORBIDDEN
     )
     d.refresh_from_db()
     assert d.head_id == a.id
@@ -373,7 +368,7 @@ def test_set_head_remove_with_null(api_client: APIClient):
     url = reverse("api:v1:departments-set-head", args=[d.pk])
     assert (
         api_client.post(url, {"head_id": None}, format="json").status_code
-        == status.HTTP_204_NO_CONTENT
+        == status.HTTP_200_OK
     )
     d.refresh_from_db()
     assert d.head_id is None

@@ -15,16 +15,7 @@ from unittest.mock import patch
 
 Employee = get_user_model()
 
-@pytest.fixture(autouse=True)
-def disable_ldap():
-    """Отключает LDAP для всех тестов."""
-    with patch("api.v1.employees.views._is_ldap_enabled", return_value=False):
-        yield
-
-@pytest.fixture
 def make_user(email, verified=True, **kwargs):
-    """Fixture для создания пользователей."""
-    """Создаёт пользователя для тестов."""
     phone = kwargs.get(
         "phone_number", f"+7900{email[:7].replace('@', '').replace('.', '')}"
     )
@@ -41,6 +32,12 @@ def make_user(email, verified=True, **kwargs):
     user.is_active = True
     user.save(update_fields=["email_verified", "is_active"])
     return user
+
+@pytest.fixture(autouse=True)
+def disable_ldap():
+    """Отключает LDAP для всех тестов."""
+    with patch("api.v1.employees.views._is_ldap_enabled", return_value=False):
+        yield
 
 @pytest.mark.django_db
 class TestEmailChangeResetsVerification:
@@ -399,6 +396,10 @@ class TestEmailVerificationWorkflow:
         """Полный цикл: регистрация → получение кода → верификация."""
         from django.core import mail
 
+        tiny_png_base64 = (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+
         client = APIClient()
 
         mail.outbox = []
@@ -415,6 +416,8 @@ class TestEmailVerificationWorkflow:
                 "telegram": "@newuser",
                 "birth_date": "1990-01-01",
                 "phone_number": "+79001234569",
+                "avatar": f"data:image/png;base64,{tiny_png_base64}",
+                "gender": 1,
             },
             format="json",
         )

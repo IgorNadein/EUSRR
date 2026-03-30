@@ -127,21 +127,21 @@ else:
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 
-# LDAP database для django-ldapdb (используется только для WRITE операций)
-# Конфигурация берется из переменных окружения LDAP_URI, LDAP_BIND_DN и т.д.
-# которые определены ниже в разделе LDAP
-DATABASES["ldap"] = {
-    "ENGINE": "ldapdb.backends.ldap",
-    "NAME": os.getenv("LDAP_URI", "ldap://localhost:389"),
-    "USER": os.getenv("LDAP_BIND_DN", "cn=admin,dc=eusrr,dc=local"),
-    "PASSWORD": os.getenv("LDAP_BIND_PASSWORD", "AdminPassword123!"),
-}
+# LDAP write-back (django-ldapdb): подключается только при LDAP_WRITE_ENABLED=true.
+# Для LDAP-аутентификации (ldap3) отдельная БД не нужна.
+LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
 
-# Отключение проверки SSL сертификата для LDAP (для разработки)
-import ldap
-ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+if LDAP_WRITE_ENABLED:
+    DATABASES["ldap"] = {
+        "ENGINE": "ldapdb.backends.ldap",
+        "NAME": os.getenv("LDAP_URI", "ldap://localhost:389"),
+        "USER": os.getenv("LDAP_BIND_DN", "cn=admin,dc=eusrr,dc=local"),
+        "PASSWORD": os.getenv("LDAP_BIND_PASSWORD", "AdminPassword123!"),
+    }
+    import ldap
+    ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
 
-# Database router для направления LDAP моделей в LDAP database
+# Router всегда нужен: предотвращает создание таблиц для LDAP-моделей в default DB
 DATABASE_ROUTERS = ["eusrr_backend.db_routers.LdapRouter"]
 
 # -----------------------------------------------------------------------------
@@ -426,8 +426,7 @@ LDAP_PHONE_ATTRS = tuple(
     _split_env_list(os.getenv("LDAP_PHONE_ATTRS", "mobile,telephoneNumber"))
 )
 
-# WRITE-BACK
-LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
+# WRITE-BACK (LDAP_WRITE_ENABLED определён выше, в секции БАЗА ДАННЫХ)
 LDAP_WRITE_DN = os.getenv("LDAP_WRITE_DN", LDAP_BIND_DN)
 LDAP_WRITE_PASSWORD = os.getenv("LDAP_WRITE_PASSWORD", LDAP_BIND_PASSWORD)
 LDAP_WRITE_TIMEOUT = int(os.getenv("LDAP_WRITE_TIMEOUT", "5"))

@@ -83,7 +83,7 @@ class TestProcurementRequestAPI:
         """Тест: неавторизованный доступ запрещен."""
         url = reverse('procurement:procurementrequest-list')
         response = api_client.get(url)
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_list_requests_authorized(
         self, api_client, user, procurement_request
@@ -141,7 +141,8 @@ class TestProcurementRequestAPI:
         assert response.status_code == status.HTTP_200_OK
         assert response.data['id'] == procurement_request.id
         assert response.data['title'] == "Тестовая заявка"
-        assert 'budget_available' in response.data
+        assert 'total_cost' in response.data
+        assert 'required_approval_priorities' in response.data
         assert 'is_editable' in response.data
 
     def test_update_own_request_draft(

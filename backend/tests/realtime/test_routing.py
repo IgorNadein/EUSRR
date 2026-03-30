@@ -23,15 +23,9 @@ def test_websocket_urlpatterns_structure():
 
 def test_websocket_uses_user_consumer():
     """Проверяем, что WebSocket использует UserConsumer."""
-    # Проверяем первый паттерн
     first_pattern = websocket_urlpatterns[0]
-    
-    # Получаем callback (consumer)
-    consumer_class = first_pattern.callback.keywords.get('consumer_class')
-    
-    # Может быть обернут в as_asgi()
-    # Проверяем тип или имя
-    assert 'UserConsumer' in str(first_pattern.callback)
+    assert callable(first_pattern.callback)
+    assert 'UserConsumer' in repr(first_pattern.callback)
 
 
 def test_url_router_accepts_patterns():

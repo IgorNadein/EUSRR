@@ -245,7 +245,7 @@ class TestProcurementRequestCreateAccess:
         """Неаутентифицированный пользователь не может создавать."""
         data = valid_request_data(dept_it)
         response = api_client.post(request_list_url(), data, format="json")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_admin_can_create_in_any_dept(
         self, api_client, admin_user, dept_it, dept_hr
@@ -611,7 +611,7 @@ class TestProcurementRequestViewAccess:
     def test_unauthenticated_cannot_view_list(self, api_client):
         """Неаутентифицированный пользователь не видит список."""
         response = api_client.get(request_list_url())
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_unauthenticated_cannot_view_detail(
         self, api_client, dept_member, dept_it
@@ -619,7 +619,7 @@ class TestProcurementRequestViewAccess:
         """Неаутентифицированный пользователь не видит детали."""
         request = make_procurement_request("Заявка", dept_it, dept_member)
         response = api_client.get(request_detail_url(request.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_user_sees_own_requests(
         self, api_client, dept_member, dept_it

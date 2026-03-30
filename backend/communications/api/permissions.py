@@ -94,8 +94,8 @@ class MessagePermission(permissions.BasePermission):
                     chat
                 )
             except Chat.DoesNotExist:
-                # Если чат не найден, DRF вернет 404 позже
-                return False
+                # Если чат не найден, сам view вернет 404.
+                return True
 
         return True
     

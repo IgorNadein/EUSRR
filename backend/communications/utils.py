@@ -83,10 +83,13 @@ def user_can_access_chat(chat: Chat, user) -> bool:
     if chat.type == "global":
         return True
 
+    def _has_direct_participation() -> bool:
+        return chat.participants.filter(pk=user.pk).exists()
+
     if chat.type == "private":
         return ChatMembership.objects.filter(
             chat=chat, user=user, is_active=True
-        ).exists()
+        ).exists() or _has_direct_participation()
 
     if chat.type == "group":
         # Групповые чаты с контекстным объектом используют resolver
@@ -103,14 +106,14 @@ def user_can_access_chat(chat: Chat, user) -> bool:
                 )
         return ChatMembership.objects.filter(
             chat=chat, user=user, is_active=True
-        ).exists()
+        ).exists() or _has_direct_participation()
 
     if chat.type in ("channel", "announcement"):
         if chat.include_all_users:
             return user.is_active
         return ChatMembership.objects.filter(
             chat=chat, user=user, is_active=True
-        ).exists()
+        ).exists() or _has_direct_participation()
     
     if chat.type == "comments":
         # Чаты-комментарии используют context-based доступ через get_participants()
@@ -128,6 +131,6 @@ def user_can_access_chat(chat: Chat, user) -> bool:
                 return False
         return ChatMembership.objects.filter(
             chat=chat, user=user, is_active=True
-        ).exists()
+        ).exists() or _has_direct_participation()
 
     return False

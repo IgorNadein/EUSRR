@@ -108,7 +108,7 @@ class TestSupplierList:
         api_client.force_authenticate(user=user)
         url = reverse('api:v1:procurement:supplier-list')
         
-        response = api_client.get(url, {'search': 'компьютер'})
+        response = api_client.get(url, {'search': supplier.inn})
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) >= 1
 

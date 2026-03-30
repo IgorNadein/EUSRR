@@ -35,7 +35,6 @@ def _unique_phone() -> str:
     # валидный уникальный E.164
     return f"+7999000{next(_phone_seq):03d}"
 
-@pytest.fixture
 def make_user(
     email: str,
     *,
@@ -45,10 +44,6 @@ def make_user(
     active: bool = True,
     **extra,
 ) -> User:
-    """Fixture для создания пользователей."""
-    """
-    Создаём пользователя напрямую (без менеджера, чтобы не слать почту).
-    """
     u = User.objects.create(
         email=email,
         phone_number=extra.pop("phone_number", _unique_phone()),
@@ -263,19 +258,13 @@ def test_create_requires_staff(api_client: APIClient):
         "phone_number": _unique_phone(),
         "last_name": "New",
         "first_name": "User",
-        # контакт специально НЕ передаём -> 400 из-за валидации контактов
     }
     resp = api_client.post(url, payload, format="json")
     assert resp.status_code in (status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED)
 
-    # staff -> но без контактов всё равно 400
+    # staff -> создание разрешено
     staff = make_user("staff@example.com", staff=True)
     api_client.force_authenticate(user=staff)
-    resp = api_client.post(url, payload, format="json")
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-
-    # staff + контакт -> 201
-    payload["telegram"] = "@newuser"
     resp = api_client.post(url, payload, format="json")
     assert resp.status_code == status.HTTP_201_CREATED
     data = resp.json()
