@@ -2,6 +2,7 @@
 
 import { AppShell } from "../../components/AppShell";
 import { apiClient } from "@/lib/api";
+import { Modal } from "@/components/ui/Modal";
 import { useUser } from "@/contexts/UserContext";
 import { canManageRequests, canProcessRequests } from "@/lib/permissions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -128,6 +129,7 @@ export default function RequestsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [ordering, setOrdering] = useState("-created_at");
   const [attachmentPreview, setAttachmentPreview] = useState<{ url: string; name: string } | null>(null);
+  const [detailsRequest, setDetailsRequest] = useState<Request | null>(null);
   const [swipeMode, setSwipeMode] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -574,6 +576,33 @@ export default function RequestsPage() {
     setActionError(null);
   };
 
+  const renderUserBadge = (person: User, large = false) => {
+    const personLink = userProfileLink(person);
+    const personName = displayUserName(person);
+    const chipContent = (
+      <>
+        {person.avatar ? (
+          <img src={person.avatar} alt={personName} className={`${large ? "h-7 w-7" : "h-6 w-6"} shrink-0 rounded-full object-cover ring-1 ring-gray-200`} />
+        ) : (
+          <span className={`${large ? "h-7 w-7 text-xs" : "h-6 w-6 text-[11px]"} flex shrink-0 items-center justify-center rounded-full bg-sky-100 font-semibold text-sky-700 ring-1 ring-sky-200`}>
+            {(person.first_name?.[0] || person.last_name?.[0] || "?").toUpperCase()}
+          </span>
+        )}
+        <span className="break-words">{personName}</span>
+      </>
+    );
+
+    return personLink ? (
+      <Link href={personLink} className={`inline-flex max-w-full items-center gap-2 rounded-full bg-gray-100 ${large ? "px-3 py-1.5 text-sm" : "px-2.5 py-1 text-xs"} font-medium text-gray-700 ring-1 ring-gray-200 hover:bg-gray-200`}>
+        {chipContent}
+      </Link>
+    ) : (
+      <span className={`inline-flex max-w-full items-center gap-2 rounded-full bg-gray-100 ${large ? "px-3 py-1.5 text-sm" : "px-2.5 py-1 text-xs"} font-medium text-gray-700 ring-1 ring-gray-200`}>
+        {chipContent}
+      </span>
+    );
+  };
+
   return (
     <AppShell>
       {loading ? (
@@ -855,10 +884,17 @@ export default function RequestsPage() {
                                 )}
                               </div>
 
-                              <h3 className="truncate text-sm font-semibold text-gray-900">
-                                <span className="text-gray-600">{requestTypeLabel}:</span>{" "}
-                                <span className="text-gray-900">{requestTitle}</span>
-                              </h3>
+                              <button
+                                type="button"
+                                onClick={() => setDetailsRequest(item)}
+                                className="block w-full text-left"
+                                aria-label={`Открыть полную информацию по заявлению ${requestTitle}`}
+                              >
+                                <h3 className={`${rowOpen ? "line-clamp-3 break-words" : "truncate"} text-sm font-semibold text-gray-900 transition hover:text-gray-700`}>
+                                  <span className="text-gray-600">{requestTypeLabel}:</span>{" "}
+                                  <span className="text-gray-900">{requestTitle}</span>
+                                </h3>
+                              </button>
                               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                                 <span>Период: {item.date_from ? formatDate(item.date_from) : "—"}{item.date_to ? ` — ${formatDate(item.date_to)}` : ""}</span>
                               </div>
@@ -872,7 +908,7 @@ export default function RequestsPage() {
                           </div>
 
                           {summaryText ? (
-                            <p className="mt-3 text-sm text-gray-700">{summaryText}</p>
+                            <p className={`${rowOpen ? "line-clamp-10 break-words" : "line-clamp-3"} mt-3 text-sm text-gray-700`}>{summaryText}</p>
                           ) : null}
 
                           <div className={`${summaryText ? "mt-3" : "mt-2"} flex flex-wrap items-center gap-1.5`}>
@@ -1131,6 +1167,157 @@ export default function RequestsPage() {
           )}
         </section>
       )}
+
+      <Modal
+        isOpen={Boolean(detailsRequest)}
+        onClose={() => setDetailsRequest(null)}
+        title="Полная информация по заявлению"
+        size="lg"
+      >
+        {detailsRequest ? (
+          (() => {
+            const detailAuthor = detailsRequest.employee || detailsRequest.created_by;
+            const detailApprover = detailsRequest.approver || detailsRequest.assigned_to;
+            const detailStatusKey = String(detailsRequest.status || "").toLowerCase();
+            const detailTypeKey = String(detailsRequest.type || detailsRequest.request_type || "").toLowerCase();
+            const detailStatus = statusMeta[detailStatusKey] ?? defaultStatusMeta;
+            const detailTypeLabel = requestTypeLabels[detailTypeKey] || String(detailsRequest.type || detailsRequest.request_type || "Другое");
+            const detailTitle = detailsRequest.display_title || detailsRequest.title || "Без заголовка";
+            const detailSummary = detailsRequest.comment || detailsRequest.description;
+            const detailDepartments = (detailsRequest.departments || [])
+              .map((id) => departmentNameMap.get(Number(id)) || `Отдел #${id}`);
+            const detailRecipients = detailsRequest.recipients || [];
+            const detailCcUsers = detailsRequest.cc_users || [];
+            const detailAttachmentUrl = detailsRequest.attachment_url || detailsRequest.attachment || "";
+            const detailAttachmentName = detailAttachmentUrl ? decodeURIComponent(detailAttachmentUrl.split("/").pop() || "Вложение") : "";
+
+            return (
+              <div className="space-y-5 text-sm text-gray-700">
+                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 ring-1 ring-sky-100">
+                        {detailTypeLabel}
+                      </span>
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs ring-1 ${detailStatus.className}`}>
+                        {detailStatus.label}
+                      </span>
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900 break-words">{detailTitle}</h2>
+                      {detailSummary ? (
+                        <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{detailSummary}</div>
+                      ) : (
+                        <p className="mt-3 text-sm text-gray-400">Описание отсутствует</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Даты</p>
+                    <div className="mt-3 space-y-2">
+                      <div>
+                        <p className="text-xs text-gray-400">Период</p>
+                        <p className="mt-1 break-words text-sm text-gray-900">{detailsRequest.date_from ? formatDate(detailsRequest.date_from) : "—"}{detailsRequest.date_to ? ` — ${formatDate(detailsRequest.date_to)}` : ""}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Создано</p>
+                        <p className="mt-1 text-sm text-gray-900">{formatDate(detailsRequest.created_at) || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Обновлено</p>
+                        <p className="mt-1 text-sm text-gray-900">{formatDate(detailsRequest.updated_at) || "—"}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Участники</p>
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <p className="text-xs text-gray-400">Автор</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {detailAuthor ? renderUserBadge(detailAuthor, true) : <span className="text-sm text-gray-400">—</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Решающий</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {detailApprover ? renderUserBadge(detailApprover, true) : <span className="text-sm text-gray-400">—</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Отделы</p>
+                  {detailDepartments.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {detailDepartments.map((department) => (
+                        <span key={department} className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 ring-1 ring-gray-200">
+                          {department}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-400">Отделы не указаны</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Получатели</p>
+                  {detailRecipients.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {detailRecipients.map((recipient) => (
+                        <div key={recipient.id}>{renderUserBadge(recipient, true)}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-400">Получатели не указаны</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">В копии</p>
+                  {detailCcUsers.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {detailCcUsers.map((ccUser) => (
+                        <div key={ccUser.id}>{renderUserBadge(ccUser, true)}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-400">Копия не указана</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Вложение</p>
+                  {detailAttachmentUrl ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setAttachmentPreview({ url: detailAttachmentUrl, name: detailAttachmentName })}
+                        className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100"
+                      >
+                        <Paperclip size={15} />
+                        <span className="break-all">{detailAttachmentName}</span>
+                      </button>
+                      <a href={detailAttachmentUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-sky-700 hover:text-sky-800 hover:underline">
+                        Открыть в новой вкладке
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-400">Вложение отсутствует</p>
+                  )}
+                </div>
+              </div>
+            );
+          })()
+        ) : null}
+      </Modal>
 
       {/* ===== Modal create/edit ===== */}
       {isModalOpen && (

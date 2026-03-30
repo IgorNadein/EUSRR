@@ -232,7 +232,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
         </div>
 
         {/* title */}
-        <h3 className="mb-2 text-base font-bold text-gray-900">
+        <h3 className="mb-2 break-all text-base font-bold text-gray-900">
           <span className="text-gray-500">{typeLabel}:</span> {req.display_title || req.title || "Без заголовка"}
         </h3>
 
@@ -244,7 +244,7 @@ export default function SwipeApprovalMode({ requests, onApprove, onReject, onClo
 
         {/* description */}
         {summaryText && (
-          <div className={`rounded-lg bg-gray-50 p-3 text-sm leading-relaxed text-gray-700 ${detailOpen ? "" : "line-clamp-3"}`}>
+          <div className={`rounded-lg bg-gray-50 p-3 text-sm leading-relaxed text-gray-700 break-all ${detailOpen ? "" : "line-clamp-3"}`}>
             {summaryText}
           </div>
         )}
