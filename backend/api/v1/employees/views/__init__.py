@@ -10,6 +10,7 @@ from .auth import RegisterAPIView, ResendEmailAPIView, VerifyEmailAPIView
 from .departments import DepartmentViewSet
 from .employees import EmployeeViewSet
 from .groups import GroupViewSet
+from .mixins import _is_ldap_enabled
 from .positions import PositionViewSet
 from .roles import DepartmentRoleViewSet
 from .skills import SkillViewSet
@@ -25,4 +26,5 @@ __all__ = [
     "RegisterAPIView",
     "VerifyEmailAPIView",
     "ResendEmailAPIView",
+    "_is_ldap_enabled",
 ]

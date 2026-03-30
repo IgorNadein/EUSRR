@@ -1,10 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 export default function VerifyEmail() {
+  return (
+    <Suspense fallback={<VerifyEmailFallback />}>
+      <VerifyEmailContent />
+    </Suspense>
+  );
+}
+
+function VerifyEmailFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white flex items-center justify-center px-6">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center ring-1 ring-gray-100">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-sky-600"></div>
+        <p className="mt-3 text-sm text-gray-500">Загрузка...</p>
+      </div>
+    </div>
+  );
+}
+
+function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get('email');
@@ -54,7 +73,7 @@ export default function VerifyEmail() {
       }
 
       setSuccess(true);
-      
+
       // Редирект на страницу входа через 2 секунды
       setTimeout(() => {
         router.push('/login?verified=true');

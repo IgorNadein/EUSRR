@@ -75,6 +75,10 @@ class ChatReadState(models.Model):
         msg_id = self.last_read_message_id if self.last_read_message_id else '-'
         return f"read:{self.user_id}@{self.chat_id} → msg#{msg_id}"
 
+    @property
+    def last_read_at(self):
+        return self.updated_at
+
 
 class Chat(models.Model):
     CHAT_TYPE_CHOICES = [
@@ -351,6 +355,14 @@ class Chat(models.Model):
         if self.type == "announcement":
             return self.name or "Объявления"
         return "Глобальный чат"
+
+    @property
+    def include_all_employees(self):
+        return self.include_all_users
+
+    @include_all_employees.setter
+    def include_all_employees(self, value):
+        self.include_all_users = value
 
 
 class ChatUserSettings(models.Model):

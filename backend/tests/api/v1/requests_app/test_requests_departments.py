@@ -55,6 +55,14 @@ def _random_email(prefix: str) -> str:
     return f"{prefix}-{get_random_string(6).lower()}@example.com"
 
 
+def _results(payload: Any):
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict) and "results" in payload:
+        return payload["results"] or []
+    return []
+
+
 @pytest.fixture
 def two_departments(db):
     d1 = Department.objects.create(name=f"Dept A {get_random_string(4)}")
@@ -118,7 +126,7 @@ def test_dept_viewer_sees_only_own_department_requests(
     client = auth_client(manager)
     resp = client.get(API_BASE)
     assert resp.status_code == 200, resp.content
-    items = resp.json()
+    items = _results(resp.json())
     ids = {x["id"] for x in items}
 
     assert data["req1"].id in ids, "должен видеть заявки своего отдела"
@@ -160,6 +168,8 @@ def test_dept_processor_can_approve_own_department_request(
 
     for code in ("can_process_requests",):
         _grant_dept_perm(processor, data["dept1"], code)
+
+    data["req1"].recipients.add(processor)
 
     client = auth_client(processor)
     resp = client.post(f"{API_BASE}{data['req1'].id}/approve/")

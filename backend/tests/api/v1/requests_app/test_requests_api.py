@@ -177,15 +177,17 @@ def test_detail_admin_and_manager_can_see_any(
 
 
 def test_create_regular_user_forces_employee_and_default_status(
-    auth_client, regular_user: models.Model
+    auth_client, regular_user: models.Model, make_user
 ) -> None:
     """POST: обычному пользователю принудительно проставляется employee=текущий и дефолтный статус."""
+    recipient = make_user(email="recipient-regular@example.com")
     client = auth_client(regular_user)
     payload = {
         "type": RequestType.VACATION,
         "comment": "Отпуск на недельку",
         "employee": 999,
         "status": RequestStatus.APPROVED,
+        "recipient_ids": [recipient.id],
     }
     resp = client.post(API_BASE, data=payload, format="json")
     assert resp.status_code == 201
@@ -204,8 +206,14 @@ def test_create_admin_can_set_employee(
 ) -> None:
     """POST: админ может создавать заявку для другого пользователя."""
     other = make_user(email="y@example.com")
+    recipient = make_user(email="recipient-admin@example.com")
     client = auth_client(admin_user)
-    payload = {"type": RequestType.SICK_LEAVE, "employee": other.id, "comment": "Больничный"}
+    payload = {
+        "type": RequestType.SICK_LEAVE,
+        "employee": other.id,
+        "comment": "Больничный",
+        "recipient_ids": [recipient.id],
+    }
     resp = client.post(API_BASE, data=payload, format="json")
     assert resp.status_code == 201
     assert str(resp.json()["employee"]["id"]) == str(other.id)
@@ -217,11 +225,14 @@ def test_create_admin_can_set_employee(
 
 
 def test_update_own_pending_ok_and_final_forbidden(
-    auth_client, regular_user: models.Model, make_request
+    auth_client, regular_user: models.Model, make_request, make_user
 ) -> None:
     """PATCH: владелец правит не финальную заявку; финальную — нельзя (403/400)."""
+    recipient = make_user(email="update-recipient@example.com")
     pending = make_request(employee=regular_user, status=RequestStatus.PENDING)
     final = make_request(employee=regular_user, status=RequestStatus.APPROVED)
+    pending.recipients.add(recipient)
+    final.recipients.add(recipient)
 
     client = auth_client(regular_user)
     ok = client.patch(
@@ -277,6 +288,7 @@ def test_actions_permissions_and_effects(
     grant_model_perm(manager, "requests_app.change_request")  # или can_process_requests
 
     req = make_request(employee=owner, status=RequestStatus.PENDING)
+    req.recipients.add(manager)
 
     # Менеджер может approve
     mclient = auth_client(manager)
@@ -318,22 +330,19 @@ def test_comments_forbidden_for_regular_user(
     make_user,
     make_request,
 ) -> None:
-    """Обычный пользователь (без модельных прав) не может читать/создавать комментарии даже у своей заявки.
-
-    Ожидаем 403 на GET и 403 на POST.
-    """
+    """Владелец заявки может читать и создавать комментарии по своей заявке."""
     mine = make_request(employee=regular_user)
     client = auth_client(regular_user)
 
     get_resp = client.get(f"{API_BASE}{mine.id}/comments/")
-    assert get_resp.status_code == 403
+    assert get_resp.status_code == 200
 
     post_resp = client.post(
         f"{API_BASE}{mine.id}/comments/",
         data={"text": "мимопроходил"},
         format="json",
     )
-    assert post_resp.status_code == 403
+    assert post_resp.status_code == 201
 
 
 def test_comments_allowed_for_admin_and_manager(
@@ -345,9 +354,7 @@ def test_comments_allowed_for_admin_and_manager(
 ) -> None:
     """Проверяет доступ к комментариям:
     - Админ видит и создаёт.
-    - Менеджер с ТОЛЬКО чтением видит, но НЕ создаёт.
-    - Менеджер с чтением+добавлением — и видит, и создаёт.
-    - Менеджер с ТОЛЬКО добавлением — создаёт (чтение невлияет на добавление).
+    - Получатель заявки видит и создаёт как участник workflow.
     """
     owner = make_user(email="owner-comments@example.com")
     req = make_request(employee=owner)
@@ -364,53 +371,19 @@ def test_comments_allowed_for_admin_and_manager(
     )
     assert post_a.status_code == 201, "Админ должен уметь создавать комментарий"
 
-    # --- Менеджер: только право чтения комментариев ---
-    manager_view_only = make_user(email="manager-comments-view@example.com")
-    grant_model_perm(manager_view_only, "requests_app.view_requestcomment")
-    manager_view_only = _reload(manager_view_only)
+    recipient = make_user(email="manager-comments-recipient@example.com")
+    req.recipients.add(recipient)
 
-    mclient_v = auth_client(manager_view_only)
-    get_m_v = mclient_v.get(f"{API_BASE}{req.id}/comments/")
-    assert (
-        get_m_v.status_code == 200
-    ), "С правом view_requestcomment список должен быть доступен"
+    rclient = auth_client(recipient)
+    get_r = rclient.get(f"{API_BASE}{req.id}/comments/")
+    assert get_r.status_code == 200, "Получатель должен видеть комментарии"
 
-    post_m_v = mclient_v.post(
+    post_r = rclient.post(
         f"{API_BASE}{req.id}/comments/",
-        data={"text": "попытка без add"},
+        data={"text": "от получателя"},
         format="json",
     )
-    assert (
-        post_m_v.status_code == 403
-    ), "Одно чтение не даёт права создавать комментарий"
-
-    # --- Менеджер: добавляем право на добавление, теперь должно быть можно ---
-    grant_model_perm(manager_view_only, "requests_app.add_requestcomment")
-    manager_view_only = _reload(manager_view_only)
-
-    post_m_va = auth_client(manager_view_only).post(
-        f"{API_BASE}{req.id}/comments/",
-        data={"text": "от менеджера после выдачи add"},
-        format="json",
-    )
-    assert (
-        post_m_va.status_code == 201
-    ), "При наличии view+add создание должно быть разрешено"
-    assert post_m_va.json().get("text") == "от менеджера после выдачи add"
-
-    # --- Менеджер: только право добавления (без чтения) — ок ---
-    manager_add_only = make_user(email="manager-comments-add@example.com")
-    grant_model_perm(manager_add_only, "requests_app.add_requestcomment")
-    manager_view_only = _reload(manager_view_only)
-
-    post_m_a = auth_client(manager_add_only).post(
-        f"{API_BASE}{req.id}/comments/",
-        data={"text": "только add, без view"},
-        format="json",
-    )
-    assert (
-        post_m_a.status_code == 201
-    ), "Без прав на чтение комментарий свободно создается"
+    assert post_r.status_code == 201, "Получатель должен уметь создавать комментарий"
 
 
 # ------------------------------------------------------------------------------

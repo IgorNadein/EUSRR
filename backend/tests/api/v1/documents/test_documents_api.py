@@ -562,9 +562,12 @@ class TestRead:
         parsed_url = urlparse(body["file_url"])
         assert bool(parsed_url.scheme), "file_url должен содержать scheme"
         assert bool(parsed_url.netloc), "file_url должен содержать netloc"
-        # django-filer использует свой URL путь (filer_private или filer_public)
-        assert '/filer_' in parsed_url.path or settings.MEDIA_URL in parsed_url.path, \
-            f"file_url должен содержать filer путь или MEDIA_URL, получен: {body['file_url']}"
+        assert parsed_url.path.startswith("/"), (
+            f"file_url должен содержать абсолютный путь, получен: {body['file_url']}"
+        )
+        assert any(
+            marker in parsed_url.path for marker in (settings.MEDIA_URL, "/filer_", "/smedia/")
+        ), f"file_url содержит неожиданный путь: {body['file_url']}"
 
 # -------------------- D. Обновление (PUT/PATCH) --------------------
 

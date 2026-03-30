@@ -1,5 +1,39 @@
 # employees/apps.py
+import datetime
+
 from django.apps import AppConfig
+from django.conf import settings
+
+
+def _ensure_ldapdb_timezone_compat():
+    """Патч совместимости django-ldapdb 1.5.1 с Django 5.x.
+
+    django-ldapdb использует ``timezone.utc.localize(...)`` (pytz API),
+    но Django 5.x удалил ``django.utils.timezone.utc``.
+    Пробрасываем обёртку вокруг ``datetime.timezone.utc`` с методом ``localize``.
+    """
+    from django.utils import timezone
+
+    if hasattr(timezone, 'utc'):
+        return
+
+    class _Utc(datetime.tzinfo):
+        """Минимальная обёртка, совместимая с pytz-интерфейсом (localize)."""
+        ZERO = datetime.timedelta(0)
+
+        def utcoffset(self, dt):
+            return self.ZERO
+
+        def tzname(self, dt):
+            return 'UTC'
+
+        def dst(self, dt):
+            return self.ZERO
+
+        def localize(self, dt, is_dst=False):
+            return dt.replace(tzinfo=datetime.timezone.utc)
+
+    timezone.utc = _Utc()
 
 
 class EmployeesConfig(AppConfig):
@@ -8,9 +42,10 @@ class EmployeesConfig(AppConfig):
     def ready(self):
         import employees.signals  # Все сигналы (common, birthday, ldap)
         import employees.rules    # django-rules: регистрация предикатов и правил доступа
-        
-        # Патч для django-ldapdb: исправление бага с Value(1) в .exists()
-        self._patch_ldapdb_compiler()
+
+        if getattr(settings, 'LDAP_WRITE_ENABLED', False):
+            _ensure_ldapdb_timezone_compat()
+            self._patch_ldapdb_compiler()
     
     def _patch_ldapdb_compiler(self):
         """Патчит django-ldapdb для поддержки Value выражений.

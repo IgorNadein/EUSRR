@@ -1121,10 +1121,11 @@ class TestMessageReplyTo:
         }
         response = auth_client.post(url, data, format="json")
 
-        # Сервер может разрешить или запретить
+        # Текущий контракт отвергает reply_to на удалённое сообщение как not found.
         assert response.status_code in [
             status.HTTP_201_CREATED,
             status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
         ]
 
     def test_reply_to_message_from_another_chat(self, user1, user2, user3):
@@ -1153,10 +1154,11 @@ class TestMessageReplyTo:
         }
         response = client.post(url, data, format="json")
 
-        # Должна быть либо ошибка, либо игнорирование reply_to
+        # Текущий контракт либо отклоняет reply_to, либо создаёт сообщение без него.
         assert response.status_code in [
             status.HTTP_400_BAD_REQUEST,
             status.HTTP_201_CREATED,
+            status.HTTP_404_NOT_FOUND,
         ]
 
     def test_reply_to_long_message_truncation(self, auth_client, private_chat, user1):

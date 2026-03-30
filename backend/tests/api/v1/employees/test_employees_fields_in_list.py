@@ -21,7 +21,6 @@ def api():
 
 _phone_seq = itertools.count(3000)
 
-@pytest.fixture
 def make_user(
     email: str,
     *,
@@ -31,7 +30,6 @@ def make_user(
     active: bool = True,
     **extra,
 ) -> User:
-    """Fixture для создания пользователей."""
     u = User.objects.create(
         email=email,
         phone_number=extra.pop("phone_number", _unique_phone()),

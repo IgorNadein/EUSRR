@@ -19,18 +19,15 @@ def _unique_phone() -> str:
     base = 79000000000  # 79 + 9 нулей
     return str(base + User.objects.count())
 
-@pytest.fixture
 def make_user(email: str, staff: bool = False, verified: bool = True) -> User:
-    """Fixture для создания пользователей."""
-
     u = User.objects.create_user(
         email=email,
         password="pwd12345",
         phone_number=_unique_phone(),
         send_activation_email=False,
-        email_verified=True,
+        email_verified=verified,
+        is_staff=staff,
     )
-    # 👇 явная активация для тестов управленческих прав
     if not u.is_active:
         u.is_active = True
         u.save(update_fields=["is_active"])

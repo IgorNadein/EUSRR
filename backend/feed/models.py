@@ -135,10 +135,12 @@ class Post(models.Model):
     # --- бизнес-валидация ---
     def clean(self):
         super().clean()
-        has_text = bool((self.text or "").strip())
-        if not (has_text or self.image or self.attachment):
+        if not self.type:
+            self.type = TYPE_COMPANY
+        has_body = bool((self.body or "").strip())
+        if not (has_body or self.image or self.attachment):
             raise ValidationError(
-                {"text": "Нужно указать текст, изображение или файл."}
+                {"body": "Нужно указать текст, изображение или файл."}
             )
 
     def _delete_file(self, ffield: models.FileField):
@@ -158,12 +160,14 @@ class Post(models.Model):
 
     def save(self, *args, **kwargs):
         skip_validation = kwargs.pop("skip_validation", False)
+        if not self.type:
+            self.type = TYPE_COMPANY
         if not skip_validation:
             self.full_clean()
         old_image_name = old_attach_name = None
         if self.pk:
             try:
-                old = Comment.objects.only("image", "attachment").get(pk=self.pk)
+                old = Post.objects.only("image", "attachment").get(pk=self.pk)
                 if old.image and old.image.name != (
                     self.image.name if self.image else None
                 ):
@@ -172,7 +176,7 @@ class Post(models.Model):
                     self.attachment.name if self.attachment else None
                 ):
                     old_attach_name = old.attachment.name
-            except Comment.DoesNotExist:
+            except Post.DoesNotExist:
                 pass
 
         res = super().save(*args, **kwargs)

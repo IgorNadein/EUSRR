@@ -427,6 +427,35 @@ class CanManageEquipment(permissions.BasePermission):
         return False
 
 
+class CanManageEquipmentCategory(permissions.BasePermission):
+    """Права на справочник категорий оборудования.
+
+    Категории являются глобальным справочником, поэтому для чтения
+    достаточно аутентификации, а изменение доступно только staff/
+    superuser или пользователям с модельными правами.
+    """
+
+    def has_permission(self, request, view) -> bool:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+            return True
+
+        perm_map = {
+            'create': 'procurement.add_equipmentcategory',
+            'update': 'procurement.change_equipmentcategory',
+            'partial_update': 'procurement.change_equipmentcategory',
+            'destroy': 'procurement.delete_equipmentcategory',
+        }
+        permission = perm_map.get(getattr(view, 'action', None))
+        return bool(permission and user.has_perm(permission))
+
+
 class CanManageSupplier(permissions.BasePermission):
     """Проверка права на управление поставщиками."""
 

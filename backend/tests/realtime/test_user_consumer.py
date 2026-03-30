@@ -11,6 +11,7 @@
 """
 import pytest
 from channels.testing import WebsocketCommunicator
+from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 
 from communications.models import Chat, ChatMembership
@@ -45,8 +46,12 @@ class TestUserConsumerConnection:
     async def test_user_subscribes_to_chats(self, ws_communicator, user, test_chat):
         """При подключении пользователь подписывается на свои чаты."""
         # Создаем дополнительный чат
-        chat2 = Chat.objects.create(name="Second Chat", chat_type="group")
-        ChatMembership.objects.create(chat=chat2, user=user, role="member")
+        chat2 = await database_sync_to_async(Chat.objects.create)(
+            name="Second Chat", type="group"
+        )
+        await database_sync_to_async(ChatMembership.objects.create)(
+            chat=chat2, user=user, role="member"
+        )
         
         communicator = await ws_communicator(user=user)
         
@@ -143,8 +148,12 @@ class TestUserConsumerChatManagement:
     async def test_open_chat_without_access(self, ws_communicator, user, user2):
         """Попытка открыть чат без доступа возвращает ошибку."""
         # Создаем чат только для user2
-        chat = Chat.objects.create(name="Private Chat", chat_type="private")
-        ChatMembership.objects.create(chat=chat, user=user2, role="member")
+        chat = await database_sync_to_async(Chat.objects.create)(
+            name="Private Chat", type="private"
+        )
+        await database_sync_to_async(ChatMembership.objects.create)(
+            chat=chat, user=user2, role="member"
+        )
         
         communicator = await ws_communicator(user=user)
         

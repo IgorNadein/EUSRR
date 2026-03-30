@@ -286,9 +286,26 @@ class RequestWriteSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Валидация получателей и отделов"""
-        sent_to_all = attrs.get("sent_to_all_department", False)
-        recipient_ids = attrs.get("recipient_ids", [])
-        departments = attrs.get("departments", [])
+        sent_to_all = attrs.get(
+            "sent_to_all_department",
+            getattr(self.instance, "sent_to_all_department", False),
+        )
+
+        recipient_ids = attrs.get("recipient_ids")
+        if recipient_ids is None:
+            if self.instance is not None:
+                recipient_ids = list(
+                    self.instance.recipients.values_list("id", flat=True)
+                )
+            else:
+                recipient_ids = []
+
+        departments = attrs.get("departments")
+        if departments is None:
+            if self.instance is not None:
+                departments = list(self.instance.departments.all())
+            else:
+                departments = []
 
         # Если sent_to_all_department=True, должны быть указаны отделы
         if sent_to_all and not departments:

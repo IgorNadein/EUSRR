@@ -90,7 +90,7 @@ class TestRealtimeIntegration:
             f"notifications_{user.id}",
             {
                 "type": "notification_new",
-                "payload": {
+                "notification": {
                     "id": 1,
                     "title": "Test Notification",
                     "message": "Test notification message"
@@ -101,8 +101,8 @@ class TestRealtimeIntegration:
         # Пользователь должен получить уведомление
         notification = await communicator.receive_json_from(timeout=5)
         
-        assert notification["type"] == "notification_new"
-        assert notification["payload"]["title"] == "Test Notification"
+        assert notification["type"] == "notification"
+        assert notification["notification"]["title"] == "Test Notification"
         
         await communicator.disconnect()
     

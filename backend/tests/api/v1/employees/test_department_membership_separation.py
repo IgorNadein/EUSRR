@@ -10,6 +10,7 @@ from employees.models import (
     DepartmentPermission,
     EmployeeDepartment,
     Employee,
+    RoleAssignment,
 )
 
 # =========================
@@ -25,12 +26,7 @@ def _unique_phone_from_email(email: str) -> str:
     # "+79" + 9 цифр = 11-значный номер РФ
     return f"+79{n:09d}"
 
-@pytest.fixture
 def make_user(email: str, *, staff: bool = False, superuser: bool = False) -> Employee:
-    """Fixture для создания пользователей."""
-    """
-    Фабрика пользователя для тестов. Учитывает ограничение уникальности phone_number.
-    """
     return Employee.objects.create(
         email=email,
         phone_number=_unique_phone_from_email(email),
@@ -276,9 +272,9 @@ def test_set_member_role_does_not_create_membership_and_does_not_toggle_active(
     api_client: APIClient,
 ):
     """
-    Проверяем отсутствие пересечения функционала у set_member_role:
-      - не создаёт членство, если связи нет (ожидаем ошибку)
-      - не меняет is_active (игнорирует попытки передать is_active)
+        Проверяем текущее разделение ответственности у set_member_role:
+            - не создаёт членство, если связи нет, а использует RoleAssignment
+            - не меняет is_active у существующего членства
     """
     d = Department.objects.create(name="Dept")
     role = make_role(d, "Worker")
@@ -289,15 +285,19 @@ def test_set_member_role_does_not_create_membership_and_does_not_toggle_active(
     api_client.force_authenticate(assigner)
     grant_assign_in_dept(assigner, d)
 
-    # 1) Нельзя создать членство через set_member_role
+    # 1) При отсутствии членства назначение идёт через RoleAssignment
     resp = api_client.post(
         url_set_member_role(d.pk),
         {"employee_id": outsider.id, "role_id": role.id},
         format="json",
     )
-    assert resp.status_code in (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND)
+    assert resp.status_code == status.HTTP_200_OK
     assert not EmployeeDepartment.objects.filter(
         employee=outsider, department=d
+    ).exists()
+    assert resp.json()["via_assignment"] is True
+    assert RoleAssignment.objects.filter(
+        employee=outsider, role=role, is_active=True
     ).exists()
 
     # 2) is_active не должен переключаться через set_member_role
@@ -438,10 +438,10 @@ def test_add_member_ignores_role_parameter(api_client: APIClient):
 @pytest.mark.django_db
 def test_remove_member_requires_manage_and_does_not_touch_role(api_client: APIClient):
     """
-    remove_member (hard delete):
+        remove_member:
       - 403 при отсутствии manage_department (даже если есть assign_department_role)
       - 200 с manage_department
-      - удаляет связь EmployeeDepartment; объект роли остаётся без изменений
+            - деактивирует связь EmployeeDepartment; объект роли остаётся без изменений
     """
     d = Department.objects.create(name="Dept")
     target = make_user("target2@example.com")
@@ -461,17 +461,16 @@ def test_remove_member_requires_manage_and_does_not_touch_role(api_client: APICl
     resp = api_client.post(url, {"employee_id": target.id}, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 
-    # есть manage → 200 и связь удаляется физически
+    # есть manage → 200 и связь деактивируется
     manager = make_user("manager2@example.com")
     grant_manage_in_dept(manager, d)
     api_client.force_authenticate(manager)
     resp = api_client.post(url, {"employee_id": target.id}, format="json")
     assert resp.status_code == status.HTTP_200_OK
 
-    # связь удалена
-    assert not EmployeeDepartment.objects.filter(
-        employee=target, department=d
-    ).exists()
+    # связь сохранена, но деактивирована
+    link = EmployeeDepartment.objects.get(employee=target, department=d)
+    assert link.is_active is False
 
     # роль как объект не тронута
     role_from_db = type(some_role).objects.get(pk=some_role.pk)
