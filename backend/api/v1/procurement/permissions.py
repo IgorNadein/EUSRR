@@ -33,9 +33,8 @@ class IsDirector(permissions.BasePermission):
             return False
 
         # Директор = суперпользователь или есть специальное право
-        return (
-            request.user.is_superuser or
-            request.user.has_perm('procurement.approve_procurementrequest')
+        return request.user.is_superuser or request.user.has_perm(
+            "procurement.approve_procurementrequest"
         )
 
 
@@ -51,7 +50,7 @@ class CanCreateProcurementRequest(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
 
-        if request.method == 'POST':
+        if request.method == "POST":
             # Любой авторизованный сотрудник может создать заявку
             return isinstance(request.user, Employee)
 
@@ -74,11 +73,8 @@ class CanEditOwnProcurementRequest(permissions.BasePermission):
             return True
 
         # Редактировать можно только свою заявку в статусе DRAFT
-        if request.method in ['PUT', 'PATCH', 'DELETE']:
-            return (
-                obj.requestor == request.user and
-                obj.is_editable
-            )
+        if request.method in ["PUT", "PATCH", "DELETE"]:
+            return obj.requestor == request.user and obj.is_editable
 
         return False
 
@@ -101,19 +97,19 @@ class CanManageProcurementRequest(permissions.BasePermission):
 
     Логика доступа:
     - Просмотр (SAFE_METHODS): любой аутентифицированный (фильтрация в queryset)
-    
+
     - Создание:
         - admin/staff/superuser → любой отдел
         - модельные права (add_procurementrequest) → любой отдел
         - сотрудник отдела → только свой отдел
         - без отдела → запрещено
-    
+
     - Изменение:
         - admin/staff/superuser → любая заявка в DRAFT
         - модельные права (change_procurementrequest) → любая заявка в DRAFT
         - автор заявки → своя заявка в DRAFT
         - начальник отдела → заявки своего отдела в DRAFT
-    
+
     - Удаление:
         - admin/staff/superuser → любая заявка
         - модельные права (delete_procurementrequest) → любая заявка
@@ -123,18 +119,17 @@ class CanManageProcurementRequest(permissions.BasePermission):
 
     def _is_admin(self, user) -> bool:
         """Проверяет, является ли пользователь админом."""
-        return (
-            getattr(user, 'is_superuser', False) or
-            getattr(user, 'is_staff', False)
+        return getattr(user, "is_superuser", False) or getattr(
+            user, "is_staff", False
         )
 
     def _has_model_perm(self, user, action: str) -> bool:
         """Проверяет модельные права на заявки."""
         perm_map = {
-            'create': 'procurement.add_procurementrequest',
-            'update': 'procurement.change_procurementrequest',
-            'partial_update': 'procurement.change_procurementrequest',
-            'destroy': 'procurement.delete_procurementrequest',
+            "create": "procurement.add_procurementrequest",
+            "update": "procurement.change_procurementrequest",
+            "partial_update": "procurement.change_procurementrequest",
+            "destroy": "procurement.delete_procurementrequest",
         }
         perm = perm_map.get(action)
         return perm and user.has_perm(perm)
@@ -143,14 +138,13 @@ class CanManageProcurementRequest(permissions.BasePermission):
         """Возвращает список ID отделов, где пользователь состоит."""
         return list(
             EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                is_active=True
-            ).values_list('department_id', flat=True)
+                employee_id=user.id, is_active=True
+            ).values_list("department_id", flat=True)
         )
 
     def _get_dept_id_from_request(self, request) -> int | None:
         """Извлекает ID отдела из данных запроса."""
-        dept_id = request.data.get('department')
+        dept_id = request.data.get("department")
         if dept_id is not None:
             try:
                 return int(dept_id)
@@ -176,14 +170,14 @@ class CanManageProcurementRequest(permissions.BasePermission):
         if self._is_admin(user):
             return True
 
-        action = getattr(view, 'action', None)
+        action = getattr(view, "action", None)
 
         # Модельные права дают полный доступ
         if self._has_model_perm(user, action):
             return True
 
         # Для создания проверяем отдел
-        if action == 'create':
+        if action == "create":
             dept_id = self._get_dept_id_from_request(request)
             if dept_id is None:
                 return False
@@ -201,7 +195,7 @@ class CanManageProcurementRequest(permissions.BasePermission):
             return True
 
         # Для update/delete проверка на уровне объекта
-        if action in ('update', 'partial_update', 'destroy'):
+        if action in ("update", "partial_update", "destroy"):
             return True
 
         return True
@@ -220,7 +214,7 @@ class CanManageProcurementRequest(permissions.BasePermission):
         if self._is_admin(user):
             return True
 
-        action = getattr(view, 'action', None)
+        action = getattr(view, "action", None)
 
         # Модельные права
         if self._has_model_perm(user, action):
@@ -229,23 +223,23 @@ class CanManageProcurementRequest(permissions.BasePermission):
         dept_id = obj.department_id
 
         # Submit (отправка на согласование) - только владелец
-        if action == 'submit':
+        if action == "submit":
             return obj.requestor == user
 
         # Cancel (отмена заявки) - только владелец
-        if action == 'cancel':
+        if action == "cancel":
             return obj.requestor == user
 
         # Start_work (взять в работу) - любой авторизованный
-        if action == 'start_work':
+        if action == "start_work":
             return True
 
         # Complete (завершить) - только исполнитель
-        if action == 'complete':
+        if action == "complete":
             return obj.executor == user
 
         # Удаление
-        if action == 'destroy':
+        if action == "destroy":
             # Автор может удалить свою заявку в DRAFT
             if obj.requestor == user and obj.is_editable:
                 return True
@@ -255,7 +249,7 @@ class CanManageProcurementRequest(permissions.BasePermission):
             return False
 
         # Изменение
-        if action in ('update', 'partial_update'):
+        if action in ("update", "partial_update"):
             # Заявка должна быть редактируемой (DRAFT)
             if not obj.is_editable:
                 return False
@@ -298,25 +292,24 @@ class CanManageEquipment(permissions.BasePermission):
 
     def _is_admin(self, user) -> bool:
         """Проверяет, является ли пользователь админом."""
-        return (
-            getattr(user, 'is_superuser', False) or
-            getattr(user, 'is_staff', False)
+        return getattr(user, "is_superuser", False) or getattr(
+            user, "is_staff", False
         )
 
     def _has_model_perm(self, user, action: str) -> bool:
         """Проверяет модельные права на оборудование."""
         perm_map = {
-            'create': 'procurement.add_equipment',
-            'update': 'procurement.change_equipment',
-            'partial_update': 'procurement.change_equipment',
-            'destroy': 'procurement.delete_equipment',
+            "create": "procurement.add_equipment",
+            "update": "procurement.change_equipment",
+            "partial_update": "procurement.change_equipment",
+            "destroy": "procurement.delete_equipment",
         }
         perm = perm_map.get(action)
         return perm and user.has_perm(perm)
 
     def _get_dept_id_from_request(self, request) -> int | None:
         """Извлекает ID отдела из данных запроса."""
-        dept_id = request.data.get('department')
+        dept_id = request.data.get("department")
         if dept_id is not None:
             try:
                 return int(dept_id)
@@ -336,9 +329,8 @@ class CanManageEquipment(permissions.BasePermission):
         """Возвращает список ID отделов, где пользователь состоит."""
         return list(
             EmployeeDepartment.objects.filter(
-                employee_id=user.id,
-                is_active=True
-            ).values_list('department_id', flat=True)
+                employee_id=user.id, is_active=True
+            ).values_list("department_id", flat=True)
         )
 
     def has_permission(self, request, view) -> bool:
@@ -355,14 +347,14 @@ class CanManageEquipment(permissions.BasePermission):
         if self._is_admin(user):
             return True
 
-        action = getattr(view, 'action', None)
+        action = getattr(view, "action", None)
 
         # Модельные права дают полный доступ
         if self._has_model_perm(user, action):
             return True
 
         # Для создания нужен отдел из запроса
-        if action == 'create':
+        if action == "create":
             dept_id = self._get_dept_id_from_request(request)
             if dept_id is None:
                 return False
@@ -378,7 +370,7 @@ class CanManageEquipment(permissions.BasePermission):
             return False
 
         # Для update/delete проверка будет на уровне объекта
-        if action in ('update', 'partial_update', 'destroy'):
+        if action in ("update", "partial_update", "destroy"):
             # Пропускаем на has_object_permission
             return True
 
@@ -398,7 +390,7 @@ class CanManageEquipment(permissions.BasePermission):
         if self._is_admin(user):
             return True
 
-        action = getattr(view, 'action', None)
+        action = getattr(view, "action", None)
 
         # Модельные права
         if self._has_model_perm(user, action):
@@ -411,11 +403,11 @@ class CanManageEquipment(permissions.BasePermission):
             return True
 
         # Удаление — только админ, модельные права или начальник
-        if action == 'destroy':
+        if action == "destroy":
             return False
 
         # Изменение: скоуп-право или ответственный
-        if action in ('update', 'partial_update'):
+        if action in ("update", "partial_update"):
             # Скоуп-право в отделе
             if self._has_scoped_perm(user, dept_id):
                 return True
@@ -443,16 +435,18 @@ class CanManageEquipmentCategory(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
 
-        if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        if getattr(user, "is_superuser", False) or getattr(
+            user, "is_staff", False
+        ):
             return True
 
         perm_map = {
-            'create': 'procurement.add_equipmentcategory',
-            'update': 'procurement.change_equipmentcategory',
-            'partial_update': 'procurement.change_equipmentcategory',
-            'destroy': 'procurement.delete_equipmentcategory',
+            "create": "procurement.add_equipmentcategory",
+            "update": "procurement.change_equipmentcategory",
+            "partial_update": "procurement.change_equipmentcategory",
+            "destroy": "procurement.delete_equipmentcategory",
         }
-        permission = perm_map.get(getattr(view, 'action', None))
+        permission = perm_map.get(getattr(view, "action", None))
         return bool(permission and user.has_perm(permission))
 
 
@@ -468,9 +462,8 @@ class CanManageSupplier(permissions.BasePermission):
             return True
 
         # Создание/изменение - только для staff
-        return (
-            request.user.is_staff or
-            request.user.has_perm('procurement.add_supplier')
+        return request.user.is_staff or request.user.has_perm(
+            "procurement.add_supplier"
         )
 
 
@@ -481,7 +474,4 @@ class IsResponsibleForEquipment(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        return (
-            request.user.is_staff or
-            obj.responsible_person == request.user
-        )
+        return request.user.is_staff or obj.responsible_person == request.user

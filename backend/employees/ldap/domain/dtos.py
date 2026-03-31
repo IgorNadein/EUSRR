@@ -1,7 +1,7 @@
 """Domain Data Transfer Objects для LDAP-сервисов.
 
-Этот модуль содержит DTOs, используемые для передачи данных
-между различными слоями приложения при работе с LDAP каталогом.
+Этот модуль содержит DTOs для передачи данных
+между слоями приложения при работе с LDAP-каталогом.
 """
 
 from __future__ import annotations
@@ -12,7 +12,12 @@ from typing import Dict, List, Optional, Tuple
 from django.conf import settings
 
 from ...models import Employee
-from ..utils.ldap_utils import _ldap_pick_phone, _uac_is_active, get_attr_str, get_guid_str
+from ..utils.ldap_utils import (
+    _ldap_pick_phone,
+    _uac_is_active,
+    get_attr_str,
+    get_guid_str,
+)
 from ..utils.phone_utils import normalize_phone
 
 
@@ -69,13 +74,16 @@ class LdapPersonDTO:
         dn (str): DN объекта пользователя.
         guid (Optional[str]): Строковое представление GUID пользователя.
         username (str): sAMAccountName (может быть пустым).
-        email (str): E-mail (в нижнем регистре; может быть сгенерирован как fallback).
+        email (str): E-mail в нижнем регистре;
+            может быть сгенерирован как fallback.
         given (str): Имя (м.б. получено из display/email).
         sn (str): Фамилия (м.б. пустой).
         display (str): displayName из LDAP.
-        when_changed (Optional[str]): whenChanged из LDAP (как строка; храним как есть).
+        when_changed (Optional[str]): whenChanged из LDAP
+            (как строка; храним как есть).
         is_active (bool): Флаг активности по userAccountControl.
-        phone_e164 (Optional[str]): Нормализованный телефон в E.164, если удалось.
+        phone_e164 (Optional[str]): Нормализованный телефон
+            в E.164, если удалось.
     """
 
     dn: str

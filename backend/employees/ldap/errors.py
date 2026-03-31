@@ -7,7 +7,10 @@ class DirectoryLdapError(DirectoryServiceError):
 
 
 class DirectoryConnectionError(DirectoryLdapError):
-    """Ошибка подключения к LDAP-серверу (конфигурация, сеть, аутентификация)."""
+    """Ошибка подключения к LDAP-серверу.
+
+    Включает ошибки конфигурации, сети и аутентификации.
+    """
 
 
 class DirectoryDbError(DirectoryServiceError):

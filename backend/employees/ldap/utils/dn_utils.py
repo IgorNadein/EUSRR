@@ -119,7 +119,10 @@ def _ensure_user_dn(conn: Connection, emp: Employee) -> str:
     state_dn = (st.get("ldap_dn") or "").strip()
     if state_dn:
         conn.search(
-            state_dn, "(objectClass=user)", BASE, attributes=["distinguishedName"]
+            state_dn,
+            "(objectClass=user)",
+            BASE,
+            attributes=["distinguishedName"],
         )
         if conn.entries:
             return state_dn
@@ -175,7 +178,9 @@ def _ensure_user_dn(conn: Connection, emp: Employee) -> str:
     for flt in filters:
         for base in bases:
             if (
-                conn.search(base, flt, SUBTREE, attributes=["distinguishedName"])
+                conn.search(
+                    base, flt, SUBTREE, attributes=["distinguishedName"]
+                )
                 and conn.entries
             ):
                 return str(conn.entries[0].entry_dn)

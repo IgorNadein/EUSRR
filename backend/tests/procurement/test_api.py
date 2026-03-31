@@ -81,7 +81,7 @@ class TestProcurementRequestAPI:
 
     def test_list_requests_unauthorized(self, api_client):
         """Тест: неавторизованный доступ запрещен."""
-        url = reverse('procurement:procurementrequest-list')
+        url = reverse('api:v1:procurement:procurementrequest-list')
         response = api_client.get(url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -90,9 +90,9 @@ class TestProcurementRequestAPI:
     ):
         """Тест: авторизованный пользователь видит свои заявки."""
         api_client.force_authenticate(user=user)
-        url = reverse('procurement:procurementrequest-list')
+        url = reverse('api:v1:procurement:procurementrequest-list')
         response = api_client.get(url)
-        
+
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) == 1
         assert response.data['results'][0]['title'] == "Тестовая заявка"
@@ -103,10 +103,10 @@ class TestProcurementRequestAPI:
         """Тест: создание заявки."""
         # Связываем пользователя с отделом (необходимо для создания заявки)
         link_factory(user, department, is_active=True)
-        
+
         api_client.force_authenticate(user=user)
-        url = reverse('procurement:procurementrequest-list')
-        
+        url = reverse('api:v1:procurement:procurementrequest-list')
+
         data = {
             'title': 'Новая заявка',
             'description': 'Нужны компьютеры',
@@ -121,7 +121,7 @@ class TestProcurementRequestAPI:
                 }
             ]
         }
-        
+
         response = api_client.post(url, data, format='json')
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['title'] == 'Новая заявка'
@@ -133,11 +133,11 @@ class TestProcurementRequestAPI:
         """Тест: получение детальной информации о заявке."""
         api_client.force_authenticate(user=user)
         url = reverse(
-            'procurement:procurementrequest-detail',
+            'api:v1:procurement:procurementrequest-detail',
             kwargs={'pk': procurement_request.id}
         )
         response = api_client.get(url)
-        
+
         assert response.status_code == status.HTTP_200_OK
         assert response.data['id'] == procurement_request.id
         assert response.data['title'] == "Тестовая заявка"
@@ -151,13 +151,13 @@ class TestProcurementRequestAPI:
         """Тест: обновление своей заявки в статусе DRAFT."""
         api_client.force_authenticate(user=user)
         url = reverse(
-            'procurement:procurementrequest-detail',
+            'api:v1:procurement:procurementrequest-detail',
             kwargs={'pk': procurement_request.id}
         )
-        
+
         data = {'title': 'Обновленная заявка'}
         response = api_client.patch(url, data, format='json')
-        
+
         assert response.status_code == status.HTTP_200_OK
         assert response.data['title'] == 'Обновленная заявка'
 
@@ -171,7 +171,7 @@ class TestEquipmentAPI:
     ):
         """Тест: список оборудования."""
         api_client.force_authenticate(user=user)
-        
+
         # Создаем категорию и оборудование
         category = EquipmentCategory.objects.create(name="Компьютеры")
         Equipment.objects.create(
@@ -182,10 +182,10 @@ class TestEquipmentAPI:
             purchase_date="2025-01-01",
             purchase_cost=Decimal("80000.00"),
         )
-        
-        url = reverse('procurement:equipment-list')
+
+        url = reverse('api:v1:procurement:equipment-list')
         response = api_client.get(url)
-        
+
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) == 1
 
@@ -194,11 +194,11 @@ class TestEquipmentAPI:
     ):
         """Тест: создание оборудования только для staff."""
         category = EquipmentCategory.objects.create(name="Техника")
-        
+
         # Обычный пользователь не может создать
         api_client.force_authenticate(user=user)
-        url = reverse('procurement:equipment-list')
-        
+        url = reverse('api:v1:procurement:equipment-list')
+
         data = {
             'name': 'Принтер HP',
             'inventory_number': 'INV-2025-002',
@@ -207,10 +207,10 @@ class TestEquipmentAPI:
             'purchase_date': '2025-01-01',
             'purchase_cost': '20000.00',
         }
-        
+
         response = api_client.post(url, data, format='json')
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        
+
         # Staff может создать
         api_client.force_authenticate(user=staff_user)
         response = api_client.post(url, data, format='json')
@@ -226,17 +226,17 @@ class TestBudgetAPI:
     ):
         """Тест: список бюджетов для staff."""
         api_client.force_authenticate(user=staff_user)
-        
+
         Budget.objects.create(
             department=department,
             year=2025,
             quarter=4,
             allocated_amount=Decimal("500000.00"),
         )
-        
-        url = reverse('procurement:budget-list')
+
+        url = reverse('api:v1:procurement:budget-list')
         response = api_client.get(url)
-        
+
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) == 1
 
@@ -245,10 +245,10 @@ class TestBudgetAPI:
     ):
         """Тест: обычный пользователь не видит бюджеты (нет прав)."""
         api_client.force_authenticate(user=user)
-        
-        url = reverse('procurement:budget-list')
+
+        url = reverse('api:v1:procurement:budget-list')
         response = api_client.get(url)
-        
+
         # Обычный пользователь не имеет доступа к бюджетам
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
@@ -260,22 +260,22 @@ class TestSupplierAPI:
     def test_list_suppliers(self, api_client, user):
         """Тест: список поставщиков."""
         api_client.force_authenticate(user=user)
-        
+
         Supplier.objects.create(
             name="ООО Тестовый поставщик",
             rating=Decimal("4.50"),
         )
-        
-        url = reverse('procurement:supplier-list')
+
+        url = reverse('api:v1:procurement:supplier-list')
         response = api_client.get(url)
-        
+
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) == 1
 
     def test_top_rated_suppliers(self, api_client, user):
         """Тест: лучшие поставщики."""
         api_client.force_authenticate(user=user)
-        
+
         Supplier.objects.create(
             name="Отличный поставщик",
             rating=Decimal("4.80"),
@@ -286,10 +286,10 @@ class TestSupplierAPI:
             rating=Decimal("2.50"),
             is_active=True,
         )
-        
-        url = reverse('procurement:supplier-top-rated')
+
+        url = reverse('api:v1:procurement:supplier-top-rated')
         response = api_client.get(url)
-        
+
         assert response.status_code == status.HTTP_200_OK
         # Должен вернуть только с рейтингом >= 4.0
         assert len(response.data) == 1
@@ -303,16 +303,16 @@ class TestEquipmentCategoryAPI:
     def test_category_tree(self, api_client, user):
         """Тест: дерево категорий."""
         api_client.force_authenticate(user=user)
-        
+
         parent = EquipmentCategory.objects.create(name="Компьютеры")
         EquipmentCategory.objects.create(
             name="Ноутбуки",
             parent=parent
         )
-        
-        url = reverse('procurement:equipmentcategory-tree')
+
+        url = reverse('api:v1:procurement:equipmentcategory-tree')
         response = api_client.get(url)
-        
+
         assert response.status_code == status.HTTP_200_OK
         # Должен вернуть только корневые категории
         assert len(response.data) == 1

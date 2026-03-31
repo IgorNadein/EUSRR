@@ -1,8 +1,9 @@
 """
 Сервис для работы с должностями (Position) в Active Directory.
 
-Обрабатывает создание, обновление, удаление POS-групп (агрегаторных групп должностей),
-управление участниками (сотрудники с должностью), вложение POS-групп в целевые группы.
+Обрабатывает создание, обновление, удаление POS-групп
+(агрегаторных групп должностей), управление участниками
+(сотрудники с должностью), вложение POS-групп в целевые группы.
 
 Рефакторенная версия с улучшениями:
 - Наследуется от BaseService (логирование, _touch_state)
@@ -10,10 +11,9 @@
 - Логирует все критические операции
 """
 
-from typing import Optional, Set
+from typing import Set
 
 from django.conf import settings
-from django.contrib.auth.models import Group
 from ldap3 import BASE, SUBTREE, Connection
 
 from employees.models import Employee, Position, LdapSyncState
@@ -28,24 +28,26 @@ from .base_service import BaseService
 class PositionService(BaseService):
     """
     Сервис для работы с должностями (Position) в Active Directory.
-    
+
     Отвечает за:
     - Создание и управление POS-группами (CN=POS_<name>, OU=Positions)
     - Назначение/снятие должностей для сотрудников
     - Вложение POS-групп в целевые группы (из Position.groups)
     - Синхронизацию состава участников POS-группы
-    
+
     Зависимости (через Dependency Injection):
-    - GroupService: для операций с группами (add_members, remove_members, replace_members)
+        - GroupService: для операций с группами
+            (add_members, remove_members, replace_members)
     - UserService: для получения DN сотрудника
     """
 
     def __init__(self, group_service=None, user_service=None):
         """
         Инициализация PositionService.
-        
+
         Args:
-            group_service: Сервис для работы с группами (для управления членством)
+            group_service: Сервис для работы с группами
+            (для управления членством)
             user_service: Сервис для работы с пользователями (для получения DN)
         """
         super().__init__()
@@ -57,41 +59,42 @@ class PositionService(BaseService):
     def reconcile_position(self, pos: Position) -> str:
         """
         Публичный метод — открыть соединение и привести POS к консистентности.
-        
+
         Приводит должность к консистентному состоянию:
         1) Создаёт/обновляет POS-группу (CN=POS_<name>)
         2) Вкладывает POS-группу в целевые группы (из pos.groups)
         3) Синхронизирует участников POS-группы (сотрудники с этой должностью)
-        
+
         Args:
             pos: Должность для синхронизации
-            
+
         Returns:
             DN POS-группы
-            
+
         Raises:
             RuntimeError: Если LDAP_POSITIONS_BASE не настроен
             ValueError: Если имя должности пустое
         """
         from ..infrastructure.connections import _ldap
-        
+
         with _ldap() as conn:
             return self._reconcile_position(conn, pos)
 
     def assign_position(self, employee: Employee, position: Position) -> None:
         """
-        Добавляет сотрудника в POS-группу должности и убеждается, что вложения POS в целевые группы актуальны.
-        
+        Добавляет сотрудника в POS-группу должности
+        и убеждается, что вложения POS в целевые группы актуальны.
+
         Args:
             employee: Сотрудник
             position: Должность
-            
+
         Raises:
             DirectoryServiceError: Если DN сотрудника не найден
             RuntimeError: Если операция LDAP не удалась
         """
         from ..infrastructure.connections import _ldap
-        
+
         emp_dn = self._user_service._get_employee_dn(employee)
         with _ldap() as conn:
             pos_dn = self._ensure_position_group(conn, position)
@@ -113,13 +116,13 @@ class PositionService(BaseService):
     def unassign_position(self, employee: Employee, position: Position) -> None:
         """
         Удаляет сотрудника из POS-группы должности.
-        
+
         Args:
             employee: Сотрудник
             position: Должность
         """
         from ..infrastructure.connections import _ldap
-        
+
         try:
             emp_dn = self._user_service._get_employee_dn(employee)
         except DirectoryServiceError:
@@ -141,14 +144,14 @@ class PositionService(BaseService):
     def delete_position_group(self, position: Position) -> None:
         """
         Best-effort: снять POS-группу из всех правовых групп и удалить её.
-        
+
         Args:
             position: Должность с POS-группой для удаления
         """
         from ..infrastructure.connections import _ldap
         from ..orm_models import LdapGroup
 
-        with _ldap() as conn:
+        with _ldap():
             dn = (position.ldap_group_dn or "").strip()
             if not dn:
                 return
@@ -175,10 +178,10 @@ class PositionService(BaseService):
     def _positions_base(self) -> str:
         """
         Получить базовый DN для контейнера должностей (OU=Positions).
-        
+
         Returns:
             DN контейнера должностей из настроек LDAP_POSITIONS_BASE
-            
+
         Raises:
             RuntimeError: Если LDAP_POSITIONS_BASE не настроен
         """
@@ -190,13 +193,13 @@ class PositionService(BaseService):
     def _ensure_positions_base(self, conn: Connection) -> str:
         """
         Гарантировать наличие контейнера OU=Positions в AD.
-        
+
         Args:
             conn: Открытое LDAP-соединение
-            
+
         Returns:
             DN контейнера должностей
-            
+
         Raises:
             RuntimeError: Если создание контейнера не удалось
         """
@@ -206,22 +209,24 @@ class PositionService(BaseService):
 
     def _ensure_position_group(self, conn: Connection, pos: Position) -> str:
         """
-        Гарантирует наличие агрегаторной группы должности: CN=POS_<name>,OU=Positions,...
+          Гарантирует наличие агрегаторной группы должности:
+          CN=POS_<name>,OU=Positions,...
         Обновляет pos.ldap_group_dn при необходимости и возвращает DN.
-        
+
         Логика:
-        1. Если pos.ldap_group_dn существует - проверить существование и актуальность CN
+          1. Если pos.ldap_group_dn существует - проверить существование
+              и актуальность CN
         2. Если нет - искать по CN=POS_<name> в OU=Positions
         3. Если не найдено - создать новую POS-группу
         4. Обновить pos.ldap_group_dn в БД при изменениях
-        
+
         Args:
             conn: Открытое LDAP-соединение
             pos: Должность
-            
+
         Returns:
             DN POS-группы должности
-            
+
         Raises:
             ValueError: Если имя должности пустое
             RuntimeError: Если операция LDAP не удалась
@@ -254,7 +259,9 @@ class PositionService(BaseService):
                 else:
                     new_dn = saved_dn
                 if new_dn != pos.ldap_group_dn:
-                    Position.objects.filter(pk=pos.pk).update(ldap_group_dn=new_dn)
+                    Position.objects.filter(pk=pos.pk).update(
+                        ldap_group_dn=new_dn
+                    )
                     pos.ldap_group_dn = new_dn
                 return new_dn
 
@@ -287,24 +294,28 @@ class PositionService(BaseService):
         pos.ldap_group_dn = dn
         return dn
 
-    def _reconcile_position_nesting(self, conn: Connection, position: Position) -> str:
+    def _reconcile_position_nesting(
+        self, conn: Connection, position: Position
+    ) -> str:
         """
-        Делает так, чтобы POS-группа должности была участником ровно тех AD-групп,
+        Делает так, чтобы POS-группа должности была участником
+        ровно тех AD-групп,
         что привязаны к Position.groups.
-        
+
         Логика:
-        1. Получить список целевых групп из position.groups (Django Group -> DN в AD)
+          1. Получить список целевых групп из position.groups
+              (Django Group -> DN в AD)
         2. Получить список текущих групп, где POS-группа уже состоит
         3. Добавить POS-группу в недостающие целевые группы
         4. Удалить POS-группу из лишних групп
-        
+
         Args:
             conn: Открытое LDAP-соединение
             position: Должность
-            
+
         Returns:
             DN POS-группы должности
-            
+
         Raises:
             RuntimeError: Если операция LDAP не удалась
         """
@@ -343,14 +354,14 @@ class PositionService(BaseService):
         2) вложение POS_* в группы из pos.groups,
         3) состав участников POS_* = сотрудники с этой должностью.
         Возвращает DN POS_* группы.
-        
+
         Args:
             conn: Открытое LDAP-соединение
             pos: Должность для синхронизации
-            
+
         Returns:
             DN POS-группы должности
-            
+
         Raises:
             RuntimeError: Если операция LDAP не удалась
         """
@@ -374,9 +385,9 @@ class PositionService(BaseService):
 
         # 3) участники POS_* = сотрудники с этой позицией
         emp_ids = list(
-            Employee.objects.filter(position_id=pos.id, is_active=True).values_list(
-                "id", flat=True
-            )
+            Employee.objects.filter(
+                position_id=pos.id, is_active=True
+            ).values_list("id", flat=True)
         )
         dn_map = dict(
             LdapSyncState.objects.filter(

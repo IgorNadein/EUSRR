@@ -10,7 +10,6 @@ from django.db.models import (
     Exists,
     F,
     OuterRef,
-    Q,
     Subquery,
     Value,
 )
@@ -56,17 +55,18 @@ class PostViewSet(viewsets.ModelViewSet):
     Доступ (коротко):
       - list/retrieve/like/unlike — IsAuthenticated
       - create:
-          * type=company    → AdminOrActionOrModelPerms + required_perm_code="feed.publish_company_post"
-          * type=department → AdminOrDeptAllowed с кодом DeptPerm.CREATE_POST|publish_department_post
+                    * type=company    → AdminOrActionOrModelPerms
+                        + required_perm_code="feed.publish_company_post"
+                    * type=department → AdminOrDeptAllowed
+                        с кодом DeptPerm.CREATE_POST|publish_department_post
       - update/partial_update/destroy:
           * company         → как для company-create
           * department      → как для department-create
       - pin/unpin — только staff/superuser
     """
 
-    queryset = (
-        Post.objects.select_related("author", "department")
-        .order_by("-pinned", "-created_at")
+    queryset = Post.objects.select_related("author", "department").order_by(
+        "-pinned", "-created_at"
     )
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -98,7 +98,10 @@ class PostViewSet(viewsets.ModelViewSet):
             return super().has_permission(request, view)
 
     def get_permissions(self) -> List[Any]:
-        """Возвращает DRF-пермишены под текущий action (без вызова get_object())."""
+        """Возвращает DRF-пермишены под текущий action.
+
+        Без вызова get_object().
+        """
         if self.action in {"list", "retrieve", "like", "unlike"}:
             return [IsAuthenticated()]
 
@@ -111,19 +114,25 @@ class PostViewSet(viewsets.ModelViewSet):
             if t == TYPE_COMPANY:
                 return [IsAuthenticated(), AdminOrActionOrModelPerms()]
             # department → департаментное право на создание
-            dept_code = getattr(DeptPerm, "CREATE_POST", "publish_department_post")
+            dept_code = getattr(
+                DeptPerm, "CREATE_POST", "publish_department_post"
+            )
             perm = self.PostDeptPerm()
             perm.required_code = DeptPerm.CREATE_POST
             return [IsAuthenticated(), perm]
 
-        # --- UPDATE/PATCH/DELETE: определяем тип поста из БД, но без get_object() ---
+        # --- UPDATE/PATCH/DELETE: определяем тип поста из БД,
+        # но без get_object() ---
         if self.action in {"update", "partial_update", "destroy"}:
             lookup = getattr(self, "lookup_url_kwarg", None) or getattr(
                 self, "lookup_field", "pk"
             )
             pk = self.kwargs.get(lookup)
             info = (
-                Post.objects.filter(pk=pk).values("type", "department_id").first() or {}
+                Post.objects.filter(pk=pk)
+                .values("type", "department_id")
+                .first()
+                or {}
             )
             if info.get("type") == TYPE_COMPANY:
                 return [IsAuthenticated(), AdminOrActionOrModelPerms()]
@@ -149,25 +158,30 @@ class PostViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         # Аннотируем счётчик комментариев через communications.Chat
-        from communications.models import Chat, Message
-        
+        from communications.models import Message
+
         # ContentType для Post
         post_ct = ContentType.objects.get_for_model(Post)
-        
+
         # Подсчёт сообщений в чате комментариев для каждого поста
-        comments_subquery = Message.objects.filter(
-            chat__type='comments',
-            chat__context_content_type=post_ct,
-            chat__context_object_id=OuterRef('pk')
-        ).values('chat').annotate(count=Count('id')).values('count')
-        
-        qs = qs.annotate(
-            comments_count=Subquery(comments_subquery)
+        comments_subquery = (
+            Message.objects.filter(
+                chat__type="comments",
+                chat__context_content_type=post_ct,
+                chat__context_object_id=OuterRef("pk"),
+            )
+            .values("chat")
+            .annotate(count=Count("id"))
+            .values("count")
         )
+
+        qs = qs.annotate(comments_count=Subquery(comments_subquery))
 
         if user.is_authenticated:
             qs = qs.annotate(
-                is_liked=Exists(PostLike.objects.filter(post=OuterRef("pk"), user=user))
+                is_liked=Exists(
+                    PostLike.objects.filter(post=OuterRef("pk"), user=user)
+                )
             )
         else:
             qs = qs.annotate(is_liked=Value(False, output_field=BooleanField()))
@@ -233,21 +247,28 @@ class PostViewSet(viewsets.ModelViewSet):
     def like(self, request, pk=None):
         """Ставит лайк текущего пользователя (идемпотентно)."""
         post = self.get_object()
-        _, created = PostLike.objects.get_or_create(post=post, user=request.user)
+        _, created = PostLike.objects.get_or_create(
+            post=post, user=request.user
+        )
         if created:
-            Post.objects.filter(pk=post.pk).update(likes_count=F("likes_count") + 1)
+            Post.objects.filter(pk=post.pk).update(
+                likes_count=F("likes_count") + 1
+            )
             # Отправляем уведомление автору публикации
             notify_post_reaction(post, request.user)
         post.refresh_from_db(fields=["likes_count"])
         return Response(
-            {"liked": True, "likes_count": post.likes_count}, status=status.HTTP_200_OK
+            {"liked": True, "likes_count": post.likes_count},
+            status=status.HTTP_200_OK,
         )
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def unlike(self, request, pk=None):
         """Снимает лайк текущего пользователя (идемпотентно)."""
         post = self.get_object()
-        deleted, _ = PostLike.objects.filter(post=post, user=request.user).delete()
+        deleted, _ = PostLike.objects.filter(
+            post=post, user=request.user
+        ).delete()
         if deleted:
             Post.objects.filter(pk=post.pk, likes_count__gt=0).update(
                 likes_count=F("likes_count") - 1
@@ -258,54 +279,60 @@ class PostViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @action(detail=True, methods=["get", "post"], permission_classes=[IsAuthenticated])
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        permission_classes=[IsAuthenticated],
+    )
     def comments(self, request, pk=None):
         """Управление комментариями к посту.
-        
+
         GET: получение списка комментариев
         POST: создание комментария {"text": "..."}
         """
         from communications import comments_helpers
         from ..employees.serializers import EmployeeBriefSerializer
-        
+
         post = self.get_object()
-        
+
         if request.method in {"GET", "HEAD"}:
             # Получаем комментарии через unified system
             messages = comments_helpers.get_comments(post)
-            
+
             # Форматируем в формат, совместимый со старым API
             comments_data = []
             for msg in messages:
                 author_ser = EmployeeBriefSerializer(msg.author)
-                comments_data.append({
-                    "id": msg.id,
-                    "post": post.id,
-                    "post_id": post.id,
-                    "author": author_ser.data,
-                    "author_id": msg.author.id if msg.author else None,
-                    "text": msg.content,
-                    "created_at": msg.created_at,
-                    "created_at_display": msg.created_at.strftime("%d.%m.%Y %H:%M"),
-                })
-            
+                comments_data.append(
+                    {
+                        "id": msg.id,
+                        "post": post.id,
+                        "post_id": post.id,
+                        "author": author_ser.data,
+                        "author_id": msg.author.id if msg.author else None,
+                        "text": msg.content,
+                        "created_at": msg.created_at,
+                        "created_at_display": msg.created_at.strftime(
+                            "%d.%m.%Y %H:%M"
+                        ),
+                    }
+                )
+
             return Response(comments_data)
-        
+
         # POST - создание комментария
         text = request.data.get("text", "").strip()
         if not text:
             return Response(
                 {"text": ["Это поле не может быть пустым."]},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         # Создаём комментарий через unified system
         message = comments_helpers.create_comment(
-            obj=post,
-            author=request.user,
-            content=text
+            obj=post, author=request.user, content=text
         )
-        
+
         # Форматируем ответ
         author_ser = EmployeeBriefSerializer(message.author)
         response_data = {
@@ -318,5 +345,5 @@ class PostViewSet(viewsets.ModelViewSet):
             "created_at": message.created_at,
             "created_at_display": message.created_at.strftime("%d.%m.%Y %H:%M"),
         }
-        
+
         return Response(response_data, status=status.HTTP_201_CREATED)

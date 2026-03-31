@@ -19,7 +19,7 @@ Usage:
     # Для ручной отправки:
     from procurement.notifications import notify_new_request
     notify_new_request(request_obj)
-    
+
     # WebSocket broadcast происходит автоматически через:
     # notify.send() → channels.py → Celery → WebSocketNotificationSender
 """
@@ -49,7 +49,7 @@ __all__ = [
     'NotificationVerbs',
     'MessageTemplates',
     'ActionURLs',
-    
+
     # Handlers
     'notify_new_request',
     'notify_approvers',
@@ -62,7 +62,7 @@ __all__ = [
     'notify_request_cancelled',
     'notify_stage_approved',
     'notify_stage_rejected',
-    
+
     # Signals module (для импорта в AppConfig)
     'signals',
 ]

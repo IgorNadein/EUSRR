@@ -1,0 +1,20 @@
+[flake8]
+max-line-length = 80
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    node_modules,
+    staticfiles,
+    media,
+    docs,
+    scripts,
+    tests,
+    migrations,
+    */tests/*,
+    */tests.py,
+    conftest.py
+extend-ignore =
+    W503
+per-file-ignores =
+    communications/api/viewsets.py:E501

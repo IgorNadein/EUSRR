@@ -9,24 +9,24 @@ def migrate_department_to_context(apps, schema_editor):
     """
     Chat = apps.get_model('communications', 'Chat')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     # Получаем ContentType для модели Department
     try:
         dept_ct = ContentType.objects.get(app_label='employees', model='department')
     except ContentType.DoesNotExist:
         print("ContentType для Department не найден, пропускаем миграцию")
         return
-    
+
     # Находим все чаты с department
     chats_with_dept = Chat.objects.filter(department__isnull=False)
-    
+
     count = 0
     for chat in chats_with_dept:
         chat.context_content_type = dept_ct
         chat.context_object_id = chat.department_id
         chat.save(update_fields=['context_content_type', 'context_object_id'])
         count += 1
-    
+
     print(f"Мигрировано {count} чатов: department → context_object")
 
 
@@ -36,23 +36,23 @@ def reverse_migrate(apps, schema_editor):
     """
     Chat = apps.get_model('communications', 'Chat')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     try:
         dept_ct = ContentType.objects.get(app_label='employees', model='department')
     except ContentType.DoesNotExist:
         return
-    
+
     chats_with_context = Chat.objects.filter(
         context_content_type=dept_ct,
         context_object_id__isnull=False
     )
-    
+
     count = 0
     for chat in chats_with_context:
         chat.department_id = chat.context_object_id
         chat.save(update_fields=['department'])
         count += 1
-    
+
     print(f"Откат: восстановлено {count} чатов: context_object → department")
 
 

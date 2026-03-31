@@ -18,26 +18,26 @@ def _coerce_ts(val: str | None) -> datetime.datetime:
     """
     Принимает миллисекунды/секунды с эпохи или ISO-дату.
     Возвращает aware-дату (UTC). Фоллбек — timezone.now().
-    
+
     Args:
         val: Строка с timestamp (ms/sec) или ISO-дата
-        
+
     Returns:
         datetime: Aware datetime объект в UTC
-        
+
     Examples:
         >>> _coerce_ts("1640000000000")  # миллисекунды
         datetime.datetime(2021, 12, 20, 13, 33, 20, tzinfo=UTC)
-        
+
         >>> _coerce_ts("1640000000")  # секунды
         datetime.datetime(2021, 12, 20, 13, 33, 20, tzinfo=UTC)
-        
+
         >>> _coerce_ts("2021-12-20T13:33:20Z")  # ISO
         datetime.datetime(2021, 12, 20, 13, 33, 20, tzinfo=UTC)
     """
     if not val:
         return timezone.now()
-    
+
     # Сначала пробуем число (sec/ms)
     try:
         iv = int(val)
@@ -46,7 +46,7 @@ def _coerce_ts(val: str | None) -> datetime.datetime:
         return dt.fromtimestamp(iv, tz=dt_tz.utc)
     except Exception:
         pass
-    
+
     # Потом пробуем ISO-строку
     d = parse_datetime(val)
     if d is None:
@@ -59,21 +59,21 @@ def _coerce_ts(val: str | None) -> datetime.datetime:
 def user_can_access_chat(chat: Chat, user) -> bool:
     """
     Проверяет, имеет ли пользователь доступ к чату.
-    
+
     Правила доступа по типам чатов:
     - global: доступ всем
     - private: активное ChatMembership
     - group: активное ChatMembership (или context-based resolver)
     - channel/announcement: include_all_users или активное ChatMembership
     - comments: context-based доступ через get_participants()
-    
+
     Args:
         chat: Объект Chat
         user: Объект User
-        
+
     Returns:
         bool: True если пользователь имеет доступ
-        
+
     Note:
         Использует прямые запросы к БД в обход prefetch cache
     """
@@ -114,9 +114,10 @@ def user_can_access_chat(chat: Chat, user) -> bool:
         return ChatMembership.objects.filter(
             chat=chat, user=user, is_active=True
         ).exists() or _has_direct_participation()
-    
+
     if chat.type == "comments":
-        # Чаты-комментарии используют context-based доступ через get_participants()
+        # Чаты-комментарии используют context-based доступ через
+        # get_participants()
         if chat.context_object_id:
             try:
                 participants = chat.get_participants()

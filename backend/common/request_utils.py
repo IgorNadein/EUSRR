@@ -1,17 +1,19 @@
 """Утилиты для безопасной обработки данных запросов."""
-from typing import Any, Optional, Union
+from typing import Any, Union
+
+from django.http import QueryDict
 
 
 def safe_int(value: Any, default: int = 0) -> int:
     """Безопасно конвертирует значение в int.
-    
+
     Args:
         value: Значение для конверсии (может быть str, int, None, ...)
         default: Значение по умолчанию при ошибке конверсии
-    
+
     Returns:
         int: Сконвертированное значение или default
-    
+
     Examples:
         >>> safe_int('123')
         123
@@ -24,7 +26,7 @@ def safe_int(value: Any, default: int = 0) -> int:
     """
     if value is None or value == '':
         return default
-    
+
     try:
         return int(value)
     except (ValueError, TypeError):
@@ -33,48 +35,48 @@ def safe_int(value: Any, default: int = 0) -> int:
 
 def safe_bool(value: Any, default: bool = False) -> bool:
     """Безопасно конвертирует значение в bool.
-    
+
     Поддерживает строки: 'true', 'false', '1', '0', 'yes', 'no'
-    
+
     Args:
         value: Значение для конверсии
         default: Значение по умолчанию при ошибке
-    
+
     Returns:
         bool: Сконвертированное значение или default
     """
     if value is None:
         return default
-    
+
     if isinstance(value, bool):
         return value
-    
+
     if isinstance(value, (int, float)):
         return bool(value)
-    
+
     if isinstance(value, str):
         value_lower = value.lower().strip()
         if value_lower in ('true', '1', 'yes', 'on'):
             return True
         if value_lower in ('false', '0', 'no', 'off', ''):
             return False
-    
+
     return default
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
     """Безопасно конвертирует значение в float.
-    
+
     Args:
         value: Значение для конверсии
         default: Значение по умолчанию при ошибке
-    
+
     Returns:
         float: Сконвертированное значение или default
     """
     if value is None or value == '':
         return default
-    
+
     try:
         return float(value)
     except (ValueError, TypeError):
@@ -88,19 +90,19 @@ def safe_get_data(
     required: bool = False,
 ) -> Any:
     """Безопасно извлекает значение из request.data.
-    
+
     Args:
         data: request.data (может быть dict или QueryDict)
         key: Ключ для извлечения
         default: Значение по умолчанию
         required: Если True, вызовет KeyError при отсутствии ключа
-    
+
     Returns:
         Значение или default
-    
+
     Raises:
         KeyError: Если required=True и ключа нет
-    
+
     Examples:
         >>> safe_get_data({'name': 'John'}, 'name')
         'John'
@@ -111,5 +113,5 @@ def safe_get_data(
     """
     if required and key not in data:
         raise KeyError(f"Required field '{key}' is missing")
-    
+
     return data.get(key, default)

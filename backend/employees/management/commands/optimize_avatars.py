@@ -54,7 +54,7 @@ class Command(BaseCommand):
         # Получаем все используемые файлы аватаров
         employees = Employee.objects.exclude(avatar='').exclude(avatar=None)
         used_files = set()
-        
+
         for emp in employees:
             if emp.avatar:
                 try:
@@ -69,10 +69,10 @@ class Command(BaseCommand):
         # Очистка неиспользуемых файлов
         if do_cleanup:
             self.stdout.write('\n=== ОЧИСТКА НЕИСПОЛЬЗУЕМЫХ ФАЙЛОВ ===')
-            
+
             # Используем абсолютный путь из settings
             avatar_dir = os.path.join(settings.MEDIA_ROOT, 'users', 'avatars')
-            
+
             if not os.path.exists(avatar_dir):
                 self.stdout.write(
                     self.style.WARNING(f'Директория {avatar_dir} не найдена')
@@ -83,18 +83,18 @@ class Command(BaseCommand):
 
                 for filename in os.listdir(avatar_dir):
                     filepath = os.path.join(avatar_dir, filename)
-                    
+
                     if not os.path.isfile(filepath):
                         continue
-                    
+
                     if filename not in used_files:
                         size_mb = os.path.getsize(filepath) / (1024 * 1024)
                         freed_mb += size_mb
-                        
+
                         self.stdout.write(
                             f'  Удаление: {filename} ({size_mb:.2f} MB)'
                         )
-                        
+
                         if not dry_run:
                             try:
                                 os.remove(filepath)
@@ -126,41 +126,41 @@ class Command(BaseCommand):
                 try:
                     original_path = emp.avatar.path
                     original_size = os.path.getsize(original_path)
-                    
+
                     # Читаем оригинальный файл
                     with open(original_path, 'rb') as f:
                         original_data = f.read()
-                    
+
                     # Сжимаем
                     compressed_data = compress_avatar(original_data)
                     compressed_size = len(compressed_data)
-                    
+
                     # Проверяем, дало ли сжатие выигрыш
                     if compressed_size < original_size * 0.95:  # минимум 5%
                         size_diff = original_size - compressed_size
                         saved = size_diff / (1024 * 1024)
                         saved_mb += saved
-                        
+
                         self.stdout.write(
                             f'  Сжатие: {emp.get_full_name()} '
-                            f'({original_size/1024:.1f}KB → '
-                            f'{compressed_size/1024:.1f}KB, '
-                            f'экономия {saved*1024:.1f}KB)'
+                            f'({original_size / 1024:.1f}KB → '
+                            f'{compressed_size / 1024:.1f}KB, '
+                            f'экономия {saved * 1024:.1f}KB)'
                         )
-                        
+
                         if not dry_run:
                             # Сохраняем сжатый файл
                             filename = os.path.basename(original_path)
                             if not filename.lower().endswith('.jpg'):
                                 filename = filename.rsplit('.', 1)[0] + '.jpg'
-                            
+
                             emp.avatar.save(
                                 filename,
                                 ContentFile(compressed_data),
                                 save=True
                             )
                             compressed_count += 1
-                    
+
                 except Exception as e:
                     self.stdout.write(
                         self.style.ERROR(

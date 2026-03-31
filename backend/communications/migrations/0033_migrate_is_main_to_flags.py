@@ -8,9 +8,9 @@ def migrate_is_main_to_flags(apps, schema_editor):
     Копирует is_main → flags['is_primary'].
     """
     Chat = apps.get_model('communications', 'Chat')
-    
+
     chats_with_is_main = Chat.objects.filter(is_main=True)
-    
+
     count = 0
     for chat in chats_with_is_main:
         if not chat.flags:
@@ -18,7 +18,7 @@ def migrate_is_main_to_flags(apps, schema_editor):
         chat.flags['is_primary'] = True
         chat.save(update_fields=['flags'])
         count += 1
-    
+
     print(f"Мигрировано {count} чатов: is_main=True → flags['is_primary']=True")
 
 
@@ -27,16 +27,16 @@ def reverse_migrate(apps, schema_editor):
     Откат: копирует flags['is_primary'] → is_main.
     """
     Chat = apps.get_model('communications', 'Chat')
-    
+
     all_chats = Chat.objects.all()
-    
+
     count = 0
     for chat in all_chats:
         if chat.flags and chat.flags.get('is_primary'):
             chat.is_main = True
             chat.save(update_fields=['is_main'])
             count += 1
-    
+
     print(f"Откат: восстановлено {count} чатов: flags['is_primary'] → is_main")
 
 

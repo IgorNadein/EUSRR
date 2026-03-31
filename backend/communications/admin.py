@@ -39,7 +39,7 @@ class ChatAdmin(admin.ModelAdmin):
         "context_object",
         "is_main",
         "created_by",
-        "created_at"
+        "created_at",
     )
     list_filter = ("type", "is_main", "created_at")
     # Поиск по context_object невозможен через GenericFK
@@ -50,11 +50,20 @@ class ChatAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at",)
 
     def get_readonly_fields(self, request, obj=None):
-        # Главные чаты (is_main=True или flags['is_primary']=True) нельзя редактировать
+        # Главные чаты (is_main=True или flags['is_primary']=True) нельзя
+        # редактировать
         if obj:
-            is_primary = obj.is_main or (obj.flags and obj.flags.get('is_primary'))
+            is_primary = obj.is_main or (
+                obj.flags and obj.flags.get("is_primary")
+            )
             if is_primary:
-                return self.readonly_fields + ("type", "is_main", "flags", "context_object_id", "context_content_type")
+                return self.readonly_fields + (
+                    "type",
+                    "is_main",
+                    "flags",
+                    "context_object_id",
+                    "context_content_type",
+                )
         return self.readonly_fields
 
 
@@ -83,14 +92,14 @@ class MessageAdmin(admin.ModelAdmin):
         "is_edited",
         "is_deleted",
         "is_pinned",
-        "created_at"
+        "created_at",
     )
     list_filter = (
         "created_at",
         "is_edited",
         "is_deleted",
         "is_pinned",
-        "is_forwarded"
+        "is_forwarded",
     )
     search_fields = ("content", "author__last_name", "author__first_name")
     ordering = ("-created_at",)
@@ -98,7 +107,9 @@ class MessageAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "edited_at", "deleted_at")
 
     def short_content(self, obj):
-        return (obj.content[:50] + "...") if len(obj.content) > 50 else obj.content
+        return (
+            (obj.content[:50] + "...") if len(obj.content) > 50 else obj.content
+        )
 
     short_content.short_description = "Текст"
 
@@ -111,7 +122,7 @@ class MessageAttachmentAdmin(admin.ModelAdmin):
         "file_name",
         "file_type",
         "file_size",
-        "uploaded_at"
+        "uploaded_at",
     )
     list_filter = ("file_type", "uploaded_at")
     search_fields = ("file_name", "message__content")
@@ -125,15 +136,20 @@ class MessageEditHistoryAdmin(admin.ModelAdmin):
         "message",
         "edited_at",
         "edited_by",
-        "short_previous_content"
+        "short_previous_content",
     )
     list_filter = ("edited_at",)
     search_fields = ("message__content", "previous_content")
     ordering = ("-edited_at",)
     readonly_fields = ("message", "edited_at", "previous_content", "edited_by")
-    
+
     def short_previous_content(self, obj):
-        return (obj.previous_content[:50] + "...") if len(obj.previous_content) > 50 else obj.previous_content
+        return (
+            (obj.previous_content[:50] + "...")
+            if len(obj.previous_content) > 50
+            else obj.previous_content
+        )
+
     short_previous_content.short_description = "Предыдущий текст"
 
 
@@ -145,14 +161,14 @@ class MessageForwardMetadataAdmin(admin.ModelAdmin):
         "original_author",
         "forwarded_by",
         "forward_count",
-        "forwarded_at"
+        "forwarded_at",
     )
     list_filter = ("forwarded_at", "forward_count")
     search_fields = (
         "message__content",
         "original_author__last_name",
         "forwarded_by__last_name",
-        "original_chat_name"
+        "original_chat_name",
     )
     ordering = ("-forwarded_at",)
     readonly_fields = ("message", "forwarded_at")
@@ -160,14 +176,7 @@ class MessageForwardMetadataAdmin(admin.ModelAdmin):
 
 @admin.register(ChatMembership)
 class ChatMembershipAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "chat",
-        "user",
-        "role",
-        "is_active",
-        "joined_at"
-    )
+    list_display = ("id", "chat", "user", "role", "is_active", "joined_at")
     list_filter = ("role", "is_active", "joined_at")
     search_fields = ("user__last_name", "user__first_name", "chat__name")
     ordering = ("-joined_at",)
@@ -180,7 +189,7 @@ class ChatUserSettingsAdmin(admin.ModelAdmin):
         "chat",
         "is_pinned",
         "notifications_enabled",
-        "is_hidden"
+        "is_hidden",
     )
     list_filter = ("is_pinned", "notifications_enabled", "is_hidden")
     search_fields = ("user__last_name", "chat__name")
@@ -188,13 +197,7 @@ class ChatUserSettingsAdmin(admin.ModelAdmin):
 
 @admin.register(MessageReaction)
 class MessageReactionAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "message",
-        "user",
-        "emoji",
-        "created_at"
-    )
+    list_display = ("id", "message", "user", "emoji", "created_at")
     list_filter = ("emoji", "created_at")
     search_fields = ("message__content", "user__last_name", "emoji")
     ordering = ("-created_at",)
@@ -203,30 +206,17 @@ class MessageReactionAdmin(admin.ModelAdmin):
 
 @admin.register(AvailableReaction)
 class AvailableReactionAdmin(admin.ModelAdmin):
-    list_display = (
-        "emoji",
-        "name",
-        "order",
-        "is_active",
-        "created_at"
-    )
+    list_display = ("emoji", "name", "order", "is_active", "created_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("emoji", "name")
     ordering = ("order", "created_at")
     list_editable = ("order", "is_active")
     readonly_fields = ("created_at",)
-    
+
     fieldsets = (
-        ("Основное", {
-            "fields": ("emoji", "name", "is_active")
-        }),
-        ("Отображение", {
-            "fields": ("order",)
-        }),
-        ("Информация", {
-            "fields": ("created_at",),
-            "classes": ("collapse",)
-        }),
+        ("Основное", {"fields": ("emoji", "name", "is_active")}),
+        ("Отображение", {"fields": ("order",)}),
+        ("Информация", {"fields": ("created_at",), "classes": ("collapse",)}),
     )
 
 
@@ -252,31 +242,27 @@ class PollAdmin(admin.ModelAdmin):
         "author",
         "total_voters",
         "is_closed",
-        "created_at"
+        "created_at",
     )
     list_filter = (
         "is_anonymous",
         "is_multiple_choice",
         "is_quiz",
         "is_closed",
-        "created_at"
+        "created_at",
     )
     search_fields = ("question", "author__last_name")
     ordering = ("-created_at",)
-    readonly_fields = (
-        "created_at",
-        "updated_at",
-        "closed_at",
-        "total_voters"
-    )
+    readonly_fields = ("created_at", "updated_at", "closed_at", "total_voters")
     inlines = [PollOptionInline, PollVoteInline]
-    
+
     def question_short(self, obj):
         return (
             obj.question[:50] + "..."
             if len(obj.question) > 50
             else obj.question
         )
+
     question_short.short_description = "Вопрос"
 
 
@@ -287,19 +273,20 @@ class PollOptionAdmin(admin.ModelAdmin):
         "poll_question_short",
         "text",
         "vote_count",
-        "is_correct"
+        "is_correct",
     )
     list_filter = ("is_correct", "created_at")
     search_fields = ("text", "poll__question")
     ordering = ("poll", "position")
     readonly_fields = ("vote_count", "created_at")
-    
+
     def poll_question_short(self, obj):
         return (
             obj.poll.question[:30] + "..."
             if len(obj.poll.question) > 30
             else obj.poll.question
         )
+
     poll_question_short.short_description = "Голосование"
 
 
@@ -310,29 +297,27 @@ class PollVoteAdmin(admin.ModelAdmin):
         "poll_question_short",
         "voter",
         "option_text_short",
-        "voted_at"
+        "voted_at",
     )
     list_filter = ("voted_at",)
-    search_fields = (
-        "poll__question",
-        "voter__last_name",
-        "option__text"
-    )
+    search_fields = ("poll__question", "voter__last_name", "option__text")
     ordering = ("-voted_at",)
     readonly_fields = ("voted_at",)
-    
+
     def poll_question_short(self, obj):
         return (
             obj.poll.question[:30] + "..."
             if len(obj.poll.question) > 30
             else obj.poll.question
         )
+
     poll_question_short.short_description = "Голосование"
-    
+
     def option_text_short(self, obj):
         return (
             obj.option.text[:20] + "..."
             if len(obj.option.text) > 20
             else obj.option.text
         )
+
     option_text_short.short_description = "Вариант"

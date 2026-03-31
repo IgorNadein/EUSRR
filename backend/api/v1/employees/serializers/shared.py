@@ -1,9 +1,27 @@
 """Общие (shared) сериализаторы: Skill, Position, EmployeeAction."""
 
+from drf_spectacular.utils import extend_schema_field
 from django.contrib.auth.models import Group
 from employees.constants import ACTION_CHOICES
 from employees.models import EmployeeAction, Position, Skill
 from rest_framework import serializers
+
+
+class GroupVerboseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class EmployeeActionHistorySerializer(serializers.Serializer):
+    history_id = serializers.IntegerField()
+    history_type = serializers.CharField()
+    history_type_display = serializers.CharField(allow_null=True)
+    history_date = serializers.DateTimeField()
+    history_date_display = serializers.CharField()
+    history_user = serializers.CharField(allow_null=True)
+    action = serializers.CharField(allow_null=True)
+    action_display = serializers.CharField(allow_null=True)
+    changes = serializers.DictField()
 
 
 class SkillSerializer(serializers.ModelSerializer):
@@ -28,6 +46,7 @@ class PositionSerializer(serializers.ModelSerializer):
         model = Position
         fields = ["id", "name", "description", "groups", "groups_verbose"]
 
+    @extend_schema_field(GroupVerboseSerializer(many=True))
     def get_groups_verbose(self, obj):
         return [{"id": g.id, "name": g.name} for g in obj.groups.all()]
 
@@ -51,12 +70,15 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
             "history",
         ]
 
+    @extend_schema_field(serializers.CharField())
     def get_action_display(self, obj):
         return obj.get_action_display()
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_date_display(self, obj):
         return obj.date.strftime("%d.%m.%Y %H:%M") if obj.date else None
 
+    @extend_schema_field(EmployeeActionHistorySerializer(many=True))
     def get_history(self, obj):
         if not self.context.get("include_action_history", False):
             return []
@@ -101,14 +123,18 @@ class EmployeeActionSerializer(serializers.ModelSerializer):
                 {
                     "history_id": cur.history_id,
                     "history_type": cur.history_type,
-                    "history_type_display": history_type_labels.get(cur.history_type),
+                    "history_type_display": history_type_labels.get(
+                        cur.history_type
+                    ),
                     "history_date": cur.history_date.isoformat(),
                     "history_date_display": cur.history_date.strftime(
                         "%d.%m.%Y %H:%M"
                     ),
                     "history_user": getattr(cur.history_user, "email", None),
                     "action": getattr(cur, "action", None),
-                    "action_display": action_labels.get(getattr(cur, "action", None)),
+                    "action_display": action_labels.get(
+                        getattr(cur, "action", None)
+                    ),
                     "changes": changes,
                 }
             )

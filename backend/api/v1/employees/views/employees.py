@@ -1,31 +1,30 @@
-"""EmployeeViewSet — CRUD сотрудников, профиль, навыки, LDAP-info, Excel-экспорт."""
+"""EmployeeViewSet.
+
+CRUD сотрудников, профиль, навыки, LDAP-info и Excel-экспорт.
+"""
 
 from __future__ import annotations
 
 import logging
-import traceback
 
 from common.emails import send_templated_mail
-from django.conf import settings
-from django.core.files.base import ContentFile
-from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q, Subquery
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.utils.crypto import get_random_string
 from employees.constants import ACTION_DISMISSED
-from employees.models import (Department, EmployeeAction, EmployeeDepartment,
-                              Position, RoleAssignment, Skill)
+from employees.models import (
+    Department,
+    EmployeeAction,
+    EmployeeDepartment,
+    RoleAssignment,
+)
 from employees.utils import _to_bool
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ...permissions import AdminOrActionOrModelPerms, IsSelfOrStaff
-from ..serializers import (EmployeeListSerializer, EmployeeSerializer,
-                           SkillSerializer)
+from ..serializers import EmployeeListSerializer, EmployeeSerializer
 from ._helpers import Employee
 
 logger = logging.getLogger(__name__)
@@ -40,8 +39,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     Доступ:
       - GET list/retrieve          — только аутентифицированные пользователи.
       - POST (create)              — только staff/superuser.
-      - PATCH/PUT/DELETE {id}      — staff/superuser ИЛИ пользователи с модельными правами.
-      - GET/PATCH /employees/me/   — только аутентифицированные; PATCH правит профиль текущего пользователя.
+            - PATCH/PUT/DELETE {id}      — staff/superuser ИЛИ пользователи
+                с модельными правами.
+            - GET/PATCH /employees/me/   — только аутентифицированные;
+                PATCH правит профиль текущего пользователя.
 
     Поиск: last_name, first_name, patronymic, email, phone_number
 
@@ -50,8 +51,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
     serializer_class = EmployeeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["last_name", "first_name",
-                     "patronymic", "email", "phone_number"]
+    search_fields = [
+        "last_name",
+        "first_name",
+        "patronymic",
+        "email",
+        "phone_number",
+    ]
     ordering_fields = ["last_name", "first_name", "created_at", "id"]
     ordering = ["last_name", "first_name"]
 
@@ -59,7 +65,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return [IsAuthenticated(), AdminOrActionOrModelPerms()]
         if self.action in {"update", "partial_update", "destroy"}:
-            return [IsAuthenticated(), (IsSelfOrStaff | AdminOrActionOrModelPerms)()]
+            return [
+                IsAuthenticated(),
+                (IsSelfOrStaff | AdminOrActionOrModelPerms)(),
+            ]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -70,16 +79,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         )
         dep_links_prefetch = Prefetch(
             "departments_links",
-            queryset=EmployeeDepartment.objects.filter(is_active=True).select_related(
-                "department", "role"
-            ),
+            queryset=EmployeeDepartment.objects.filter(
+                is_active=True
+            ).select_related("department", "role"),
             to_attr="dept_links",
         )
 
         prefetches = [
             "skills",
             dep_links_prefetch,
-            Prefetch("actions", queryset=EmployeeAction.objects.order_by("-date")),
+            Prefetch(
+                "actions", queryset=EmployeeAction.objects.order_by("-date")
+            ),
         ]
 
         qs = (
@@ -102,8 +113,9 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 member_ids = EmployeeDepartment.objects.filter(
                     department_id=dep_id
                 ).values("employee_id")
-                head_ids = Department.objects.filter(
-                    id=dep_id).values("head_id")
+                head_ids = Department.objects.filter(id=dep_id).values(
+                    "head_id"
+                )
                 role_assignment_ids = RoleAssignment.objects.filter(
                     role__department_id=dep_id, is_active=True
                 ).values("employee_id")
@@ -124,7 +136,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                     ),
                     _is_dept_head=Exists(
                         Department.objects.filter(
-                            id=dep_id, head_id=OuterRef("pk"))
+                            id=dep_id, head_id=OuterRef("pk")
+                        )
                     ),
                     _has_role_assignment=Exists(
                         RoleAssignment.objects.filter(
@@ -187,7 +200,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Создание сотрудника (административное, без пароля).
-        
+
         Создание LDAP пользователей с паролем - через RegisterAPIView.
         """
         instance = serializer.save()
@@ -208,10 +221,10 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         # DRF request.data может быть dict (JSON) или QueryDict (form data)
         data = self.request.data
         instance._ldap_changes = (
-            data.dict() if hasattr(data, 'dict') else dict(data)
+            data.dict() if hasattr(data, "dict") else dict(data)
         )
-        if 'avatar' in self.request.FILES:
-            instance._ldap_avatar = self.request.FILES['avatar']
+        if "avatar" in self.request.FILES:
+            instance._ldap_avatar = self.request.FILES["avatar"]
 
         serializer.save()
 
@@ -220,14 +233,19 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         if new_email and new_email.lower() != old_email.lower():
             instance.email_verified = False
             instance.email_activation_code = get_random_string(6, "0123456789")
-            instance.save(update_fields=["email_verified", "email_activation_code"])
+            instance.save(
+                update_fields=["email_verified", "email_activation_code"]
+            )
 
             try:
                 send_templated_mail(
                     subject="Подтверждение нового email",
                     to=[instance.email],
                     template_base="emails/registration_verify_code",
-                    context={"code": instance.email_activation_code, "user": instance},
+                    context={
+                        "code": instance.email_activation_code,
+                        "user": instance,
+                    },
                 )
             except Exception:
                 pass
@@ -250,7 +268,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                         to_attr="dept_links",
                     ),
                     Prefetch(
-                        "actions", queryset=EmployeeAction.objects.order_by("-date")
+                        "actions",
+                        queryset=EmployeeAction.objects.order_by("-date"),
                     ),
                 )
                 .get(pk=request.user.pk)
@@ -263,7 +282,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         # PATCH — используем стандартный механизм
         serializer = self.get_serializer(
-            instance, data=request.data, partial=True)
+            instance, data=request.data, partial=True
+        )
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data, status=200)

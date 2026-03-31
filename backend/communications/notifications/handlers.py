@@ -47,28 +47,28 @@ def get_users_with_notifications_enabled(chat, users) -> dict[int, bool]:
     """
     Получает словарь пользователей с их настройками уведомлений.
     Оптимизированная версия - один запрос к БД вместо N.
-    
+
     Args:
         chat: Chat объект
         users: QuerySet или список пользователей
-        
+
     Returns:
         dict: {user_id: notifications_enabled}
     """
     if not users:
         return {}
-    
+
     user_ids = [u.id for u in users]
-    
+
     # Один запрос для всех пользователей
     settings = ChatUserSettings.objects.filter(
         chat=chat,
         user_id__in=user_ids
     ).values('user_id', 'notifications_enabled')
-    
+
     # Создаем словарь для быстрого доступа
     settings_dict = {s['user_id']: s['notifications_enabled'] for s in settings}
-    
+
     # Для пользователей без настроек - по умолчанию True
     return {uid: settings_dict.get(uid, True) for uid in user_ids}
 
@@ -76,48 +76,49 @@ def get_users_with_notifications_enabled(chat, users) -> dict[int, bool]:
 def notify_new_message(message):
     """
     Отправляет уведомления о новом сообщении в чате.
-    
+
     Обрабатывает три типа уведомлений:
     1. Упоминания (@username) - высокий приоритет
     2. Ответы на сообщения - средний приоритет
     3. Обычные сообщения в чате - низкий приоритет
-    
+
     Специальная обработка для чатов комментариев (type='comments'):
     - Уведомляет автора объекта (поста/документа/заявки)
     - Уведомляет других участников дискуссии
-    
+
     Args:
         message: Экземпляр модели Message
     """
     chat = message.chat
     author = message.author
     content = message.content
-    
+
     # Специальная обработка для чатов комментариев
     if chat.type == 'comments':
         _notify_comment(message)
         return
-    
+
     # Получаем всех участников чата кроме автора
     if chat.type in ['announcement', 'channel', 'global']:
         participants = chat.get_participants().exclude(id=author.id)
     else:
         participants = chat.participants.exclude(id=author.id)
-    
+
     # ОПТИМИЗАЦИЯ: Загружаем настройки уведомлений ОДНИМ запросом
     participants_list = list(participants)
     if not participants_list:
         return  # Нет получателей
-    
-    notification_settings = get_users_with_notifications_enabled(chat, participants_list)
-    
+
+    notification_settings = get_users_with_notifications_enabled(
+        chat, participants_list)
+
     # Отслеживаем, кому уже отправили уведомления
     notified_user_ids = set()
-    
+
     # 1. УПОМИНАНИЯ (@username)
     mentioned_users = extract_mentions(content)
     author_name = author.get_full_name() or author.username
-    
+
     if mentioned_users:
         for email in mentioned_users:
             try:
@@ -142,11 +143,11 @@ def notify_new_message(message):
                     notified_user_ids.add(user.id)
             except User.DoesNotExist:
                 continue
-    
+
     # 2. ОТВЕТЫ НА СООБЩЕНИЯ
     if message.reply_to and message.reply_to.author_id != author.id:
         original_author = message.reply_to.author
-        
+
         if original_author.id not in notified_user_ids:
             if notification_settings.get(original_author.id, True):
                 _send_notification(
@@ -166,7 +167,7 @@ def notify_new_message(message):
                     }
                 )
             notified_user_ids.add(original_author.id)
-    
+
     # 3. ОБЫЧНЫЕ УВЕДОМЛЕНИЯ О НОВОМ СООБЩЕНИИ
     if chat.type == 'announcement':
         notification_verb = NotificationVerbs.ANNOUNCEMENT
@@ -178,19 +179,20 @@ def notify_new_message(message):
         if chat.type == 'private':
             title = MessageTemplates.private_message(author_name)
         else:
-            title = MessageTemplates.group_message(author_name, get_chat_name(chat))
+            title = MessageTemplates.group_message(
+                author_name, get_chat_name(chat))
         max_length = 100
         is_announcement = False
-    
+
     for recipient in participants_list:
         # Пропускаем тех, кому уже отправили уведомление
         if recipient.id in notified_user_ids:
             continue
-        
+
         # Проверяем настройки уведомлений
         if not notification_settings.get(recipient.id, True):
             continue
-        
+
         metadata = {
             'chat_id': chat.id,
             'chat_name': get_chat_name(chat),
@@ -199,7 +201,7 @@ def notify_new_message(message):
         }
         if is_announcement:
             metadata['is_announcement'] = True
-        
+
         _send_notification(
             sender=author,
             recipient=recipient,
@@ -214,33 +216,33 @@ def notify_new_message(message):
 def _notify_comment(message):
     """
     Отправляет уведомления о новом комментарии к объекту.
-    
+
     Уведомляет:
     1. Автора объекта (Post/Document/Request)
     2. Других участников обсуждения (кто оставлял комментарии)
-    
+
     Args:
         message: Экземпляр модели Message (в чате type='comments')
     """
     chat = message.chat
     author = message.author
     content = message.content
-    
+
     if not chat.context_object:
         # Нет привязанного объекта - обычная обработка
         return
-    
+
     recipients_set = set()
     context_obj = chat.context_object
-    
+
     # Определяем автора объекта в зависимости от типа
     object_author = None
     object_url = None
     object_type = "объекта"
-    
+
     # Проверяем тип объекта через модель
     model_name = context_obj.__class__.__name__
-    
+
     if model_name == 'Post':
         object_author = getattr(context_obj, 'author', None)
         object_url = f"/feed/#{context_obj.id}"
@@ -253,11 +255,11 @@ def _notify_comment(message):
         object_author = getattr(context_obj, 'employee', None)
         object_url = f"/requests/{context_obj.id}/"
         object_type = "заявки"
-    
+
     # 1. Уведомляем автора объекта
     if object_author and object_author.id != author.id:
         recipients_set.add(object_author)
-    
+
     # 2. Уведомляем всех, кто участвовал в обсуждении
     from ..models import Message
     previous_commenters = Message.objects.filter(
@@ -266,17 +268,17 @@ def _notify_comment(message):
     ).exclude(
         author_id=author.id
     ).values_list('author_id', flat=True).distinct()
-    
+
     if previous_commenters:
         from django.contrib.auth import get_user_model
         User = get_user_model()
         recipients_set.update(
             User.objects.filter(id__in=previous_commenters, is_active=True)
         )
-    
+
     # Отправляем уведомления
     author_name = author.get_full_name() or author.username
-    
+
     for recipient in recipients_set:
         _send_notification(
             sender=author,
@@ -300,25 +302,26 @@ def _notify_comment(message):
 def notify_chat_added(chat, new_users, added_by=None):
     """
     Отправляет уведомления пользователям о добавлении в чат.
-    
+
     Args:
         chat: Объект Chat
         new_users: Список/QuerySet новых пользователей
         added_by: Пользователь, который добавил (опционально)
     """
     # ОПТИМИЗАЦИЯ: Загружаем настройки одним запросом
-    notification_settings = get_users_with_notifications_enabled(chat, new_users)
-    
+    notification_settings = get_users_with_notifications_enabled(
+        chat, new_users)
+
     # Создаем уведомления для новых участников
     for user in new_users:
         # Не отправляем уведомление тому, кто сам себя добавил
         if added_by and user.id == added_by.id:
             continue
-        
+
         # Проверяем настройки уведомлений
         if not notification_settings.get(user.id, True):
             continue
-        
+
         _send_notification(
             sender=added_by,
             recipient=user,

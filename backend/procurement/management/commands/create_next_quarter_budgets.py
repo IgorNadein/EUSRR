@@ -3,10 +3,10 @@ Management команда для создания бюджетов на след
 
 Использование:
     python manage.py create_next_quarter_budgets
-    
+
     # Создать для конкретного года/квартала:
     python manage.py create_next_quarter_budgets --year 2026 --quarter 1
-    
+
     # Dry-run (без изменений в БД):
     python manage.py create_next_quarter_budgets --dry-run
 """
@@ -50,7 +50,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         now = timezone.now()
         current_quarter = (now.month - 1) // 3 + 1
-        
+
         # Определяем целевой квартал
         if options['year'] and options['quarter']:
             target_year = options['year']
@@ -63,35 +63,35 @@ class Command(BaseCommand):
             else:
                 target_quarter = current_quarter + 1
                 target_year = now.year
-        
+
         self.stdout.write(
             self.style.SUCCESS(
                 f'\n📊 Создание бюджетов на {target_year} Q{target_quarter}'
             )
         )
-        
+
         if options['dry_run']:
             self.stdout.write(
                 self.style.WARNING('🔍 DRY RUN - изменения не будут сохранены')
             )
-        
+
         # Получаем все отделы
         departments = Department.objects.all()
-        
+
         if not departments.exists():
             self.stdout.write(
                 self.style.ERROR('❌ Не найдено ни одного отдела!')
             )
             return
-        
+
         created_count = 0
         skipped_count = 0
         errors_count = 0
-        
+
         default_amount = Decimal(str(options['default_amount']))
-        
+
         self.stdout.write(f'\nВсего отделов: {departments.count()}\n')
-        
+
         for dept in departments:
             # Проверяем существует ли уже бюджет
             exists = Budget.objects.filter(
@@ -99,14 +99,14 @@ class Command(BaseCommand):
                 year=target_year,
                 quarter=target_quarter
             ).exists()
-            
+
             if exists:
                 self.stdout.write(
                     f'⏭️  {dept.name}: уже существует'
                 )
                 skipped_count += 1
                 continue
-            
+
             # Пытаемся скопировать бюджет из текущего квартала
             try:
                 current_budget = Budget.objects.get(
@@ -119,7 +119,7 @@ class Command(BaseCommand):
             except Budget.DoesNotExist:
                 allocated = default_amount
                 source = 'по умолчанию'
-            
+
             # Создаём бюджет
             if not options['dry_run']:
                 try:
@@ -150,10 +150,10 @@ class Command(BaseCommand):
                     f'(из {source})'
                 )
                 created_count += 1
-        
+
         # Итоги
         self.stdout.write('\n' + '=' * 60)
-        
+
         if options['dry_run']:
             self.stdout.write(
                 self.style.SUCCESS(
@@ -166,17 +166,17 @@ class Command(BaseCommand):
                     f'\n✨ Создано: {created_count} бюджетов'
                 )
             )
-        
+
         if skipped_count > 0:
             self.stdout.write(
                 self.style.WARNING(
                     f'⏭️  Пропущено (уже существуют): {skipped_count}'
                 )
             )
-        
+
         if errors_count > 0:
             self.stdout.write(
                 self.style.ERROR(f'❌ Ошибок: {errors_count}')
             )
-        
+
         self.stdout.write('')

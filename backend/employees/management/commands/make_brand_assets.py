@@ -12,7 +12,10 @@ except Exception as exc:  # pragma: no cover
 class Command(BaseCommand):
     """Генерирует набор иконок (favicons, apple-touch) из исходного logo.png."""
 
-    help = "Сгенерировать иконки из settings.BRAND_LOGO (static/img/logo.png по умолчанию)."
+    help = (
+        "Сгенерировать иконки из settings.BRAND_LOGO "
+        "(static/img/logo.png по умолчанию)."
+    )
 
     def add_arguments(self, parser) -> None:
         """Парсит аргументы команды.
@@ -20,7 +23,9 @@ class Command(BaseCommand):
         Args:
             parser: Аргумент-парсер Django management.
         """
-        parser.add_argument("--src", default=None, help="Путь в static к исходному PNG")
+        parser.add_argument(
+            "--src", default=None, help="Путь в static к исходному PNG"
+        )
         parser.add_argument(
             "--out-dir", default="img", help="Каталог внутри static для вывода"
         )
@@ -41,7 +46,9 @@ class Command(BaseCommand):
         if not src_path.exists():
             raise CommandError(f"Исходный файл не найден: {src_path}")
         if src_path.suffix.lower() != ".png":
-            raise CommandError("Ожидается PNG. При необходимости сконвертируйте логотип в PNG.")
+            raise CommandError(
+                "Ожидается PNG. При необходимости сконвертируйте логотип в PNG."
+            )
 
         sizes: List[Tuple[str, int]] = [
             ("favicon-32.png", 32),
@@ -54,4 +61,6 @@ class Command(BaseCommand):
             for name, sz in sizes:
                 dst = out_dir / name
                 im.resize((sz, sz), Image.LANCZOS).save(dst, format="PNG")
-                self.stdout.write(self.style.SUCCESS(f"✔ {dst.relative_to(static_dir)}"))
+                self.stdout.write(
+                    self.style.SUCCESS(f"✔ {dst.relative_to(static_dir)}")
+                )

@@ -24,7 +24,9 @@ class HistoryActionMixin:
     Параметры (необяз.): ?from=ISO ?to=ISO ?user=<id|email> ?type=+|~|-
     """
 
-    history_diff_fields = None  # список полей для diff; если None — попытаемся угадать
+    history_diff_fields = (
+        None  # список полей для diff; если None — попытаемся угадать
+    )
 
     @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
     def history(self, request, pk=None):

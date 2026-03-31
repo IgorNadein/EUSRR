@@ -25,7 +25,7 @@ def notify_new_request(request_obj):
     - Пользователям с правом can_process_requests
 
     При sent_to_all_department=True отправляет всем сотрудникам отделов
-    
+
     Args:
         request_obj: Объект Request
     """
@@ -48,9 +48,7 @@ def notify_new_request(request_obj):
 
     # 1. Основные получатели
     recipients_count = request_obj.recipients.count()
-    logger.info(
-        f"[notify_new_request] Основные получатели: {recipients_count}"
-    )
+    logger.info(f"[notify_new_request] Основные получатели: {recipients_count}")
     print(f"   Recipients в БД: {recipients_count}")
     for recipient in request_obj.recipients.filter(is_active=True):
         recipients_set.add(recipient)
@@ -129,14 +127,13 @@ def notify_new_request(request_obj):
 
     # Итоговое логирование
     logger.info(
-        f"[notify_new_request] 📊 ИТОГО получателей: "
-        f"{len(recipients_set)}"
+        f"[notify_new_request] 📊 ИТОГО получателей: {len(recipients_set)}"
     )
     print(
         f"📊 [notify_new_request] Всего получателей для заявления "
         f"#{request_obj.id}: {len(recipients_set)}"
     )
-    
+
     if len(recipients_set) == 0:
         logger.warning(
             f"[notify_new_request] ⚠️ НЕТ ПОЛУЧАТЕЛЕЙ! "
@@ -149,20 +146,22 @@ def notify_new_request(request_obj):
         return
 
     for r in recipients_set:
-        logger.info(
-            f"[notify_new_request]   👤 {r.username} (ID={r.id})"
-        )
+        logger.info(f"[notify_new_request]   👤 {r.username} (ID={r.id})")
         print(f"      👤 {r.username} (ID: {r.id})")
 
     # Подготовка общих данных
-    author_name = request_obj.employee.get_full_name() or request_obj.employee.username
+    author_name = (
+        request_obj.employee.get_full_name() or request_obj.employee.username
+    )
     request_type = request_obj.get_type_display()
     comment_preview = (
         request_obj.comment[:150] if request_obj.comment else "Без комментария"
     )
 
     logger.info(
-        f"[notify_new_request] Начало отправки {len(recipients_set)} уведомлений..."
+        f"[notify_new_request] Начало отправки {
+            len(recipients_set)
+        } уведомлений..."
     )
 
     # Отправка уведомлений каждому получателю
@@ -176,12 +175,14 @@ def notify_new_request(request_obj):
         )
 
 
-def _send_new_request_notification(request_obj, recipient, author_name, request_type, comment_preview):
+def _send_new_request_notification(
+    request_obj, recipient, author_name, request_type, comment_preview
+):
     """
     Отправляет уведомление о новом заявлении конкретному получателю.
-    
+
     Определяет роль получателя и формирует соответствующее сообщение.
-    
+
     Args:
         request_obj: Объект Request
         recipient: Получатель (Employee)
@@ -233,14 +234,14 @@ def _send_new_request_notification(request_obj, recipient, author_name, request_
         description=message,
         action_url=ActionURLs.REQUESTS_LIST,
         data={
-            'title': title,
-            'request_id': request_obj.id,
-            'request_type': request_obj.type,
-            'employee_id': request_obj.employee.id,
-            'employee_name': author_name,
-            'is_primary_recipient': is_primary,
-            'is_cc': is_cc,
-            'is_approver': is_approver,
+            "title": title,
+            "request_id": request_obj.id,
+            "request_type": request_obj.type,
+            "employee_id": request_obj.employee.id,
+            "employee_name": author_name,
+            "is_primary_recipient": is_primary,
+            "is_cc": is_cc,
+            "is_approver": is_approver,
         },
     )
 
@@ -254,8 +255,9 @@ def notify_status_change(request_obj, old_status, new_status):
 
     ВАЖНО:
     - Автор (employee) ВСЕГДА получает уведомление о решении (approve/reject)
-    - Approver (тот кто принял решение) НЕ получает уведомление о своем же решении
-    
+        - Approver (тот кто принял решение) НЕ получает уведомление
+            о своем же решении
+
     Args:
         request_obj: Объект Request
         old_status: Старый статус
@@ -277,7 +279,9 @@ def notify_status_change(request_obj, old_status, new_status):
 
     # 2. Основные получатели (исключая тех кто в exclude_ids)
     recipients_to_notify.update(
-        request_obj.recipients.filter(is_active=True).exclude(id__in=exclude_ids)
+        request_obj.recipients.filter(is_active=True).exclude(
+            id__in=exclude_ids
+        )
     )
 
     # 3. Копия (исключая тех кто в exclude_ids)
@@ -285,7 +289,8 @@ def notify_status_change(request_obj, old_status, new_status):
         request_obj.cc_users.filter(is_active=True).exclude(id__in=exclude_ids)
     )
 
-    # 4. Если sent_to_all_department - все сотрудники отделов (исключая exclude_ids)
+    # 4. Если sent_to_all_department - все сотрудники отделов (исключая
+    # exclude_ids)
     if request_obj.sent_to_all_department:
         # При approve/reject также исключаем approver
         all_exclude_ids = {request_obj.employee.id}
@@ -308,7 +313,9 @@ def notify_status_change(request_obj, old_status, new_status):
         request_obj.employee.get_full_name() or request_obj.employee.username
     )
     approver_name = (
-        request_obj.approver.get_full_name() if request_obj.approver else "Руководитель"
+        request_obj.approver.get_full_name()
+        if request_obj.approver
+        else "Руководитель"
     )
 
     # Отправка уведомлений каждому получателю
@@ -325,11 +332,17 @@ def notify_status_change(request_obj, old_status, new_status):
 
 
 def _send_status_change_notification(
-    request_obj, recipient, new_status, old_status, employee_name, request_type, approver_name
+    request_obj,
+    recipient,
+    new_status,
+    old_status,
+    employee_name,
+    request_type,
+    approver_name,
 ):
     """
     Отправляет уведомление об изменении статуса конкретному получателю.
-    
+
     Args:
         request_obj: Объект Request
         recipient: Получатель (Employee)
@@ -340,12 +353,12 @@ def _send_status_change_notification(
         approver_name: Имя согласующего
     """
     # Определяем тип уведомления и формируем сообщение
-    if new_status == 'approved':
+    if new_status == "approved":
         verb = NotificationVerbs.REQUEST_APPROVED
         title, message = MessageTemplates.status_approved(
             employee_name, request_type, approver_name
         )
-    elif new_status == 'rejected':
+    elif new_status == "rejected":
         verb = NotificationVerbs.REQUEST_REJECTED
         title, message = MessageTemplates.status_rejected(
             employee_name, request_type, approver_name
@@ -364,17 +377,17 @@ def _send_status_change_notification(
         description=message,
         action_url=ActionURLs.REQUESTS_LIST,
         data={
-            'title': title,
-            'request_id': request_obj.id,
-            'request_type': request_obj.type,
-            'employee_id': request_obj.employee.id,
-            'employee_name': employee_name,
-            'old_status': old_status,
-            'new_status': new_status,
-            'approver_id': (
+            "title": title,
+            "request_id": request_obj.id,
+            "request_type": request_obj.type,
+            "employee_id": request_obj.employee.id,
+            "employee_name": employee_name,
+            "old_status": old_status,
+            "new_status": new_status,
+            "approver_id": (
                 request_obj.approver.id if request_obj.approver else None
             ),
-            'approver_name': approver_name,
+            "approver_name": approver_name,
         },
     )
 
@@ -382,14 +395,14 @@ def _send_status_change_notification(
 def notify_comment(comment_obj):
     """
     Отправляет уведомления о новом комментарии к заявлению.
-    
+
     Уведомляет:
     - Автора заявления
     - Всех получателей
     - Всех в копии
     - Согласующего
     - Сотрудников отделов (если sent_to_all_department)
-    
+
     Args:
         comment_obj: Объект RequestComment
     """
@@ -453,10 +466,10 @@ def notify_comment(comment_obj):
             description=description,
             action_url=ActionURLs.REQUESTS_LIST,
             data={
-                'title': title,
-                'request_id': request_obj.id,
-                'request_type': request_obj.type,
-                'comment_id': comment_obj.id,
-                'author_id': author.id,
+                "title": title,
+                "request_id": request_obj.id,
+                "request_type": request_obj.type,
+                "comment_id": comment_obj.id,
+                "author_id": author.id,
             },
         )

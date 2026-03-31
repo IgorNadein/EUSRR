@@ -11,10 +11,10 @@ def recalculate_unread_counts(apps, schema_editor):
     """
     ChatReadState = apps.get_model('communications', 'ChatReadState')
     Message = apps.get_model('communications', 'Message')
-    
+
     total = ChatReadState.objects.count()
     print(f"\n🔄 Пересчет unread_count для {total} записей ChatReadState...")
-    
+
     updated = 0
     for read_state in ChatReadState.objects.select_related('chat', 'user').iterator(chunk_size=100):
         # Считаем непрочитанные сообщения
@@ -22,21 +22,21 @@ def recalculate_unread_counts(apps, schema_editor):
             chat_id=read_state.chat_id,
             is_deleted=False
         ).exclude(author_id=read_state.user_id)
-        
+
         if read_state.last_read_message_id:
             # Считаем сообщения с ID больше последнего прочитанного
             count = messages_qs.filter(id__gt=read_state.last_read_message_id).count()
         else:
             # Если не было прочтений - все сообщения непрочитаны
             count = messages_qs.count()
-        
+
         read_state.unread_count = count
         read_state.save(update_fields=['unread_count'])
-        
+
         updated += 1
         if updated % 100 == 0:
             print(f"  Обработано: {updated}/{total}")
-    
+
     print(f"✅ Обновлено {updated} записей")
 
 

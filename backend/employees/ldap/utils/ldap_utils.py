@@ -1,12 +1,13 @@
 """LDAP-специфичные утилиты.
 
-Функции для работы с LDAP-атрибутами, поиска, парсинга значений и работы с группами.
+Функции для LDAP-атрибутов, поиска,
+парсинга значений и работы с группами.
 """
 
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ldap3 import ALL_ATTRIBUTES, BASE, SUBTREE, Connection
+from ldap3 import ALL_ATTRIBUTES, SUBTREE, Connection
 
 from ..config import DISABLED_FLAG
 
@@ -27,15 +28,15 @@ def _first(val: Any) -> Any:
 
 def get_ldap_str(value: Any) -> str:
     """Безопасно извлекает строковое значение из LDAP поля.
-    
+
     LDAP поля могут возвращаться как:
     - строка (str)
     - список строк (list)
     - None
-    
+
     Args:
         value: Значение LDAP поля
-        
+
     Returns:
         str: Первый элемент (если список) или само значение (если строка),
              или пустая строка
@@ -199,7 +200,9 @@ def group_type(scope: str, security_enabled: bool) -> int:
 
 
 def cn_candidates(pretty: str, safe: str) -> List[str]:
-    """Формирует список возможных CN: красивый + постфиксы, затем безопасный + постфиксы.
+    """Формирует список возможных CN.
+
+    Сначала красивый + постфиксы, затем безопасный + постфиксы.
 
     Args:
         pretty (str): "Красивый" вариант CN (например, с кириллицей).
@@ -271,7 +274,9 @@ def ensure_unique_login(
     max_sam_len: int = 20,
     max_attempts: int = 100,
 ) -> Tuple[str, str]:
-    """Подбирает уникальные sAMAccountName и UPN (<sam>@<suffix>) c суффиксами цифр.
+    """Подбирает уникальные sAMAccountName и UPN.
+
+    Формат: <sam>@<suffix>, при конфликте добавляются цифровые суффиксы.
 
     Args:
         base (str): Базовый логин (ASCII).
@@ -316,7 +321,7 @@ def build_logins_for_user(
     is_taken_upn: Callable[[str], bool],
     guid: Optional[uuid.UUID] = None,
 ) -> Tuple[str, str]:
-    """Генерирует уникальные sAM и UPN согласно правилам проекта.
+    """Генерирует уникальные sAM и UPN по правилам проекта.
 
     Args:
         first_name (str): Имя.
@@ -342,24 +347,26 @@ def build_logins_for_user(
 
 def get_base_dn_for_employee(employee) -> str:
     """Определяет целевую OU для сотрудника в зависимости от статуса активности.
-    
+
     Args:
         employee: Экземпляр модели Employee.
-        
+
     Returns:
-        str: DN базовой OU (LDAP_DISMISSED_BASE если is_active=False, иначе LDAP_USERS_BASE).
-        
+        str: DN базовой OU.
+            LDAP_DISMISSED_BASE если is_active=False,
+            иначе LDAP_USERS_BASE.
+
     Raises:
         RuntimeError: Если настройка не сконфигурирована в settings.
     """
     from django.conf import settings
-    
+
     if not employee.is_active:
         dismissed_base = getattr(settings, "LDAP_DISMISSED_BASE", None)
         if not dismissed_base:
             raise RuntimeError("LDAP_DISMISSED_BASE is not configured")
         return dismissed_base
-    
+
     users_base = getattr(settings, "LDAP_USERS_BASE", None) or getattr(
         settings, "LDAP_USER_BASE", None
     )

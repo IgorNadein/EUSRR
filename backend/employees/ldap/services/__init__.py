@@ -49,7 +49,7 @@ from .user_mapper_service import UserMapperService
 __all__ = [
     # Базовые компоненты
     "BaseService",
-    
+
     # Константы
     "UserAccountControl",
     "GroupType",
@@ -59,14 +59,14 @@ __all__ = [
     "LdapErrorCode",
     "SyncDirection",
     "group_type_value",
-    
+
     # Основные сервисы
     "DepartmentService",
     "UserService",
     "GroupService",
     "PositionService",
     "SyncService",
-    
+
     # Подсервисы
     "UserPasswordService",
     "UserLoginService",

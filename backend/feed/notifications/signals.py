@@ -16,7 +16,7 @@ from .handlers import notify_new_post
 def create_post_notification(sender, instance, created, **kwargs):
     """
     Создает уведомления при создании новой публикации.
-    
+
     Уведомления отправляются в зависимости от типа:
     - TYPE_COMPANY - всем сотрудникам
     - TYPE_DEPARTMENT - сотрудникам отдела
@@ -24,7 +24,7 @@ def create_post_notification(sender, instance, created, **kwargs):
     """
     if not created:
         return
-    
+
     # Отправляем уведомления через универсальную систему
     # channels.py автоматически обработает через Celery
     notify_new_post(instance)

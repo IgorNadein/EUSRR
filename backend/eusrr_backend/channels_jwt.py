@@ -11,8 +11,12 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 User = get_user_model()
 
+
 class JWTAuthMiddleware(BaseMiddleware):
-    """Auth для Channels по JWT (query: ?token=... или header Authorization: Bearer ...)."""
+    """Auth для Channels по JWT.
+
+    Поддерживает query ?token=... и header Authorization: Bearer ...
+    """
 
     def _get_raw_token(self, scope) -> Optional[str]:
         # 1) query string
@@ -21,7 +25,9 @@ class JWTAuthMiddleware(BaseMiddleware):
             return qs["token"][0]
         # 2) header
         for name, value in scope.get("headers", []):
-            if name == b"authorization" and value.lower().startswith(b"bearer "):
+            if name == b"authorization" and value.lower().startswith(
+                b"bearer "
+            ):
                 return value.split()[1].decode()
         return None
 

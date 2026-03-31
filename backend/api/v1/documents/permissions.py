@@ -2,8 +2,7 @@
 from __future__ import annotations
 from typing import Any
 from copy import deepcopy
-from django.contrib.auth.models import AbstractBaseUser
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.permissions import DjangoModelPermissions
 from rest_framework.request import Request
 from rest_framework.views import View
@@ -11,7 +10,10 @@ from ..permissions import AdminOrActionOrModelPerms
 
 
 def _has_any_model_perm(
-    user, app_label: str, model_name: str, actions=("view", "change", "add", "delete")
+    user,
+    app_label: str,
+    model_name: str,
+    actions=("view", "change", "add", "delete"),
 ) -> bool:
     """Проверяет наличие любого модельного права из набора."""
     for act in actions:
@@ -37,25 +39,39 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
 
     def has_permission(self, request: Request, view: View) -> bool:
         action = getattr(view, "action", None)
-        
+
         # SAFE + acknowledge/download → достаточно быть аутентифицированным
-        if request.method in SAFE_METHODS or action in ("acknowledge", "download"):
+        if request.method in SAFE_METHODS or action in (
+            "acknowledge",
+            "download",
+        ):
             return bool(request.user and request.user.is_authenticated)
 
-        # CREATE → разрешаем всем аутентифицированным (документы создаются неопубликованными)
+        # CREATE → разрешаем всем аутентифицированным (документы создаются
+        # неопубликованными)
         if action == "create":
             return bool(request.user and request.user.is_authenticated)
 
         # update/destroy и related documents - проверяем на уровне объекта
-        if action in ("update", "partial_update", "destroy", "add_related", "remove_related", "revert"):
+        if action in (
+            "update",
+            "partial_update",
+            "destroy",
+            "add_related",
+            "remove_related",
+            "revert",
+        ):
             return bool(request.user and request.user.is_authenticated)
 
-        # небезопасные → staff ИЛИ стандартные модельные права (add/change/delete)
+        # небезопасные → staff ИЛИ стандартные модельные права
+        # (add/change/delete)
         if request.user and request.user.is_staff:
             return True
         return super().has_permission(request, view)
 
-    def has_object_permission(self, request: Request, view: View, obj: Any) -> bool:
+    def has_object_permission(
+        self, request: Request, view: View, obj: Any
+    ) -> bool:
         user = request.user
         if not (user and user.is_authenticated):
             return False
@@ -82,8 +98,12 @@ class DocumentReadOrModelPerms(AdminOrActionOrModelPerms):
         if request.method == "DELETE":
             return user.has_perm("documents.delete_document", obj)
 
-        # SAFE/ack/download без модельных прав → только получатели или sent_to_all
-        if request.method in SAFE_METHODS or action in ("acknowledge", "download"):
+        # SAFE/ack/download без модельных прав → только получатели или
+        # sent_to_all
+        if request.method in SAFE_METHODS or action in (
+            "acknowledge",
+            "download",
+        ):
             if getattr(obj, "sent_to_all", False):
                 return True
             return obj.recipients.filter(pk=user.pk, is_active=True).exists()

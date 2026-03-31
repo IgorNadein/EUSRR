@@ -15,6 +15,7 @@ redis==6.4.0
 # Django REST Framework
 djangorestframework==3.16.0
 djangorestframework_simplejwt==5.5.1
+drf-spectacular==0.28.0
 
 # Django Extensions and Utilities
 django-bootstrap5==25.1

@@ -169,7 +169,7 @@ class TestEquipmentTransferEndpoint:
         self.client.force_authenticate(user=self.user1)
         
         response = self.client.post(
-            f'/api/procurement/equipment/{self.equipment.id}/transfer/',
+            f'/api/v1/procurement/equipment/{self.equipment.id}/transfer/',
             {
                 'to_department': self.dept2.id,
                 'reason': 'Переезд сотрудника',
@@ -197,7 +197,7 @@ class TestEquipmentTransferEndpoint:
         self.client.force_authenticate(user=self.user1)
         
         response = self.client.post(
-            f'/api/procurement/equipment/{self.equipment.id}/transfer/',
+            f'/api/v1/procurement/equipment/{self.equipment.id}/transfer/',
             {
                 'to_person': self.user2.id,
                 'reason': 'Смена ответственного',
@@ -214,7 +214,7 @@ class TestEquipmentTransferEndpoint:
         self.client.force_authenticate(user=self.user1)
         
         response = self.client.post(
-            f'/api/procurement/equipment/{self.equipment.id}/transfer/',
+            f'/api/v1/procurement/equipment/{self.equipment.id}/transfer/',
             {'reason': 'Без цели'},
         )
         
@@ -259,7 +259,7 @@ class TestEquipmentWriteOffEndpoint:
         self.client.force_authenticate(user=self.user)
         
         response = self.client.post(
-            f'/api/procurement/equipment/{self.equipment.id}/write_off/',
+            f'/api/v1/procurement/equipment/{self.equipment.id}/write_off/',
             {'reason': 'Износ'}
         )
         
@@ -278,7 +278,7 @@ class TestEquipmentWriteOffEndpoint:
         self.client.force_authenticate(user=self.user)
         
         response = self.client.post(
-            f'/api/procurement/equipment/{self.equipment.id}/write_off/',
+            f'/api/v1/procurement/equipment/{self.equipment.id}/write_off/',
             {'reason': 'Повторно'}
         )
         
@@ -323,7 +323,7 @@ class TestEquipmentMaintenanceEndpoint:
         self.client.force_authenticate(user=self.user)
         
         response = self.client.post(
-            f'/api/procurement/equipment/{self.equipment.id}/add_maintenance/',
+            f'/api/v1/procurement/equipment/{self.equipment.id}/add_maintenance/',
             {
                 'type': 'repair',
                 'description': 'Замена блока питания',
@@ -379,7 +379,7 @@ class TestEquipmentQRCodeEndpoint:
         self.client.force_authenticate(user=self.user)
         
         response = self.client.get(
-            f'/api/procurement/equipment/{self.equipment.id}/qr_code/'
+            f'/api/v1/procurement/equipment/{self.equipment.id}/qr_code/'
         )
         
         assert response.status_code == status.HTTP_200_OK
@@ -444,7 +444,7 @@ class TestEquipmentTransferHistoryEndpoint:
         self.client.force_authenticate(user=self.user1)
         
         response = self.client.get(
-            f'/api/procurement/equipment/{self.equipment.id}/transfer_history/'
+            f'/api/v1/procurement/equipment/{self.equipment.id}/transfer_history/'
         )
         
         assert response.status_code == status.HTTP_200_OK

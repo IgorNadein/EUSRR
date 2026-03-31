@@ -4,11 +4,9 @@ import json
 import logging
 from typing import Any, Dict, Sequence, Iterable
 
-from django.conf import settings
+from drf_spectacular.utils import extend_schema_field
 from django.http import QueryDict
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import UploadedFile
-from django.template.defaultfilters import filesizeformat
 from documents.models import Document, DocumentAcknowledgement
 from rest_framework import serializers
 
@@ -19,6 +17,7 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+@extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
 class RecipientIDsField(serializers.Field):
     """Принимает recipient_ids в форматах: список, JSON-строка или CSV.
 
@@ -37,23 +36,31 @@ class RecipientIDsField(serializers.Field):
     def to_internal_value(self, data: Any) -> list[int]:
         """Парсит raw-значение из запроса в список int.
 
-        При multipart (QueryDict) поддерживает repeat-params: recipient_ids=1&recipient_ids=2...
+        При multipart (QueryDict) поддерживает repeat-params:
+        recipient_ids=1&recipient_ids=2...
         """
         # 1) Спец. случай: multipart/QueryDict с repeat-params
         # DRF в обычное Field передаёт "последнее" значение, поэтому
-        # забираем полный список через parent.initial_data.getlist(self.field_name)
-        parent_data = getattr(self.parent, "initial_data", None)  # type: ignore[attr-defined]
+        # забираем полный список через
+        # parent.initial_data.getlist(self.field_name)
+        parent_data = getattr(
+            self.parent, "initial_data", None
+        )  # type: ignore[attr-defined]
         if isinstance(parent_data, QueryDict):
-            values = parent_data.getlist(self.field_name)  # type: ignore[attr-defined]
+            values = parent_data.getlist(
+                self.field_name
+            )  # type: ignore[attr-defined]
             if len(values) > 1:
                 data = values
             elif len(values) == 1 and not isinstance(data, (list, tuple)):
-                # один элемент: оставим строкой — ниже распарсится как JSON/CSV/число
+                # один элемент: оставим строкой — ниже распарсится как
+                # JSON/CSV/число
                 data = values[0]
 
         # 2) Уже список/кортеж?
         if isinstance(data, (list, tuple)):
-            # если это ['1','2','3'] — ок; если это ['[1,2]'] — распакуем как строку
+            # если это ['1','2','3'] — ок; если это ['[1,2]'] — распакуем как
+            # строку
             if (
                 len(data) == 1
                 and isinstance(data[0], str)
@@ -69,7 +76,9 @@ class RecipientIDsField(serializers.Field):
                 if s.startswith("[") and s.endswith("]"):
                     parsed = json.loads(s)
                     if not isinstance(parsed, list):
-                        raise serializers.ValidationError("Ожидается JSON-массив ID.")
+                        raise serializers.ValidationError(
+                            "Ожидается JSON-массив ID."
+                        )
                     vals = parsed
                 elif "," in s:
                     vals = [p.strip() for p in s.split(",") if p.strip()]
@@ -105,18 +114,22 @@ class RecipientIDsField(serializers.Field):
 
 class DepartmentBriefSerializer(serializers.Serializer):
     """Краткий сериализатор отдела."""
+
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(read_only=True)
 
 
 class FolderSerializer(serializers.Serializer):
     """Сериализатор для папки filer.Folder."""
+
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField()
-    parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
+    parent_id = serializers.IntegerField(
+        source="parent.id", read_only=True, allow_null=True
+    )
     path = serializers.SerializerMethodField()
     document_count = serializers.IntegerField(read_only=True, default=0)
-    
+
     def get_path(self, obj) -> str:
         """Возвращает полный путь папки."""
         path_parts = []
@@ -124,44 +137,50 @@ class FolderSerializer(serializers.Serializer):
         while current:
             path_parts.insert(0, current.name)
             current = current.parent
-        return ' / '.join(path_parts)
+        return " / ".join(path_parts)
 
 
 class FolderBriefSerializer(serializers.Serializer):
     """Краткий сериализатор папки для вложенного отображения."""
+
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(read_only=True)
 
 
 class DocumentTagSerializer(serializers.Serializer):
     """Сериализатор для тегов документов."""
+
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(max_length=100)
     slug = serializers.SlugField(required=False, max_length=100)
     color = serializers.CharField(required=False)
     description = serializers.CharField(required=False, allow_blank=True)
     document_count = serializers.SerializerMethodField()
-    
+
     def get_document_count(self, obj) -> int:
         """Возвращает количество документов с этим тегом."""
-        return obj.documents.count() if hasattr(obj, 'documents') else 0
-    
+        return obj.documents.count() if hasattr(obj, "documents") else 0
+
     def validate_slug(self, value):
         """Проверяет уникальность slug."""
         from documents.models import DocumentTag
+
         # Проверяем дубликаты (исключая текущий объект при обновлении)
         qs = DocumentTag.objects.filter(slug=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("Tag with this slug already exists.")
+            raise serializers.ValidationError(
+                "Tag with this slug already exists."
+            )
         return value
-    
+
     def create(self, validated_data):
         """Создаёт новый тег документа."""
         from documents.models import DocumentTag
+
         return DocumentTag.objects.create(**validated_data)
-    
+
     def update(self, instance, validated_data):
         """Обновляет тег документа."""
         for attr, value in validated_data.items():
@@ -172,26 +191,31 @@ class DocumentTagSerializer(serializers.Serializer):
 
 class VersionSerializer(serializers.Serializer):
     """Сериализатор для версий документа (django-reversion)."""
+
     id = serializers.IntegerField(read_only=True)
-    revision_id = serializers.IntegerField(source='revision.id', read_only=True)
-    date_created = serializers.DateTimeField(source='revision.date_created', read_only=True)
+    revision_id = serializers.IntegerField(source="revision.id", read_only=True)
+    date_created = serializers.DateTimeField(
+        source="revision.date_created", read_only=True
+    )
     user = serializers.SerializerMethodField()
-    comment = serializers.CharField(source='revision.comment', read_only=True, allow_blank=True)
-    
+    comment = serializers.CharField(
+        source="revision.comment", read_only=True, allow_blank=True
+    )
+
     # Данные версии
     data = serializers.SerializerMethodField()
-    
+
     def get_user(self, obj) -> dict | None:
         """Возвращает информацию о пользователе, создавшем версию."""
         if not obj.revision.user:
             return None
         user = obj.revision.user
         return {
-            'id': user.id,
-            'full_name': f'{user.last_name} {user.first_name}'.strip(),
-            'avatar_url': getattr(user, 'avatar_url', None),
+            "id": user.id,
+            "full_name": f"{user.last_name} {user.first_name}".strip(),
+            "avatar_url": getattr(user, "avatar_url", None),
         }
-    
+
     def get_data(self, obj) -> dict:
         """Возвращает данные версии документа."""
         return obj.field_dict
@@ -199,6 +223,7 @@ class VersionSerializer(serializers.Serializer):
 
 class ActivityItemSerializer(serializers.Serializer):
     """Сериализатор для элемента timeline активности."""
+
     type = serializers.CharField()  # 'version', 'audit', 'acknowledgement'
     timestamp = serializers.DateTimeField()
     user = serializers.DictField(allow_null=True)
@@ -220,9 +245,14 @@ class DocumentReadSerializer(serializers.ModelSerializer):
     folder = FolderBriefSerializer(read_only=True)
     folder_path = serializers.CharField(read_only=True)
     tags = DocumentTagSerializer(many=True, read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
     file_url = FilerFileSerializerField(source="file", read_only=True)
-    file_name = serializers.CharField(source='file.name', read_only=True, allow_null=True)
-    file_size = serializers.IntegerField(source='file.size', read_only=True, allow_null=True)
+    file_name = serializers.CharField(
+        source="file.name", read_only=True, allow_null=True
+    )
+    file_size = serializers.IntegerField(
+        source="file.size", read_only=True, allow_null=True
+    )
     is_acknowledged = serializers.SerializerMethodField()
 
     class Meta:
@@ -286,25 +316,28 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
     recipient_ids = RecipientIDsField(
         write_only=True,
         required=False,
-        help_text="Список ID сотрудников (repeat/JSON/CSV) при sent_to_all=false.",
+        help_text=(
+            "Список ID сотрудников (repeat/JSON/CSV) "
+            "при sent_to_all=false."
+        ),
     )
-    
+
     department_ids = RecipientIDsField(
         write_only=True,
         required=False,
         help_text="Список ID отделов-получателей.",
     )
-    
+
     tag_ids = RecipientIDsField(
         write_only=True,
         required=False,
         help_text="Список ID тегов для привязки к документу.",
     )
-    
+
     file = FilerFileSerializerField(
         required=False,
         allow_null=True,
-        help_text="Файл для загрузки через django-filer"
+        help_text="Файл для загрузки через django-filer",
     )
 
     class Meta:
@@ -333,7 +366,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             dict: Те же данные.
 
         Raises:
-            serializers.ValidationError: Если sent_to_all=false 
+            serializers.ValidationError: Если sent_to_all=false
                 и нет recipient_ids или department_ids.
         """
         if self.instance is None and not attrs.get("file"):
@@ -342,16 +375,21 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         sent_to_all = attrs.get("sent_to_all", True)
         recipient_ids = attrs.get("recipient_ids", [])
         department_ids = attrs.get("department_ids", [])
-        
+
         if sent_to_all is False and not recipient_ids and not department_ids:
             raise serializers.ValidationError(
                 {
-                    "recipient_ids": "Укажите получателей, отделы или установите sent_to_all=true."
+                    "recipient_ids": (
+                        "Укажите получателей, отделы или установите "
+                        "sent_to_all=true."
+                    )
                 }
             )
         return attrs
-    
-    def _set_departments(self, doc: Document, department_ids: Sequence[int]) -> int:
+
+    def _set_departments(
+        self, doc: Document, department_ids: Sequence[int]
+    ) -> int:
         """Привязывает отделы-получатели по списку ID.
 
         Args:
@@ -362,31 +400,31 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             int: Количество привязанных отделов.
         """
         from employees.models import Department
-        
+
         logger.info(
             f"[serializers] _set_departments doc={doc.id} "
             f"department_ids={list(department_ids)}"
         )
-        
+
         if not department_ids:
             doc.departments.clear()
             logger.info(f"[serializers] Cleared departments for doc={doc.id}")
             return 0
-            
+
         departments = Department.objects.filter(id__in=set(department_ids))
         count = departments.count()
         logger.info(
             f"[serializers] Found {count} departments from "
             f"{len(department_ids)} requested IDs"
         )
-        
+
         doc.departments.set(departments)
-        logger.info(
-            f"[serializers] Set {count} departments for doc={doc.id}"
-        )
+        logger.info(f"[serializers] Set {count} departments for doc={doc.id}")
         return count
 
-    def _set_recipients(self, doc: Document, recipient_ids: Sequence[int]) -> int:
+    def _set_recipients(
+        self, doc: Document, recipient_ids: Sequence[int]
+    ) -> int:
         """Привязывает получателей по списку ID (только активные).
 
         Args:
@@ -400,23 +438,21 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             f"[serializers] _set_recipients doc={doc.id} "
             f"recipient_ids={list(recipient_ids)}"
         )
-        
+
         if not recipient_ids:
             doc.recipients.clear()
             logger.info(f"[serializers] Cleared recipients for doc={doc.id}")
             return 0
-            
+
         users = User.objects.filter(is_active=True, id__in=set(recipient_ids))
         count = users.count()
         logger.info(
             f"[serializers] Found {count} active users from "
             f"{len(recipient_ids)} requested IDs"
         )
-        
+
         doc.recipients.set(users)
-        logger.info(
-            f"[serializers] Set {count} recipients for doc={doc.id}"
-        )
+        logger.info(f"[serializers] Set {count} recipients for doc={doc.id}")
         return count
 
     def _set_tags(self, doc: Document, tag_ids: Sequence[int]) -> int:
@@ -430,29 +466,30 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             int: Количество привязанных тегов.
         """
         from documents.models import DocumentTag
-        
+
         logger.info(
             f"[serializers] _set_tags doc={doc.id} tag_ids={list(tag_ids)}"
         )
-        
+
         if not tag_ids:
             doc.tags.clear()
             logger.info(f"[serializers] Cleared tags for doc={doc.id}")
             return 0
-            
+
         tags = DocumentTag.objects.filter(id__in=set(tag_ids))
         count = tags.count()
         logger.info(
             f"[serializers] Found {count} tags from {len(tag_ids)} "
             f"requested IDs"
         )
-        
+
         doc.tags.set(tags)
         logger.info(f"[serializers] Set {count} tags for doc={doc.id}")
         return count
 
     def create(self, validated_data: Dict[str, Any]) -> Document:
-        """Создание документа с корректной установкой получателей и уведомлением.
+        """Создание документа с корректной установкой
+        получателей и уведомлением.
 
         Args:
             validated_data (dict): Данные.
@@ -474,13 +511,17 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
             f"tag_ids={list(tag_ids)}"
         )
 
-        # Создаём документ - сигналы из notification_signals.py сработают автоматически
-        doc = Document.objects.create(uploaded_by=uploader, **validated_data)  # type: ignore[arg-type]
+        # Создаём документ - сигналы из notification_signals.py сработают
+        # автоматически
+        doc = Document.objects.create(  # type: ignore[arg-type]
+            uploaded_by=uploader,
+            **validated_data,
+        )
         logger.info(
             f"[serializers] Document created id={doc.id} "
             f"sent_to_all={doc.sent_to_all}"
         )
-        
+
         # Для индивидуальной рассылки устанавливаем получателей
         # Это вызовет m2m_changed сигнал
         if validated_data.get("sent_to_all") is False:
@@ -489,7 +530,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
                     f"[serializers] Setting departments for doc={doc.id}"
                 )
                 self._set_departments(doc, department_ids)
-            
+
             if recipient_ids:
                 logger.info(
                     f"[serializers] Setting recipients for doc={doc.id}"
@@ -504,7 +545,9 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         logger.info(f"[serializers] Document creation complete id={doc.id}")
         return doc
 
-    def update(self, instance: Document, validated_data: Dict[str, Any]) -> Document:
+    def update(
+        self, instance: Document, validated_data: Dict[str, Any]
+    ) -> Document:
         """Частичное обновление документа.
 
         Args:
@@ -517,7 +560,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
         recipient_ids = validated_data.pop("recipient_ids", None)
         department_ids = validated_data.pop("department_ids", None)
         tag_ids = validated_data.pop("tag_ids", None)
-        
+
         for f in ("title", "description", "sent_to_all", "file", "folder"):
             if f in validated_data:
                 setattr(instance, f, validated_data[f])
@@ -532,7 +575,7 @@ class DocumentWriteSerializer(serializers.ModelSerializer):
                 self._set_departments(instance, department_ids)
             if recipient_ids is not None:
                 self._set_recipients(instance, recipient_ids)
-        
+
         # Обновляем теги (независимо от sent_to_all)
         if tag_ids is not None:
             self._set_tags(instance, tag_ids)

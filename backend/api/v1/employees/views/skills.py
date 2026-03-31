@@ -67,7 +67,8 @@ class SkillViewSet(viewsets.ModelViewSet):
 
         existing = set(
             Skill.objects.filter(name__in=cleaned).values_list(
-                "name", flat=True)
+                "name", flat=True
+            )
         )
         to_create = [Skill(name=n) for n in cleaned if n not in existing]
         Skill.objects.bulk_create(to_create, ignore_conflicts=True)
@@ -86,24 +87,31 @@ class SkillViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"])
     @transaction.atomic
     def merge(self, request):
-        """Заменяет навык source на target, опционально переносит всех сотрудников."""
+        """Заменяет source на target.
+
+        Опционально переносит всех сотрудников.
+        """
         sid = request.data.get("source_id")
         tid = request.data.get("target_id")
         reassign = bool(request.data.get("reassign", True))
         delete_source = bool(request.data.get("delete_source", True))
 
         if not sid or not tid:
-            return Response({"detail": "source_id и target_id обязательны"}, status=400)
+            return Response(
+                {"detail": "source_id и target_id обязательны"}, status=400
+            )
         try:
             sid = int(sid)
             tid = int(tid)
         except (TypeError, ValueError):
             return Response(
-                {"detail": "source_id и target_id должны быть числами"}, status=400
+                {"detail": "source_id и target_id должны быть числами"},
+                status=400,
             )
         if sid == tid:
             return Response(
-                {"detail": "source_id и target_id не должны совпадать"}, status=400
+                {"detail": "source_id и target_id не должны совпадать"},
+                status=400,
             )
 
         try:

@@ -21,19 +21,19 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
-        
+
         # Получаем все изображения без размеров
         attachments = MessageAttachment.objects.filter(
             file_type='image',
             width__isnull=True
         )
-        
+
         total = attachments.count()
         self.stdout.write(f'Найдено {total} изображений без размеров')
-        
+
         updated = 0
         errors = 0
-        
+
         for att in attachments:
             try:
                 if not att.file:
@@ -41,12 +41,12 @@ class Command(BaseCommand):
                         f'Attachment #{att.id}: файл не найден'
                     ))
                     continue
-                
+
                 # Открываем файл без сохранения его в память целиком
                 with att.file.open('rb') as f:
                     image = Image.open(f)
                     width, height = image.size
-                
+
                 if dry_run:
                     self.stdout.write(
                         f'Attachment #{att.id}: {width}x{height} (dry-run)'
@@ -58,15 +58,15 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.SUCCESS(
                         f'Attachment #{att.id}: {width}x{height}'
                     ))
-                
+
                 updated += 1
-                
+
             except Exception as e:
                 errors += 1
                 self.stdout.write(self.style.ERROR(
                     f'Attachment #{att.id}: ошибка - {e}'
                 ))
-        
+
         self.stdout.write(self.style.SUCCESS(
             f'\nОбработано: {updated}/{total}, ошибок: {errors}'
         ))

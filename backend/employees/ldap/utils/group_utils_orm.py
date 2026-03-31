@@ -6,13 +6,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Optional, Set
+from typing import Iterable
 
 from django.conf import settings
 
 from employees.models import Employee
 from ..orm_models import LdapUser, LdapGroup
-from .text_utils import esc_filter
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ def group_add_member_orm(group_dn: str, member_dn: str) -> None:
         group = LdapGroup.objects.get(dn=group_dn)
     except LdapGroup.DoesNotExist:
         raise ValueError(f"LDAP group not found: {group_dn}")
-    
+
     members = list(group.member or [])
     if member_dn not in members:
         members.append(member_dn)
@@ -46,7 +45,7 @@ def group_remove_member_orm(group_dn: str, member_dn: str) -> None:
         group = LdapGroup.objects.get(dn=group_dn)
     except LdapGroup.DoesNotExist:
         raise ValueError(f"LDAP group not found: {group_dn}")
-    
+
     members = list(group.member or [])
     if member_dn in members:
         members.remove(member_dn)
@@ -56,7 +55,7 @@ def group_remove_member_orm(group_dn: str, member_dn: str) -> None:
 
 def resolve_group_dns_by_cn_orm(cns: set[str]) -> dict[str, str]:
     """Ищет DN групп по их CN через ORM.
-    
+
     Warning: Если есть несколько групп с одинаковым CN в разных OU,
     вернёт первую найденную (может быть неправильной).
     Рекомендуется использовать DN напрямую вместо CN.
@@ -98,8 +97,8 @@ def sync_user_groups_by_cns_orm(
     to_del = {
         dn
         for dn in (current_dns - desired_dns)
-        if (groups_base and dn.endswith(groups_base)) 
-           or (depts_base and dn.endswith(depts_base) and "CN=ROLE_" in dn)
+        if (groups_base and dn.endswith(groups_base))
+        or (depts_base and dn.endswith(depts_base) and "CN=ROLE_" in dn)
     }
 
     added = removed = 0
@@ -116,7 +115,10 @@ def sync_user_groups_by_cns_orm(
 
 
 def _desired_group_cns_for_employee(emp: "Employee") -> set[str]:
-    """Возвращает целевые CN групп для сотрудника из Django (Position/DeptRole/Direct)."""
+    """Возвращает целевые CN групп для сотрудника из Django.
+
+    Источники: Position, DeptRole и Direct.
+    """
     cns: set[str] = set()
     pos = getattr(emp, "position", None)
     if pos is not None and hasattr(pos, "groups"):
@@ -133,10 +135,10 @@ def _desired_group_cns_for_employee(emp: "Employee") -> set[str]:
 
 
 __all__ = [
-    'read_user_memberof_dns',
-    'group_add_member_orm',
-    'group_remove_member_orm',
-    'resolve_group_dns_by_cn_orm',
-    'sync_user_groups_by_cns_orm',
-    '_desired_group_cns_for_employee',
+    "read_user_memberof_dns",
+    "group_add_member_orm",
+    "group_remove_member_orm",
+    "resolve_group_dns_by_cn_orm",
+    "sync_user_groups_by_cns_orm",
+    "_desired_group_cns_for_employee",
 ]

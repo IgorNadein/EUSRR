@@ -17,7 +17,8 @@ class IsRecipientOfRequest(BasePermission):
     данной заявки. Это базовая проверка которая должна комбинироваться
     с проверкой прав (AdminOrActionOrModelPerms или DeptCanProcess).
 
-    Для staff/superuser проверка пропускается (они могут обрабатывать любые заявки).
+    Для staff/superuser проверка пропускается
+    (они могут обрабатывать любые заявки).
     """
 
     message = "Вы не являетесь получателем этой заявки."
@@ -25,11 +26,15 @@ class IsRecipientOfRequest(BasePermission):
     def has_permission(self, request: Request, view: Any) -> bool:
         return bool(getattr(request.user, "is_authenticated", False))
 
-    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+    def has_object_permission(
+        self, request: Request, view: Any, obj: Any
+    ) -> bool:
         user = request.user
 
         # Staff/superuser могут обрабатывать любые заявки
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if getattr(user, "is_staff", False) or getattr(
+            user, "is_superuser", False
+        ):
             return True
 
         # Проверяем, является ли пользователь получателем заявки
@@ -52,11 +57,15 @@ class CanViewRequest(BasePermission):
     def has_permission(self, request: Request, view: Any) -> bool:
         return bool(getattr(request.user, "is_authenticated", False))
 
-    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+    def has_object_permission(
+        self, request: Request, view: Any, obj: Any
+    ) -> bool:
         user = request.user
 
         # Staff/superuser могут просматривать любые заявки
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if getattr(user, "is_staff", False) or getattr(
+            user, "is_superuser", False
+        ):
             return True
 
         # Автор заявки
@@ -112,55 +121,70 @@ class CommentsPermission(BasePermission):
         if getattr(obj, "employee_id", None) == user.id:
             return True
         # Получатель заявки
-        if hasattr(obj, "recipients") and obj.recipients.filter(id=user.id).exists():
+        if (
+            hasattr(obj, "recipients")
+            and obj.recipients.filter(id=user.id).exists()
+        ):
             return True
         # В копии
-        if hasattr(obj, "cc_users") and obj.cc_users.filter(id=user.id).exists():
+        if (
+            hasattr(obj, "cc_users")
+            and obj.cc_users.filter(id=user.id).exists()
+        ):
             return True
         # Согласующий
         if getattr(obj, "approver_id", None) == user.id:
             return True
         return False
 
-    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+    def has_object_permission(
+        self, request: Request, view: Any, obj: Any
+    ) -> bool:
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         user = request.user
-        
+
         # Логируем начало проверки
         logger.info(
             f"[CommentsPermission] Проверка доступа: "
             f"user={user.id}, request_id={getattr(obj, 'id', '?')}, "
             f"method={request.method}"
         )
-        
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
-            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: staff/superuser")
+
+        if getattr(user, "is_staff", False) or getattr(
+            user, "is_superuser", False
+        ):
+            logger.info(
+                "[CommentsPermission] ✅ Доступ разрешен: staff/superuser"
+            )
             return True
-            
+
         # Участник заявки (владелец, получатель, cc, approver)
         if self._is_participant(user, obj):
-            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: участник заявки")
+            logger.info(
+                "[CommentsPermission] ✅ Доступ разрешен: участник заявки"
+            )
             return True
-            
+
         if self._is_head_for_request(user, obj):
-            logger.info(f"[CommentsPermission] ✅ Доступ разрешен: head отдела")
+            logger.info("[CommentsPermission] ✅ Доступ разрешен: head отдела")
             return True
-            
+
         code = self._required_perm(request)
         has_perm = bool(code and user.has_perm(code))
         logger.info(
             f"[CommentsPermission] Проверка модельных прав: "
             f"perm={code}, has_perm={has_perm}"
         )
-        
+
         if not has_perm:
             logger.warning(
                 f"[CommentsPermission] ❌ Доступ запрещен: "
                 f"user={user.id}, request_id={getattr(obj, 'id', '?')}"
             )
-        
+
         return has_perm
 
 
@@ -168,7 +192,8 @@ class NotFinalOrStaff(BasePermission):
     """Запрещает удаление финальной заявки для не-админов.
 
     - Разрешает любые методы, кроме DELETE, без ограничений.
-    - Для DELETE: разрешено, если заявка не финальная, либо пользователь — staff.
+        - Для DELETE: разрешено,
+            если заявка не финальная, либо пользователь — staff.
 
     Атрибуты:
         message (str): Текст ошибки для 403 Forbidden.
@@ -180,7 +205,9 @@ class NotFinalOrStaff(BasePermission):
 
     message = "Финальная заявка не может быть удалена."
 
-    def has_object_permission(self, request: Request, view: Any, obj: Any) -> bool:
+    def has_object_permission(
+        self, request: Request, view: Any, obj: Any
+    ) -> bool:
         """Объектная проверка.
 
         Args:
@@ -209,7 +236,8 @@ class DeptViewRequest(AdminOrDeptAllowed):
     Attributes:
         allow_safe_without_code (bool): Запрещает фоллбек пропуска SAFE-методов
             без явного кода права (защита от «случайных 200»).
-        required_code_map (dict[str, str]): Ограничиваем право только на `retrieve`.
+        required_code_map (dict[str, str]): Ограничиваем право только
+            на `retrieve`.
         required_code (Optional[str]): Явно отключаем общий fallback.
     """
 
@@ -225,7 +253,8 @@ class DeptViewRequest(AdminOrDeptAllowed):
     required_code: Optional[str] = None
 
     def get_required_code(self, request: Request, view: Any) -> Optional[str]:
-        """Возвращает код департаментного права только для поддерживаемых action.
+        """Возвращает код департаментного права
+        только для поддерживаемых action.
 
         Args:
             request (Request): DRF-запрос.
@@ -301,13 +330,18 @@ class DeptChangeRequest(AdminOrDeptAllowed):
             view (Any): Вью/вьюсет (важен view.action).
 
         Returns:
-            Optional[str]: 'change_request' для update/partial_update/destroy, иначе None.
+            Optional[str]: 'change_request' для
+                update/partial_update/destroy, иначе None.
 
         Notes:
             Возврат None означает «кода нет» → базовый класс вернёт False (403),
             так мы исключаем approve/reject и прочие экшены из этого пермишена.
         """
-        if getattr(view, "action", None) in {"update", "partial_update", "destroy"}:
+        if getattr(view, "action", None) in {
+            "update",
+            "partial_update",
+            "destroy",
+        }:
             return "change_request"
         return None
 
@@ -330,10 +364,12 @@ class DeptComments(AdminOrDeptAllowed):
             view (Any): Вью/вьюсет (не используется).
 
         Returns:
-            Optional[str]: Код права для текущего HTTP-метода или None для неподдерживаемых методов.
+            Optional[str]: Код права для текущего HTTP-метода
+                или None для неподдерживаемых методов.
 
         Raises:
-            None: Исключения не выбрасываются — при отсутствии кода доступ будет запрещён базовым классом.
+            None: Исключения не выбрасываются — при отсутствии
+                кода доступ будет запрещён базовым классом.
         """
         if request.method in {"GET", "HEAD"}:
             return DeptPerm.VIEW_REQUESTCOMMENT

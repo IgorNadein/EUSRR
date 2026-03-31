@@ -6,21 +6,21 @@ from django.utils import timezone
 
 def migrate_comments_forward(apps, schema_editor):
     """Миграция documents.DocumentComment → Communications.Message (ORM с threading)"""
-    
+
     Chat = apps.get_model('communications', 'Chat')
     Message = apps.get_model('communications', 'Message')
     DocumentComment = apps.get_model('documents', 'DocumentComment')
     Document = apps.get_model('documents', 'Document')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     try:
         doc_ct = ContentType.objects.get(app_label='documents', model='document')
     except ContentType.DoesNotExist:
         return
-    
+
     # 1. Создаем чаты для документов с комментариями
     doc_ids_with_comments = DocumentComment.objects.values_list('document_id', flat=True).distinct()
-    
+
     for doc_id in doc_ids_with_comments:
         if Chat.objects.filter(
             type='comments',
@@ -28,13 +28,13 @@ def migrate_comments_forward(apps, schema_editor):
             context_object_id=doc_id
         ).exists():
             continue
-        
+
         try:
             doc = Document.objects.get(id=doc_id)
             chat_name = f"Комментарии: {doc.title[:50]}" if hasattr(doc, 'title') and doc.title else "Комментарии"
         except Document.DoesNotExist:
             chat_name = "Комментарии"
-        
+
         Chat.objects.create(
             type='comments',
             name=chat_name,
@@ -51,10 +51,10 @@ def migrate_comments_forward(apps, schema_editor):
             include_all_users=False,
             extra_data={}
         )
-    
+
     # 2. Переносим КОРНЕВЫЕ комментарии (parent IS NULL)
     root_comments = DocumentComment.objects.filter(parent__isnull=True).select_related('author', 'document')
-    
+
     for comment in root_comments:
         try:
             chat = Chat.objects.get(
@@ -64,14 +64,14 @@ def migrate_comments_forward(apps, schema_editor):
             )
         except Chat.DoesNotExist:
             continue
-        
+
         if Message.objects.filter(
             chat=chat,
             author_id=comment.author_id,
             created_at=comment.created_at
         ).exists():
             continue
-        
+
         Message.objects.create(
             chat=chat,
             author_id=comment.author_id,
@@ -91,10 +91,10 @@ def migrate_comments_forward(apps, schema_editor):
                 'legacy_model': 'documents.DocumentComment'
             }
         )
-    
+
     # 3. Переносим ОТВЕТЫ (parent IS NOT NULL) - с установкой reply_to и thread_root
     reply_comments = DocumentComment.objects.filter(parent__isnull=False).select_related('author', 'document', 'parent')
-    
+
     for comment in reply_comments:
         try:
             chat = Chat.objects.get(
@@ -104,14 +104,14 @@ def migrate_comments_forward(apps, schema_editor):
             )
         except Chat.DoesNotExist:
             continue
-        
+
         if Message.objects.filter(
             chat=chat,
             author_id=comment.author_id,
             created_at=comment.created_at
         ).exists():
             continue
-        
+
         # Находим родительское сообщение
         try:
             parent_msg = Message.objects.get(
@@ -120,7 +120,7 @@ def migrate_comments_forward(apps, schema_editor):
             )
         except Message.DoesNotExist:
             continue
-        
+
         Message.objects.create(
             chat=chat,
             author_id=comment.author_id,
@@ -148,7 +148,7 @@ def migrate_comments_backward(apps, schema_editor):
     """Откат - удаляем чаты комментариев для документов"""
     Chat = apps.get_model('communications', 'Chat')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     try:
         doc_ct = ContentType.objects.get(app_label='documents', model='document')
         Chat.objects.filter(

@@ -10,14 +10,14 @@ from pathlib import Path
 def serve_service_worker(request):
     """
     Обслуживает Service Worker для Web Push уведомлений.
-    
+
     Service Worker должен отдаваться с правильными заголовками:
     - content-type: application/javascript
     - Cache-Control: no-cache (всегда свежая версия)
     - Service-Worker-Allowed: / (контроль всего домена)
     """
     sw_path = Path(__file__).parent / 'static' / 'notifications' / 'sw.js'
-    
+
     try:
         response = FileResponse(
             open(sw_path, 'rb'),
@@ -31,7 +31,7 @@ def serve_service_worker(request):
         # Service-Worker-Allowed позволяет контролировать весь домен
         response['Service-Worker-Allowed'] = '/'
         return response
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         return HttpResponse(
             f"Service Worker not found: {sw_path}",
             status=500

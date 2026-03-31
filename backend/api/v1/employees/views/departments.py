@@ -3,29 +3,50 @@
 from __future__ import annotations
 
 import logging
-import traceback
 from typing import Any, Dict
 
-from django.db.models import (Case, Count, Exists, F, IntegerField, OuterRef,
-                              Q, Subquery, Value, When)
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from employees.models import (Department, DepartmentRole, DeptPerm,
-                              EmployeeDepartment, RoleAssignment)
-from employees.utils import (_build_links_for_dept, _head_choices_for_dept,
-                             _perm_choices_synced, _validate_head_active)
+from employees.models import (
+    Department,
+    DepartmentRole,
+    DeptPerm,
+    EmployeeDepartment,
+    RoleAssignment,
+)
+from employees.utils import _build_links_for_dept, _validate_head_active
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ...permissions import (AdminOrActionOrModelPerms, AdminOrDeptAllowed,
-                            has_dept_perm)
-from ..serializers import (AddMemberInput, DepartmentBriefSerializer,
-                           DepartmentRoleSerializer, DepartmentSerializer,
-                           EmployeeBriefSerializer, RemoveMemberInput,
-                           SetHeadInput, SetMemberRoleInput)
+from ...permissions import (
+    AdminOrActionOrModelPerms,
+    AdminOrDeptAllowed,
+    has_dept_perm,
+)
+from ..serializers import (
+    AddMemberInput,
+    DepartmentBriefSerializer,
+    DepartmentSerializer,
+    EmployeeBriefSerializer,
+    RemoveMemberInput,
+    SetHeadInput,
+    SetMemberRoleInput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +61,19 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     Права:
       - update/partial_update/destroy → manage_department
       - set_head                   → change_department_head
-      - set_member_role           → assign_department_role     (назначение/снятие роли)
-      - add_member/remove_member  → manage_department          (управление участниками)
+            - set_member_role           → assign_department_role
+                (назначение/снятие роли)
+            - add_member/remove_member  → manage_department
+                (управление участниками)
       - create                    → staff/superuser
       - чтение                    → аутентифицированным
     """
 
-    queryset = Department.objects.select_related(
-        "head").prefetch_related("roles").all()
+    queryset = (
+        Department.objects.select_related("head")
+        .prefetch_related("roles")
+        .all()
+    )
     serializer_class = DepartmentSerializer
 
     # пермишены (скоуп-право по отделу)
@@ -110,8 +136,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 Subquery(active_count_subq, output_field=IntegerField()),
                 Value(0),
             ),
-            head_in_active=Exists(active_links.filter(
-                employee_id=OuterRef("head_id"))),
+            head_in_active=Exists(
+                active_links.filter(employee_id=OuterRef("head_id"))
+            ),
         ).annotate(
             employees_count=F("active_count")
             + Case(
@@ -147,18 +174,24 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
     # --- частичное изменение ---
 
-    def _perform_set_head(self, instance: Department, desired_head_id: int | None, request) -> Response | Department:
-        """Общая логика назначения руководителя для set_head action и partial_update.
+    def _perform_set_head(
+        self, instance: Department, desired_head_id: int | None, request
+    ) -> Response | Department:
+        """Общая логика назначения руководителя.
+
+        Используется для set_head action и partial_update.
 
         Возвращает Response при ошибке или обновлённый Department при успехе.
         """
         # Проверка прав
         perm = self.ChangeHeadPerm()
-        has_perm = perm.has_permission(request, self) and perm.has_object_permission(
-            request, self, instance
-        )
+        has_perm = perm.has_permission(
+            request, self
+        ) and perm.has_object_permission(request, self, instance)
         if not has_perm:
-            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN
+            )
 
         # Если тот же руководитель — пропустим
         if (desired_head_id or None) == (instance.head_id or None):
@@ -168,7 +201,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         new_head = None
         if desired_head_id is not None:
             employee_model = Department._meta.get_field(
-                "head").remote_field.model
+                "head"
+            ).remote_field.model
             new_head = get_object_or_404(employee_model, id=desired_head_id)
 
             require_verified = not (
@@ -203,7 +237,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             raw_desired = data.get("head_id", data.get("head", None))
 
             try:
-                if isinstance(raw_desired, str) and raw_desired.strip().lower() in {
+                if isinstance(
+                    raw_desired, str
+                ) and raw_desired.strip().lower() in {
                     "",
                     "null",
                     "none",
@@ -211,11 +247,15 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                     desired_head_id = None
                 else:
                     try:
-                        desired_head_id = int(
-                            raw_desired) if raw_desired is not None else None
+                        desired_head_id = (
+                            int(raw_desired)
+                            if raw_desired is not None
+                            else None
+                        )
                     except (TypeError, ValueError):
                         raise ValueError(
-                            "head_id должен быть целым числом или null")
+                            "head_id должен быть целым числом или null"
+                        )
             except ValueError as e:
                 return Response(
                     {"head_id": [str(e)]}, status=status.HTTP_400_BAD_REQUEST
@@ -238,7 +278,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 setattr(instance, k, v)
             instance.save(update_fields=list(changes.keys()))
 
-        return Response(self.get_serializer(instance).data, status=status.HTTP_200_OK)
+        return Response(
+            self.get_serializer(instance).data, status=status.HTTP_200_OK
+        )
 
     # -------- actions --------
 
@@ -256,7 +298,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         if isinstance(result, Response):
             return result
 
-        return Response(self.get_serializer(result).data, status=status.HTTP_200_OK)
+        return Response(
+            self.get_serializer(result).data, status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=["post"])
     def set_member_role(self, request, pk=None):
@@ -343,7 +387,10 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="user-perms")
     def user_perms(self, request, pk=None):
-        """GET /api/v1/departments/{id}/user-perms/ — флаги прав текущего пользователя."""
+        """GET /api/v1/departments/{id}/user-perms/.
+
+        Возвращает флаги прав текущего пользователя.
+        """
         dept = self.get_object()
         uid = getattr(request.user, "id", None)
         data = {
@@ -368,10 +415,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         emp_id = payload.validated_data["employee_id"]
 
         employee_model = Department._meta.get_field("head").remote_field.model
-        employee = get_object_or_404(employee_model, id=emp_id)
+        get_object_or_404(employee_model, id=emp_id)
 
         link, created = EmployeeDepartment.objects.get_or_create(
-            employee_id=emp_id, department_id=dept.id, defaults={"is_active": True}
+            employee_id=emp_id,
+            department_id=dept.id,
+            defaults={"is_active": True},
         )
         if not created and not link.is_active:
             link.is_active = True
@@ -396,7 +445,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         emp_id: int = payload.validated_data["employee_id"]
 
         employee_model = Department._meta.get_field("head").remote_field.model
-        employee = get_object_or_404(employee_model, id=emp_id)
+        get_object_or_404(employee_model, id=emp_id)
         if dept.head_id == emp_id:
             return Response(
                 {"detail": "Нельзя удалить руководителя отдела."},
@@ -430,8 +479,9 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             employee_id=user.id,
             is_active=True,
         )
-        user_qs = qs.filter(Q(head_id=user.id) | Exists(
-            active_link_exists)).distinct()
+        user_qs = qs.filter(
+            Q(head_id=user.id) | Exists(active_link_exists)
+        ).distinct()
 
         user_qs = user_qs.order_by("name", "id")
         data = DepartmentBriefSerializer(user_qs, many=True).data

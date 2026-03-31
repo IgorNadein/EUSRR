@@ -64,7 +64,7 @@ def compress_image(
             exif = img.getexif()
             # Тег 274 = Orientation
             orientation = exif.get(0x0112) if exif else None
-            
+
             if orientation:
                 # Применяем поворот согласно EXIF
                 if orientation == 3:

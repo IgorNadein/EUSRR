@@ -1,6 +1,6 @@
 # backend\employees\models.py
 from common.emails import send_templated_mail
-from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
+from django.contrib.auth.models import AbstractUser, BaseUserManager, Group
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models.functions import Lower
@@ -9,7 +9,12 @@ from django.utils.crypto import get_random_string
 from phonenumber_field.modelfields import PhoneNumberField
 from simple_history.models import HistoricalRecords
 
-from .constants import ACTION_CHOICES, ACTION_DISMISSED, GENDER_CHOICES, DeptPerm
+from .constants import (
+    ACTION_CHOICES,
+    ACTION_DISMISSED,
+    GENDER_CHOICES,
+    DeptPerm,
+)
 
 
 class DateRangeMixin(models.Model):
@@ -19,8 +24,14 @@ class DateRangeMixin(models.Model):
     def clean(self):
         super().clean()
         if hasattr(self, "date_from") and hasattr(self, "date_to"):
-            if self.date_from and self.date_to and self.date_from >= self.date_to:
-                raise ValidationError("Дата начала должна быть раньше даты окончания")
+            if (
+                self.date_from
+                and self.date_to
+                and self.date_from >= self.date_to
+            ):
+                raise ValidationError(
+                    "Дата начала должна быть раньше даты окончания"
+                )
 
 
 class EmployeeManager(BaseUserManager):
@@ -29,7 +40,9 @@ class EmployeeManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         send_activation_email = extra_fields.pop("send_activation_email", True)
         if not email:
-            raise ValueError("Пользователь должен иметь email для подтверждения")
+            raise ValueError(
+                "Пользователь должен иметь email для подтверждения"
+            )
         email = self.normalize_email(email).lower()
 
         phone_number = extra_fields.pop("phone_number", None)
@@ -67,7 +80,11 @@ class EmployeeManager(BaseUserManager):
                 )
             if "phone" in msg or "phone_number" in msg:
                 raise ValidationError(
-                    {"phone_number": "Пользователь с таким номером уже существует"}
+                    {
+                        "phone_number": (
+                            "Пользователь с таким номером уже существует"
+                        )
+                    }
                 )
             raise
 
@@ -87,9 +104,13 @@ class EmployeeManager(BaseUserManager):
         extra_fields.setdefault("email_verified", True)
 
         if extra_fields.get("is_staff") is not True:
-            raise ValueError("Суперпользователь должен иметь is_staff=True")
+            raise ValueError(
+                "Суперпользователь должен иметь is_staff=True"
+            )
         if extra_fields.get("is_superuser") is not True:
-            raise ValueError("Суперпользователь должен иметь is_superuser=True")
+            raise ValueError(
+                "Суперпользователь должен иметь is_superuser=True"
+            )
 
         # для суперпользователя не отправляем код, просто создаём
         user = self.model(
@@ -99,7 +120,9 @@ class EmployeeManager(BaseUserManager):
             **extra_fields,
         )
         if not user.phone_number:
-            raise ValueError("Для суперпользователя также укажите phone_number")
+            raise ValueError(
+                "Для суперпользователя также укажите phone_number"
+            )
         user.set_password(password)
         user.email_activation_code = None
         user.save(using=self._db)
@@ -107,8 +130,9 @@ class EmployeeManager(BaseUserManager):
 
     def get_active(self):
         """
-        Возвращает list активных сотрудников, оптимизированный: предварительная фильтрация в DB по полям,
-        затем Python-фильтр для сложной логики (actions).
+        Возвращает list активных сотрудников: сначала выполняется
+        фильтрация в БД по полям, затем Python-фильтр для сложной
+        логики с actions.
         """
         qs = (
             self.get_queryset()
@@ -137,7 +161,10 @@ class Position(models.Model):
         max_length=512,
         blank=True,
         default="",
-        help_text="Напр.: CN=POS_engineer,OU=Position,OU=company,DC=robotail,DC=local",
+        help_text=(
+            "Напр.: CN=POS_engineer,OU=Position,OU=company,"
+            "DC=robotail,DC=local"
+        ),
     )
     history = HistoricalRecords()
 
@@ -168,8 +195,12 @@ class Employee(AbstractUser):
     gender = models.PositiveSmallIntegerField(
         "Пол", choices=GENDER_CHOICES, default=0, blank=True
     )
-    avatar = models.ImageField("Фото", upload_to="users/avatars", blank=True, null=True)
-    phone_number = PhoneNumberField("Номер телефона", max_length=100, unique=True)
+    avatar = models.ImageField(
+        "Фото", upload_to="users/avatars", blank=True, null=True
+    )
+    phone_number = PhoneNumberField(
+        "Номер телефона", max_length=100, unique=True
+    )
     patronymic = models.CharField("Отчество", max_length=100, blank=True)
     birth_date = models.DateField("Дата рождения", blank=True, null=True)
     position = models.ForeignKey(
@@ -185,19 +216,26 @@ class Employee(AbstractUser):
         "Telegram Chat ID",
         max_length=100,
         blank=True,
-        help_text="Ваш Telegram Chat ID для получения уведомлений (найдите через @userinfobot)",
+        help_text=(
+            "Ваш Telegram Chat ID для получения уведомлений "
+            "(найдите через @userinfobot)"
+        ),
     )
     whatsapp = PhoneNumberField("WhatsApp", blank=True)
     wechat = models.CharField("WeChat", max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    skills = models.ManyToManyField("Skill", related_name="employees", blank=True)
+    skills = models.ManyToManyField(
+        "Skill", related_name="employees", blank=True
+    )
     is_active = models.BooleanField(default=False)
     sms_activation_code = models.CharField(
         max_length=6, blank=True, null=True
     )  # Для будущей SMS-активации в bots (fallback к email)
     email_verified = models.BooleanField("Email подтверждён", default=False)
-    email_activation_code = models.CharField(max_length=6, blank=True, null=True)
+    email_activation_code = models.CharField(
+        max_length=6, blank=True, null=True
+    )
 
     is_ldap_managed = models.BooleanField("Управляется LDAP", default=False)
 
@@ -219,7 +257,10 @@ class Employee(AbstractUser):
         ]
         permissions = [
             ("manage_employee_skills", "Может управлять навыками сотрудников"),
-            ("view_ldap_info", "Может просматривать LDAP информацию сотрудников"),
+            (
+                "view_ldap_info",
+                "Может просматривать LDAP информацию сотрудников",
+            ),
         ]
 
     # Контактные поля telegram/whatsapp/wechat опциональны
@@ -242,7 +283,9 @@ class Employee(AbstractUser):
             employee=self, is_active=True
         ).values_list("department_id", flat=True)
         # Плюс отделы, где сотрудник начальник
-        head_ids = Department.objects.filter(head=self).values_list("id", flat=True)
+        head_ids = Department.objects.filter(head=self).values_list(
+            "id", flat=True
+        )
         return Department.objects.filter(
             models.Q(id__in=department_ids) | models.Q(id__in=head_ids)
         ).distinct()
@@ -283,7 +326,9 @@ class EmployeeAction(models.Model):
     employee = models.ForeignKey(
         Employee, related_name="actions", on_delete=models.CASCADE
     )
-    action = models.CharField("Кадровое событие", max_length=50, choices=ACTION_CHOICES)
+    action = models.CharField(
+        "Кадровое событие", max_length=50, choices=ACTION_CHOICES
+    )
     date = models.DateTimeField("Дата действия")
     comment = models.TextField("Комментарий/причина", blank=True)
     extra = models.JSONField("Дополнительно", blank=True, null=True)
@@ -295,7 +340,10 @@ class EmployeeAction(models.Model):
         ordering = ["-date"]
 
     def __str__(self):
-        return f"{self.employee} — {self.get_action_display()} — {self.date:%d.%m.%Y}"
+        return (
+            f"{self.employee} — {self.get_action_display()} — "
+            f"{self.date:%d.%m.%Y}"
+        )
 
 
 class Department(models.Model):
@@ -319,7 +367,10 @@ class Department(models.Model):
         max_length=512,
         blank=True,
         default="",
-        help_text="Напр.: CN=DEP_it,OU=Department,OU=company,DC=robotail,DC=local",
+        help_text=(
+            "Напр.: CN=DEP_it,OU=Department,OU=company,"
+            "DC=robotail,DC=local"
+        ),
     )
 
     class Meta:
@@ -367,7 +418,9 @@ class Department(models.Model):
                 if not link.date_from:
                     updates["date_from"] = timezone.now().date()
                 if updates:
-                    EmployeeDepartment.objects.filter(pk=link.pk).update(**updates)
+                    EmployeeDepartment.objects.filter(pk=link.pk).update(
+                        **updates
+                    )
             except IntegrityError:
                 # На случай гонки
                 EmployeeDepartment.objects.filter(
@@ -392,8 +445,11 @@ class Department(models.Model):
                         employee_id=old_head_id, department_id=self.pk
                     ).update(is_active=True, date_to=timezone.now().date())
             else:
-                # Смена A -> B: по текущей логике бывший остаётся сотрудником отдела (активным)
-                # Если хотите наоборот — поменяйте is_active=True на False и добавьте date_to.
+                # Смена A -> B: по текущей логике бывший остаётся
+                # сотрудником отдела (активным).
+                # Если хотите наоборот — поменяйте is_active=True
+                # на False и добавьте
+                # date_to.
                 EmployeeDepartment.objects.get_or_create(
                     employee_id=old_head_id,
                     department_id=self.pk,
@@ -407,12 +463,20 @@ class Department(models.Model):
     def active_employees(self):
         """
         Все активные сотрудники отдела (через EmployeeDepartment),
-        включая руководителя, если он есть и активен.
+        включая руководителя, если он существует и активен.
         """
-        qs = self.employeedepartment.filter(is_active=True).select_related("employee")
-        employees = [ed.employee for ed in qs if ed.employee.is_actually_active]
+        qs = self.employeedepartment.filter(is_active=True).select_related(
+            "employee"
+        )
+        employees = [
+            ed.employee for ed in qs if ed.employee.is_actually_active
+        ]
 
-        if self.head and self.head.is_actually_active and self.head not in employees:
+        if (
+            self.head
+            and self.head.is_actually_active
+            and self.head not in employees
+        ):
             employees.append(self.head)
 
         return employees
@@ -427,7 +491,9 @@ class Department(models.Model):
             is_active=True, date_from__gte=month_ago
         ).select_related("employee")
 
-        employees = [ed.employee for ed in qs if ed.employee.is_actually_active]
+        employees = [
+            ed.employee for ed in qs if ed.employee.is_actually_active
+        ]
 
         # Добавляем руководителя, если он недавно назначен и активен
         if (
@@ -443,7 +509,9 @@ class Department(models.Model):
 
 
 class DepartmentPermission(models.Model):
-    code = models.CharField(max_length=64, choices=DeptPerm.CHOICES, unique=True)
+    code = models.CharField(
+        max_length=64, choices=DeptPerm.CHOICES, unique=True
+    )
     name = models.CharField(max_length=150)
 
     def __str__(self):
@@ -451,7 +519,10 @@ class DepartmentPermission(models.Model):
 
 
 class DepartmentRole(models.Model):
-    """Роль внутри КОНКРЕТНОГО отдела, с правами, заданными начальником отдела."""
+    """Роль внутри конкретного отдела.
+
+    Права роли задаются начальником отдела.
+    """
 
     department = models.ForeignKey(
         Department, on_delete=models.CASCADE, related_name="roles"
@@ -465,7 +536,10 @@ class DepartmentRole(models.Model):
         max_length=512,
         blank=True,
         default="",
-        help_text="Напр.: CN=ROLE_it__oncall,OU=Role,OU=company,DC=robotail,DC=local",
+        help_text=(
+            "Напр.: CN=ROLE_it__oncall,OU=Role,OU=company,"
+            "DC=robotail,DC=local"
+        ),
     )
 
     class Meta:
@@ -517,10 +591,10 @@ class EmployeeDepartment(DateRangeMixin, models.Model):
 
 
 class RoleAssignment(models.Model):
-    """Назначение роли сотруднику (не обязательно члену отдела).
+    """Назначение роли сотруднику.
 
-    Позволяет назначать роли любым сотрудникам компании,
-    независимо от их членства в отделе.
+    Роль может быть назначена любому сотруднику компании,
+    независимо от его членства в отделе.
 
     Attributes:
         employee: Сотрудник, которому назначена роль.
@@ -598,25 +672,34 @@ class LdapSyncState(models.Model):
     """Единое состояние синхронизации LDAP для любых объектов.
 
     Attributes:
-        model (str): Имя модели в Django ('employee','department','group','dept_role','position').
-        object_pk (str): Первичный ключ объекта (строкой, чтобы покрыть UUID/INT).
+        model (str): Имя модели в Django:
+            'employee', 'department', 'group', 'dept_role', 'position'.
+        object_pk (str): Первичный ключ объекта строкой,
+            чтобы покрыть UUID и INT.
         ldap_dn (str): Последний известный DN в LDAP.
         ldap_guid (str | None): objectGUID из Active Directory.
-        last_ldap_modify_ts (datetime | None): Последний modifyTimestamp/whenChanged из LDAP.
-        last_django_modify_ts (datetime | None): Последний updated_at из Django на момент фиксации.
-        last_sync_dir (str): 'ldap'|'django'|'auto'|'manual' — направление последнего успешного синка.
-        data_hash (str | None): Хэш значимых полей (опционально) для ускоренной детекции изменений.
+        last_ldap_modify_ts (datetime | None): Последний
+            modifyTimestamp/whenChanged из LDAP.
+        last_django_modify_ts (datetime | None): Последний updated_at
+            из Django на момент фиксации.
+        last_sync_dir (str): 'ldap'|'django'|'auto'|'manual' —
+            направление последнего успешного синка.
+        data_hash (str | None): Хэш значимых полей,
+            опциональный для ускоренной детекции изменений.
         updated_at (datetime): Время обновления записи состояния.
 
     Raises:
-        ValueError: При неверных значениях полей валидации (на уровне БД доп. ограничений нет).
+        ValueError: При неверных значениях полей валидации.
+            На уровне БД дополнительных ограничений нет.
     """
 
     model = models.CharField(max_length=32, db_index=True)
     object_pk = models.CharField(max_length=64, db_index=True)
 
     ldap_dn = models.TextField(blank=True, default="")
-    ldap_guid = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    ldap_guid = models.CharField(
+        max_length=64, null=True, blank=True, db_index=True
+    )
 
     last_ldap_modify_ts = models.DateTimeField(null=True, blank=True)
     last_django_modify_ts = models.DateTimeField(null=True, blank=True)
@@ -648,14 +731,17 @@ class LdapSyncState(models.Model):
             ldap_guid (str | None): Новый GUID.
             last_ldap_modify_ts: Новый штамп LDAP (UTC).
             last_django_modify_ts: Новый штамп Django (UTC).
-            sync_dir (str | None): Направление ('ldap'|'django'|'auto'|'manual').
+            sync_dir (str | None): Направление:
+                'ldap'|'django'|'auto'|'manual'.
             data_hash (str | None): Хэш полезных данных.
 
         Raises:
             ValueError: Если sync_dir не из допустимого набора.
         """
         if sync_dir and sync_dir not in ("ldap", "django", "auto", "manual"):
-            raise ValueError("sync_dir должен быть 'ldap'|'django'|'auto'|'manual'")
+            raise ValueError(
+                "sync_dir должен быть 'ldap'|'django'|'auto'|'manual'"
+            )
         if ldap_dn is not None:
             self.ldap_dn = ldap_dn
         if ldap_guid is not None:
@@ -683,10 +769,11 @@ class LdapSyncState(models.Model):
 
 
 class LdapSyncQueue(models.Model):
-    """Очередь отложенных LDAP-операций для retry при сбоях соединения.
+    """Очередь отложенных LDAP-операций для retry.
 
-    Когда сигнал не может записать данные в LDAP (сервер недоступен, таймаут и т.д.),
-    операция сохраняется в эту очередь и повторяется через Celery.
+    Когда сигнал не может записать данные в LDAP
+    (сервер недоступен, таймаут и т.д.), операция сохраняется
+    в эту очередь и повторяется через Celery.
     """
 
     class Status(models.TextChoices):
@@ -699,7 +786,10 @@ class LdapSyncQueue(models.Model):
     operation = models.CharField(
         max_length=64,
         db_index=True,
-        help_text="Имя операции (employee_save, department_delete, group_m2m и т.д.)",
+        help_text=(
+            "Имя операции: employee_save, department_delete, "
+            "group_m2m и т.д."
+        ),
     )
 
     # Модель и объект
@@ -742,7 +832,10 @@ class LdapSyncQueue(models.Model):
         ]
 
     def __str__(self):
-        return f"[{self.status}] {self.operation} {self.model_name}:{self.object_pk}"
+        return (
+            f"[{self.status}] {self.operation} "
+            f"{self.model_name}:{self.object_pk}"
+        )
 
     def schedule_retry(self, error: str):
         """Планирует следующую попытку с экспоненциальным backoff."""
@@ -755,12 +848,19 @@ class LdapSyncQueue(models.Model):
             self.status = self.Status.PENDING
             # Exponential backoff: 30s, 2m, 8m, 32m, ...
             from datetime import timedelta
-            delay = timedelta(seconds=30 * (4 ** self.attempts))
+
+            delay = timedelta(seconds=30 * (4**self.attempts))
             self.next_retry_at = timezone.now() + delay
 
-        self.save(update_fields=[
-            "attempts", "last_error", "status", "next_retry_at", "updated_at",
-        ])
+        self.save(
+            update_fields=[
+                "attempts",
+                "last_error",
+                "status",
+                "next_retry_at",
+                "updated_at",
+            ]
+        )
 
     def mark_completed(self):
         """Отмечает операцию как успешно выполненную."""

@@ -6,22 +6,22 @@ from django.utils import timezone
 
 def migrate_comments_forward(apps, schema_editor):
     """Миграция feed.Comment → Communications.Message (ORM)"""
-    
+
     Chat = apps.get_model('communications', 'Chat')
     Message = apps.get_model('communications', 'Message')
     MessageAttachment = apps.get_model('communications', 'MessageAttachment')
     Comment = apps.get_model('feed', 'Comment')
     Post = apps.get_model('feed', 'Post')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     try:
         post_ct = ContentType.objects.get(app_label='feed', model='post')
     except ContentType.DoesNotExist:
         return  # Если ContentType не найден, пропускаем миграцию
-    
+
     # 1. Создаем чаты для постов с комментариями
     post_ids_with_comments = Comment.objects.values_list('post_id', flat=True).distinct()
-    
+
     for post_id in post_ids_with_comments:
         # Проверяем, не создан ли уже чат
         if Chat.objects.filter(
@@ -30,13 +30,13 @@ def migrate_comments_forward(apps, schema_editor):
             context_object_id=post_id
         ).exists():
             continue
-        
+
         try:
             post = Post.objects.get(id=post_id)
             chat_name = f"Комментарии: {post.title[:50]}" if hasattr(post, 'title') and post.title else "Комментарии"
         except Post.DoesNotExist:
             chat_name = "Комментарии"
-        
+
         Chat.objects.create(
             type='comments',
             name=chat_name,
@@ -53,7 +53,7 @@ def migrate_comments_forward(apps, schema_editor):
             include_all_users=False,
             extra_data={}
         )
-    
+
     # 2. Переносим комментарии
     for comment in Comment.objects.select_related('author', 'post').all():
         try:
@@ -64,7 +64,7 @@ def migrate_comments_forward(apps, schema_editor):
             )
         except Chat.DoesNotExist:
             continue
-        
+
         # Проверяем, не перенесен ли уже комментарий
         if Message.objects.filter(
             chat=chat,
@@ -72,12 +72,12 @@ def migrate_comments_forward(apps, schema_editor):
             created_at=comment.created_at
         ).exists():
             continue
-        
+
         # Проверяем наличие вложений
         has_image = bool(comment.image and str(comment.image).strip())
         has_attachment = bool(comment.attachment and str(comment.attachment).strip())
         has_attachments = has_image or has_attachment
-        
+
         message = Message.objects.create(
             chat=chat,
             author=comment.author,
@@ -96,7 +96,7 @@ def migrate_comments_forward(apps, schema_editor):
                 'legacy_model': 'feed.Comment'
             }
         )
-        
+
         # 3. Переносим вложения
         if has_image:
             file_name = str(comment.image).split('/')[-1] if '/' in str(comment.image) else str(comment.image)
@@ -108,7 +108,7 @@ def migrate_comments_forward(apps, schema_editor):
                 file_size=0,
                 uploaded_at=comment.created_at
             )
-        
+
         if has_attachment:
             file_name = str(comment.attachment).split('/')[-1] if '/' in str(comment.attachment) else str(comment.attachment)
             MessageAttachment.objects.create(
@@ -125,7 +125,7 @@ def migrate_comments_backward(apps, schema_editor):
     """Откат - удаляем чаты комментариев для постов"""
     Chat = apps.get_model('communications', 'Chat')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
+
     try:
         post_ct = ContentType.objects.get(app_label='feed', model='post')
         Chat.objects.filter(

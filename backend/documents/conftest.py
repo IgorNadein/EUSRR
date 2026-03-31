@@ -9,8 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from filer.models import File as FilerFile, Folder
 from documents.models import (
-    Document, DocumentAcknowledgement,
-    DocumentType, DocumentTag, Cabinet
+    Document, DocumentType, DocumentTag, Cabinet
 )
 from employees.models import Department
 

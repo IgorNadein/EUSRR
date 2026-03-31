@@ -21,7 +21,8 @@ def _split_env_list(value: str) -> list[str]:
 
 
 ALLOWED_HOSTS = _split_env_list(
-    os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1"))
+    os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1")
+)
 
 INSTALLED_APPS = [
     "daphne",
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
     "widget_tweaks",
     "simple_history",
     "rest_framework",
+    "drf_spectacular",
     "rules",  # django-rules для декларативных permissions
     # django-filer и зависимости
     "easy_thumbnails",
@@ -51,7 +53,8 @@ INSTALLED_APPS = [
     "employees.apps.EmployeesConfig",
     "api.apps.ApiConfig",
     "schedule",  # django-scheduler (проверенная библиотека для календаря)
-    "scheduling.apps.SchedulingConfig",  # Интеграция и расширения для django-scheduler
+    # Интеграция и расширения для django-scheduler
+    "scheduling.apps.SchedulingConfig",
     "documents.apps.DocumentsConfig",
     "requests_app.apps.RequestsAppConfig",
     "feed.apps.FeedConfig",
@@ -72,12 +75,14 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",  # Нужен для Django Admin
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "reversion.middleware.RevisionMiddleware",  # django-reversion для версионирования
+    "reversion.middleware.RevisionMiddleware",
+    # django-reversion для версионирования
     "simple_history.middleware.HistoryRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "api.middleware.JWTRefreshMiddleware",  # Автообновление JWT токенов
-    "eusrr_backend.middleware.AuthRequiredMiddleware",  # Защита от неавторизованных
+    # Защита от неавторизованных
+    "eusrr_backend.middleware.AuthRequiredMiddleware",
     "eusrr_backend.middleware.CacheControlMiddleware",  # Cache-Control headers
 ]
 
@@ -127,7 +132,8 @@ else:
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 
-# LDAP write-back (django-ldapdb): подключается только при LDAP_WRITE_ENABLED=true.
+# LDAP write-back (django-ldapdb):
+# подключается только при LDAP_WRITE_ENABLED=true.
 # Для LDAP-аутентификации (ldap3) отдельная БД не нужна.
 LDAP_WRITE_ENABLED = os.getenv("LDAP_WRITE_ENABLED", "false").lower() == "true"
 
@@ -139,9 +145,11 @@ if LDAP_WRITE_ENABLED:
         "PASSWORD": os.getenv("LDAP_BIND_PASSWORD", "AdminPassword123!"),
     }
     import ldap
+
     ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
 
-# Router всегда нужен: предотвращает создание таблиц для LDAP-моделей в default DB
+# Router всегда нужен: предотвращает создание таблиц для LDAP-моделей в
+# default DB
 DATABASE_ROUTERS = ["eusrr_backend.db_routers.LdapRouter"]
 
 # -----------------------------------------------------------------------------
@@ -149,11 +157,29 @@ DATABASE_ROUTERS = ["eusrr_backend.db_routers.LdapRouter"]
 # -----------------------------------------------------------------------------
 # AUTH_PASSWORD_VALIDATORS = [
 #     {
-#         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+#         "NAME": (
+#             "django.contrib.auth.password_validation."
+#             "UserAttributeSimilarityValidator"
+#         )
 #     },
-#     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-#     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-#     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+#     {
+#         "NAME": (
+#             "django.contrib.auth.password_validation."
+#             "MinimumLengthValidator"
+#         )
+#     },
+#     {
+#         "NAME": (
+#             "django.contrib.auth.password_validation."
+#             "CommonPasswordValidator"
+#         )
+#     },
+#     {
+#         "NAME": (
+#             "django.contrib.auth.password_validation."
+#             "NumericPasswordValidator"
+#         )
+#     },
 # ]
 
 LANGUAGE_CODE = "ru"
@@ -188,11 +214,11 @@ PHONENUMBER_DEFAULT_REGION = "RU"
 #   ['192.168.1.0/24', '10.0.0.0/8'] - конкретные сети
 #   ['192.168.1.100', '192.168.1.101'] - конкретные IP
 REGISTRATION_ALLOWED_IPS = [
-    '127.0.0.0/8',      # localhost
-    '10.0.0.0/8',       # приватная сеть класса A
-    '172.16.0.0/12',    # приватная сеть класса B (172.16-31.x.x)
-    '172.11.0.0/16',    # ваша корпоративная сеть
-    '192.168.0.0/16',   # приватная сеть класса C
+    "127.0.0.0/8",  # localhost
+    "10.0.0.0/8",  # приватная сеть класса A
+    "172.16.0.0/12",  # приватная сеть класса B (172.16-31.x.x)
+    "172.11.0.0/16",  # ваша корпоративная сеть
+    "192.168.0.0/16",  # приватная сеть класса C
 ]
 
 # Медиа файлы
@@ -232,18 +258,62 @@ LOGGING = {
         },
     },
     "loggers": {
-        "documents": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
-        "communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
-        "api.v1.communications": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
-        "notifications": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "requests_app": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
-        "employees": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "common": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "django.contrib.auth": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
-        "eusrr_backend.auth_backends": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "documents": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "communications": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "api.v1.communications": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "notifications": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "requests_app": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "employees": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "common": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.contrib.auth": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "eusrr_backend.auth_backends": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
         # полезно видеть ошибки и отладку ldap3
-        "ldap3": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "ldap3": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
     },
 }
 
@@ -255,7 +325,7 @@ CSRF_TRUSTED_ORIGINS = _split_env_list(
     os.getenv("CSRF_TRUSTED_ORIGINS", "https://*.sytes.net")
 )
 CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_USE_SESSIONS = False
 # Примечание: API endpoints с JWT используют authentication_classes = []
 # что отключает SessionAuthentication и автоматически bypass CSRF
@@ -280,8 +350,9 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "true").lower() == "true"
 # Если SSL включён (465), TLS должен быть False
 EMAIL_USE_TLS = (
-    False if EMAIL_USE_SSL else (
-        os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
+    False
+    if EMAIL_USE_SSL
+    else (os.getenv("EMAIL_USE_TLS", "false").lower() == "true")
 )
 DEFAULT_FROM_EMAIL = os.getenv(
     "DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "webmaster@localhost"
@@ -300,12 +371,13 @@ SITE_URL = os.getenv("SITE_URL", "https://corp.robotail.pro")
 # Порог для определения массовой рассылки (количество получателей)
 # При массовой рассылке уведомления создаются быстро, а отправка идёт в фоне
 NOTIFICATION_BULK_THRESHOLD = int(
-    os.getenv("NOTIFICATION_BULK_THRESHOLD", "10"))
+    os.getenv("NOTIFICATION_BULK_THRESHOLD", "10")
+)
 
 # Конфигурация модуля уведомлений
 NOTIFICATIONS_CONFIG = {
-    'SITE_NAME': SITE_NAME,
-    'DEFAULT_FROM_EMAIL': DEFAULT_FROM_EMAIL,
+    "SITE_NAME": SITE_NAME,
+    "DEFAULT_FROM_EMAIL": DEFAULT_FROM_EMAIL,
 }
 
 # -----------------------------------------------------------------------------
@@ -348,6 +420,7 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
         "rest_framework.permissions.DjangoModelPermissions",
@@ -358,17 +431,83 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
 }
 
+SPECTACULAR_SETTINGS = {
+    "TITLE": f"{SITE_NAME} API",
+    "DESCRIPTION": (
+        "OpenAPI-документация backend API EUSRR. "
+        "Включает JWT-аутентификацию, session auth и основные REST endpoints."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api(?:/v1)?",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": True,
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "displayRequestDuration": True,
+        "filter": True,
+        "persistAuthorization": True,
+    },
+    "ENUM_NAME_OVERRIDES": {
+        "ProcurementStatusEnum": [
+            ("draft", "Черновик"),
+            ("pending", "На согласовании"),
+            ("approved", "Одобрено"),
+            ("rejected", "Отклонено"),
+            ("in_progress", "В работе"),
+            ("completed", "Завершено"),
+            ("cancelled", "Отменено"),
+        ],
+        "EquipmentStatusEnum": [
+            ("available", "Доступно"),
+            ("in_use", "В использовании"),
+            ("maintenance", "На обслуживании"),
+            ("repair", "В ремонте"),
+            ("retired", "Списано"),
+            ("lost", "Утеряно"),
+        ],
+        "RequestTypeEnum": [
+            ("vacation", "Отпуск"),
+            ("sick_leave", "Больничный"),
+            ("day_off", "Отгул"),
+            ("transfer", "Перевод"),
+            ("dismissal", "Увольнение"),
+            ("other", "Другое"),
+        ],
+        "FeedPostTypeEnum": [
+            ("company", "Новость компании"),
+            ("department", "Новость отдела"),
+            ("employee", "Публикация сотрудника"),
+        ],
+        "ChatTypeEnum": [
+            ("private", "Личный"),
+            ("group", "Групповой"),
+            ("channel", "Канал"),
+            ("announcement", "Объявления"),
+            ("global", "Глобальный"),
+            ("comments", "Комментарии"),
+        ],
+    },
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "api.schema.assign_operation_tags",
+    ],
+}
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_ACCESS_MIN", "30"))),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "90"))),
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=int(os.getenv("JWT_ACCESS_MIN", "30"))
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=int(os.getenv("JWT_REFRESH_DAYS", "90"))
+    ),
     "ALGORITHM": "HS256",
     "AUTH_HEADER_TYPES": ("Bearer",),
     "LEEWAY": 30,
 }
 
 # Автообновление JWT токенов: за сколько минут до истечения обновлять
-JWT_REFRESH_THRESHOLD_MINUTES = int(
-    os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
+JWT_REFRESH_THRESHOLD_MINUTES = int(os.getenv("JWT_REFRESH_THRESHOLD_MIN", "5"))
 
 
 # -----------------------------------------------------------------------------
@@ -381,11 +520,14 @@ JWT_REFRESH_THRESHOLD_MINUTES = int(
 AUTHENTICATION_BACKENDS = [
     # работает только если LDAP_ENABLED=True
     "eusrr_backend.auth_backends.LDAP3Backend",
-    "eusrr_backend.auth_backends.EmailOrPhoneBackend",  # фоллбэк для режима без LDAP
-    "eusrr_backend.auth_backends.SuperuserOnlyBackend",  # экстренный доступ для админа
+    # фоллбэк для режима без LDAP
+    "eusrr_backend.auth_backends.EmailOrPhoneBackend",
+    # экстренный доступ для админа
+    "eusrr_backend.auth_backends.SuperuserOnlyBackend",
     # расчёт прав на основе должностей
     "eusrr_backend.auth_backends.PositionRoleBackend",
-    "rules.permissions.ObjectPermissionBackend",  # django-rules для object-level permissions
+    "rules.permissions.ObjectPermissionBackend",
+    # django-rules для object-level permissions
     "django.contrib.auth.backends.ModelBackend",  # стандартный Django бэкенд
 ]
 
@@ -420,7 +562,8 @@ LDAP_ATTR_MAIL = os.getenv("LDAP_ATTR_MAIL", "mail")
 LDAP_ATTR_GIVENNAME = os.getenv("LDAP_ATTR_GIVENNAME", "givenName")
 LDAP_ATTR_SN = os.getenv("LDAP_ATTR_SN", "sn")
 LDAP_ATTR_PHONE = os.getenv("LDAP_ATTR_PHONE", "telephoneNumber")
-# Атрибут LDAP для хранения Django pk сотрудника (employeeNumber по RFC 2798, employeeID для AD)
+# Атрибут LDAP для хранения Django pk сотрудника (employeeNumber по RFC
+# 2798, employeeID для AD)
 LDAP_EMPLOYEE_ID_ATTR = os.getenv("LDAP_EMPLOYEE_ID_ATTR", "employeeNumber")
 LDAP_PHONE_ATTRS = tuple(
     _split_env_list(os.getenv("LDAP_PHONE_ATTRS", "mobile,telephoneNumber"))
@@ -449,7 +592,9 @@ LDAP_DISMISSED_BASE = os.getenv(
     "LDAP_DISMISSED_BASE", "OU=Dismissed,DC=eusrr,DC=local"
 )
 LDAP_GROUPS_BASE = os.getenv("LDAP_GROUPS_BASE", "OU=Groups,DC=eusrr,DC=local")
-LDAP_POSITIONS_BASE = os.getenv("LDAP_POSITIONS_BASE", "OU=Positions,DC=eusrr,DC=local")
+LDAP_POSITIONS_BASE = os.getenv(
+    "LDAP_POSITIONS_BASE", "OU=Positions,DC=eusrr,DC=local"
+)
 
 BRAND_NAME = os.getenv("BRAND_NAME", "HiRo")
 BRAND_LOGO = "img/logo.png"
@@ -458,11 +603,19 @@ BRAND_LOGO = "img/logo.png"
 # Ключи для авторизации push-уведомлений
 VAPID_PUBLIC_KEY = os.getenv(
     "VAPID_PUBLIC_KEY",
-    "BMTitZy9r4ygYJBgGdaZuCkb7rwR7iHLJv0DkNpaJOLESotONETWtZAQxnJVU_Yo9v-iYo-7dWEeF0VEjMcGMkQ"
+    (
+        "BMTitZy9r4ygYJBgGdaZuCkb7rwR7iHLJv0DkNpaJOLESotONETWtZAQ"
+        "xnJVU_Yo9v-iYo-7dWEeF0VEjMcGMkQ"
+    ),
 )
 VAPID_PRIVATE_KEY = os.getenv(
     "VAPID_PRIVATE_KEY",
-    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCNnpupg3xbtFUiOSUZ6L7s6puxuEjzR73kTL7v8bMvKhRANCAATE4rWcva-MoGCQYBnWmbgpG-68Ee4hyyb9A5DaWiTixEqLTjRE1rWQEMZyVVP2KPb_omKPu3VhHhdFRIzHBjJE"
+    (
+        "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCNnpupg3"
+        "xbtFUiOSUZ6L7s6puxuEjzR73kTL7v8bMvKhRANCAATE4rWcva-MoGCQY"
+        "BnWmbgpG-68Ee4hyyb9A5DaWiTixEqLTjRE1rWQEMZyVVP2KPb_omKPu3"
+        "VhHhdFRIzHBjJE"
+    ),
 )
 VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "robotail-info@yandex.ru")
 
@@ -477,17 +630,18 @@ PUSH_NOTIFICATIONS_SETTINGS = {
 # -----------------------------------------------------------------------------
 # CELERY CONFIGURATION
 # -----------------------------------------------------------------------------
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.getenv(
-    'CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
+    "CELERY_RESULT_BACKEND", "redis://localhost:6379/1"
+)
 
 # Сериализация
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
 
 # Таймзона
-CELERY_TIMEZONE = 'Europe/Moscow'
+CELERY_TIMEZONE = "Europe/Moscow"
 CELERY_ENABLE_UTC = True
 
 # Мониторинг и отладка
@@ -504,21 +658,21 @@ CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Мягкий лимит - 25 минут
 # }
 
 # Настройки для периодических задач (Celery Beat)
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # PID файлы для Celery (используем /tmp чтобы не требовать root прав)
-CELERY_BEAT_PIDFILE = os.path.join(tempfile.gettempdir(), 'celery-beat.pid')
-CELERYD_PIDFILE = os.path.join(tempfile.gettempdir(), 'celery-worker.pid')
+CELERY_BEAT_PIDFILE = os.path.join(tempfile.gettempdir(), "celery-beat.pid")
+CELERYD_PIDFILE = os.path.join(tempfile.gettempdir(), "celery-worker.pid")
 
 # Расписание периодических задач
 CELERY_BEAT_SCHEDULE = {
-    'cleanup-orphaned-attachments': {
-        'task': 'communications.tasks.cleanup_orphaned_attachments',
-        'schedule': 3600.0,  # Каждый час
+    "cleanup-orphaned-attachments": {
+        "task": "communications.tasks.cleanup_orphaned_attachments",
+        "schedule": 3600.0,  # Каждый час
     },
-    'process-ldap-sync-queue': {
-        'task': 'employees.tasks.process_ldap_queue',
-        'schedule': 60.0,  # Каждую минуту проверяем очередь LDAP retry
+    "process-ldap-sync-queue": {
+        "task": "employees.tasks.process_ldap_queue",
+        "schedule": 60.0,  # Каждую минуту проверяем очередь LDAP retry
     },
 }
 
@@ -532,41 +686,47 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000  # Перезапуск worker посл
 # -----------------------------------------------------------------------------
 FILER_ENABLE_PERMISSIONS = True  # Включаем ACL для файлов
 FILER_IS_PUBLIC_DEFAULT = False  # По умолчанию файлы приватные
-FILER_CANONICAL_URL = 'canonical/'  # URL для канонических ссылок
+FILER_CANONICAL_URL = "canonical/"  # URL для канонических ссылок
 
 # Настройка хранилищ для разных типов файлов
 FILER_STORAGES = {
-    'public': {
-        'main': {
-            'ENGINE': 'filer.storage.PublicFileSystemStorage',
-            'OPTIONS': {
-                'location': os.path.join(MEDIA_ROOT, 'documents/public/'),
-                'base_url': '/media/documents/public/',
+    "public": {
+        "main": {
+            "ENGINE": "filer.storage.PublicFileSystemStorage",
+            "OPTIONS": {
+                "location": os.path.join(MEDIA_ROOT, "documents/public/"),
+                "base_url": "/media/documents/public/",
             },
-            'UPLOAD_TO': 'filer.utils.generate_filename.by_date',  # Структура: 2026/03/14/filename.pdf
+            # Структура: 2026/03/14/filename.pdf
+            "UPLOAD_TO": "filer.utils.generate_filename.by_date",
         },
-        'thumbnails': {
-            'ENGINE': 'filer.storage.PublicFileSystemStorage',
-            'OPTIONS': {
-                'location': os.path.join(MEDIA_ROOT, 'documents/public_thumbnails/'),
-                'base_url': '/media/documents/public_thumbnails/',
+        "thumbnails": {
+            "ENGINE": "filer.storage.PublicFileSystemStorage",
+            "OPTIONS": {
+                "location": os.path.join(
+                    MEDIA_ROOT, "documents/public_thumbnails/"
+                ),
+                "base_url": "/media/documents/public_thumbnails/",
             },
         },
     },
-    'private': {
-        'main': {
-            'ENGINE': 'filer.storage.PrivateFileSystemStorage',
-            'OPTIONS': {
-                'location': os.path.join(MEDIA_ROOT, 'documents/private/'),
-                'base_url': '/smedia/documents/private/',
+    "private": {
+        "main": {
+            "ENGINE": "filer.storage.PrivateFileSystemStorage",
+            "OPTIONS": {
+                "location": os.path.join(MEDIA_ROOT, "documents/private/"),
+                "base_url": "/smedia/documents/private/",
             },
-            'UPLOAD_TO': 'filer.utils.generate_filename.by_date',  # Структура: 2026/03/14/filename.pdf
+            # Структура: 2026/03/14/filename.pdf
+            "UPLOAD_TO": "filer.utils.generate_filename.by_date",
         },
-        'thumbnails': {
-            'ENGINE': 'filer.storage.PrivateFileSystemStorage',
-            'OPTIONS': {
-                'location': os.path.join(MEDIA_ROOT, 'documents/private_thumbnails/'),
-                'base_url': '/smedia/documents/private_thumbnails/',
+        "thumbnails": {
+            "ENGINE": "filer.storage.PrivateFileSystemStorage",
+            "OPTIONS": {
+                "location": os.path.join(
+                    MEDIA_ROOT, "documents/private_thumbnails/"
+                ),
+                "base_url": "/smedia/documents/private_thumbnails/",
             },
         },
     },
@@ -574,22 +734,22 @@ FILER_STORAGES = {
 
 # easy-thumbnails настройки для filer
 THUMBNAIL_PROCESSORS = (
-    'easy_thumbnails.processors.colorspace',
-    'easy_thumbnails.processors.autocrop',
-    'filer.thumbnail_processors.scale_and_crop_with_subject_location',
-    'easy_thumbnails.processors.filters',
+    "easy_thumbnails.processors.colorspace",
+    "easy_thumbnails.processors.autocrop",
+    "filer.thumbnail_processors.scale_and_crop_with_subject_location",
+    "easy_thumbnails.processors.filters",
 )
 
 THUMBNAIL_HIGH_RESOLUTION = True  # Поддержка retina-дисплеев
-THUMBNAIL_PRESERVE_EXTENSIONS = ('png', 'gif')  # Сохранять расширения
+THUMBNAIL_PRESERVE_EXTENSIONS = ("png", "gif")  # Сохранять расширения
 
 # Размеры thumbnails по умолчанию
 THUMBNAIL_ALIASES = {
-    '': {
-        'admin_thumbnail': {'size': (100, 100), 'crop': True},
-        'small': {'size': (200, 200), 'crop': False},
-        'medium': {'size': (400, 400), 'crop': False},
-        'large': {'size': (800, 800), 'crop': False},
+    "": {
+        "admin_thumbnail": {"size": (100, 100), "crop": True},
+        "small": {"size": (200, 200), "crop": False},
+        "medium": {"size": (400, 400), "crop": False},
+        "large": {"size": (800, 800), "crop": False},
     },
 }
 
@@ -602,5 +762,8 @@ CORS_ALLOW_CREDENTIALS = True
 
 # ===== Communications App Settings =====
 # Функция для разрешения участников чата (callback)
-# Позволяет подключить бизнес-специфичную логику (EUSRR: Department, EmployeeDepartment)
-COMMUNICATIONS_PARTICIPANT_RESOLVER = 'employees.utils.resolve_chat_participants'
+# Позволяет подключить бизнес-специфичную логику (EUSRR: Department,
+# EmployeeDepartment)
+COMMUNICATIONS_PARTICIPANT_RESOLVER = (
+    "employees.utils.resolve_chat_participants"
+)

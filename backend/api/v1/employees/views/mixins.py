@@ -24,16 +24,16 @@ def _is_ldap_enabled() -> bool:
 
 class LdapUserCreationMixin:
     """Миксин для создания пользователей в LDAP при регистрации.
-    
+
     Используется в RegisterAPIView для вынесения LDAP-специфичной логики
     из основного метода регистрации.
-    
+
     Методы:
         create_user(): Создаёт пользователя (выбирает LDAP или БД автоматически)
         create_ldap_user(): Создаёт пользователя в LDAP через DirectoryService
         create_db_user(): Создаёт пользователя напрямую в БД (fallback без LDAP)
     """
-    
+
     def create_user(
         self,
         *,
@@ -44,11 +44,11 @@ class LdapUserCreationMixin:
         password: str,
         avatar_bytes: Optional[bytes] = None,
         is_active: bool = False,
-    ) -> tuple[Optional['Employee'], Optional[Response]]:
+    ) -> tuple[Optional["Employee"], Optional[Response]]:
         """Создаёт пользователя - автоматически выбирает LDAP или БД режим.
-        
+
         View не должен знать о режиме LDAP - вся логика инкапсулирована здесь.
-        
+
         Args:
             first_name: Имя
             last_name: Фамилия
@@ -57,7 +57,7 @@ class LdapUserCreationMixin:
             password: Пароль
             avatar_bytes: Байты аватара (опционально)
             is_active: False до верификации email
-            
+
         Returns:
             tuple[Employee | None, Response | None]:
                 - (Employee, None) при успехе
@@ -85,7 +85,7 @@ class LdapUserCreationMixin:
                 is_active=is_active,
             )
             return emp, None
-    
+
     def create_ldap_user(
         self,
         *,
@@ -96,9 +96,9 @@ class LdapUserCreationMixin:
         password: str,
         avatar_bytes: Optional[bytes] = None,
         is_active: bool = False,
-    ) -> tuple[Optional['Employee'], Optional[Response]]:
+    ) -> tuple[Optional["Employee"], Optional[Response]]:
         """Создаёт disabled пользователя в LDAP с паролем.
-        
+
         Args:
             first_name: Имя
             last_name: Фамилия
@@ -107,7 +107,7 @@ class LdapUserCreationMixin:
             password: Пароль (идёт только в LDAP, в БД будет unusable)
             avatar_bytes: Байты аватара (опционально)
             is_active: False до верификации email
-            
+
         Returns:
             tuple[Employee | None, Response | None]:
                 - (Employee, None) при успехе
@@ -125,23 +125,24 @@ class LdapUserCreationMixin:
             avatar_bytes=avatar_bytes,
             is_active=is_active,  # disabled до верификации email
         )
-        
+
         try:
             emp = svc.create_user(dto)
             return emp, None
         except DirectoryLdapError as e:
             logger.error(f"LDAP user creation failed: {e}", exc_info=True)
             return None, Response(
-                {"ok": False, "error": "ldap_error", "detail": str(e)}, 
-                status=502
+                {"ok": False, "error": "ldap_error", "detail": str(e)},
+                status=502,
             )
         except DirectoryDbError as e:
-            logger.error(f"DB error during LDAP user creation: {e}", exc_info=True)
-            return None, Response(
-                {"ok": False, "error": "db_error", "detail": str(e)}, 
-                status=500
+            logger.error(
+                f"DB error during LDAP user creation: {e}", exc_info=True
             )
-    
+            return None, Response(
+                {"ok": False, "error": "db_error", "detail": str(e)}, status=500
+            )
+
     def create_db_user(
         self,
         *,
@@ -151,9 +152,9 @@ class LdapUserCreationMixin:
         phone_number: str,
         password: str,
         is_active: bool = False,
-    ) -> 'Employee':
+    ) -> "Employee":
         """Создаёт пользователя напрямую в БД (режим без LDAP).
-        
+
         Args:
             first_name: Имя
             last_name: Фамилия
@@ -161,12 +162,12 @@ class LdapUserCreationMixin:
             phone_number: Телефон в E.164 формате
             password: Пароль (устанавливается через set_password)
             is_active: False до верификации email
-            
+
         Returns:
             Employee: Созданный пользователь
         """
         from employees.models import Employee
-        
+
         emp = Employee.objects.create(
             first_name=first_name,
             last_name=last_name,
@@ -177,32 +178,32 @@ class LdapUserCreationMixin:
         )
         # Устанавливаем пароль в БД
         emp.set_password(password)
-        emp.save(update_fields=['password'])
-        
+        emp.save(update_fields=["password"])
+
         return emp
 
 
 class LdapPasswordMixin:
     """Миксин для endpoints, работающих с паролями LDAP пользователей.
-    
+
     Используется в PasswordChangeView, PasswordResetView и других
     endpoints, которым нужно обновлять пароли в LDAP.
-    
+
     Методы:
         update_ldap_password(): Обновляет пароль пользователя в LDAP
     """
-    
+
     def update_ldap_password(
         self,
-        employee: 'Employee',
+        employee: "Employee",
         new_password: str,
     ) -> tuple[bool, Optional[Response]]:
         """Обновляет пароль пользователя в LDAP.
-        
+
         Args:
             employee: Employee instance
             new_password: Новый пароль
-            
+
         Returns:
             tuple[bool, Response | None]:
                 - (True, None) при успехе
@@ -211,28 +212,40 @@ class LdapPasswordMixin:
         if not employee.is_ldap_managed:
             # Не LDAP пользователь - устанавливаем пароль в БД
             employee.set_password(new_password)
-            employee.save(update_fields=['password'])
+            employee.save(update_fields=["password"])
             return True, None
-        
+
         # LDAP пользователь - обновляем через UserService
         try:
             svc = UserService()
             svc.update_user(
                 emp=employee,
-                changes={'password': new_password},
+                changes={"password": new_password},
                 group_cns=None,
                 move_to_department_dn=None,
             )
             return True, None
         except DirectoryLdapError as e:
-            logger.error(f"LDAP password update failed for user {employee.id}: {e}", exc_info=True)
+            logger.error(
+                f"LDAP password update failed for user {employee.id}: {e}",
+                exc_info=True,
+            )
             return False, Response(
                 {"ok": False, "error": "ldap_error", "detail": str(e)},
-                status=502
+                status=502,
             )
         except Exception as e:
-            logger.error(f"Unexpected error updating LDAP password for user {employee.id}: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error updating LDAP password for user {
+                    employee.id
+                }: {e}",
+                exc_info=True,
+            )
             return False, Response(
-                {"ok": False, "error": "password_update_failed", "detail": str(e)},
-                status=500
+                {
+                    "ok": False,
+                    "error": "password_update_failed",
+                    "detail": str(e),
+                },
+                status=500,
             )

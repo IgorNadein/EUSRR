@@ -8,9 +8,13 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Optional, Set, Tuple
 
-from django.db.models import QuerySet
 
-from employees.models import Department, Employee, EmployeeDepartment, LdapSyncState
+from employees.models import (
+    Department,
+    Employee,
+    EmployeeDepartment,
+    LdapSyncState,
+)
 
 from ..domain.dtos import LdapPersonDTO
 from ..utils.dn_utils import extract_department_from_dn
@@ -27,18 +31,16 @@ def load_users_index(
     Returns:
         Кортеж (by_guid, by_email) - словари для поиска.
     """
-    guids: Set[str] = {
-        d.guid.strip() for d in dtos if getattr(d, "guid", None)
-    }
+    guids: Set[str] = {d.guid.strip() for d in dtos if getattr(d, "guid", None)}
     emails_lower: Set[str] = {
         d.email.strip().lower() for d in dtos if getattr(d, "email", None)
     }
 
     by_email: Dict[str, Employee] = {}
     if emails_lower:
-        qs = Employee.objects.filter(
-            email__in=list(emails_lower)
-        ).only("id", "email")
+        qs = Employee.objects.filter(email__in=list(emails_lower)).only(
+            "id", "email"
+        )
         for u in qs:
             if u.email:
                 by_email[u.email.lower()] = u
@@ -111,9 +113,9 @@ def bind_user_department(user: Employee, dn: str) -> None:
             link.is_active = True
             link.save(update_fields=["is_active"])
     else:
-        EmployeeDepartment.objects.filter(
-            employee=user, is_active=True
-        ).update(is_active=False)
+        EmployeeDepartment.objects.filter(employee=user, is_active=True).update(
+            is_active=False
+        )
 
 
 def get_stale_employee_ids(

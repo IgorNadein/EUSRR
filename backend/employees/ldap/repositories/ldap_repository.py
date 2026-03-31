@@ -16,7 +16,7 @@ from ..utils.text_utils import esc_filter
 
 class LdapRepository:
     """Репозиторий для работы с LDAP.
-    
+
     Инкапсулирует низкоуровневые операции с LDAP, предоставляя
     чистый интерфейс для бизнес-логики.
     """
@@ -216,11 +216,11 @@ class LdapRepository:
 
 def ensure_container_exists(conn: Connection, base_dn: str) -> None:
     """Standalone-обёртка: проверяет что контейнер (OU) существует.
-    
+
     Args:
         conn: LDAP соединение.
         base_dn: Distinguished Name контейнера.
-        
+
     Raises:
         TypeError: Если base_dn неверного типа.
         RuntimeError: Если контейнер не найден.

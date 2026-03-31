@@ -37,126 +37,110 @@ User = get_user_model()
 
 class ProcurementRequest(models.Model):
     """Заявка на закупку.
-    
+
     Статусы: DRAFT → PENDING → APPROVED → IN_PROGRESS → COMPLETED
     Альтернативные переходы: → REJECTED, → CANCELLED
     """
-    
+
     title = models.CharField(
-        'Название',
-        max_length=255,
-        help_text='Краткое название заявки'
+        "Название", max_length=255, help_text="Краткое название заявки"
     )
     description = models.TextField(
-        'Описание',
-        help_text='Подробное описание и обоснование необходимости закупки'
+        "Описание",
+        help_text="Подробное описание и обоснование необходимости закупки",
     )
     department = models.ForeignKey(
         Department,
         on_delete=models.PROTECT,
-        related_name='procurement_requests',
-        verbose_name='Отдел'
+        related_name="procurement_requests",
+        verbose_name="Отдел",
     )
     requestor = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
-        related_name='procurement_requests',
-        verbose_name='Заявитель'
+        related_name="procurement_requests",
+        verbose_name="Заявитель",
     )
     executor = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='executing_procurements',
-        verbose_name='Исполнитель',
-        help_text='Кто взял заявку в работу'
+        related_name="executing_procurements",
+        verbose_name="Исполнитель",
+        help_text="Кто взял заявку в работу",
     )
     status = models.CharField(
-        'Статус',
+        "Статус",
         max_length=20,
         choices=ProcurementStatus.choices,
-        default=ProcurementStatus.DRAFT
+        default=ProcurementStatus.DRAFT,
     )
     urgency = models.CharField(
-        'Срочность',
+        "Срочность",
         max_length=20,
         choices=UrgencyLevel.choices,
-        default=UrgencyLevel.MEDIUM
+        default=UrgencyLevel.MEDIUM,
     )
     actual_cost = models.DecimalField(
-        'Фактическая стоимость',
+        "Фактическая стоимость",
         max_digits=12,
         decimal_places=2,
         null=True,
         blank=True,
-        validators=[MinValueValidator(Decimal('0.01'))]
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
-    
+
     # Даты
-    created_at = models.DateTimeField(
-        'Создано',
-        auto_now_add=True
-    )
-    updated_at = models.DateTimeField(
-        'Обновлено',
-        auto_now=True
-    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
     submitted_at = models.DateTimeField(
-        'Отправлено на согласование',
-        null=True,
-        blank=True
+        "Отправлено на согласование", null=True, blank=True
     )
-    started_at = models.DateTimeField(
-        'Взято в работу',
-        null=True,
-        blank=True
-    )
-    completed_at = models.DateTimeField(
-        'Завершено',
-        null=True,
-        blank=True
-    )
-    
+    started_at = models.DateTimeField("Взято в работу", null=True, blank=True)
+    completed_at = models.DateTimeField("Завершено", null=True, blank=True)
+
     class Meta:
-        verbose_name = 'Заявка на закупку'
-        verbose_name_plural = 'Заявки на закупку'
-        ordering = ['-created_at']
+        verbose_name = "Заявка на закупку"
+        verbose_name_plural = "Заявки на закупку"
+        ordering = ["-created_at"]
         permissions = [
-            ('approve_procurementrequest', 'Can approve procurement requests'),
-            ('view_all_requests', 'Can view all department requests'),
-            ('execute_procurement', 'Can execute approved requests'),
+            ("approve_procurementrequest", "Can approve procurement requests"),
+            ("view_all_requests", "Can view all department requests"),
+            ("execute_procurement", "Can execute approved requests"),
         ]
-    
+
     def __str__(self):
         return f"#{self.pk} {self.title}"
-    
+
     def get_required_approval_priorities(self):
         """Возвращает приоритеты обязательных этапов из таблицы маршрутов."""
         return list(
-            self.get_required_approval_routes().values_list('priority', flat=True)
+            self.get_required_approval_routes().values_list(
+                "priority", flat=True
+            )
         )
 
     def get_required_approval_routes(self):
         """Возвращает queryset обязательных этапов из таблицы маршрутов."""
         return ApprovalRoute.get_applicable_routes(self.total_cost)
-    
+
     @property
     def total_cost(self):
         """Общая стоимость заявки (сумма всех позиций)."""
         total = self.items.aggregate(
             total=Sum(
-                models.F('estimated_unit_price') * models.F('quantity'),
-                output_field=models.DecimalField()
+                models.F("estimated_unit_price") * models.F("quantity"),
+                output_field=models.DecimalField(),
             )
-        )['total']
-        return total or Decimal('0.00')
-    
+        )["total"]
+        return total or Decimal("0.00")
+
     @property
     def items_count(self):
         """Количество позиций в заявке."""
         return self.items.count()
-    
+
     @property
     def is_editable(self):
         """Можно ли редактировать заявку."""
@@ -165,64 +149,60 @@ class ProcurementRequest(models.Model):
 
 class ProcurementItem(models.Model):
     """Позиция в заявке на закупку."""
-    
+
     request = models.ForeignKey(
         ProcurementRequest,
         on_delete=models.CASCADE,
-        related_name='items',
-        verbose_name='Заявка'
+        related_name="items",
+        verbose_name="Заявка",
     )
     name = models.CharField(
-        'Название',
-        max_length=255,
-        help_text='Название товара или услуги'
+        "Название", max_length=255, help_text="Название товара или услуги"
     )
     description = models.TextField(
-        'Описание',
+        "Описание",
         blank=True,
-        help_text='Подробное описание, технические характеристики'
+        help_text="Подробное описание, технические характеристики",
     )
     quantity = models.PositiveIntegerField(
-        'Количество',
-        default=1,
-        validators=[MinValueValidator(1)]
+        "Количество", default=1, validators=[MinValueValidator(1)]
     )
     unit = models.CharField(
-        'Единица измерения',
+        "Единица измерения",
         max_length=50,
-        default='шт',
-        help_text='Например: шт, кг, л, упак, м'
+        default="шт",
+        help_text="Например: шт, кг, л, упак, м",
     )
     estimated_unit_price = models.DecimalField(
-        'Цена за единицу',
+        "Цена за единицу",
         max_digits=12,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.01'))]
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
     supplier_info = models.TextField(
-        'Информация о поставщике',
+        "Информация о поставщике",
         blank=True,
-        help_text='Ссылки на товар, контакты поставщика'
+        help_text="Ссылки на товар, контакты поставщика",
     )
     equipment = models.OneToOneField(
-        'Equipment',
+        "Equipment",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='procurement_item',
-        verbose_name='Оборудование',
-        help_text='Связь с оборудованием после закупки'
+        related_name="procurement_item",
+        verbose_name="Оборудование",
+        help_text="Связь с оборудованием после закупки",
     )
-    created_at = models.DateTimeField('Создано', auto_now_add=True)
-    
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
     class Meta:
-        verbose_name = 'Позиция заявки'
-        verbose_name_plural = 'Позиции заявок'
-        ordering = ['id']
-    
+        verbose_name = "Позиция заявки"
+        verbose_name_plural = "Позиции заявок"
+        ordering = ["id"]
+
     def __str__(self):
         return f"{self.name} ({self.quantity} {self.unit})"
-    
+
     @property
     def total_price(self):
         """Общая стоимость позиции."""
@@ -233,32 +213,35 @@ class ApprovalRoute(models.Model):
     """Правило получения согласующего для этапа с заданным приоритетом."""
 
     class ResolverType(models.TextChoices):
-        DEPARTMENT_HEAD = 'department_head', 'Руководитель отдела'
-        FIXED_EMPLOYEE = 'fixed_employee', 'Конкретный сотрудник'
+        DEPARTMENT_HEAD = "department_head", "Руководитель отдела"
+        FIXED_EMPLOYEE = "fixed_employee", "Конкретный сотрудник"
 
     priority = models.PositiveSmallIntegerField(
-        'Приоритет',
+        "Приоритет",
         unique=True,
         db_index=True,
-        help_text='Чем меньше число, тем раньше этап в цепочке согласования.',
+        help_text="Чем меньше число, тем раньше этап в цепочке согласования.",
     )
     min_amount = models.DecimalField(
-        'Минимальная сумма заявки',
+        "Минимальная сумма заявки",
         max_digits=12,
         decimal_places=2,
         null=True,
         blank=True,
-        validators=[MinValueValidator(Decimal('0.00'))],
-        help_text='Пусто = этап обязателен для любой суммы. Иначе этап включается при сумме не меньше указанной.',
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text=(
+            "Пусто = этап обязателен для любой суммы. "
+            "Иначе этап включается при сумме не меньше указанной."
+        ),
     )
     name = models.CharField(
-        'Название этапа',
+        "Название этапа",
         max_length=150,
         blank=True,
-        help_text='Необязательно. Если заполнено, будет показано в интерфейсе.',
+        help_text="Необязательно. Если заполнено, будет показано в интерфейсе.",
     )
     resolver_type = models.CharField(
-        'Тип резолва',
+        "Тип резолва",
         max_length=20,
         choices=ResolverType.choices,
         default=ResolverType.FIXED_EMPLOYEE,
@@ -266,89 +249,106 @@ class ApprovalRoute(models.Model):
     employee = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
-        related_name='approval_routes',
-        verbose_name='Согласующий',
+        related_name="approval_routes",
+        verbose_name="Согласующий",
         null=True,
         blank=True,
     )
 
     class Meta:
-        verbose_name = 'Маршрут согласования'
-        verbose_name_plural = 'Маршруты согласования'
-        ordering = ['priority', 'id']
+        verbose_name = "Маршрут согласования"
+        verbose_name_plural = "Маршруты согласования"
+        ordering = ["priority", "id"]
 
     @classmethod
     def get_applicable_routes(cls, total_cost):
         return cls.objects.filter(
-            models.Q(min_amount__isnull=True) | models.Q(min_amount__lte=total_cost)
-        ).order_by('priority', 'id')
+            models.Q(min_amount__isnull=True)
+            | models.Q(min_amount__lte=total_cost)
+        ).order_by("priority", "id")
 
     def __str__(self):
-        threshold = '' if self.min_amount is None else f' от {self.min_amount}'
+        threshold = "" if self.min_amount is None else f" от {self.min_amount}"
         if self.resolver_type == self.ResolverType.DEPARTMENT_HEAD:
             return f"Этап {self.priority}{threshold} → руководитель отдела"
         return f"Этап {self.priority}{threshold} → {self.employee}"
 
     def clean(self):
         super().clean()
-        if self.resolver_type == self.ResolverType.FIXED_EMPLOYEE and not self.employee_id:
-            raise ValidationError({'employee': 'Для статического этапа укажите сотрудника.'})
-        if self.resolver_type == self.ResolverType.DEPARTMENT_HEAD and self.employee_id:
-            raise ValidationError({'employee': 'Для этапа руководителя отдела сотрудник не указывается.'})
+        if (
+            self.resolver_type == self.ResolverType.FIXED_EMPLOYEE
+            and not self.employee_id
+        ):
+            raise ValidationError(
+                {"employee": "Для статического этапа укажите сотрудника."}
+            )
+        if (
+            self.resolver_type == self.ResolverType.DEPARTMENT_HEAD
+            and self.employee_id
+        ):
+            raise ValidationError(
+                {
+                    "employee": (
+                        "Для этапа руководителя отдела "
+                        "сотрудник не указывается."
+                    )
+                }
+            )
 
 
 class Approval(models.Model):
     """Запись о согласовании заявки."""
-    
+
     request = models.ForeignKey(
         ProcurementRequest,
         on_delete=models.CASCADE,
-        related_name='approvals',
-        verbose_name='Заявка'
+        related_name="approvals",
+        verbose_name="Заявка",
     )
     approver = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
-        related_name='procurement_approvals',
-        verbose_name='Согласующий'
+        related_name="procurement_approvals",
+        verbose_name="Согласующий",
     )
     priority = models.PositiveSmallIntegerField(
-        'Приоритет',
+        "Приоритет",
         db_index=True,
     )
     step_name = models.CharField(
-        'Название этапа',
+        "Название этапа",
         max_length=150,
         blank=True,
     )
     status = models.CharField(
-        'Статус',
+        "Статус",
         max_length=20,
         choices=ApprovalStatus.choices,
-        default=ApprovalStatus.PENDING
+        default=ApprovalStatus.PENDING,
     )
-    comment = models.TextField(
-        'Комментарий',
-        blank=True
-    )
-    created_at = models.DateTimeField('Создано', auto_now_add=True)
-    updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+    comment = models.TextField("Комментарий", blank=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
     class Meta:
-        verbose_name = 'Согласование'
-        verbose_name_plural = 'Согласования'
-        ordering = ['priority', 'created_at', 'id']
-        unique_together = [('request', 'priority')]
-    
+        verbose_name = "Согласование"
+        verbose_name_plural = "Согласования"
+        ordering = ["priority", "created_at", "id"]
+        unique_together = [("request", "priority")]
+
     def __str__(self):
         return f"Этап {self.priority} - {self.get_status_display()}"
 
     def save(self, *args, **kwargs):
         if not self.step_name:
-            route = ApprovalRoute.objects.filter(priority=self.priority).only(
-                'name',
-                'resolver_type',
-            ).first()
+            route = (
+                ApprovalRoute.objects.filter(priority=self.priority)
+                .only(
+                    "name",
+                    "resolver_type",
+                )
+                .first()
+            )
             if route and route.name:
                 self.step_name = route.name
             else:
@@ -362,42 +362,35 @@ class Approval(models.Model):
 
 class EquipmentCategory(models.Model):
     """Категория оборудования (иерархическая)."""
-    
-    name = models.CharField(
-        'Название',
-        max_length=100,
-        unique=True
-    )
+
+    name = models.CharField("Название", max_length=100, unique=True)
     parent = models.ForeignKey(
-        'self',
+        "self",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name='children',
-        verbose_name='Родительская категория'
+        related_name="children",
+        verbose_name="Родительская категория",
     )
-    description = models.TextField(
-        'Описание',
-        blank=True
-    )
+    description = models.TextField("Описание", blank=True)
     icon = models.CharField(
-        'Иконка Bootstrap',
+        "Иконка Bootstrap",
         max_length=50,
         blank=True,
-        help_text='Например: bi-laptop, bi-printer'
+        help_text="Например: bi-laptop, bi-printer",
     )
-    created_at = models.DateTimeField('Создано', auto_now_add=True)
-    
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
     class Meta:
-        verbose_name = 'Категория оборудования'
-        verbose_name_plural = 'Категории оборудования'
-        ordering = ['name']
-    
+        verbose_name = "Категория оборудования"
+        verbose_name_plural = "Категории оборудования"
+        ordering = ["name"]
+
     def __str__(self):
         if self.parent:
             return f"{self.parent.name} → {self.name}"
         return self.name
-    
+
     @property
     def full_path(self):
         """Полный путь категории."""
@@ -408,84 +401,72 @@ class EquipmentCategory(models.Model):
 
 class Equipment(models.Model):
     """Единица оборудования/инвентаря."""
-    
-    name = models.CharField(
-        'Название',
-        max_length=255
-    )
+
+    name = models.CharField("Название", max_length=255)
     inventory_number = models.CharField(
-        'Инвентарный номер',
+        "Инвентарный номер",
         max_length=50,
         unique=True,
-        help_text='Например: INV-2024-0001'
+        help_text="Например: INV-2024-0001",
     )
     serial_number = models.CharField(
-        'Серийный номер',
+        "Серийный номер",
         max_length=100,
         blank=True,
-        help_text='Серийный номер производителя'
+        help_text="Серийный номер производителя",
     )
     category = models.ForeignKey(
         EquipmentCategory,
         on_delete=models.PROTECT,
-        related_name='equipment',
-        verbose_name='Категория'
+        related_name="equipment",
+        verbose_name="Категория",
     )
     status = models.CharField(
-        'Статус',
+        "Статус",
         max_length=20,
         choices=EquipmentStatus.choices,
-        default=EquipmentStatus.AVAILABLE
+        default=EquipmentStatus.AVAILABLE,
     )
     department = models.ForeignKey(
         Department,
         on_delete=models.PROTECT,
-        related_name='equipment',
-        verbose_name='Отдел'
+        related_name="equipment",
+        verbose_name="Отдел",
     )
     responsible_person = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='responsible_equipment',
-        verbose_name='Ответственный'
+        related_name="responsible_equipment",
+        verbose_name="Ответственный",
     )
     location = models.CharField(
-        'Расположение',
+        "Расположение",
         max_length=255,
         blank=True,
-        help_text='Например: Офис 3.14, Стеллаж А-5'
+        help_text="Например: Офис 3.14, Стеллаж А-5",
     )
-    purchase_date = models.DateField(
-        'Дата покупки'
-    )
-    warranty_until = models.DateField(
-        'Гарантия до',
-        null=True,
-        blank=True
-    )
+    purchase_date = models.DateField("Дата покупки")
+    warranty_until = models.DateField("Гарантия до", null=True, blank=True)
     purchase_cost = models.DecimalField(
-        'Стоимость покупки',
+        "Стоимость покупки",
         max_digits=12,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.01'))]
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
-    notes = models.TextField(
-        'Примечания',
-        blank=True
-    )
-    created_at = models.DateTimeField('Создано', auto_now_add=True)
-    updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+    notes = models.TextField("Примечания", blank=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
     class Meta:
-        verbose_name = 'Оборудование'
-        verbose_name_plural = 'Оборудование'
-        ordering = ['-created_at']
-    
+        verbose_name = "Оборудование"
+        verbose_name_plural = "Оборудование"
+        ordering = ["-created_at"]
+
     def __str__(self):
         return f"{self.inventory_number} - {self.name}"
-    
+
     @property
     def is_under_warranty(self):
         """Находится ли под гарантией."""
@@ -496,50 +477,41 @@ class Equipment(models.Model):
 
 class MaintenanceRecord(models.Model):
     """Запись о техническом обслуживании оборудования."""
-    
+
     equipment = models.ForeignKey(
         Equipment,
         on_delete=models.CASCADE,
-        related_name='maintenance_history',
-        verbose_name='Оборудование'
+        related_name="maintenance_history",
+        verbose_name="Оборудование",
     )
-    date = models.DateField(
-        'Дата обслуживания'
-    )
+    date = models.DateField("Дата обслуживания")
     type = models.CharField(
-        'Тип обслуживания',
-        max_length=20,
-        choices=MaintenanceType.choices
+        "Тип обслуживания", max_length=20, choices=MaintenanceType.choices
     )
-    description = models.TextField(
-        'Описание',
-        help_text='Что было сделано'
-    )
+    description = models.TextField("Описание", help_text="Что было сделано")
     cost = models.DecimalField(
-        'Стоимость',
+        "Стоимость",
         max_digits=10,
         decimal_places=2,
-        default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
     )
     performed_by = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
-        related_name='performed_maintenance',
-        verbose_name='Выполнил'
+        related_name="performed_maintenance",
+        verbose_name="Выполнил",
     )
     next_maintenance_date = models.DateField(
-        'Следующее ТО',
-        null=True,
-        blank=True
+        "Следующее ТО", null=True, blank=True
     )
-    created_at = models.DateTimeField('Создано', auto_now_add=True)
-    
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
     class Meta:
-        verbose_name = 'Запись обслуживания'
-        verbose_name_plural = 'Записи обслуживания'
-        ordering = ['-date']
-    
+        verbose_name = "Запись обслуживания"
+        verbose_name_plural = "Записи обслуживания"
+        ordering = ["-date"]
+
     def __str__(self):
         return (
             f"{self.equipment.inventory_number} - "
@@ -549,86 +521,75 @@ class MaintenanceRecord(models.Model):
 
 class EquipmentTransferLog(models.Model):
     """Лог передачи/перемещения оборудования."""
-    
+
     TRANSFER_TYPES = [
-        ('assignment', 'Назначение ответственного'),
-        ('transfer', 'Перемещение'),
-        ('return', 'Возврат'),
+        ("assignment", "Назначение ответственного"),
+        ("transfer", "Перемещение"),
+        ("return", "Возврат"),
     ]
-    
+
     equipment = models.ForeignKey(
         Equipment,
         on_delete=models.CASCADE,
-        related_name='transfer_logs',
-        verbose_name='Оборудование'
+        related_name="transfer_logs",
+        verbose_name="Оборудование",
     )
     from_department = models.ForeignKey(
         Department,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='transfers_out',
-        verbose_name='Из отдела'
+        related_name="transfers_out",
+        verbose_name="Из отдела",
     )
     to_department = models.ForeignKey(
         Department,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='transfers_in',
-        verbose_name='В отдел'
+        related_name="transfers_in",
+        verbose_name="В отдел",
     )
     from_person = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='equipment_given',
-        verbose_name='От кого'
+        related_name="equipment_given",
+        verbose_name="От кого",
     )
     to_person = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='equipment_received',
-        verbose_name='Кому'
+        related_name="equipment_received",
+        verbose_name="Кому",
     )
-    from_location = models.CharField(
-        'Откуда',
-        max_length=255,
-        blank=True
-    )
-    to_location = models.CharField(
-        'Куда',
-        max_length=255,
-        blank=True
-    )
+    from_location = models.CharField("Откуда", max_length=255, blank=True)
+    to_location = models.CharField("Куда", max_length=255, blank=True)
     transfer_type = models.CharField(
-        'Тип передачи',
+        "Тип передачи",
         max_length=20,
         choices=TRANSFER_TYPES,
-        default='transfer'
+        default="transfer",
     )
-    reason = models.TextField(
-        'Причина/комментарий',
-        blank=True
-    )
-    created_at = models.DateTimeField('Дата передачи', auto_now_add=True)
+    reason = models.TextField("Причина/комментарий", blank=True)
+    created_at = models.DateTimeField("Дата передачи", auto_now_add=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='transfers_created',
-        verbose_name='Кто оформил'
+        related_name="transfers_created",
+        verbose_name="Кто оформил",
     )
-    
+
     class Meta:
-        verbose_name = 'Лог передачи'
-        verbose_name_plural = 'Логи передач'
-        ordering = ['-created_at']
-    
+        verbose_name = "Лог передачи"
+        verbose_name_plural = "Логи передач"
+        ordering = ["-created_at"]
+
     def __str__(self):
         return (
             f"{self.equipment.inventory_number}: "
@@ -638,56 +599,54 @@ class EquipmentTransferLog(models.Model):
 
 class Budget(models.Model):
     """Бюджет отдела на квартал."""
-    
+
     department = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
-        related_name='budgets',
-        verbose_name='Отдел'
+        related_name="budgets",
+        verbose_name="Отдел",
     )
-    year = models.PositiveIntegerField(
-        'Год',
-        help_text='Например: 2025'
-    )
+    year = models.PositiveIntegerField("Год", help_text="Например: 2025")
     quarter = models.PositiveIntegerField(
-        'Квартал',
-        choices=[(1, '1 квартал'), (2, '2 квартал'),
-                 (3, '3 квартал'), (4, '4 квартал')]
+        "Квартал",
+        choices=[
+            (1, "1 квартал"),
+            (2, "2 квартал"),
+            (3, "3 квартал"),
+            (4, "4 квартал"),
+        ],
     )
     allocated_amount = models.DecimalField(
-        'Выделено',
+        "Выделено",
         max_digits=14,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
+        validators=[MinValueValidator(Decimal("0.00"))],
     )
     spent_amount = models.DecimalField(
-        'Потрачено',
+        "Потрачено",
         max_digits=14,
         decimal_places=2,
-        default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
     )
-    created_at = models.DateTimeField('Создано', auto_now_add=True)
-    updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
     class Meta:
-        verbose_name = 'Бюджет'
-        verbose_name_plural = 'Бюджеты'
-        ordering = ['-year', '-quarter']
-        unique_together = [('department', 'year', 'quarter')]
-    
+        verbose_name = "Бюджет"
+        verbose_name_plural = "Бюджеты"
+        ordering = ["-year", "-quarter"]
+        unique_together = [("department", "year", "quarter")]
+
     def __str__(self):
-        return (
-            f"{self.department.name} - "
-            f"{self.year} Q{self.quarter}"
-        )
-    
+        return f"{self.department.name} - {self.year} Q{self.quarter}"
+
     @property
     def remaining_amount(self):
         """Остаток бюджета."""
-        allocated = self.allocated_amount or Decimal('0.00')
+        allocated = self.allocated_amount or Decimal("0.00")
         return allocated - self.spent_amount
-    
+
     @property
     def reserved_amount(self):
         """Сумма зарезервированная pending заявками."""
@@ -695,19 +654,19 @@ class Budget(models.Model):
         pending_requests = self.department.procurement_requests.filter(
             status=ProcurementStatus.PENDING,
             created_at__year=self.year,
-            created_at__month__in=self._quarter_months()
+            created_at__month__in=self._quarter_months(),
         )
-        
-        total = Decimal('0.00')
+
+        total = Decimal("0.00")
         for req in pending_requests:
             total += req.total_cost
         return total
-    
+
     @property
     def available_amount(self):
         """Доступный бюджет (с учётом резерва)."""
         return self.remaining_amount - self.reserved_amount
-    
+
     def _quarter_months(self):
         """Получить месяцы квартала."""
         return {
@@ -716,17 +675,15 @@ class Budget(models.Model):
             3: [7, 8, 9],
             4: [10, 11, 12],
         }[self.quarter]
-    
+
     @property
     def utilization_percentage(self):
         """Процент использования бюджета."""
-        allocated = self.allocated_amount or Decimal('0.00')
+        allocated = self.allocated_amount or Decimal("0.00")
         if allocated == 0:
-            return Decimal('0.00')
-        return (
-            self.spent_amount / allocated * 100
-        ).quantize(Decimal('0.01'))
-    
+            return Decimal("0.00")
+        return (self.spent_amount / allocated * 100).quantize(Decimal("0.01"))
+
     def can_spend(self, amount):
         """Проверка возможности потратить сумму."""
         return self.remaining_amount >= amount
@@ -734,61 +691,37 @@ class Budget(models.Model):
 
 class Supplier(models.Model):
     """Поставщик товаров/услуг."""
-    
-    name = models.CharField(
-        'Название',
-        max_length=255
-    )
+
+    name = models.CharField("Название", max_length=255)
     contact_person = models.CharField(
-        'Контактное лицо',
-        max_length=255,
-        blank=True
+        "Контактное лицо", max_length=255, blank=True
     )
-    phone = models.CharField(
-        'Телефон',
-        max_length=50,
-        blank=True
-    )
-    email = models.EmailField(
-        'Email',
-        blank=True
-    )
-    address = models.TextField(
-        'Адрес',
-        blank=True
-    )
-    website = models.URLField(
-        'Веб-сайт',
-        blank=True
-    )
+    phone = models.CharField("Телефон", max_length=50, blank=True)
+    email = models.EmailField("Email", blank=True)
+    address = models.TextField("Адрес", blank=True)
+    website = models.URLField("Веб-сайт", blank=True)
     inn = models.CharField(
-        'ИНН',
+        "ИНН",
         max_length=12,
         blank=True,
-        help_text='ИНН организации (10 или 12 цифр)'
+        help_text="ИНН организации (10 или 12 цифр)",
     )
     rating = models.DecimalField(
-        'Рейтинг',
+        "Рейтинг",
         max_digits=3,
         decimal_places=2,
-        default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))]
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
     )
-    is_active = models.BooleanField(
-        'Активен',
-        default=True
-    )
-    notes = models.TextField(
-        'Примечания',
-        blank=True
-    )
-    created_at = models.DateTimeField('Создано', auto_now_add=True)
-    updated_at = models.DateTimeField('Обновлено', auto_now=True)
-    
+    is_active = models.BooleanField("Активен", default=True)
+    notes = models.TextField("Примечания", blank=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
     class Meta:
-        verbose_name = 'Поставщик'
-        verbose_name_plural = 'Поставщики'
-        ordering = ['name']
-    
+        verbose_name = "Поставщик"
+        verbose_name_plural = "Поставщики"
+        ordering = ["name"]
+
     def __str__(self):
         return self.name

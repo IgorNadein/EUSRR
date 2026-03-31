@@ -5,7 +5,7 @@
 
 export class ProcurementRequestListHandler {
   constructor(options = {}) {
-    this.apiBase = options.apiBase || '/api/procurement';
+    this.apiBase = options.apiBase || '/api/v1/procurement';
     this.container = options.container || '#requestsList';
     this.filterForm = options.filterForm || '#filterForm';
     this.searchInput = options.searchInput || '#searchInput';

@@ -24,8 +24,9 @@ class GroupViewSet(viewsets.ModelViewSet):
         GET/POST   /api/v1/groups/
         GET/PATCH/DELETE /api/v1/groups/{id}/
 
-    Экшены: permissions, set-permissions, add-permissions, remove-permissions,
-            rename, set-description, members, add-members, remove-members, replace-members
+        Экшены: permissions, set-permissions, add-permissions,
+            remove-permissions, rename, set-description, members,
+            add-members, remove-members, replace-members
     """
 
     queryset = Group.objects.all()
@@ -111,22 +112,24 @@ class GroupViewSet(viewsets.ModelViewSet):
         """Создаёт Group в БД. Синхронизация в LDAP через сигналы."""
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        
+
         grp = Group.objects.create(name=ser.validated_data["name"])
-        
+
         # Устанавливаем LDAP-специфичные атрибуты для сигнала
         grp._ldap_parent_dn = request.data.get("ldap_parent_dn")
         grp._ldap_description = request.data.get("ldap_description")
         grp._ldap_scope = request.data.get("ldap_scope", "global")
-        grp._ldap_security_enabled = bool(request.data.get("ldap_security", True))
-        
+        grp._ldap_security_enabled = bool(
+            request.data.get("ldap_security", True)
+        )
+
         perms = ser.validated_data.get("permissions")
         if perms:
             grp.permissions.set(perms)
-        
+
         # Сохраняем для триггера сигнала создания
         grp.save()
-        
+
         out = self.get_serializer(grp)
         return Response(
             out.data,
@@ -139,13 +142,13 @@ class GroupViewSet(viewsets.ModelViewSet):
         grp = self.get_object()
         new_name = request.data.get("name")
         new_desc = request.data.get("ldap_description", "__NO_CHANGE__")
-        
+
         # Устанавливаем LDAP-специфичные атрибуты для сигнала
         if new_name and new_name != grp.name:
             grp._ldap_old_name = grp.name
         if new_desc != "__NO_CHANGE__":
             grp._ldap_description = new_desc
-        
+
         return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs) -> Response:
@@ -188,7 +191,9 @@ class GroupViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "ok": True,
-                "permission_ids": list(grp.permissions.values_list("id", flat=True)),
+                "permission_ids": list(
+                    grp.permissions.values_list("id", flat=True)
+                ),
             },
             status=status.HTTP_200_OK,
         )
@@ -204,7 +209,9 @@ class GroupViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "ok": True,
-                "permission_ids": list(grp.permissions.values_list("id", flat=True)),
+                "permission_ids": list(
+                    grp.permissions.values_list("id", flat=True)
+                ),
             },
             status=status.HTTP_200_OK,
         )
@@ -220,7 +227,9 @@ class GroupViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "ok": True,
-                "permission_ids": list(grp.permissions.values_list("id", flat=True)),
+                "permission_ids": list(
+                    grp.permissions.values_list("id", flat=True)
+                ),
             },
             status=status.HTTP_200_OK,
         )
@@ -234,13 +243,16 @@ class GroupViewSet(viewsets.ModelViewSet):
         new_name = (request.data.get("new_name") or "").strip()
         if not new_name:
             return Response(
-                {"detail": "new_name обязателен"}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": "new_name обязателен"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         grp._ldap_old_name = grp.name
         grp.name = new_name
         grp.save(update_fields=["name"])
-        return Response({"ok": True, "name": grp.name}, status=status.HTTP_200_OK)
+        return Response(
+            {"ok": True, "name": grp.name}, status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=["post"], url_path="set-description")
     def set_description(self, request, pk=None) -> Response:
@@ -279,7 +291,7 @@ class GroupViewSet(viewsets.ModelViewSet):
 
         users = Employee.objects.filter(id__in=member_ids)
         grp.user_set.add(*users)
-        
+
         ok_user_ids = [u.id for u in users]
         return Response(
             {
@@ -303,7 +315,7 @@ class GroupViewSet(viewsets.ModelViewSet):
 
         users = Employee.objects.filter(id__in=member_ids)
         grp.user_set.remove(*users)
-        
+
         ok_user_ids = [u.id for u in users]
         return Response(
             {
@@ -316,7 +328,10 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="replace-members")
     def replace_members(self, request, pk=None) -> Response:
-        """Полностью заменяет состав группы. Синхронизация в LDAP через сигналы."""
+        """Полностью заменяет состав группы.
+
+        Синхронизация в LDAP выполняется через сигналы.
+        """
         grp = self.get_object()
         member_ids = request.data.get("member_ids") or []
         if not isinstance(member_ids, list):
@@ -327,7 +342,7 @@ class GroupViewSet(viewsets.ModelViewSet):
 
         users = Employee.objects.filter(id__in=member_ids)
         grp.user_set.set(users)
-        
+
         ok_user_ids = [u.id for u in users]
         return Response(
             {

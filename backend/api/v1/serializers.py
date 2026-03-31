@@ -41,14 +41,14 @@ class Base64ImageField(serializers.ImageField):
     def to_internal_value(self, data):
         import logging
         logger = logging.getLogger(__name__)
-        
+
         logger.info("[Base64ImageField] to_internal_value вызван:")
         logger.info(f"  - data type: {type(data).__name__}")
         logger.info(f"  - data repr: {repr(data)[:200]}")
         logger.info(f"  - data is None: {data is None}")
         logger.info(f"  - data == '': {data == ''}")
         logger.info(f"  - data == b'': {data == b''}")
-        
+
         # Принимаем None/пустое
         if data in (None, "", b""):
             logger.info(
@@ -61,7 +61,7 @@ class Base64ImageField(serializers.ImageField):
                 f"[Base64ImageField] Обрабатываем строку, "
                 f"length: {len(data)}"
             )
-            
+
             # Срезаем префикс data:image/...;base64, если есть
             if data.startswith("data:image"):
                 logger.info(
@@ -80,7 +80,7 @@ class Base64ImageField(serializers.ImageField):
                     raise serializers.ValidationError(
                         "Некорректный формат data URI."
                     )
-            
+
             try:
                 logger.info("[Base64ImageField] Декодируем base64...")
                 decoded = base64.b64decode(data)
@@ -100,25 +100,25 @@ class Base64ImageField(serializers.ImageField):
             )
             ext, _ = self._detect_ext_mime(decoded)
             logger.info(f"[Base64ImageField] Формат определен: {ext}")
-            
+
             file = ContentFile(decoded, name=f"upload.{ext}")
             logger.info(
                 "[Base64ImageField] ContentFile создан, "
                 "передаем в parent ImageField"
             )
-            
+
             result = super().to_internal_value(file)
             logger.info(
                 f"[Base64ImageField] Parent validation passed, "
                 f"result type: {type(result)}"
             )
             return result
-        
+
         # Если это не строка (например, InMemoryUploadedFile)
         logger.info(
             "[Base64ImageField] Не строка, передаем в parent as-is"
         )
-        
+
         # КРИТИЧНО: проверяем, не пустой ли файл
         if hasattr(data, 'size') and data.size == 0:
             logger.warning(
@@ -126,7 +126,7 @@ class Base64ImageField(serializers.ImageField):
                 "возвращаем None"
             )
             return None
-        
+
         if hasattr(data, 'read'):
             # Проверяем содержимое файла
             try:
@@ -143,7 +143,7 @@ class Base64ImageField(serializers.ImageField):
                 logger.error(
                     f"[Base64ImageField] Ошибка чтения файла: {e}"
                 )
-        
+
         result = super().to_internal_value(data)
         logger.info(
             f"[Base64ImageField] Parent validation passed, "

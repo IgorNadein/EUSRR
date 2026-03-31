@@ -26,7 +26,7 @@ def get_client_ip(request) -> str:
 def is_local_ip(ip_address: str) -> bool:
     """
     Проверяет, является ли IP-адрес локальным.
-    
+
     Локальными считаются:
     - 127.0.0.0/8 (localhost)
     - 10.0.0.0/8 (частная сеть класса A)
@@ -46,35 +46,35 @@ def is_local_ip(ip_address: str) -> bool:
 def is_ip_allowed(ip_address: str, allowed_networks: List[str] = None) -> bool:
     """
     Проверяет, разрешен ли доступ с данного IP-адреса.
-    
+
     Args:
         ip_address: IP-адрес для проверки
         allowed_networks: Список разрешенных сетей в формате CIDR
                          или отдельных IP. Если None, используется
                          REGISTRATION_ALLOWED_IPS из settings.
-    
+
     Returns:
         True если IP разрешен, False иначе
     """
     if allowed_networks is None:
         # Проверяем настройки Django
         allowed_networks = getattr(settings, 'REGISTRATION_ALLOWED_IPS', None)
-        
+
         # Если настройка не задана, разрешаем только локальные IP
         if allowed_networks is None:
             return is_local_ip(ip_address)
-    
+
     # Пустой список = запретить всем
     if not allowed_networks:
         return False
-    
+
     # Специальное значение для разрешения всех IP
     if allowed_networks == ['*'] or '*' in allowed_networks:
         return True
-    
+
     try:
         ip = ipaddress.ip_address(ip_address)
-        
+
         for network_str in allowed_networks:
             # Проверяем, является ли это сетью (содержит /) или отдельным IP
             if '/' in network_str:
@@ -86,7 +86,7 @@ def is_ip_allowed(ip_address: str, allowed_networks: List[str] = None) -> bool:
                 allowed_ip = ipaddress.ip_address(network_str)
                 if ip == allowed_ip:
                     return True
-        
+
         return False
     except ValueError:
         # Невалидный IP - запрещаем
@@ -96,7 +96,7 @@ def is_ip_allowed(ip_address: str, allowed_networks: List[str] = None) -> bool:
 def local_ip_required(view_func):
     """
     Декоратор для ограничения доступа к view только с локальных IP.
-    
+
     Использование:
         @local_ip_required
         def my_view(request):
@@ -105,7 +105,7 @@ def local_ip_required(view_func):
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
         client_ip = get_client_ip(request)
-        
+
         if not is_ip_allowed(client_ip):
             return HttpResponse(
                 '<h1>403 Forbidden</h1>'
@@ -114,29 +114,29 @@ def local_ip_required(view_func):
                 status=403,
                 content_type='text/html; charset=utf-8'
             )
-        
+
         return view_func(request, *args, **kwargs)
-    
+
     return wrapper
 
 
 def local_ip_required_api(view_class):
     """
     Декоратор для ограничения доступа к API View только с локальных IP.
-    
+
     Использование:
         @local_ip_required_api
         class MyAPIView(APIView):
             ...
     """
     original_dispatch = view_class.dispatch
-    
+
     def dispatch_wrapper(self, request, *args, **kwargs):
         from rest_framework.response import Response
         from rest_framework import status as drf_status
-        
+
         client_ip = get_client_ip(request)
-        
+
         if not is_ip_allowed(client_ip):
             return Response(
                 {
@@ -145,8 +145,8 @@ def local_ip_required_api(view_class):
                 },
                 status=drf_status.HTTP_403_FORBIDDEN
             )
-        
+
         return original_dispatch(self, request, *args, **kwargs)
-    
+
     view_class.dispatch = dispatch_wrapper
     return view_class

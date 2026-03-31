@@ -7,7 +7,7 @@ from django.apps import AppConfig
 
 class SchedulingConfig(AppConfig):
     """Конфигурация приложения для интеграции с django-scheduler."""
-    
+
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'scheduling'
     verbose_name = 'Планирование и календарь'
@@ -22,10 +22,10 @@ class SchedulingConfig(AppConfig):
         # Применяем патчи к django-scheduler
         from scheduling import patch
         patch.apply_patch()
-        
+
         # Регистрируем сигналы для уведомлений
         import scheduling.notifications.signals  # noqa: F401
-        
+
         # Загружаем правила доступа (django-rules)
         try:
             import scheduling.rules  # noqa: F401

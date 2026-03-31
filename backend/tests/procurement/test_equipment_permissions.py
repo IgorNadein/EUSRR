@@ -171,12 +171,12 @@ def make_equipment(
 
 def equipment_create_url() -> str:
     """URL для создания оборудования."""
-    return reverse("procurement:equipment-list")
+    return reverse("api:v1:procurement:equipment-list")
 
 
 def equipment_detail_url(pk: int) -> str:
     """URL для конкретного оборудования."""
-    return reverse("procurement:equipment-detail", args=[pk])
+    return reverse("api:v1:procurement:equipment-detail", args=[pk])
 
 
 def valid_equipment_data(
@@ -808,7 +808,7 @@ class TestEquipmentCreateOptions:
         """Админ получает все отделы для выбора."""
         api_client.force_authenticate(user=admin_user)
         
-        url = reverse("procurement:equipment-create-options")
+        url = reverse("api:v1:procurement:equipment-create-options")
         response = api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -824,7 +824,7 @@ class TestEquipmentCreateOptions:
         """Начальник получает только свой отдел."""
         api_client.force_authenticate(user=dept_head)
         
-        url = reverse("procurement:equipment-create-options")
+        url = reverse("api:v1:procurement:equipment-create-options")
         response = api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -839,7 +839,7 @@ class TestEquipmentCreateOptions:
         """Уполномоченный получает свой отдел и НЕ может выбирать ответственного."""
         api_client.force_authenticate(user=authorized_member)
         
-        url = reverse("procurement:equipment-create-options")
+        url = reverse("api:v1:procurement:equipment-create-options")
         response = api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
@@ -851,7 +851,7 @@ class TestEquipmentCreateOptions:
         """Обычный сотрудник без прав не получает опции (или получает пустой ответ)."""
         api_client.force_authenticate(user=dept_member)
         
-        url = reverse("procurement:equipment-create-options")
+        url = reverse("api:v1:procurement:equipment-create-options")
         response = api_client.get(url)
         
         # Либо 403, либо пустой список отделов

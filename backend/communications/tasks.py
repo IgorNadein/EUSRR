@@ -1,6 +1,7 @@
 """
 Celery задачи для модуля communications
 """
+
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
@@ -16,19 +17,20 @@ def cleanup_orphaned_attachments():
     Удаляет MessageAttachment с message=null старше 1 часа.
     """
     from communications.models import MessageAttachment
-    
+
     cutoff_time = timezone.now() - timedelta(hours=1)
-    
+
     orphaned = MessageAttachment.objects.filter(
-        message__isnull=True,
-        uploaded_at__lt=cutoff_time
+        message__isnull=True, uploaded_at__lt=cutoff_time
     )
-    
+
     count = orphaned.count()
-    
+
     if count > 0:
-        logger.info(f'[cleanup_orphaned_attachments] Found {count} orphaned attachments')
-        
+        logger.info(
+            f"[cleanup_orphaned_attachments] Found {count} orphaned attachments"
+        )
+
         # Удаляем файлы и записи
         for attachment in orphaned:
             try:
@@ -36,8 +38,17 @@ def cleanup_orphaned_attachments():
                     attachment.file.delete()
                 attachment.delete()
             except Exception as e:
-                logger.error(f'[cleanup_orphaned_attachments] Error deleting attachment {attachment.id}: {e}')
-        
-        logger.info(f'[cleanup_orphaned_attachments] Cleaned up {count} orphaned attachments')
-    
+                logger.error(
+                    f"[cleanup_orphaned_attachments] Error deleting attachment {
+                        attachment.id
+                    }: {e}"
+                )
+
+        logger.info(
+            (
+                "[cleanup_orphaned_attachments] Cleaned up "
+                f"{count} orphaned attachments"
+            )
+        )
+
     return count
